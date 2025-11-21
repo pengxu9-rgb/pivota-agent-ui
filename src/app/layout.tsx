@@ -9,7 +9,12 @@ export const metadata: Metadata = {
   description: "AI-powered shopping made simple. Find products, compare prices, and shop smarter with Pivota's intelligent assistant.",
   keywords: ["shopping", "AI", "assistant", "ecommerce", "Pivota"],
   authors: [{ name: "Pivota Team" }],
-  viewport: "width=device-width, initial-scale=1, maximum-scale=1",
+};
+
+export const viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
 };
 
 export default function RootLayout({

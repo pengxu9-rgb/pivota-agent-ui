@@ -1,9 +1,10 @@
 'use client'
 
+import { Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Package, Truck, CheckCircle, Clock } from 'lucide-react'
 
-export default function TrackOrderPage() {
+function TrackContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const orderId = searchParams.get('orderId')
@@ -122,5 +123,20 @@ export default function TrackOrderPage() {
         </div>
       </div>
     </main>
+  )
+}
+
+export default function TrackOrderPage() {
+  return (
+    <Suspense fallback={
+      <main className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading tracking info...</p>
+        </div>
+      </main>
+    }>
+      <TrackContent />
+    </Suspense>
   )
 }
