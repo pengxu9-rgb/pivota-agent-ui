@@ -1,59 +1,30 @@
-import { Metadata } from 'next'
-import { notFound } from 'next/navigation'
+'use client'
+
+import { useParams, useRouter } from 'next/navigation'
 import Image from 'next/image'
 import { ShoppingCart, ArrowLeft, Package, Shield, Truck } from 'lucide-react'
 import Link from 'next/link'
-import { getProductById, mockProducts } from '@/lib/mockData'
+import { getProductById } from '@/lib/mockData'
 
-interface Props {
-  params: Promise<{ id: string }>
-}
-
-export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const { id } = await params
-  const product = getProductById(id)
+export default function ProductDetailPage() {
+  const params = useParams()
+  const router = useRouter()
+  const product = getProductById(params.id as string)
   
   if (!product) {
-    return {
-      title: 'Product Not Found',
-    }
-  }
-
-  return {
-    title: `${product.title} - Pivota Shopping AI`,
-    description: product.description,
-    openGraph: {
-      title: product.title,
-      description: product.description,
-      images: [product.image_url || ''],
-      type: 'website',
-      url: `https://agent.pivota.cc/products/${id}`,
-    },
-    twitter: {
-      card: 'summary_large_image',
-      title: product.title,
-      description: product.description,
-      images: [product.image_url || ''],
-    },
-  }
-}
-
-export async function generateStaticParams() {
-  return mockProducts['merch_208139f7600dbf42'].map((product) => ({
-    id: product.product_id,
-  }))
-}
-
-export default async function ProductDetailPage({ params }: Props) {
-  const { id } = await params
-  const product = getProductById(id)
-  
-  if (!product) {
-    notFound()
+    return (
+      <main className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold text-gray-800 mb-4">Product Not Found</h1>
+          <Link href="/products" className="text-blue-600 hover:underline">
+            Back to Products
+          </Link>
+        </div>
+      </main>
+    )
   }
 
   const handleBuyNow = () => {
-    // Navigate to order page with product
     const orderItem = {
       product_id: product.product_id,
       title: product.title,
@@ -62,7 +33,7 @@ export default async function ProductDetailPage({ params }: Props) {
       image_url: product.image_url
     }
     const itemsParam = encodeURIComponent(JSON.stringify([orderItem]))
-    window.location.href = `/order?items=${itemsParam}`
+    router.push(`/order?items=${itemsParam}`)
   }
 
   return (
@@ -108,9 +79,9 @@ export default async function ProductDetailPage({ params }: Props) {
           <div className="max-w-7xl mx-auto px-4 py-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-4">
-                <Link href="/products" className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
+                <button onClick={() => router.back()} className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
                   <ArrowLeft className="w-5 h-5" />
-                </Link>
+                </button>
                 <div className="flex items-center gap-2">
                   <div className="w-10 h-10 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center">
                     <span className="text-white font-bold text-lg">P</span>
@@ -118,7 +89,7 @@ export default async function ProductDetailPage({ params }: Props) {
                   <h1 className="text-xl font-bold text-gray-800">Product Details</h1>
                 </div>
               </div>
-              <nav className="flex gap-4">
+              <nav className="hidden md:flex gap-4">
                 <Link href="/" className="text-gray-600 hover:text-gray-900">Chat Assistant</Link>
                 <Link href="/products" className="text-gray-600 hover:text-gray-900">All Products</Link>
               </nav>
