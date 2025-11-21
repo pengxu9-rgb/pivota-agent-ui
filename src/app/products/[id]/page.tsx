@@ -6,11 +6,12 @@ import Link from 'next/link'
 import { getProductById, mockProducts } from '@/lib/mockData'
 
 interface Props {
-  params: { id: string }
+  params: Promise<{ id: string }>
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const product = getProductById(params.id)
+  const { id } = await params
+  const product = getProductById(id)
   
   if (!product) {
     return {
@@ -26,7 +27,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       description: product.description,
       images: [product.image_url || ''],
       type: 'website',
-      url: `https://agent.pivota.cc/products/${product.product_id}`,
+      url: `https://agent.pivota.cc/products/${id}`,
     },
     twitter: {
       card: 'summary_large_image',
@@ -43,8 +44,9 @@ export async function generateStaticParams() {
   }))
 }
 
-export default function ProductDetailPage({ params }: Props) {
-  const product = getProductById(params.id)
+export default async function ProductDetailPage({ params }: Props) {
+  const { id } = await params
+  const product = getProductById(id)
   
   if (!product) {
     notFound()
