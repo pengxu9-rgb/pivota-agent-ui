@@ -11,11 +11,11 @@ export default function Home() {
             </div>
             <h1 className="text-2xl font-bold text-gray-800">Pivota Shopping AI</h1>
           </div>
-          <nav className="hidden md:flex gap-6">
-            <a href="#" className="text-gray-600 hover:text-gray-900 transition-colors">How it Works</a>
-            <a href="#" className="text-gray-600 hover:text-gray-900 transition-colors">About</a>
-            <a href="#" className="text-gray-600 hover:text-gray-900 transition-colors">Contact</a>
-          </nav>
+            <nav className="hidden md:flex gap-6">
+              <a href="/products" className="text-gray-600 hover:text-gray-900 transition-colors">Products</a>
+              <a href="#" className="text-gray-600 hover:text-gray-900 transition-colors">How it Works</a>
+              <a href="#" className="text-gray-600 hover:text-gray-900 transition-colors">About</a>
+            </nav>
         </div>
       </header>
       

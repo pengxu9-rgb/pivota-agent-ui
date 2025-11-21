@@ -1,4 +1,7 @@
+'use client'
+
 import { ShoppingCart, Star } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 
 interface ProductCardProps {
   id: string
@@ -21,6 +24,24 @@ export default function ProductCard({
   onBuy,
   onAddToCart
 }: ProductCardProps) {
+  const router = useRouter()
+  
+  const handleBuyNow = () => {
+    if (onBuy) {
+      onBuy()
+    } else {
+      // Navigate to order page with product info
+      const orderItem = {
+        product_id: id,
+        title,
+        quantity: 1,
+        unit_price: price,
+        image_url: image
+      }
+      const itemsParam = encodeURIComponent(JSON.stringify([orderItem]))
+      router.push(`/order?items=${itemsParam}`)
+    }
+  }
   return (
     <div className="bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow duration-300 overflow-hidden">
       <div className="relative">
@@ -50,7 +71,7 @@ export default function ProductCard({
         
         <div className="flex gap-2">
           <button
-            onClick={onBuy}
+            onClick={handleBuyNow}
             className="flex-1 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors font-medium"
           >
             Buy Now
