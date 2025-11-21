@@ -1,4 +1,5 @@
 import { Metadata } from 'next'
+import Link from 'next/link'
 import ProductCard from '@/components/product/ProductCard'
 import { mockProducts } from '@/lib/mockData'
 
@@ -40,8 +41,8 @@ export default function ProductsPage() {
               <h1 className="text-2xl font-bold text-gray-800">All Products</h1>
             </div>
             <nav className="flex gap-4">
-              <a href="/" className="text-gray-600 hover:text-gray-900">Chat Assistant</a>
-              <a href="/products" className="text-gray-900 font-medium">Products</a>
+              <Link href="/" className="text-gray-600 hover:text-gray-900">Chat Assistant</Link>
+              <Link href="/products" className="text-gray-900 font-medium">Products</Link>
             </nav>
           </div>
         </div>

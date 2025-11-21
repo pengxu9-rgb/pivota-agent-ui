@@ -2,6 +2,7 @@
 
 import { ShoppingCart, Star } from 'lucide-react'
 import { useRouter } from 'next/navigation'
+import Image from 'next/image'
 
 interface ProductCardProps {
   id: string
@@ -45,9 +46,11 @@ export default function ProductCard({
   return (
     <div className="bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow duration-300 overflow-hidden">
       <div className="relative">
-        <img 
+        <Image 
           src={image} 
-          alt={title} 
+          alt={title}
+          width={300}
+          height={200} 
           className="w-full h-48 object-cover"
         />
         <div className="absolute top-2 right-2 bg-white/90 backdrop-blur-sm px-2 py-1 rounded-full flex items-center gap-1">

@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { ShoppingCart, CreditCard, Check, ChevronRight } from 'lucide-react'
+import Image from 'next/image'
 
 interface OrderItem {
   product_id: string
@@ -105,7 +106,7 @@ export default function OrderFlow({ items, onComplete, onCancel }: OrderFlowProp
               <div key={index} className="flex items-center justify-between border-b pb-4">
                 <div className="flex items-center">
                   {item.image_url && (
-                    <img src={item.image_url} alt={item.title} className="w-16 h-16 object-cover rounded mr-4" />
+                    <Image src={item.image_url} alt={item.title} width={64} height={64} className="w-16 h-16 object-cover rounded mr-4" />
                   )}
                   <div>
                     <h3 className="font-semibold">{item.title}</h3>

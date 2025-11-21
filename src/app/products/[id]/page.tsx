@@ -1,5 +1,6 @@
 import { Metadata } from 'next'
 import { notFound } from 'next/navigation'
+import Image from 'next/image'
 import { ShoppingCart, ArrowLeft, Package, Shield, Truck } from 'lucide-react'
 import Link from 'next/link'
 import { getProductById, mockProducts } from '@/lib/mockData'
@@ -116,8 +117,8 @@ export default function ProductDetailPage({ params }: Props) {
                 </div>
               </div>
               <nav className="flex gap-4">
-                <a href="/" className="text-gray-600 hover:text-gray-900">Chat Assistant</a>
-                <a href="/products" className="text-gray-600 hover:text-gray-900">All Products</a>
+                <Link href="/" className="text-gray-600 hover:text-gray-900">Chat Assistant</Link>
+                <Link href="/products" className="text-gray-600 hover:text-gray-900">All Products</Link>
               </nav>
             </div>
           </div>
@@ -128,9 +129,11 @@ export default function ProductDetailPage({ params }: Props) {
             <div className="grid grid-cols-1 lg:grid-cols-2">
               {/* Product Image */}
               <div className="p-8 bg-gray-50">
-                <img
-                  src={product.image_url}
+                <Image
+                  src={product.image_url || '/placeholder.png'}
                   alt={product.title}
+                  width={400}
+                  height={400}
                   className="w-full max-w-md mx-auto rounded-lg"
                 />
               </div>

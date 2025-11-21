@@ -34,7 +34,7 @@ export default function OrderSuccessPage() {
           </div>
           
           <p className="text-sm text-gray-500">
-            You'll receive a confirmation email with tracking information.
+            You&apos;ll receive a confirmation email with tracking information.
           </p>
         </div>
         

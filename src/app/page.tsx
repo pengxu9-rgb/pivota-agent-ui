@@ -1,4 +1,5 @@
 import ChatInterface from '@/components/chat/ChatInterface'
+import Link from 'next/link'
 
 export default function Home() {
   return (
@@ -12,7 +13,7 @@ export default function Home() {
             <h1 className="text-2xl font-bold text-gray-800">Pivota Shopping AI</h1>
           </div>
             <nav className="hidden md:flex gap-6">
-              <a href="/products" className="text-gray-600 hover:text-gray-900 transition-colors">Products</a>
+              <Link href="/products" className="text-gray-600 hover:text-gray-900 transition-colors">Products</Link>
               <a href="#" className="text-gray-600 hover:text-gray-900 transition-colors">How it Works</a>
               <a href="#" className="text-gray-600 hover:text-gray-900 transition-colors">About</a>
             </nav>
