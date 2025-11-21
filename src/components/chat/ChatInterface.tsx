@@ -140,14 +140,6 @@ export default function ChatInterface() {
                     price={product.price}
                     image={product.image_url}
                     description={product.description}
-                    onBuy={() => {
-                      // 后续实现购买功能
-                      alert(`Ready to buy: ${product.title}`)
-                    }}
-                    onAddToCart={() => {
-                      // 后续实现加入购物车
-                      alert(`Added to cart: ${product.title}`)
-                    }}
                   />
                 ))}
               </div>

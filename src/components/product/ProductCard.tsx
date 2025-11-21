@@ -79,6 +79,7 @@ export default function ProductCard({
           width={300}
           height={200} 
           className="w-full h-48 object-cover"
+          unoptimized
         />
         <div className="absolute top-2 right-2 bg-white/90 backdrop-blur-sm px-2 py-1 rounded-full flex items-center gap-1">
           <Star className="w-4 h-4 text-yellow-500 fill-current" />
