@@ -1,8 +1,11 @@
-// API配置文件 - 准备连接Pivota Agent后端
+// API配置文件 - 连接Pivota Agent Gateway
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'https://pivota-agent-production.up.railway.app'
 
 // 默认测试商户ID
-const DEFAULT_MERCHANT_ID = 'merch_208139f7600dbf42'
+export const DEFAULT_MERCHANT_ID = 'merch_208139f7600dbf42'
+
+// 是否使用真实API（根据环境变量，默认使用）
+const USE_REAL_API = process.env.NEXT_PUBLIC_USE_MOCK !== 'true'
 
 interface SearchProductsPayload {
   search: {
@@ -48,15 +51,15 @@ export async function sendMessage(message: string): Promise<ProductResponse[]> {
     })
     
     if (!response.ok) {
-      throw new Error('Failed to fetch products')
+      const errorData = await response.json().catch(() => ({}))
+      throw new Error(errorData.message || `API request failed with status ${response.status}`)
     }
     
     const data = await response.json()
     return data.products || []
   } catch (error) {
     console.error('API Error:', error)
-    // 返回模拟数据用于开发
-    return getMockProducts(message)
+    throw error // Propagate error for UI to handle
   }
 }
 
@@ -134,15 +137,115 @@ function getMockProducts(query: string): ProductResponse[] {
 }
 
 // 创建订单
-export async function createOrder(orderData: any) {
-  // 将在后端API修复后实现
-  console.log('Creating order:', orderData)
-  return { success: true, orderId: 'ORD_' + Date.now() }
+export async function createOrder(orderData: {
+  merchant_id: string
+  customer_email: string
+  items: Array<{
+    merchant_id: string
+    product_id: string
+    product_title: string
+    quantity: number
+    unit_price: number
+    subtotal: number
+  }>
+  shipping_address: {
+    name: string
+    address_line1: string
+    address_line2?: string
+    city: string
+    country: string
+    postal_code: string
+    phone?: string
+  }
+  customer_notes?: string
+}) {
+  try {
+    const response = await fetch(`${API_BASE}/agent/shop/v1/invoke`, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        operation: 'create_order',
+        payload: {
+          order: orderData
+        }
+      })
+    })
+    
+    if (!response.ok) {
+      throw new Error('Failed to create order')
+    }
+    
+    return await response.json()
+  } catch (error) {
+    console.error('Create Order Error:', error)
+    throw error
+  }
 }
 
 // 处理支付
-export async function processPayment(paymentData: any) {
-  // 将在后端API修复后实现
-  console.log('Processing payment:', paymentData)
-  return { success: true, paymentId: 'PAY_' + Date.now() }
+export async function processPayment(paymentData: {
+  order_id: string
+  total_amount: number
+  currency: string
+  payment_method: {
+    type: string
+  }
+}) {
+  try {
+    const response = await fetch(`${API_BASE}/agent/shop/v1/invoke`, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        operation: 'submit_payment',
+        payload: {
+          payment: {
+            order_id: paymentData.order_id,
+            expected_amount: paymentData.total_amount,
+            currency: paymentData.currency,
+            payment_method_hint: paymentData.payment_method.type
+          }
+        }
+      })
+    })
+    
+    if (!response.ok) {
+      throw new Error('Failed to process payment')
+    }
+    
+    return await response.json()
+  } catch (error) {
+    console.error('Payment Error:', error)
+    throw error
+  }
+}
+
+// 获取订单状态
+export async function getOrderStatus(orderId: string) {
+  try {
+    const response = await fetch(`${API_BASE}/agent/shop/v1/invoke`, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        operation: 'get_order_status',
+        payload: {
+          order: { order_id: orderId }
+        }
+      })
+    })
+    
+    if (!response.ok) {
+      throw new Error('Failed to get order status')
+    }
+    
+    return await response.json()
+  } catch (error) {
+    console.error('Order Status Error:', error)
+    throw error
+  }
 }

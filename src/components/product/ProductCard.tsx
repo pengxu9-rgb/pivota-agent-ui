@@ -1,8 +1,11 @@
 'use client'
 
-import { ShoppingCart, Star } from 'lucide-react'
+import { ShoppingCart, Star, Check } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
+import { useCartStore } from '@/store/cartStore'
+import { toast } from '@/components/ui/ToastContainer'
+import { useState } from 'react'
 
 interface ProductCardProps {
   id: string
@@ -26,6 +29,8 @@ export default function ProductCard({
   onAddToCart
 }: ProductCardProps) {
   const router = useRouter()
+  const { addToCart, isInCart } = useCartStore()
+  const [showAdded, setShowAdded] = useState(false)
   
   const handleBuyNow = () => {
     if (onBuy) {
@@ -43,6 +48,28 @@ export default function ProductCard({
       router.push(`/order?items=${itemsParam}`)
     }
   }
+  
+  const handleAddToCart = () => {
+    if (onAddToCart) {
+      onAddToCart()
+    } else {
+      addToCart({
+        product_id: id,
+        title,
+        price,
+        image_url: image
+      })
+      
+      // Show "Added" feedback
+      setShowAdded(true)
+      setTimeout(() => setShowAdded(false), 2000)
+      
+      // Show toast notification
+      toast.success(`Added "${title}" to cart`)
+    }
+  }
+  
+  const inCart = isInCart(id)
   return (
     <div className="bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow duration-300 overflow-hidden">
       <div className="relative">
@@ -80,11 +107,15 @@ export default function ProductCard({
             Buy Now
           </button>
           <button
-            onClick={onAddToCart}
-            className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-            aria-label="Add to cart"
+            onClick={handleAddToCart}
+            className={`px-4 py-2 border rounded-lg transition-colors ${
+              inCart || showAdded 
+                ? 'bg-green-50 border-green-500 text-green-600' 
+                : 'border-gray-300 hover:bg-gray-50'
+            }`}
+            aria-label={inCart ? "In cart" : "Add to cart"}
           >
-            <ShoppingCart size={20} />
+            {showAdded ? <Check size={20} /> : <ShoppingCart size={20} />}
           </button>
         </div>
       </div>

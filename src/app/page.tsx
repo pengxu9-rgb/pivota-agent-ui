@@ -1,7 +1,13 @@
+'use client'
+
+import { useState } from 'react'
 import ChatInterface from '@/components/chat/ChatInterface'
+import CartButton from '@/components/cart/CartButton'
+import CartDrawer from '@/components/cart/CartDrawer'
 import Link from 'next/link'
 
 export default function Home() {
+  const [isCartOpen, setIsCartOpen] = useState(false)
   return (
     <main className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
       <header className="bg-white shadow-sm border-b sticky top-0 z-10">
@@ -32,6 +38,9 @@ export default function Home() {
         
         <ChatInterface />
       </div>
+      
+      <CartButton onClick={() => setIsCartOpen(true)} />
+      <CartDrawer isOpen={isCartOpen} onClose={() => setIsCartOpen(false)} />
     </main>
   )
 }

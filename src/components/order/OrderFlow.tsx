@@ -3,6 +3,8 @@
 import { useState } from 'react'
 import { ShoppingCart, CreditCard, Check, ChevronRight } from 'lucide-react'
 import Image from 'next/image'
+import { createOrder, processPayment, DEFAULT_MERCHANT_ID } from '@/lib/api'
+import { toast } from '@/components/ui/ToastContainer'
 
 interface OrderItem {
   product_id: string
@@ -41,6 +43,8 @@ export default function OrderFlow({ items, onComplete, onCancel }: OrderFlowProp
     country: 'US',
   })
   const [isProcessing, setIsProcessing] = useState(false)
+  const [createdOrderId, setCreatedOrderId] = useState<string>('')
+  const [paymentId, setPaymentId] = useState<string>('')
 
   const subtotal = items.reduce((sum, item) => sum + item.unit_price * item.quantity, 0)
   const shipping_cost = 0 // Free shipping
@@ -55,17 +59,58 @@ export default function OrderFlow({ items, onComplete, onCancel }: OrderFlowProp
   const handlePayment = async () => {
     setIsProcessing(true)
     
-    // Simulate payment processing
-    await new Promise(resolve => setTimeout(resolve, 2000))
-    
-    // In real implementation, this would call the API
-    const orderId = `ORD_${Date.now()}`
-    
-    setIsProcessing(false)
-    setStep('confirm')
-    
-    if (onComplete) {
-      setTimeout(() => onComplete(orderId), 2000)
+    try {
+      // Step 1: Create order if not already created
+      let orderId = createdOrderId
+      if (!orderId) {
+        const orderResponse = await createOrder({
+          merchant_id: DEFAULT_MERCHANT_ID,
+          customer_email: shipping.email,
+          items: items.map(item => ({
+            merchant_id: DEFAULT_MERCHANT_ID,
+            product_id: item.product_id,
+            product_title: item.title,
+            quantity: item.quantity,
+            unit_price: item.unit_price,
+            subtotal: item.unit_price * item.quantity
+          })),
+          shipping_address: {
+            name: shipping.name,
+            address_line1: shipping.address_line1,
+            address_line2: shipping.address_line2,
+            city: shipping.city,
+            country: shipping.country,
+            postal_code: shipping.postal_code,
+            phone: shipping.phone
+          }
+        })
+        
+        orderId = orderResponse.order_id
+        setCreatedOrderId(orderId)
+      }
+      
+      // Step 2: Process payment
+      const paymentResponse = await processPayment({
+        order_id: orderId,
+        total_amount: total,
+        currency: 'USD',
+        payment_method: {
+          type: 'card'
+        }
+      })
+      
+      setPaymentId(paymentResponse.payment_id || '')
+      setStep('confirm')
+      toast.success('Payment processed successfully!')
+      
+      if (onComplete) {
+        setTimeout(() => onComplete(orderId), 2000)
+      }
+    } catch (error: any) {
+      console.error('Payment error:', error)
+      toast.error(error.message || 'Payment failed. Please try again.')
+    } finally {
+      setIsProcessing(false)
     }
   }
 
