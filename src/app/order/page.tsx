@@ -5,10 +5,18 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import OrderFlow from '@/components/order/OrderFlow'
 import { ArrowLeft } from 'lucide-react'
 
+interface OrderItem {
+  product_id: string
+  title: string
+  quantity: number
+  unit_price: number
+  image_url?: string
+}
+
 export default function OrderPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const [orderItems, setOrderItems] = useState([])
+  const [orderItems, setOrderItems] = useState<OrderItem[]>([])
 
   useEffect(() => {
     // In a real app, this would come from cart state or API
