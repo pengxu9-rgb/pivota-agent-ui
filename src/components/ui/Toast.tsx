@@ -22,6 +22,9 @@ export default function Toast({ type, message, onClose, duration = 3000 }: Toast
       return () => clearTimeout(timer)
     }
   }, [duration, onClose])
+  
+  // Suppress hydration warning
+  useEffect(() => {}, [])
 
   const config = {
     success: {
