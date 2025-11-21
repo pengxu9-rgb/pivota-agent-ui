@@ -19,6 +19,22 @@ interface SearchProductsPayload {
   }
 }
 
+// Real API product format (from Pivota backend)
+interface RealAPIProduct {
+  id: string
+  title: string
+  description: string
+  price: number
+  currency: string
+  image_url?: string
+  product_type?: string
+  inventory_quantity: number
+  sku?: string
+  variants?: any[]
+  platform?: string
+}
+
+// Normalized product format for UI
 interface ProductResponse {
   product_id: string
   title: string
@@ -56,7 +72,19 @@ export async function sendMessage(message: string): Promise<ProductResponse[]> {
     }
     
     const data = await response.json()
-    return data.products || []
+    const products = data.products || []
+    
+    // Normalize real API products to UI format
+    return products.map((p: RealAPIProduct | ProductResponse) => ({
+      product_id: (p as any).product_id || (p as any).id,
+      title: p.title,
+      description: p.description,
+      price: p.price,
+      currency: p.currency,
+      image_url: p.image_url,
+      category: (p as any).category || (p as any).product_type || 'General',
+      in_stock: (p as any).in_stock !== undefined ? (p as any).in_stock : (p as any).inventory_quantity > 0
+    }))
   } catch (error) {
     console.error('API Error:', error)
     throw error // Propagate error for UI to handle
