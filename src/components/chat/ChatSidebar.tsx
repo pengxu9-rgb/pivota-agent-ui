@@ -23,7 +23,7 @@ export default function ChatSidebar({ isOpen, onClose }: ChatSidebarProps) {
   const menuItems = [
     { icon: Package, label: 'My Orders', link: '/orders' },
     { icon: ShoppingCart, label: 'Shopping Cart', count: itemCount, onClick: openCart },
-    { icon: History, label: 'Browse History', link: '/products' },
+    { icon: History, label: 'Browse History', link: '/browse-history' },
   ];
 
   const formatTime = (date: Date) => {
@@ -54,10 +54,10 @@ export default function ChatSidebar({ isOpen, onClose }: ChatSidebarProps) {
 
       {/* Sidebar */}
       <motion.aside
-        initial={{ x: '-100%' }}
+        initial={{ x: 0 }}
         animate={{ x: isOpen ? 0 : '-100%' }}
         transition={{ type: 'spring', damping: 30, stiffness: 300 }}
-        className="fixed left-0 top-0 h-full w-72 bg-card/70 backdrop-blur-xl border-r border-border z-50 lg:relative lg:translate-x-0"
+        className="fixed left-0 top-0 h-full w-72 bg-card/70 backdrop-blur-xl border-r border-border z-50 lg:relative lg:translate-x-0 lg:block"
       >
         {/* Sidebar Header */}
         <div className="h-16 px-4 flex items-center justify-between border-b border-border">

@@ -8,7 +8,7 @@ export const mockProducts = {
       description: 'Double wall insulated bottle keeps drinks cold for 24 hours or hot for 12 hours',
       price: 24.99,
       currency: 'USD',
-      image_url: 'https://m.media-amazon.com/images/I/61CGHv1V7AL._AC_SL1500_.jpg',
+      image_url: 'https://images.unsplash.com/photo-1602143407151-7111542de6e8?w=500&h=500&fit=crop',
       category: 'Sports & Outdoors',
       in_stock: true,
       merchant_id: 'merch_208139f7600dbf42'
@@ -19,7 +19,7 @@ export const mockProducts = {
       description: 'BPA-free, foldable design saves space when empty. Perfect for travel',
       price: 15.99,
       currency: 'USD',
-      image_url: 'https://m.media-amazon.com/images/I/71Y5X9mKr6L._AC_SL1500_.jpg',
+      image_url: 'https://images.unsplash.com/photo-1523362628745-0c100150b504?w=500&h=500&fit=crop',
       category: 'Sports & Outdoors',
       in_stock: true,
       merchant_id: 'merch_208139f7600dbf42'
@@ -30,7 +30,7 @@ export const mockProducts = {
       description: 'Track your hydration with app connectivity and glowing reminders',
       price: 39.99,
       currency: 'USD',
-      image_url: 'https://m.media-amazon.com/images/I/61M4QXKlRWL._AC_SL1500_.jpg',
+      image_url: 'https://images.unsplash.com/photo-1624461455743-c0ea2966ae0b?w=500&h=500&fit=crop',
       category: 'Electronics',
       in_stock: true,
       merchant_id: 'merch_208139f7600dbf42'
@@ -43,90 +43,82 @@ export const mockProducts = {
       description: 'Our best sounding Echo Dot yet - Enjoy improved audio experience',
       price: 49.99,
       currency: 'USD',
-      image_url: 'https://m.media-amazon.com/images/I/518cRYanpbL._AC_SL1000_.jpg',
+      image_url: 'https://images.unsplash.com/photo-1589492477829-5e65395b66cc?w=500&h=500&fit=crop',
       category: 'Electronics',
       in_stock: true,
       merchant_id: 'merch_208139f7600dbf42'
     },
     {
-      product_id: 'HEADPHONE_001',
+      product_id: 'HEADPHONES_001',
       title: 'Wireless Bluetooth Headphones',
       description: 'Active noise cancelling, 30-hour battery life, comfortable over-ear design',
       price: 79.99,
       currency: 'USD',
-      image_url: 'https://m.media-amazon.com/images/I/71loDx7fUxL._AC_SL1500_.jpg',
+      image_url: 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=500&h=500&fit=crop',
       category: 'Electronics',
       in_stock: true,
       merchant_id: 'merch_208139f7600dbf42'
     },
     {
-      product_id: 'CHARGER_001',
+      product_id: 'POWERBANK_001',
       title: 'Portable Power Bank 20000mAh',
-      description: 'Fast charging with USB-C and dual USB-A ports. LED display shows battery level',
+      description: 'Fast charging with USB-C and dual USB-A ports. LED power display',
       price: 35.99,
       currency: 'USD',
-      image_url: 'https://m.media-amazon.com/images/I/71qzW4NPgvL._AC_SL1500_.jpg',
+      image_url: 'https://images.unsplash.com/photo-1609091839311-d5365f9ff1c5?w=500&h=500&fit=crop',
       category: 'Electronics',
       in_stock: true,
       merchant_id: 'merch_208139f7600dbf42'
     },
     
-    // Kitchen & Cooking
+    // Kitchen & Home
     {
-      product_id: 'KITCHEN_001',
-      title: 'Professional Chef Knife Set (3 pieces)',
-      description: 'High carbon stainless steel with ergonomic handles. Includes chef, paring, and utility knives',
+      product_id: 'BLENDER_001',
+      title: 'High-Speed Smoothie Blender',
+      description: '1200W motor, 6 stainless steel blades, perfect for smoothies and soups',
       price: 89.99,
       currency: 'USD',
-      image_url: 'https://m.media-amazon.com/images/I/71cVlMnPB4L._AC_SL1500_.jpg',
-      category: 'Home & Kitchen',
+      image_url: 'https://images.unsplash.com/photo-1570222094114-d054a817e56b?w=500&h=500&fit=crop',
+      category: 'Kitchen',
       in_stock: true,
       merchant_id: 'merch_208139f7600dbf42'
     },
     {
-      product_id: 'KITCHEN_002',
-      title: 'Digital Kitchen Scale',
-      description: 'Precise measurements up to 11lbs/5kg. Tare function and multiple units',
-      price: 19.99,
+      product_id: 'COFFEMAKER_001',
+      title: 'Programmable Coffee Maker',
+      description: '12-cup capacity with auto-brew feature. Keeps coffee hot for 2 hours',
+      price: 69.99,
       currency: 'USD',
-      image_url: 'https://m.media-amazon.com/images/I/71UnpOJJWyL._AC_SL1500_.jpg',
-      category: 'Home & Kitchen',
-      in_stock: true,
-      merchant_id: 'merch_208139f7600dbf42'
-    },
-    {
-      product_id: 'KITCHEN_003',
-      title: 'Silicone Cooking Utensils Set (12 pieces)',
-      description: 'Heat resistant up to 446°F. Non-stick and dishwasher safe',
-      price: 29.99,
-      currency: 'USD',
-      image_url: 'https://m.media-amazon.com/images/I/81Qx1MqVKQL._AC_SL1500_.jpg',
-      category: 'Home & Kitchen',
+      image_url: 'https://images.unsplash.com/photo-1517668808822-9ebb02f2a0e6?w=500&h=500&fit=crop',
+      category: 'Kitchen',
       in_stock: true,
       merchant_id: 'merch_208139f7600dbf42'
     },
     
-    // Gifts
+    // Gifts & Lifestyle
     {
-      product_id: 'GIFT_001',
-      title: 'Aromatherapy Essential Oil Diffuser',
-      description: '300ml capacity with 7 LED colors. Auto shut-off and timer settings',
-      price: 25.99,
+      product_id: 'CANDLE_001',
+      title: 'Luxury Scented Candle Gift Set',
+      description: 'Premium soy wax candles in elegant packaging. Perfect gift',
+      price: 45.00,
       currency: 'USD',
-      image_url: 'https://m.media-amazon.com/images/I/71xZ3LEJYRL._AC_SL1500_.jpg',
-      category: 'Health & Wellness',
+      image_url: 'https://images.unsplash.com/photo-1602874801006-95e39d1e4943?w=500&h=500&fit=crop',
+      category: 'Gifts',
       in_stock: true,
       merchant_id: 'merch_208139f7600dbf42'
-    }
+    },
+    {
+      product_id: 'WATCH_001',
+      title: 'Minimalist Analog Watch',
+      description: 'Classic design with leather strap. Water resistant up to 50m',
+      price: 129.99,
+      currency: 'USD',
+      image_url: 'https://images.unsplash.com/photo-1524805444758-089113d48a6d?w=500&h=500&fit=crop',
+      category: 'Accessories',
+      in_stock: true,
+      merchant_id: 'merch_208139f7600dbf42'
+    },
   ]
 }
 
 export type Product = typeof mockProducts['merch_208139f7600dbf42'][0]
-
-export function getProductById(productId: string): Product | undefined {
-  return mockProducts['merch_208139f7600dbf42'].find(p => p.product_id === productId)
-}
-
-export function getProductsByCategory(category: string): Product[] {
-  return mockProducts['merch_208139f7600dbf42'].filter(p => p.category === category)
-}
