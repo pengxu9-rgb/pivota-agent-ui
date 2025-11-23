@@ -135,10 +135,10 @@ export default function ChatInterface() {
                 {msg.products.map((product) => (
                   <ProductCard
                     key={product.product_id}
-                    id={product.product_id}
+                    product_id={product.product_id}
                     title={product.title}
                     price={product.price}
-                    image={product.image_url}
+                    image={product.image_url || "/placeholder.svg"}
                     description={product.description}
                   />
                 ))}
