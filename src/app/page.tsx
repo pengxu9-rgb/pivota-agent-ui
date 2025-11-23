@@ -10,8 +10,8 @@ import { Badge } from '@/components/ui/badge';
 import ChatSidebar from '@/components/chat/ChatSidebar';
 import { useCartStore } from '@/store/cartStore';
 import { useChatStore } from '@/store/chatStore';
-import { sendMessage } from '@/lib/api';
-import { mockProducts, DEFAULT_MERCHANT_ID } from '@/lib/mockData';
+import { sendMessage, DEFAULT_MERCHANT_ID } from '@/lib/api';
+import { mockProducts } from '@/lib/mockData';
 import { toast } from 'sonner';
 
 export default function HomePage() {
