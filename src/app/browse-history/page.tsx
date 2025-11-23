@@ -1,118 +1,113 @@
 'use client';
 
+import { useState, useEffect } from 'react';
+import { History, Trash2, ArrowRight } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { History, ShoppingCart, Sparkles, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { GlassCard } from '@/components/ui/glass-card';
-import { useCartStore } from '@/store/cartStore';
-import { useChatStore } from '@/store/chatStore';
+import ProductCard from '@/components/product/ProductCard';
+import { getAllProducts } from '@/lib/api';
 
 export default function BrowseHistoryPage() {
-  const { items, open } = useCartStore();
-  const { conversations, switchConversation } = useChatStore();
-  const itemCount = items.reduce((acc, item) => acc + item.quantity, 0);
+  const [history, setHistory] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const formatTime = (date: Date) => {
-    const diff = Date.now() - new Date(date).getTime();
-    const minutes = Math.floor(diff / 60000);
-    const hours = Math.floor(minutes / 60);
-    const days = Math.floor(hours / 24);
+  useEffect(() => {
+    const loadHistory = async () => {
+      try {
+        // Get history from localStorage
+        const historyIds = JSON.parse(localStorage.getItem('pivota-browse-history') || '[]');
+        
+        if (historyIds.length === 0) {
+          setLoading(false);
+          return;
+        }
 
-    if (days > 0) return `${days} days ago`;
-    if (hours > 0) return `${hours} hours ago`;
-    if (minutes > 0) return `${minutes} minutes ago`;
-    return 'Just now';
+        // Fetch product details
+        const allProducts = await getAllProducts(100);
+        const historyProducts = historyIds
+          .map((id: string) => allProducts.find(p => p.product_id === id))
+          .filter(Boolean);
+          
+        setHistory(historyProducts);
+      } catch (error) {
+        console.error('Failed to load history:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadHistory();
+  }, []);
+
+  const clearHistory = () => {
+    localStorage.removeItem('pivota-browse-history');
+    setHistory([]);
   };
 
   return (
     <div className="min-h-screen bg-gradient-mesh">
-      {/* Animated background */}
-      <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-gradient-to-r from-indigo-500/20 via-purple-500/20 to-cyan-400/10 blur-3xl -z-10 animate-pulse" />
-
-      {/* Header */}
-      <header className="sticky top-0 z-40 bg-card/70 backdrop-blur-xl border-b border-border">
-        <div className="max-w-7xl mx-auto px-4 lg:px-8 h-16 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2 group">
-            <Sparkles className="h-6 w-6 text-cyan-400 group-hover:rotate-12 transition-transform" />
-            <span className="text-xl font-semibold gradient-text">Pivota</span>
-          </Link>
-
-          <div className="flex items-center gap-3">
-            <button
-              onClick={open}
-              className="relative h-10 w-10 rounded-full flex items-center justify-center bg-secondary hover:bg-secondary/80 transition-colors"
-            >
-              <ShoppingCart className="h-5 w-5 text-muted-foreground" />
-              {itemCount > 0 && (
-                <span className="absolute -top-1 -right-1 h-5 w-5 rounded-full bg-gradient-to-r from-indigo-500 to-purple-500 flex items-center justify-center text-xs font-semibold text-white">
-                  {itemCount}
-                </span>
-              )}
-            </button>
-          </div>
-        </div>
-      </header>
-
-      {/* Main Content */}
-      <main className="max-w-4xl mx-auto px-4 py-8">
+      <div className="max-w-7xl mx-auto px-4 lg:px-8 py-8">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
         >
-          <h1 className="text-3xl font-semibold mb-2">Browse History</h1>
-          <p className="text-muted-foreground mb-8">
-            Your recent shopping conversations
-          </p>
+          <div className="flex items-center justify-between mb-8">
+            <div>
+              <h1 className="text-3xl font-bold mb-2">Browse History</h1>
+              <p className="text-muted-foreground">
+                Products you've recently viewed
+              </p>
+            </div>
+            {history.length > 0 && (
+              <Button variant="outline" onClick={clearHistory} className="text-destructive">
+                <Trash2 className="h-4 w-4 mr-2" />
+                Clear History
+              </Button>
+            )}
+          </div>
 
-          {/* History List */}
-          {conversations.length > 0 ? (
-            <div className="space-y-3">
-              {conversations.map((conv) => (
-                <GlassCard key={conv.id} className="p-4 hover:shadow-glass-hover transition-all">
-                  <div className="flex items-start justify-between">
-                    <Link 
-                      href="/"
-                      onClick={() => switchConversation(conv.id)}
-                      className="flex-1"
-                    >
-                      <h3 className="font-semibold text-lg mb-1 hover:text-primary transition-colors">
-                        {conv.title}
-                      </h3>
-                      <p className="text-sm text-muted-foreground mb-2 line-clamp-2">
-                        {conv.lastMessage}
-                      </p>
-                      <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                        <span className="flex items-center gap-1">
-                          <History className="h-3 w-3" />
-                          {formatTime(conv.timestamp)}
-                        </span>
-                        <span>
-                          {conv.messages.length} messages
-                        </span>
-                      </div>
-                    </Link>
-                  </div>
-                </GlassCard>
+          {loading ? (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+              {[...Array(5)].map((_, i) => (
+                <div key={i} className="aspect-[3/4] bg-muted/20 rounded-2xl animate-pulse" />
               ))}
             </div>
-          ) : (
-            <GlassCard className="p-8 text-center">
+          ) : history.length === 0 ? (
+            <div className="text-center py-16 bg-card/50 backdrop-blur-xl rounded-3xl border border-border">
               <History className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
-              <h2 className="text-xl font-semibold mb-2">No Browse History</h2>
-              <p className="text-muted-foreground mb-6">
-                Start a conversation to see your history here
+              <h3 className="text-xl font-semibold mb-2">No history yet</h3>
+              <p className="text-muted-foreground mb-4">
+                Start exploring products to see your history here
               </p>
-              <Link href="/">
+              <Link href="/products">
                 <Button variant="gradient">
-                  Start Shopping
+                  Explore Products <ArrowRight className="h-4 w-4 ml-2" />
                 </Button>
               </Link>
-            </GlassCard>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+              {history.map((product, index) => (
+                <motion.div
+                  key={product.product_id}
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ delay: index * 0.05 }}
+                >
+                  <ProductCard
+                    product_id={product.product_id}
+                    title={product.title}
+                    price={product.price}
+                    image={product.image_url || '/placeholder.svg'}
+                    description={product.description}
+                  />
+                </motion.div>
+              ))}
+            </div>
           )}
         </motion.div>
-      </main>
+      </div>
     </div>
   );
 }
-

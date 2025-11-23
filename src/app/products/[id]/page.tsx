@@ -1,18 +1,16 @@
 'use client';
 
-import { useState, use } from 'react';
+import { useState, useEffect, use } from 'react';
 import { motion } from 'framer-motion';
 import { Star, Truck, RotateCcw, Shield, Minus, Plus, ShoppingCart, Sparkles } from 'lucide-react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { notFound } from 'next/navigation';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { GlassCard } from '@/components/ui/glass-card';
 import ProductCard from '@/components/product/ProductCard';
 import { useCartStore } from '@/store/cartStore';
-import { mockProducts } from '@/lib/mockData';
-import { DEFAULT_MERCHANT_ID, getProductDetail } from '@/lib/api';
+import { getProductDetail, getAllProducts } from '@/lib/api';
 import { toast } from 'sonner';
 
 interface Props {
@@ -21,21 +19,53 @@ interface Props {
 
 export default function ProductDetailPage({ params }: Props) {
   const { id } = use(params);
+  const [product, setProduct] = useState<any>(null);
+  const [relatedProducts, setRelatedProducts] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
   const [quantity, setQuantity] = useState(1);
-  const [selectedSize, setSelectedSize] = useState<string | null>(null);
-  const [selectedColor, setSelectedColor] = useState<string | null>(null);
   
   const { addItem, items, open } = useCartStore();
   const itemCount = items.reduce((acc, item) => acc + item.quantity, 0);
-  
-  const allProducts = mockProducts[DEFAULT_MERCHANT_ID] || [];
-  const product = allProducts.find((p) => p.product_id === id);
-  
-  if (!product) {
-    notFound();
+
+  useEffect(() => {
+    const loadProduct = async () => {
+      try {
+        const data = await getProductDetail(id);
+        if (!data) {
+          notFound();
+        }
+        setProduct(data);
+        
+        // Save to history
+        const history = JSON.parse(localStorage.getItem('pivota-browse-history') || '[]');
+        if (!history.includes(id)) {
+          localStorage.setItem('pivota-browse-history', JSON.stringify([id, ...history].slice(0, 20)));
+        }
+
+        // Load related products
+        const all = await getAllProducts(6);
+        setRelatedProducts(all.filter(p => p.product_id !== id));
+      } catch (error) {
+        console.error('Failed to load product:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadProduct();
+  }, [id]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-mesh">
+        <div className="animate-pulse flex flex-col items-center gap-4">
+          <div className="h-12 w-12 rounded-full bg-muted/20" />
+          <div className="h-4 w-32 rounded bg-muted/20" />
+        </div>
+      </div>
+    );
   }
 
-  const relatedProducts = allProducts.filter((p) => p.product_id !== id).slice(0, 6);
+  if (!product) return null;
 
   const handleAddToCart = () => {
     addItem({
@@ -97,16 +127,14 @@ export default function ProductDetailPage({ params }: Props) {
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.5 }}
           >
-            <GlassCard className="p-0 overflow-hidden">
-              <div className="aspect-square relative">
-                <Image
-                  src={product.image_url || '/placeholder.svg'}
-                  alt={product.title}
-                  fill
-                  className="object-cover"
-                  unoptimized
-                />
-              </div>
+            <GlassCard className="p-0 overflow-hidden aspect-square relative bg-white">
+              <Image
+                src={product.image_url || '/placeholder.svg'}
+                alt={product.title}
+                fill
+                className="object-contain p-8"
+                unoptimized
+              />
             </GlassCard>
           </motion.div>
 
