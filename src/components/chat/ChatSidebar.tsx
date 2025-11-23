@@ -54,10 +54,10 @@ export default function ChatSidebar({ isOpen, onClose }: ChatSidebarProps) {
 
       {/* Sidebar */}
       <motion.aside
-        initial={{ x: 0 }}
+        initial={{ x: '-100%' }}
         animate={{ x: isOpen ? 0 : '-100%' }}
         transition={{ type: 'spring', damping: 30, stiffness: 300 }}
-        className="fixed left-0 top-0 h-full w-72 bg-card/70 backdrop-blur-xl border-r border-border z-50 lg:relative lg:translate-x-0 lg:block"
+        className="fixed left-0 top-0 h-full w-72 bg-card/70 backdrop-blur-xl border-r border-border z-50 lg:relative lg:translate-x-0 lg:!transform-none"
       >
         {/* Sidebar Header */}
         <div className="h-16 px-4 flex items-center justify-between border-b border-border">

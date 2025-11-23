@@ -51,27 +51,27 @@ export async function sendMessage(message: string): Promise<ProductResponse[]> {
   try {
     const response = await fetch(`${API_BASE}/agent/shop/v1/invoke`, {
       method: 'POST',
+interface ProductResponse {
+  product_id: string
+  title: string
+  description: string
+  price: number
+  currency: string
+  image_url?: string
+  category?: string
+  in_stock: boolean
+}
+
+// 发送聊天消息并获取产品推荐
+export async function sendMessage(message: string): Promise<ProductResponse[]> {
+  try {
+    const response = await fetch(`${API_BASE}/agent/shop/v1/invoke`, {
+      method: 'POST',
       headers: { 
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
         operation: 'find_products',
-        payload: { 
-          search: { 
-            merchant_id: DEFAULT_MERCHANT_ID,
-            query: message,
-            limit: 10
-          }
-        }
-      } as { operation: string; payload: SearchProductsPayload })
-    })
-    
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}))
-      throw new Error(errorData.message || `API request failed with status ${response.status}`)
-    }
-    
-    const data = await response.json()
     const products = data.products || []
     
     // Normalize real API products to UI format
@@ -85,12 +85,12 @@ export async function sendMessage(message: string): Promise<ProductResponse[]> {
       category: (p as any).category || (p as any).product_type || 'General',
       in_stock: (p as any).in_stock !== undefined ? (p as any).in_stock : (p as any).inventory_quantity > 0
     }))
-  } catch (error) {
-    console.error('API Error:', error)
-    throw error // Propagate error for UI to handle
-  }
-}
-
+          search: { 
+            merchant_id: DEFAULT_MERCHANT_ID,
+            query: message,
+            limit: 10
+          }
+        }
 // 获取所有商品（用于首页推荐等）
 export async function getAllProducts(limit = 20): Promise<ProductResponse[]> {
   try {
@@ -132,6 +132,34 @@ export async function getAllProducts(limit = 20): Promise<ProductResponse[]> {
     console.error('Get All Products Error:', error)
     // Return empty array on error, let UI handle gracefully
     return []
+  }
+}
+
+      } as { operation: string; payload: SearchProductsPayload })
+    })
+    
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}))
+      throw new Error(errorData.message || `API request failed with status ${response.status}`)
+    }
+    
+    const data = await response.json()
+          product: {
+            merchant_id: DEFAULT_MERCHANT_ID,
+            product_id: productId
+          }
+        }
+      })
+    })
+    
+    if (!response.ok) {
+      throw new Error('Failed to fetch product detail')
+    }
+    
+    return await response.json()
+  } catch (error) {
+    console.error('API Error:', error)
+    throw error // Propagate error for UI to handle
   }
 }
 
@@ -218,7 +246,14 @@ export async function createOrder(orderData: {
     product_title: string
     quantity: number
     unit_price: number
-    subtotal: number
+      const errorData = await response.json().catch(() => ({}))
+      console.error('Create Order API Error:', {
+        status: response.status,
+        statusText: response.statusText,
+        error: errorData,
+        sentData: orderData
+      })
+      throw new Error(errorData.message || `Failed to create order: ${response.status}`)
   }>
   shipping_address: {
     name: string
@@ -246,14 +281,7 @@ export async function createOrder(orderData: {
     })
     
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}))
-      console.error('Create Order API Error:', {
-        status: response.status,
-        statusText: response.statusText,
-        error: errorData,
-        sentData: orderData
-      })
-      throw new Error(errorData.message || `Failed to create order: ${response.status}`)
+      throw new Error('Failed to create order')
     }
     
     return await response.json()
@@ -300,7 +328,6 @@ export async function processPayment(paymentData: {
     console.error('Payment Error:', error)
     throw error
   }
-}
 
 // 获取订单状态
 export async function getOrderStatus(orderId: string) {

@@ -56,7 +56,7 @@ export default function BrowseHistoryPage() {
             <div>
               <h1 className="text-3xl font-bold mb-2">Browse History</h1>
               <p className="text-muted-foreground">
-                Products you've recently viewed
+                Products you&apos;ve recently viewed
               </p>
             </div>
             {history.length > 0 && (
