@@ -36,10 +36,26 @@ export default function ProductDetailPage({ params }: Props) {
         }
         setProduct(data);
         
-        // Save to history
-        const history = JSON.parse(localStorage.getItem('pivota-browse-history') || '[]');
-        if (!history.includes(id)) {
-          localStorage.setItem('pivota-browse-history', JSON.stringify([id, ...history].slice(0, 20)));
+        // Save to browse history with full product data
+        try {
+          const history = JSON.parse(localStorage.getItem('browse_history') || '[]');
+          // Remove existing entry if present
+          const filtered = history.filter((item: any) => item.product_id !== id);
+          // Add current product to the beginning
+          const newHistory = [
+            {
+              product_id: data.product_id,
+              title: data.title,
+              price: data.price,
+              image: data.image_url || '/placeholder.svg',
+              description: data.description,
+              timestamp: Date.now(),
+            },
+            ...filtered,
+          ].slice(0, 50); // Keep max 50 items
+          localStorage.setItem('browse_history', JSON.stringify(newHistory));
+        } catch (error) {
+          console.error('Failed to save browse history:', error);
         }
 
         // Load related products
@@ -66,6 +82,23 @@ export default function ProductDetailPage({ params }: Props) {
   }
 
   if (!product) return null;
+
+  const cleanDescription = (description: string) =>
+    description
+      ? description
+          .replace(/<[^>]+>/g, ' ')
+          .replace(/&nbsp;/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim()
+      : 'No description available.';
+
+  const formattedPrice =
+    typeof product.price === 'number' && product.price > 0
+      ? new Intl.NumberFormat('en-US', {
+          style: 'currency',
+          currency: product.currency || 'USD',
+        }).format(product.price)
+      : 'Price unavailable';
 
   const handleAddToCart = () => {
     addItem({
@@ -163,12 +196,14 @@ export default function ProductDetailPage({ params }: Props) {
             </div>
 
             <div>
-              <div className="text-4xl font-semibold mb-2">${product.price}</div>
+              <div className="text-4xl font-semibold mb-2">
+                {formattedPrice}
+              </div>
               <p className="text-success text-sm">✓ In Stock</p>
             </div>
 
-            <p className="leading-relaxed text-muted-foreground">
-              {product.description}
+            <p className="leading-relaxed text-muted-foreground whitespace-pre-line">
+              {cleanDescription(product.description || '')}
             </p>
 
             {/* Features */}

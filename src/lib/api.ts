@@ -3,7 +3,7 @@
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_URL ||
-  'https://pivota-agent-production.up.railway.app';
+  'https://web-production-fedb.up.railway.app';
 
 // Default test merchant id (provided by Pivota Infra)
 export const DEFAULT_MERCHANT_ID = 'merch_208139f7600dbf42';
@@ -39,18 +39,54 @@ function normalizeProduct(
   p: RealAPIProduct | ProductResponse,
 ): ProductResponse {
   const anyP = p as any;
+  const rawPrice = anyP.price;
+  let normalizedPrice = 0;
+
+  if (typeof rawPrice === 'number') {
+    normalizedPrice = rawPrice;
+  } else if (typeof rawPrice === 'string') {
+    normalizedPrice = Number(rawPrice) || 0;
+  } else if (rawPrice && typeof rawPrice.amount === 'number') {
+    normalizedPrice = rawPrice.amount;
+  }
+
+  const normalizedCurrency =
+    anyP.currency ||
+    rawPrice?.currency ||
+    rawPrice?.currency_code ||
+    'USD';
+
+  let normalizedImage =
+    anyP.image_url ||
+    anyP.image ||
+    (Array.isArray(anyP.images) ? anyP.images[0] : undefined) ||
+    (Array.isArray(anyP.variants) ? anyP.variants[0]?.image_url : undefined);
+
+  // Use image proxy for external images to avoid CORS issues
+  if (normalizedImage && (normalizedImage.includes('amazon') || normalizedImage.includes('http'))) {
+    normalizedImage = `/api/image-proxy?url=${encodeURIComponent(normalizedImage)}`;
+  }
+
+  const description =
+    typeof anyP.description === 'string'
+      ? anyP.description
+      : anyP.description?.text || '';
+
   return {
     product_id: anyP.product_id || anyP.id,
-    title: p.title,
-    description: p.description,
-    price: p.price,
-    currency: p.currency,
-    image_url: p.image_url,
+    title: anyP.title || anyP.name || 'Untitled product',
+    description,
+    price: normalizedPrice,
+    currency: normalizedCurrency,
+    image_url: normalizedImage,
     category: anyP.category || anyP.product_type || 'General',
     in_stock:
       typeof anyP.in_stock === 'boolean'
         ? anyP.in_stock
-        : (anyP.inventory_quantity || 0) > 0,
+        : (anyP.inventory_quantity ||
+            anyP.quantity ||
+            anyP.stock ||
+            0) > 0,
   };
 }
 

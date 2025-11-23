@@ -67,14 +67,14 @@ export default function OrdersPage() {
 
           {orders.length === 0 ? (
             <div className="text-center py-16 bg-card/50 backdrop-blur-xl rounded-3xl border border-border">
-              <Package className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
+            <Package className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
               <h3 className="text-xl font-semibold mb-2">No orders yet</h3>
               <p className="text-muted-foreground mb-4">
-                Start shopping to see your orders here
-              </p>
-              <Link href="/products">
+              Start shopping to see your orders here
+            </p>
+            <Link href="/products">
                 <button className="px-6 py-3 bg-gradient-to-r from-indigo-500 to-purple-500 text-white rounded-xl hover:shadow-lg transition-all">
-                  Browse Products
+                Browse Products
                 </button>
               </Link>
             </div>
@@ -116,7 +116,7 @@ export default function OrdersPage() {
                     <button className="mt-4 w-full py-2 bg-secondary hover:bg-secondary/80 rounded-lg text-sm font-medium transition-colors">
                       Track Order
                     </button>
-                  </Link>
+            </Link>
                 </motion.div>
               ))}
             </div>

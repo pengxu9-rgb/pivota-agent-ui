@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Menu, ShoppingCart, Send, Sparkles, Package } from 'lucide-react';
+import { Menu, ShoppingCart, Send, Package } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -10,14 +10,14 @@ import { Badge } from '@/components/ui/badge';
 import ChatSidebar from '@/components/chat/ChatSidebar';
 import { useCartStore } from '@/store/cartStore';
 import { useChatStore } from '@/store/chatStore';
-import { sendMessage, getAllProducts } from '@/lib/api';
+import { sendMessage, getAllProducts, type ProductResponse } from '@/lib/api';
 import { toast } from 'sonner';
 
 export default function HomePage() {
   const [input, setInput] = useState('');
-  const [sidebarOpen, setSidebarOpen] = useState(false); // Default closed (mobile friendly)
+  const [sidebarOpen, setSidebarOpen] = useState(false); // Mobile: closed by default, Desktop: always visible
   const [loading, setLoading] = useState(false);
-  const [hotDeals, setHotDeals] = useState<any[]>([]);
+  const [hotDeals, setHotDeals] = useState<ProductResponse[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
   const { messages, addMessage } = useChatStore();
@@ -114,16 +114,10 @@ export default function HomePage() {
           <div className="flex items-center gap-3">
             <button
               onClick={() => setSidebarOpen(true)}
-              className="h-10 w-10 rounded-full flex items-center justify-center hover:bg-secondary transition-colors"
+              className="h-10 w-10 rounded-full flex items-center justify-center hover:bg-secondary transition-colors lg:hidden"
             >
               <Menu className="h-5 w-5 text-muted-foreground" />
             </button>
-            <div className="flex items-center gap-2">
-              <Sparkles className="h-6 w-6 text-cyan-400" />
-              <span className="text-xl font-semibold gradient-text">
-                Pivota
-              </span>
-            </div>
           </div>
           <div className="flex items-center gap-3">
             <Link href="/products">
@@ -186,18 +180,18 @@ export default function HomePage() {
 
                   {/* Product Cards */}
                   {message.products && message.products.length > 0 && (
-                    <div className="mt-2 grid grid-cols-2 gap-2 max-w-md">
+                    <div className="mt-3 grid grid-cols-2 gap-3 max-w-lg">
                       {message.products.map((product, productIdx) => (
                         <motion.div
                           key={product.product_id}
                           initial={{ opacity: 0, scale: 0.9 }}
                           animate={{ opacity: 1, scale: 1 }}
                           transition={{ delay: productIdx * 0.1 }}
-                          className="group relative bg-card backdrop-blur-xl rounded-xl overflow-hidden border border-border shadow-sm hover:shadow-md hover:scale-[1.02] transition-all duration-300"
+                          className="group relative bg-card backdrop-blur-xl rounded-2xl overflow-hidden border border-border shadow-sm hover:shadow-md hover:scale-[1.02] transition-all duration-300"
                         >
                           {/* Image */}
                           <Link href={`/products/${product.product_id}`} className="block">
-                            <div className="relative w-full aspect-square overflow-hidden">
+                            <div className="relative w-full aspect-square overflow-hidden bg-muted/30">
                               <Image
                                 src={product.image_url || '/placeholder.svg'}
                                 alt={product.title}
@@ -209,16 +203,16 @@ export default function HomePage() {
                           </Link>
 
                           {/* Content */}
-                          <div className="p-2 flex flex-col">
+                          <div className="p-3 flex flex-col gap-2">
                             <Link href={`/products/${product.product_id}`}>
-                              <h4 className="font-medium text-xs mb-1 line-clamp-2 group-hover:text-primary transition-colors">
+                              <h4 className="font-medium text-sm mb-1 line-clamp-2 min-h-[2.5rem] group-hover:text-primary transition-colors">
                                 {product.title}
                               </h4>
                             </Link>
 
-                            <div className="flex items-center justify-between mb-1.5">
-                              <span className="text-sm font-bold text-primary">
-                                ${product.price}
+                            <div className="flex items-center justify-between">
+                              <span className="text-lg font-bold text-primary">
+                                ${typeof product.price === 'number' ? product.price.toFixed(2) : product.price}
                               </span>
                             </div>
 
@@ -226,7 +220,7 @@ export default function HomePage() {
                               variant="default"
                               size="sm"
                               onClick={() => handleAddToCart(product)}
-                              className="w-full h-7 text-[10px] font-medium"
+                              className="w-full h-9 text-xs font-medium"
                             >
                               Add to Cart
                             </Button>
@@ -290,7 +284,7 @@ export default function HomePage() {
                         <p className="text-xs text-muted-foreground line-clamp-1 group-hover:text-foreground transition-colors">
                           {product.title}
                         </p>
-                        <p className="text-xs font-semibold">${product.price}</p>
+                        <p className="text-xs font-semibold">${typeof product.price === 'number' ? product.price.toFixed(2) : product.price}</p>
                       </Link>
                     ))
                   ) : (

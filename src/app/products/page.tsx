@@ -8,30 +8,47 @@ import ProductCard from '@/components/product/ProductCard';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useCartStore } from '@/store/cartStore';
-import { sendMessage, DEFAULT_MERCHANT_ID } from '@/lib/api';
-import { mockProducts } from '@/lib/mockData';
-
-const initialProducts = mockProducts[DEFAULT_MERCHANT_ID] || [];
+import { sendMessage, getAllProducts, type ProductResponse } from '@/lib/api';
 import { toast } from 'sonner';
 
 export default function ProductsPage() {
-  const [products, setProducts] = useState<any[]>(initialProducts);
+  const [products, setProducts] = useState<ProductResponse[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const { items, open } = useCartStore();
-  
+
   const itemCount = items.reduce((acc, item) => acc + item.quantity, 0);
 
+  useEffect(() => {
+    loadAllProducts();
+  }, []);
+
+  const loadAllProducts = async () => {
+    setLoading(true);
+    try {
+      const data = await getAllProducts(48);
+      setProducts(data);
+    } catch (error) {
+      console.error('Failed to load products:', error);
+      toast.error('Unable to load products. Please try again.');
+      setProducts([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleSearch = async (query: string) => {
+    setSearchQuery(query);
+
     if (!query.trim()) {
-      setProducts(initialProducts);
+      loadAllProducts();
       return;
     }
 
     setLoading(true);
     try {
-      const products = await sendMessage(query);
-      setProducts(products.length > 0 ? products : initialProducts);
+      const results = await sendMessage(query);
+      setProducts(results);
     } catch (error) {
       console.error('Search error:', error);
       toast.error('Failed to search products');
@@ -41,7 +58,6 @@ export default function ProductsPage() {
   };
 
   const handleTrendingClick = (trend: string) => {
-    setSearchQuery(trend);
     handleSearch(trend);
   };
 
@@ -100,14 +116,7 @@ export default function ProductsPage() {
               <input
                 type="text"
                 value={searchQuery}
-                onChange={(e) => {
-                  setSearchQuery(e.target.value);
-                  if (e.target.value.trim()) {
-                    handleSearch(e.target.value);
-                  } else {
-                    setProducts(initialProducts);
-                  }
-                }}
+                onChange={(e) => handleSearch(e.target.value)}
                 placeholder="Search products..."
                 className="flex-1 bg-transparent outline-none text-sm text-foreground placeholder:text-muted-foreground"
               />
@@ -139,6 +148,12 @@ export default function ProductsPage() {
               <span className="animate-bounce" style={{ animationDelay: '0.2s' }}>●</span>
             </div>
           </div>
+        ) : products.length === 0 ? (
+          <div className="text-center py-16">
+            <p className="text-muted-foreground">
+              No products found matching your search.
+            </p>
+          </div>
         ) : (
           <motion.div
             initial={{ opacity: 0 }}
@@ -149,31 +164,23 @@ export default function ProductsPage() {
             <AnimatePresence>
               {products.map((product, index) => (
                 <motion.div
-                  key={product.id}
+                  key={product.product_id}
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, scale: 0.9 }}
                   transition={{ delay: index * 0.05 }}
                 >
                   <ProductCard
-                    product_id={product.id}
+                    product_id={product.product_id}
                     title={product.title}
                     price={product.price}
-                    image={product.image_url}
+                    image={product.image_url || '/placeholder.svg'}
                     description={product.description}
                   />
                 </motion.div>
               ))}
             </AnimatePresence>
           </motion.div>
-        )}
-
-        {!loading && products.length === 0 && (
-          <div className="text-center py-16">
-            <p className="text-muted-foreground">
-              No products found matching your search.
-            </p>
-          </div>
         )}
       </main>
     </div>

@@ -1,7 +1,7 @@
 'use client';
 
 import { motion, AnimatePresence } from 'framer-motion';
-import { MessageSquare, Package, ShoppingCart, History, X, Sun, Moon } from 'lucide-react';
+import { MessageSquare, Package, ShoppingCart, History, Sparkles, X, Sun, Moon } from 'lucide-react';
 import Link from 'next/link';
 import { useCartStore } from '@/store/cartStore';
 import { useChatStore } from '@/store/chatStore';
@@ -53,19 +53,19 @@ export default function ChatSidebar({ isOpen, onClose }: ChatSidebarProps) {
       </AnimatePresence>
 
       {/* Sidebar */}
-      <motion.aside
-        initial={{ x: '-100%' }}
-        animate={{ x: isOpen ? 0 : '-100%' }}
-        transition={{ type: 'spring', damping: 30, stiffness: 300 }}
-        className="fixed left-0 top-0 h-full w-72 bg-card/70 backdrop-blur-xl border-r border-border z-50 lg:relative lg:translate-x-0 lg:!transform-none"
+      <aside
+        className={`fixed left-0 top-0 h-full w-72 bg-card/70 backdrop-blur-xl border-r border-border z-50 transition-transform duration-300 lg:relative lg:translate-x-0 ${
+          isOpen ? 'translate-x-0' : '-translate-x-full'
+        }`}
       >
-        {/* Sidebar Header - simple label, no duplicate logo */}
+        {/* Sidebar Header with logo */}
         <div className="h-16 px-4 flex items-center justify-between border-b border-border">
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-semibold text-muted-foreground">
-              Menu
+          <Link href="/" className="flex items-center gap-2 group">
+            <Sparkles className="h-6 w-6 text-cyan-400 group-hover:rotate-12 transition-transform" />
+            <span className="text-xl font-semibold bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 via-purple-400 to-cyan-400">
+              Pivota
             </span>
-          </div>
+          </Link>
           <button
             onClick={onClose}
             className="lg:hidden h-8 w-8 rounded-full flex items-center justify-center hover:bg-secondary transition-colors"
@@ -193,7 +193,7 @@ export default function ChatSidebar({ isOpen, onClose }: ChatSidebarProps) {
             </Button>
           </div>
         </ScrollArea>
-      </motion.aside>
+      </aside>
     </>
   );
 }

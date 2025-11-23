@@ -1,113 +1,154 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { History, Trash2, ArrowRight } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { History, Sparkles, ShoppingCart, Trash2 } from 'lucide-react';
 import Link from 'next/link';
-import { Button } from '@/components/ui/button';
 import ProductCard from '@/components/product/ProductCard';
-import { getAllProducts } from '@/lib/api';
+import { Button } from '@/components/ui/button';
+import { useCartStore } from '@/store/cartStore';
+
+interface HistoryItem {
+  product_id: string;
+  title: string;
+  price: number;
+  image: string;
+  description?: string;
+  timestamp: number;
+}
 
 export default function BrowseHistoryPage() {
-  const [history, setHistory] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [history, setHistory] = useState<HistoryItem[]>([]);
+  const { items, open } = useCartStore();
+  const itemCount = items.reduce((acc, item) => acc + item.quantity, 0);
 
   useEffect(() => {
-    const loadHistory = async () => {
+    // Load browse history from localStorage
+    const savedHistory = localStorage.getItem('browse_history');
+    if (savedHistory) {
       try {
-        // Get history from localStorage
-        const historyIds = JSON.parse(localStorage.getItem('pivota-browse-history') || '[]');
-        
-        if (historyIds.length === 0) {
-          setLoading(false);
-          return;
-        }
-
-        // Fetch product details
-        const allProducts = await getAllProducts(100);
-        const historyProducts = historyIds
-          .map((id: string) => allProducts.find(p => p.product_id === id))
-          .filter(Boolean);
-          
-        setHistory(historyProducts);
+        const parsed = JSON.parse(savedHistory);
+        // Sort by timestamp descending (most recent first)
+        const sorted = parsed.sort((a: HistoryItem, b: HistoryItem) => b.timestamp - a.timestamp);
+        setHistory(sorted);
       } catch (error) {
         console.error('Failed to load history:', error);
-      } finally {
-        setLoading(false);
       }
-    };
-
-    loadHistory();
+    }
   }, []);
 
   const clearHistory = () => {
-    localStorage.removeItem('pivota-browse-history');
+    localStorage.removeItem('browse_history');
     setHistory([]);
   };
 
   return (
     <div className="min-h-screen bg-gradient-mesh">
-      <div className="max-w-7xl mx-auto px-4 lg:px-8 py-8">
+      {/* Animated background */}
+      <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-gradient-to-r from-indigo-500/20 via-purple-500/20 to-cyan-400/10 blur-3xl -z-10 animate-pulse" />
+
+      {/* Header */}
+      <header className="sticky top-0 z-40 bg-card/70 backdrop-blur-xl border-b border-border">
+        <div className="max-w-7xl mx-auto px-4 lg:px-8 h-16 flex items-center justify-between">
+          <Link href="/" className="flex items-center gap-2 group">
+            <Sparkles className="h-6 w-6 text-cyan-400 group-hover:rotate-12 transition-transform" />
+            <span className="text-xl font-semibold gradient-text">Pivota</span>
+          </Link>
+
+          <div className="flex items-center gap-3">
+            <button
+              onClick={open}
+              className="relative h-10 w-10 rounded-full flex items-center justify-center bg-secondary hover:bg-secondary/80 transition-colors"
+            >
+              <ShoppingCart className="h-5 w-5 text-muted-foreground" />
+              {itemCount > 0 && (
+                <span className="absolute -top-1 -right-1 h-5 w-5 rounded-full bg-gradient-to-r from-indigo-500 to-purple-500 flex items-center justify-center text-xs font-semibold text-white">
+                  {itemCount}
+                </span>
+              )}
+            </button>
+          </div>
+        </div>
+      </header>
+
+      {/* Main Content */}
+      <main className="max-w-7xl mx-auto px-4 lg:px-8 py-6">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
+          className="mb-6"
         >
-          <div className="flex items-center justify-between mb-8">
-            <div>
-              <h1 className="text-3xl font-bold mb-2">Browse History</h1>
-              <p className="text-muted-foreground">
-                Products you&apos;ve recently viewed
-              </p>
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <History className="h-8 w-8 text-cyan-400" />
+              <div>
+                <h1 className="text-3xl md:text-4xl font-semibold">
+                  Browse History
+                </h1>
+                <p className="text-muted-foreground mt-1">
+                  {history.length} {history.length === 1 ? 'product' : 'products'} viewed
+                </p>
+              </div>
             </div>
+
             {history.length > 0 && (
-              <Button variant="outline" onClick={clearHistory} className="text-destructive">
-                <Trash2 className="h-4 w-4 mr-2" />
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={clearHistory}
+                className="flex items-center gap-2"
+              >
+                <Trash2 className="h-4 w-4" />
                 Clear History
               </Button>
             )}
           </div>
-
-          {loading ? (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-              {[...Array(5)].map((_, i) => (
-                <div key={i} className="aspect-[3/4] bg-muted/20 rounded-2xl animate-pulse" />
-              ))}
-            </div>
-          ) : history.length === 0 ? (
-            <div className="text-center py-16 bg-card/50 backdrop-blur-xl rounded-3xl border border-border">
-              <History className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
-              <h3 className="text-xl font-semibold mb-2">No history yet</h3>
-              <p className="text-muted-foreground mb-4">
-                Start exploring products to see your history here
-              </p>
-              <Link href="/products">
-                <Button variant="gradient">
-                  Explore Products <ArrowRight className="h-4 w-4 ml-2" />
-                </Button>
-              </Link>
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-              {history.map((product, index) => (
-                <motion.div
-                  key={product.product_id}
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  transition={{ delay: index * 0.05 }}
-                >
-                  <ProductCard
-                    product_id={product.product_id}
-                    title={product.title}
-                    price={product.price}
-                    image={product.image_url || '/placeholder.svg'}
-                    description={product.description}
-                  />
-                </motion.div>
-              ))}
-            </div>
-          )}
         </motion.div>
-      </div>
+
+        {/* History Grid */}
+        {history.length === 0 ? (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="text-center py-16"
+          >
+            <History className="h-16 w-16 mx-auto text-muted-foreground/50 mb-4" />
+            <h2 className="text-xl font-semibold mb-2">No browsing history yet</h2>
+            <p className="text-muted-foreground mb-6">
+              Start exploring products to see them here
+            </p>
+            <Link href="/products">
+              <Button variant="gradient">
+                Browse Products
+              </Button>
+            </Link>
+          </motion.div>
+        ) : (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.2 }}
+            className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3"
+          >
+            {history.map((item, index) => (
+              <motion.div
+                key={`${item.product_id}-${item.timestamp}`}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: index * 0.05 }}
+              >
+                <ProductCard
+                  product_id={item.product_id}
+                  title={item.title}
+                  price={item.price}
+                  image={item.image}
+                  description={item.description}
+                />
+              </motion.div>
+            ))}
+          </motion.div>
+        )}
+      </main>
     </div>
   );
 }
