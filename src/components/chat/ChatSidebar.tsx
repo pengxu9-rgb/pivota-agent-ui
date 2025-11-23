@@ -1,7 +1,7 @@
 'use client';
 
 import { motion, AnimatePresence } from 'framer-motion';
-import { MessageSquare, Package, ShoppingCart, History, Sparkles, X, Sun, Moon } from 'lucide-react';
+import { MessageSquare, Package, ShoppingCart, History, X, Sun, Moon } from 'lucide-react';
 import Link from 'next/link';
 import { useCartStore } from '@/store/cartStore';
 import { useChatStore } from '@/store/chatStore';
@@ -59,14 +59,13 @@ export default function ChatSidebar({ isOpen, onClose }: ChatSidebarProps) {
         transition={{ type: 'spring', damping: 30, stiffness: 300 }}
         className="fixed left-0 top-0 h-full w-72 bg-card/70 backdrop-blur-xl border-r border-border z-50 lg:relative lg:translate-x-0 lg:!transform-none"
       >
-        {/* Sidebar Header */}
+        {/* Sidebar Header - simple label, no duplicate logo */}
         <div className="h-16 px-4 flex items-center justify-between border-b border-border">
-          <Link href="/" className="flex items-center gap-2 group">
-            <Sparkles className="h-6 w-6 text-cyan-400 group-hover:rotate-12 transition-transform" />
-            <span className="text-xl font-semibold bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 via-purple-400 to-cyan-400">
-              Pivota
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-semibold text-muted-foreground">
+              Menu
             </span>
-          </Link>
+          </div>
           <button
             onClick={onClose}
             className="lg:hidden h-8 w-8 rounded-full flex items-center justify-center hover:bg-secondary transition-colors"
@@ -181,9 +180,9 @@ export default function ChatSidebar({ isOpen, onClose }: ChatSidebarProps) {
                 Browse Products
               </Button>
             </Link>
-            <Button 
-              variant="outline" 
-              className="w-full" 
+            <Button
+              variant="outline"
+              className="w-full"
               size="sm"
               onClick={() => {
                 clearMessages();
@@ -198,4 +197,3 @@ export default function ChatSidebar({ isOpen, onClose }: ChatSidebarProps) {
     </>
   );
 }
-

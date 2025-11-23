@@ -127,19 +127,34 @@ export async function getAllProducts(
 export async function getProductDetail(
   productId: string,
 ): Promise<ProductResponse | null> {
-  const data = await callGateway({
-    operation: 'get_product_detail',
-    payload: {
-      product: {
-        merchant_id: DEFAULT_MERCHANT_ID,
-        product_id: productId,
+  try {
+    const data = await callGateway({
+      operation: 'get_product_detail',
+      payload: {
+        product: {
+          merchant_id: DEFAULT_MERCHANT_ID,
+          product_id: productId,
+        },
       },
-    },
-  });
+    });
 
-  const product = (data as any).product;
-  if (!product) return null;
-  return normalizeProduct(product);
+    const product = (data as any).product;
+    if (product) {
+      return normalizeProduct(product);
+    }
+  } catch (err) {
+    // In MOCK mode or when backend returns 404, gracefully fall back to list search
+    console.error('getProductDetail primary error, falling back to list:', err);
+  }
+
+  try {
+    const all = await getAllProducts(100);
+    const found = all.find((p) => p.product_id === productId);
+    return found || null;
+  } catch (err) {
+    console.error('getProductDetail fallback error:', err);
+    return null;
+  }
 }
 
 // -------- Order & payment helpers --------
