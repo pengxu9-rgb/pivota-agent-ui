@@ -15,7 +15,7 @@ import { toast } from 'sonner';
 
 export default function HomePage() {
   const [input, setInput] = useState('');
-  const [sidebarOpen, setSidebarOpen] = useState(true); // Desktop默认显示
+  const [sidebarOpen, setSidebarOpen] = useState(false); // Default closed (mobile friendly)
   const [loading, setLoading] = useState(false);
   const [hotDeals, setHotDeals] = useState<any[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
