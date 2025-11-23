@@ -202,7 +202,14 @@ export async function createOrder(orderData: {
     })
     
     if (!response.ok) {
-      throw new Error('Failed to create order')
+      const errorData = await response.json().catch(() => ({}))
+      console.error('Create Order API Error:', {
+        status: response.status,
+        statusText: response.statusText,
+        error: errorData,
+        sentData: orderData
+      })
+      throw new Error(errorData.message || `Failed to create order: ${response.status}`)
     }
     
     return await response.json()

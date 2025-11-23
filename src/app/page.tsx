@@ -1,39 +1,33 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Sparkles, Send, ShoppingCart, Package } from 'lucide-react';
+import { Menu, ShoppingCart, Send, Sparkles, Package } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { GlassCard } from '@/components/ui/glass-card';
+import ChatSidebar from '@/components/chat/ChatSidebar';
 import { useCartStore } from '@/store/cartStore';
+import { useChatStore } from '@/store/chatStore';
 import { sendMessage } from '@/lib/api';
+import { mockProducts, DEFAULT_MERCHANT_ID } from '@/lib/mockData';
 import { toast } from 'sonner';
 
-interface Message {
-  id: string;
-  role: 'user' | 'assistant';
-  content: string;
-  products?: any[];
-}
-
-export default function ChatInterface() {
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: '0',
-      role: 'assistant',
-      content: 'Welcome! What can I help you find today?',
-    },
-  ]);
+export default function HomePage() {
   const [input, setInput] = useState('');
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  
+  const { messages, addMessage } = useChatStore();
   const { items, addItem, open } = useCartStore();
   
   const itemCount = items.reduce((acc, item) => acc + item.quantity, 0);
   const hasUserMessages = messages.some(msg => msg.role === 'user');
+  
+  // Get display products from mock data
+  const displayProducts = mockProducts[DEFAULT_MERCHANT_ID] || [];
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -46,39 +40,36 @@ export default function ChatInterface() {
   const handleSend = async () => {
     if (!input.trim() || loading) return;
 
-    const userMessage: Message = {
+    const userMessage = {
       id: Date.now().toString(),
-      role: 'user',
+      role: 'user' as const,
       content: input,
     };
 
-    setMessages(prev => [...prev, userMessage]);
+    addMessage(userMessage);
     setInput('');
     setLoading(true);
 
     try {
       const products = await sendMessage(input);
       
-      const assistantMessage: Message = {
+      const assistantMessage = {
         id: (Date.now() + 1).toString(),
-        role: 'assistant',
+        role: 'assistant' as const,
         content: products.length > 0 
           ? `I found ${products.length} product(s) for you!`
           : "I couldn't find any products matching your search. Try something else!",
         products: products.slice(0, 4),
       };
 
-      setMessages(prev => [...prev, assistantMessage]);
+      addMessage(assistantMessage);
     } catch (error) {
       console.error('Search error:', error);
-      setMessages(prev => [
-        ...prev,
-        {
-          id: (Date.now() + 1).toString(),
-          role: 'assistant',
-          content: 'Sorry, there was an error searching for products. Please try again.',
-        },
-      ]);
+      addMessage({
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: 'Sorry, there was an error searching for products. Please try again.',
+      });
     } finally {
       setLoading(false);
     }
@@ -86,10 +77,10 @@ export default function ChatInterface() {
 
   const handleAddToCart = (product: any) => {
     addItem({
-      id: product.id,
+      id: product.product_id,
       title: product.title,
       price: product.price,
-      imageUrl: product.image_url,
+      imageUrl: product.image_url || '/placeholder.svg',
       quantity: 1,
     });
     toast.success(`✓ Added to cart! ${product.title}`);
@@ -102,11 +93,20 @@ export default function ChatInterface() {
       <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-gradient-to-r from-indigo-500/30 via-purple-500/30 to-cyan-400/20 blur-3xl -z-10 animate-pulse" />
       <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-gradient-to-l from-cyan-400/20 via-purple-500/30 to-indigo-500/30 blur-3xl -z-10 animate-pulse" />
 
+      {/* Sidebar */}
+      <ChatSidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+
       {/* Main Chat Area */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Header */}
         <header className="h-16 px-4 flex items-center justify-between border-b border-border bg-card/70 backdrop-blur-xl">
           <div className="flex items-center gap-3">
+            <button
+              onClick={() => setSidebarOpen(true)}
+              className="h-10 w-10 rounded-full flex items-center justify-center hover:bg-secondary transition-colors"
+            >
+              <Menu className="h-5 w-5 text-muted-foreground" />
+            </button>
             <div className="flex items-center gap-2">
               <Sparkles className="h-6 w-6 text-cyan-400" />
               <span className="text-xl font-semibold gradient-text">
@@ -116,7 +116,7 @@ export default function ChatInterface() {
           </div>
           <div className="flex items-center gap-3">
             <Link href="/products">
-              <Button variant="icon" size="icon">
+              <Button variant="ghost" size="icon">
                 <Package className="h-5 w-5 text-muted-foreground" />
               </Button>
             </Link>
@@ -178,14 +178,14 @@ export default function ChatInterface() {
                     <div className="mt-2 grid grid-cols-2 gap-2 max-w-md">
                       {message.products.map((product, productIdx) => (
                         <motion.div
-                          key={product.id}
+                          key={product.product_id}
                           initial={{ opacity: 0, scale: 0.9 }}
                           animate={{ opacity: 1, scale: 1 }}
                           transition={{ delay: productIdx * 0.1 }}
                           className="group relative bg-card backdrop-blur-xl rounded-xl overflow-hidden border border-border shadow-sm hover:shadow-md hover:scale-[1.02] transition-all duration-300"
                         >
                           {/* Image */}
-                          <Link href={`/products/${product.id}`} className="block">
+                          <Link href={`/products/${product.product_id}`} className="block">
                             <div className="relative w-full aspect-square overflow-hidden">
                               <Image
                                 src={product.image_url || '/placeholder.svg'}
@@ -199,7 +199,7 @@ export default function ChatInterface() {
 
                           {/* Content */}
                           <div className="p-2 flex flex-col">
-                            <Link href={`/products/${product.id}`}>
+                            <Link href={`/products/${product.product_id}`}>
                               <h4 className="font-medium text-xs mb-1 line-clamp-2 group-hover:text-primary transition-colors">
                                 {product.title}
                               </h4>
@@ -250,17 +250,55 @@ export default function ChatInterface() {
 
         {/* Input Area */}
         <div className="p-4 border-t border-border space-y-3 bg-card/70 backdrop-blur-xl">
+          {/* Hot Deals - Trending Products */}
           {!hasUserMessages && (
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
+              className="space-y-3"
+            >
+              <h3 className="text-sm font-semibold text-foreground/80 px-2">Hot Deals</h3>
+              <div className="overflow-x-auto pb-2 -mx-2 px-2">
+                <div className="flex gap-3 min-w-max">
+                  {displayProducts.slice(0, 6).map((product) => (
+                    <Link
+                      key={product.product_id}
+                      href={`/products/${product.product_id}`}
+                      className="flex-shrink-0 w-24 group"
+                    >
+                      <div className="relative aspect-square rounded-2xl overflow-hidden mb-2 ring-1 ring-border group-hover:ring-primary transition-all">
+                        <Image
+                          src={product.image_url || '/placeholder.svg'}
+                          alt={product.title}
+                          fill
+                          className="object-cover group-hover:scale-110 transition-transform duration-300"
+                          unoptimized
+                        />
+                      </div>
+                      <p className="text-xs text-muted-foreground line-clamp-1 group-hover:text-foreground transition-colors">
+                        {product.title}
+                      </p>
+                      <p className="text-xs font-semibold">${product.price}</p>
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            </motion.div>
+          )}
+
+          {/* Quick Suggestions */}
+          {!hasUserMessages && (
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.1 }}
               className="flex gap-2 flex-wrap"
             >
               {['Water bottle', 'Hoodies', 'Electronics'].map((suggestion) => (
                 <Badge
                   key={suggestion}
-                  variant="gradient"
-                  className="cursor-pointer hover:scale-105 transition-transform"
+                  variant="secondary"
+                  className="cursor-pointer hover:bg-secondary/80 transition-colors"
                   onClick={() => setInput(suggestion)}
                 >
                   {suggestion}
@@ -292,4 +330,3 @@ export default function ChatInterface() {
     </div>
   );
 }
-

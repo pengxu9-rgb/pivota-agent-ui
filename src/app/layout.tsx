@@ -3,6 +3,7 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "sonner";
 import CartDrawer from "@/components/cart/CartDrawer";
+import { ThemeProvider } from "@/components/theme-provider";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -30,9 +31,11 @@ export default function RootLayout({
         <link rel="manifest" href="/manifest.json" />
       </head>
       <body className="antialiased font-sans">
-        {children}
-        <CartDrawer />
-        <Toaster position="top-center" richColors />
+        <ThemeProvider defaultTheme="light" storageKey="pivota-ui-theme">
+          {children}
+          <CartDrawer />
+          <Toaster position="top-center" richColors />
+        </ThemeProvider>
       </body>
     </html>
   );
