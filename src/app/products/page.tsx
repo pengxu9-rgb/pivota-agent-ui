@@ -8,12 +8,14 @@ import ProductCard from '@/components/product/ProductCard';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useCartStore } from '@/store/cartStore';
-import { findProducts } from '@/lib/api';
+import { sendMessage, DEFAULT_MERCHANT_ID } from '@/lib/api';
 import { mockProducts } from '@/lib/mockData';
+
+const initialProducts = mockProducts[DEFAULT_MERCHANT_ID] || [];
 import { toast } from 'sonner';
 
 export default function ProductsPage() {
-  const [products, setProducts] = useState<any[]>(mockProducts);
+  const [products, setProducts] = useState<any[]>(initialProducts);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const { items, open } = useCartStore();
@@ -22,14 +24,14 @@ export default function ProductsPage() {
 
   const handleSearch = async (query: string) => {
     if (!query.trim()) {
-      setProducts(mockProducts);
+      setProducts(initialProducts);
       return;
     }
 
     setLoading(true);
     try {
-      const data = await findProducts(query);
-      setProducts(data.products.length > 0 ? data.products : mockProducts);
+      const products = await sendMessage(query);
+      setProducts(products.length > 0 ? products : initialProducts);
     } catch (error) {
       console.error('Search error:', error);
       toast.error('Failed to search products');
@@ -103,7 +105,7 @@ export default function ProductsPage() {
                   if (e.target.value.trim()) {
                     handleSearch(e.target.value);
                   } else {
-                    setProducts(mockProducts);
+                    setProducts(initialProducts);
                   }
                 }}
                 placeholder="Search products..."

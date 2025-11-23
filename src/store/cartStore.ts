@@ -2,40 +2,41 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
 export interface CartItem {
-  product_id: string
+  id: string
   title: string
   price: number
   quantity: number
-  image_url?: string
-  merchant_id?: string
+  imageUrl: string
 }
 
 interface CartStore {
   items: CartItem[]
-  addToCart: (product: Omit<CartItem, 'quantity'>, quantity?: number) => void
-  removeFromCart: (productId: string) => void
-  updateQuantity: (productId: string, quantity: number) => void
+  isOpen: boolean
+  addItem: (item: CartItem) => void
+  removeItem: (id: string) => void
+  updateQuantity: (id: string, quantity: number) => void
   clearCart: () => void
   getTotal: () => number
-  getItemCount: () => number
-  isInCart: (productId: string) => boolean
+  open: () => void
+  close: () => void
 }
 
 export const useCartStore = create<CartStore>()(
   persist(
     (set, get) => ({
       items: [],
+      isOpen: false,
       
-      addToCart: (product, quantity = 1) => {
+      addItem: (newItem) => {
         set((state) => {
-          const existingItem = state.items.find(item => item.product_id === product.product_id)
+          const existingItem = state.items.find(item => item.id === newItem.id)
           
           if (existingItem) {
             // Update quantity if already in cart
             return {
               items: state.items.map(item =>
-                item.product_id === product.product_id
-                  ? { ...item, quantity: item.quantity + quantity }
+                item.id === newItem.id
+                  ? { ...item, quantity: item.quantity + newItem.quantity }
                   : item
               )
             }
@@ -43,26 +44,26 @@ export const useCartStore = create<CartStore>()(
           
           // Add new item
           return {
-            items: [...state.items, { ...product, quantity }]
+            items: [...state.items, newItem]
           }
         })
       },
       
-      removeFromCart: (productId) => {
+      removeItem: (id) => {
         set((state) => ({
-          items: state.items.filter(item => item.product_id !== productId)
+          items: state.items.filter(item => item.id !== id)
         }))
       },
       
-      updateQuantity: (productId, quantity) => {
+      updateQuantity: (id, quantity) => {
         if (quantity <= 0) {
-          get().removeFromCart(productId)
+          get().removeItem(id)
           return
         }
         
         set((state) => ({
           items: state.items.map(item =>
-            item.product_id === productId
+            item.id === id
               ? { ...item, quantity }
               : item
           )
@@ -77,18 +78,17 @@ export const useCartStore = create<CartStore>()(
         return get().items.reduce((total, item) => total + item.price * item.quantity, 0)
       },
       
-      getItemCount: () => {
-        return get().items.reduce((count, item) => count + item.quantity, 0)
+      open: () => {
+        set({ isOpen: true })
       },
       
-      isInCart: (productId) => {
-        return get().items.some(item => item.product_id === productId)
-      }
+      close: () => {
+        set({ isOpen: false })
+      },
     }),
     {
       name: 'pivota-cart-storage',
       partialize: (state) => ({ items: state.items }),
-      // Cart expires after 7 days
       version: 1,
     }
   )

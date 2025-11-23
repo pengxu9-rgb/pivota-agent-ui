@@ -31,38 +31,6 @@ const nextConfig = {
   },
   // Enable compression
   compress: true,
-  // Optimize production builds
-  swcMinify: true,
-  // Enable React strict mode
-  productionBrowserSourceMaps: false,
-}
-
-export default nextConfig
-
-  // Enable compression
-  compress: true,
-  // Optimize production builds
-  swcMinify: true,
-  // Enable React strict mode
-  productionBrowserSourceMaps: false,
-}
-
-export default nextConfig
-
-  // Enable compression
-  compress: true,
-  // Optimize production builds
-  swcMinify: true,
-  // Enable React strict mode
-  productionBrowserSourceMaps: false,
-}
-
-export default nextConfig
-
-  // Enable compression
-  compress: true,
-  // Optimize production builds
-  swcMinify: true,
   // Enable React strict mode
   productionBrowserSourceMaps: false,
 }

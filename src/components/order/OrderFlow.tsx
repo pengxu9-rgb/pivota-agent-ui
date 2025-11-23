@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { ShoppingCart, CreditCard, Check, ChevronRight } from 'lucide-react'
 import Image from 'next/image'
 import { createOrder, processPayment, DEFAULT_MERCHANT_ID } from '@/lib/api'
-import { toast } from '@/components/ui/ToastContainer'
+import { toast } from 'sonner'
 
 interface OrderItem {
   product_id: string

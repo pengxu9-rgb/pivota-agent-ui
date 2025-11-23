@@ -8,7 +8,8 @@ interface CartButtonProps {
 }
 
 export default function CartButton({ onClick }: CartButtonProps) {
-  const itemCount = useCartStore((state) => state.getItemCount())
+  const items = useCartStore((state) => state.items)
+  const itemCount = items.reduce((acc, item) => acc + item.quantity, 0)
 
   return (
     <button
