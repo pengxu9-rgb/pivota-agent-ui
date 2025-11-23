@@ -277,3 +277,87 @@ export async function getOrderStatus(orderId: string) {
     throw error
   }
 }
+
+
+// 获取订单状态
+export async function getOrderStatus(orderId: string) {
+  try {
+    const response = await fetch(`${API_BASE}/agent/shop/v1/invoke`, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        operation: 'get_order_status',
+        payload: {
+          order: { order_id: orderId }
+        }
+      })
+    })
+    
+    if (!response.ok) {
+      throw new Error('Failed to get order status')
+    }
+    
+    return await response.json()
+  } catch (error) {
+    console.error('Order Status Error:', error)
+    throw error
+  }
+}
+
+
+// 获取订单状态
+export async function getOrderStatus(orderId: string) {
+  try {
+    const response = await fetch(`${API_BASE}/agent/shop/v1/invoke`, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        operation: 'get_order_status',
+        payload: {
+          order: { order_id: orderId }
+        }
+      })
+    })
+    
+    if (!response.ok) {
+      throw new Error('Failed to get order status')
+    }
+    
+    return await response.json()
+  } catch (error) {
+    console.error('Order Status Error:', error)
+    throw error
+  }
+}
+
+
+// 获取订单状态
+export async function getOrderStatus(orderId: string) {
+  try {
+    const response = await fetch(`${API_BASE}/agent/shop/v1/invoke`, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        operation: 'get_order_status',
+        payload: {
+          order: { order_id: orderId }
+        }
+      })
+    })
+    
+    if (!response.ok) {
+      throw new Error('Failed to get order status')
+    }
+    
+    return await response.json()
+  } catch (error) {
+    console.error('Order Status Error:', error)
+    throw error
+  }
+}

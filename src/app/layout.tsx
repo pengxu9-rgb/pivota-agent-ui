@@ -1,21 +1,22 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
-import ToastContainer from "@/components/ui/ToastContainer";
+import { Toaster } from "sonner";
+import CartDrawer from "@/components/cart/CartDrawer";
 
-const inter = Inter({ subsets: ["latin"] });
+const inter = Inter({
+  subsets: ["latin"],
+  variable: "--font-inter",
+});
 
 export const metadata: Metadata = {
-  title: "Pivota Shopping AI - Your Personal Shopping Assistant",
-  description: "AI-powered shopping made simple. Find products, compare prices, and shop smarter with Pivota's intelligent assistant.",
-  keywords: ["shopping", "AI", "assistant", "ecommerce", "Pivota"],
-  authors: [{ name: "Pivota Team" }],
+  title: "Pivota Shopping AI",
+  description: "Shop smarter through conversation",
 };
 
 export const viewport = {
-  width: 'device-width',
+  width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
 };
 
 export default function RootLayout({
@@ -24,15 +25,14 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning className={inter.variable}>
       <head>
         <link rel="manifest" href="/manifest.json" />
-        <link rel="icon" href="/favicon.ico" />
-        <meta name="theme-color" content="#3b82f6" />
       </head>
-      <body className={inter.className} suppressHydrationWarning>
+      <body className="antialiased font-sans">
         {children}
-        <ToastContainer />
+        <CartDrawer />
+        <Toaster position="top-center" richColors />
       </body>
     </html>
   );

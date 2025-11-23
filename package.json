@@ -9,12 +9,20 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@radix-ui/react-label": "^2.1.8",
+    "@radix-ui/react-separator": "^1.1.8",
+    "@radix-ui/react-slot": "^1.2.4",
     "@radix-ui/themes": "^3.1.6",
     "axios": "^1.7.9",
+    "class-variance-authority": "^0.7.1",
+    "framer-motion": "^12.23.24",
     "lucide-react": "^0.460.0",
     "next": "^15.0.3",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "sonner": "^2.0.7",
+    "tailwindcss-animate": "^1.0.7",
+    "vaul": "^1.1.2",
     "zustand": "^5.0.2"
   },
   "devDependencies": {
@@ -29,4 +37,3 @@
     "typescript": "^5"
   }
 }
-

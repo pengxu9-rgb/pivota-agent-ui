@@ -1,104 +1,179 @@
-import { Metadata } from 'next'
-import Link from 'next/link'
-import ProductCard from '@/components/product/ProductCard'
-import { mockProducts } from '@/lib/mockData'
+'use client';
 
-export const metadata: Metadata = {
-  title: 'All Products - Pivota Shopping AI',
-  description: 'Browse our collection of water bottles, electronics, kitchen items, and more. AI-powered shopping made simple.',
-  keywords: 'water bottles, electronics, kitchen gadgets, smart home, shopping, AI assistant',
-  openGraph: {
-    title: 'Shop All Products - Pivota Shopping AI',
-    description: 'Discover amazing products with AI-powered recommendations',
-    type: 'website',
-    url: 'https://agent.pivota.cc/products',
-  },
-}
+import { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Search, ShoppingCart, Sparkles, Package } from 'lucide-react';
+import Link from 'next/link';
+import ProductCard from '@/components/product/ProductCard';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { useCartStore } from '@/store/cartStore';
+import { findProducts } from '@/lib/api';
+import { mockProducts } from '@/lib/mockData';
+import { toast } from 'sonner';
 
 export default function ProductsPage() {
-  // In production, this would fetch from API
-  const products = mockProducts.merch_208139f7600dbf42 || []
+  const [products, setProducts] = useState<any[]>(mockProducts);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [loading, setLoading] = useState(false);
+  const { items, open } = useCartStore();
+  
+  const itemCount = items.reduce((acc, item) => acc + item.quantity, 0);
 
-  // Group products by category
-  const categories = products.reduce((acc, product) => {
-    const category = product.category || 'Other'
-    if (!acc[category]) {
-      acc[category] = []
+  const handleSearch = async (query: string) => {
+    if (!query.trim()) {
+      setProducts(mockProducts);
+      return;
     }
-    acc[category].push(product)
-    return acc
-  }, {} as Record<string, typeof products>)
+
+    setLoading(true);
+    try {
+      const data = await findProducts(query);
+      setProducts(data.products.length > 0 ? data.products : mockProducts);
+    } catch (error) {
+      console.error('Search error:', error);
+      toast.error('Failed to search products');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleTrendingClick = (trend: string) => {
+    setSearchQuery(trend);
+    handleSearch(trend);
+  };
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
-      <header className="bg-white shadow-sm border-b sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="w-10 h-10 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center">
-                <span className="text-white font-bold text-lg">P</span>
-              </div>
-              <h1 className="text-2xl font-bold text-gray-800">All Products</h1>
-            </div>
-            <nav className="flex gap-4">
-              <Link href="/" className="text-gray-600 hover:text-gray-900">Chat Assistant</Link>
-              <Link href="/products" className="text-gray-900 font-medium">Products</Link>
-            </nav>
+    <div className="min-h-screen bg-gradient-mesh">
+      {/* Animated background */}
+      <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-gradient-to-r from-indigo-500/20 via-purple-500/20 to-cyan-400/10 blur-3xl -z-10 animate-pulse" />
+
+      {/* Header */}
+      <header className="sticky top-0 z-40 bg-card/70 backdrop-blur-xl border-b border-border">
+        <div className="max-w-7xl mx-auto px-4 lg:px-8 h-16 flex items-center justify-between">
+          <Link href="/" className="flex items-center gap-2 group">
+            <Sparkles className="h-6 w-6 text-cyan-400 group-hover:rotate-12 transition-transform" />
+            <span className="text-xl font-semibold gradient-text">Pivota</span>
+          </Link>
+
+          <div className="flex items-center gap-3">
+            <Link href="/">
+              <Button variant="icon" size="icon">
+                <Package className="h-5 w-5 text-muted-foreground" />
+              </Button>
+            </Link>
+            <button
+              onClick={open}
+              className="relative h-10 w-10 rounded-full flex items-center justify-center bg-secondary hover:bg-secondary/80 transition-colors"
+            >
+              <ShoppingCart className="h-5 w-5 text-muted-foreground" />
+              {itemCount > 0 && (
+                <span className="absolute -top-1 -right-1 h-5 w-5 rounded-full bg-gradient-to-r from-indigo-500 to-purple-500 flex items-center justify-center text-xs font-semibold text-white">
+                  {itemCount}
+                </span>
+              )}
+            </button>
           </div>
         </div>
       </header>
 
-      <div className="max-w-7xl mx-auto px-4 py-8">
-        <div className="mb-8">
-          <h2 className="text-3xl font-bold text-gray-800 mb-4">Browse Our Collection</h2>
-          <p className="text-gray-600">
-            Discover quality products across multiple categories. All items available for immediate purchase through our AI shopping assistant.
+      {/* Main Content */}
+      <main className="max-w-7xl mx-auto px-4 lg:px-8 py-6">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mb-6"
+        >
+          <h1 className="text-3xl md:text-4xl font-semibold mb-2">
+            Browse Products
+          </h1>
+          <p className="text-muted-foreground mb-4">
+            Discover our curated collection of premium products
           </p>
-        </div>
 
-        {Object.entries(categories).map(([category, categoryProducts]) => (
-          <section key={category} className="mb-12">
-            <h3 className="text-2xl font-semibold text-gray-800 mb-6">{category}</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-              {categoryProducts.map((product) => (
-                <div key={product.product_id}>
+          {/* Search */}
+          <div className="max-w-2xl">
+            <div className="flex items-center gap-2 bg-secondary border border-border rounded-2xl px-4 py-3">
+              <Search className="h-5 w-5 text-muted-foreground" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  if (e.target.value.trim()) {
+                    handleSearch(e.target.value);
+                  } else {
+                    setProducts(mockProducts);
+                  }
+                }}
+                placeholder="Search products..."
+                className="flex-1 bg-transparent outline-none text-sm text-foreground placeholder:text-muted-foreground"
+              />
+            </div>
+          </div>
+
+          {/* Trending */}
+          <div className="mt-4 flex items-center gap-3 flex-wrap">
+            <span className="text-sm text-muted-foreground">Trending:</span>
+            {['Hoodies', 'Water Bottles', 'Tech'].map((trend) => (
+              <Badge
+                key={trend}
+                variant="gradient"
+                className="cursor-pointer hover:scale-105 transition-transform"
+                onClick={() => handleTrendingClick(trend)}
+              >
+                {trend}
+              </Badge>
+            ))}
+          </div>
+        </motion.div>
+
+        {/* Products Grid */}
+        {loading ? (
+          <div className="flex justify-center items-center py-16">
+            <div className="flex gap-2">
+              <span className="animate-bounce">●</span>
+              <span className="animate-bounce" style={{ animationDelay: '0.1s' }}>●</span>
+              <span className="animate-bounce" style={{ animationDelay: '0.2s' }}>●</span>
+            </div>
+          </div>
+        ) : (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.2 }}
+            className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3"
+          >
+            <AnimatePresence>
+              {products.map((product, index) => (
+                <motion.div
+                  key={product.id}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.9 }}
+                  transition={{ delay: index * 0.05 }}
+                >
                   <ProductCard
-                    id={product.product_id}
+                    product_id={product.id}
                     title={product.title}
                     price={product.price}
                     image={product.image_url}
                     description={product.description}
-                    rating={4.5}
                   />
-                  {/* Schema.org markup for SEO */}
-                  <script
-                    type="application/ld+json"
-                    dangerouslySetInnerHTML={{
-                      __html: JSON.stringify({
-                        "@context": "https://schema.org",
-                        "@type": "Product",
-                        "name": product.title,
-                        "description": product.description,
-                        "image": product.image_url,
-                        "offers": {
-                          "@type": "Offer",
-                          "price": product.price,
-                          "priceCurrency": "USD",
-                          "availability": product.in_stock ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
-                          "seller": {
-                            "@type": "Organization",
-                            "name": "Pivota Shopping AI"
-                          }
-                        }
-                      })
-                    }}
-                  />
-                </div>
+                </motion.div>
               ))}
-            </div>
-          </section>
-        ))}
-      </div>
-    </main>
-  )
+            </AnimatePresence>
+          </motion.div>
+        )}
+
+        {!loading && products.length === 0 && (
+          <div className="text-center py-16">
+            <p className="text-muted-foreground">
+              No products found matching your search.
+            </p>
+          </div>
+        )}
+      </main>
+    </div>
+  );
 }

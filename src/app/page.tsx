@@ -1,46 +1,67 @@
-'use client'
+'use client';
 
-import { useState } from 'react'
-import ChatInterface from '@/components/chat/ChatInterface'
-import CartButton from '@/components/cart/CartButton'
-import CartDrawer from '@/components/cart/CartDrawer'
-import Link from 'next/link'
+import { useState, useRef, useEffect } from 'react';
+import { Sparkles, Send, ShoppingCart, Package } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import Link from 'next/link';
+import Image from 'next/image';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { GlassCard } from '@/components/ui/glass-card';
+import { useCartStore } from '@/store/cartStore';
+import { findProducts } from '@/lib/api';
+import { toast } from 'sonner';
 
-export default function Home() {
-  const [isCartOpen, setIsCartOpen] = useState(false)
-  return (
-    <main className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
-      <header className="bg-white shadow-sm border-b sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-10 h-10 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center">
-              <span className="text-white font-bold text-lg">P</span>
-            </div>
-            <h1 className="text-2xl font-bold text-gray-800">Pivota Shopping AI</h1>
-          </div>
-            <nav className="hidden md:flex gap-6">
-              <Link href="/products" className="text-gray-600 hover:text-gray-900 transition-colors">Products</Link>
-              <a href="#" className="text-gray-600 hover:text-gray-900 transition-colors">How it Works</a>
-              <a href="#" className="text-gray-600 hover:text-gray-900 transition-colors">About</a>
-            </nav>
-        </div>
-      </header>
-      
-      <div className="max-w-7xl mx-auto px-4 py-8">
-        <div className="text-center mb-8">
-          <h2 className="text-3xl font-bold text-gray-800 mb-2">
-            Your Personal Shopping Assistant
-          </h2>
-          <p className="text-gray-600">
-            Discover products, compare prices, and shop smarter with AI
-          </p>
-        </div>
-        
-        <ChatInterface />
-      </div>
-      
-      <CartButton onClick={() => setIsCartOpen(true)} />
-      <CartDrawer isOpen={isCartOpen} onClose={() => setIsCartOpen(false)} />
-    </main>
-  )
+interface Message {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  products?: any[];
 }
+
+export default function ChatInterface() {
+  const [messages, setMessages] = useState<Message[]>([
+    {
+      id: '0',
+      role: 'assistant',
+      content: 'Welcome! What can I help you find today?',
+    },
+  ]);
+  const [input, setInput] = useState('');
+  const [loading, setLoading] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const { items, addItem, open } = useCartStore();
+  
+  const itemCount = items.reduce((acc, item) => acc + item.quantity, 0);
+  const hasUserMessages = messages.some(msg => msg.role === 'user');
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
+
+  const handleSend = async () => {
+    if (!input.trim() || loading) return;
+
+    const userMessage: Message = {
+      id: Date.now().toString(),
+      role: 'user',
+      content: input,
+    };
+
+    setMessages(prev => [...prev, userMessage]);
+    setInput('');
+    setLoading(true);
+
+    try {
+      const data = await findProducts(input);
+      
+      const assistantMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: data.products.length > 0 
+          ? `I found ${data.products.length} product(s) for you!`
+          : "I couldn't f
