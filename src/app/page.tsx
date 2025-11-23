@@ -10,14 +10,14 @@ import { Badge } from '@/components/ui/badge';
 import ChatSidebar from '@/components/chat/ChatSidebar';
 import { useCartStore } from '@/store/cartStore';
 import { useChatStore } from '@/store/chatStore';
-import { sendMessage, DEFAULT_MERCHANT_ID } from '@/lib/api';
-import { mockProducts } from '@/lib/mockData';
+import { sendMessage, getAllProducts } from '@/lib/api';
 import { toast } from 'sonner';
 
 export default function HomePage() {
   const [input, setInput] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(true); // Desktop默认显示
   const [loading, setLoading] = useState(false);
+  const [hotDeals, setHotDeals] = useState<any[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
   const { messages, addMessage } = useChatStore();
@@ -25,9 +25,20 @@ export default function HomePage() {
   
   const itemCount = items.reduce((acc, item) => acc + item.quantity, 0);
   const hasUserMessages = messages.some(msg => msg.role === 'user');
-  
-  // Get display products from mock data
-  const displayProducts = mockProducts[DEFAULT_MERCHANT_ID] || [];
+
+  // 加载Hot Deals商品
+  useEffect(() => {
+    const loadHotDeals = async () => {
+      try {
+        const products = await getAllProducts(6);
+        setHotDeals(products);
+      } catch (error) {
+        console.error('Failed to load hot deals:', error);
+        // Keep empty array if API fails
+      }
+    };
+    loadHotDeals();
+  }, []);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -260,27 +271,31 @@ export default function HomePage() {
               <h3 className="text-sm font-semibold text-foreground/80 px-2">Hot Deals</h3>
               <div className="overflow-x-auto pb-2 -mx-2 px-2">
                 <div className="flex gap-3 min-w-max">
-                  {displayProducts.slice(0, 6).map((product) => (
-                    <Link
-                      key={product.product_id}
-                      href={`/products/${product.product_id}`}
-                      className="flex-shrink-0 w-24 group"
-                    >
-                      <div className="relative aspect-square rounded-2xl overflow-hidden mb-2 ring-1 ring-border group-hover:ring-primary transition-all">
-                        <Image
-                          src={product.image_url || '/placeholder.svg'}
-                          alt={product.title}
-                          fill
-                          className="object-cover group-hover:scale-110 transition-transform duration-300"
-                          unoptimized
-                        />
-                      </div>
-                      <p className="text-xs text-muted-foreground line-clamp-1 group-hover:text-foreground transition-colors">
-                        {product.title}
-                      </p>
-                      <p className="text-xs font-semibold">${product.price}</p>
-                    </Link>
-                  ))}
+                  {hotDeals.length > 0 ? (
+                    hotDeals.map((product) => (
+                      <Link
+                        key={product.product_id}
+                        href={`/products/${product.product_id}`}
+                        className="flex-shrink-0 w-24 group"
+                      >
+                        <div className="relative aspect-square rounded-2xl overflow-hidden mb-2 ring-1 ring-border group-hover:ring-primary transition-all">
+                          <Image
+                            src={product.image_url || '/placeholder.svg'}
+                            alt={product.title}
+                            fill
+                            className="object-cover group-hover:scale-110 transition-transform duration-300"
+                            unoptimized
+                          />
+                        </div>
+                        <p className="text-xs text-muted-foreground line-clamp-1 group-hover:text-foreground transition-colors">
+                          {product.title}
+                        </p>
+                        <p className="text-xs font-semibold">${product.price}</p>
+                      </Link>
+                    ))
+                  ) : (
+                    <p className="text-xs text-muted-foreground">Loading products...</p>
+                  )}
                 </div>
               </div>
             </motion.div>

@@ -91,6 +91,50 @@ export async function sendMessage(message: string): Promise<ProductResponse[]> {
   }
 }
 
+// 获取所有商品（用于首页推荐等）
+export async function getAllProducts(limit = 20): Promise<ProductResponse[]> {
+  try {
+    const response = await fetch(`${API_BASE}/agent/shop/v1/invoke`, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        operation: 'find_products',
+        payload: { 
+          search: { 
+            merchant_id: DEFAULT_MERCHANT_ID,
+            query: '', // Empty query to get all products
+            limit: limit
+          }
+        }
+      })
+    })
+    
+    if (!response.ok) {
+      throw new Error(`Failed to fetch products: ${response.status}`)
+    }
+    
+    const data = await response.json()
+    const products = data.products || []
+    
+    return products.map((p: RealAPIProduct | ProductResponse) => ({
+      product_id: (p as any).product_id || (p as any).id,
+      title: p.title,
+      description: p.description,
+      price: p.price,
+      currency: p.currency,
+      image_url: p.image_url,
+      category: (p as any).category || (p as any).product_type || 'General',
+      in_stock: (p as any).in_stock !== undefined ? (p as any).in_stock : (p as any).inventory_quantity > 0
+    }))
+  } catch (error) {
+    console.error('Get All Products Error:', error)
+    // Return empty array on error, let UI handle gracefully
+    return []
+  }
+}
+
 // 获取单个产品详情
 export async function getProductDetail(productId: string) {
   try {

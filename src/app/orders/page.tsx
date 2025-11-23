@@ -1,73 +1,128 @@
 'use client';
 
+import { useState, useEffect } from 'react';
+import { Package, Clock, CheckCircle, XCircle } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { Package, ShoppingCart, Sparkles } from 'lucide-react';
 import Link from 'next/link';
-import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { GlassCard } from '@/components/ui/glass-card';
-import { useCartStore } from '@/store/cartStore';
+
+interface Order {
+  id: string;
+  date: Date;
+  status: 'pending' | 'processing' | 'completed' | 'cancelled';
+  total: number;
+  items: number;
+}
 
 export default function OrdersPage() {
-  const { items, open } = useCartStore();
-  const itemCount = items.reduce((acc, item) => acc + item.quantity, 0);
+  const [orders, setOrders] = useState<Order[]>([]);
+
+  useEffect(() => {
+    // 从localStorage获取订单历史（未来可以从API获取）
+    const savedOrders = localStorage.getItem('pivota-order-history');
+    if (savedOrders) {
+      try {
+        const parsed = JSON.parse(savedOrders);
+        setOrders(parsed);
+      } catch (e) {
+        console.error('Failed to parse orders:', e);
+      }
+    }
+  }, []);
+
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case 'completed':
+        return <CheckCircle className="h-5 w-5 text-success" />;
+      case 'processing':
+        return <Clock className="h-5 w-5 text-warning" />;
+      case 'cancelled':
+        return <XCircle className="h-5 w-5 text-destructive" />;
+      default:
+        return <Package className="h-5 w-5 text-muted-foreground" />;
+    }
+  };
+
+  const getStatusBadge = (status: string) => {
+    const variants: Record<string, 'default' | 'secondary' | 'destructive'> = {
+      completed: 'default',
+      processing: 'secondary',
+      cancelled: 'destructive',
+      pending: 'secondary',
+    };
+    return variants[status] || 'secondary';
+  };
 
   return (
     <div className="min-h-screen bg-gradient-mesh">
-      {/* Animated background */}
-      <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-gradient-to-r from-indigo-500/20 via-purple-500/20 to-cyan-400/10 blur-3xl -z-10 animate-pulse" />
-
-      {/* Header */}
-      <header className="sticky top-0 z-40 bg-card/70 backdrop-blur-xl border-b border-border">
-        <div className="max-w-7xl mx-auto px-4 lg:px-8 h-16 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2 group">
-            <Sparkles className="h-6 w-6 text-cyan-400 group-hover:rotate-12 transition-transform" />
-            <span className="text-xl font-semibold gradient-text">Pivota</span>
-          </Link>
-
-          <div className="flex items-center gap-3">
-            <button
-              onClick={open}
-              className="relative h-10 w-10 rounded-full flex items-center justify-center bg-secondary hover:bg-secondary/80 transition-colors"
-            >
-              <ShoppingCart className="h-5 w-5 text-muted-foreground" />
-              {itemCount > 0 && (
-                <span className="absolute -top-1 -right-1 h-5 w-5 rounded-full bg-gradient-to-r from-indigo-500 to-purple-500 flex items-center justify-center text-xs font-semibold text-white">
-                  {itemCount}
-                </span>
-              )}
-            </button>
-          </div>
-        </div>
-      </header>
-
-      {/* Main Content */}
-      <main className="max-w-4xl mx-auto px-4 py-8">
+      <div className="max-w-4xl mx-auto px-4 py-8">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
         >
-          <h1 className="text-3xl font-semibold mb-2">My Orders</h1>
-          <p className="text-muted-foreground mb-8">
-            Track and manage your Pivota orders
+          <h1 className="text-3xl font-bold mb-2">My Orders</h1>
+          <p className="text-muted-foreground mb-6">
+            Track and manage your orders
           </p>
 
-          {/* Orders List - Coming Soon */}
-          <GlassCard className="p-8 text-center">
-            <Package className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
-            <h2 className="text-xl font-semibold mb-2">No Orders Yet</h2>
-            <p className="text-muted-foreground mb-6">
-              Start shopping to see your orders here
-            </p>
-            <Link href="/products">
-              <Button variant="gradient">
-                Browse Products
-              </Button>
-            </Link>
-          </GlassCard>
+          {orders.length === 0 ? (
+            <div className="text-center py-16 bg-card/50 backdrop-blur-xl rounded-3xl border border-border">
+              <Package className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
+              <h3 className="text-xl font-semibold mb-2">No orders yet</h3>
+              <p className="text-muted-foreground mb-4">
+                Start shopping to see your orders here
+              </p>
+              <Link href="/products">
+                <button className="px-6 py-3 bg-gradient-to-r from-indigo-500 to-purple-500 text-white rounded-xl hover:shadow-lg transition-all">
+                  Browse Products
+                </button>
+              </Link>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {orders.map((order, index) => (
+                <motion.div
+                  key={order.id}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: index * 0.1 }}
+                  className="bg-card/50 backdrop-blur-xl rounded-2xl border border-border p-6 hover:shadow-glass-hover transition-all"
+                >
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="flex items-center gap-3">
+                      {getStatusIcon(order.status)}
+                      <div>
+                        <h3 className="font-semibold">Order #{order.id.substring(0, 8)}</h3>
+                        <p className="text-sm text-muted-foreground">
+                          {new Date(order.date).toLocaleDateString()}
+                        </p>
+                      </div>
+                    </div>
+                    <Badge variant={getStatusBadge(order.status)}>
+                      {order.status}
+                    </Badge>
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <div className="text-sm text-muted-foreground">
+                      {order.items} item{order.items > 1 ? 's' : ''}
+                    </div>
+                    <div className="text-lg font-bold text-primary">
+                      ${order.total.toFixed(2)}
+                    </div>
+                  </div>
+
+                  <Link href={`/order/track?orderId=${order.id}`}>
+                    <button className="mt-4 w-full py-2 bg-secondary hover:bg-secondary/80 rounded-lg text-sm font-medium transition-colors">
+                      Track Order
+                    </button>
+                  </Link>
+                </motion.div>
+              ))}
+            </div>
+          )}
         </motion.div>
-      </main>
+      </div>
     </div>
   );
 }
-

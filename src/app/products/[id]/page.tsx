@@ -11,7 +11,8 @@ import { Badge } from '@/components/ui/badge';
 import { GlassCard } from '@/components/ui/glass-card';
 import ProductCard from '@/components/product/ProductCard';
 import { useCartStore } from '@/store/cartStore';
-import { mockProducts, DEFAULT_MERCHANT_ID } from '@/lib/mockData';
+import { mockProducts } from '@/lib/mockData';
+import { DEFAULT_MERCHANT_ID, getProductDetail } from '@/lib/api';
 import { toast } from 'sonner';
 
 interface Props {
