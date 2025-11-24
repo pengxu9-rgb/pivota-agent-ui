@@ -6,9 +6,30 @@ const API_BASE =
   process.env.NEXT_PUBLIC_API_URL ||
   'https://pivota-agent-production.up.railway.app';
 
-// Merchant is now provided via env so it matches the API key permissions.
-export const DEFAULT_MERCHANT_ID =
-  process.env.NEXT_PUBLIC_MERCHANT_ID || '';
+// Merchant is provided via env or can be overridden at runtime (e.g., via query param / localStorage).
+export function getMerchantId(overrideId?: string): string {
+  if (overrideId) return overrideId;
+
+  // Prefer runtime override stored in the browser (set via query param or user input)
+  if (typeof window !== 'undefined') {
+    const stored = window.localStorage.getItem('pivota_merchant_id');
+    if (stored) return stored;
+  }
+
+  // Fallback to env
+  const envId = process.env.NEXT_PUBLIC_MERCHANT_ID || '';
+  if (envId) return envId;
+
+  throw new Error(
+    'Missing merchant configuration (NEXT_PUBLIC_MERCHANT_ID or runtime override)',
+  );
+}
+
+export function setMerchantId(merchantId: string) {
+  if (typeof window !== 'undefined' && merchantId) {
+    window.localStorage.setItem('pivota_merchant_id', merchantId);
+  }
+}
 
 // Product shape from real API
 interface RealAPIProduct {
@@ -122,18 +143,17 @@ async function callGateway(body: InvokeBody) {
 // Chat entrypoint: search products by free text query with graceful fallback
 export async function sendMessage(
   message: string,
+  merchantIdOverride?: string,
 ): Promise<ProductResponse[]> {
-  if (!DEFAULT_MERCHANT_ID) {
-    throw new Error('Missing merchant configuration (NEXT_PUBLIC_MERCHANT_ID)');
-  }
-
+  const merchantId = getMerchantId(merchantIdOverride);
   const query = message.trim();
 
   const data = await callGateway({
     operation: 'find_products',
     payload: {
       search: {
-        merchant_id: DEFAULT_MERCHANT_ID,
+        merchant_id: merchantId,
+        in_stock_only: false, // allow showing results even if inventory is zero for demo
         query,
         limit: 10,
       },
@@ -181,16 +201,16 @@ export async function sendMessage(
 // Generic product list (Hot Deals, history, etc.)
 export async function getAllProducts(
   limit = 20,
+  merchantIdOverride?: string,
 ): Promise<ProductResponse[]> {
-  if (!DEFAULT_MERCHANT_ID) {
-    throw new Error('Missing merchant configuration (NEXT_PUBLIC_MERCHANT_ID)');
-  }
+  const merchantId = getMerchantId(merchantIdOverride);
 
   const data = await callGateway({
     operation: 'find_products',
     payload: {
       search: {
-        merchant_id: DEFAULT_MERCHANT_ID,
+        merchant_id: merchantId,
+        in_stock_only: false,
         query: '',
         limit,
       },
@@ -206,17 +226,15 @@ export async function getAllProducts(
 // Single product detail
 export async function getProductDetail(
   productId: string,
+  merchantIdOverride?: string,
 ): Promise<ProductResponse | null> {
+  const merchantId = getMerchantId(merchantIdOverride);
   try {
-    if (!DEFAULT_MERCHANT_ID) {
-      throw new Error('Missing merchant configuration (NEXT_PUBLIC_MERCHANT_ID)');
-    }
-
     const data = await callGateway({
       operation: 'get_product_detail',
       payload: {
         product: {
-          merchant_id: DEFAULT_MERCHANT_ID,
+          merchant_id: merchantId,
           product_id: productId,
         },
       },
