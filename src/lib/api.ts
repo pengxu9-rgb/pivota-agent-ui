@@ -157,6 +157,11 @@ export async function sendMessage(
       });
       if (fallback.length) {
         products = fallback;
+      } else if (all.length) {
+        // As a last resort, if we still don't have any matches but the catalog
+        // itself has products, return a generic set of recommendations instead
+        // of an empty list so the user always sees something useful.
+        products = all;
       }
     } catch (err) {
       // eslint-disable-next-line no-console
@@ -289,4 +294,3 @@ export async function getOrderStatus(orderId: string) {
 
   return data;
 }
-
