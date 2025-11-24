@@ -1,9 +1,10 @@
 // Centralized API helpers for calling the Pivota Agent Gateway
 // All UI components should import functions from here instead of using fetch directly.
 
+// Point to the public Agent Gateway by default; override via NEXT_PUBLIC_API_URL if needed.
 const API_BASE =
   process.env.NEXT_PUBLIC_API_URL ||
-  'https://web-production-fedb.up.railway.app';
+  'https://pivota-agent-production.up.railway.app';
 
 // Default test merchant id (provided by Pivota Infra)
 export const DEFAULT_MERCHANT_ID = 'merch_208139f7600dbf42';
