@@ -269,6 +269,7 @@ export async function processPayment(paymentData: {
   payment_method: {
     type: string;
   };
+  return_url?: string;
 }) {
   const data = await callGateway({
     operation: 'submit_payment',
@@ -278,6 +279,7 @@ export async function processPayment(paymentData: {
         expected_amount: paymentData.total_amount,
         currency: paymentData.currency,
         payment_method_hint: paymentData.payment_method.type,
+        ...(paymentData.return_url && { return_url: paymentData.return_url }),
       },
     },
   });

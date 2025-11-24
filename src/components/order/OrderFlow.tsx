@@ -96,15 +96,28 @@ export default function OrderFlow({ items, onComplete, onCancel }: OrderFlowProp
         currency: 'USD',
         payment_method: {
           type: 'card'
-        }
+        },
+        return_url: typeof window !== 'undefined' ? `${window.location.origin}/orders/${orderId}` : undefined
       })
-      
-      setPaymentId(paymentResponse.payment_id || '')
-      setStep('confirm')
-      toast.success('Payment processed successfully!')
-      
-      if (onComplete) {
-        setTimeout(() => onComplete(orderId), 2000)
+
+      const redirectUrl =
+        paymentResponse.redirect_url ||
+        paymentResponse.payment?.redirect_url ||
+        paymentResponse.next_action?.redirect_url
+
+      if (redirectUrl) {
+        toast.message('Continue to payment', {
+          description: 'We will open a secure payment page to finish the charge.',
+        })
+        window.open(redirectUrl, '_blank')
+      } else {
+        setPaymentId(paymentResponse.payment_id || '')
+        setStep('confirm')
+        toast.success('Payment processed successfully!')
+        
+        if (onComplete) {
+          setTimeout(() => onComplete(orderId), 2000)
+        }
       }
     } catch (error: any) {
       console.error('Payment error:', error)
