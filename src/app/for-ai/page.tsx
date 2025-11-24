@@ -61,10 +61,10 @@ export default function ForAiPage() {
                 </code>
                 <p className="text-slate-600">
                   Returns a list of products matching the search query. The response is optimized for LLM context windows, 
-                  providing clear product names, pricing, availability, and tracked "Buy Now" links.
+                  providing clear product names, pricing, availability, and tracked &quot;Buy Now&quot; links.
                 </p>
                 <div className="mt-4 p-3 bg-blue-50 text-blue-800 text-sm rounded-lg">
-                  <strong>Note:</strong> This endpoint includes a "why_recommended" field that helps LLMs explain 
+                  <strong>Note:</strong> This endpoint includes a &quot;why_recommended&quot; field that helps LLMs explain 
                   selection rationale to users.
                 </div>
               </div>
@@ -108,4 +108,3 @@ https://agent.pivota.cc/.well-known/ai-plugin.json
     </div>
   );
 }
-
