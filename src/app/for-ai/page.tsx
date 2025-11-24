@@ -1,194 +1,111 @@
-import { Metadata } from 'next'
-import Link from 'next/link'
-import { Code, Bot, Zap, Shield } from 'lucide-react'
+import Link from 'next/link';
+import { Package, Code, Sparkles, ArrowRight } from 'lucide-react';
 
-export const metadata: Metadata = {
-  title: 'AI Integration Guide - Pivota Shopping AI',
-  description: 'Learn how AI agents can integrate with Pivota to provide shopping capabilities to users. RESTful API, OpenAPI schema, and comprehensive documentation.',
-  keywords: 'AI integration, shopping API, LLM tools, AI agents, function calling, OpenAPI',
-}
-
-export default function ForAIPage() {
+export default function ForAiPage() {
   return (
-    <main className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
-      <header className="bg-white shadow-sm border-b">
-        <div className="max-w-7xl mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="w-10 h-10 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center">
-                <span className="text-white font-bold text-lg">P</span>
+    <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white font-sans text-slate-900">
+      <div className="max-w-4xl mx-auto px-4 py-16">
+        <header className="mb-12 text-center">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-100 text-blue-700 text-sm font-medium mb-6">
+            <Sparkles className="w-4 h-4" />
+            <span>Developer & AI Agent Documentation</span>
+          </div>
+          <h1 className="text-4xl font-bold tracking-tight mb-4">
+            Pivota Shopping Agent Protocol
+          </h1>
+          <p className="text-lg text-slate-600 max-w-2xl mx-auto">
+            Standardized interface for LLMs (ChatGPT, Claude, Perplexity) to discover,
+            recommend, and facilitate purchases from the Pivota merchant network.
+          </p>
+        </header>
+
+        <div className="space-y-12">
+          <section className="space-y-4">
+            <h2 className="text-2xl font-semibold flex items-center gap-2">
+              <Code className="w-6 h-6 text-blue-600" />
+              Integration Endpoints
+            </h2>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="p-6 rounded-2xl border bg-white shadow-sm">
+                <h3 className="font-semibold mb-2 text-blue-600">AI Manifest</h3>
+                <code className="block bg-slate-50 p-3 rounded text-sm text-slate-600 mb-2">
+                  GET /.well-known/ai-plugin.json
+                </code>
+                <p className="text-sm text-slate-500">
+                  Plugin configuration for ChatGPT and compatible agents. Defines authentication, api type, and description.
+                </p>
               </div>
-              <h1 className="text-2xl font-bold text-gray-800">For AI Agents</h1>
+              <div className="p-6 rounded-2xl border bg-white shadow-sm">
+                <h3 className="font-semibold mb-2 text-green-600">OpenAPI Spec</h3>
+                <code className="block bg-slate-50 p-3 rounded text-sm text-slate-600 mb-2">
+                  GET /openapi.json
+                </code>
+                <p className="text-sm text-slate-500">
+                  Complete API definition including schema for catalog search and product details.
+                </p>
+              </div>
             </div>
-            <nav className="flex gap-4">
-              <Link href="/" className="text-gray-600 hover:text-gray-900">Home</Link>
-              <Link href="/products" className="text-gray-600 hover:text-gray-900">Products</Link>
-            </nav>
-          </div>
-        </div>
-      </header>
+          </section>
 
-      <div className="max-w-4xl mx-auto px-4 py-12">
-        <div className="text-center mb-12">
-          <Bot className="w-16 h-16 text-blue-600 mx-auto mb-4" />
-          <h2 className="text-4xl font-bold text-gray-900 mb-4">
-            How AI Agents Can Use Pivota
-          </h2>
-          <p className="text-xl text-gray-600">
-            Integrate shopping capabilities into your AI agent with our RESTful API
-          </p>
-        </div>
-
-        {/* Key Features */}
-        <div className="grid md:grid-cols-2 gap-6 mb-12">
-          <div className="bg-white rounded-lg p-6 shadow-md">
-            <Zap className="w-8 h-8 text-blue-600 mb-3" />
-            <h3 className="text-xl font-semibold mb-2">Easy Integration</h3>
-            <p className="text-gray-600">
-              Simple RESTful API with comprehensive OpenAPI 3.1 schema. Function calling ready for ChatGPT, Claude, and Gemini.
-            </p>
-          </div>
-          
-          <div className="bg-white rounded-lg p-6 shadow-md">
-            <Shield className="w-8 h-8 text-blue-600 mb-3" />
-            <h3 className="text-xl font-semibold mb-2">Secure & Reliable</h3>
-            <p className="text-gray-600">
-              Production-ready with HTTPS, proper error handling, and comprehensive logging.
-            </p>
-          </div>
-        </div>
-
-        {/* API Endpoints */}
-        <div className="bg-white rounded-lg p-8 shadow-lg mb-8">
-          <h3 className="text-2xl font-bold mb-6">API Endpoints</h3>
-          
-          <div className="space-y-6">
-            <div>
-              <h4 className="font-mono text-lg mb-2 text-blue-600">GET /api/catalog</h4>
-              <p className="text-gray-600 mb-2">Get all products in structured JSON format</p>
-              <code className="block bg-gray-100 p-3 rounded text-sm overflow-x-auto">
-                curl https://agent.pivota.cc/api/catalog
-              </code>
-            </div>
+          <section className="space-y-6">
+            <h2 className="text-2xl font-semibold flex items-center gap-2">
+              <Package className="w-6 h-6 text-purple-600" />
+              Core Capabilities
+            </h2>
             
-            <div>
-              <h4 className="font-mono text-lg mb-2 text-blue-600">GET /api/catalog/[id]</h4>
-              <p className="text-gray-600 mb-2">Get detailed product information</p>
-              <code className="block bg-gray-100 p-3 rounded text-sm overflow-x-auto">
-                curl https://agent.pivota.cc/api/catalog/BOTTLE_001
-              </code>
+            <div className="space-y-6">
+              <div className="p-6 rounded-2xl bg-slate-50 border border-slate-100">
+                <h3 className="text-lg font-semibold mb-2">1. Product Discovery</h3>
+                <code className="block bg-white p-3 rounded border border-slate-200 text-sm mb-3">
+                  GET /api/catalog?q=keyword&limit=10
+                </code>
+                <p className="text-slate-600">
+                  Returns a list of products matching the search query. The response is optimized for LLM context windows, 
+                  providing clear product names, pricing, availability, and tracked "Buy Now" links.
+                </p>
+                <div className="mt-4 p-3 bg-blue-50 text-blue-800 text-sm rounded-lg">
+                  <strong>Note:</strong> This endpoint includes a "why_recommended" field that helps LLMs explain 
+                  selection rationale to users.
+                </div>
+              </div>
+
+              <div className="p-6 rounded-2xl bg-slate-50 border border-slate-100">
+                <h3 className="text-lg font-semibold mb-2">2. Product Detail</h3>
+                <code className="block bg-white p-3 rounded border border-slate-200 text-sm mb-3">
+                  GET /api/catalog/:id
+                </code>
+                <p className="text-slate-600">
+                  Fetches detailed information for a specific product, including full description and attributes.
+                  Use this when a user asks for more details about a specific item found in search.
+                </p>
+              </div>
             </div>
-            
-            <div>
-              <h4 className="font-mono text-lg mb-2 text-blue-600">POST /agent/shop/v1/invoke</h4>
-              <p className="text-gray-600 mb-2">Main shopping operations endpoint</p>
-              <code className="block bg-gray-100 p-3 rounded text-sm overflow-x-auto">
-                {`curl -X POST https://pivota-agent-production.up.railway.app/agent/shop/v1/invoke \\
-  -H "Content-Type: application/json" \\
-  -d '{"operation":"find_products","payload":{"search":{"query":"water bottle"}}}'`}
-              </code>
+          </section>
+
+          <section className="space-y-4">
+            <h2 className="text-2xl font-semibold">How to Test</h2>
+            <div className="prose text-slate-600">
+              <p>
+                You can test the integration by adding the manifest URL to your Custom GPT or agent configuration:
+              </p>
+              <pre className="bg-slate-900 text-slate-50 p-4 rounded-lg overflow-x-auto">
+https://agent.pivota.cc/.well-known/ai-plugin.json
+              </pre>
+              <p className="mt-4">
+                Or visit the catalog endpoint directly to see the JSON structure:
+              </p>
+              <Link 
+                href="/api/catalog?q=water" 
+                className="inline-flex items-center gap-1 text-blue-600 hover:underline font-medium"
+                target="_blank"
+              >
+                Test Search API <ArrowRight className="w-4 h-4" />
+              </Link>
             </div>
-          </div>
-        </div>
-
-        {/* Operations */}
-        <div className="bg-white rounded-lg p-8 shadow-lg mb-8">
-          <h3 className="text-2xl font-bold mb-6">Supported Operations</h3>
-          
-          <ul className="space-y-4">
-            <li className="flex gap-3">
-              <span className="font-mono text-blue-600 font-semibold">find_products</span>
-              <span className="text-gray-600">Search for products by query, category, or price range</span>
-            </li>
-            <li className="flex gap-3">
-              <span className="font-mono text-blue-600 font-semibold">get_product_detail</span>
-              <span className="text-gray-600">Get detailed information about a specific product</span>
-            </li>
-            <li className="flex gap-3">
-              <span className="font-mono text-blue-600 font-semibold">create_order</span>
-              <span className="text-gray-600">Create a shopping order with shipping information</span>
-            </li>
-            <li className="flex gap-3">
-              <span className="font-mono text-blue-600 font-semibold">submit_payment</span>
-              <span className="text-gray-600">Process payment for an order</span>
-            </li>
-            <li className="flex gap-3">
-              <span className="font-mono text-blue-600 font-semibold">get_order_status</span>
-              <span className="text-gray-600">Track order status and shipping updates</span>
-            </li>
-            <li className="flex gap-3">
-              <span className="font-mono text-blue-600 font-semibold">request_after_sales</span>
-              <span className="text-gray-600">Handle returns and refunds</span>
-            </li>
-          </ul>
-        </div>
-
-        {/* Resources */}
-        <div className="bg-white rounded-lg p-8 shadow-lg mb-8">
-          <h3 className="text-2xl font-bold mb-6">Resources</h3>
-          
-          <div className="space-y-3">
-            <a 
-              href="https://github.com/pengxu9-rgb/PIVOTA-Agent/blob/main/chatgpt-gpt-openapi-schema.json"
-              className="flex items-center gap-2 text-blue-600 hover:underline"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              <Code className="w-4 h-4" />
-              OpenAPI 3.1 Schema
-            </a>
-            <a 
-              href="https://github.com/pengxu9-rgb/PIVOTA-Agent"
-              className="flex items-center gap-2 text-blue-600 hover:underline"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              <Code className="w-4 h-4" />
-              GitHub Repository
-            </a>
-            <Link 
-              href="/api/catalog"
-              className="flex items-center gap-2 text-blue-600 hover:underline"
-            >
-              <Code className="w-4 h-4" />
-              Product Catalog API
-            </Link>
-            <Link 
-              href="/sitemap.xml"
-              className="flex items-center gap-2 text-blue-600 hover:underline"
-            >
-              <Code className="w-4 h-4" />
-              Sitemap
-            </Link>
-          </div>
-        </div>
-
-        {/* Example AI Agent */}
-        <div className="bg-gradient-to-r from-blue-600 to-indigo-600 rounded-lg p-8 text-white">
-          <h3 className="text-2xl font-bold mb-4">Try Our ChatGPT Shopping Assistant</h3>
-          <p className="mb-6">
-            See how AI-powered shopping works in action. Ask our assistant to find products, compare options, and complete purchases.
-          </p>
-          <a
-            href="https://chatgpt.com/g/g-69201604c1308191b2fc5f23d57e9874-pivota-shopping-assistant"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-block px-6 py-3 bg-white text-blue-600 font-medium rounded-lg hover:bg-gray-100 transition-colors"
-          >
-            Chat with Pivota Assistant
-          </a>
-        </div>
-
-        {/* Contact */}
-        <div className="text-center mt-12 text-gray-600">
-          <p>Questions or want to integrate Pivota into your AI agent?</p>
-          <p className="mt-2">
-            <a href="https://github.com/pengxu9-rgb/PIVOTA-Agent/issues" className="text-blue-600 hover:underline" target="_blank" rel="noopener noreferrer">
-              Open an issue on GitHub
-            </a>
-          </p>
+          </section>
         </div>
       </div>
-    </main>
-  )
+    </div>
+  );
 }
+

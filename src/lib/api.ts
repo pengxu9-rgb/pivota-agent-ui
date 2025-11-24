@@ -117,25 +117,54 @@ async function callGateway(body: InvokeBody) {
 
 // -------- Product search helpers --------
 
-// Chat entrypoint: search products by free text query
+// Chat entrypoint: search products by free text query with graceful fallback
 export async function sendMessage(
   message: string,
 ): Promise<ProductResponse[]> {
+  const query = message.trim();
+
   const data = await callGateway({
     operation: 'find_products',
     payload: {
       search: {
         merchant_id: DEFAULT_MERCHANT_ID,
-        query: message,
+        query,
         limit: 10,
       },
     },
   });
 
-  const products = (data as any).products || [];
-  return products.map((p: RealAPIProduct | ProductResponse) =>
-    normalizeProduct(p),
+  let products = ((data as any).products || []).map(
+    (p: RealAPIProduct | ProductResponse) => normalizeProduct(p),
   );
+
+  // Fallback: if gateway search returns no products for a non-empty query,
+  // run a broader local filter over the general catalog so common queries
+  // like "tee" can still surface relevant items.
+  if (!products.length && query) {
+    try {
+      const all = await getAllProducts(50);
+      const term = query.toLowerCase();
+      const fallback = all.filter((p) => {
+        const title = (p.title || '').toLowerCase();
+        const desc = (p.description || '').toLowerCase();
+        const category = (p.category || '').toLowerCase();
+        return (
+          title.includes(term) ||
+          desc.includes(term) ||
+          category.includes(term)
+        );
+      });
+      if (fallback.length) {
+        products = fallback;
+      }
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('Fallback product search error:', err);
+    }
+  }
+
+  return products;
 }
 
 // Generic product list (Hot Deals, history, etc.)
