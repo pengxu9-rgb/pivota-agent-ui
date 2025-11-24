@@ -6,8 +6,9 @@ const API_BASE =
   process.env.NEXT_PUBLIC_API_URL ||
   'https://pivota-agent-production.up.railway.app';
 
-// Default test merchant id (provided by Pivota Infra)
-export const DEFAULT_MERCHANT_ID = 'merch_208139f7600dbf42';
+// Merchant is now provided via env so it matches the API key permissions.
+export const DEFAULT_MERCHANT_ID =
+  process.env.NEXT_PUBLIC_MERCHANT_ID || '';
 
 // Product shape from real API
 interface RealAPIProduct {
@@ -122,6 +123,10 @@ async function callGateway(body: InvokeBody) {
 export async function sendMessage(
   message: string,
 ): Promise<ProductResponse[]> {
+  if (!DEFAULT_MERCHANT_ID) {
+    throw new Error('Missing merchant configuration (NEXT_PUBLIC_MERCHANT_ID)');
+  }
+
   const query = message.trim();
 
   const data = await callGateway({
@@ -177,6 +182,10 @@ export async function sendMessage(
 export async function getAllProducts(
   limit = 20,
 ): Promise<ProductResponse[]> {
+  if (!DEFAULT_MERCHANT_ID) {
+    throw new Error('Missing merchant configuration (NEXT_PUBLIC_MERCHANT_ID)');
+  }
+
   const data = await callGateway({
     operation: 'find_products',
     payload: {
@@ -199,6 +208,10 @@ export async function getProductDetail(
   productId: string,
 ): Promise<ProductResponse | null> {
   try {
+    if (!DEFAULT_MERCHANT_ID) {
+      throw new Error('Missing merchant configuration (NEXT_PUBLIC_MERCHANT_ID)');
+    }
+
     const data = await callGateway({
       operation: 'get_product_detail',
       payload: {
