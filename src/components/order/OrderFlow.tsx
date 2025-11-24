@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { ShoppingCart, CreditCard, Check, ChevronRight } from 'lucide-react'
 import Image from 'next/image'
-import { createOrder, processPayment, DEFAULT_MERCHANT_ID } from '@/lib/api'
+import { createOrder, processPayment, getMerchantId } from '@/lib/api'
 import { toast } from 'sonner'
 
 interface OrderItem {
@@ -60,14 +60,16 @@ export default function OrderFlow({ items, onComplete, onCancel }: OrderFlowProp
     setIsProcessing(true)
     
     try {
+      const merchantId = getMerchantId()
+
       // Step 1: Create order if not already created
       let orderId = createdOrderId
       if (!orderId) {
         const orderResponse = await createOrder({
-          merchant_id: DEFAULT_MERCHANT_ID,
+          merchant_id: merchantId,
           customer_email: shipping.email,
           items: items.map(item => ({
-            merchant_id: DEFAULT_MERCHANT_ID,
+            merchant_id: merchantId,
             product_id: item.product_id,
             product_title: item.title,
             quantity: item.quantity,
