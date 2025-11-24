@@ -2,7 +2,16 @@
 
 import { useState, useEffect, use } from 'react';
 import { motion } from 'framer-motion';
-import { Star, Truck, RotateCcw, Shield, Minus, Plus, ShoppingCart, Sparkles } from 'lucide-react';
+import {
+  Star,
+  Truck,
+  RotateCcw,
+  Shield,
+  Minus,
+  Plus,
+  ShoppingCart,
+  Sparkles,
+} from 'lucide-react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { notFound } from 'next/navigation';
@@ -23,7 +32,7 @@ export default function ProductDetailPage({ params }: Props) {
   const [relatedProducts, setRelatedProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [quantity, setQuantity] = useState(1);
-  
+
   const { addItem, items, open } = useCartStore();
   const itemCount = items.reduce((acc, item) => acc + item.quantity, 0);
 
@@ -35,12 +44,16 @@ export default function ProductDetailPage({ params }: Props) {
           notFound();
         }
         setProduct(data);
-        
+
         // Save to browse history with full product data
         try {
-          const history = JSON.parse(localStorage.getItem('browse_history') || '[]');
+          const history = JSON.parse(
+            localStorage.getItem('browse_history') || '[]',
+          );
           // Remove existing entry if present
-          const filtered = history.filter((item: any) => item.product_id !== id);
+          const filtered = history.filter(
+            (item: any) => item.product_id !== id,
+          );
           // Add current product to the beginning
           const newHistory = [
             {
@@ -60,7 +73,7 @@ export default function ProductDetailPage({ params }: Props) {
 
         // Load related products
         const all = await getAllProducts(6);
-        setRelatedProducts(all.filter(p => p.product_id !== id));
+        setRelatedProducts(all.filter((p) => p.product_id !== id));
       } catch (error) {
         console.error('Failed to load product:', error);
       } finally {
@@ -82,6 +95,8 @@ export default function ProductDetailPage({ params }: Props) {
   }
 
   if (!product) return null;
+
+  const productUrl = `https://agent.pivota.cc/products/${product.product_id}`;
 
   const cleanDescription = (description: string) =>
     description
@@ -116,8 +131,32 @@ export default function ProductDetailPage({ params }: Props) {
     open();
   };
 
+  const productJsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'Product',
+    name: product.title,
+    description: cleanDescription(product.description || ''),
+    image: product.image_url || '/placeholder.svg',
+    sku: product.product_id,
+    url: productUrl,
+    offers: {
+      '@type': 'Offer',
+      price: product.price,
+      priceCurrency: product.currency || 'USD',
+      availability: product.in_stock
+        ? 'https://schema.org/InStock'
+        : 'https://schema.org/OutOfStock',
+      url: productUrl,
+    },
+  };
+
   return (
     <div className="min-h-screen bg-gradient-mesh">
+      <script
+        type="application/ld+json"
+        suppressHydrationWarning
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(productJsonLd) }}
+      />
       {/* Animated background */}
       <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-gradient-to-r from-indigo-500/20 via-purple-500/20 to-cyan-400/10 blur-3xl -z-10 animate-pulse" />
 
@@ -288,3 +327,4 @@ export default function ProductDetailPage({ params }: Props) {
     </div>
   );
 }
+
