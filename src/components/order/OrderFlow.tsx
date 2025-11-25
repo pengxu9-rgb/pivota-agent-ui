@@ -5,6 +5,7 @@ import { ShoppingCart, CreditCard, Check, ChevronRight } from 'lucide-react'
 import Image from 'next/image'
 import { createOrder, processPayment, getMerchantId } from '@/lib/api'
 import { toast } from 'sonner'
+import { useRouter } from 'next/navigation'
 
 interface OrderItem {
   product_id: string
@@ -33,6 +34,7 @@ interface OrderFlowProps {
 }
 
 export default function OrderFlow({ items, onComplete, onCancel }: OrderFlowProps) {
+  const router = useRouter()
   const [step, setStep] = useState<'review' | 'shipping' | 'payment' | 'confirm'>('review')
   const [shipping, setShipping] = useState<ShippingInfo>({
     name: '',
@@ -116,9 +118,12 @@ export default function OrderFlow({ items, onComplete, onCancel }: OrderFlowProp
         setPaymentId(paymentResponse.payment_id || '')
         setStep('confirm')
         toast.success('Payment processed successfully!')
-        
+
+        // Navigate to order confirmation/detail to avoid resetting to review
+        router.push(`/orders/${orderId}?paid=1`)
+
         if (onComplete) {
-          setTimeout(() => onComplete(orderId), 2000)
+          onComplete(orderId)
         }
       }
     } catch (error: any) {
