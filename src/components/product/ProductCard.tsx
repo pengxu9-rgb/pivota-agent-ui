@@ -32,6 +32,10 @@ export default function ProductCard({
 }: ProductCardProps) {
   const { addItem } = useCartStore();
 
+  const href = merchant_id
+    ? `/products/${product_id}?merchant_id=${merchant_id}`
+    : `/products/${product_id}`;
+
   const handleAddToCart = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -60,7 +64,7 @@ export default function ProductCard({
   };
 
   return (
-    <Link href={`/products/${product_id}`}>
+    <Link href={href}>
       <GlassCard className="p-0 overflow-hidden group hover:shadow-glass-hover transition-all duration-300 hover:scale-[1.02]">
         <div className="relative aspect-[3/4] overflow-hidden bg-muted/30">
           <Image

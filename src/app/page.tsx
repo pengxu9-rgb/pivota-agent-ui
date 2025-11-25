@@ -191,7 +191,14 @@ export default function HomePage() {
                           className="group relative bg-card backdrop-blur-xl rounded-2xl overflow-hidden border border-border shadow-sm hover:shadow-md hover:scale-[1.02] transition-all duration-300"
                         >
                           {/* Image */}
-                          <Link href={`/products/${product.product_id}`} className="block">
+                          <Link
+                            href={
+                              product.merchant_id
+                                ? `/products/${product.product_id}?merchant_id=${product.merchant_id}`
+                                : `/products/${product.product_id}`
+                            }
+                            className="block"
+                          >
                             <div className="relative w-full aspect-square overflow-hidden bg-muted/30">
                               <Image
                                 src={product.image_url || '/placeholder.svg'}

@@ -21,6 +21,7 @@ import ProductCard from '@/components/product/ProductCard';
 import { useCartStore } from '@/store/cartStore';
 import { getProductDetail, getAllProducts } from '@/lib/api';
 import { toast } from 'sonner';
+import { useSearchParams } from 'next/navigation';
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -28,6 +29,8 @@ interface Props {
 
 export default function ProductDetailPage({ params }: Props) {
   const { id } = use(params);
+  const searchParams = useSearchParams();
+  const merchantIdParam = searchParams.get('merchant_id') || undefined;
   const [product, setProduct] = useState<any>(null);
   const [relatedProducts, setRelatedProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -39,7 +42,7 @@ export default function ProductDetailPage({ params }: Props) {
   useEffect(() => {
     const loadProduct = async () => {
       try {
-        const data = await getProductDetail(id);
+        const data = await getProductDetail(id, merchantIdParam);
         if (!data) {
           notFound();
         }
@@ -58,6 +61,7 @@ export default function ProductDetailPage({ params }: Props) {
           const newHistory = [
             {
               product_id: data.product_id,
+              merchant_id: data.merchant_id,
               title: data.title,
               price: data.price,
               image: data.image_url || '/placeholder.svg',
@@ -327,4 +331,3 @@ export default function ProductDetailPage({ params }: Props) {
     </div>
   );
 }
-
