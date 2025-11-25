@@ -119,10 +119,13 @@ interface InvokeBody {
 }
 
 async function callGateway(body: InvokeBody) {
+  const agentApiKey = process.env.NEXT_PUBLIC_AGENT_API_KEY;
+
   const res = await fetch(`${API_BASE}/agent/shop/v1/invoke`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      ...(agentApiKey ? { 'X-Agent-API-Key': agentApiKey } : {}),
     },
     body: JSON.stringify(body),
   });
