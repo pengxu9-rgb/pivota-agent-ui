@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { use, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { CheckCircle2, Loader2, AlertCircle, Package, Truck, Clock } from 'lucide-react'
@@ -16,8 +16,8 @@ interface OrderDetailResponse {
   permissions?: { can_pay: boolean; can_cancel: boolean; can_reorder: boolean }
 }
 
-export default function OrderDetailPage({ params }: { params: { id: string } }) {
-  const { id } = params
+export default function OrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params)
   const router = useRouter()
   const { clear } = useAuthStore()
   const [data, setData] = useState<OrderDetailResponse | null>(null)
