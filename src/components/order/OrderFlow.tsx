@@ -6,6 +6,8 @@ import Image from 'next/image'
 import { createOrder, processPayment, getMerchantId } from '@/lib/api'
 import { toast } from 'sonner'
 import { useRouter } from 'next/navigation'
+import { loadStripe } from '@stripe/stripe-js'
+import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js'
 
 interface OrderItem {
   product_id: string
@@ -34,8 +36,13 @@ interface OrderFlowProps {
   onCancel?: () => void
 }
 
-export default function OrderFlow({ items, onComplete, onCancel }: OrderFlowProps) {
+const publishableKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || ''
+const stripePromise = publishableKey ? loadStripe(publishableKey) : null
+
+function OrderFlowInner({ items, onComplete, onCancel }: OrderFlowProps) {
   const router = useRouter()
+  const stripe = useStripe()
+  const elements = useElements()
   const [step, setStep] = useState<'review' | 'shipping' | 'payment' | 'confirm'>('review')
   const [shipping, setShipping] = useState<ShippingInfo>({
     name: '',
@@ -48,6 +55,7 @@ export default function OrderFlow({ items, onComplete, onCancel }: OrderFlowProp
   const [isProcessing, setIsProcessing] = useState(false)
   const [createdOrderId, setCreatedOrderId] = useState<string>('')
   const [paymentId, setPaymentId] = useState<string>('')
+  const [cardError, setCardError] = useState<string>('')
 
   const subtotal = items.reduce((sum, item) => sum + item.unit_price * item.quantity, 0)
   const shipping_cost = 0 // Free shipping
@@ -61,6 +69,7 @@ export default function OrderFlow({ items, onComplete, onCancel }: OrderFlowProp
 
   const handlePayment = async () => {
     setIsProcessing(true)
+    setCardError('')
     
     try {
       const merchantId = items[0]?.merchant_id || getMerchantId()
@@ -94,7 +103,7 @@ export default function OrderFlow({ items, onComplete, onCancel }: OrderFlowProp
         setCreatedOrderId(orderId)
       }
       
-      // Step 2: Process payment
+      // Step 2: Create/confirm payment intent via gateway
       const paymentResponse = await processPayment({
         order_id: orderId,
         total_amount: total,
@@ -110,19 +119,52 @@ export default function OrderFlow({ items, onComplete, onCancel }: OrderFlowProp
         paymentResponse.payment?.redirect_url ||
         paymentResponse.next_action?.redirect_url
 
+      const clientSecret =
+        paymentResponse.client_secret ||
+        paymentResponse.payment?.client_secret
+
       if (redirectUrl) {
         toast.message('Continue to payment', {
           description: 'We will open a secure payment page to finish the charge.',
         })
         window.open(redirectUrl, '_blank')
+      } else if (clientSecret && stripe && elements) {
+        const cardElement = elements.getElement(CardElement)
+        if (!cardElement) {
+          throw new Error('Please enter card details to pay')
+        }
+
+        const result = await stripe.confirmCardPayment(clientSecret, {
+          payment_method: {
+            card: cardElement,
+          },
+        })
+
+        if (result.error) {
+          setCardError(result.error.message || 'Payment failed')
+          throw new Error(result.error.message || 'Payment failed')
+        }
+
+        const status = result.paymentIntent?.status
+        if (status === 'succeeded' || status === 'processing') {
+          setPaymentId(result.paymentIntent?.id || '')
+          setStep('confirm')
+          toast.success('Payment processed successfully!')
+          router.push(`/orders/${orderId}?paid=1`)
+          if (onComplete) onComplete(orderId)
+        } else if (status === 'requires_action') {
+          // Stripe will handle 3DS in confirmCardPayment; keep user on page
+          toast.message('Additional authentication required', {
+            description: 'Please complete the 3D Secure flow if prompted.',
+          })
+        } else {
+          throw new Error(`Payment status: ${status}`)
+        }
       } else {
         setPaymentId(paymentResponse.payment_id || '')
         setStep('confirm')
         toast.success('Payment processed successfully!')
-
-        // Navigate to order confirmation/detail to avoid resetting to review
         router.push(`/orders/${orderId}?paid=1`)
-
         if (onComplete) {
           onComplete(orderId)
         }
@@ -345,6 +387,16 @@ export default function OrderFlow({ items, onComplete, onCancel }: OrderFlowProp
                 </div>
               </div>
             </div>
+
+            {publishableKey && (
+              <div className="border rounded-lg p-4">
+                <label className="text-sm font-medium text-gray-700">Card Details</label>
+                <div className="mt-2 p-3 border rounded bg-gray-50">
+                  <CardElement options={{ hidePostalCode: true }} />
+                </div>
+                {cardError && <p className="text-sm text-red-600 mt-2">{cardError}</p>}
+              </div>
+            )}
             
             <div className="mt-6">
               <h3 className="font-medium mb-4">Order Summary</h3>
@@ -399,4 +451,16 @@ export default function OrderFlow({ items, onComplete, onCancel }: OrderFlowProp
       )}
     </div>
   )
+}
+
+export default function OrderFlow(props: OrderFlowProps) {
+  // If Stripe publishable key is present, wrap with Elements; otherwise render without card input
+  if (stripePromise) {
+    return (
+      <Elements stripe={stripePromise}>
+        <OrderFlowInner {...props} />
+      </Elements>
+    )
+  }
+  return <OrderFlowInner {...props} />
 }
