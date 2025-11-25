@@ -4,12 +4,9 @@ import Link from 'next/link';
 import { CheckCircle2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
-interface Props {
-  params: { id: string };
-}
-
-export default function OrderConfirmationPage({ params }: Props) {
-  const { id } = params;
+// Accept any params shape to satisfy Next.js PageProps constraint in app router
+export default function OrderConfirmationPage({ params }: { params: any }) {
+  const id = params?.id as string;
 
   return (
     <div className="min-h-screen bg-gradient-mesh flex items-center justify-center px-4">
