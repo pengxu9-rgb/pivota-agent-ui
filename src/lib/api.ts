@@ -237,21 +237,32 @@ export async function getProductDetail(
   productId: string,
   merchantIdOverride?: string,
 ): Promise<ProductResponse | null> {
-  const merchantId = getMerchantId(merchantIdOverride);
-  try {
-    const data = await callGateway({
-      operation: 'get_product_detail',
-      payload: {
-        product: {
-          merchant_id: merchantId,
-          product_id: productId,
-        },
-      },
-    });
+  // Try to resolve merchant_id, fallback to cross-merchant search if missing.
+  let merchantId: string | undefined = merchantIdOverride;
+  if (!merchantId) {
+    try {
+      merchantId = getMerchantId();
+    } catch (e) {
+      // ignore, will fallback
+    }
+  }
 
-    const product = (data as any).product;
-    if (product) {
-      return normalizeProduct(product);
+  try {
+    if (merchantId) {
+      const data = await callGateway({
+        operation: 'get_product_detail',
+        payload: {
+          product: {
+            merchant_id: merchantId,
+            product_id: productId,
+          },
+        },
+      });
+
+      const product = (data as any).product;
+      if (product) {
+        return normalizeProduct(product);
+      }
     }
   } catch (err) {
     // In MOCK mode or when backend returns 404, gracefully fall back to list search
@@ -259,8 +270,38 @@ export async function getProductDetail(
   }
 
   try {
-    const all = await getAllProducts(100);
-    const found = all.find((p) => p.product_id === productId);
+    // Fallback: cross-merchant search to locate the product and its merchant_id
+    const data = await callGateway({
+      operation: 'find_products_multi',
+      payload: {
+        search: {
+          query: '',
+          limit: 200,
+        },
+      },
+    });
+    const products = ((data as any).products || []).map(
+      (p: RealAPIProduct | ProductResponse) => normalizeProduct(p),
+    );
+    const found = products.find((p) => p.product_id === productId);
+    if (found && found.merchant_id) {
+      try {
+        const detail = await callGateway({
+          operation: 'get_product_detail',
+          payload: {
+            product: {
+              merchant_id: found.merchant_id,
+              product_id: productId,
+            },
+          },
+        });
+        const product = (detail as any).product;
+        if (product) return normalizeProduct(product);
+      } catch (e) {
+        console.error('Fallback detail fetch failed:', e);
+        return found;
+      }
+    }
     return found || null;
   } catch (err) {
     console.error('getProductDetail fallback error:', err);
