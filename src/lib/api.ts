@@ -271,21 +271,28 @@ export async function getProductDetail(
 
   try {
     // Fallback: cross-merchant search to locate the product and its merchant_id
-    const data = await callGateway({
-      operation: 'find_products_multi',
-      payload: {
-        search: {
-          query: '',
-          limit: 200,
+    const searchAndFind = async (query: string, limit = 500) => {
+      const data = await callGateway({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query,
+            limit,
+          },
         },
-      },
-    });
-    const products: ProductResponse[] = ((data as any).products || []).map(
-      (p: RealAPIProduct | ProductResponse) => normalizeProduct(p) as ProductResponse,
-    );
-    const found: ProductResponse | undefined = products.find(
-      (p: ProductResponse) => p.product_id === productId,
-    );
+      });
+      const products: ProductResponse[] = ((data as any).products || []).map(
+        (p: RealAPIProduct | ProductResponse) => normalizeProduct(p) as ProductResponse,
+      );
+      return products.find((p: ProductResponse) => p.product_id === productId);
+    };
+
+    // Try broad fetch then targeted by productId
+    let found = await searchAndFind('', 500);
+    if (!found) {
+      found = await searchAndFind(productId, 500);
+    }
+
     if (found && found.merchant_id) {
       try {
         const detail = await callGateway({
