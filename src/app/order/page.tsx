@@ -7,6 +7,7 @@ import { ArrowLeft } from 'lucide-react'
 
 interface OrderItem {
   product_id: string
+  merchant_id?: string
   title: string
   quantity: number
   unit_price: number
@@ -30,6 +31,7 @@ function OrderContent() {
         setOrderItems([
           {
             product_id: 'BOTTLE_001',
+            merchant_id: undefined,
             title: 'Stainless Steel Water Bottle - 24oz',
             quantity: 1,
             unit_price: 24.99,
@@ -42,6 +44,7 @@ function OrderContent() {
       setOrderItems([
         {
           product_id: 'BOTTLE_001',
+          merchant_id: undefined,
           title: 'Stainless Steel Water Bottle - 24oz',
           quantity: 1,
           unit_price: 24.99,

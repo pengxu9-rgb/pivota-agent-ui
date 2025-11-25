@@ -13,15 +13,16 @@ export default function CartDrawer() {
 
   const handleCheckout = () => {
     if (items.length === 0) return;
-    
-    const orderItems = items.map(item => ({
+
+    const orderItems = items.map((item) => ({
       product_id: item.id,
+      merchant_id: item.merchant_id,
       title: item.title,
       quantity: item.quantity,
       unit_price: item.price,
       image_url: item.imageUrl,
     }));
-    
+
     router.push(`/order?items=${encodeURIComponent(JSON.stringify(orderItems))}`);
     close();
   };
