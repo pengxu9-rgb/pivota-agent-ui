@@ -21,7 +21,7 @@ import ProductCard from '@/components/product/ProductCard';
 import { useCartStore } from '@/store/cartStore';
 import { getProductDetail, getAllProducts } from '@/lib/api';
 import { toast } from 'sonner';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -31,6 +31,7 @@ export default function ProductDetailPage({ params }: Props) {
   const { id } = use(params);
   const searchParams = useSearchParams();
   const merchantIdParam = searchParams.get('merchant_id') || undefined;
+  const router = useRouter();
   const [product, setProduct] = useState<any>(null);
   const [relatedProducts, setRelatedProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -132,8 +133,19 @@ export default function ProductDetailPage({ params }: Props) {
   };
 
   const handleBuyNow = () => {
-    handleAddToCart();
-    open();
+    // Build a single-item payload and jump directly to checkout
+    const checkoutItems = [
+      {
+        product_id: product.product_id,
+        merchant_id: product.merchant_id,
+        title: product.title,
+        quantity,
+        unit_price: product.price,
+        image_url: product.image_url || '/placeholder.svg',
+      },
+    ];
+    const encoded = encodeURIComponent(JSON.stringify(checkoutItems));
+    router.push(`/order?items=${encoded}`);
   };
 
   const productJsonLd = {
