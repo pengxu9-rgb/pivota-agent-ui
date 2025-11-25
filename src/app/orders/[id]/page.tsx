@@ -1,5 +1,6 @@
 'use client';
 
+import { use } from 'react';
 import Link from 'next/link';
 import { CheckCircle2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -7,9 +8,9 @@ import { Button } from '@/components/ui/button';
 export default function OrderConfirmationPage({
   params,
 }: {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }) {
-  const { id } = params;
+  const { id } = use(params);
 
   return (
     <div className="min-h-screen bg-gradient-mesh flex items-center justify-center px-4">
