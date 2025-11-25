@@ -1,13 +1,13 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Mail, ArrowRight, ShieldCheck } from 'lucide-react'
 import { accountsLogin, accountsVerify } from '@/lib/api'
 import { useAuthStore } from '@/store/authStore'
 import { toast } from 'sonner'
 
-export default function LoginPage() {
+function LoginContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const redirect = searchParams.get('redirect') || '/my-orders'
@@ -152,5 +152,13 @@ export default function LoginPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+export default function LoginPageWrapper() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-gradient-mesh flex items-center justify-center text-muted-foreground">Loading...</div>}>
+      <LoginContent />
+    </Suspense>
   )
 }
