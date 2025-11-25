@@ -4,11 +4,11 @@ import Link from 'next/link';
 import { CheckCircle2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
-interface Props {
+export default function OrderConfirmationPage({
+  params,
+}: {
   params: { id: string };
-}
-
-export default function OrderConfirmationPage({ params }: Props) {
+}) {
   const { id } = params;
 
   return (
