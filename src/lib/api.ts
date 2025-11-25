@@ -4,7 +4,7 @@
 // Point to the public Agent Gateway by default; override via NEXT_PUBLIC_API_URL if needed.
 const API_BASE =
   process.env.NEXT_PUBLIC_API_URL ||
-  'https://pivota-agent-production.up.railway.app';
+  '/api/gateway'; // default to same-origin proxy to avoid CORS
 
 // Merchant is provided via env or can be overridden at runtime (e.g., via query param / localStorage).
 export function getMerchantId(overrideId?: string): string {
@@ -127,13 +127,10 @@ interface InvokeBody {
 }
 
 async function callGateway(body: InvokeBody) {
-  const agentApiKey = process.env.NEXT_PUBLIC_AGENT_API_KEY;
-
   const res = await fetch(`${API_BASE}/agent/shop/v1/invoke`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      ...(agentApiKey ? { 'X-Agent-API-Key': agentApiKey } : {}),
     },
     body: JSON.stringify(body),
   });
