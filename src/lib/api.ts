@@ -214,16 +214,28 @@ export async function getAllProducts(
   limit = 20,
   merchantIdOverride?: string,
 ): Promise<ProductResponse[]> {
-  const data = await callGateway({
-    operation: 'find_products_multi',
-    payload: {
-      search: {
-        // cross-merchant hot deals
-        in_stock_only: false,
-        query: '',
-        limit,
-      },
+  // If we have a merchant id, use single-merchant search; otherwise fallback to multi.
+  let merchantId: string | undefined = merchantIdOverride;
+  if (!merchantId) {
+    try {
+      merchantId = getMerchantId();
+    } catch (e) {
+      merchantId = undefined;
+    }
+  }
+
+  const searchPayload = {
+    search: {
+      in_stock_only: false,
+      query: '',
+      limit,
+      ...(merchantId ? { merchant_id: merchantId } : {}),
     },
+  };
+
+  const data = await callGateway({
+    operation: merchantId ? 'find_products' : 'find_products_multi',
+    payload: searchPayload as any,
   });
 
   const products = (data as any).products || [];
