@@ -121,6 +121,16 @@ export default function HomePage() {
             </button>
           </div>
           <div className="flex items-center gap-3">
+            <Link href="/my-orders" className="hidden sm:block">
+              <Button variant="secondary" size="sm">
+                My Orders
+              </Button>
+            </Link>
+            <Link href="/login" className="hidden sm:block">
+              <Button variant="outline" size="sm">
+                Login
+              </Button>
+            </Link>
             <Link href="/products">
               <Button variant="ghost" size="icon">
                 <Package className="h-5 w-5 text-muted-foreground" />

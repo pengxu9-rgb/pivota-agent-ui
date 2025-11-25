@@ -3,11 +3,18 @@
 import { useState } from 'react'
 import { ShoppingCart, CreditCard, Check, ChevronRight } from 'lucide-react'
 import Image from 'next/image'
-import { createOrder, processPayment, getMerchantId } from '@/lib/api'
+import {
+  createOrder,
+  processPayment,
+  getMerchantId,
+  accountsLogin,
+  accountsVerify,
+} from '@/lib/api'
 import { toast } from 'sonner'
 import { useRouter } from 'next/navigation'
 import { loadStripe } from '@stripe/stripe-js'
 import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js'
+import { useAuthStore } from '@/store/authStore'
 
 interface OrderItem {
   product_id: string
@@ -43,6 +50,7 @@ function OrderFlowInner({ items, onComplete, onCancel }: OrderFlowProps) {
   const router = useRouter()
   const stripe = useStripe()
   const elements = useElements()
+  const { user, setSession } = useAuthStore()
   const [step, setStep] = useState<'review' | 'shipping' | 'payment' | 'confirm'>('review')
   const [shipping, setShipping] = useState<ShippingInfo>({
     name: '',
@@ -56,6 +64,10 @@ function OrderFlowInner({ items, onComplete, onCancel }: OrderFlowProps) {
   const [createdOrderId, setCreatedOrderId] = useState<string>('')
   const [paymentId, setPaymentId] = useState<string>('')
   const [cardError, setCardError] = useState<string>('')
+  const [otp, setOtp] = useState('')
+  const [otpSent, setOtpSent] = useState(false)
+  const [otpLoading, setOtpLoading] = useState(false)
+  const [verifiedEmail, setVerifiedEmail] = useState<string | null>(null)
 
   const subtotal = items.reduce((sum, item) => sum + item.unit_price * item.quantity, 0)
   const shipping_cost = 0 // Free shipping
@@ -64,6 +76,10 @@ function OrderFlowInner({ items, onComplete, onCancel }: OrderFlowProps) {
 
   const handleShippingSubmit = (e: React.FormEvent) => {
     e.preventDefault()
+    if (!user && verifiedEmail !== shipping.email.trim()) {
+      toast.error('Please verify your email to continue')
+      return
+    }
     setStep('payment')
   }
 
@@ -72,6 +88,9 @@ function OrderFlowInner({ items, onComplete, onCancel }: OrderFlowProps) {
     setCardError('')
     
     try {
+      if (!user && verifiedEmail !== shipping.email.trim()) {
+        throw new Error('Please verify your email before paying')
+      }
       const merchantId = items[0]?.merchant_id || getMerchantId()
 
       // Step 1: Create order if not already created
@@ -287,6 +306,72 @@ function OrderFlowInner({ items, onComplete, onCancel }: OrderFlowProps) {
                   onChange={(e) => setShipping({...shipping, email: e.target.value})}
                   className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
                 />
+                {!user && (
+                  <div className="mt-3 space-y-2">
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          setOtpLoading(true)
+                          try {
+                            await accountsLogin(shipping.email.trim())
+                            setOtpSent(true)
+                            toast.success('Code sent to your email')
+                          } catch (err: any) {
+                            const code = err?.code
+                            if (code === 'INVALID_INPUT') toast.error('Please enter a valid email')
+                            else if (code === 'RATE_LIMITED')
+                              toast.error('Too many requests, please retry later')
+                            else toast.error(err?.message || 'Failed to send code')
+                          } finally {
+                            setOtpLoading(false)
+                          }
+                        }}
+                        className="px-3 py-2 rounded-lg bg-secondary hover:bg-secondary/80 text-sm"
+                        disabled={otpLoading || !shipping.email}
+                      >
+                        {otpLoading ? 'Sending...' : otpSent ? 'Resend code' : 'Send code'}
+                      </button>
+                      <input
+                        placeholder="6-digit code"
+                        value={otp}
+                        onChange={(e) => setOtp(e.target.value)}
+                        className="flex-1 rounded-lg border border-gray-200 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                      />
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          setOtpLoading(true)
+                          try {
+                            const data = await accountsVerify(shipping.email.trim(), otp.trim())
+                            setSession({
+                              user: (data as any).user,
+                              memberships: (data as any).memberships || [],
+                              active_merchant_id: (data as any).active_merchant_id,
+                            })
+                            setVerifiedEmail(shipping.email.trim())
+                            toast.success('Email verified and logged in')
+                          } catch (err: any) {
+                            const code = err?.code
+                            if (code === 'INVALID_OTP') toast.error('Code invalid or expired')
+                            else if (code === 'RATE_LIMITED')
+                              toast.error('Too many attempts, please retry later')
+                            else toast.error(err?.message || 'Verification failed')
+                          } finally {
+                            setOtpLoading(false)
+                          }
+                        }}
+                        className="px-3 py-2 rounded-lg bg-blue-600 text-white text-sm disabled:opacity-60"
+                        disabled={otpLoading || !otp || !shipping.email}
+                      >
+                        Verify
+                      </button>
+                    </div>
+                    {verifiedEmail === shipping.email.trim() && (
+                      <p className="text-xs text-green-600">Email verified</p>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
             
