@@ -11,6 +11,7 @@ import { toast } from 'sonner';
 
 interface ProductCardProps {
   product_id: string;
+  merchant_id?: string;
   title: string;
   price: number;
   image: string;
@@ -21,6 +22,7 @@ interface ProductCardProps {
 
 export default function ProductCard({
   product_id,
+  merchant_id,
   title,
   price,
   image,
@@ -42,6 +44,7 @@ export default function ProductCard({
         title,
         price,
         imageUrl: image,
+        merchant_id,
         quantity: 1,
       });
       toast.success(`✓ Added to cart! ${title}`);

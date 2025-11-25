@@ -7,6 +7,7 @@ export interface CartItem {
   price: number
   quantity: number
   imageUrl: string
+  merchant_id?: string
 }
 
 interface CartStore {
@@ -89,7 +90,7 @@ export const useCartStore = create<CartStore>()(
     {
       name: 'pivota-cart-storage',
       partialize: (state) => ({ items: state.items }),
-      version: 1,
+      version: 2,
     }
   )
 )

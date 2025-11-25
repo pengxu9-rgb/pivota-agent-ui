@@ -62,7 +62,7 @@ export default function OrderFlow({ items, onComplete, onCancel }: OrderFlowProp
     setIsProcessing(true)
     
     try {
-      const merchantId = getMerchantId()
+      const merchantId = items[0]?.merchant_id || getMerchantId()
 
       // Step 1: Create order if not already created
       let orderId = createdOrderId
@@ -71,7 +71,7 @@ export default function OrderFlow({ items, onComplete, onCancel }: OrderFlowProp
           merchant_id: merchantId,
           customer_email: shipping.email,
           items: items.map(item => ({
-            merchant_id: merchantId,
+            merchant_id: item.merchant_id || merchantId,
             product_id: item.product_id,
             product_title: item.title,
             quantity: item.quantity,

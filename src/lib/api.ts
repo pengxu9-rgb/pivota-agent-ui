@@ -49,6 +49,8 @@ interface RealAPIProduct {
 // Normalized product used across the UI
 export interface ProductResponse {
   product_id: string;
+  merchant_id?: string;
+  merchant_name?: string;
   title: string;
   description: string;
   price: number;
@@ -97,6 +99,12 @@ function normalizeProduct(
 
   return {
     product_id: anyP.product_id || anyP.id,
+    merchant_id:
+      anyP.merchant_id ||
+      anyP.merchant?.id ||
+      anyP.merchant_uuid ||
+      anyP.store_id,
+    merchant_name: anyP.merchant_name || anyP.store_name,
     title: anyP.title || anyP.name || 'Untitled product',
     description,
     price: normalizedPrice,
@@ -148,14 +156,13 @@ export async function sendMessage(
   message: string,
   merchantIdOverride?: string,
 ): Promise<ProductResponse[]> {
-  const merchantId = getMerchantId(merchantIdOverride);
   const query = message.trim();
 
   const data = await callGateway({
-    operation: 'find_products',
+    operation: 'find_products_multi',
     payload: {
       search: {
-        merchant_id: merchantId,
+        // Cross-merchant search; backend will route across merchants
         in_stock_only: false, // allow showing results even if inventory is zero for demo
         query,
         limit: 10,
@@ -206,13 +213,11 @@ export async function getAllProducts(
   limit = 20,
   merchantIdOverride?: string,
 ): Promise<ProductResponse[]> {
-  const merchantId = getMerchantId(merchantIdOverride);
-
   const data = await callGateway({
-    operation: 'find_products',
+    operation: 'find_products_multi',
     payload: {
       search: {
-        merchant_id: merchantId,
+        // cross-merchant hot deals
         in_stock_only: false,
         query: '',
         limit,

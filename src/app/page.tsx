@@ -92,6 +92,7 @@ export default function HomePage() {
       title: product.title,
       price: product.price,
       imageUrl: product.image_url || '/placeholder.svg',
+       merchant_id: product.merchant_id,
       quantity: 1,
     });
     toast.success(`✓ Added to cart! ${product.title}`);
