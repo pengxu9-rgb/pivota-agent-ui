@@ -127,7 +127,11 @@ interface InvokeBody {
 }
 
 async function callGateway(body: InvokeBody) {
-  const res = await fetch(`${API_BASE}/agent/shop/v1/invoke`, {
+  // If API_BASE is our same-origin proxy (/api/gateway), hit it directly; otherwise append the invoke path.
+  const isProxy = API_BASE.startsWith('/api/gateway');
+  const url = isProxy ? API_BASE : `${API_BASE}/agent/shop/v1/invoke`;
+
+  const res = await fetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
