@@ -280,10 +280,12 @@ export async function getProductDetail(
         },
       },
     });
-    const products = ((data as any).products || []).map(
-      (p: RealAPIProduct | ProductResponse) => normalizeProduct(p),
+    const products: ProductResponse[] = ((data as any).products || []).map(
+      (p: RealAPIProduct | ProductResponse) => normalizeProduct(p) as ProductResponse,
     );
-    const found = products.find((p) => p.product_id === productId);
+    const found: ProductResponse | undefined = products.find(
+      (p: ProductResponse) => p.product_id === productId,
+    );
     if (found && found.merchant_id) {
       try {
         const detail = await callGateway({

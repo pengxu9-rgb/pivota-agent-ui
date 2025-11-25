@@ -85,7 +85,7 @@ export default function ProductDetailPage({ params }: Props) {
       }
     };
     loadProduct();
-  }, [id]);
+  }, [id, merchantIdParam]);
 
   if (loading) {
     return (
@@ -125,6 +125,7 @@ export default function ProductDetailPage({ params }: Props) {
       title: product.title,
       price: product.price,
       imageUrl: product.image_url || '/placeholder.svg',
+      merchant_id: product.merchant_id,
       quantity,
     });
     toast.success(`✓ Added ${quantity}x ${product.title} to cart!`);
