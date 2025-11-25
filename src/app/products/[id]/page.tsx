@@ -103,6 +103,7 @@ export default function ProductDetailPage({ params }: Props) {
 
   const productUrl = `https://agent.pivota.cc/products/${product.product_id}`;
 
+  const priceValue = Number(product.price);
   const cleanDescription = (description: string) =>
     description
       ? description
@@ -113,11 +114,11 @@ export default function ProductDetailPage({ params }: Props) {
       : 'No description available.';
 
   const formattedPrice =
-    typeof product.price === 'number' && product.price > 0
+    priceValue > 0
       ? new Intl.NumberFormat('en-US', {
           style: 'currency',
           currency: product.currency || 'USD',
-        }).format(product.price)
+        }).format(priceValue)
       : 'Price unavailable';
 
   const handleAddToCart = () => {
