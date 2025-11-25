@@ -1,177 +1,162 @@
-'use client';
+'use client'
 
-import { Suspense, useEffect, useMemo, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
-import { Package, Truck, CheckCircle, Clock } from 'lucide-react';
-import { getOrderStatus } from '@/lib/api';
+import { Suspense, useEffect, useMemo, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { Package, Truck, CheckCircle, Clock, Mail } from 'lucide-react'
+import { publicOrderLookup, publicOrderTrack } from '@/lib/api'
 
 type TimelineEntry = {
-  status: string;
-  timestamp?: string | null;
-  description?: string | null;
-  completed?: boolean;
-};
+  status: string
+  timestamp?: string | null
+  description?: string | null
+  completed?: boolean
+}
+
+type LookupResult = {
+  order_id: string
+  status: string
+  currency: string
+  total_amount_minor: number
+  created_at: string
+  items_summary?: string
+  shipping?: { city?: string; country?: string }
+  customer?: { name?: string; masked_email?: string }
+}
 
 function TrackContent() {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const orderId = searchParams.get('orderId');
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const initialOrderId = searchParams.get('orderId') || ''
+  const initialEmail = searchParams.get('email') || ''
 
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [tracking, setTracking] = useState<any | null>(null);
+  const [orderId, setOrderId] = useState(initialOrderId)
+  const [email, setEmail] = useState(initialEmail)
+  const [lookup, setLookup] = useState<LookupResult | null>(null)
+  const [timeline, setTimeline] = useState<TimelineEntry[]>([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!orderId) return;
-    setLoading(true);
-    setError(null);
-    getOrderStatus(orderId)
-      .then((data) => {
-        const t = (data as any).tracking || (data as any).order || null;
-        setTracking(t);
-      })
-      .catch((err) => {
-        console.error('Failed to load tracking', err);
-        setError('Failed to load order status. Please retry.');
-      })
-      .finally(() => setLoading(false));
-  }, [orderId]);
-
-  const timeline: TimelineEntry[] = useMemo(() => {
-    if (!tracking?.timeline) return [];
-    return tracking.timeline.map((e: any) => ({
-      status: e.status,
-      timestamp: e.timestamp,
-      description: e.description,
-      completed: Boolean(e.completed),
-    }));
-  }, [tracking]);
-
-  const estimated = tracking?.estimated_delivery;
-  const displayOrderId = orderId || tracking?.order_id || 'ORD_UNKNOWN';
-
-  const renderBody = () => {
-    if (!orderId) {
-      return (
-        <div className="p-6 text-center text-gray-600">
-          Provide an orderId query param to track an order.
-        </div>
-      );
+    // Auto-fetch if both query params present
+    if (initialOrderId && initialEmail) {
+      handleSubmit(new Event('submit') as any, false)
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
-    if (loading) {
-      return (
-        <div className="p-6 text-center text-gray-600">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
-          Loading tracking info...
-        </div>
-      );
+  const handleSubmit = async (e: React.FormEvent, pushQuery = true) => {
+    e.preventDefault()
+    if (!orderId || !email) {
+      setError('Please enter order ID and email')
+      return
     }
-
-    if (error) {
-      return (
-        <div className="p-6 text-center text-red-600">
-          {error}
-          <div className="text-sm text-gray-500 mt-2">
-            Make sure the order exists and your API key has access.
-          </div>
-        </div>
-      );
+    setLoading(true)
+    setError(null)
+    try {
+      const summary = await publicOrderLookup(orderId.trim(), email.trim())
+      setLookup(summary as any)
+      const t = await publicOrderTrack(orderId.trim(), email.trim())
+      const events = ((t as any)?.timeline || []).map((ev: any) => ({
+        status: ev.status,
+        timestamp: ev.timestamp,
+        description: ev.description,
+        completed: Boolean(ev.completed),
+      }))
+      setTimeline(events)
+      if (pushQuery) {
+        const params = new URLSearchParams()
+        params.set('orderId', orderId.trim())
+        params.set('email', email.trim())
+        router.replace(`/order/track?${params.toString()}`)
+      }
+    } catch (err: any) {
+      const code = err?.code
+      if (code === 'NOT_FOUND') {
+        setError('Order not found or email mismatch')
+      } else if (code === 'RATE_LIMITED') {
+        setError('Too many requests, please retry later')
+      } else {
+        setError(err?.message || 'Failed to load order info')
+      }
+      setLookup(null)
+      setTimeline([])
+    } finally {
+      setLoading(false)
     }
+  }
 
-    if (!tracking) {
-      return (
-        <div className="p-6 text-center text-gray-600">
-          No tracking info available yet.
-        </div>
-      );
-    }
+  const events = useMemo(() => {
+    if (timeline.length) return timeline
+    if (!lookup) return []
+    return [
+      {
+        status: lookup.status,
+        timestamp: lookup.created_at,
+        description: 'Order status update',
+        completed: lookup.status === 'paid' || lookup.status === 'completed',
+      },
+    ]
+  }, [timeline, lookup])
 
-    const events = timeline.length
-      ? timeline
-      : [
-          {
-            status: tracking.delivery_status || tracking.fulfillment_status || 'ordered',
-            timestamp: tracking.updated_at || tracking.created_at,
-            description: 'Order status updated',
-            completed: Boolean(tracking.payment_status === 'paid'),
-          },
-        ];
-
+  const renderEvents = () => {
+    if (!lookup) return null
     return (
-      <>
-        <div className="mb-6">
-          <h2 className="text-xl font-semibold mb-2">Order {displayOrderId}</h2>
-          {estimated && (
-            <p className="text-gray-600">
-              Estimated delivery: {new Date(estimated).toLocaleDateString()}
-            </p>
-          )}
-        </div>
+      <div className="space-y-6">
+        {events.map((event, index) => {
+          const Icon = event.completed
+            ? CheckCircle
+            : event.status === 'shipped'
+            ? Truck
+            : event.status === 'ordered'
+            ? Package
+            : Clock
 
-        <div className="space-y-6">
-          {events.map((event, index) => {
-            const Icon = event.completed ? CheckCircle : event.status === 'shipped' ? Truck : Clock;
-
-            return (
-              <div key={index} className="flex gap-4">
-                <div className="flex flex-col items-center">
+          return (
+            <div key={index} className="flex gap-4">
+              <div className="flex flex-col items-center">
+                <div
+                  className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                    event.completed ? 'bg-green-500' : 'bg-gray-200'
+                  }`}
+                >
+                  <Icon
+                    className={`w-5 h-5 ${
+                      event.completed ? 'text-white' : 'text-gray-400'
+                    }`}
+                  />
+                </div>
+                {index < events.length - 1 && (
                   <div
-                    className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                    className={`w-0.5 h-16 ${
                       event.completed ? 'bg-green-500' : 'bg-gray-200'
                     }`}
-                  >
-                    <Icon
-                      className={`w-5 h-5 ${
-                        event.completed ? 'text-white' : 'text-gray-400'
-                      }`}
-                    />
-                  </div>
-                  {index < events.length - 1 && (
-                    <div
-                      className={`w-0.5 h-16 ${
-                        event.completed ? 'bg-green-500' : 'bg-gray-200'
-                      }`}
-                    />
-                  )}
-                </div>
-
-                <div className="flex-1">
-                  <h3
-                    className={`font-semibold ${
-                      event.completed ? 'text-gray-900' : 'text-gray-500'
-                    }`}
-                  >
-                    {event.status}
-                  </h3>
-                  <p className="text-sm text-gray-600">
-                    {event.description || 'Status update'}
-                  </p>
-                  {event.timestamp && (
-                    <p className="text-xs text-gray-500 mt-1">
-                      {new Date(event.timestamp).toLocaleString()}
-                    </p>
-                  )}
-                </div>
+                  />
+                )}
               </div>
-            );
-          })}
-        </div>
 
-        <div className="mt-8 flex gap-4">
-          <button
-            onClick={() => router.push('/')}
-            className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
-          >
-            Continue Shopping
-          </button>
-          <button className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">
-            Contact Support
-          </button>
-        </div>
-      </>
-    );
-  };
+              <div className="flex-1">
+                <h3
+                  className={`font-semibold ${
+                    event.completed ? 'text-gray-900' : 'text-gray-500'
+                  }`}
+                >
+                  {event.status}
+                </h3>
+                <p className="text-sm text-gray-600">
+                  {event.description || 'Status update'}
+                </p>
+                {event.timestamp && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    {new Date(event.timestamp).toLocaleString()}
+                  </p>
+                )}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    )
+  }
 
   return (
     <main className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
@@ -186,11 +171,86 @@ function TrackContent() {
         </div>
       </header>
 
-      <div className="max-w-4xl mx-auto px-4 py-8">
-        <div className="bg-white rounded-lg shadow-md p-6">{renderBody()}</div>
+      <div className="max-w-4xl mx-auto px-4 py-8 space-y-6">
+        <div className="bg-white rounded-lg shadow-md p-6 space-y-4">
+          <form className="grid grid-cols-1 md:grid-cols-3 gap-4" onSubmit={handleSubmit}>
+            <div className="md:col-span-1">
+              <label className="text-sm font-medium text-foreground">Order ID</label>
+              <input
+                className="mt-2 w-full rounded-xl border border-border bg-white/60 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                value={orderId}
+                onChange={(e) => setOrderId(e.target.value)}
+                placeholder="ORD_..."
+              />
+            </div>
+            <div className="md:col-span-1">
+              <label className="text-sm font-medium text-foreground flex items-center gap-1"><Mail className="h-4 w-4" /> Email</label>
+              <input
+                type="email"
+                className="mt-2 w-full rounded-xl border border-border bg-white/60 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@example.com"
+              />
+            </div>
+            <div className="md:col-span-1 flex items-end">
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full py-2 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-500 text-white font-semibold shadow hover:shadow-lg disabled:opacity-60"
+              >
+                {loading ? 'Loading...' : 'Track order'}
+              </button>
+            </div>
+          </form>
+          {error && <div className="text-red-600 text-sm">{error}</div>}
+          {lookup && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="rounded-xl border border-border p-4 bg-muted/30">
+                <p className="text-sm text-muted-foreground">Order ID</p>
+                <p className="font-semibold break-all">{lookup.order_id}</p>
+                <p className="text-sm text-muted-foreground mt-2">Status: {lookup.status}</p>
+                <p className="text-sm text-muted-foreground">{new Date(lookup.created_at).toLocaleString()}</p>
+                {lookup.items_summary && (
+                  <p className="text-sm text-muted-foreground mt-2">{lookup.items_summary}</p>
+                )}
+                <p className="text-lg font-bold mt-2">
+                  {new Intl.NumberFormat('en-US', {
+                    style: 'currency',
+                    currency: lookup.currency || 'USD',
+                  }).format((lookup.total_amount_minor || 0) / 100)}
+                </p>
+              </div>
+              <div className="rounded-xl border border-border p-4 bg-muted/30 space-y-1">
+                <p className="text-sm font-medium">Shipping</p>
+                <p className="text-sm text-muted-foreground">
+                  {lookup.shipping?.city || ''}
+                  {lookup.shipping?.city && lookup.shipping?.country ? ', ' : ''}
+                  {lookup.shipping?.country || ''}
+                </p>
+                {lookup.customer?.masked_email && (
+                  <p className="text-sm text-muted-foreground">{lookup.customer.masked_email}</p>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {lookup && (
+          <div className="bg-white rounded-lg shadow-md p-6">
+            <h2 className="text-lg font-semibold mb-4">Timeline</h2>
+            {renderEvents()}
+          </div>
+        )}
+
+        {!lookup && !loading && (
+          <div className="bg-white rounded-lg shadow-md p-6 text-muted-foreground text-sm">
+            Enter an order ID and email to view status.
+          </div>
+        )}
       </div>
     </main>
-  );
+  )
 }
 
 export default function TrackOrderPage() {
@@ -207,5 +267,5 @@ export default function TrackOrderPage() {
     >
       <TrackContent />
     </Suspense>
-  );
+  )
 }

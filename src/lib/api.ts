@@ -1,10 +1,17 @@
-// Centralized API helpers for calling the Pivota Agent Gateway
+// Centralized API helpers for calling the Pivota Agent Gateway and Accounts API
 // All UI components should import functions from here instead of using fetch directly.
 
 // Point to the public Agent Gateway by default; override via NEXT_PUBLIC_API_URL if needed.
 const API_BASE =
   process.env.NEXT_PUBLIC_API_URL ||
   '/api/gateway'; // default to same-origin proxy to avoid CORS
+
+// Accounts API base (for auth + orders). Defaults to production accounts endpoint.
+const ACCOUNTS_BASE =
+  (process.env.NEXT_PUBLIC_ACCOUNTS_BASE ||
+    'https://web-production-fedb.up.railway.app/accounts').replace(/\/$/, '');
+
+type ApiError = Error & { code?: string; status?: number; detail?: any };
 
 // Merchant is provided via env or can be overridden at runtime (e.g., via query param / localStorage).
 export function getMerchantId(overrideId?: string): string {
@@ -167,6 +174,46 @@ async function callGateway(body: InvokeBody) {
   }
 
   return res.json();
+}
+
+// -------- Accounts API helpers --------
+
+async function callAccounts(
+  path: string,
+  options: RequestInit & { skipJson?: boolean } = {},
+) {
+  const url = `${ACCOUNTS_BASE}${path}`;
+  const res = await fetch(url, {
+    method: options.method || 'GET',
+    credentials: 'include', // rely on HttpOnly cookies
+    headers: {
+      'Content-Type': 'application/json',
+      ...(options.headers || {}),
+    },
+    body: options.body,
+  });
+
+  if (options.skipJson) {
+    return res;
+  }
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const code =
+      (data as any)?.detail?.error?.code ||
+      (data as any)?.error?.code ||
+      undefined;
+    const message =
+      (data as any)?.detail?.error?.message ||
+      (data as any)?.error?.message ||
+      res.statusText;
+    const err = new Error(message) as ApiError;
+    err.code = code;
+    err.status = res.status;
+    err.detail = data;
+    throw err;
+  }
+  return data;
 }
 
 // -------- Product search helpers --------
@@ -417,4 +464,84 @@ export async function getOrderStatus(orderId: string) {
   });
 
   return data;
+}
+
+
+// -------- Accounts API: Auth & Orders --------
+
+export interface AccountsUser {
+  id: string;
+  email: string | null;
+  phone: string | null;
+  primary_role: string;
+  is_guest: boolean;
+}
+
+export interface Membership {
+  merchant_id: string;
+  role: string;
+}
+
+type OrdersPermissions = {
+  can_pay: boolean;
+  can_cancel: boolean;
+  can_reorder: boolean;
+};
+
+type OrdersListItem = {
+  order_id: string;
+  currency: string;
+  total_amount_minor: number;
+  status: string;
+  payment_status: string;
+  fulfillment_status: string;
+  delivery_status: string;
+  created_at: string;
+  shipping_city?: string | null;
+  shipping_country?: string | null;
+  items_summary?: string;
+  permissions?: OrdersPermissions;
+};
+
+export async function accountsLogin(email: string) {
+  return callAccounts('/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({ channel: 'email', email }),
+  });
+}
+
+export async function accountsVerify(email: string, otp: string) {
+  return callAccounts('/auth/verify', {
+    method: 'POST',
+    body: JSON.stringify({ channel: 'email', email, otp }),
+  });
+}
+
+export async function accountsMe() {
+  return callAccounts('/auth/me');
+}
+
+export async function accountsRefresh() {
+  return callAccounts('/auth/refresh', { method: 'POST' });
+}
+
+export async function listMyOrders(cursor?: string | null, limit = 20) {
+  const params = new URLSearchParams();
+  params.set('limit', String(limit));
+  if (cursor) params.set('cursor', cursor);
+  return callAccounts(`/orders/list?${params.toString()}`);
+}
+
+export async function getAccountOrder(orderId: string) {
+  return callAccounts(`/orders/${orderId}`);
+}
+
+export async function publicOrderLookup(orderId: string, email: string) {
+  const params = new URLSearchParams({ order_id: orderId, email });
+  return callAccounts(`/public/order-lookup?${params.toString()}`);
+}
+
+export async function publicOrderTrack(orderId: string, email: string) {
+  const params = new URLSearchParams({ order_id: orderId, email });
+  return callAccounts(`/public/track?${params.toString()}`);
 }
