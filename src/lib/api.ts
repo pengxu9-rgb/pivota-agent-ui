@@ -73,6 +73,25 @@ function normalizeProduct(
     normalizedPrice = Number(rawPrice) || 0;
   } else if (rawPrice && typeof rawPrice.amount === 'number') {
     normalizedPrice = rawPrice.amount;
+  } else if (rawPrice && typeof rawPrice.amount === 'string') {
+    normalizedPrice = Number(rawPrice.amount) || 0;
+  }
+
+  // Fallback: try variant price when main price is missing/zero
+  if (
+    normalizedPrice <= 0 &&
+    Array.isArray(anyP.variants) &&
+    anyP.variants.length > 0
+  ) {
+    const variantWithPrice = anyP.variants.find(
+      (v: any) => typeof v?.price !== 'undefined',
+    );
+    const variantPrice = variantWithPrice?.price;
+    if (typeof variantPrice === 'number') {
+      normalizedPrice = variantPrice;
+    } else if (typeof variantPrice === 'string') {
+      normalizedPrice = Number(variantPrice) || normalizedPrice;
+    }
   }
 
   const normalizedCurrency =
