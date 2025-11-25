@@ -9,6 +9,7 @@ import { useRouter } from 'next/navigation'
 
 interface OrderItem {
   product_id: string
+  merchant_id?: string
   title: string
   quantity: number
   unit_price: number
