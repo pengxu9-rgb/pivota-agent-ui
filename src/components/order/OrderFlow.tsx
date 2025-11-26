@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { ShoppingCart, CreditCard, Check, ChevronRight } from 'lucide-react'
 import Image from 'next/image'
 import {
@@ -73,6 +73,14 @@ function OrderFlowInner({ items, onComplete, onCancel }: OrderFlowProps) {
   const shipping_cost = 0 // Free shipping
   const tax = subtotal * 0.08 // 8% tax
   const total = subtotal + shipping_cost + tax
+
+  // If already logged in, prefill email and skip verification UI
+  useEffect(() => {
+    if (user?.email) {
+      setShipping((prev) => ({ ...prev, email: prev.email || user.email! }))
+      setVerifiedEmail(user.email || null)
+    }
+  }, [user])
 
   const handleShippingSubmit = (e: React.FormEvent) => {
     e.preventDefault()
