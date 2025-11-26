@@ -287,7 +287,19 @@ function OrderFlowInner({ items, onComplete, onCancel }: OrderFlowProps) {
 
       if (action?.type === 'adyen_session') {
         const sessionData = action?.client_secret
-        const sessionId = action?.raw?.id || paymentResponse.payment_intent_id || paymentResponse.payment?.payment_intent_id || ''
+        // Normalize Adyen session id:
+        // - Prefer raw.id from backend
+        // - Fallback to payment_intent_id (which may be prefixed with "adyen_session_")
+        let sessionId =
+          action?.raw?.id ||
+          paymentResponse.payment_intent_id ||
+          paymentResponse.payment?.payment_intent_id ||
+          ''
+
+        if (sessionId && sessionId.startsWith('adyen_session_')) {
+          sessionId = sessionId.replace('adyen_session_', '')
+        }
+
         const clientKey = action?.raw?.clientKey || ADYEN_CLIENT_KEY
 
         if (!sessionData || !clientKey) {
