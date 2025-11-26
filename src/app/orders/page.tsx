@@ -116,7 +116,13 @@ export default function OrdersPage() {
   }
 
   const onAction = (type: 'pay' | 'cancel' | 'reorder', orderId: string) => {
-    toast.message(`${type === 'pay' ? 'Continue payment' : type === 'cancel' ? 'Cancel' : 'Reorder'} not implemented`, {
+    if (type === 'reorder') {
+      toast.info('Reorder is coming soon. Please add items from the catalog for now.', {
+        description: `Order ${orderId}`,
+      })
+      return
+    }
+    toast.message(`${type === 'pay' ? 'Continue payment' : 'Cancel'} not implemented`, {
       description: `Order ${orderId}`,
     })
   }
@@ -219,9 +225,10 @@ export default function OrdersPage() {
                     {order.permissions?.can_reorder && (
                       <button
                         onClick={() => onAction('reorder', order.order_id)}
-                        className="w-full py-2 border border-border rounded-lg text-sm font-medium hover:bg-muted"
+                        className="w-full py-2 border border-border rounded-lg text-sm font-medium hover:bg-muted disabled:opacity-60"
+                        disabled
                       >
-                        Reorder
+                        Reorder (coming soon)
                       </button>
                     )}
                   </div>

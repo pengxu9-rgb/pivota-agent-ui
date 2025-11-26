@@ -10,6 +10,7 @@ import {
   accountsLogin,
   accountsVerify,
 } from '@/lib/api'
+import { useCartStore } from '@/store/cartStore'
 import { toast } from 'sonner'
 import { useRouter } from 'next/navigation'
 import { loadStripe } from '@stripe/stripe-js'
@@ -56,6 +57,7 @@ function OrderFlowInner({ items, onComplete, onCancel }: OrderFlowProps) {
   const stripe = useStripe()
   const elements = useElements()
   const { user, setSession } = useAuthStore()
+  const clearCart = useCartStore(state => state.clearCart)
   const [step, setStep] = useState<'review' | 'shipping' | 'payment' | 'confirm'>('review')
   const [shipping, setShipping] = useState<ShippingInfo>({
     name: '',
@@ -249,6 +251,7 @@ function OrderFlowInner({ items, onComplete, onCancel }: OrderFlowProps) {
             onPaymentCompleted: () => {
               setStep('confirm')
               toast.success('Payment processed successfully!')
+              clearCart()
               router.push(`/orders/${orderId}?paid=1`)
               onComplete?.(orderId)
             },
@@ -295,6 +298,7 @@ function OrderFlowInner({ items, onComplete, onCancel }: OrderFlowProps) {
           setPaymentId(result.paymentIntent?.id || '')
           setStep('confirm')
           toast.success('Payment processed successfully!')
+          clearCart()
           router.push(`/orders/${orderId}?paid=1`)
           if (onComplete) onComplete(orderId)
         } else if (status === 'requires_action') {
@@ -311,6 +315,7 @@ function OrderFlowInner({ items, onComplete, onCancel }: OrderFlowProps) {
         setPaymentId(paymentResponse.payment_id || '')
         setStep('confirm')
         toast.success('Payment processed successfully!')
+        clearCart()
         router.push(`/orders/${orderId}?paid=1`)
         if (onComplete) {
           onComplete(orderId)
