@@ -42,6 +42,13 @@ export const useChatStore = create<ChatStore>()(
       ],
 
       addMessage: (message) => {
+        const sortConvs = (convs: Conversation[]) =>
+          [...convs].sort(
+            (a, b) =>
+              new Date(b.timestamp as any).getTime() -
+              new Date(a.timestamp as any).getTime(),
+          )
+
         const newMessage = {
           ...message,
           timestamp: new Date()
@@ -52,15 +59,17 @@ export const useChatStore = create<ChatStore>()(
           
           // Update current conversation
           if (state.currentConversationId) {
-            const updatedConversations = state.conversations.map(conv =>
-              conv.id === state.currentConversationId
-                ? {
-                    ...conv,
-                    messages: newMessages,
-                    lastMessage: message.content.substring(0, 50),
-                    timestamp: new Date()
-                  }
-                : conv
+            const updatedConversations = sortConvs(
+              state.conversations.map(conv =>
+                conv.id === state.currentConversationId
+                  ? {
+                      ...conv,
+                      messages: newMessages,
+                      lastMessage: message.content.substring(0, 50),
+                      timestamp: new Date()
+                    }
+                  : conv
+              )
             )
             return {
               messages: newMessages,
@@ -79,7 +88,7 @@ export const useChatStore = create<ChatStore>()(
             }
             return {
               messages: newMessages,
-              conversations: [newConversation, ...state.conversations].slice(0, 20), // Keep only 20 recent
+              conversations: sortConvs([newConversation, ...state.conversations]).slice(0, 20), // Keep only 20 recent
               currentConversationId: newConversation.id
             }
           }
@@ -89,6 +98,13 @@ export const useChatStore = create<ChatStore>()(
       },
 
       createConversation: (firstMessage) => {
+        const sortConvs = (convs: Conversation[]) =>
+          [...convs].sort(
+            (a, b) =>
+              new Date(b.timestamp as any).getTime() -
+              new Date(a.timestamp as any).getTime(),
+          )
+
         const newConversation: Conversation = {
           id: Date.now().toString(),
           title: firstMessage.substring(0, 30) + (firstMessage.length > 30 ? '...' : ''),
@@ -105,7 +121,7 @@ export const useChatStore = create<ChatStore>()(
         }
         
         set((state) => ({
-          conversations: [newConversation, ...state.conversations].slice(0, 20),
+          conversations: sortConvs([newConversation, ...state.conversations]).slice(0, 20),
           currentConversationId: newConversation.id,
           messages: newConversation.messages
         }))
@@ -145,4 +161,3 @@ export const useChatStore = create<ChatStore>()(
     }
   )
 )
-
