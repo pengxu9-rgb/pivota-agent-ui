@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Package, Clock, CheckCircle, XCircle, Loader2, ArrowRight } from 'lucide-react'
+import { Package, Clock, CheckCircle, XCircle, Loader2, ArrowRight, ArrowLeft } from 'lucide-react'
 import { motion } from 'framer-motion'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
@@ -140,6 +140,9 @@ export default function OrdersPage() {
               <p className="text-muted-foreground">Track and manage your orders</p>
             </div>
             {user?.email && <Badge variant="secondary">{user.email}</Badge>}
+            <Link href="/" className="inline-flex items-center gap-2 text-sm text-indigo-600 hover:underline">
+              <ArrowLeft className="h-4 w-4" /> Back to Home
+            </Link>
           </div>
 
           {loading && (
