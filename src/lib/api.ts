@@ -525,6 +525,10 @@ export async function accountsRefresh() {
   return callAccounts('/auth/refresh', { method: 'POST' });
 }
 
+export async function accountsLogout() {
+  return callAccounts('/auth/logout', { method: 'POST' });
+}
+
 export async function listMyOrders(cursor?: string | null, limit = 20) {
   const params = new URLSearchParams();
   params.set('limit', String(limit));

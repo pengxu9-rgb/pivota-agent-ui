@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Menu, ShoppingCart, Send, Package } from 'lucide-react';
+import { Menu, ShoppingCart, Send, Package, User } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import ChatSidebar from '@/components/chat/ChatSidebar';
 import { useCartStore } from '@/store/cartStore';
+import { useAuthStore } from '@/store/authStore';
 import { useChatStore } from '@/store/chatStore';
 import { sendMessage, getAllProducts, type ProductResponse } from '@/lib/api';
 import { toast } from 'sonner';
@@ -22,6 +23,7 @@ export default function HomePage() {
   
   const { messages, addMessage } = useChatStore();
   const { items, addItem, open } = useCartStore();
+  const { user } = useAuthStore();
   
   const itemCount = items.reduce((acc, item) => acc + item.quantity, 0);
   const hasUserMessages = messages.some(msg => msg.role === 'user');
@@ -121,16 +123,34 @@ export default function HomePage() {
             </button>
           </div>
           <div className="flex items-center gap-3">
-            <Link href="/my-orders" className="hidden sm:block">
-              <Button variant="secondary" size="sm">
-                My Orders
-              </Button>
-            </Link>
-            <Link href="/login" className="hidden sm:block">
-              <Button variant="outline" size="sm">
-                Login
-              </Button>
-            </Link>
+            {user ? (
+              <>
+                <div className="hidden sm:flex items-center gap-2 px-3 py-1 rounded-full border border-border bg-card/60">
+                  <User className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm text-muted-foreground truncate max-w-[160px]">
+                    {user.email || user.id}
+                  </span>
+                </div>
+                <Link href="/my-orders" className="hidden sm:block">
+                  <Button variant="secondary" size="sm">
+                    My Orders
+                  </Button>
+                </Link>
+              </>
+            ) : (
+              <>
+                <Link href="/my-orders" className="hidden sm:block">
+                  <Button variant="secondary" size="sm">
+                    My Orders
+                  </Button>
+                </Link>
+                <Link href="/login" className="hidden sm:block">
+                  <Button variant="outline" size="sm">
+                    Login
+                  </Button>
+                </Link>
+              </>
+            )}
             <Link href="/products">
               <Button variant="ghost" size="icon">
                 <Package className="h-5 w-5 text-muted-foreground" />
