@@ -1,6 +1,7 @@
 'use client'
 
 import { Suspense, useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Package, Truck, CheckCircle, Clock, Mail } from 'lucide-react'
 import { publicOrderLookup, publicOrderTrack } from '@/lib/api'
@@ -46,16 +47,18 @@ function TrackContent() {
 
   const handleSubmit = async (e: React.FormEvent, pushQuery = true) => {
     e.preventDefault()
-    if (!orderId || !email) {
+    const orderSafe = orderId.trim()
+    const emailSafe = email.trim().toLowerCase()
+    if (!orderSafe || !emailSafe) {
       setError('Please enter order ID and email')
       return
     }
     setLoading(true)
     setError(null)
     try {
-      const summary = await publicOrderLookup(orderId.trim(), email.trim())
+      const summary = await publicOrderLookup(orderSafe, emailSafe)
       setLookup(summary as any)
-      const t = await publicOrderTrack(orderId.trim(), email.trim())
+      const t = await publicOrderTrack(orderSafe, emailSafe)
       const events = ((t as any)?.timeline || []).map((ev: any) => ({
         status: ev.status,
         timestamp: ev.timestamp,
@@ -65,8 +68,8 @@ function TrackContent() {
       setTimeline(events)
       if (pushQuery) {
         const params = new URLSearchParams()
-        params.set('orderId', orderId.trim())
-        params.set('email', email.trim())
+        params.set('orderId', orderSafe)
+        params.set('email', emailSafe)
         router.replace(`/order/track?${params.toString()}`)
       }
     } catch (err: any) {
@@ -163,9 +166,11 @@ function TrackContent() {
       <header className="bg-white shadow-sm border-b sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-4 py-4">
           <div className="flex items-center gap-2">
-            <div className="w-10 h-10 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center">
-              <span className="text-white font-bold text-lg">P</span>
-            </div>
+            <Link href="/">
+              <div className="w-10 h-10 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center hover:opacity-90">
+                <span className="text-white font-bold text-lg">P</span>
+              </div>
+            </Link>
             <h1 className="text-2xl font-bold text-gray-800">Track Your Order</h1>
           </div>
         </div>
