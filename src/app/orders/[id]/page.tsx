@@ -99,9 +99,13 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   }
 
   const onAction = (type: 'pay' | 'cancel' | 'reorder') => {
-    toast.message(`${type === 'pay' ? 'Continue payment' : type === 'cancel' ? 'Cancel order' : 'Reorder'} not implemented`, {
-      description: `Order ${order.order_id}`,
-    })
+    if (type === 'pay') {
+      toast.info('Continuing payment is coming soon in this UI. Please use the main checkout flow.')
+    } else if (type === 'cancel') {
+      toast.info('Cancel order is not yet available here. Please contact support to cancel.')
+    } else {
+      toast.info('Reorder is not yet available here. Use the product catalog to buy again.')
+    }
   }
 
   return (
@@ -166,16 +170,18 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
               {permissions?.can_cancel && (
                 <button
                   onClick={() => onAction('cancel')}
-                  className="w-full py-2 border border-border rounded-lg text-sm font-medium hover:bg-muted"
-                >
+                  className="w-full py-2 border border-border rounded-lg text-sm font-medium hover:bg-muted disabled:opacity-60"
+                  disabled
+                  >
                   Cancel order
                 </button>
               )}
               {permissions?.can_reorder && (
                 <button
                   onClick={() => onAction('reorder')}
-                  className="w-full py-2 border border-border rounded-lg text-sm font-medium hover:bg-muted"
-                >
+                  className="w-full py-2 border border-border rounded-lg text-sm font-medium hover:bg-muted disabled:opacity-60"
+                  disabled
+                  >
                   Reorder
                 </button>
               )}
