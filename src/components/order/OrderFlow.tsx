@@ -193,10 +193,6 @@ function OrderFlowInner({ items, onComplete, onCancel }: OrderFlowProps) {
               sessionData,
             },
             analytics: { enabled: false },
-            returnUrl:
-              typeof window !== 'undefined'
-                ? `${window.location.origin}/orders/${orderId}`
-                : undefined,
             onPaymentCompleted: () => {
               setStep('confirm')
               toast.success('Payment processed successfully!')
