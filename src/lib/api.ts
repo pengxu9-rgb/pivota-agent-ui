@@ -541,6 +541,13 @@ export async function getAccountOrder(orderId: string) {
   return callAccounts(`/orders/${orderId}`);
 }
 
+export async function cancelAccountOrder(orderId: string, reason?: string) {
+  return callAccounts(`/orders/${orderId}/cancel`, {
+    method: "POST",
+    body: reason ? JSON.stringify({ reason }) : undefined,
+  });
+}
+
 export async function publicOrderLookup(orderId: string, email: string) {
   const params = new URLSearchParams({ order_id: orderId, email });
   return callAccounts(`/public/order-lookup?${params.toString()}`);

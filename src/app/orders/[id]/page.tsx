@@ -4,7 +4,7 @@ import { use, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { CheckCircle2, Loader2, AlertCircle, Package, Truck, Clock } from 'lucide-react'
-import { getAccountOrder } from '@/lib/api'
+import { getAccountOrder, cancelAccountOrder } from '@/lib/api'
 import { useAuthStore } from '@/store/authStore'
 import { toast } from 'sonner'
 
@@ -23,6 +23,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const [data, setData] = useState<OrderDetailResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [cancelLoading, setCancelLoading] = useState(false)
 
   useEffect(() => {
     const load = async () => {
@@ -98,13 +99,36 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     }
   }
 
-  const onAction = (type: 'pay' | 'cancel' | 'reorder') => {
-    if (type === 'pay') {
-      toast.info('Continuing payment is coming soon in this UI. Please use the main checkout flow.')
-    } else if (type === 'cancel') {
-      toast.info('Cancel order is not yet available here. Please contact support to cancel.')
-    } else {
-      toast.info('Reorder is not yet available here. Use the product catalog to buy again.')
+  const onCancel = async () => {
+    if (!permissions?.can_cancel) return
+    setCancelLoading(true)
+    try {
+      const res = await cancelAccountOrder(order.order_id, undefined)
+      toast.success('Order cancelled')
+      if (data) {
+        setData({
+          ...data,
+          order: {
+            ...data.order,
+            status: (res as any)?.status || 'cancelled',
+            payment_status: (res as any)?.payment_status || data.order.payment_status,
+            fulfillment_status: (res as any)?.fulfillment_status || data.order.fulfillment_status,
+            delivery_status: (res as any)?.delivery_status || data.order.delivery_status,
+            updated_at: (res as any)?.updated_at || data.order.updated_at,
+          },
+        })
+      }
+    } catch (err: any) {
+      const code = err?.code
+      if (code === 'INVALID_STATE') {
+        toast.error('Order cannot be cancelled in its current state')
+      } else if (code === 'NOT_FOUND') {
+        toast.error('Order not found or you have no permission')
+      } else {
+        toast.error(err?.message || 'Failed to cancel order')
+      }
+    } finally {
+      setCancelLoading(false)
     }
   }
 
@@ -161,30 +185,26 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
               <h3 className="font-semibold">Actions</h3>
               {permissions?.can_pay && (
                 <button
-                  onClick={() => onAction('pay')}
+                  onClick={() => toast.info('Continue payment: please use checkout flow.')}
                   className="w-full py-2 bg-gradient-to-r from-indigo-500 to-purple-500 text-white rounded-lg text-sm font-medium shadow hover:shadow-lg"
                 >
                   Continue payment
                 </button>
               )}
-              {permissions?.can_cancel && (
-                <button
-                  onClick={() => onAction('cancel')}
-                  className="w-full py-2 border border-border rounded-lg text-sm font-medium hover:bg-muted disabled:opacity-60"
-                  disabled
-                  >
-                  Cancel order
-                </button>
-              )}
-              {permissions?.can_reorder && (
-                <button
-                  onClick={() => onAction('reorder')}
-                  className="w-full py-2 border border-border rounded-lg text-sm font-medium hover:bg-muted disabled:opacity-60"
-                  disabled
-                  >
-                  Reorder
-                </button>
-              )}
+              <button
+                onClick={onCancel}
+                className="w-full py-2 border border-border rounded-lg text-sm font-medium hover:bg-muted disabled:opacity-60"
+                disabled={!permissions?.can_cancel || cancelLoading}
+              >
+                {cancelLoading ? 'Cancelling...' : 'Cancel order'}
+              </button>
+              <button
+                onClick={() => toast.info('Reorder: please add items again from catalog.')}
+                className="w-full py-2 border border-border rounded-lg text-sm font-medium hover:bg-muted disabled:opacity-60"
+                disabled
+              >
+                Reorder
+              </button>
             </div>
           </div>
         </div>
