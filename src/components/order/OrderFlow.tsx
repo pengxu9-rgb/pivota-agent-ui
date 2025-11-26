@@ -77,6 +77,7 @@ function OrderFlowInner({ items, onComplete, onCancel }: OrderFlowProps) {
   const [adyenMounted, setAdyenMounted] = useState(false)
   const [paymentActionType, setPaymentActionType] = useState<string | null>(null)
   const [pspUsed, setPspUsed] = useState<string | null>(null)
+  const [initialPaymentAction, setInitialPaymentAction] = useState<any>(null)
 
   const subtotal = items.reduce((sum, item) => sum + item.unit_price * item.quantity, 0)
   const shipping_cost = 0 // Free shipping
@@ -136,8 +137,17 @@ function OrderFlowInner({ items, onComplete, onCancel }: OrderFlowProps) {
           ...(FORCE_PSP ? { preferred_psp: FORCE_PSP } : {})
         })
         
+        console.log('createOrder response', orderResponse)
+
         orderId = orderResponse.order_id
         setCreatedOrderId(orderId)
+        if ((orderResponse as any).payment_action) {
+          setInitialPaymentAction((orderResponse as any).payment_action)
+          setPaymentActionType((orderResponse as any).payment_action?.type || null)
+        }
+        if ((orderResponse as any).psp) {
+          setPspUsed((orderResponse as any).psp)
+        }
       }
       
       // Step 2: Create/confirm payment intent via gateway
@@ -151,12 +161,18 @@ function OrderFlowInner({ items, onComplete, onCancel }: OrderFlowProps) {
         return_url: typeof window !== 'undefined' ? `${window.location.origin}/orders/${orderId}` : undefined
       })
 
-      const action = (paymentResponse as any)?.payment_action
+      console.log('submit_payment response', paymentResponse)
+
+      const action =
+        (paymentResponse as any)?.payment_action ||
+        initialPaymentAction ||
+        null
       setPaymentActionType(action?.type || null)
       setPspUsed(
         (paymentResponse as any)?.psp ||
           action?.psp ||
           (paymentResponse as any)?.payment?.psp ||
+          pspUsed ||
           null,
       )
       const redirectUrl =
@@ -540,12 +556,13 @@ function OrderFlowInner({ items, onComplete, onCancel }: OrderFlowProps) {
       {step === 'payment' && (
         <div className="bg-white rounded-lg shadow-md p-6">
           <h2 className="text-2xl font-bold mb-6">Payment Method</h2>
-          {pspUsed && (
-            <div className="mb-3 text-sm text-muted-foreground">
-              PSP routed to: <span className="font-medium text-foreground">{pspUsed}</span>
-              {paymentActionType && ` (${paymentActionType})`}
-            </div>
-          )}
+          <div className="mb-3 text-sm text-muted-foreground">
+            PSP routed to:{' '}
+            <span className="font-medium text-foreground">
+              {pspUsed || 'unknown'}
+            </span>
+            {paymentActionType ? ` (${paymentActionType})` : ' (defaulting to stripe if none)'}
+          </div>
           
           <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
             <p className="text-yellow-800">
@@ -554,36 +571,39 @@ function OrderFlowInner({ items, onComplete, onCancel }: OrderFlowProps) {
           </div>
           
           <div className="space-y-4">
-            <div className="border rounded-lg p-4 cursor-pointer hover:border-blue-500 transition-colors">
-              <div className="flex items-center">
-                <input type="radio" name="payment" defaultChecked className="mr-3" />
-                <CreditCard className="w-6 h-6 mr-3" />
-                <div>
-                  <p className="font-medium">Credit/Debit Card</p>
-                  <p className="text-sm text-gray-600">Secure payment via Stripe</p>
-                </div>
-              </div>
-            </div>
-
-            {publishableKey && paymentActionType !== 'adyen_session' && (
+            {paymentActionType === 'adyen_session' ? (
               <div className="border rounded-lg p-4">
-                <label className="text-sm font-medium text-gray-700">Card Details</label>
-                <div className="mt-2 p-3 border rounded bg-gray-50">
-                  <CardElement options={{ hidePostalCode: true }} />
-                </div>
-                {cardError && <p className="text-sm text-red-600 mt-2">{cardError}</p>}
-              </div>
-            )}
-            {(paymentActionType === 'adyen_session' || !paymentActionType) && (
-              <div className="border rounded-lg p-4">
-                <p className="text-sm font-medium text-gray-700">Alternate payment methods</p>
+                <p className="font-medium mb-2">Adyen payment</p>
                 <div ref={adyenContainerRef} className="mt-2" />
                 {!adyenMounted && (
                   <p className="text-xs text-muted-foreground">
-                    If your payment uses Adyen/redirect, a hosted form will appear here after clicking Pay.
+                    A hosted Adyen form will appear here after clicking Pay.
                   </p>
                 )}
               </div>
+            ) : (
+              <>
+                <div className="border rounded-lg p-4 cursor-pointer hover:border-blue-500 transition-colors">
+                  <div className="flex items-center">
+                    <input type="radio" name="payment" defaultChecked className="mr-3" />
+                    <CreditCard className="w-6 h-6 mr-3" />
+                    <div>
+                      <p className="font-medium">Credit/Debit Card</p>
+                      <p className="text-sm text-gray-600">Secure payment</p>
+                    </div>
+                  </div>
+                </div>
+
+                {publishableKey && (
+                  <div className="border rounded-lg p-4">
+                    <label className="text-sm font-medium text-gray-700">Card Details</label>
+                    <div className="mt-2 p-3 border rounded bg-gray-50">
+                      <CardElement options={{ hidePostalCode: true }} />
+                    </div>
+                    {cardError && <p className="text-sm text-red-600 mt-2">{cardError}</p>}
+                  </div>
+                )}
+              </>
             )}
             
             <div className="mt-6">
