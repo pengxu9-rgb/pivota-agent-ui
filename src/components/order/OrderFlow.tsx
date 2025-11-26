@@ -120,17 +120,39 @@ function OrderFlowInner({ items, onComplete, onCancel }: OrderFlowProps) {
 
     orderId = orderResponse.order_id
     setCreatedOrderId(orderId)
+
     const orderPayment = (orderResponse as any)?.payment || {}
-    const orderPaymentAction =
+    let orderPaymentAction: any =
       (orderResponse as any)?.payment_action || orderPayment?.payment_action
+
+    let orderPsp: string | null =
+      (orderResponse as any)?.psp ||
+      orderPayment?.psp ||
+      (orderPaymentAction && orderPaymentAction.psp) ||
+      null
+
+    const paymentIntentId = orderPayment?.payment_intent_id as string | undefined
+    const paymentClientSecret = orderPayment?.client_secret as string | undefined
+
+    // Heuristic: if intent looks like an Adyen session, treat as Adyen even
+    // when the backend hasn't populated unified PSP fields yet.
+    if (!orderPsp && paymentIntentId?.startsWith('adyen_session')) {
+      orderPsp = 'adyen'
+      if (!orderPaymentAction && paymentClientSecret) {
+        orderPaymentAction = {
+          type: 'adyen_session',
+          client_secret: paymentClientSecret,
+          url: null,
+          raw: null,
+        }
+      }
+    }
+
     if (orderPaymentAction) {
       setInitialPaymentAction(orderPaymentAction)
       setPaymentActionType(orderPaymentAction?.type || null)
     }
-    const orderPsp =
-      (orderResponse as any)?.psp ||
-      orderPayment?.psp ||
-      orderPaymentAction?.psp
+
     if (orderPsp) {
       setPspUsed(orderPsp)
     }
@@ -190,19 +212,59 @@ function OrderFlowInner({ items, onComplete, onCancel }: OrderFlowProps) {
       console.log('submit_payment response', paymentResponse)
 
       const paymentObj = (paymentResponse as any)?.payment || {}
-      const action =
+      let action: any =
         (paymentResponse as any)?.payment_action ||
         paymentObj?.payment_action ||
         initialPaymentAction ||
         null
+
+      // Heuristic: synthesize Adyen payment_action when intent id indicates
+      // adyen_session but backend hasn't sent unified fields yet.
+      if (!action) {
+        const responseIntentId =
+          (paymentResponse as any)?.payment_intent_id ||
+          paymentObj?.payment_intent_id
+        const responseClientSecret =
+          (paymentResponse as any)?.client_secret ||
+          paymentObj?.client_secret
+
+        if (
+          typeof responseIntentId === 'string' &&
+          responseIntentId.startsWith('adyen_session') &&
+          typeof responseClientSecret === 'string' &&
+          responseClientSecret
+        ) {
+          action = {
+            type: 'adyen_session',
+            client_secret: responseClientSecret,
+            url: null,
+            raw: null,
+          }
+        }
+      }
+
       setPaymentActionType(action?.type || null)
-      setPspUsed(
+
+      let detectedPsp: string | null =
         (paymentResponse as any)?.psp ||
-          paymentObj?.psp ||
-          action?.psp ||
-          pspUsed ||
-          null,
-      )
+        paymentObj?.psp ||
+        action?.psp ||
+        null
+
+      if (!detectedPsp) {
+        const responseIntentId =
+          paymentObj?.payment_intent_id ||
+          (paymentResponse as any)?.payment_intent_id
+        if (
+          typeof responseIntentId === 'string' &&
+          responseIntentId.startsWith('adyen_session')
+        ) {
+          detectedPsp = 'adyen'
+        }
+      }
+
+      setPspUsed(detectedPsp || pspUsed || null)
+
       const redirectUrl =
         action?.url ||
         paymentResponse.redirect_url ||
