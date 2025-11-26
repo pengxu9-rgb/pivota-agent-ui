@@ -49,6 +49,7 @@ const stripePromise = publishableKey ? loadStripe(publishableKey) : null
 const ADYEN_CLIENT_KEY =
   process.env.NEXT_PUBLIC_ADYEN_CLIENT_KEY ||
   'test_RMFUADZPQBBYJIWI56KVOQSNUUT657ML' // public test key; replace in env for prod
+const FORCE_PSP = process.env.NEXT_PUBLIC_FORCE_PSP
 
 function OrderFlowInner({ items, onComplete, onCancel }: OrderFlowProps) {
   const router = useRouter()
@@ -74,6 +75,8 @@ function OrderFlowInner({ items, onComplete, onCancel }: OrderFlowProps) {
   const [verifiedEmail, setVerifiedEmail] = useState<string | null>(null)
   const adyenContainerRef = useRef<HTMLDivElement>(null)
   const [adyenMounted, setAdyenMounted] = useState(false)
+  const [paymentActionType, setPaymentActionType] = useState<string | null>(null)
+  const [pspUsed, setPspUsed] = useState<string | null>(null)
 
   const subtotal = items.reduce((sum, item) => sum + item.unit_price * item.quantity, 0)
   const shipping_cost = 0 // Free shipping
@@ -129,7 +132,8 @@ function OrderFlowInner({ items, onComplete, onCancel }: OrderFlowProps) {
             country: shipping.country,
             postal_code: shipping.postal_code,
             phone: shipping.phone
-          }
+          },
+          ...(FORCE_PSP ? { preferred_psp: FORCE_PSP } : {})
         })
         
         orderId = orderResponse.order_id
@@ -148,6 +152,13 @@ function OrderFlowInner({ items, onComplete, onCancel }: OrderFlowProps) {
       })
 
       const action = (paymentResponse as any)?.payment_action
+      setPaymentActionType(action?.type || null)
+      setPspUsed(
+        (paymentResponse as any)?.psp ||
+          action?.psp ||
+          (paymentResponse as any)?.payment?.psp ||
+          null,
+      )
       const redirectUrl =
         action?.url ||
         paymentResponse.redirect_url ||
@@ -529,6 +540,12 @@ function OrderFlowInner({ items, onComplete, onCancel }: OrderFlowProps) {
       {step === 'payment' && (
         <div className="bg-white rounded-lg shadow-md p-6">
           <h2 className="text-2xl font-bold mb-6">Payment Method</h2>
+          {pspUsed && (
+            <div className="mb-3 text-sm text-muted-foreground">
+              PSP routed to: <span className="font-medium text-foreground">{pspUsed}</span>
+              {paymentActionType && ` (${paymentActionType})`}
+            </div>
+          )}
           
           <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
             <p className="text-yellow-800">
@@ -548,7 +565,7 @@ function OrderFlowInner({ items, onComplete, onCancel }: OrderFlowProps) {
               </div>
             </div>
 
-            {publishableKey && (
+            {publishableKey && paymentActionType !== 'adyen_session' && (
               <div className="border rounded-lg p-4">
                 <label className="text-sm font-medium text-gray-700">Card Details</label>
                 <div className="mt-2 p-3 border rounded bg-gray-50">
@@ -557,15 +574,17 @@ function OrderFlowInner({ items, onComplete, onCancel }: OrderFlowProps) {
                 {cardError && <p className="text-sm text-red-600 mt-2">{cardError}</p>}
               </div>
             )}
-            <div className="border rounded-lg p-4">
-              <p className="text-sm font-medium text-gray-700">Alternate payment methods</p>
-              <div ref={adyenContainerRef} className="mt-2" />
-              {!adyenMounted && (
-                <p className="text-xs text-muted-foreground">
-                  If your payment uses Adyen/redirect, a hosted form will appear here after clicking Pay.
-                </p>
-              )}
-            </div>
+            {(paymentActionType === 'adyen_session' || !paymentActionType) && (
+              <div className="border rounded-lg p-4">
+                <p className="text-sm font-medium text-gray-700">Alternate payment methods</p>
+                <div ref={adyenContainerRef} className="mt-2" />
+                {!adyenMounted && (
+                  <p className="text-xs text-muted-foreground">
+                    If your payment uses Adyen/redirect, a hosted form will appear here after clicking Pay.
+                  </p>
+                )}
+              </div>
+            )}
             
             <div className="mt-6">
               <h3 className="font-medium mb-4">Order Summary</h3>

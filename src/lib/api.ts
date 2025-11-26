@@ -419,6 +419,7 @@ export async function createOrder(orderData: {
     phone?: string;
   };
   customer_notes?: string;
+  preferred_psp?: string;
 }) {
   const data = await callGateway({
     operation: 'create_order',
