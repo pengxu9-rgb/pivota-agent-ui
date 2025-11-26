@@ -19,6 +19,11 @@ export default function ChatSidebar({ isOpen, onClose }: ChatSidebarProps) {
   const { conversations, switchConversation, clearMessages } = useChatStore();
   const { theme, setTheme } = useTheme();
   const itemCount = items.reduce((acc, item) => acc + item.quantity, 0);
+  const sortedConversations = [...conversations].sort(
+    (a, b) =>
+      new Date(b.timestamp as any).getTime() -
+      new Date(a.timestamp as any).getTime(),
+  );
 
   const menuItems = [
     { icon: Package, label: 'My Orders', link: '/orders' },
@@ -142,8 +147,8 @@ export default function ChatSidebar({ isOpen, onClose }: ChatSidebarProps) {
               <h3 className="text-sm font-semibold text-foreground">Recent Chats</h3>
             </div>
             <div className="space-y-2">
-              {conversations.length > 0 ? (
-                conversations.slice(0, 5).map((conv) => (
+              {sortedConversations.length > 0 ? (
+                sortedConversations.slice(0, 5).map((conv) => (
                   <button
                     key={conv.id}
                     onClick={() => {
