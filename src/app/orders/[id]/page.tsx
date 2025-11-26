@@ -81,6 +81,8 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   }
 
   const { order, items, payment, permissions } = data
+  const isCancelled = order.status === 'cancelled'
+  const canCancel = permissions?.can_cancel && !isCancelled
 
   const statusBadge = (status: string) => {
     switch (status) {
@@ -191,13 +193,17 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                   Continue payment
                 </button>
               )}
-              <button
-                onClick={onCancel}
-                className="w-full py-2 border border-border rounded-lg text-sm font-medium hover:bg-muted disabled:opacity-60"
-                disabled={!permissions?.can_cancel || cancelLoading}
-              >
-                {cancelLoading ? 'Cancelling...' : 'Cancel order'}
-              </button>
+              {canCancel ? (
+                <button
+                  onClick={onCancel}
+                  className="w-full py-2 border border-border rounded-lg text-sm font-medium hover:bg-muted disabled:opacity-60"
+                  disabled={cancelLoading}
+                >
+                  {cancelLoading ? 'Cancelling...' : 'Cancel order'}
+                </button>
+              ) : (
+                <p className="text-sm text-muted-foreground">Order cannot be cancelled.</p>
+              )}
               <button
                 onClick={() => toast.info('Reorder: please add items again from catalog.')}
                 className="w-full py-2 border border-border rounded-lg text-sm font-medium hover:bg-muted disabled:opacity-60"
