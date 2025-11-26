@@ -131,19 +131,9 @@ export default function HomePage() {
                     {user.email || user.id}
                   </span>
                 </div>
-                <Link href="/my-orders" className="hidden sm:block">
-                  <Button variant="secondary" size="sm">
-                    My Orders
-                  </Button>
-                </Link>
               </>
             ) : (
               <>
-                <Link href="/my-orders" className="hidden sm:block">
-                  <Button variant="secondary" size="sm">
-                    My Orders
-                  </Button>
-                </Link>
                 <Link href="/login" className="hidden sm:block">
                   <Button variant="outline" size="sm">
                     Login
@@ -211,7 +201,7 @@ export default function HomePage() {
 
                   {/* Product Cards */}
                   {message.products && message.products.length > 0 && (
-                    <div className="mt-3 grid grid-cols-2 gap-3 max-w-lg">
+                    <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-2xl">
                       {message.products.map((product, productIdx) => (
                         <motion.div
                           key={product.product_id}
@@ -229,7 +219,7 @@ export default function HomePage() {
                             }
                             className="block"
                           >
-                            <div className="relative w-full aspect-square overflow-hidden bg-muted/30">
+                            <div className="relative w-full aspect-[4/5] overflow-hidden bg-muted/30">
                               <Image
                                 src={product.image_url || '/placeholder.svg'}
                                 alt={product.title}
@@ -241,9 +231,9 @@ export default function HomePage() {
                           </Link>
 
                           {/* Content */}
-                          <div className="p-3 flex flex-col gap-2">
+                          <div className="p-4 flex flex-col gap-2">
                             <Link href={`/products/${product.product_id}`}>
-                              <h4 className="font-medium text-sm mb-1 line-clamp-2 min-h-[2.5rem] group-hover:text-primary transition-colors">
+                              <h4 className="font-semibold text-base mb-1 line-clamp-2 min-h-[2.5rem] group-hover:text-primary transition-colors">
                                 {product.title}
                               </h4>
                             </Link>
