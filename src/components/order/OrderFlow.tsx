@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ShoppingCart, CreditCard, Check, ChevronRight } from 'lucide-react'
 import Image from 'next/image'
 import {
@@ -15,6 +15,7 @@ import { useRouter } from 'next/navigation'
 import { loadStripe } from '@stripe/stripe-js'
 import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js'
 import { useAuthStore } from '@/store/authStore'
+import '@adyen/adyen-web/dist/adyen.css'
 
 interface OrderItem {
   product_id: string
@@ -45,6 +46,9 @@ interface OrderFlowProps {
 
 const publishableKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || ''
 const stripePromise = publishableKey ? loadStripe(publishableKey) : null
+const ADYEN_CLIENT_KEY =
+  process.env.NEXT_PUBLIC_ADYEN_CLIENT_KEY ||
+  'test_RMFUADZPQBBYJIWI56KVOQSNUUT657ML' // public test key; replace in env for prod
 
 function OrderFlowInner({ items, onComplete, onCancel }: OrderFlowProps) {
   const router = useRouter()
@@ -68,6 +72,8 @@ function OrderFlowInner({ items, onComplete, onCancel }: OrderFlowProps) {
   const [otpSent, setOtpSent] = useState(false)
   const [otpLoading, setOtpLoading] = useState(false)
   const [verifiedEmail, setVerifiedEmail] = useState<string | null>(null)
+  const adyenContainerRef = useRef<HTMLDivElement>(null)
+  const [adyenMounted, setAdyenMounted] = useState(false)
 
   const subtotal = items.reduce((sum, item) => sum + item.unit_price * item.quantity, 0)
   const shipping_cost = 0 // Free shipping
@@ -163,13 +169,58 @@ function OrderFlowInner({ items, onComplete, onCancel }: OrderFlowProps) {
       }
 
       if (action?.type === 'adyen_session') {
-        // TODO: integrate Adyen Checkout SDK; for now, fallback to redirect if provided
-        if (redirectUrl) {
-          window.location.href = redirectUrl
+        const sessionData = action?.client_secret
+        const sessionId = action?.raw?.id || paymentResponse.payment_intent_id || paymentResponse.payment?.payment_intent_id || ''
+        const clientKey = action?.raw?.clientKey || ADYEN_CLIENT_KEY
+
+        if (!sessionData || !clientKey) {
+          throw new Error('Adyen session missing data')
+        }
+
+        if (adyenMounted && adyenContainerRef.current) {
+          // Already mounted; do nothing
+          setIsProcessing(false)
           return
         }
-        toast.error('Adyen session requires a hosted payment page; please retry later.')
-        throw new Error('Adyen session not yet supported in UI')
+
+        try {
+          const { default: AdyenCheckout } = await import('@adyen/adyen-web')
+          const checkout = await AdyenCheckout({
+            clientKey,
+            environment: 'test', // use 'live' in production with proper key
+            session: {
+              id: sessionId,
+              sessionData,
+            },
+            analytics: { enabled: false },
+            returnUrl:
+              typeof window !== 'undefined'
+                ? `${window.location.origin}/orders/${orderId}`
+                : undefined,
+            onPaymentCompleted: () => {
+              setStep('confirm')
+              toast.success('Payment processed successfully!')
+              router.push(`/orders/${orderId}?paid=1`)
+              onComplete?.(orderId)
+            },
+            onError: (err: any) => {
+              console.error('Adyen error:', err)
+              toast.error(err?.message || 'Payment failed')
+            },
+          })
+
+          if (adyenContainerRef.current) {
+            checkout.create('dropin').mount(adyenContainerRef.current)
+            setAdyenMounted(true)
+            setIsProcessing(false)
+            return
+          } else {
+            throw new Error('Payment container not ready')
+          }
+        } catch (err: any) {
+          console.error('Adyen init failed:', err)
+          throw err
+        }
       }
 
       // Default / Stripe flow
@@ -510,6 +561,15 @@ function OrderFlowInner({ items, onComplete, onCancel }: OrderFlowProps) {
                 {cardError && <p className="text-sm text-red-600 mt-2">{cardError}</p>}
               </div>
             )}
+            <div className="border rounded-lg p-4">
+              <p className="text-sm font-medium text-gray-700">Alternate payment methods</p>
+              <div ref={adyenContainerRef} className="mt-2" />
+              {!adyenMounted && (
+                <p className="text-xs text-muted-foreground">
+                  If your payment uses Adyen/redirect, a hosted form will appear here after clicking Pay.
+                </p>
+              )}
+            </div>
             
             <div className="mt-6">
               <h3 className="font-medium mb-4">Order Summary</h3>
