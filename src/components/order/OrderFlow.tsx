@@ -86,78 +86,6 @@ function OrderFlowInner({ items, onComplete, onCancel }: OrderFlowProps) {
   const tax = subtotal * 0.08 // 8% tax
   const total = subtotal + shipping_cost + tax
 
-  // Preload Adyen Drop-in when entering the payment step so that the card form
-  // is visible immediately for Adyen routes.
-  useEffect(() => {
-    const maybeMountAdyen = async () => {
-      if (
-        step !== 'payment' ||
-        paymentActionType !== 'adyen_session' ||
-        adyenMounted ||
-        !initialPaymentAction ||
-        !adyenContainerRef.current
-      ) {
-        return
-      }
-
-      try {
-        setIsProcessing(true)
-
-        const sessionData = initialPaymentAction?.client_secret
-        let sessionId = initialPaymentAction?.raw?.id || ''
-        if (!sessionId && initialPaymentAction?.payment_intent_id) {
-          sessionId = initialPaymentAction.payment_intent_id
-        }
-        if (sessionId && typeof sessionId === 'string' && sessionId.startsWith('adyen_session_')) {
-          sessionId = sessionId.replace('adyen_session_', '')
-        }
-
-        const clientKey = initialPaymentAction?.raw?.clientKey || ADYEN_CLIENT_KEY
-
-        if (!sessionData || !sessionId || !clientKey) {
-          console.warn('Adyen preload missing data', { sessionId, hasSessionData: !!sessionData })
-          return
-        }
-
-        const { default: AdyenCheckout } = await import('@adyen/adyen-web')
-        const checkout = await AdyenCheckout({
-          clientKey,
-          environment: 'test',
-          session: {
-            id: sessionId,
-            sessionData,
-          },
-          analytics: { enabled: false },
-          onPaymentCompleted: () => {
-            setStep('confirm')
-            toast.success('Payment completed successfully.')
-            clearCart()
-            if (createdOrderId) {
-              router.push(`/orders/${createdOrderId}?paid=1`)
-              onComplete?.(createdOrderId)
-            }
-          },
-          onError: (err: any) => {
-            console.error('Adyen error (preload):', err)
-            toast.error('Payment failed with Adyen. Please check your card details or try again.')
-          },
-        })
-
-        checkout.create('dropin').mount(adyenContainerRef.current)
-        setAdyenMounted(true)
-      } catch (err) {
-        console.error('Adyen init failed (preload):', err)
-      } finally {
-        setIsProcessing(false)
-      }
-    }
-
-    maybeMountAdyen()
-    // We intentionally omit createdOrderId from deps to avoid remounting;
-    // order navigation uses whatever ID is available at completion time.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step, paymentActionType, initialPaymentAction, adyenMounted])
-
   // Helper to create order once and hydrate PSP/payment_action state
   const createOrderIfNeeded = async (): Promise<string> => {
     let orderId = createdOrderId
@@ -265,18 +193,6 @@ function OrderFlowInner({ items, onComplete, onCancel }: OrderFlowProps) {
     try {
       if (!user && verifiedEmail !== shipping.email.trim()) {
         throw new Error('Please verify your email before paying.')
-      }
-
-      // For Adyen session flows, the Drop-in is preloaded when entering the
-      // Payment step. The main button only reminds the user to complete
-      // payment in the hosted form; no extra backend call is needed here.
-      if (paymentActionType === 'adyen_session') {
-        if (!adyenMounted) {
-          toast.error('Payment form is not ready yet. Please wait a moment and try again.')
-        } else {
-          toast.message('Please complete your payment in the Adyen form above.')
-        }
-        return
       }
 
       // Step 1: Create order if not already created
@@ -819,11 +735,7 @@ function OrderFlowInner({ items, onComplete, onCancel }: OrderFlowProps) {
                 disabled={isProcessing}
                 className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
               >
-                {isProcessing
-                  ? 'Processing...'
-                  : paymentActionType === 'adyen_session'
-                    ? 'Confirm payment'
-                    : `Pay $${total.toFixed(2)}`}
+                {isProcessing ? 'Processing...' : `Pay $${total.toFixed(2)}`}
               </button>
             </div>
           </div>
