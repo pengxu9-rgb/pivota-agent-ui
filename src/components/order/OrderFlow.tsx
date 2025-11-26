@@ -141,21 +141,39 @@ function OrderFlowInner({ items, onComplete, onCancel }: OrderFlowProps) {
         return_url: typeof window !== 'undefined' ? `${window.location.origin}/orders/${orderId}` : undefined
       })
 
+      const action = (paymentResponse as any)?.payment_action
       const redirectUrl =
+        action?.url ||
         paymentResponse.redirect_url ||
         paymentResponse.payment?.redirect_url ||
         paymentResponse.next_action?.redirect_url
 
       const clientSecret =
+        action?.client_secret ||
         paymentResponse.client_secret ||
         paymentResponse.payment?.client_secret
 
-      if (redirectUrl) {
-        toast.message('Continue to payment', {
-          description: 'We will open a secure payment page to finish the charge.',
-        })
-        window.open(redirectUrl, '_blank')
-      } else if (clientSecret && stripe && elements) {
+      // New unified payment handling
+      if (action?.type === 'redirect_url') {
+        if (redirectUrl) {
+          window.location.href = redirectUrl
+          return
+        }
+        throw new Error('Payment requires redirect, but no URL provided')
+      }
+
+      if (action?.type === 'adyen_session') {
+        // TODO: integrate Adyen Checkout SDK; for now, fallback to redirect if provided
+        if (redirectUrl) {
+          window.location.href = redirectUrl
+          return
+        }
+        toast.error('Adyen session requires a hosted payment page; please retry later.')
+        throw new Error('Adyen session not yet supported in UI')
+      }
+
+      // Default / Stripe flow
+      if (clientSecret && stripe && elements) {
         const cardElement = elements.getElement(CardElement)
         if (!cardElement) {
           throw new Error('Please enter card details to pay')
@@ -187,6 +205,8 @@ function OrderFlowInner({ items, onComplete, onCancel }: OrderFlowProps) {
         } else {
           throw new Error(`Payment status: ${status}`)
         }
+      } else if (redirectUrl) {
+        window.location.href = redirectUrl
       } else {
         setPaymentId(paymentResponse.payment_id || '')
         setStep('confirm')
