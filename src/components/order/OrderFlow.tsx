@@ -84,6 +84,58 @@ function OrderFlowInner({ items, onComplete, onCancel }: OrderFlowProps) {
   const tax = subtotal * 0.08 // 8% tax
   const total = subtotal + shipping_cost + tax
 
+  // Helper to create order once and hydrate PSP/payment_action state
+  const createOrderIfNeeded = async (): Promise<string> => {
+    let orderId = createdOrderId
+    if (orderId) return orderId
+
+    const merchantId = items[0]?.merchant_id || getMerchantId()
+
+    const orderResponse = await createOrder({
+      merchant_id: merchantId,
+      customer_email: shipping.email,
+      items: items.map(item => ({
+        merchant_id: item.merchant_id || merchantId,
+        product_id: item.product_id,
+        product_title: item.title,
+        quantity: item.quantity,
+        unit_price: item.unit_price,
+        subtotal: item.unit_price * item.quantity
+      })),
+      shipping_address: {
+        name: shipping.name,
+        address_line1: shipping.address_line1,
+        address_line2: shipping.address_line2,
+        city: shipping.city,
+        country: shipping.country,
+        postal_code: shipping.postal_code,
+        phone: shipping.phone
+      },
+      ...(FORCE_PSP ? { preferred_psp: FORCE_PSP } : {})
+    })
+
+    console.log('createOrder response', orderResponse)
+
+    orderId = orderResponse.order_id
+    setCreatedOrderId(orderId)
+    const orderPayment = (orderResponse as any)?.payment || {}
+    const orderPaymentAction =
+      (orderResponse as any)?.payment_action || orderPayment?.payment_action
+    if (orderPaymentAction) {
+      setInitialPaymentAction(orderPaymentAction)
+      setPaymentActionType(orderPaymentAction?.type || null)
+    }
+    const orderPsp =
+      (orderResponse as any)?.psp ||
+      orderPayment?.psp ||
+      orderPaymentAction?.psp
+    if (orderPsp) {
+      setPspUsed(orderPsp)
+    }
+
+    return orderId
+  }
+
   // If already logged in, prefill email and skip verification UI
   useEffect(() => {
     if (user?.email) {
@@ -92,13 +144,22 @@ function OrderFlowInner({ items, onComplete, onCancel }: OrderFlowProps) {
     }
   }, [user])
 
-  const handleShippingSubmit = (e: React.FormEvent) => {
+  const handleShippingSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!user && verifiedEmail !== shipping.email.trim()) {
       toast.error('Please verify your email to continue')
       return
     }
-    setStep('payment')
+    try {
+      setIsProcessing(true)
+      await createOrderIfNeeded()
+      setStep('payment')
+    } catch (err: any) {
+      console.error('Create order error:', err)
+      toast.error(err?.message || 'Failed to create order')
+    } finally {
+      setIsProcessing(false)
+    }
   }
 
   const handlePayment = async () => {
@@ -109,53 +170,9 @@ function OrderFlowInner({ items, onComplete, onCancel }: OrderFlowProps) {
       if (!user && verifiedEmail !== shipping.email.trim()) {
         throw new Error('Please verify your email before paying')
       }
-      const merchantId = items[0]?.merchant_id || getMerchantId()
 
       // Step 1: Create order if not already created
-      let orderId = createdOrderId
-      if (!orderId) {
-        const orderResponse = await createOrder({
-          merchant_id: merchantId,
-          customer_email: shipping.email,
-          items: items.map(item => ({
-            merchant_id: item.merchant_id || merchantId,
-            product_id: item.product_id,
-            product_title: item.title,
-            quantity: item.quantity,
-            unit_price: item.unit_price,
-            subtotal: item.unit_price * item.quantity
-          })),
-          shipping_address: {
-            name: shipping.name,
-            address_line1: shipping.address_line1,
-            address_line2: shipping.address_line2,
-            city: shipping.city,
-            country: shipping.country,
-            postal_code: shipping.postal_code,
-            phone: shipping.phone
-          },
-          ...(FORCE_PSP ? { preferred_psp: FORCE_PSP } : {})
-        })
-        
-        console.log('createOrder response', orderResponse)
-
-        orderId = orderResponse.order_id
-        setCreatedOrderId(orderId)
-        const orderPayment = (orderResponse as any)?.payment || {}
-        const orderPaymentAction =
-          (orderResponse as any)?.payment_action || orderPayment?.payment_action
-        if (orderPaymentAction) {
-          setInitialPaymentAction(orderPaymentAction)
-          setPaymentActionType(orderPaymentAction?.type || null)
-        }
-        const orderPsp =
-          (orderResponse as any)?.psp ||
-          orderPayment?.psp ||
-          orderPaymentAction?.psp
-        if (orderPsp) {
-          setPspUsed(orderPsp)
-        }
-      }
+      const orderId = await createOrderIfNeeded()
       
       // Step 2: Create/confirm payment intent via gateway
       const paymentResponse = await processPayment({
