@@ -141,12 +141,19 @@ function OrderFlowInner({ items, onComplete, onCancel }: OrderFlowProps) {
 
         orderId = orderResponse.order_id
         setCreatedOrderId(orderId)
-        if ((orderResponse as any).payment_action) {
-          setInitialPaymentAction((orderResponse as any).payment_action)
-          setPaymentActionType((orderResponse as any).payment_action?.type || null)
+        const orderPayment = (orderResponse as any)?.payment || {}
+        const orderPaymentAction =
+          (orderResponse as any)?.payment_action || orderPayment?.payment_action
+        if (orderPaymentAction) {
+          setInitialPaymentAction(orderPaymentAction)
+          setPaymentActionType(orderPaymentAction?.type || null)
         }
-        if ((orderResponse as any).psp) {
-          setPspUsed((orderResponse as any).psp)
+        const orderPsp =
+          (orderResponse as any)?.psp ||
+          orderPayment?.psp ||
+          orderPaymentAction?.psp
+        if (orderPsp) {
+          setPspUsed(orderPsp)
         }
       }
       
@@ -163,15 +170,17 @@ function OrderFlowInner({ items, onComplete, onCancel }: OrderFlowProps) {
 
       console.log('submit_payment response', paymentResponse)
 
+      const paymentObj = (paymentResponse as any)?.payment || {}
       const action =
         (paymentResponse as any)?.payment_action ||
+        paymentObj?.payment_action ||
         initialPaymentAction ||
         null
       setPaymentActionType(action?.type || null)
       setPspUsed(
         (paymentResponse as any)?.psp ||
+          paymentObj?.psp ||
           action?.psp ||
-          (paymentResponse as any)?.payment?.psp ||
           pspUsed ||
           null,
       )
