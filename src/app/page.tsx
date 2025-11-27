@@ -201,14 +201,14 @@ export default function HomePage() {
 
                   {/* Product Cards */}
                   {message.products && message.products.length > 0 && (
-                    <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-2xl">
+                    <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-5 max-w-3xl">
                       {message.products.map((product, productIdx) => (
                         <motion.div
                           key={product.product_id}
                           initial={{ opacity: 0, scale: 0.9 }}
                           animate={{ opacity: 1, scale: 1 }}
                           transition={{ delay: productIdx * 0.1 }}
-                          className="group relative bg-card backdrop-blur-xl rounded-2xl overflow-hidden border border-border shadow-sm hover:shadow-md hover:scale-[1.02] transition-all duration-300"
+                          className="group relative bg-card backdrop-blur-xl rounded-2xl overflow-hidden border border-border shadow-md hover:shadow-lg hover:scale-[1.02] transition-all duration-300"
                         >
                           {/* Image */}
                           <Link
@@ -219,7 +219,7 @@ export default function HomePage() {
                             }
                             className="block"
                           >
-                            <div className="relative w-full aspect-[4/5] overflow-hidden bg-muted/30">
+                            <div className="relative w-full aspect-[3/4] overflow-hidden bg-white">
                               <Image
                                 src={product.image_url || '/placeholder.svg'}
                                 alt={product.title}
@@ -233,7 +233,7 @@ export default function HomePage() {
                           {/* Content */}
                           <div className="p-4 flex flex-col gap-2">
                             <Link href={`/products/${product.product_id}`}>
-                              <h4 className="font-semibold text-base mb-1 line-clamp-2 min-h-[2.5rem] group-hover:text-primary transition-colors">
+                              <h4 className="font-semibold text-base mb-1 line-clamp-2 min-h-[2.5rem] text-foreground group-hover:text-primary transition-colors">
                                 {product.title}
                               </h4>
                             </Link>
