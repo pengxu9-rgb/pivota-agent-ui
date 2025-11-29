@@ -21,11 +21,13 @@ interface ChatStore {
   conversations: Conversation[]
   currentConversationId: string | null
   messages: Message[]
+  ownerEmail: string | null
   addMessage: (message: Omit<Message, 'timestamp'>) => void
   createConversation: (firstMessage: string) => void
   switchConversation: (id: string) => void
   clearMessages: () => void
   resetForGuest: () => void
+  setOwnerEmail: (email: string | null) => void
 }
 
 export const useChatStore = create<ChatStore>()(
@@ -33,6 +35,7 @@ export const useChatStore = create<ChatStore>()(
     (set, get) => ({
       conversations: [],
       currentConversationId: null,
+      ownerEmail: null,
       messages: [
         {
           id: '0',
@@ -172,13 +175,17 @@ export const useChatStore = create<ChatStore>()(
             // ignore storage errors
           }
         }
-      }
+        set({ ownerEmail: null })
+      },
+
+      setOwnerEmail: (email: string | null) => set({ ownerEmail: email }),
     }),
     {
       name: 'pivota-chat-storage',
       partialize: (state) => ({ 
         conversations: state.conversations,
-        currentConversationId: state.currentConversationId
+        currentConversationId: state.currentConversationId,
+        ownerEmail: state.ownerEmail,
       }),
       version: 1,
     }

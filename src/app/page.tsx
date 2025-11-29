@@ -24,6 +24,7 @@ export default function HomePage() {
   const { messages, addMessage, conversations, resetForGuest } = useChatStore();
   const { items, addItem, open } = useCartStore();
   const { user } = useAuthStore();
+  const { ownerEmail, setOwnerEmail } = useChatStore();
   
   const itemCount = items.reduce((acc, item) => acc + item.quantity, 0);
   const hasUserMessages = messages.some(msg => msg.role === 'user');
@@ -52,10 +53,19 @@ export default function HomePage() {
 
   // For guests, do not show previous user's conversations
   useEffect(() => {
-    if (!user && conversations.length > 0) {
+    const userEmail = user?.email || null;
+    // If store belongs to a different user, reset
+    if (ownerEmail && ownerEmail !== userEmail) {
       resetForGuest();
+      setOwnerEmail(userEmail);
+      return;
     }
-  }, [user, conversations.length, resetForGuest]);
+    // If store has no owner yet, claim it with current user (can be null => guest)
+    if (!ownerEmail) {
+      setOwnerEmail(userEmail);
+    }
+    // If guest and no owner, do nothing (keeps fresh guest state)
+  }, [user, ownerEmail, resetForGuest, setOwnerEmail, conversations.length]);
 
   const handleSend = async () => {
     if (!input.trim() || loading) return;
