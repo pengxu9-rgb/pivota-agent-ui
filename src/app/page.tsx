@@ -21,7 +21,7 @@ export default function HomePage() {
   const [hotDeals, setHotDeals] = useState<ProductResponse[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
-  const { messages, addMessage } = useChatStore();
+  const { messages, addMessage, conversations, resetForGuest } = useChatStore();
   const { items, addItem, open } = useCartStore();
   const { user } = useAuthStore();
   
@@ -49,6 +49,13 @@ export default function HomePage() {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  // For guests, do not show previous user's conversations
+  useEffect(() => {
+    if (!user && conversations.length > 0) {
+      resetForGuest();
+    }
+  }, [user, conversations.length, resetForGuest]);
 
   const handleSend = async () => {
     if (!input.trim() || loading) return;

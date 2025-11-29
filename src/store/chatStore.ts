@@ -25,6 +25,7 @@ interface ChatStore {
   createConversation: (firstMessage: string) => void
   switchConversation: (id: string) => void
   clearMessages: () => void
+  resetForGuest: () => void
 }
 
 export const useChatStore = create<ChatStore>()(
@@ -149,6 +150,28 @@ export const useChatStore = create<ChatStore>()(
           ],
           currentConversationId: null
         })
+      },
+
+      resetForGuest: () => {
+        set({
+          conversations: [],
+          currentConversationId: null,
+          messages: [
+            {
+              id: '0',
+              role: 'assistant',
+              content: "Hi! I'm your Pivota shopping assistant. What are you looking for today?",
+              timestamp: new Date()
+            }
+          ]
+        })
+        if (typeof window !== 'undefined') {
+          try {
+            window.localStorage.removeItem('pivota-chat-storage')
+          } catch (_) {
+            // ignore storage errors
+          }
+        }
       }
     }),
     {
