@@ -7,17 +7,64 @@ import { ArrowLeft } from 'lucide-react'
 
 interface OrderItem {
   product_id: string
+  variant_id?: string
+  sku?: string
   merchant_id?: string
   title: string
   quantity: number
   unit_price: number
+  currency?: string
   image_url?: string
+}
+
+function safeReturnUrl(input: string | null): string | null {
+  if (!input) return null
+  const trimmed = input.trim()
+  if (!trimmed) return null
+
+  if (trimmed.startsWith('/')) return trimmed
+
+  try {
+    const u = new URL(trimmed)
+    if (u.protocol !== 'https:' && u.protocol !== 'http:') return null
+    const host = u.hostname.toLowerCase()
+    const allowed =
+      host === 'localhost' ||
+      host === '127.0.0.1' ||
+      host === 'pivota.cc' ||
+      host.endsWith('.pivota.cc') ||
+      host === 'pivota.com' ||
+      host.endsWith('.pivota.com') ||
+      host.endsWith('.railway.app') ||
+      host.endsWith('.up.railway.app')
+    return allowed ? u.toString() : null
+  } catch {
+    return null
+  }
+}
+
+function withReturnParams(returnUrl: string, params: Record<string, string>) {
+  try {
+    const base = typeof window !== 'undefined' ? window.location.origin : 'https://agent.pivota.cc'
+    const u = new URL(returnUrl, base)
+    for (const [k, v] of Object.entries(params)) {
+      if (!u.searchParams.get(k)) u.searchParams.set(k, v)
+    }
+    return u.toString()
+  } catch {
+    return returnUrl
+  }
 }
 
 function OrderContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [orderItems, setOrderItems] = useState<OrderItem[]>([])
+  const returnUrl = safeReturnUrl(
+    searchParams.get('return') ||
+      searchParams.get('returnUrl') ||
+      searchParams.get('return_url'),
+  )
 
   useEffect(() => {
     // In a real app, this would come from cart state or API
@@ -57,14 +104,20 @@ function OrderContent() {
   const handleComplete = (orderId: string) => {
     // In production, this would save order to backend
     console.log('Order completed:', orderId)
-    
-    // Show success message and redirect
-    setTimeout(() => {
-      router.push(`/order/success?orderId=${orderId}`)
-    }, 2000)
+
+    if (returnUrl) {
+      window.location.assign(withReturnParams(returnUrl, { checkout: 'success', orderId }))
+      return
+    }
+
+    router.push(`/order/success?orderId=${orderId}`)
   }
 
   const handleCancel = () => {
+    if (returnUrl) {
+      window.location.assign(withReturnParams(returnUrl, { checkout: 'cancel' }))
+      return
+    }
     router.push('/')
   }
 
@@ -74,7 +127,13 @@ function OrderContent() {
         <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <button
-              onClick={() => router.push('/')}
+              onClick={() => {
+                if (returnUrl) {
+                  window.location.assign(returnUrl)
+                  return
+                }
+                router.push('/')
+              }}
               className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
               aria-label="Back to chat"
             >

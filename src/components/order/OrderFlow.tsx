@@ -20,10 +20,13 @@ import '@adyen/adyen-web/dist/adyen.css'
 
 interface OrderItem {
   product_id: string
+  variant_id?: string
+  sku?: string
   merchant_id?: string
   title: string
   quantity: number
   unit_price: number
+  currency?: string
   image_url?: string
 }
 
@@ -100,6 +103,8 @@ function OrderFlowInner({ items, onComplete, onCancel }: OrderFlowProps) {
         merchant_id: item.merchant_id || merchantId,
         product_id: item.product_id,
         product_title: item.title,
+        ...(item.variant_id ? { variant_id: item.variant_id } : {}),
+        ...(item.sku ? { sku: item.sku } : {}),
         quantity: item.quantity,
         unit_price: item.unit_price,
         subtotal: item.unit_price * item.quantity
@@ -324,8 +329,11 @@ function OrderFlowInner({ items, onComplete, onCancel }: OrderFlowProps) {
               setStep('confirm')
               toast.success('Payment completed successfully.')
               clearCart()
+              if (onComplete) {
+                onComplete(orderId)
+                return
+              }
               router.push(`/orders/${orderId}?paid=1`)
-              onComplete?.(orderId)
             },
             onError: (err: any) => {
               console.error('Adyen error:', err)
@@ -371,8 +379,11 @@ function OrderFlowInner({ items, onComplete, onCancel }: OrderFlowProps) {
           setStep('confirm')
           toast.success('Payment completed successfully.')
           clearCart()
+          if (onComplete) {
+            onComplete(orderId)
+            return
+          }
           router.push(`/orders/${orderId}?paid=1`)
-          if (onComplete) onComplete(orderId)
         } else if (status === 'requires_action') {
           // Stripe will handle 3DS in confirmCardPayment; keep user on page
           toast.message('Additional authentication required', {
@@ -388,10 +399,11 @@ function OrderFlowInner({ items, onComplete, onCancel }: OrderFlowProps) {
         setStep('confirm')
         toast.success('Payment processed successfully!')
         clearCart()
-        router.push(`/orders/${orderId}?paid=1`)
         if (onComplete) {
           onComplete(orderId)
+          return
         }
+        router.push(`/orders/${orderId}?paid=1`)
       }
     } catch (error: any) {
       console.error('Payment error:', error)
