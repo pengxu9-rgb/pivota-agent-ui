@@ -9,6 +9,7 @@ import {
   getMerchantId,
   accountsLogin,
   accountsVerify,
+  previewQuote,
 } from '@/lib/api'
 import { useCartStore } from '@/store/cartStore'
 import { toast } from 'sonner'
@@ -48,6 +49,25 @@ interface OrderFlowProps {
   onCancel?: () => void
 }
 
+type QuotePricing = {
+  subtotal: number
+  discount_total?: number
+  shipping_fee: number
+  tax: number
+  total: number
+}
+
+type QuotePreview = {
+  quote_id: string
+  currency: string
+  pricing: QuotePricing
+  line_items?: Array<{
+    variant_id: string
+    unit_price_effective: number
+  }>
+  delivery_options?: any[]
+}
+
 const publishableKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || ''
 const stripePromise = publishableKey ? loadStripe(publishableKey) : null
 const ADYEN_CLIENT_KEY =
@@ -83,11 +103,96 @@ function OrderFlowInner({ items, onComplete, onCancel }: OrderFlowProps) {
   const [paymentActionType, setPaymentActionType] = useState<string | null>(null)
   const [pspUsed, setPspUsed] = useState<string | null>(null)
   const [initialPaymentAction, setInitialPaymentAction] = useState<any>(null)
+  const [quote, setQuote] = useState<QuotePreview | null>(null)
+  const [selectedDeliveryOption, setSelectedDeliveryOption] = useState<any>(null)
+  const [quotePending, setQuotePending] = useState(false)
 
-  const subtotal = items.reduce((sum, item) => sum + item.unit_price * item.quantity, 0)
-  const shipping_cost = 0 // Free shipping
-  const tax = subtotal * 0.08 // 8% tax
-  const total = subtotal + shipping_cost + tax
+  const estimatedSubtotal = items.reduce(
+    (sum, item) => sum + item.unit_price * item.quantity,
+    0,
+  )
+  const currency = quote?.currency || items[0]?.currency || 'USD'
+  const hasQuote = Boolean(quote?.quote_id)
+  const subtotal = quote?.pricing?.subtotal ?? estimatedSubtotal
+  const shipping_cost = quote?.pricing?.shipping_fee ?? 0
+  const tax = quote?.pricing?.tax ?? 0
+  const total = quote?.pricing?.total ?? estimatedSubtotal
+
+  const formatAmount = (amount: number) => {
+    const decimals = currency === 'JPY' ? 0 : 2
+    return `$${amount.toFixed(decimals)}`
+  }
+
+  const deliveryOptions = Array.isArray(quote?.delivery_options) ? quote?.delivery_options : []
+
+  const merchantIdForOrder = items[0]?.merchant_id || getMerchantId()
+
+  const buildQuoteRequest = (deliveryOptionOverride?: any) => {
+    const quoteItems = items
+      .map((item) => ({
+        product_id: item.product_id,
+        variant_id: item.variant_id || '',
+        quantity: item.quantity,
+      }))
+      .filter((it) => Boolean(it.product_id) && Boolean(it.variant_id))
+
+    return {
+      merchant_id: merchantIdForOrder,
+      items: quoteItems,
+      customer_email: shipping.email,
+      shipping_address: {
+        name: shipping.name,
+        address_line1: shipping.address_line1,
+        address_line2: shipping.address_line2 || undefined,
+        city: shipping.city,
+        ...(shipping.state ? { state: shipping.state } : {}),
+        country: shipping.country,
+        postal_code: shipping.postal_code,
+        phone: shipping.phone || undefined,
+      },
+      ...(deliveryOptionOverride ? { selected_delivery_option: deliveryOptionOverride } : {}),
+    }
+  }
+
+  const normalizeQuote = (quoteResp: any): QuotePreview | null => {
+    const pricing = quoteResp?.pricing || null
+    const quoteId = quoteResp?.quote_id || quoteResp?.quoteId || null
+    const qCurrency = quoteResp?.currency || 'USD'
+    const deliveryOptionsRaw = quoteResp?.delivery_options || null
+
+    if (!quoteId || !pricing) return null
+    return {
+      quote_id: String(quoteId),
+      currency: String(qCurrency),
+      pricing: {
+        subtotal: Number(pricing.subtotal) || 0,
+        discount_total: Number(pricing.discount_total) || 0,
+        shipping_fee: Number(pricing.shipping_fee) || 0,
+        tax: Number(pricing.tax) || 0,
+        total: Number(pricing.total) || 0,
+      },
+      line_items: quoteResp?.line_items || [],
+      delivery_options: Array.isArray(deliveryOptionsRaw) ? deliveryOptionsRaw : undefined,
+    }
+  }
+
+  const refreshQuote = async (deliveryOptionOverride?: any) => {
+    const quoteReq = buildQuoteRequest(deliveryOptionOverride ?? selectedDeliveryOption)
+    if (!Array.isArray(quoteReq.items) || quoteReq.items.length !== items.length) {
+      throw new Error('Some items are missing variant information and cannot be priced.')
+    }
+    const quoteResp = await previewQuote(quoteReq)
+    const normalized = normalizeQuote(quoteResp)
+    if (!normalized) throw new Error('Failed to calculate pricing. Please try again.')
+    setQuote(normalized)
+    const opts = Array.isArray(normalized.delivery_options) ? normalized.delivery_options : []
+    if (opts.length > 0) {
+      if (deliveryOptionOverride) setSelectedDeliveryOption(deliveryOptionOverride)
+      else setSelectedDeliveryOption((prev: any) => prev || opts[0] || null)
+    } else {
+      setSelectedDeliveryOption(null)
+    }
+  }
 
   // Helper to create order once and hydrate PSP/payment_action state
   const createOrderIfNeeded = async (): Promise<string> => {
@@ -96,9 +201,18 @@ function OrderFlowInner({ items, onComplete, onCancel }: OrderFlowProps) {
 
     const merchantId = items[0]?.merchant_id || getMerchantId()
 
+    const lineItemPriceByVariant = new Map<string, number>()
+    for (const li of quote?.line_items || []) {
+      if (!li?.variant_id) continue
+      const price = Number((li as any).unit_price_effective)
+      if (Number.isFinite(price)) lineItemPriceByVariant.set(li.variant_id, price)
+    }
+
     const orderResponse = await createOrder({
       merchant_id: merchantId,
       customer_email: shipping.email,
+      ...(quote?.quote_id ? { quote_id: quote.quote_id } : {}),
+      ...(selectedDeliveryOption ? { selected_delivery_option: selectedDeliveryOption } : {}),
       items: items.map(item => ({
         merchant_id: item.merchant_id || merchantId,
         product_id: item.product_id,
@@ -106,14 +220,21 @@ function OrderFlowInner({ items, onComplete, onCancel }: OrderFlowProps) {
         ...(item.variant_id ? { variant_id: item.variant_id } : {}),
         ...(item.sku ? { sku: item.sku } : {}),
         quantity: item.quantity,
-        unit_price: item.unit_price,
-        subtotal: item.unit_price * item.quantity
+        unit_price:
+          item.variant_id && lineItemPriceByVariant.has(item.variant_id)
+            ? Number(lineItemPriceByVariant.get(item.variant_id))
+            : item.unit_price,
+        subtotal:
+          (item.variant_id && lineItemPriceByVariant.has(item.variant_id)
+            ? Number(lineItemPriceByVariant.get(item.variant_id))
+            : item.unit_price) * item.quantity
       })),
       shipping_address: {
         name: shipping.name,
         address_line1: shipping.address_line1,
         address_line2: shipping.address_line2,
         city: shipping.city,
+        ...(shipping.state ? { state: shipping.state } : {}),
         country: shipping.country,
         postal_code: shipping.postal_code,
         phone: shipping.phone
@@ -181,11 +302,17 @@ function OrderFlowInner({ items, onComplete, onCancel }: OrderFlowProps) {
     }
     try {
       setIsProcessing(true)
-      await createOrderIfNeeded()
+      // Reset any existing order if shipping changes.
+      setCreatedOrderId('')
+      setInitialPaymentAction(null)
+      setPaymentActionType(null)
+      setPspUsed(null)
+
+      await refreshQuote()
       setStep('payment')
     } catch (err: any) {
       console.error('Create order error:', err)
-      toast.error(err?.message || 'Failed to create order')
+      toast.error(err?.message || 'Failed to calculate pricing')
     } finally {
       setIsProcessing(false)
     }
@@ -199,6 +326,9 @@ function OrderFlowInner({ items, onComplete, onCancel }: OrderFlowProps) {
       if (!user && verifiedEmail !== shipping.email.trim()) {
         throw new Error('Please verify your email before paying.')
       }
+      if (!quote?.quote_id) {
+        throw new Error('Please enter your shipping address to calculate totals before paying.')
+      }
 
       // Step 1: Create order if not already created
       const orderId = await createOrderIfNeeded()
@@ -207,7 +337,7 @@ function OrderFlowInner({ items, onComplete, onCancel }: OrderFlowProps) {
       const paymentResponse = await processPayment({
         order_id: orderId,
         total_amount: total,
-        currency: 'USD',
+        currency,
         payment_method: {
           type: 'card'
         },
@@ -465,20 +595,25 @@ function OrderFlowInner({ items, onComplete, onCancel }: OrderFlowProps) {
           <div className="border-t pt-4 space-y-2">
             <div className="flex justify-between">
               <span>Subtotal</span>
-              <span>${subtotal.toFixed(2)}</span>
+              <span>{formatAmount(subtotal)}</span>
             </div>
             <div className="flex justify-between">
               <span>Shipping</span>
-              <span className="text-green-600">FREE</span>
+              <span>{hasQuote ? formatAmount(shipping_cost) : '—'}</span>
             </div>
             <div className="flex justify-between">
               <span>Tax</span>
-              <span>${tax.toFixed(2)}</span>
+              <span>{hasQuote ? formatAmount(tax) : '—'}</span>
             </div>
             <div className="flex justify-between font-bold text-lg">
               <span>Total</span>
-              <span>${total.toFixed(2)}</span>
+              <span>{hasQuote ? formatAmount(total) : formatAmount(estimatedSubtotal)}</span>
             </div>
+            {!hasQuote && (
+              <p className="text-xs text-gray-500 pt-1">
+                Enter your shipping address to calculate shipping and tax.
+              </p>
+            )}
           </div>
           
           <div className="flex justify-between mt-6">
@@ -615,7 +750,7 @@ function OrderFlowInner({ items, onComplete, onCancel }: OrderFlowProps) {
               />
             </div>
             
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div>
                 <label className="block text-sm font-medium mb-1">City</label>
                 <input
@@ -623,6 +758,15 @@ function OrderFlowInner({ items, onComplete, onCancel }: OrderFlowProps) {
                   required
                   value={shipping.city}
                   onChange={(e) => setShipping({...shipping, city: e.target.value})}
+                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">State</label>
+                <input
+                  type="text"
+                  value={shipping.state || ''}
+                  onChange={(e) => setShipping({...shipping, state: e.target.value})}
                   className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
                 />
               </div>
@@ -685,6 +829,56 @@ function OrderFlowInner({ items, onComplete, onCancel }: OrderFlowProps) {
           </div>
           
           <div className="space-y-4">
+            {deliveryOptions.length > 1 ? (
+              <div className="border rounded-lg p-4">
+                <label className="block text-sm font-medium mb-2">Shipping method</label>
+                <select
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  disabled={quotePending || isProcessing}
+                  value={Math.max(0, deliveryOptions.findIndex((o) => JSON.stringify(o) === JSON.stringify(selectedDeliveryOption)))}
+                  onChange={async (e) => {
+                    const idx = Number(e.target.value) || 0
+                    const opt = deliveryOptions[idx]
+                    if (!opt) return
+                    try {
+                      setQuotePending(true)
+                      await refreshQuote(opt)
+                    } catch (err: any) {
+                      console.error('refreshQuote failed', err)
+                      toast.error(err?.message || 'Failed to update shipping option')
+                    } finally {
+                      setQuotePending(false)
+                    }
+                  }}
+                >
+                  {deliveryOptions.map((opt, idx) => {
+                    const label =
+                      opt?.title ||
+                      opt?.name ||
+                      opt?.label ||
+                      opt?.code ||
+                      opt?.id ||
+                      `Option ${idx + 1}`
+                    const price =
+                      opt?.price ??
+                      opt?.amount ??
+                      opt?.cost ??
+                      opt?.shipping_fee ??
+                      null
+                    const priceNum = price != null ? Number(price) : NaN
+                    const suffix = Number.isFinite(priceNum) ? ` (${formatAmount(priceNum)})` : ''
+                    return (
+                      <option key={String(opt?.id || idx)} value={idx}>
+                        {String(label)}{suffix}
+                      </option>
+                    )
+                  })}
+                </select>
+                {quotePending && (
+                  <p className="text-xs text-muted-foreground mt-2">Updating totals…</p>
+                )}
+              </div>
+            ) : null}
             {paymentActionType === 'adyen_session' ? (
               <div className="border rounded-lg p-4">
                 <p className="font-medium mb-2">Adyen payment</p>
@@ -723,13 +917,30 @@ function OrderFlowInner({ items, onComplete, onCancel }: OrderFlowProps) {
             <div className="mt-6">
               <h3 className="font-medium mb-4">Order Summary</h3>
               <div className="bg-gray-50 rounded-lg p-4">
-                <div className="flex justify-between mb-2">
-                  <span>Total Amount</span>
-                  <span className="font-bold text-lg">${total.toFixed(2)}</span>
+                <div className="space-y-1 text-sm">
+                  <div className="flex justify-between">
+                    <span>Subtotal</span>
+                    <span>{formatAmount(subtotal)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Shipping</span>
+                    <span>{formatAmount(shipping_cost)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Tax</span>
+                    <span>{formatAmount(tax)}</span>
+                  </div>
+                  <div className="flex justify-between font-semibold text-base pt-1">
+                    <span>Total</span>
+                    <span>{formatAmount(total)}</span>
+                  </div>
                 </div>
                 <div className="text-sm text-gray-600">
                   <p>Ship to: {shipping.name}</p>
-                  <p>{shipping.address_line1}, {shipping.city} {shipping.postal_code}</p>
+                  <p>
+                    {shipping.address_line1}, {shipping.city}
+                    {shipping.state ? ` ${shipping.state}` : ''} {shipping.postal_code}
+                  </p>
                 </div>
               </div>
             </div>
@@ -747,7 +958,7 @@ function OrderFlowInner({ items, onComplete, onCancel }: OrderFlowProps) {
                 disabled={isProcessing}
                 className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
               >
-                {isProcessing ? 'Processing...' : `Pay $${total.toFixed(2)}`}
+                {isProcessing ? 'Processing...' : `Pay ${formatAmount(total)}`}
               </button>
             </div>
           </div>
@@ -764,7 +975,7 @@ function OrderFlowInner({ items, onComplete, onCancel }: OrderFlowProps) {
             Thank you for your purchase. Your order has been received and is being processed.
           </p>
           <p className="text-lg font-medium">
-            Order Total: <span className="text-green-600">${total.toFixed(2)}</span>
+            Order Total: <span className="text-green-600">{formatAmount(total)}</span>
           </p>
           <p className="mt-4 text-gray-600">
             You will receive an order confirmation email shortly.

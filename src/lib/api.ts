@@ -405,6 +405,8 @@ export async function createOrder(orderData: {
     merchant_id: string;
     product_id: string;
     product_title: string;
+    variant_id?: string;
+    sku?: string;
     quantity: number;
     unit_price: number;
     subtotal: number;
@@ -414,12 +416,16 @@ export async function createOrder(orderData: {
     address_line1: string;
     address_line2?: string;
     city: string;
+    state?: string;
     country: string;
     postal_code: string;
     phone?: string;
   };
   customer_notes?: string;
   preferred_psp?: string;
+  quote_id?: string;
+  discount_codes?: string[];
+  selected_delivery_option?: any;
 }) {
   const data = await callGateway({
     operation: 'create_order',
@@ -428,6 +434,23 @@ export async function createOrder(orderData: {
     },
   });
 
+  return data;
+}
+
+export async function previewQuote(quote: {
+  merchant_id: string;
+  items: Array<{ product_id: string; variant_id: string; quantity: number }>;
+  customer_email?: string;
+  shipping_address?: any;
+  discount_codes?: string[];
+  selected_delivery_option?: any;
+}) {
+  const data = await callGateway({
+    operation: 'preview_quote',
+    payload: {
+      quote,
+    },
+  });
   return data;
 }
 
