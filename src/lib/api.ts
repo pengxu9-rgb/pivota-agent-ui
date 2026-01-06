@@ -152,15 +152,41 @@ interface InvokeBody {
   payload: any;
 }
 
+function getCheckoutToken(): string | null {
+  if (typeof window === 'undefined') return null;
+
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const token =
+      params.get('checkout_token') ||
+      params.get('checkoutToken') ||
+      null;
+    if (token) {
+      window.sessionStorage.setItem('pivota_checkout_token', token);
+      return token;
+    }
+  } catch {
+    // ignore
+  }
+
+  try {
+    return window.sessionStorage.getItem('pivota_checkout_token');
+  } catch {
+    return null;
+  }
+}
+
 async function callGateway(body: InvokeBody) {
   // If API_BASE is our same-origin proxy (/api/gateway), hit it directly; otherwise append the invoke path.
   const isProxy = API_BASE.startsWith('/api/gateway');
   const url = isProxy ? API_BASE : `${API_BASE}/agent/shop/v1/invoke`;
+  const checkoutToken = getCheckoutToken();
 
   const res = await fetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      ...(checkoutToken ? { 'X-Checkout-Token': checkoutToken } : {}),
     },
     body: JSON.stringify(body),
   });
