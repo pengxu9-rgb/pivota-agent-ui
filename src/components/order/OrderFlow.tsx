@@ -47,6 +47,7 @@ interface OrderFlowProps {
   items: OrderItem[]
   onComplete?: (orderId: string) => void
   onCancel?: () => void
+  skipEmailVerification?: boolean
 }
 
 type QuotePricing = {
@@ -75,7 +76,7 @@ const ADYEN_CLIENT_KEY =
   'test_RMFUADZPQBBYJIWI56KVOQSNUUT657ML' // public test key; replace in env for prod
 const FORCE_PSP = process.env.NEXT_PUBLIC_FORCE_PSP
 
-function OrderFlowInner({ items, onComplete, onCancel }: OrderFlowProps) {
+function OrderFlowInner({ items, onComplete, onCancel, skipEmailVerification }: OrderFlowProps) {
   const router = useRouter()
   const stripe = useStripe()
   const elements = useElements()
@@ -296,7 +297,7 @@ function OrderFlowInner({ items, onComplete, onCancel }: OrderFlowProps) {
 
   const handleShippingSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!user && verifiedEmail !== shipping.email.trim()) {
+    if (!skipEmailVerification && !user && verifiedEmail !== shipping.email.trim()) {
       toast.error('Please verify your email to continue.')
       return
     }
@@ -323,7 +324,7 @@ function OrderFlowInner({ items, onComplete, onCancel }: OrderFlowProps) {
     setCardError('')
     
     try {
-      if (!user && verifiedEmail !== shipping.email.trim()) {
+      if (!skipEmailVerification && !user && verifiedEmail !== shipping.email.trim()) {
         throw new Error('Please verify your email before paying.')
       }
       if (!quote?.quote_id) {
@@ -660,7 +661,7 @@ function OrderFlowInner({ items, onComplete, onCancel }: OrderFlowProps) {
                   onChange={(e) => setShipping({...shipping, email: e.target.value})}
                   className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
                 />
-                {!user && (
+                {!user && !skipEmailVerification && (
                   <div className="mt-3 space-y-2">
                     <div className="flex flex-col sm:flex-row gap-2">
                       <button

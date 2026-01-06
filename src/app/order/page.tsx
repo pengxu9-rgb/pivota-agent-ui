@@ -65,6 +65,10 @@ function OrderContent() {
       searchParams.get('returnUrl') ||
       searchParams.get('return_url'),
   )
+  const source =
+    (searchParams.get('source') || searchParams.get('src') || '').trim().toLowerCase()
+  const skipEmailVerification =
+    source === 'look_replicator' || source === 'lookreplicator'
 
   useEffect(() => {
     // In a real app, this would come from cart state or API
@@ -155,6 +159,7 @@ function OrderContent() {
             items={orderItems}
             onComplete={handleComplete}
             onCancel={handleCancel}
+            skipEmailVerification={skipEmailVerification}
           />
         ) : (
           <div className="text-center py-12">
