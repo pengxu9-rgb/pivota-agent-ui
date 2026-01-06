@@ -48,6 +48,10 @@ interface OrderFlowProps {
   onComplete?: (orderId: string) => void
   onCancel?: () => void
   skipEmailVerification?: boolean
+  buyerRef?: string | null
+  jobId?: string | null
+  market?: string | null
+  locale?: string | null
 }
 
 type QuotePricing = {
@@ -76,7 +80,7 @@ const ADYEN_CLIENT_KEY =
   'test_RMFUADZPQBBYJIWI56KVOQSNUUT657ML' // public test key; replace in env for prod
 const FORCE_PSP = process.env.NEXT_PUBLIC_FORCE_PSP
 
-function OrderFlowInner({ items, onComplete, onCancel, skipEmailVerification }: OrderFlowProps) {
+function OrderFlowInner({ items, onComplete, onCancel, skipEmailVerification, buyerRef, jobId, market, locale }: OrderFlowProps) {
   const router = useRouter()
   const stripe = useStripe()
   const elements = useElements()
@@ -214,6 +218,13 @@ function OrderFlowInner({ items, onComplete, onCancel, skipEmailVerification }: 
       customer_email: shipping.email,
       ...(quote?.quote_id ? { quote_id: quote.quote_id } : {}),
       ...(selectedDeliveryOption ? { selected_delivery_option: selectedDeliveryOption } : {}),
+      metadata: {
+        ...(buyerRef ? { buyer_ref: buyerRef } : {}),
+        ...(jobId ? { job_id: jobId } : {}),
+        ...(market ? { market } : {}),
+        ...(locale ? { locale } : {}),
+        source: 'checkout_ui',
+      },
       items: items.map(item => ({
         merchant_id: item.merchant_id || merchantId,
         product_id: item.product_id,

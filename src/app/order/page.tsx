@@ -69,6 +69,15 @@ function OrderContent() {
     (searchParams.get('source') || searchParams.get('src') || '').trim().toLowerCase()
   const skipEmailVerification =
     source === 'look_replicator' || source === 'lookreplicator'
+  const buyerRef =
+    (searchParams.get('buyer_ref') || searchParams.get('buyerRef') || '').trim() ||
+    null
+  const jobId =
+    (searchParams.get('job_id') || searchParams.get('jobId') || '').trim() ||
+    null
+  const market =
+    (searchParams.get('market') || '').trim().toUpperCase() || null
+  const locale = (searchParams.get('locale') || '').trim().toLowerCase() || null
 
   useEffect(() => {
     // In a real app, this would come from cart state or API
@@ -160,6 +169,10 @@ function OrderContent() {
             onComplete={handleComplete}
             onCancel={handleCancel}
             skipEmailVerification={skipEmailVerification}
+            buyerRef={buyerRef}
+            jobId={jobId}
+            market={market}
+            locale={locale}
           />
         ) : (
           <div className="text-center py-12">

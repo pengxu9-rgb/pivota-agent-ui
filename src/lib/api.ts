@@ -426,6 +426,7 @@ export async function createOrder(orderData: {
   quote_id?: string;
   discount_codes?: string[];
   selected_delivery_option?: any;
+  metadata?: Record<string, any>;
 }) {
   const data = await callGateway({
     operation: 'create_order',
