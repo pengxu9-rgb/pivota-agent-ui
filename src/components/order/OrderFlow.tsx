@@ -86,7 +86,7 @@ function OrderFlowInner({ items, onComplete, onCancel, skipEmailVerification, bu
   const elements = useElements()
   const { user, setSession } = useAuthStore()
   const clearCart = useCartStore(state => state.clearCart)
-  const [step, setStep] = useState<'review' | 'shipping' | 'payment' | 'confirm'>('review')
+  const [step, setStep] = useState<'shipping' | 'payment' | 'confirm'>('shipping')
   const [shipping, setShipping] = useState<ShippingInfo>({
     name: '',
     email: '',
@@ -560,11 +560,6 @@ function OrderFlowInner({ items, onComplete, onCancel, skipEmailVerification, bu
       {/* Progress Bar */}
       <div className="mb-8">
         <div className="flex items-center justify-between">
-          <div className={`flex items-center ${step === 'review' ? 'text-blue-600' : 'text-gray-400'}`}>
-            <ShoppingCart className="w-6 h-6" />
-            <span className="ml-2 font-medium">Review</span>
-          </div>
-          <ChevronRight className="w-4 h-4 text-gray-400" />
           <div className={`flex items-center ${step === 'shipping' ? 'text-blue-600' : 'text-gray-400'}`}>
             <CreditCard className="w-6 h-6" />
             <span className="ml-2 font-medium">Shipping</span>
@@ -583,70 +578,6 @@ function OrderFlowInner({ items, onComplete, onCancel, skipEmailVerification, bu
       </div>
 
       {/* Step Content */}
-      {step === 'review' && (
-        <div className="bg-white rounded-lg shadow-md p-6">
-          <h2 className="text-2xl font-bold mb-6">Review Your Order</h2>
-          
-          <div className="space-y-4 mb-6">
-            {items.map((item, index) => (
-              <div key={index} className="flex items-center justify-between border-b pb-4">
-                <div className="flex items-center">
-                  {item.image_url && (
-                    <Image src={item.image_url} alt={item.title} width={64} height={64} className="w-16 h-16 object-cover rounded mr-4" />
-                  )}
-                  <div>
-                    <h3 className="font-semibold">{item.title}</h3>
-                    <p className="text-gray-600">Qty: {item.quantity}</p>
-                  </div>
-                </div>
-                <p className="font-semibold">${(item.unit_price * item.quantity).toFixed(2)}</p>
-              </div>
-            ))}
-          </div>
-          
-          <div className="border-t pt-4 space-y-2">
-            <div className="flex justify-between">
-              <span>Subtotal</span>
-              <span>{formatAmount(subtotal)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span>Shipping</span>
-              <span>{hasQuote ? formatAmount(shipping_cost) : '—'}</span>
-            </div>
-            <div className="flex justify-between">
-              <span>Tax</span>
-              <span>{hasQuote ? formatAmount(tax) : '—'}</span>
-            </div>
-            <div className="flex justify-between font-bold text-lg">
-              <span>Total</span>
-              <span>{hasQuote ? formatAmount(total) : formatAmount(estimatedSubtotal)}</span>
-            </div>
-            {!hasQuote && (
-              <p className="text-xs text-gray-500 pt-1">
-                Enter your shipping address to calculate shipping and tax.
-              </p>
-            )}
-          </div>
-          
-          <div className="flex justify-between mt-6">
-            <button
-              onClick={onCancel}
-              className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-60"
-              disabled={isProcessing}
-            >
-              Cancel
-            </button>
-            <button
-              onClick={() => setStep('shipping')}
-              className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed"
-              disabled={isProcessing}
-            >
-              Continue to Shipping
-            </button>
-          </div>
-        </div>
-      )}
-
       {step === 'shipping' && (
         <div className="bg-white rounded-lg shadow-md p-6">
           <h2 className="text-2xl font-bold mb-6">Shipping Information</h2>
@@ -810,11 +741,11 @@ function OrderFlowInner({ items, onComplete, onCancel, skipEmailVerification, bu
             <div className="flex justify-between mt-6">
               <button
                 type="button"
-                onClick={() => setStep('review')}
+                onClick={() => onCancel?.()}
                 className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-60"
                 disabled={isProcessing}
               >
-                Back
+                Cancel
               </button>
               <button
                 type="submit"
@@ -841,6 +772,36 @@ function OrderFlowInner({ items, onComplete, onCancel, skipEmailVerification, bu
           </div>
           
           <div className="space-y-4">
+            <div className="border rounded-lg p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <ShoppingCart className="w-5 h-5" />
+                <p className="font-medium">Items</p>
+              </div>
+              <div className="space-y-3">
+                {items.map((item, index) => (
+                  <div key={index} className="flex items-center justify-between">
+                    <div className="flex items-center">
+                      {item.image_url && (
+                        <Image
+                          src={item.image_url}
+                          alt={item.title}
+                          width={48}
+                          height={48}
+                          className="w-12 h-12 object-cover rounded mr-3"
+                        />
+                      )}
+                      <div>
+                        <p className="font-medium text-sm">{item.title}</p>
+                        <p className="text-xs text-gray-600">Qty: {item.quantity}</p>
+                      </div>
+                    </div>
+                    <p className="text-sm font-medium">
+                      {formatAmount(item.unit_price * item.quantity)}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
             {deliveryOptions.length > 1 ? (
               <div className="border rounded-lg p-4">
                 <label className="block text-sm font-medium mb-2">Shipping method</label>
