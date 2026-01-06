@@ -427,6 +427,7 @@ export async function getProductDetail(
 export async function createOrder(orderData: {
   merchant_id: string;
   customer_email: string;
+  currency?: string;
   items: Array<{
     merchant_id: string;
     product_id: string;

@@ -81,6 +81,9 @@ function OrderContent() {
   const market =
     (searchParams.get('market') || '').trim().toUpperCase() || null
   const locale = (searchParams.get('locale') || '').trim().toLowerCase() || null
+  const checkoutToken =
+    (searchParams.get('checkout_token') || searchParams.get('checkoutToken') || '').trim() ||
+    null
 
   useEffect(() => {
     // In a real app, this would come from cart state or API
@@ -176,6 +179,7 @@ function OrderContent() {
             jobId={jobId}
             market={market}
             locale={locale}
+            checkoutToken={checkoutToken}
           />
         ) : (
           <div className="text-center py-12">

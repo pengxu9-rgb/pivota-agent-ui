@@ -52,6 +52,7 @@ interface OrderFlowProps {
   jobId?: string | null
   market?: string | null
   locale?: string | null
+  checkoutToken?: string | null
 }
 
 type QuotePricing = {
@@ -80,7 +81,7 @@ const ADYEN_CLIENT_KEY =
   'test_RMFUADZPQBBYJIWI56KVOQSNUUT657ML' // public test key; replace in env for prod
 const FORCE_PSP = process.env.NEXT_PUBLIC_FORCE_PSP
 
-function OrderFlowInner({ items, onComplete, onCancel, skipEmailVerification, buyerRef, jobId, market, locale }: OrderFlowProps) {
+function OrderFlowInner({ items, onComplete, onCancel, skipEmailVerification, buyerRef, jobId, market, locale, checkoutToken }: OrderFlowProps) {
   const router = useRouter()
   const stripe = useStripe()
   const elements = useElements()
@@ -124,13 +125,70 @@ function OrderFlowInner({ items, onComplete, onCancel, skipEmailVerification, bu
   const total = quote?.pricing?.total ?? estimatedSubtotal
 
   const formatAmount = (amount: number) => {
-    const decimals = currency === 'JPY' ? 0 : 2
-    return `$${amount.toFixed(decimals)}`
+    const code = String(currency || 'USD').toUpperCase()
+    try {
+      return new Intl.NumberFormat(undefined, {
+        style: 'currency',
+        currency: code,
+        currencyDisplay: 'symbol',
+        minimumFractionDigits: code === 'JPY' ? 0 : 2,
+        maximumFractionDigits: code === 'JPY' ? 0 : 2,
+      }).format(Number(amount) || 0)
+    } catch {
+      const decimals = code === 'JPY' ? 0 : 2
+      return `${code} ${(Number(amount) || 0).toFixed(decimals)}`
+    }
   }
 
   const deliveryOptions = Array.isArray(quote?.delivery_options) ? quote?.delivery_options : []
 
   const merchantIdForOrder = items[0]?.merchant_id || getMerchantId()
+
+  // Prefill shipping details from a server-stored checkout intent (PII is never put into URL params).
+  useEffect(() => {
+    const token = String(checkoutToken || '').trim() || null
+    if (!token) return
+
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await fetch('/api/checkout/prefill', {
+          headers: { 'X-Checkout-Token': token },
+          cache: 'no-store',
+        })
+        const json = await res.json().catch(() => null)
+        const prefill = json?.prefill || null
+        const addr = prefill?.shipping_address || null
+        const email = String(prefill?.customer_email || '').trim() || null
+
+        if (cancelled) return
+        if (!addr && !email) return
+
+        setShipping((prev) => ({
+          ...prev,
+          ...(email && !prev.email ? { email } : {}),
+          ...(addr && typeof addr === 'object'
+            ? {
+                ...(addr.name && !prev.name ? { name: String(addr.name) } : {}),
+                ...(addr.phone && !prev.phone ? { phone: String(addr.phone) } : {}),
+                ...(addr.address_line1 && !prev.address_line1 ? { address_line1: String(addr.address_line1) } : {}),
+                ...(addr.address_line2 && !prev.address_line2 ? { address_line2: String(addr.address_line2) } : {}),
+                ...(addr.city && !prev.city ? { city: String(addr.city) } : {}),
+                ...(addr.state && !prev.state ? { state: String(addr.state) } : {}),
+                ...(addr.postal_code && !prev.postal_code ? { postal_code: String(addr.postal_code) } : {}),
+                ...(addr.country && (!prev.country || prev.country === 'US') ? { country: String(addr.country) } : {}),
+              }
+            : {}),
+        }))
+      } catch (err) {
+        // Best-effort: ignore prefill errors.
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [checkoutToken])
 
   const buildQuoteRequest = (deliveryOptionOverride?: any) => {
     const quoteItems = items
@@ -216,6 +274,7 @@ function OrderFlowInner({ items, onComplete, onCancel, skipEmailVerification, bu
     const orderResponse = await createOrder({
       merchant_id: merchantId,
       customer_email: shipping.email,
+      currency,
       ...(quote?.quote_id ? { quote_id: quote.quote_id } : {}),
       ...(selectedDeliveryOption ? { selected_delivery_option: selectedDeliveryOption } : {}),
       metadata: {
