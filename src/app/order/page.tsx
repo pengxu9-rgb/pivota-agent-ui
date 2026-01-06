@@ -67,8 +67,11 @@ function OrderContent() {
   )
   const source =
     (searchParams.get('source') || searchParams.get('src') || '').trim().toLowerCase()
+  const hasCheckoutToken = Boolean(
+    (searchParams.get('checkout_token') || searchParams.get('checkoutToken') || '').trim(),
+  )
   const skipEmailVerification =
-    source === 'look_replicator' || source === 'lookreplicator'
+    hasCheckoutToken || source === 'look_replicator' || source === 'lookreplicator'
   const buyerRef =
     (searchParams.get('buyer_ref') || searchParams.get('buyerRef') || '').trim() ||
     null
