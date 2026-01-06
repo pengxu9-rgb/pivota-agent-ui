@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { ShoppingCart, CreditCard, Check, ChevronRight } from 'lucide-react'
 import Image from 'next/image'
 import {
@@ -117,7 +117,19 @@ function OrderFlowInner({ items, onComplete, onCancel, skipEmailVerification, bu
     (sum, item) => sum + item.unit_price * item.quantity,
     0,
   )
-  const currency = quote?.currency || items[0]?.currency || 'USD'
+  const marketCurrency =
+    String(market || '').toUpperCase() === 'JP'
+      ? 'JPY'
+      : String(market || '').toUpperCase() === 'US'
+        ? 'USD'
+        : null
+  const currency =
+    (quote as any)?.presentment_currency ||
+    (quote as any)?.charge_currency ||
+    quote?.currency ||
+    items[0]?.currency ||
+    marketCurrency ||
+    'USD'
   const hasQuote = Boolean(quote?.quote_id)
   const subtotal = quote?.pricing?.subtotal ?? estimatedSubtotal
   const shipping_cost = quote?.pricing?.shipping_fee ?? 0
@@ -143,6 +155,16 @@ function OrderFlowInner({ items, onComplete, onCancel, skipEmailVerification, bu
   const deliveryOptions = Array.isArray(quote?.delivery_options) ? quote?.delivery_options : []
 
   const merchantIdForOrder = items[0]?.merchant_id || getMerchantId()
+
+  const quoteLineItemByVariantId = useMemo(() => {
+    const map = new Map<string, any>()
+    for (const li of quote?.line_items || []) {
+      const variantId = String((li as any)?.variant_id || '').trim()
+      if (!variantId) continue
+      map.set(variantId, li)
+    }
+    return map
+  }, [quote?.line_items])
 
   // Prefill shipping details from a server-stored checkout intent (PII is never put into URL params).
   useEffect(() => {
@@ -220,7 +242,11 @@ function OrderFlowInner({ items, onComplete, onCancel, skipEmailVerification, bu
   const normalizeQuote = (quoteResp: any): QuotePreview | null => {
     const pricing = quoteResp?.pricing || null
     const quoteId = quoteResp?.quote_id || quoteResp?.quoteId || null
-    const qCurrency = quoteResp?.currency || 'USD'
+    const qCurrency =
+      quoteResp?.presentment_currency ||
+      quoteResp?.charge_currency ||
+      quoteResp?.currency ||
+      'USD'
     const deliveryOptionsRaw = quoteResp?.delivery_options || null
 
     if (!quoteId || !pricing) return null
@@ -855,7 +881,17 @@ function OrderFlowInner({ items, onComplete, onCancel, skipEmailVerification, bu
                       </div>
                     </div>
                     <p className="text-sm font-medium">
-                      {formatAmount(item.unit_price * item.quantity)}
+                      {(() => {
+                        const variantId = String(item.variant_id || '').trim()
+                        const li = variantId ? quoteLineItemByVariantId.get(variantId) : null
+                        const unitPriceEffective = Number((li as any)?.unit_price_effective)
+                        const qty = Number((li as any)?.quantity ?? item.quantity)
+                        if (hasQuote && Number.isFinite(unitPriceEffective)) {
+                          return formatAmount(unitPriceEffective * (Number.isFinite(qty) ? qty : item.quantity))
+                        }
+                        // Fallback: best-effort estimate (legacy flows / quote failures).
+                        return formatAmount(item.unit_price * item.quantity)
+                      })()}
                     </p>
                   </div>
                 ))}
