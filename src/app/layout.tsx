@@ -4,7 +4,7 @@ import "./globals.css";
 import { Toaster } from "sonner";
 import CartDrawer from "@/components/cart/CartDrawer";
 import { ThemeProvider } from "@/components/theme-provider";
-import AuthInit from "@/components/auth/AuthInit";
+import AuthInitGate from "@/components/auth/AuthInitGate";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -33,7 +33,7 @@ export default function RootLayout({
       </head>
       <body className="antialiased font-sans">
         <ThemeProvider defaultTheme="light" storageKey="pivota-ui-theme">
-          <AuthInit />
+          <AuthInitGate />
           {children}
           <CartDrawer />
           <Toaster position="top-center" richColors />
