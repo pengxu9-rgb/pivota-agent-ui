@@ -380,6 +380,11 @@ function OrderFlowInner({ items, onComplete, onCancel, skipEmailVerification, bu
       setPspUsed(orderPsp)
     }
 
+    if (orderPaymentAction?.type === 'redirect_url' && orderPaymentAction?.url) {
+      window.location.href = orderPaymentAction.url
+      return orderId
+    }
+
     return orderId
   }
 
