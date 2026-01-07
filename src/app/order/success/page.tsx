@@ -3,11 +3,17 @@
 import { Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Check, Package, ArrowRight } from 'lucide-react'
+import { safeReturnUrl, withReturnParams } from '@/lib/returnUrl'
 
 function SuccessContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const orderId = searchParams.get('orderId')
+  const returnUrl = safeReturnUrl(
+    searchParams.get('return') ||
+      searchParams.get('returnUrl') ||
+      searchParams.get('return_url'),
+  )
 
   return (
     <main className="min-h-screen bg-gradient-to-br from-green-50 to-blue-100 flex items-center justify-center">
@@ -40,6 +46,19 @@ function SuccessContent() {
         </div>
         
         <div className="mt-8 space-y-3">
+          {returnUrl && (
+            <button
+              onClick={() => {
+                const url = orderId
+                  ? withReturnParams(returnUrl, { checkout: 'success', orderId })
+                  : returnUrl
+                window.location.assign(url)
+              }}
+              className="w-full px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+            >
+              Return to previous page
+            </button>
+          )}
           <button
             onClick={() => router.push(`/order/track?orderId=${orderId}`)}
             className="w-full px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors flex items-center justify-center gap-2"

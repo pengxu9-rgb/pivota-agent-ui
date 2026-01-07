@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ShoppingCart, CreditCard, Check, ChevronRight } from 'lucide-react'
+import { ShoppingCart, CreditCard, Check, ChevronRight, Info } from 'lucide-react'
 import Image from 'next/image'
 import {
   createOrder,
@@ -155,6 +155,15 @@ function OrderFlowInner({ items, onComplete, onCancel, skipEmailVerification, bu
   const deliveryOptions = Array.isArray(quote?.delivery_options) ? quote?.delivery_options : []
 
   const merchantIdForOrder = items[0]?.merchant_id || getMerchantId()
+
+  const itemCurrencies = useMemo(() => {
+    const set = new Set<string>()
+    for (const item of items) {
+      const c = String(item.currency || '').trim()
+      if (c) set.add(c.toUpperCase())
+    }
+    return Array.from(set).sort()
+  }, [items])
 
   const quoteLineItemByVariantId = useMemo(() => {
     const map = new Map<string, any>()
@@ -860,6 +869,33 @@ function OrderFlowInner({ items, onComplete, onCancel, skipEmailVerification, bu
                 : 'Stripe (card payment)'}
             </span>
           </div>
+          {hasQuote && (
+            <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
+              <div className="flex gap-2">
+                <Info className="mt-0.5 h-4 w-4 flex-none text-blue-700" />
+                <div className="space-y-1">
+                  <p>
+                    Prices shown are in{' '}
+                    <span className="font-medium">{String(currency).toUpperCase()}</span> based on the
+                    merchant&apos;s store quote for your shipping address.
+                  </p>
+                  {itemCurrencies.length === 1 &&
+                    itemCurrencies[0] !== String(currency).toUpperCase() && (
+                      <p>
+                        This merchant lists items in{' '}
+                        <span className="font-medium">{itemCurrencies[0]}</span>; amounts are converted
+                        for checkout.
+                      </p>
+                    )}
+                  <p>
+                    Your card will be charged in{' '}
+                    <span className="font-medium">{String(currency).toUpperCase()}</span>. Your bank may
+                    apply additional FX fees if your card/account uses a different currency.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
           
           <div className="space-y-4">
             <div className="border rounded-lg p-4">
