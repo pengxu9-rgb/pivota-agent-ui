@@ -81,6 +81,78 @@ const ADYEN_CLIENT_KEY =
   'test_RMFUADZPQBBYJIWI56KVOQSNUUT657ML' // public test key; replace in env for prod
 const FORCE_PSP = process.env.NEXT_PUBLIC_FORCE_PSP
 
+const SHIPPING_COUNTRY_GROUPS: Array<{
+  label: string
+  countries: Array<{ code: string; name: string }>
+}> = [
+  {
+    label: 'North America',
+    countries: [
+      { code: 'US', name: 'United States' },
+      { code: 'CA', name: 'Canada' },
+      { code: 'MX', name: 'Mexico' },
+    ],
+  },
+  {
+    label: 'Europe',
+    countries: [
+      { code: 'GB', name: 'United Kingdom' },
+      { code: 'IE', name: 'Ireland' },
+      { code: 'FR', name: 'France' },
+      { code: 'DE', name: 'Germany' },
+      { code: 'ES', name: 'Spain' },
+      { code: 'IT', name: 'Italy' },
+      { code: 'NL', name: 'Netherlands' },
+      { code: 'BE', name: 'Belgium' },
+      { code: 'CH', name: 'Switzerland' },
+      { code: 'AT', name: 'Austria' },
+      { code: 'SE', name: 'Sweden' },
+      { code: 'NO', name: 'Norway' },
+      { code: 'DK', name: 'Denmark' },
+      { code: 'FI', name: 'Finland' },
+      { code: 'PL', name: 'Poland' },
+      { code: 'PT', name: 'Portugal' },
+    ],
+  },
+  {
+    label: 'Asia Pacific',
+    countries: [
+      { code: 'JP', name: 'Japan' },
+      { code: 'KR', name: 'South Korea' },
+      { code: 'SG', name: 'Singapore' },
+      { code: 'HK', name: 'Hong Kong' },
+      { code: 'TW', name: 'Taiwan' },
+      { code: 'CN', name: 'China' },
+      { code: 'IN', name: 'India' },
+      { code: 'AU', name: 'Australia' },
+      { code: 'NZ', name: 'New Zealand' },
+      { code: 'MY', name: 'Malaysia' },
+      { code: 'TH', name: 'Thailand' },
+      { code: 'VN', name: 'Vietnam' },
+      { code: 'ID', name: 'Indonesia' },
+      { code: 'PH', name: 'Philippines' },
+    ],
+  },
+  {
+    label: 'Middle East & Africa',
+    countries: [
+      { code: 'AE', name: 'United Arab Emirates' },
+      { code: 'SA', name: 'Saudi Arabia' },
+      { code: 'IL', name: 'Israel' },
+      { code: 'ZA', name: 'South Africa' },
+    ],
+  },
+  {
+    label: 'South America',
+    countries: [
+      { code: 'BR', name: 'Brazil' },
+      { code: 'AR', name: 'Argentina' },
+      { code: 'CL', name: 'Chile' },
+      { code: 'CO', name: 'Colombia' },
+    ],
+  },
+]
+
 function OrderFlowInner({ items, onComplete, onCancel, skipEmailVerification, buyerRef, jobId, market, locale, checkoutToken }: OrderFlowProps) {
   const router = useRouter()
   const stripe = useStripe()
@@ -829,10 +901,15 @@ function OrderFlowInner({ items, onComplete, onCancel, skipEmailVerification, bu
                   onChange={(e) => setShipping({...shipping, country: e.target.value})}
                   className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
                 >
-                  <option value="US">United States</option>
-                  <option value="CN">China</option>
-                  <option value="UK">United Kingdom</option>
-                  <option value="CA">Canada</option>
+                  {SHIPPING_COUNTRY_GROUPS.map((group) => (
+                    <optgroup key={group.label} label={group.label}>
+                      {group.countries.map((country) => (
+                        <option key={country.code} value={country.code}>
+                          {country.name}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
                 </select>
               </div>
             </div>
