@@ -9,11 +9,12 @@ function SuccessContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const orderId = searchParams.get('orderId')
-  const returnUrl = safeReturnUrl(
+  const rawReturn =
     searchParams.get('return') ||
-      searchParams.get('returnUrl') ||
-      searchParams.get('return_url'),
-  )
+    searchParams.get('returnUrl') ||
+    searchParams.get('return_url')
+  const returnUrl = safeReturnUrl(rawReturn)
+  const hasReturnHint = Boolean(rawReturn && !returnUrl)
 
   return (
     <main className="min-h-screen bg-gradient-to-br from-green-50 to-blue-100 flex items-center justify-center">
@@ -46,9 +47,15 @@ function SuccessContent() {
         </div>
         
         <div className="mt-8 space-y-3">
-          {returnUrl && (
+          {(returnUrl || hasReturnHint) && (
             <button
               onClick={() => {
+                if (!returnUrl) {
+                  // When a return param exists but is not allowed, avoid routing into Pivota Shopping.
+                  // Best-effort: close tab/window; otherwise user can manually go back.
+                  window.close()
+                  return
+                }
                 const url = orderId
                   ? withReturnParams(returnUrl, { checkout: 'success', orderId })
                   : returnUrl
@@ -59,20 +66,24 @@ function SuccessContent() {
               Return to previous page
             </button>
           )}
-          <button
-            onClick={() => router.push(`/order/track?orderId=${orderId}`)}
-            className="w-full px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors flex items-center justify-center gap-2"
-          >
-            Track Your Order
-            <ArrowRight className="w-4 h-4" />
-          </button>
-          
-          <button
-            onClick={() => router.push('/')}
-            className="w-full px-6 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-          >
-            Continue Shopping
-          </button>
+          {!returnUrl && !hasReturnHint && (
+            <>
+              <button
+                onClick={() => router.push(`/order/track?orderId=${orderId}`)}
+                className="w-full px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors flex items-center justify-center gap-2"
+              >
+                Track Your Order
+                <ArrowRight className="w-4 h-4" />
+              </button>
+
+              <button
+                onClick={() => router.push('/')}
+                className="w-full px-6 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                Continue Shopping
+              </button>
+            </>
+          )}
         </div>
       </div>
     </main>

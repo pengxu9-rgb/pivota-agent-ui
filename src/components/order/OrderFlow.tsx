@@ -53,6 +53,7 @@ interface OrderFlowProps {
   market?: string | null
   locale?: string | null
   checkoutToken?: string | null
+  returnUrl?: string | null
 }
 
 type QuotePricing = {
@@ -153,7 +154,18 @@ const SHIPPING_COUNTRY_GROUPS: Array<{
   },
 ]
 
-function OrderFlowInner({ items, onComplete, onCancel, skipEmailVerification, buyerRef, jobId, market, locale, checkoutToken }: OrderFlowProps) {
+function OrderFlowInner({
+  items,
+  onComplete,
+  onCancel,
+  skipEmailVerification,
+  buyerRef,
+  jobId,
+  market,
+  locale,
+  checkoutToken,
+  returnUrl,
+}: OrderFlowProps) {
   const router = useRouter()
   const stripe = useStripe()
   const elements = useElements()
@@ -517,6 +529,12 @@ function OrderFlowInner({ items, onComplete, onCancel, skipEmailVerification, bu
       const orderId = await createOrderIfNeeded()
       
       // Step 2: Create/confirm payment intent via gateway
+      const postPayReturnUrl =
+        typeof window !== 'undefined'
+          ? `${window.location.origin}/order/success?orderId=${encodeURIComponent(orderId)}${
+              returnUrl ? `&return=${encodeURIComponent(returnUrl)}` : ''
+            }`
+          : undefined
       const paymentResponse = await processPayment({
         order_id: orderId,
         total_amount: total,
@@ -524,7 +542,7 @@ function OrderFlowInner({ items, onComplete, onCancel, skipEmailVerification, bu
         payment_method: {
           type: 'card'
         },
-        return_url: typeof window !== 'undefined' ? `${window.location.origin}/orders/${orderId}` : undefined
+        return_url: postPayReturnUrl
       })
 
       console.log('submit_payment response', paymentResponse)
