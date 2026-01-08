@@ -141,6 +141,7 @@ function OrderContent() {
             market={market}
             locale={locale}
             checkoutToken={checkoutToken}
+            returnUrl={returnUrl}
           />
         ) : (
           <div className="text-center py-12">
