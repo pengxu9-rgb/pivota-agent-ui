@@ -86,11 +86,6 @@ function OrderContent() {
     // In production, this would save order to backend
     console.log('Order completed:', orderId)
 
-    if (returnUrl) {
-      window.location.assign(withReturnParams(returnUrl, { checkout: 'success', orderId }))
-      return
-    }
-
     router.push(
       `/order/success?orderId=${encodeURIComponent(orderId)}${
         returnUrl ? `&return=${encodeURIComponent(returnUrl)}` : ''
