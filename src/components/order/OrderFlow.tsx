@@ -68,6 +68,14 @@ type QuotePreview = {
   quote_id: string
   currency: string
   pricing: QuotePricing
+  promotion_lines?: Array<{
+    id?: string
+    label?: string
+    amount?: number | string
+    discount_class?: string
+    method?: string
+    code?: string | null
+  }>
   line_items?: Array<{
     variant_id: string
     unit_price_effective: number
@@ -216,6 +224,7 @@ function OrderFlowInner({
     'USD'
   const hasQuote = Boolean(quote?.quote_id)
   const subtotal = quote?.pricing?.subtotal ?? estimatedSubtotal
+  const discount_total = quote?.pricing?.discount_total ?? 0
   const shipping_cost = quote?.pricing?.shipping_fee ?? 0
   const tax = quote?.pricing?.tax ?? 0
   const total = quote?.pricing?.total ?? estimatedSubtotal
@@ -353,6 +362,7 @@ function OrderFlowInner({
         tax: Number(pricing.tax) || 0,
         total: Number(pricing.total) || 0,
       },
+      promotion_lines: Array.isArray(quoteResp?.promotion_lines) ? quoteResp.promotion_lines : [],
       line_items: quoteResp?.line_items || [],
       delivery_options: Array.isArray(deliveryOptionsRaw) ? deliveryOptionsRaw : undefined,
     }
@@ -970,23 +980,30 @@ function OrderFlowInner({
                 <Info className="mt-0.5 h-4 w-4 flex-none text-blue-700" />
                 <div className="space-y-1">
                   <p>
-                    Prices shown are in{' '}
-                    <span className="font-medium">{String(currency).toUpperCase()}</span> based on the
-                    merchant&apos;s store quote for your shipping address.
+                    Prices shown and charged in{' '}
+                    <span className="font-medium">{String(currency).toUpperCase()}</span>.
                   </p>
-                  {itemCurrencies.length === 1 &&
-                    itemCurrencies[0] !== String(currency).toUpperCase() && (
+                  <details className="text-xs text-blue-900/90">
+                    <summary className="cursor-pointer select-none">
+                      {itemCurrencies.length === 1 && itemCurrencies[0] !== String(currency).toUpperCase()
+                        ? 'Currency & conversion details'
+                        : 'Currency details'}
+                    </summary>
+                    <div className="mt-1 space-y-1">
+                      <p>Amounts are based on the merchant&apos;s store quote for your shipping address.</p>
+                      {itemCurrencies.length === 1 &&
+                        itemCurrencies[0] !== String(currency).toUpperCase() && (
+                          <p>
+                            This merchant lists items in{' '}
+                            <span className="font-medium">{itemCurrencies[0]}</span>; amounts are converted
+                            for checkout.
+                          </p>
+                        )}
                       <p>
-                        This merchant lists items in{' '}
-                        <span className="font-medium">{itemCurrencies[0]}</span>; amounts are converted
-                        for checkout.
+                        Your bank may apply additional FX fees if your card/account uses a different currency.
                       </p>
-                    )}
-                  <p>
-                    Your card will be charged in{' '}
-                    <span className="font-medium">{String(currency).toUpperCase()}</span>. Your bank may
-                    apply additional FX fees if your card/account uses a different currency.
-                  </p>
+                    </div>
+                  </details>
                 </div>
               </div>
             </div>
@@ -1126,6 +1143,12 @@ function OrderFlowInner({
                     <span>Subtotal</span>
                     <span>{formatAmount(subtotal)}</span>
                   </div>
+                  {discount_total > 0 ? (
+                    <div className="flex justify-between">
+                      <span>Discounts</span>
+                      <span className="text-green-700">-{formatAmount(discount_total)}</span>
+                    </div>
+                  ) : null}
                   <div className="flex justify-between">
                     <span>Shipping</span>
                     <span>{formatAmount(shipping_cost)}</span>
@@ -1139,6 +1162,19 @@ function OrderFlowInner({
                     <span>{formatAmount(total)}</span>
                   </div>
                 </div>
+                {discount_total > 0 && (quote?.promotion_lines?.length || 0) > 0 ? (
+                  <div className="mt-2 text-xs text-gray-600">
+                    {(quote?.promotion_lines || [])
+                      .map((p) => String(p?.label || '').trim())
+                      .filter(Boolean)
+                      .slice(0, 2)
+                      .map((label) => (
+                        <div key={label} className="truncate">
+                          {label}
+                        </div>
+                      ))}
+                  </div>
+                ) : null}
                 <div className="text-sm text-gray-600">
                   <p>Ship to: {shipping.name}</p>
                   <p>
