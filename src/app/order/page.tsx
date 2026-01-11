@@ -104,7 +104,7 @@ function OrderContent() {
   return (
     <main className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
       <header className="bg-white shadow-sm border-b sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-4 py-2 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <button
               onClick={() => {
@@ -120,10 +120,10 @@ function OrderContent() {
               <ArrowLeft className="w-5 h-5" />
             </button>
             <div className="flex items-center gap-2">
-              <div className="w-10 h-10 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center">
-                <span className="text-white font-bold text-lg">P</span>
+              <div className="w-9 h-9 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center">
+                <span className="text-white font-bold text-base">P</span>
               </div>
-              <h1 className="text-2xl font-bold text-gray-800">Pivota Checkout</h1>
+              <h1 className="text-xl md:text-2xl font-bold text-gray-800">Pivota Checkout</h1>
             </div>
           </div>
         </div>
