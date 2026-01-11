@@ -755,22 +755,22 @@ function OrderFlowInner({
   }
 
   return (
-    <div className="max-w-4xl mx-auto px-4 pb-6">
+    <div className="max-w-4xl mx-auto px-4 pb-4">
       {/* Progress Bar */}
-      <div className="mb-4">
-        <div className="flex items-center justify-between text-sm">
+      <div className="mb-2">
+        <div className="flex items-center justify-between text-xs">
           <div className={`flex items-center ${step === 'shipping' ? 'text-blue-600' : 'text-gray-400'}`}>
-            <CreditCard className="w-5 h-5" />
+            <CreditCard className="w-4 h-4" />
             <span className="ml-2 font-medium">Shipping</span>
           </div>
-          <ChevronRight className="w-4 h-4 text-gray-400" />
+          <ChevronRight className="w-3 h-3 text-gray-400" />
           <div className={`flex items-center ${step === 'payment' ? 'text-blue-600' : 'text-gray-400'}`}>
-            <CreditCard className="w-5 h-5" />
+            <CreditCard className="w-4 h-4" />
             <span className="ml-2 font-medium">Payment</span>
           </div>
-          <ChevronRight className="w-4 h-4 text-gray-400" />
+          <ChevronRight className="w-3 h-3 text-gray-400" />
           <div className={`flex items-center ${step === 'confirm' ? 'text-blue-600' : 'text-gray-400'}`}>
-            <Check className="w-5 h-5" />
+            <Check className="w-4 h-4" />
             <span className="ml-2 font-medium">Confirm</span>
           </div>
         </div>
