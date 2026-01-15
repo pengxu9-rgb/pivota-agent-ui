@@ -47,6 +47,7 @@ interface OrderFlowProps {
   items: OrderItem[]
   onComplete?: (orderId: string) => void
   onCancel?: () => void
+  onFailure?: (args: { reason: 'payment_failed' | 'system_error' | 'action_required'; stage: 'payment' | 'shipping' }) => void
   skipEmailVerification?: boolean
   buyerRef?: string | null
   jobId?: string | null
@@ -166,6 +167,7 @@ function OrderFlowInner({
   items,
   onComplete,
   onCancel,
+  onFailure,
   skipEmailVerification,
   buyerRef,
   jobId,
@@ -518,6 +520,7 @@ function OrderFlowInner({
     } catch (err: any) {
       console.error('Create order error:', err)
       toast.error(err?.message || 'Failed to calculate pricing')
+      if (onFailure) onFailure({ reason: 'system_error', stage: 'shipping' })
     } finally {
       setIsProcessing(false)
     }
@@ -679,6 +682,7 @@ function OrderFlowInner({
             onError: (err: any) => {
               console.error('Adyen error:', err)
               toast.error('Payment failed with Adyen. Please check your card details or try again.')
+              if (onFailure) onFailure({ reason: 'payment_failed', stage: 'payment' })
             },
           })
 
@@ -749,43 +753,27 @@ function OrderFlowInner({
     } catch (error: any) {
       console.error('Payment error:', error)
       toast.error(error.message || 'Payment failed. Please try again.')
-  } finally {
+      if (onFailure) onFailure({ reason: 'payment_failed', stage: 'payment' })
+    } finally {
       setIsProcessing(false)
     }
-  }
-
-  const ui = {
-    card: 'bg-white rounded-2xl border border-gray-100 shadow-sm p-4 sm:p-6',
-    title: 'text-xl sm:text-2xl font-semibold tracking-tight mb-4',
-    label: 'block text-sm font-medium text-gray-700 mb-1',
-    input:
-      'w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-base leading-6 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500',
-    select:
-      'w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-base leading-6 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500',
-    panel: 'border rounded-xl p-4',
-    buttonSecondary:
-      'w-full rounded-xl border border-gray-300 bg-white py-3 text-sm font-medium text-gray-900 hover:bg-gray-50 disabled:opacity-60',
-    buttonPrimary:
-      'w-full rounded-xl bg-blue-500 py-3 text-sm font-medium text-white hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed',
-    buttonPrimaryGreen:
-      'w-full rounded-xl bg-green-600 py-3 text-sm font-medium text-white hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed',
   }
 
   return (
     <div className="max-w-4xl mx-auto px-4 pb-4">
       {/* Progress Bar */}
       <div className="mb-2">
-        <div className="flex items-center justify-between text-sm">
+        <div className="flex items-center justify-between text-xs">
           <div className={`flex items-center ${step === 'shipping' ? 'text-blue-600' : 'text-gray-400'}`}>
             <CreditCard className="w-4 h-4" />
             <span className="ml-2 font-medium">Shipping</span>
           </div>
-          <ChevronRight className="w-4 h-4 text-gray-400" />
+          <ChevronRight className="w-3 h-3 text-gray-400" />
           <div className={`flex items-center ${step === 'payment' ? 'text-blue-600' : 'text-gray-400'}`}>
             <CreditCard className="w-4 h-4" />
             <span className="ml-2 font-medium">Payment</span>
           </div>
-          <ChevronRight className="w-4 h-4 text-gray-400" />
+          <ChevronRight className="w-3 h-3 text-gray-400" />
           <div className={`flex items-center ${step === 'confirm' ? 'text-blue-600' : 'text-gray-400'}`}>
             <Check className="w-4 h-4" />
             <span className="ml-2 font-medium">Confirm</span>
@@ -795,29 +783,29 @@ function OrderFlowInner({
 
       {/* Step Content */}
       {step === 'shipping' && (
-        <div className={ui.card}>
-          <h2 className={ui.title}>Shipping Information</h2>
+        <div className="bg-white rounded-lg shadow-md p-6">
+          <h2 className="text-2xl font-bold mb-6">Shipping Information</h2>
           
           <form onSubmit={handleShippingSubmit} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className={ui.label}>Full Name</label>
+                <label className="block text-sm font-medium mb-1">Full Name</label>
                 <input
                   type="text"
                   required
                   value={shipping.name}
                   onChange={(e) => setShipping({...shipping, name: e.target.value})}
-                  className={ui.input}
+                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
                 />
               </div>
               <div>
-                <label className={ui.label}>Email</label>
+                <label className="block text-sm font-medium mb-1">Email</label>
                 <input
                   type="email"
                   required
                   value={shipping.email}
                   onChange={(e) => setShipping({...shipping, email: e.target.value})}
-                  className={ui.input}
+                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
                 />
                 {!user && !skipEmailVerification && (
                   <div className="mt-3 space-y-2">
@@ -840,7 +828,7 @@ function OrderFlowInner({
                             setOtpLoading(false)
                           }
                         }}
-                        className="px-3 py-3 rounded-xl bg-secondary hover:bg-secondary/80 text-sm"
+                        className="px-3 py-2 rounded-lg bg-secondary hover:bg-secondary/80 text-sm"
                         disabled={otpLoading || !shipping.email}
                       >
                         {otpLoading ? 'Sending...' : otpSent ? 'Resend code' : 'Send code'}
@@ -849,7 +837,7 @@ function OrderFlowInner({
                         placeholder="6-digit code"
                         value={otp}
                         onChange={(e) => setOtp(e.target.value)}
-                        className="flex-1 rounded-xl border border-gray-200 bg-white px-3 py-3 text-base leading-6 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        className="flex-1 rounded-lg border border-gray-200 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                       />
                       <button
                         type="button"
@@ -874,7 +862,7 @@ function OrderFlowInner({
                             setOtpLoading(false)
                           }
                         }}
-                        className="px-3 py-3 rounded-xl bg-blue-600 text-white text-sm disabled:opacity-60 whitespace-nowrap"
+                        className="px-3 py-2 rounded-lg bg-blue-600 text-white text-sm disabled:opacity-60"
                         disabled={otpLoading || !otp || !shipping.email}
                       >
                         Verify
@@ -889,62 +877,62 @@ function OrderFlowInner({
             </div>
             
             <div>
-              <label className={ui.label}>Address Line 1</label>
+              <label className="block text-sm font-medium mb-1">Address Line 1</label>
               <input
                 type="text"
                 required
                 value={shipping.address_line1}
                 onChange={(e) => setShipping({...shipping, address_line1: e.target.value})}
-                className={ui.input}
+                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
               />
             </div>
             
             <div>
-              <label className={ui.label}>Address Line 2 (Optional)</label>
+              <label className="block text-sm font-medium mb-1">Address Line 2 (Optional)</label>
               <input
                 type="text"
                 value={shipping.address_line2}
                 onChange={(e) => setShipping({...shipping, address_line2: e.target.value})}
-                className={ui.input}
+                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
               />
             </div>
             
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div>
-                <label className={ui.label}>City</label>
+                <label className="block text-sm font-medium mb-1">City</label>
                 <input
                   type="text"
                   required
                   value={shipping.city}
                   onChange={(e) => setShipping({...shipping, city: e.target.value})}
-                  className={ui.input}
+                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
                 />
               </div>
               <div>
-                <label className={ui.label}>State</label>
+                <label className="block text-sm font-medium mb-1">State</label>
                 <input
                   type="text"
                   value={shipping.state || ''}
                   onChange={(e) => setShipping({...shipping, state: e.target.value})}
-                  className={ui.input}
+                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
                 />
               </div>
               <div>
-                <label className={ui.label}>Postal Code</label>
+                <label className="block text-sm font-medium mb-1">Postal Code</label>
                 <input
                   type="text"
                   required
                   value={shipping.postal_code}
                   onChange={(e) => setShipping({...shipping, postal_code: e.target.value})}
-                  className={ui.input}
+                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
                 />
               </div>
               <div>
-                <label className={ui.label}>Country</label>
+                <label className="block text-sm font-medium mb-1">Country</label>
                 <select
                   value={shipping.country}
                   onChange={(e) => setShipping({...shipping, country: e.target.value})}
-                  className={ui.select}
+                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
                 >
                   {SHIPPING_COUNTRY_GROUPS.map((group) => (
                     <optgroup key={group.label} label={group.label}>
@@ -959,18 +947,18 @@ function OrderFlowInner({
               </div>
             </div>
             
-            <div className="mt-6 grid grid-cols-2 gap-3">
+            <div className="flex justify-between mt-6">
               <button
                 type="button"
                 onClick={() => onCancel?.()}
-                className={ui.buttonSecondary}
+                className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-60"
                 disabled={isProcessing}
               >
                 Cancel
               </button>
               <button
                 type="submit"
-                className={ui.buttonPrimary}
+                className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed"
                 disabled={isProcessing}
               >
                 {isProcessing ? 'Processing...' : 'Continue to Payment'}
@@ -981,8 +969,8 @@ function OrderFlowInner({
       )}
 
       {step === 'payment' && (
-        <div className={ui.card}>
-          <h2 className={ui.title}>Payment Method</h2>
+        <div className="bg-white rounded-lg shadow-md p-6">
+          <h2 className="text-2xl font-bold mb-6">Payment Method</h2>
           <div className="mb-3 text-sm text-muted-foreground">
             <span>Payment provider: </span>
             <span className="font-medium text-foreground">
@@ -1027,7 +1015,7 @@ function OrderFlowInner({
           )}
           
           <div className="space-y-4">
-            <div className={ui.panel}>
+            <div className="border rounded-lg p-4">
               <div className="flex items-center gap-2 mb-3">
                 <ShoppingCart className="w-5 h-5" />
                 <p className="font-medium">Items</p>
@@ -1068,10 +1056,10 @@ function OrderFlowInner({
               </div>
             </div>
             {deliveryOptions.length > 1 ? (
-              <div className={ui.panel}>
-                <label className="block text-sm font-medium mb-2 text-gray-700">Shipping method</label>
+              <div className="border rounded-lg p-4">
+                <label className="block text-sm font-medium mb-2">Shipping method</label>
                 <select
-                  className={ui.select}
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
                   disabled={quotePending || isProcessing}
                   value={Math.max(0, deliveryOptions.findIndex((o) => JSON.stringify(o) === JSON.stringify(selectedDeliveryOption)))}
                   onChange={async (e) => {
@@ -1118,7 +1106,7 @@ function OrderFlowInner({
               </div>
             ) : null}
             {paymentActionType === 'adyen_session' ? (
-              <div className={ui.panel}>
+              <div className="border rounded-lg p-4">
                 <p className="font-medium mb-2">Adyen payment</p>
                 <div ref={adyenContainerRef} className="mt-2" />
                 {!adyenMounted && (
@@ -1129,10 +1117,10 @@ function OrderFlowInner({
               </div>
             ) : (
               <>
-                <div className={`${ui.panel} cursor-pointer hover:border-blue-500 transition-colors`}>
+                <div className="border rounded-lg p-4 cursor-pointer hover:border-blue-500 transition-colors">
                   <div className="flex items-center">
                     <input type="radio" name="payment" defaultChecked className="mr-3" />
-                    <CreditCard className="w-5 h-5 mr-3" />
+                    <CreditCard className="w-6 h-6 mr-3" />
                     <div>
                       <p className="font-medium">Credit/Debit Card</p>
                       <p className="text-sm text-gray-600">Secure payment</p>
@@ -1141,7 +1129,7 @@ function OrderFlowInner({
                 </div>
 
                 {publishableKey && (
-                  <div className={ui.panel}>
+                  <div className="border rounded-lg p-4">
                     <label className="text-sm font-medium text-gray-700">Card Details</label>
                     <div className="mt-2 p-3 border rounded bg-gray-50">
                       <CardElement options={{ hidePostalCode: true }} />
@@ -1153,8 +1141,8 @@ function OrderFlowInner({
             )}
             
             <div className="mt-6">
-              <h3 className="font-medium mb-3">Order Summary</h3>
-              <div className="bg-gray-50 rounded-xl p-4">
+              <h3 className="font-medium mb-4">Order Summary</h3>
+              <div className="bg-gray-50 rounded-lg p-4">
                 <div className="space-y-1 text-sm">
                   <div className="flex justify-between">
                     <span>Subtotal</span>
@@ -1192,7 +1180,7 @@ function OrderFlowInner({
                       ))}
                   </div>
                 ) : null}
-                <div className="mt-2 text-sm text-gray-600">
+                <div className="text-sm text-gray-600">
                   <p>Ship to: {shipping.name}</p>
                   <p>
                     {shipping.address_line1}, {shipping.city}
@@ -1202,10 +1190,10 @@ function OrderFlowInner({
               </div>
             </div>
             
-            <div className="mt-6 grid grid-cols-2 gap-3">
+            <div className="flex justify-between mt-6">
               <button
                 onClick={() => setStep('shipping')}
-                className={ui.buttonSecondary}
+                className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
                 disabled={isProcessing}
               >
                 Back
@@ -1213,7 +1201,7 @@ function OrderFlowInner({
               <button
                 onClick={handlePayment}
                 disabled={isProcessing}
-                className={ui.buttonPrimaryGreen}
+                className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
               >
                 {isProcessing ? 'Processing...' : `Pay ${formatAmount(total)}`}
               </button>
@@ -1223,15 +1211,15 @@ function OrderFlowInner({
       )}
 
       {step === 'confirm' && (
-        <div className={`${ui.card} text-center`}>
-          <div className="w-14 h-14 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
-            <Check className="w-7 h-7 text-green-600" />
+        <div className="bg-white rounded-lg shadow-md p-6 text-center">
+          <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <Check className="w-8 h-8 text-green-600" />
           </div>
-          <h2 className="text-xl sm:text-2xl font-semibold tracking-tight mb-2">Order Confirmed!</h2>
-          <p className="text-sm text-gray-600 mb-4">
+          <h2 className="text-2xl font-bold mb-2">Order Confirmed!</h2>
+          <p className="text-gray-600 mb-6">
             Thank you for your purchase. Your order has been received and is being processed.
           </p>
-          <p className="text-base font-medium">
+          <p className="text-lg font-medium">
             Order Total: <span className="text-green-600">{formatAmount(total)}</span>
           </p>
           <p className="mt-4 text-gray-600">

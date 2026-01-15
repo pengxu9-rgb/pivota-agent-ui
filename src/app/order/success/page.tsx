@@ -9,6 +9,17 @@ function SuccessContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const orderId = searchParams.get('orderId')
+  const ucpCheckoutSessionId =
+    (searchParams.get('ucp_checkout_session_id') ||
+      searchParams.get('ucpCheckoutSessionId') ||
+      '').trim() || null
+  const sellerName = (searchParams.get('seller_name') || searchParams.get('sellerName') || '').trim() || null
+  const sellerDomain =
+    (searchParams.get('seller_domain') || searchParams.get('sellerDomain') || '').trim() || null
+  const billingDescriptor =
+    (searchParams.get('billing_descriptor') ||
+      searchParams.get('billingDescriptor') ||
+      '').trim() || null
   const rawReturn =
     searchParams.get('return') ||
     searchParams.get('returnUrl') ||
@@ -27,6 +38,30 @@ function SuccessContent() {
         <p className="text-gray-600 mb-6">
           Thank you for shopping with Pivota. Your order has been confirmed.
         </p>
+
+        {(sellerName || sellerDomain) && (
+          <div className="bg-blue-50 border border-blue-100 rounded-lg p-4 mb-6 text-left">
+            <p className="text-sm text-gray-700">
+              <span className="font-medium">Sold by:</span>{' '}
+              {sellerName || 'Merchant'}
+              {sellerDomain ? (
+                <>
+                  {' '}
+                  (<span className="font-mono">{sellerDomain}</span>)
+                </>
+              ) : null}
+            </p>
+            {billingDescriptor ? (
+              <p className="text-sm text-gray-700 mt-2">
+                <span className="font-medium">Billing descriptor (expected):</span>{' '}
+                <span className="font-mono">{billingDescriptor}</span>
+              </p>
+            ) : null}
+            <p className="text-xs text-gray-600 mt-2">
+              Pivota provides the checkout experience but is not the seller of record.
+            </p>
+          </div>
+        )}
         
         {orderId && (
           <div className="bg-gray-50 rounded-lg p-4 mb-6">
@@ -57,7 +92,11 @@ function SuccessContent() {
                   return
                 }
                 const url = orderId
-                  ? withReturnParams(returnUrl, { checkout: 'success', orderId })
+                  ? withReturnParams(returnUrl, {
+                      checkout: 'success',
+                      orderId,
+                      ...(ucpCheckoutSessionId ? { ucp_checkout_session_id: ucpCheckoutSessionId } : {}),
+                    })
                   : returnUrl
                 window.location.assign(url)
               }}

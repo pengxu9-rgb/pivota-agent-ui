@@ -12,6 +12,10 @@ export function safeReturnUrl(input: string | null): string | null {
     const allowed =
       host === 'localhost' ||
       host === '127.0.0.1' ||
+      host === 'google.com' ||
+      host.endsWith('.google.com') ||
+      host === 'g.co' ||
+      host.endsWith('.g.co') ||
       host === 'pivota.cc' ||
       host.endsWith('.pivota.cc') ||
       host === 'pivota.com' ||
@@ -36,4 +40,3 @@ export function withReturnParams(returnUrl: string, params: Record<string, strin
     return returnUrl
   }
 }
-
