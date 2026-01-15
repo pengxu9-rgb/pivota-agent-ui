@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 type RouteParams = { checkoutId: string };
-type RouteContext = { params: RouteParams | Promise<RouteParams> };
 
 function _isCrossSite(req: NextRequest): boolean {
   const site = (req.headers.get('sec-fetch-site') || '').toLowerCase();
@@ -15,9 +14,9 @@ function _getUcpWebBaseUrl(): string | null {
 
 export async function POST(
   req: NextRequest,
-  context: RouteContext,
+  { params }: { params: Promise<RouteParams> },
 ) {
-  const params = await Promise.resolve(context.params);
+  const { checkoutId: checkoutIdRaw } = await params;
   if (_isCrossSite(req)) {
     return NextResponse.json({ detail: 'Forbidden' }, { status: 403 });
   }
@@ -37,7 +36,7 @@ export async function POST(
     );
   }
 
-  const checkoutId = encodeURIComponent(params.checkoutId || '');
+  const checkoutId = encodeURIComponent(checkoutIdRaw || '');
   const upstreamUrl = `${baseUrl}/ucp/v1/checkout-sessions/${checkoutId}/_link-order`;
 
   const bodyText = await req.text();
