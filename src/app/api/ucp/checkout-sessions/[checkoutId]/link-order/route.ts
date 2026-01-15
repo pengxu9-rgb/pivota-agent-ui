@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+type RouteParams = { checkoutId: string };
+type RouteContext = { params: RouteParams | Promise<RouteParams> };
+
 function _isCrossSite(req: NextRequest): boolean {
   const site = (req.headers.get('sec-fetch-site') || '').toLowerCase();
   return site === 'cross-site';
@@ -12,8 +15,9 @@ function _getUcpWebBaseUrl(): string | null {
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: { checkoutId: string } },
+  context: RouteContext,
 ) {
+  const params = await Promise.resolve(context.params);
   if (_isCrossSite(req)) {
     return NextResponse.json({ detail: 'Forbidden' }, { status: 403 });
   }
@@ -56,4 +60,3 @@ export async function POST(
     },
   });
 }
-
