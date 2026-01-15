@@ -78,13 +78,16 @@ function OrderContent() {
     const controller = new AbortController()
     const timeout = window.setTimeout(() => controller.abort(), 2000)
     try {
-      await fetch(`/ucp/v1/checkout-sessions/${encodeURIComponent(checkoutId)}/_mark-failure`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ reason, stage }),
-        signal: controller.signal,
-        cache: 'no-store',
-      })
+      await fetch(
+        `/api/ucp/checkout-sessions/${encodeURIComponent(checkoutId)}/mark-failure`,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ reason, stage }),
+          signal: controller.signal,
+          cache: 'no-store',
+        },
+      )
     } catch {
       // Best-effort: do not block buyer flow.
     } finally {
@@ -212,13 +215,16 @@ function OrderContent() {
     const controller = new AbortController()
     const timeout = window.setTimeout(() => controller.abort(), 2000)
     try {
-      await fetch(`/ucp/v1/checkout-sessions/${encodeURIComponent(checkoutId)}/_link-order`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ order_id: orderId }),
-        signal: controller.signal,
-        cache: 'no-store',
-      })
+      await fetch(
+        `/api/ucp/checkout-sessions/${encodeURIComponent(checkoutId)}/link-order`,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ order_id: orderId }),
+          signal: controller.signal,
+          cache: 'no-store',
+        },
+      )
     } catch {
       // Best-effort: do not block buyer flow.
     } finally {
