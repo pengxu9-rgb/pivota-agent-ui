@@ -12,6 +12,13 @@ function _getUcpWebBaseUrl(): string | null {
   return base ? base.replace(/\/$/, '') : null;
 }
 
+function _getInternalCheckoutHookKey(): string | null {
+  const purpose = (process.env.UCP_INTERNAL_CHECKOUT_HOOK_KEY || '').trim();
+  if (purpose) return purpose;
+  const shared = (process.env.UCP_INTERNAL_API_KEY || '').trim();
+  return shared || null;
+}
+
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<RouteParams> },
@@ -22,7 +29,7 @@ export async function POST(
   }
 
   const baseUrl = _getUcpWebBaseUrl();
-  const internalKey = (process.env.UCP_INTERNAL_CHECKOUT_HOOK_KEY || '').trim();
+  const internalKey = _getInternalCheckoutHookKey();
   if (!baseUrl) {
     return NextResponse.json(
       { detail: 'UCP_WEB_BASE_URL is not configured' },
@@ -31,7 +38,10 @@ export async function POST(
   }
   if (!internalKey) {
     return NextResponse.json(
-      { detail: 'UCP_INTERNAL_CHECKOUT_HOOK_KEY is not configured' },
+      {
+        detail:
+          'Internal key is not configured (set UCP_INTERNAL_CHECKOUT_HOOK_KEY or UCP_INTERNAL_API_KEY)',
+      },
       { status: 500 },
     );
   }
