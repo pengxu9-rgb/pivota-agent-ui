@@ -7,6 +7,17 @@ function _isCrossSite(req: NextRequest): boolean {
   return site === 'cross-site';
 }
 
+function _isSameOrigin(req: NextRequest): boolean {
+  const origin = (req.headers.get('origin') || '').trim();
+  const host = (req.headers.get('host') || '').trim();
+  if (!origin || !host) return false;
+  try {
+    return new URL(origin).host === host;
+  } catch {
+    return false;
+  }
+}
+
 function _getUcpWebBaseUrl(): string | null {
   const base = (process.env.UCP_WEB_BASE_URL || '').trim();
   return base ? base.replace(/\/$/, '') : null;
@@ -25,6 +36,11 @@ export async function POST(
 ) {
   const { checkoutId: checkoutIdRaw } = await params;
   if (_isCrossSite(req)) {
+    return NextResponse.json({ detail: 'Forbidden' }, { status: 403 });
+  }
+  // Avoid turning this into a public unauthenticated mutator endpoint.
+  // Browsers send `Origin` for fetch() POSTs; require same-origin.
+  if (!_isSameOrigin(req)) {
     return NextResponse.json({ detail: 'Forbidden' }, { status: 403 });
   }
 
