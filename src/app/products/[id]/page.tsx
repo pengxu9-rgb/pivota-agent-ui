@@ -14,7 +14,7 @@ import { toast } from 'sonner';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ProductDetailsPdp } from '@/components/pdp/ProductDetailsPdp';
 import { mapProductToPdpViewModel } from '@/lib/pdp/mapProductToPdpViewModel';
-import type { ReviewsPreviewData } from '@/lib/pdp/types';
+import type { Module, ReviewsPreviewData } from '@/lib/pdp/types';
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -189,7 +189,12 @@ export default function ProductDetailPage({ params }: Props) {
         ...payloadBase,
         modules: [
           ...payloadBase.modules,
-          { module_id: 'm_reviews', type: 'reviews_preview', priority: 60, data: reviewsPreview },
+          {
+            module_id: 'm_reviews',
+            type: 'reviews_preview',
+            priority: 60,
+            data: reviewsPreview,
+          } as Module,
         ],
       }
     : payloadBase;
