@@ -28,27 +28,28 @@ async function parseUpstreamResponse(resp: Response) {
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json().catch(() => ({}));
-    const token = String(body?.token || '').trim();
-    const ttlSeconds = Number.isFinite(Number(body?.ttl_seconds)) ? Number(body.ttl_seconds) : 900;
-    const orderId = String(body?.order_id || '').trim();
+    const form = await req.formData();
+    const submissionToken = String(form.get('submission_token') || '').trim();
+    const reviewId = String(form.get('review_id') || '').trim();
+    const file = form.get('file');
 
-    if (!token) {
-      return NextResponse.json({ error: 'Missing token' }, { status: 400 });
+    if (!submissionToken) return NextResponse.json({ error: 'Missing submission_token' }, { status: 400 });
+    if (!reviewId) return NextResponse.json({ error: 'Missing review_id' }, { status: 400 });
+    if (!file || !(file instanceof Blob)) {
+      return NextResponse.json({ error: 'Missing file' }, { status: 400 });
     }
 
     const upstreamBase = getReviewsUpstreamBase();
-    const upstreamRes = await fetch(`${upstreamBase}/buyer/reviews/v1/verification/exchange`, {
+    const upstreamForm = new FormData();
+    upstreamForm.append('file', file);
+
+    const upstreamRes = await fetch(`${upstreamBase}/buyer/reviews/v1/reviews/${reviewId}/media`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
+        Authorization: `Bearer ${submissionToken}`,
       },
       cache: 'no-store',
-      body: JSON.stringify({
-        ttl_seconds: ttlSeconds,
-        order_id: orderId || undefined,
-      }),
+      body: upstreamForm,
     });
 
     const data = await parseUpstreamResponse(upstreamRes);
@@ -57,7 +58,7 @@ export async function POST(req: NextRequest) {
       headers: { 'Cache-Control': 'no-store' },
     });
   } catch (error) {
-    console.error('[reviews exchange] proxy error:', error);
+    console.error('[reviews media] proxy error:', error);
     return NextResponse.json(
       { error: 'Gateway proxy error', message: (error as Error).message ?? String(error) },
       { status: 500 },
