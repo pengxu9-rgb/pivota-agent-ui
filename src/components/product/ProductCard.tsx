@@ -45,6 +45,8 @@ export default function ProductCard({
     } else {
       addItem({
         id: product_id,
+        product_id,
+        variant_id: product_id,
         title,
         price,
         imageUrl: image,

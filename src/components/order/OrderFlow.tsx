@@ -163,6 +163,18 @@ const SHIPPING_COUNTRY_GROUPS: Array<{
   },
 ]
 
+function getVariantIdForItem(item: {
+  product_id: string
+  variant_id?: string
+  sku?: string
+}): string {
+  const variantId = String(item.variant_id || '').trim()
+  if (variantId) return variantId
+  const sku = String(item.sku || '').trim()
+  if (sku) return sku
+  return String(item.product_id || '').trim()
+}
+
 function OrderFlowInner({
   items,
   onComplete,
@@ -318,11 +330,15 @@ function OrderFlowInner({
 
   const buildQuoteRequest = (deliveryOptionOverride?: any) => {
     const quoteItems = items
-      .map((item) => ({
-        product_id: item.product_id,
-        variant_id: item.variant_id || '',
-        quantity: item.quantity,
-      }))
+      .map((item) => {
+        const productId = String(item.product_id || '').trim()
+        const variantId = getVariantIdForItem(item)
+        return {
+          product_id: productId,
+          variant_id: variantId,
+          quantity: item.quantity,
+        }
+      })
       .filter((it) => Boolean(it.product_id) && Boolean(it.variant_id))
 
     return {
@@ -375,6 +391,9 @@ function OrderFlowInner({
     if (!Array.isArray(quoteReq.items) || quoteReq.items.length !== items.length) {
       throw new Error('Some items are missing variant information and cannot be priced.')
     }
+    if (!quoteReq.items.length) {
+      throw new Error('No items to quote.')
+    }
     const quoteResp = await previewQuote(quoteReq)
     const normalized = normalizeQuote(quoteResp)
     if (!normalized) throw new Error('Failed to calculate pricing. Please try again.')
@@ -415,22 +434,23 @@ function OrderFlowInner({
         ...(locale ? { locale } : {}),
         source: 'checkout_ui',
       },
-      items: items.map(item => ({
-        merchant_id: item.merchant_id || merchantId,
-        product_id: item.product_id,
-        product_title: item.title,
-        ...(item.variant_id ? { variant_id: item.variant_id } : {}),
-        ...(item.sku ? { sku: item.sku } : {}),
-        quantity: item.quantity,
-        unit_price:
-          item.variant_id && lineItemPriceByVariant.has(item.variant_id)
-            ? Number(lineItemPriceByVariant.get(item.variant_id))
-            : item.unit_price,
-        subtotal:
-          (item.variant_id && lineItemPriceByVariant.has(item.variant_id)
-            ? Number(lineItemPriceByVariant.get(item.variant_id))
-            : item.unit_price) * item.quantity
-      })),
+      items: items.map((item) => {
+        const variantId = getVariantIdForItem(item)
+        const effectiveUnitPrice =
+          variantId && lineItemPriceByVariant.has(variantId)
+            ? Number(lineItemPriceByVariant.get(variantId))
+            : item.unit_price
+        return {
+          merchant_id: item.merchant_id || merchantId,
+          product_id: item.product_id,
+          product_title: item.title,
+          ...(variantId ? { variant_id: variantId } : {}),
+          ...(item.sku ? { sku: item.sku } : {}),
+          quantity: item.quantity,
+          unit_price: effectiveUnitPrice,
+          subtotal: effectiveUnitPrice * item.quantity,
+        }
+      }),
       shipping_address: {
         name: shipping.name,
         address_line1: shipping.address_line1,
@@ -1040,7 +1060,7 @@ function OrderFlowInner({
                     </div>
                     <p className="text-sm font-medium">
                       {(() => {
-                        const variantId = String(item.variant_id || '').trim()
+                        const variantId = getVariantIdForItem(item)
                         const li = variantId ? quoteLineItemByVariantId.get(variantId) : null
                         const unitPriceEffective = Number((li as any)?.unit_price_effective)
                         const qty = Number((li as any)?.quantity ?? item.quantity)

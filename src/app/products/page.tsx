@@ -172,6 +172,7 @@ export default function ProductsPage() {
                 >
                   <ProductCard
                     product_id={product.product_id}
+                    merchant_id={product.merchant_id}
                     title={product.title}
                     price={product.price}
                     image={product.image_url || '/placeholder.svg'}

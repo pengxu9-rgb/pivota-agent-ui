@@ -282,26 +282,39 @@ export default function ProductDetailPage({ params }: Props) {
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
           <ProductDetailsPdp
             payload={payload}
-            onAddToCart={({ quantity }) => {
+            onAddToCart={({ variant, quantity }) => {
+              const unitPrice = Number(variant.price?.current.amount ?? product.price ?? 0);
+              const currency = String(variant.price?.current.currency || product.currency || 'USD');
+              const imageUrl = variant.image_url || product.image_url || '/placeholder.svg';
               addItem({
-                id: product.product_id,
+                id: variant.variant_id || product.product_id,
+                product_id: product.product_id,
+                variant_id: variant.variant_id || product.product_id,
+                sku: variant.sku_id,
                 title: product.title,
-                price: product.price,
-                imageUrl: product.image_url || '/placeholder.svg',
+                price: unitPrice,
+                currency,
+                imageUrl,
                 merchant_id: product.merchant_id,
                 quantity,
               });
               toast.success(`✓ Added ${quantity}x ${product.title} to cart!`);
             }}
-            onBuyNow={({ quantity }) => {
+            onBuyNow={({ variant, quantity }) => {
+              const unitPrice = Number(variant.price?.current.amount ?? product.price ?? 0);
+              const currency = String(variant.price?.current.currency || product.currency || 'USD');
+              const imageUrl = variant.image_url || product.image_url || '/placeholder.svg';
               const checkoutItems = [
                 {
                   product_id: product.product_id,
+                  variant_id: variant.variant_id || product.product_id,
+                  sku: variant.sku_id,
                   merchant_id: product.merchant_id,
                   title: product.title,
                   quantity,
-                  unit_price: product.price,
-                  image_url: product.image_url || '/placeholder.svg',
+                  unit_price: unitPrice,
+                  currency,
+                  image_url: imageUrl,
                 },
               ];
               const encoded = encodeURIComponent(JSON.stringify(checkoutItems));

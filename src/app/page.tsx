@@ -109,10 +109,14 @@ export default function HomePage() {
   const handleAddToCart = (product: any) => {
     addItem({
       id: product.product_id,
+      product_id: product.product_id,
+      variant_id: product.variant_id || product.product_id,
+      sku: product.sku,
       title: product.title,
       price: product.price,
+      currency: product.currency,
       imageUrl: product.image_url || '/placeholder.svg',
-       merchant_id: product.merchant_id,
+      merchant_id: product.merchant_id,
       quantity: 1,
     });
     toast.success(`✓ Added to cart! ${product.title}`);

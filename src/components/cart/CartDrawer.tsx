@@ -15,11 +15,14 @@ export default function CartDrawer() {
     if (items.length === 0) return;
 
     const orderItems = items.map((item) => ({
-      product_id: item.id,
+      product_id: item.product_id || item.id,
+      variant_id: item.variant_id || item.product_id || item.id,
+      sku: item.sku,
       merchant_id: item.merchant_id,
       title: item.title,
       quantity: item.quantity,
       unit_price: item.price,
+      currency: item.currency,
       image_url: item.imageUrl,
     }));
 
