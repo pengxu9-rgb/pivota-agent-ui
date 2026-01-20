@@ -3,6 +3,8 @@ import { getAllProducts } from '@/lib/api'
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const baseUrl = 'https://agent.pivota.cc'
+  const apiBase = (process.env.NEXT_PUBLIC_API_URL || '').trim()
+  const canFetchProducts = /^https?:\/\//.test(apiBase)
 
   const staticPages: MetadataRoute.Sitemap = [
     {
@@ -25,6 +27,10 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     },
   ]
 
+  if (!canFetchProducts) {
+    return staticPages
+  }
+
   try {
     const products = await getAllProducts(200)
     const productPages: MetadataRoute.Sitemap = products.map((product) => ({
@@ -43,4 +49,3 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     return staticPages
   }
 }
-
