@@ -177,6 +177,18 @@ function isTemporaryUnavailable(err: any): boolean {
   return message.includes('TEMPORARY_UNAVAILABLE') || message.includes('DATABASE BUSY')
 }
 
+function isRetryableQuoteError(err: any): boolean {
+  if (isTemporaryUnavailable(err)) return true
+  const code = String(err?.code || '').trim().toUpperCase()
+  if (code === 'UPSTREAM_TIMEOUT') return true
+  const message = String(err?.message || '').toUpperCase()
+  return (
+    message.includes('UPSTREAM_TIMEOUT') ||
+    message.includes('GATEWAY TIMEOUT') ||
+    message.includes('TIMED OUT')
+  )
+}
+
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
@@ -544,8 +556,8 @@ function OrderFlowInner({
       try {
         await refreshQuote()
       } catch (err: any) {
-        if (isTemporaryUnavailable(err)) {
-          toast.message('Checkout is busy. Retrying…')
+        if (isRetryableQuoteError(err)) {
+          toast.message('Pricing is busy. Retrying…')
           await sleep(1200)
           await refreshQuote()
         } else {

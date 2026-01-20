@@ -234,6 +234,7 @@ async function callGateway(body: InvokeBody) {
   if (!res.ok) {
     const errorData = await res.json().catch(() => ({}));
     const topMessage = (errorData as any)?.message;
+    const topError = (errorData as any)?.error;
     const gatewayError =
       (errorData as any)?.error ||
       (errorData as any)?.detail?.error ||
@@ -244,21 +245,35 @@ async function callGateway(body: InvokeBody) {
     const codeCandidate =
       (typeof details?.error === 'string' && details.error) ||
       (typeof details?.code === 'string' && details.code) ||
+      (typeof topError === 'string' && /^[A-Z0-9_]+$/.test(topError) ? topError : null) ||
       (typeof gatewayError?.message === 'string' &&
       /^[A-Z0-9_]+$/.test(gatewayError.message)
         ? gatewayError.message
         : null) ||
       (typeof gatewayError?.code === 'string' && gatewayError.code) ||
+      (typeof gatewayError === 'string' && /^[A-Z0-9_]+$/.test(gatewayError) ? gatewayError : null) ||
       (typeof topMessage === 'string' && /^[A-Z0-9_]+$/.test(topMessage)
         ? topMessage
         : null) ||
       null;
 
+    const operation = (errorData as any)?.operation;
+    const friendlyTopError =
+      typeof topError === 'string'
+        ? topError === 'UPSTREAM_TIMEOUT'
+          ? `Request timed out${operation ? ` (${operation})` : ''}. Please retry shortly.`
+          : topError === 'TEMPORARY_UNAVAILABLE'
+            ? `Temporary service issue${operation ? ` (${operation})` : ''}. Please retry shortly.`
+            : operation
+              ? `${topError} (${operation})`
+              : topError
+        : null;
     const messageCandidate =
       (typeof details?.message === 'string' && details.message) ||
       (typeof gatewayError?.details?.message === 'string' && gatewayError.details.message) ||
       (typeof gatewayError?.message === 'string' && gatewayError.message) ||
       (typeof topMessage === 'string' && topMessage) ||
+      friendlyTopError ||
       `Gateway error: ${res.status} ${res.statusText}`;
 
     const err = new Error(messageCandidate) as ApiError;
