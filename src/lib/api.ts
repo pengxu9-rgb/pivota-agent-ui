@@ -58,6 +58,8 @@ export interface ProductResponse {
   product_id: string;
   merchant_id?: string;
   merchant_name?: string;
+  platform?: string;
+  platform_product_id?: string;
   title: string;
   description: string;
   price: number;
@@ -65,6 +67,12 @@ export interface ProductResponse {
   image_url?: string;
   category?: string;
   in_stock: boolean;
+  variants?: any[];
+  attributes?: any;
+  options?: any[] | null;
+  product_options?: any[] | null;
+  review_summary?: any;
+  seller_feedback_summary?: any;
 }
 
 function normalizeProduct(
@@ -131,6 +139,8 @@ function normalizeProduct(
       anyP.merchant_uuid ||
       anyP.store_id,
     merchant_name: anyP.merchant_name || anyP.store_name,
+    platform: anyP.platform,
+    platform_product_id: anyP.platform_product_id || anyP.product_id || anyP.id,
     title: anyP.title || anyP.name || 'Untitled product',
     description,
     price: normalizedPrice,
@@ -144,6 +154,12 @@ function normalizeProduct(
             anyP.quantity ||
             anyP.stock ||
             0) > 0,
+    variants: anyP.variants,
+    attributes: anyP.attributes,
+    options: anyP.options ?? null,
+    product_options: anyP.product_options ?? null,
+    review_summary: anyP.review_summary,
+    seller_feedback_summary: anyP.seller_feedback_summary,
   };
 }
 
@@ -200,6 +216,70 @@ async function callGateway(body: InvokeBody) {
   }
 
   return res.json();
+}
+
+
+export type ProductReviewMedia = {
+  id: number;
+  type: string;
+  url: string;
+};
+
+export type ProductReviewItem = {
+  review_id: number;
+  merchant_id: string;
+  rating: number;
+  verification?: string | null;
+  title?: string | null;
+  body?: string | null;
+  snippet?: string | null;
+  created_at?: string | null;
+  media?: ProductReviewMedia[];
+  is_featured?: boolean;
+  merge?: any;
+};
+
+export type ReviewsListResponse = {
+  items: ProductReviewItem[];
+  next_cursor: string | null;
+  limit: number;
+};
+
+export async function listSkuReviews(args: {
+  sku: {
+    merchant_id: string;
+    platform: string;
+    platform_product_id: string;
+    variant_id?: string | null;
+  };
+  filters?: {
+    featured_only?: boolean;
+    has_media?: boolean;
+    rating?: number | null;
+    limit?: number;
+    cursor?: string | null;
+  };
+}): Promise<ReviewsListResponse> {
+  return (await callGateway({
+    operation: 'list_sku_reviews',
+    payload: args,
+  })) as ReviewsListResponse;
+}
+
+export async function listGroupReviews(args: {
+  group_id: number;
+  filters?: {
+    merchant_ids?: string[] | null;
+    featured_only?: boolean;
+    has_media?: boolean;
+    limit?: number;
+    cursor?: string | null;
+  };
+}): Promise<ReviewsListResponse> {
+  return (await callGateway({
+    operation: 'list_group_reviews',
+    payload: args,
+  })) as ReviewsListResponse;
 }
 
 // -------- Accounts API helpers --------

@@ -3,25 +3,18 @@
 import { useState, useEffect, use } from 'react';
 import { motion } from 'framer-motion';
 import {
-  Star,
-  Truck,
-  RotateCcw,
-  Shield,
-  Minus,
-  Plus,
   ShoppingCart,
   Sparkles,
 } from 'lucide-react';
 import Link from 'next/link';
-import Image from 'next/image';
 import { notFound } from 'next/navigation';
-import { Button } from '@/components/ui/button';
-import { GlassCard } from '@/components/ui/glass-card';
-import ProductCard from '@/components/product/ProductCard';
 import { useCartStore } from '@/store/cartStore';
-import { getProductDetail, getAllProducts } from '@/lib/api';
+import { getProductDetail, getAllProducts, listGroupReviews, listSkuReviews } from '@/lib/api';
 import { toast } from 'sonner';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { ProductDetailsPdp } from '@/components/pdp/ProductDetailsPdp';
+import { mapProductToPdpViewModel } from '@/lib/pdp/mapProductToPdpViewModel';
+import type { ReviewsPreviewData } from '@/lib/pdp/types';
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -31,23 +24,78 @@ export default function ProductDetailPage({ params }: Props) {
   const { id } = use(params);
   const searchParams = useSearchParams();
   const merchantIdParam = searchParams.get('merchant_id') || undefined;
+  const pdpOverride = (searchParams.get('pdp') || '').toLowerCase(); // beauty | generic
   const router = useRouter();
   const [product, setProduct] = useState<any>(null);
   const [relatedProducts, setRelatedProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [quantity, setQuantity] = useState(1);
+  const [error, setError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
+
+  const [reviewsPreview, setReviewsPreview] = useState<ReviewsPreviewData | null>(null);
 
   const { addItem, items, open } = useCartStore();
   const itemCount = items.reduce((acc, item) => acc + item.quantity, 0);
 
   useEffect(() => {
     const loadProduct = async () => {
+      setError(null);
+      setReviewsPreview(null);
       try {
         const data = await getProductDetail(id, merchantIdParam);
         if (!data) {
           notFound();
         }
         setProduct(data);
+        try {
+          const summary = (data as any).review_summary;
+          const hasGroup = Boolean(summary?.has_group);
+          const countRaw = hasGroup ? summary?.group_total_review_count : summary?.merchant_review_count;
+          const reviewCount = Number(countRaw || 0);
+
+          if (reviewCount > 0 && data.merchant_id && (data as any).platform && (data as any).platform_product_id) {
+            let resp: any = null;
+            if (hasGroup && summary?.default_view === 'group' && summary?.group_id) {
+              resp = await listGroupReviews({ group_id: Number(summary.group_id), filters: { limit: 6 } });
+            } else {
+              resp = await listSkuReviews({
+                sku: {
+                  merchant_id: String(data.merchant_id),
+                  platform: String((data as any).platform),
+                  platform_product_id: String((data as any).platform_product_id),
+                  variant_id: null,
+                },
+                filters: { limit: 6 },
+              });
+            }
+
+            const items = Array.isArray(resp?.items) ? resp.items : [];
+            if (items.length) {
+              const avg =
+                items.reduce((acc: number, r: any) => acc + (Number(r?.rating) || 0), 0) / Math.max(1, items.length);
+
+              const preview: ReviewsPreviewData = {
+                scale: 5,
+                rating: Number.isFinite(avg) ? avg : 0,
+                review_count: reviewCount,
+                preview_items: items.slice(0, 3).map((r: any) => ({
+                  review_id: String(r.review_id),
+                  rating: Number(r.rating) || 0,
+                  author_label: (r.verification || 'verified_buyer') === 'verified_buyer' ? 'Verified buyer' : undefined,
+                  text_snippet: String(r.snippet || r.body || '').trim() || '—',
+                  media: Array.isArray(r.media)
+                    ? r.media.slice(0, 1).map((m: any) => ({ type: 'image', url: String(m.url) }))
+                    : undefined,
+                })),
+              };
+
+              setReviewsPreview(preview);
+            }
+          }
+        } catch (e) {
+          console.error('Failed to load reviews preview:', e);
+          setReviewsPreview(null);
+        }
 
         // Save to browse history with full product data
         try {
@@ -81,12 +129,13 @@ export default function ProductDetailPage({ params }: Props) {
         setRelatedProducts(all.filter((p) => p.product_id !== id));
       } catch (error) {
         console.error('Failed to load product:', error);
+        setError(error instanceof Error ? error.message : 'Failed to load product');
       } finally {
         setLoading(false);
       }
     };
     loadProduct();
-  }, [id, merchantIdParam]);
+  }, [id, merchantIdParam, reloadKey]);
 
   if (loading) {
     return (
@@ -99,61 +148,67 @@ export default function ProductDetailPage({ params }: Props) {
     );
   }
 
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-mesh px-6">
+        <div className="w-full max-w-md rounded-3xl border border-border bg-card/70 backdrop-blur p-6 text-center">
+          <div className="text-lg font-semibold">Failed to load product</div>
+          <div className="mt-2 text-sm text-muted-foreground">{error}</div>
+          <div className="mt-4">
+            <button
+              className="text-sm font-medium text-primary"
+              onClick={() => {
+                setLoading(true);
+                setProduct(null);
+                setRelatedProducts([]);
+                setError(null);
+                setReloadKey((k) => k + 1);
+              }}
+            >
+              Retry
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (!product) return null;
 
   const productUrl = `https://agent.pivota.cc/products/${product.product_id}`;
 
-  const priceValue = Number(product.price);
-  const cleanDescription = (description: string) =>
-    description
-      ? description
-          .replace(/<[^>]+>/g, ' ')
-          .replace(/&nbsp;/g, ' ')
-          .replace(/\s+/g, ' ')
-          .trim()
-      : 'No description available.';
+  const payloadBase = mapProductToPdpViewModel({
+    product,
+    relatedProducts,
+    entryPoint: 'product_detail',
+    experiment: 'lovable_pdp_mvp',
+  });
 
-  const formattedPrice =
-    priceValue > 0
-      ? new Intl.NumberFormat('en-US', {
-          style: 'currency',
-          currency: product.currency || 'USD',
-        }).format(priceValue)
-      : 'Price unavailable';
+  const payload = reviewsPreview
+    ? {
+        ...payloadBase,
+        modules: [
+          ...payloadBase.modules,
+          { module_id: 'm_reviews', type: 'reviews_preview', priority: 60, data: reviewsPreview },
+        ],
+      }
+    : payloadBase;
 
-  const handleAddToCart = () => {
-    addItem({
-      id: product.product_id,
-      title: product.title,
-      price: product.price,
-      imageUrl: product.image_url || '/placeholder.svg',
-      merchant_id: product.merchant_id,
-      quantity,
-    });
-    toast.success(`✓ Added ${quantity}x ${product.title} to cart!`);
-  };
-
-  const handleBuyNow = () => {
-    // Build a single-item payload and jump directly to checkout
-    const checkoutItems = [
-      {
-        product_id: product.product_id,
-        merchant_id: product.merchant_id,
-        title: product.title,
-        quantity,
-        unit_price: product.price,
-        image_url: product.image_url || '/placeholder.svg',
-      },
-    ];
-    const encoded = encodeURIComponent(JSON.stringify(checkoutItems));
-    router.push(`/order?items=${encoded}`);
-  };
+  // Optional override for validation (does not change default selection logic).
+  // - `?pdp=beauty` forces beauty
+  // - `?pdp=generic` forces generic
+  if (pdpOverride === 'beauty') payload.product.category_path = ['Beauty'];
+  if (pdpOverride === 'generic') payload.product.category_path = ['General'];
 
   const productJsonLd = {
     '@context': 'https://schema.org',
     '@type': 'Product',
     name: product.title,
-    description: cleanDescription(product.description || ''),
+    description: String(product.description || '')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&nbsp;/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim(),
     image: product.image_url || '/placeholder.svg',
     sku: product.product_id,
     url: productUrl,
@@ -210,137 +265,36 @@ export default function ProductDetailPage({ params }: Props) {
           <span>{product.title}</span>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 mb-24">
-          {/* Left: Image */}
-          <motion.div
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.5 }}
-          >
-            <GlassCard className="p-0 overflow-hidden aspect-square relative bg-white">
-              <Image
-                src={product.image_url || '/placeholder.svg'}
-                alt={product.title}
-                fill
-                className="object-contain p-8"
-                unoptimized
-              />
-            </GlassCard>
-          </motion.div>
-
-          {/* Right: Product Info */}
-          <motion.div
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.5, delay: 0.1 }}
-            className="space-y-6"
-          >
-            <div>
-              <h1 className="text-3xl md:text-4xl font-semibold mb-4">
-                {product.title}
-              </h1>
-              <div className="flex items-center gap-2 mb-4">
-                {[...Array(5)].map((_, i) => (
-                  <Star
-                    key={i}
-                    className="h-5 w-5 fill-yellow-400 text-yellow-400"
-                  />
-                ))}
-                <span className="text-sm text-muted-foreground ml-2">
-                  4.5 (24 reviews)
-                </span>
-              </div>
-            </div>
-
-            <div>
-              <div className="text-4xl font-semibold mb-2">
-                {formattedPrice}
-              </div>
-              <p className="text-success text-sm">✓ In Stock</p>
-            </div>
-
-            <p className="leading-relaxed text-muted-foreground whitespace-pre-line">
-              {cleanDescription(product.description || '')}
-            </p>
-
-            {/* Features */}
-            <GlassCard className="p-4">
-              <div className="space-y-3">
-                {[
-                  { icon: Truck, text: 'Free Shipping' },
-                  { icon: RotateCcw, text: '30-Day Returns' },
-                  { icon: Shield, text: 'Secure Checkout' },
-                ].map((feature, i) => (
-                  <div key={i} className="flex items-center gap-3">
-                    <feature.icon className="h-5 w-5 text-cyan-400" />
-                    <span className="text-sm">{feature.text}</span>
-                  </div>
-                ))}
-              </div>
-            </GlassCard>
-
-            {/* Quantity */}
-            <div>
-              <label className="text-sm font-medium mb-3 block">Quantity</label>
-              <div className="flex items-center gap-3">
-                <Button
-                  variant="secondary"
-                  size="icon"
-                  onClick={() => setQuantity(Math.max(1, quantity - 1))}
-                >
-                  <Minus className="h-4 w-4" />
-                </Button>
-                <span className="text-lg font-semibold w-12 text-center">
-                  {quantity}
-                </span>
-                <Button
-                  variant="secondary"
-                  size="icon"
-                  onClick={() => setQuantity(quantity + 1)}
-                >
-                  <Plus className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
-
-            {/* Actions */}
-            <div className="flex gap-3 pt-4">
-              <Button
-                variant="outline"
-                size="lg"
-                className="flex-1"
-                onClick={handleAddToCart}
-              >
-                Add to Cart
-              </Button>
-              <Button
-                variant="gradient"
-                size="lg"
-                className="flex-1"
-                onClick={handleBuyNow}
-              >
-                Buy Now
-              </Button>
-            </div>
-          </motion.div>
-        </div>
-
-        {/* Related Products */}
-        <div>
-          <h2 className="text-2xl font-semibold mb-8">You might also like</h2>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
-            {relatedProducts.map((p) => (
-              <ProductCard
-                key={p.product_id}
-                product_id={p.product_id}
-                title={p.title}
-                price={p.price}
-                image={p.image_url || '/placeholder.svg'}
-                description={p.description}
-              />
-            ))}
-          </div>
-        </div>
+        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
+          <ProductDetailsPdp
+            payload={payload}
+            onAddToCart={({ quantity }) => {
+              addItem({
+                id: product.product_id,
+                title: product.title,
+                price: product.price,
+                imageUrl: product.image_url || '/placeholder.svg',
+                merchant_id: product.merchant_id,
+                quantity,
+              });
+              toast.success(`✓ Added ${quantity}x ${product.title} to cart!`);
+            }}
+            onBuyNow={({ quantity }) => {
+              const checkoutItems = [
+                {
+                  product_id: product.product_id,
+                  merchant_id: product.merchant_id,
+                  title: product.title,
+                  quantity,
+                  unit_price: product.price,
+                  image_url: product.image_url || '/placeholder.svg',
+                },
+              ];
+              const encoded = encodeURIComponent(JSON.stringify(checkoutItems));
+              router.push(`/order?items=${encoded}`);
+            }}
+          />
+        </motion.div>
       </main>
     </div>
   );
