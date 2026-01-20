@@ -170,6 +170,17 @@ function getVariantIdForItem(item: {
   return String(item.variant_id || '').trim()
 }
 
+function isTemporaryUnavailable(err: any): boolean {
+  const code = String(err?.code || '').trim().toUpperCase()
+  if (code === 'TEMPORARY_UNAVAILABLE') return true
+  const message = String(err?.message || '').toUpperCase()
+  return message.includes('TEMPORARY_UNAVAILABLE') || message.includes('DATABASE BUSY')
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
 function OrderFlowInner({
   items,
   onComplete,
@@ -530,7 +541,17 @@ function OrderFlowInner({
       setPaymentActionType(null)
       setPspUsed(null)
 
-      await refreshQuote()
+      try {
+        await refreshQuote()
+      } catch (err: any) {
+        if (isTemporaryUnavailable(err)) {
+          toast.message('Checkout is busy. Retrying…')
+          await sleep(1200)
+          await refreshQuote()
+        } else {
+          throw err
+        }
+      }
       setStep('payment')
     } catch (err: any) {
       console.error('Create order error:', err)
@@ -553,217 +574,231 @@ function OrderFlowInner({
         throw new Error('Please enter your shipping address to calculate totals before paying.')
       }
 
-      // Step 1: Create order if not already created
-      const orderId = await createOrderIfNeeded()
-      
-      // Step 2: Create/confirm payment intent via gateway
-      const postPayReturnUrl =
-        typeof window !== 'undefined'
-          ? `${window.location.origin}/order/success?orderId=${encodeURIComponent(orderId)}${
-              returnUrl ? `&return=${encodeURIComponent(returnUrl)}` : ''
-            }`
-          : undefined
-      const paymentResponse = await processPayment({
-        order_id: orderId,
-        total_amount: total,
-        currency,
-        payment_method: {
-          type: 'card'
-        },
-        return_url: postPayReturnUrl
-      })
+      const runPayment = async () => {
+        // Step 1: Create order if not already created
+        const orderId = await createOrderIfNeeded()
+        
+        // Step 2: Create/confirm payment intent via gateway
+        const postPayReturnUrl =
+          typeof window !== 'undefined'
+            ? `${window.location.origin}/order/success?orderId=${encodeURIComponent(orderId)}${
+                returnUrl ? `&return=${encodeURIComponent(returnUrl)}` : ''
+              }`
+            : undefined
+        const paymentResponse = await processPayment({
+          order_id: orderId,
+          total_amount: total,
+          currency,
+          payment_method: {
+            type: 'card'
+          },
+          return_url: postPayReturnUrl
+        })
 
-      console.log('submit_payment response', paymentResponse)
+        console.log('submit_payment response', paymentResponse)
 
-      const paymentObj = (paymentResponse as any)?.payment || {}
-      let action: any =
-        (paymentResponse as any)?.payment_action ||
-        paymentObj?.payment_action ||
-        initialPaymentAction ||
-        null
+        const paymentObj = (paymentResponse as any)?.payment || {}
+        let action: any =
+          (paymentResponse as any)?.payment_action ||
+          paymentObj?.payment_action ||
+          initialPaymentAction ||
+          null
 
-      // Heuristic: synthesize Adyen payment_action when intent id indicates
-      // adyen_session but backend hasn't sent unified fields yet.
-      if (!action) {
-        const responseIntentId =
-          (paymentResponse as any)?.payment_intent_id ||
-          paymentObj?.payment_intent_id
-        const responseClientSecret =
-          (paymentResponse as any)?.client_secret ||
-          paymentObj?.client_secret
+        // Heuristic: synthesize Adyen payment_action when intent id indicates
+        // adyen_session but backend hasn't sent unified fields yet.
+        if (!action) {
+          const responseIntentId =
+            (paymentResponse as any)?.payment_intent_id ||
+            paymentObj?.payment_intent_id
+          const responseClientSecret =
+            (paymentResponse as any)?.client_secret ||
+            paymentObj?.client_secret
 
-        if (
-          typeof responseIntentId === 'string' &&
-          responseIntentId.startsWith('adyen_session') &&
-          typeof responseClientSecret === 'string' &&
-          responseClientSecret
-        ) {
-          action = {
-            type: 'adyen_session',
-            client_secret: responseClientSecret,
-            url: null,
-            raw: null,
+          if (
+            typeof responseIntentId === 'string' &&
+            responseIntentId.startsWith('adyen_session') &&
+            typeof responseClientSecret === 'string' &&
+            responseClientSecret
+          ) {
+            action = {
+              type: 'adyen_session',
+              client_secret: responseClientSecret,
+              url: null,
+              raw: null,
+            }
           }
         }
-      }
 
-      setPaymentActionType(action?.type || null)
+        setPaymentActionType(action?.type || null)
 
-      let detectedPsp: string | null =
-        (paymentResponse as any)?.psp ||
-        paymentObj?.psp ||
-        action?.psp ||
-        null
+        let detectedPsp: string | null =
+          (paymentResponse as any)?.psp ||
+          paymentObj?.psp ||
+          action?.psp ||
+          null
 
-      if (!detectedPsp) {
-        const responseIntentId =
-          paymentObj?.payment_intent_id ||
-          (paymentResponse as any)?.payment_intent_id
-        if (
-          typeof responseIntentId === 'string' &&
-          responseIntentId.startsWith('adyen_session')
-        ) {
-          detectedPsp = 'adyen'
-        }
-      }
-
-      setPspUsed(detectedPsp || pspUsed || null)
-
-      const redirectUrl =
-        action?.url ||
-        paymentResponse.redirect_url ||
-        paymentResponse.payment?.redirect_url ||
-        paymentResponse.next_action?.redirect_url
-
-      const clientSecret =
-        action?.client_secret ||
-        paymentResponse.client_secret ||
-        paymentResponse.payment?.client_secret
-
-      // New unified payment handling
-      if (action?.type === 'redirect_url') {
-        if (redirectUrl) {
-          window.location.href = redirectUrl
-          return
-        }
-        throw new Error('Payment requires redirect, but no URL provided')
-      }
-
-      if (action?.type === 'adyen_session') {
-        const sessionData = action?.client_secret
-        // Normalize Adyen session id: prefer raw.id; otherwise strip "adyen_session_" prefix.
-        let sessionId =
-          action?.raw?.id ||
-          paymentResponse.payment_intent_id ||
-          paymentResponse.payment?.payment_intent_id ||
-          ''
-
-        if (sessionId && sessionId.startsWith('adyen_session_')) {
-          sessionId = sessionId.replace('adyen_session_', '')
+        if (!detectedPsp) {
+          const responseIntentId =
+            paymentObj?.payment_intent_id ||
+            (paymentResponse as any)?.payment_intent_id
+          if (
+            typeof responseIntentId === 'string' &&
+            responseIntentId.startsWith('adyen_session')
+          ) {
+            detectedPsp = 'adyen'
+          }
         }
 
-        const clientKey = action?.raw?.clientKey || ADYEN_CLIENT_KEY
+        setPspUsed(detectedPsp || pspUsed || null)
 
-        if (!sessionData || !clientKey) {
-          throw new Error('Adyen session is missing required data. Please try again.')
+        const redirectUrl =
+          action?.url ||
+          paymentResponse.redirect_url ||
+          paymentResponse.payment?.redirect_url ||
+          paymentResponse.next_action?.redirect_url
+
+        const clientSecret =
+          action?.client_secret ||
+          paymentResponse.client_secret ||
+          paymentResponse.payment?.client_secret
+
+        // New unified payment handling
+        if (action?.type === 'redirect_url') {
+          if (redirectUrl) {
+            window.location.href = redirectUrl
+            return
+          }
+          throw new Error('Payment requires redirect, but no URL provided')
         }
 
-        if (adyenMounted && adyenContainerRef.current) {
-          // Already mounted; do nothing
-          setIsProcessing(false)
-          return
+        if (action?.type === 'adyen_session') {
+          const sessionData = action?.client_secret
+          // Normalize Adyen session id: prefer raw.id; otherwise strip "adyen_session_" prefix.
+          let sessionId =
+            action?.raw?.id ||
+            paymentResponse.payment_intent_id ||
+            paymentResponse.payment?.payment_intent_id ||
+            ''
+
+          if (sessionId && sessionId.startsWith('adyen_session_')) {
+            sessionId = sessionId.replace('adyen_session_', '')
+          }
+
+          const clientKey = action?.raw?.clientKey || ADYEN_CLIENT_KEY
+
+          if (!sessionData || !clientKey) {
+            throw new Error('Adyen session is missing required data. Please try again.')
+          }
+
+          if (adyenMounted && adyenContainerRef.current) {
+            // Already mounted; do nothing
+            setIsProcessing(false)
+            return
+          }
+
+          try {
+            const { default: AdyenCheckout } = await import('@adyen/adyen-web')
+            const checkout = await AdyenCheckout({
+              clientKey,
+              environment: 'test', // use 'live' in production with proper key
+              session: {
+                id: sessionId,
+                sessionData,
+              },
+              analytics: { enabled: false },
+              onPaymentCompleted: () => {
+                setStep('confirm')
+                toast.success('Payment completed successfully.')
+                clearCart()
+                if (onComplete) {
+                  onComplete(orderId)
+                  return
+                }
+                router.push(`/orders/${orderId}?paid=1`)
+              },
+              onError: (err: any) => {
+                console.error('Adyen error:', err)
+                toast.error('Payment failed with Adyen. Please check your card details or try again.')
+                if (onFailure) onFailure({ reason: 'payment_failed', stage: 'payment' })
+              },
+            })
+
+            if (adyenContainerRef.current) {
+              checkout.create('dropin').mount(adyenContainerRef.current)
+              setAdyenMounted(true)
+              setIsProcessing(false)
+              return
+            } else {
+              throw new Error('Payment form is not ready. Please refresh the page and try again.')
+            }
+          } catch (err: any) {
+            console.error('Adyen init failed:', err)
+            throw err
+          }
         }
 
-        try {
-          const { default: AdyenCheckout } = await import('@adyen/adyen-web')
-          const checkout = await AdyenCheckout({
-            clientKey,
-            environment: 'test', // use 'live' in production with proper key
-            session: {
-              id: sessionId,
-              sessionData,
-            },
-            analytics: { enabled: false },
-            onPaymentCompleted: () => {
-              setStep('confirm')
-              toast.success('Payment completed successfully.')
-              clearCart()
-              if (onComplete) {
-                onComplete(orderId)
-                return
-              }
-              router.push(`/orders/${orderId}?paid=1`)
-            },
-            onError: (err: any) => {
-              console.error('Adyen error:', err)
-              toast.error('Payment failed with Adyen. Please check your card details or try again.')
-              if (onFailure) onFailure({ reason: 'payment_failed', stage: 'payment' })
+        // Default / Stripe flow
+        if (clientSecret && stripe && elements) {
+          const cardElement = elements.getElement(CardElement)
+          if (!cardElement) {
+            throw new Error('Please enter your card details to pay.')
+          }
+
+          const result = await stripe.confirmCardPayment(clientSecret, {
+            payment_method: {
+              card: cardElement,
             },
           })
 
-          if (adyenContainerRef.current) {
-            checkout.create('dropin').mount(adyenContainerRef.current)
-            setAdyenMounted(true)
-            setIsProcessing(false)
-            return
-          } else {
-            throw new Error('Payment form is not ready. Please refresh the page and try again.')
+          if (result.error) {
+            setCardError(result.error.message || 'Payment failed')
+            throw new Error('Payment failed. Please check your card details or try again.')
           }
-        } catch (err: any) {
-          console.error('Adyen init failed:', err)
-          throw err
-        }
-      }
 
-      // Default / Stripe flow
-      if (clientSecret && stripe && elements) {
-        const cardElement = elements.getElement(CardElement)
-        if (!cardElement) {
-          throw new Error('Please enter your card details to pay.')
-        }
-
-        const result = await stripe.confirmCardPayment(clientSecret, {
-          payment_method: {
-            card: cardElement,
-          },
-        })
-
-        if (result.error) {
-          setCardError(result.error.message || 'Payment failed')
-          throw new Error('Payment failed. Please check your card details or try again.')
-        }
-
-        const status = result.paymentIntent?.status
-        if (status === 'succeeded' || status === 'processing') {
-          setPaymentId(result.paymentIntent?.id || '')
+          const status = result.paymentIntent?.status
+          if (status === 'succeeded' || status === 'processing') {
+            setPaymentId(result.paymentIntent?.id || '')
+            setStep('confirm')
+            toast.success('Payment completed successfully.')
+            clearCart()
+            if (onComplete) {
+              onComplete(orderId)
+              return
+            }
+            router.push(`/orders/${orderId}?paid=1`)
+          } else if (status === 'requires_action') {
+            // Stripe will handle 3DS in confirmCardPayment; keep user on page
+            toast.message('Additional authentication required', {
+              description: 'Please complete the 3D Secure flow in the popup window if prompted.',
+            })
+          } else {
+            throw new Error('Payment could not be completed. Please try again or use a different card.')
+          }
+        } else if (redirectUrl) {
+          window.location.href = redirectUrl
+        } else {
+          setPaymentId(paymentResponse.payment_id || '')
           setStep('confirm')
-          toast.success('Payment completed successfully.')
+          toast.success('Payment processed successfully!')
           clearCart()
           if (onComplete) {
             onComplete(orderId)
             return
           }
           router.push(`/orders/${orderId}?paid=1`)
-        } else if (status === 'requires_action') {
-          // Stripe will handle 3DS in confirmCardPayment; keep user on page
-          toast.message('Additional authentication required', {
-            description: 'Please complete the 3D Secure flow in the popup window if prompted.',
-          })
+        }
+      }
+
+      try {
+        await runPayment()
+      } catch (err: any) {
+        if (isTemporaryUnavailable(err)) {
+          toast.message('Temporary service issue. Retrying…')
+          await sleep(1500)
+          await runPayment()
         } else {
-          throw new Error('Payment could not be completed. Please try again or use a different card.')
+          throw err
         }
-      } else if (redirectUrl) {
-        window.location.href = redirectUrl
-      } else {
-        setPaymentId(paymentResponse.payment_id || '')
-        setStep('confirm')
-        toast.success('Payment processed successfully!')
-        clearCart()
-        if (onComplete) {
-          onComplete(orderId)
-          return
-        }
-        router.push(`/orders/${orderId}?paid=1`)
       }
     } catch (error: any) {
       console.error('Payment error:', error)

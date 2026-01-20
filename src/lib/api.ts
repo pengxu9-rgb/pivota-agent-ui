@@ -233,10 +233,39 @@ async function callGateway(body: InvokeBody) {
 
   if (!res.ok) {
     const errorData = await res.json().catch(() => ({}));
-    throw new Error(
-      (errorData as any).message ||
-        `Gateway error: ${res.status} ${res.statusText}`,
-    );
+    const topMessage = (errorData as any)?.message;
+    const gatewayError =
+      (errorData as any)?.error ||
+      (errorData as any)?.detail?.error ||
+      (errorData as any)?.detail ||
+      null;
+    const details = gatewayError?.details || gatewayError?.detail || null;
+
+    const codeCandidate =
+      (typeof details?.error === 'string' && details.error) ||
+      (typeof details?.code === 'string' && details.code) ||
+      (typeof gatewayError?.message === 'string' &&
+      /^[A-Z0-9_]+$/.test(gatewayError.message)
+        ? gatewayError.message
+        : null) ||
+      (typeof gatewayError?.code === 'string' && gatewayError.code) ||
+      (typeof topMessage === 'string' && /^[A-Z0-9_]+$/.test(topMessage)
+        ? topMessage
+        : null) ||
+      null;
+
+    const messageCandidate =
+      (typeof details?.message === 'string' && details.message) ||
+      (typeof gatewayError?.details?.message === 'string' && gatewayError.details.message) ||
+      (typeof gatewayError?.message === 'string' && gatewayError.message) ||
+      (typeof topMessage === 'string' && topMessage) ||
+      `Gateway error: ${res.status} ${res.statusText}`;
+
+    const err = new Error(messageCandidate) as ApiError;
+    err.code = codeCandidate || undefined;
+    err.status = res.status;
+    err.detail = errorData;
+    throw err;
   }
 
   return res.json();

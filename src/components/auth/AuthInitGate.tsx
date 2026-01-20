@@ -3,7 +3,7 @@
 import { usePathname } from 'next/navigation'
 import AuthInit from '@/components/auth/AuthInit'
 
-const AUTH_REQUIRED_PREFIXES = ['/orders', '/my-orders', '/ops']
+const AUTH_REQUIRED_PREFIXES = ['/orders', '/my-orders', '/ops', '/order']
 
 export default function AuthInitGate() {
   const pathname = usePathname() || ''
@@ -13,4 +13,3 @@ export default function AuthInitGate() {
 
   return <AuthInit />
 }
-
