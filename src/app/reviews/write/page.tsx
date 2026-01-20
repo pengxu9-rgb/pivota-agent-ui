@@ -406,13 +406,11 @@ export default function WriteReviewPage() {
       ? `${orderSummary?.currency ? `${orderSummary.currency} ` : ''}${orderSummary.total_price}`
       : null;
 
-  const addMediaFiles = async (files: FileList | null) => {
-    if (!files) return;
-    const incoming = Array.from(files);
+  const addMediaFiles = async (incoming: File[]) => {
     if (!incoming.length) return;
     setMediaError(null);
 
-    const next = [...mediaItems];
+    const next = [...mediaItemsRef.current];
     const errors: string[] = [];
 
     for (const file of incoming) {
@@ -682,7 +680,8 @@ export default function WriteReviewPage() {
                       multiple
                       className="hidden"
                       onChange={(e) => {
-                        void addMediaFiles(e.target.files);
+                        const files = e.currentTarget.files ? Array.from(e.currentTarget.files) : [];
+                        void addMediaFiles(files);
                         e.currentTarget.value = '';
                       }}
                     />
