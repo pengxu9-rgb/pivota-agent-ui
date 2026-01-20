@@ -8,6 +8,7 @@ import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import ChatSidebar from '@/components/chat/ChatSidebar';
+import { ChatRecommendationCard } from '@/components/product/ChatRecommendationCard';
 import { useCartStore } from '@/store/cartStore';
 import { useAuthStore } from '@/store/authStore';
 import { useChatStore } from '@/store/chatStore';
@@ -89,7 +90,7 @@ export default function HomePage() {
         content: products.length > 0 
           ? `I found ${products.length} product(s) for you!`
           : "I couldn't find any products matching your search. Try something else!",
-        products: products.slice(0, 4),
+        products: products.slice(0, 10),
       };
 
       addMessage(assistantMessage);
@@ -218,60 +219,26 @@ export default function HomePage() {
 
                   {/* Product Cards */}
                   {message.products && message.products.length > 0 && (
-                    <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-5 max-w-3xl">
-                      {message.products.map((product, productIdx) => (
-                        <motion.div
-                          key={product.product_id}
-                          initial={{ opacity: 0, scale: 0.9 }}
-                          animate={{ opacity: 1, scale: 1 }}
-                          transition={{ delay: productIdx * 0.1 }}
-                          className="group relative bg-card backdrop-blur-xl rounded-2xl overflow-hidden border border-border shadow-md hover:shadow-lg hover:scale-[1.02] transition-all duration-300"
-                        >
-                          {/* Image */}
-                          <Link
-                            href={
-                              product.merchant_id
-                                ? `/products/${product.product_id}?merchant_id=${product.merchant_id}`
-                                : `/products/${product.product_id}`
-                            }
-                            className="block"
+                    <div className="mt-4 space-y-2 max-w-3xl">
+                      <p className="text-[11px] text-primary-foreground/80">
+                        Recommended pieces based on this chat:
+                      </p>
+                      <div className="flex gap-3 overflow-x-auto pb-1">
+                        {message.products.map((product, productIdx) => (
+                          <motion.div
+                            key={product.product_id}
+                            initial={{ opacity: 0, scale: 0.95 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            transition={{ delay: productIdx * 0.04 }}
+                            className="w-[220px] flex-shrink-0"
                           >
-                            <div className="relative w-full aspect-[3/4] overflow-hidden bg-white">
-                              <Image
-                                src={product.image_url || '/placeholder.svg'}
-                                alt={product.title}
-                                fill
-                                className="object-cover group-hover:scale-105 transition-transform duration-300"
-                                unoptimized
-                              />
-                            </div>
-                          </Link>
-
-                          {/* Content */}
-                          <div className="p-4 flex flex-col gap-2">
-                            <Link href={`/products/${product.product_id}`}>
-                              <h4 className="font-semibold text-base mb-1 line-clamp-2 min-h-[2.5rem] text-foreground group-hover:text-primary transition-colors">
-                                {product.title}
-                              </h4>
-                            </Link>
-
-                            <div className="flex items-center justify-between">
-                              <span className="text-lg font-bold text-primary">
-                                ${typeof product.price === 'number' ? product.price.toFixed(2) : product.price}
-                              </span>
-                            </div>
-
-                            <Button
-                              variant="default"
-                              size="sm"
-                              onClick={() => handleAddToCart(product)}
-                              className="w-full h-9 text-xs font-medium"
-                            >
-                              Add to Cart
-                            </Button>
-                          </div>
-                        </motion.div>
-                      ))}
+                            <ChatRecommendationCard
+                              product={product as ProductResponse}
+                              onAddToCart={handleAddToCart}
+                            />
+                          </motion.div>
+                        ))}
+                      </div>
                     </div>
                   )}
                 </div>
