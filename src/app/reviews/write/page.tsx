@@ -193,7 +193,7 @@ export default function WriteReviewPage() {
     return () => {
       cancelled = true;
     };
-  }, [activeSubject?.merchant_id, activeSubject?.platform_product_id]);
+  }, [activeSubject]);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -257,7 +257,7 @@ export default function WriteReviewPage() {
 
         {!loading && invitationToken && !submissionToken && (
           <div className="text-sm text-muted-foreground">
-            This invitation can't be used. It may have expired or was already used.
+            This invitation cannot be used. It may have expired or was already used.
           </div>
         )}
 
