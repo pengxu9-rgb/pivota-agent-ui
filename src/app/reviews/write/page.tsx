@@ -328,6 +328,10 @@ export default function WriteReviewPage() {
         setProduct(null);
         return;
       }
+      if (activeOrderItem?.title || activeOrderItem?.image_url) {
+        setProduct(null);
+        return;
+      }
       try {
         const p = await getProductDetail(activeSubject.platform_product_id, activeSubject.merchant_id);
         if (!cancelled) setProduct(p);
@@ -340,7 +344,7 @@ export default function WriteReviewPage() {
     return () => {
       cancelled = true;
     };
-  }, [activeSubject]);
+  }, [activeSubject, activeOrderItem]);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
