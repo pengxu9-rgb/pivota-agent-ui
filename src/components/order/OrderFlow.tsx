@@ -10,6 +10,7 @@ import {
   accountsLogin,
   accountsVerify,
   previewQuote,
+  confirmOrderPayment,
 } from '@/lib/api'
 import { useCartStore } from '@/store/cartStore'
 import { toast } from 'sonner'
@@ -719,6 +720,9 @@ function OrderFlowInner({
               },
               analytics: { enabled: false },
               onPaymentCompleted: () => {
+                void confirmOrderPayment(orderId).catch((err) => {
+                  console.warn('confirmOrderPayment failed', err)
+                })
                 setStep('confirm')
                 toast.success('Payment completed successfully.')
                 clearCart()
@@ -769,6 +773,9 @@ function OrderFlowInner({
 
           const status = result.paymentIntent?.status
           if (status === 'succeeded' || status === 'processing') {
+            void confirmOrderPayment(orderId).catch((err) => {
+              console.warn('confirmOrderPayment failed', err)
+            })
             setPaymentId(result.paymentIntent?.id || '')
             setStep('confirm')
             toast.success('Payment completed successfully.')

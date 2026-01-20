@@ -655,6 +655,19 @@ export async function processPayment(paymentData: {
   return data;
 }
 
+export async function confirmOrderPayment(orderId: string) {
+  const data = await callGateway({
+    operation: 'confirm_payment',
+    payload: {
+      order: {
+        order_id: orderId,
+      },
+    },
+  });
+
+  return data;
+}
+
 export async function getOrderStatus(orderId: string) {
   const data = await callGateway({
     operation: 'get_order_status',
