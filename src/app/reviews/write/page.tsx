@@ -146,6 +146,7 @@ function StarRating({
 
 export default function WriteReviewPage() {
   const [invitationToken, setInvitationToken] = useState<string | null>(null);
+  const [tokenChecked, setTokenChecked] = useState(false);
   const [submissionToken, setSubmissionToken] = useState<string | null>(null);
   const [submissionPayload, setSubmissionPayload] = useState<SubmissionTokenPayload | null>(null);
   const [selectedSubjectIdx, setSelectedSubjectIdx] = useState(0);
@@ -212,12 +213,14 @@ export default function WriteReviewPage() {
     }
 
     setInvitationToken(token);
+    setTokenChecked(true);
   }, []);
 
   useEffect(() => {
     let cancelled = false;
 
     async function run() {
+      if (!tokenChecked) return;
       if (!invitationToken) {
         setLoading(false);
         return;
@@ -246,6 +249,7 @@ export default function WriteReviewPage() {
       }
 
       try {
+        setLoading(true);
         const res = await fetch('/api/reviews/buyer/exchange', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -292,7 +296,7 @@ export default function WriteReviewPage() {
     return () => {
       cancelled = true;
     };
-  }, [invitationToken, orderId]);
+  }, [invitationToken, orderId, tokenChecked]);
 
   useEffect(() => {
     let cancelled = false;
