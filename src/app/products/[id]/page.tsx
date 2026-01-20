@@ -73,11 +73,20 @@ export default function ProductDetailPage({ params }: Props) {
             if (items.length) {
               const avg =
                 items.reduce((acc: number, r: any) => acc + (Number(r?.rating) || 0), 0) / Math.max(1, items.length);
+              const query = new URLSearchParams({
+                merchant_id: String(data.merchant_id),
+                platform: String((data as any).platform),
+                platform_product_id: String((data as any).platform_product_id),
+              });
+              if ((data as any).variant_id) {
+                query.set('variant_id', String((data as any).variant_id));
+              }
 
               const preview: ReviewsPreviewData = {
                 scale: 5,
                 rating: Number.isFinite(avg) ? avg : 0,
                 review_count: reviewCount,
+                open_reviews_url: `/reviews?${query.toString()}`,
                 preview_items: items.slice(0, 3).map((r: any) => ({
                   review_id: String(r.review_id),
                   rating: Number(r.rating) || 0,

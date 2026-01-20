@@ -117,6 +117,8 @@ export interface ReviewsPreviewData {
   scale: number;
   rating: number;
   review_count: number;
+  open_reviews_url?: string;
+  write_review_url?: string;
   preview_items?: Array<{
     review_id: string;
     rating: number;

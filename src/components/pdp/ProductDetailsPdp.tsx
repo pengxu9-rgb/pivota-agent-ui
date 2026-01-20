@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
+import Link from 'next/link';
 import { ChevronDown, Star } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type {
@@ -207,8 +208,10 @@ function ReviewsPreviewBlock({ data }: { data: ReviewsPreviewData }) {
           ))}
         </div>
       ) : null}
-      {data.entry_points?.open_reviews ? (
-        <button className="mt-4 w-full text-sm text-primary font-medium">See all reviews</button>
+      {data.open_reviews_url ? (
+        <Link href={data.open_reviews_url} className="mt-4 w-full text-sm text-primary font-medium inline-flex justify-center">
+          See all reviews
+        </Link>
       ) : null}
     </div>
   );
