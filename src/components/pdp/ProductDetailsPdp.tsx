@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import Link from 'next/link';
 import { ChevronDown, Star } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type {
