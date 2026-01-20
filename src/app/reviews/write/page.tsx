@@ -107,6 +107,28 @@ function mediaIdForFile(file: File): string {
   return `${file.name}-${file.size}-${file.lastModified}`;
 }
 
+function revokePreviewUrl(url: string) {
+  if (url.startsWith('blob:')) {
+    URL.revokeObjectURL(url);
+  }
+}
+
+function readPreviewUrl(file: File): Promise<string> {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = typeof reader.result === 'string' ? reader.result : '';
+      if (result) {
+        resolve(result);
+        return;
+      }
+      resolve(URL.createObjectURL(file));
+    };
+    reader.onerror = () => resolve(URL.createObjectURL(file));
+    reader.readAsDataURL(file);
+  });
+}
+
 function StarRating({
   value,
   onChange,
@@ -187,7 +209,7 @@ export default function WriteReviewPage() {
 
   useEffect(() => {
     return () => {
-      mediaItemsRef.current.forEach((item) => URL.revokeObjectURL(item.previewUrl));
+      mediaItemsRef.current.forEach((item) => revokePreviewUrl(item.previewUrl));
     };
   }, []);
 
@@ -384,7 +406,7 @@ export default function WriteReviewPage() {
       ? `${orderSummary?.currency ? `${orderSummary.currency} ` : ''}${orderSummary.total_price}`
       : null;
 
-  const addMediaFiles = (files: FileList | null) => {
+  const addMediaFiles = async (files: FileList | null) => {
     if (!files) return;
     const incoming = Array.from(files);
     if (!incoming.length) return;
@@ -408,7 +430,7 @@ export default function WriteReviewPage() {
       }
       const id = mediaIdForFile(file);
       if (next.some((item) => item.id === id)) continue;
-      const previewUrl = URL.createObjectURL(file);
+      const previewUrl = await readPreviewUrl(file);
       next.push({ id, file, previewUrl });
     }
 
@@ -419,7 +441,7 @@ export default function WriteReviewPage() {
   const removeMediaItem = (id: string) => {
     setMediaItems((prev) => {
       const item = prev.find((it) => it.id === id);
-      if (item) URL.revokeObjectURL(item.previewUrl);
+      if (item) revokePreviewUrl(item.previewUrl);
       return prev.filter((it) => it.id !== id);
     });
   };
@@ -431,24 +453,30 @@ export default function WriteReviewPage() {
     let done = 0;
     let failed = 0;
 
-    for (const item of mediaItems) {
-      try {
-        const form = new FormData();
-        form.append('submission_token', submissionToken);
-        form.append('review_id', String(rid));
-        form.append('file', item.file);
-        const res = await fetch('/api/reviews/buyer/media', {
-          method: 'POST',
-          body: form,
-        });
-        if (!res.ok) throw new Error('upload failed');
-      } catch {
-        failed += 1;
-      } finally {
-        done += 1;
-        setMediaProgress({ done, total: mediaItems.length, failed });
-      }
-    }
+    await Promise.all(
+      mediaItems.map(async (item) => {
+        try {
+          const form = new FormData();
+          form.append('submission_token', submissionToken);
+          form.append('review_id', String(rid));
+          form.append('file', item.file);
+          const controller = new AbortController();
+          const timeout = window.setTimeout(() => controller.abort(), 20000);
+          const res = await fetch('/api/reviews/buyer/media', {
+            method: 'POST',
+            body: form,
+            signal: controller.signal,
+          });
+          window.clearTimeout(timeout);
+          if (!res.ok) throw new Error('upload failed');
+        } catch {
+          failed += 1;
+        } finally {
+          done += 1;
+          setMediaProgress({ done, total: mediaItems.length, failed });
+        }
+      }),
+    );
 
     setMediaUploading(false);
     if (failed > 0) {
@@ -588,7 +616,7 @@ export default function WriteReviewPage() {
                       window.sessionStorage.removeItem('pivota_reviews_submission_token');
                       window.sessionStorage.removeItem('pivota_reviews_order_summary');
                       window.sessionStorage.removeItem('pivota_reviews_order_id');
-                      mediaItems.forEach((item) => URL.revokeObjectURL(item.previewUrl));
+                      mediaItems.forEach((item) => revokePreviewUrl(item.previewUrl));
                       setMediaItems([]);
                       setMediaError(null);
                       setMediaProgress(null);
@@ -654,7 +682,7 @@ export default function WriteReviewPage() {
                       multiple
                       className="hidden"
                       onChange={(e) => {
-                        addMediaFiles(e.target.files);
+                        void addMediaFiles(e.target.files);
                         e.currentTarget.value = '';
                       }}
                     />
