@@ -166,13 +166,8 @@ const SHIPPING_COUNTRY_GROUPS: Array<{
 function getVariantIdForItem(item: {
   product_id: string
   variant_id?: string
-  sku?: string
 }): string {
-  const variantId = String(item.variant_id || '').trim()
-  if (variantId) return variantId
-  const sku = String(item.sku || '').trim()
-  if (sku) return sku
-  return String(item.product_id || '').trim()
+  return String(item.variant_id || '').trim()
 }
 
 function OrderFlowInner({

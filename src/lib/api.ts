@@ -60,6 +60,16 @@ export interface ProductResponse {
   merchant_name?: string;
   platform?: string;
   platform_product_id?: string;
+  // Some backends include a "primary" variant id / sku id at the product level.
+  variant_id?: string;
+  sku_id?: string;
+  sku?: string;
+  product_ref?: {
+    platform?: string;
+    platform_product_id?: string;
+    variant_id?: string;
+    sku_id?: string;
+  };
   title: string;
   description: string;
   price: number;
@@ -141,6 +151,20 @@ function normalizeProduct(
     merchant_name: anyP.merchant_name || anyP.store_name,
     platform: anyP.platform,
     platform_product_id: anyP.platform_product_id || anyP.product_id || anyP.id,
+    variant_id:
+      anyP.variant_id ||
+      anyP.variantId ||
+      anyP.product_ref?.variant_id ||
+      anyP.productRef?.variant_id ||
+      undefined,
+    sku_id:
+      anyP.sku_id ||
+      anyP.skuId ||
+      anyP.product_ref?.sku_id ||
+      anyP.productRef?.sku_id ||
+      undefined,
+    sku: anyP.sku || anyP.sku_id || anyP.skuId || undefined,
+    product_ref: anyP.product_ref || anyP.productRef || undefined,
     title: anyP.title || anyP.name || 'Untitled product',
     description,
     price: normalizedPrice,

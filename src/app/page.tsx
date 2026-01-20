@@ -107,11 +107,31 @@ export default function HomePage() {
   };
 
   const handleAddToCart = (product: any) => {
+    const defaultVariant =
+      Array.isArray(product?.variants) && product.variants.length > 0
+        ? product.variants[0]
+        : null;
+    const variantId =
+      String(
+        product?.variant_id ||
+          defaultVariant?.variant_id ||
+          defaultVariant?.id ||
+          product?.product_ref?.variant_id ||
+          product?.product_ref?.sku_id ||
+          product?.sku_id ||
+          '',
+      ).trim() || String(product.product_id);
+    const sku =
+      String(defaultVariant?.sku || defaultVariant?.sku_id || product?.sku || product?.sku_id || '').trim() ||
+      undefined;
+    const cartItemId = product?.merchant_id
+      ? `${product.merchant_id}:${variantId}`
+      : variantId;
     addItem({
-      id: product.product_id,
+      id: cartItemId,
       product_id: product.product_id,
-      variant_id: product.variant_id || product.product_id,
-      sku: product.sku,
+      variant_id: variantId,
+      sku,
       title: product.title,
       price: product.price,
       currency: product.currency,

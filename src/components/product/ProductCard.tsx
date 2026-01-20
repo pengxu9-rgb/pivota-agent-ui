@@ -12,8 +12,11 @@ import { toast } from 'sonner';
 interface ProductCardProps {
   product_id: string;
   merchant_id?: string;
+  variant_id?: string;
+  sku?: string;
   title: string;
   price: number;
+  currency?: string;
   image: string;
   description?: string;
   onBuy?: () => void;
@@ -23,8 +26,11 @@ interface ProductCardProps {
 export default function ProductCard({
   product_id,
   merchant_id,
+  variant_id,
+  sku,
   title,
   price,
+  currency,
   image,
   description,
   onBuy,
@@ -43,12 +49,18 @@ export default function ProductCard({
     if (onAddToCart) {
       onAddToCart();
     } else {
+      const resolvedVariantId = String(variant_id || '').trim() || product_id;
+      const cartItemId = merchant_id
+        ? `${merchant_id}:${resolvedVariantId}`
+        : resolvedVariantId;
       addItem({
-        id: product_id,
+        id: cartItemId,
         product_id,
-        variant_id: product_id,
+        variant_id: resolvedVariantId,
+        sku,
         title,
         price,
+        currency,
         imageUrl: image,
         merchant_id,
         quantity: 1,

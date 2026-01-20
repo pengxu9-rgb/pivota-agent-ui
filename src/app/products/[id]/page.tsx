@@ -286,10 +286,14 @@ export default function ProductDetailPage({ params }: Props) {
               const unitPrice = Number(variant.price?.current.amount ?? product.price ?? 0);
               const currency = String(variant.price?.current.currency || product.currency || 'USD');
               const imageUrl = variant.image_url || product.image_url || '/placeholder.svg';
+              const resolvedVariantId = variant.variant_id || product.product_id;
+              const cartItemId = product.merchant_id
+                ? `${product.merchant_id}:${resolvedVariantId}`
+                : resolvedVariantId;
               addItem({
-                id: variant.variant_id || product.product_id,
+                id: cartItemId,
                 product_id: product.product_id,
-                variant_id: variant.variant_id || product.product_id,
+                variant_id: resolvedVariantId,
                 sku: variant.sku_id,
                 title: product.title,
                 price: unitPrice,

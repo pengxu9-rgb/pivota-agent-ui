@@ -162,24 +162,50 @@ export default function ProductsPage() {
             className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3"
           >
             <AnimatePresence>
-              {products.map((product, index) => (
-                <motion.div
-                  key={product.product_id}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, scale: 0.9 }}
-                  transition={{ delay: index * 0.05 }}
-                >
-                  <ProductCard
-                    product_id={product.product_id}
-                    merchant_id={product.merchant_id}
-                    title={product.title}
-                    price={product.price}
-                    image={product.image_url || '/placeholder.svg'}
-                    description={product.description}
-                  />
-                </motion.div>
-              ))}
+              {products.map((product, index) => {
+                const defaultVariant =
+                  Array.isArray(product.variants) && product.variants.length > 0
+                    ? product.variants[0]
+                    : null;
+                const variantId =
+                  String(
+                    product.variant_id ||
+                      (defaultVariant as any)?.variant_id ||
+                      (defaultVariant as any)?.id ||
+                      product.product_ref?.variant_id ||
+                      '',
+                  ).trim() || undefined;
+                const sku =
+                  String(
+                    (defaultVariant as any)?.sku ||
+                      (defaultVariant as any)?.sku_id ||
+                      product.sku ||
+                      product.sku_id ||
+                      '',
+                  ).trim() || undefined;
+
+                return (
+                  <motion.div
+                    key={product.product_id}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.9 }}
+                    transition={{ delay: index * 0.05 }}
+                  >
+                    <ProductCard
+                      product_id={product.product_id}
+                      merchant_id={product.merchant_id}
+                      variant_id={variantId}
+                      sku={sku}
+                      title={product.title}
+                      price={product.price}
+                      currency={product.currency}
+                      image={product.image_url || '/placeholder.svg'}
+                      description={product.description}
+                    />
+                  </motion.div>
+                );
+              })}
             </AnimatePresence>
           </motion.div>
         )}

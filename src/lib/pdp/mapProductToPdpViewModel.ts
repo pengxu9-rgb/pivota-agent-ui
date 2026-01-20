@@ -34,17 +34,113 @@ function inferCategoryPath(product: ProductResponse): string[] {
   return category.split('/').map((s) => s.trim()).filter(Boolean);
 }
 
-function toVariant(product: ProductResponse): Variant {
-  const currency = product.currency || 'USD';
+function toOptionPairs(raw: any): Array<{ name: string; value: string }> {
+  if (!raw || typeof raw !== 'object') return [];
+  return Object.entries(raw)
+    .map(([name, value]) => ({
+      name: String(name),
+      value: String(value ?? ''),
+    }))
+    .filter((o) => o.name && o.value);
+}
+
+function toNumber(value: any): number {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string') return Number(value) || 0;
+  if (value && typeof value === 'object') {
+    if (typeof value.amount === 'number') return value.amount;
+    if (typeof value.amount === 'string') return Number(value.amount) || 0;
+    if (value.current) return toNumber(value.current);
+  }
+  return 0;
+}
+
+function toCurrency(value: any, fallback: string): string {
+  const c =
+    (value && typeof value === 'object' && (value.currency || value.currency_code || value.currencyCode)) ||
+    (value && typeof value === 'object' && value.current && value.current.currency) ||
+    fallback;
+  const s = String(c || '').trim();
+  return s || 'USD';
+}
+
+function toVariantFromRaw(product: ProductResponse, raw: any): Variant | null {
+  const variantId = String(raw?.variant_id || raw?.id || '').trim();
+  if (!variantId) return null;
+
+  const skuIdRaw = raw?.sku_id || raw?.skuId || raw?.sku || undefined;
+  const skuId = skuIdRaw != null ? String(skuIdRaw).trim() : undefined;
+
+  const title = String(raw?.title || 'Variant').trim() || 'Variant';
+  const options = toOptionPairs(raw?.options);
+
+  const currency = toCurrency(raw, product.currency || 'USD');
+  const amount = toNumber(raw?.price) || Number(product.price) || 0;
+
+  const inStock =
+    typeof raw?.in_stock === 'boolean'
+      ? raw.in_stock
+      : typeof raw?.inventory_quantity === 'number'
+        ? raw.inventory_quantity > 0
+        : typeof raw?.inventoryQuantity === 'number'
+          ? raw.inventoryQuantity > 0
+          : !!product.in_stock;
+
+  const imageUrl =
+    (typeof raw?.image_url === 'string' && raw.image_url) ||
+    (typeof raw?.imageUrl === 'string' && raw.imageUrl) ||
+    (typeof raw?.image?.src === 'string' && raw.image.src) ||
+    product.image_url;
+
   return {
-    variant_id: product.product_id,
-    sku_id: product.product_id,
+    variant_id: variantId,
+    sku_id: skuId || undefined,
+    title,
+    options,
+    price: { current: { amount, currency } },
+    availability: { in_stock: inStock },
+    image_url: imageUrl,
+  };
+}
+
+function toFallbackVariant(product: ProductResponse): Variant {
+  const currency = product.currency || 'USD';
+  const anyP = product as any;
+  const ref = anyP.product_ref || anyP.productRef || product.product_ref || null;
+  const refVariantId =
+    product.variant_id ||
+    (ref && (ref.variant_id || ref.variantId || ref.sku_id || ref.skuId)) ||
+    product.sku_id ||
+    null;
+  const variantId = String(refVariantId || product.product_id).trim();
+  const skuId = String(product.sku_id || product.sku || variantId).trim();
+  return {
+    variant_id: variantId,
+    sku_id: skuId || undefined,
     title: 'Default',
     options: [],
     price: { current: { amount: Number(product.price) || 0, currency } },
     availability: { in_stock: !!product.in_stock },
     image_url: product.image_url,
   };
+}
+
+function normalizeVariants(product: ProductResponse): Variant[] {
+  const anyP = product as any;
+  const source = Array.isArray(anyP?.attributes?.variants)
+    ? anyP.attributes.variants
+    : Array.isArray(anyP?.variants)
+      ? anyP.variants
+      : null;
+
+  if (Array.isArray(source) && source.length > 0) {
+    const mapped = source
+      .map((v: any) => toVariantFromRaw(product, v))
+      .filter((v): v is Variant => v !== null);
+    if (mapped.length > 0) return mapped;
+  }
+
+  return [toFallbackVariant(product)];
 }
 
 function buildDetailSections(product: ProductResponse): DetailSection[] {
@@ -89,8 +185,9 @@ export function mapProductToPdpViewModel(args: {
 }): PDPPayload {
   const { product, relatedProducts = [], entryPoint = 'products_list', experiment } = args;
 
-  const currency = product.currency || 'USD';
-  const defaultVariant = toVariant(product);
+  const variants = normalizeVariants(product);
+  const defaultVariant = variants[0];
+  const currency = defaultVariant?.price?.current.currency || product.currency || 'USD';
 
   const media: MediaGalleryData = {
     items: product.image_url
@@ -106,7 +203,7 @@ export function mapProductToPdpViewModel(args: {
   };
 
   const pricePromo: PricePromoData = {
-    price: { amount: Number(product.price) || 0, currency },
+    price: { amount: Number(defaultVariant?.price?.current.amount) || Number(product.price) || 0, currency },
   };
 
   const details: ProductDetailsData = {
@@ -140,9 +237,9 @@ export function mapProductToPdpViewModel(args: {
       brand: undefined,
       category_path: inferCategoryPath(product),
       default_variant_id: defaultVariant.variant_id,
-      variants: [defaultVariant],
+      variants,
       price: defaultVariant.price,
-      availability: { in_stock: !!product.in_stock },
+      availability: defaultVariant.availability || { in_stock: !!product.in_stock },
       description: product.description || '',
     },
     modules: [
@@ -187,4 +284,3 @@ export function mapProductToPdpViewModel(args: {
     ],
   };
 }
-
