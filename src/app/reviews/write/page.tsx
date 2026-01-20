@@ -60,7 +60,8 @@ type MediaItem = {
 
 const MAX_MEDIA_FILES = 5;
 const MAX_MEDIA_BYTES = 10 * 1024 * 1024;
-const ACCEPTED_MEDIA_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+const ACCEPTED_MEDIA_TYPES = ['image/jpeg', 'image/jpg', 'image/pjpeg', 'image/png', 'image/webp', 'image/gif'];
+const ACCEPTED_MEDIA_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp', '.gif'];
 
 function b64UrlToUtf8(b64url: string): string {
   const b64 = b64url.replace(/-/g, '+').replace(/_/g, '/');
@@ -127,6 +128,14 @@ function readPreviewUrl(file: File): Promise<string> {
     reader.onerror = () => resolve(URL.createObjectURL(file));
     reader.readAsDataURL(file);
   });
+}
+
+function isAcceptedImage(file: File): boolean {
+  const type = (file.type || '').toLowerCase();
+  if (type && ACCEPTED_MEDIA_TYPES.includes(type)) return true;
+  if (type && type.startsWith('image/')) return true;
+  const name = (file.name || '').toLowerCase();
+  return ACCEPTED_MEDIA_EXTENSIONS.some((ext) => name.endsWith(ext));
 }
 
 function StarRating({
@@ -422,7 +431,7 @@ export default function WriteReviewPage() {
         errors.push(`Up to ${MAX_MEDIA_FILES} photos per review.`);
         break;
       }
-      if (!ACCEPTED_MEDIA_TYPES.includes(file.type)) {
+      if (!isAcceptedImage(file)) {
         errors.push('Only JPG, PNG, WEBP, or GIF images are supported.');
         continue;
       }
