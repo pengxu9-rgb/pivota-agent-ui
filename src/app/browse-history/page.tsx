@@ -10,6 +10,7 @@ import { useCartStore } from '@/store/cartStore';
 
 interface HistoryItem {
   product_id: string;
+  merchant_id?: string;
   title: string;
   price: number;
   image: string;
