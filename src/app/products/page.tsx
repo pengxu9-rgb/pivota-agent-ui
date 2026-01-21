@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Search, ShoppingCart, Sparkles, Package } from 'lucide-react';
 import Link from 'next/link';
@@ -76,11 +76,7 @@ export default function ProductsPage() {
 
   const itemCount = items.reduce((acc, item) => acc + item.quantity, 0);
 
-  useEffect(() => {
-    loadAllProducts();
-  }, []);
-
-  const loadAllProducts = async () => {
+  const loadAllProducts = useCallback(async () => {
     setLoading(true);
     try {
       const data = await getAllProducts(48);
@@ -94,9 +90,9 @@ export default function ProductsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const handleSearch = async (query: string) => {
+  const handleSearch = useCallback(async (query: string) => {
     setSearchQuery(query);
 
     if (!query.trim()) {
@@ -114,7 +110,17 @@ export default function ProductsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [loadAllProducts]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const q = new URLSearchParams(window.location.search).get('q')?.trim() || '';
+    if (q) {
+      handleSearch(q);
+      return;
+    }
+    loadAllProducts();
+  }, [handleSearch, loadAllProducts]);
 
   const handleTrendingClick = (trend: string) => {
     handleSearch(trend);

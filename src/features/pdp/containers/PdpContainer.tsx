@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { createPortal } from 'react-dom';
+import { useRouter } from 'next/navigation';
 import { ChevronLeft, Share2, Star } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type {
@@ -104,6 +105,7 @@ export function PdpContainer({
   const [searchQuery, setSearchQuery] = useState('');
   const [mounted, setMounted] = useState(false);
   const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const router = useRouter();
 
   const variants = useMemo(() => payload.product.variants ?? [], [payload.product.variants]);
 
@@ -350,6 +352,14 @@ export function PdpContainer({
     }
   };
 
+  const handleSearchSubmit = (event: FormEvent) => {
+    event.preventDefault();
+    const query = searchQuery.trim();
+    if (!query) return;
+    pdpTracking.track('pdp_action_click', { action_type: 'search', query });
+    router.push(`/products?q=${encodeURIComponent(query)}`);
+  };
+
   const attributeOptions = extractAttributeOptions(selectedVariant);
   const beautyAttributes = extractBeautyAttributes(selectedVariant);
   const compareAmount =
@@ -411,15 +421,16 @@ export function PdpContainer({
             <ChevronLeft className="h-4 w-4 text-foreground" />
           </button>
           {navVisible ? (
-            <div className="flex-1">
+            <form className="flex-1" onSubmit={handleSearchSubmit}>
               <input
                 type="search"
                 value={searchQuery}
                 onChange={(event) => setSearchQuery(event.target.value)}
                 placeholder="Search"
+                enterKeyHint="search"
                 className="w-full h-8 rounded-full border border-border/70 bg-muted/40 px-3 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
               />
-            </div>
+            </form>
           ) : null}
           <button
             type="button"
