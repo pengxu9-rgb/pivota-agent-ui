@@ -659,7 +659,6 @@ export function PdpContainer({
               <GenericSizeHelper />
             </>
           ) : null}
-          </div>
         </div>
 
         {hasReviews ? (
