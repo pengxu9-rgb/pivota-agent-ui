@@ -38,7 +38,7 @@ export interface Product {
   default_variant_id: string;
   variants: Variant[];
   price?: VariantPrice;
-  availability?: { in_stock: boolean };
+  availability?: { in_stock: boolean; available_quantity?: number };
   shipping?: { eta_days_range?: number[] };
   returns?: { return_window_days?: number; free_returns?: boolean };
   description?: string;
@@ -73,7 +73,7 @@ export interface Variant {
     undertone?: string;
   };
   price?: VariantPrice;
-  availability?: { in_stock: boolean };
+  availability?: { in_stock: boolean; available_quantity?: number };
   image_url?: string;
 }
 
