@@ -68,7 +68,9 @@ export function BeautyVariantSheet({
                       onClose();
                     }}
                     className={`flex w-full items-center gap-2 rounded-md border px-2.5 py-1.5 text-left transition-colors ${
-                      isSelected ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50'
+                      isSelected
+                        ? 'border-primary bg-primary/10 ring-1 ring-primary/40'
+                        : 'border-border hover:border-primary/50'
                     }`}
                   >
                     {variant.swatch?.hex ? (

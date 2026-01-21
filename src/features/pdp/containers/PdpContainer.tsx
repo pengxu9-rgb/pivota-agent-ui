@@ -104,6 +104,7 @@ export function PdpContainer({
   const [showColorSheet, setShowColorSheet] = useState(false);
   const [activeMediaIndex, setActiveMediaIndex] = useState(0);
   const [navVisible, setNavVisible] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   const variants = useMemo(() => payload.product.variants ?? [], [payload.product.variants]);
@@ -213,24 +214,23 @@ export function PdpContainer({
     acc[action.action_type] = action.label;
     return acc;
   }, {});
-  const headerHeight = 48;
+  const headerHeight = 44;
 
   const hasReviews = !!reviews;
   const hasRecommendations = !!recommendations?.items?.length;
   const showShades = resolvedMode === 'beauty' && variants.length > 1;
-  const showSize =
-    resolvedMode === 'generic' && (sizeOptions.length > 0 || !!payload.product.size_guide);
+  const showSizeGuide = resolvedMode === 'generic' && !!payload.product.size_guide;
 
   const tabs = useMemo(() => {
     return [
       { id: 'product', label: 'Product' },
       ...(hasReviews ? [{ id: 'reviews', label: 'Reviews' }] : []),
       ...(showShades ? [{ id: 'shades', label: 'Shades' }] : []),
-      ...(showSize ? [{ id: 'size', label: 'Size' }] : []),
+      ...(showSizeGuide ? [{ id: 'size', label: 'Size' }] : []),
       { id: 'details', label: 'Details' },
       ...(hasRecommendations ? [{ id: 'similar', label: 'Similar' }] : []),
     ];
-  }, [hasReviews, showShades, showSize, hasRecommendations]);
+  }, [hasReviews, showShades, showSizeGuide, hasRecommendations]);
 
   const handleTabChange = (tabId: string) => {
     setActiveTab(tabId);
@@ -261,7 +261,7 @@ export function PdpContainer({
           setActiveTab(nextId);
         }
       },
-      { rootMargin: '-25% 0px -55% 0px', threshold: [0.1, 0.25, 0.5] },
+      { rootMargin: '-15% 0px -70% 0px', threshold: [0.1, 0.35, 0.6] },
     );
 
     sectionEntries.forEach(({ id, node }) => {
@@ -360,7 +360,7 @@ export function PdpContainer({
   const showTrustBadges = resolvedMode === 'beauty' && trustBadges.length > 0;
 
   return (
-    <div className="relative min-h-screen bg-background pb-36 lovable-pdp">
+    <div className="relative min-h-screen bg-background pb-32 lovable-pdp">
       <div
         className={cn(
           'fixed left-0 right-0 z-50 transition-colors',
@@ -368,7 +368,7 @@ export function PdpContainer({
         )}
         style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
       >
-        <div className="mx-auto max-w-md flex items-center justify-between h-12 px-3">
+        <div className="mx-auto max-w-md flex items-center gap-2 h-11 px-3">
           <button
             type="button"
             onClick={handleBack}
@@ -377,10 +377,21 @@ export function PdpContainer({
           >
             <ChevronLeft className="h-4 w-4 text-foreground" />
           </button>
+          {navVisible ? (
+            <div className="flex-1">
+              <input
+                type="search"
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder="Search"
+                className="w-full h-8 rounded-full border border-border bg-card/90 px-3 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+              />
+            </div>
+          ) : null}
           <button
             type="button"
             onClick={handleShare}
-            className="h-9 w-9 rounded-full border border-border bg-card/90 backdrop-blur flex items-center justify-center shadow-sm"
+            className="h-9 w-9 rounded-full border border-border bg-card/90 backdrop-blur flex items-center justify-center shadow-sm ml-auto"
             aria-label="Share"
           >
             <Share2 className="h-4 w-4 text-foreground" />
@@ -401,9 +412,9 @@ export function PdpContainer({
           ref={(el) => {
             sectionRefs.current.product = el;
           }}
-          className="scroll-mt-24"
+          className="scroll-mt-20"
         >
-          <div className="pb-4">
+          <div className="pb-3">
             <div className="relative">
               <MediaGallery
                 data={galleryData}
@@ -417,7 +428,7 @@ export function PdpContainer({
             </div>
 
             {resolvedMode === 'beauty' && variants.length > 1 ? (
-              <div className="border-b border-border bg-card py-2">
+              <div className="border-b border-border bg-card py-1.5">
                 <div className="overflow-x-auto">
                   <div className="flex items-center gap-1.5 px-3">
                     {variants.slice(0, 4).map((variant) => {
@@ -431,7 +442,9 @@ export function PdpContainer({
                           }}
                           className={cn(
                             'flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] whitespace-nowrap transition-all',
-                            isSelected ? 'border-primary bg-primary/5 font-medium' : 'border-border hover:border-primary/50',
+                            isSelected
+                              ? 'border-primary bg-primary/10 font-medium text-primary ring-1 ring-primary/40'
+                              : 'border-border hover:border-primary/50',
                           )}
                         >
                           {variant.swatch?.hex ? (
@@ -461,7 +474,7 @@ export function PdpContainer({
             ) : null}
 
             {resolvedMode === 'generic' && colorOptions.length ? (
-              <div className="border-b border-border bg-card py-2">
+              <div className="border-b border-border bg-card py-1.5">
                 <div className="overflow-x-auto">
                   <div className="flex items-center gap-2 px-3">
                     {colorOptions.map((color) => {
@@ -474,8 +487,10 @@ export function PdpContainer({
                           key={color}
                           onClick={() => handleColorSelect(color)}
                           className={cn(
-                            'relative flex-shrink-0 rounded-md overflow-hidden border-2',
-                            isSelected ? 'border-primary' : 'border-transparent',
+                            'relative flex-shrink-0 rounded-md overflow-hidden border',
+                            isSelected
+                              ? 'border-primary ring-2 ring-primary/50 ring-offset-1 ring-offset-background'
+                              : 'border-border hover:border-primary/40',
                           )}
                         >
                           {variantForColor.image_url ? (
@@ -509,7 +524,7 @@ export function PdpContainer({
               </div>
             ) : null}
 
-            <div className="px-3 py-2">
+            <div className="px-3 py-1.5">
               <div className="flex items-baseline gap-2 flex-wrap">
                 <span className="text-base font-bold text-foreground">{formatPrice(priceAmount, currency)}</span>
                 {!isInStock ? (
@@ -529,7 +544,7 @@ export function PdpContainer({
                 ) : null}
               </div>
 
-              <h1 className="mt-1.5 text-base font-semibold leading-snug">
+              <h1 className="mt-1 text-base font-semibold leading-snug">
                 {payload.product.brand?.name ? `${payload.product.brand.name} ` : ''}{payload.product.title}
               </h1>
               {payload.product.subtitle ? (
@@ -543,7 +558,7 @@ export function PdpContainer({
 
               {reviews?.review_count ? (
                 <button
-                  className="mt-1.5 flex items-center gap-1.5"
+                  className="mt-1 flex items-center gap-1.5"
                   onClick={() => handleTabChange('reviews')}
                 >
                   <StarRating value={(reviews.rating / reviews.scale) * 5} />
@@ -553,7 +568,7 @@ export function PdpContainer({
               ) : null}
 
               {resolvedMode === 'beauty' && beautyAttributes.length ? (
-                <div className="mt-2 flex flex-wrap gap-1.5">
+                <div className="mt-1.5 flex flex-wrap gap-1.5">
                   {beautyAttributes.map((opt) => (
                     <span
                       key={`${opt.label}-${opt.value}`}
@@ -566,7 +581,7 @@ export function PdpContainer({
               ) : null}
 
               {attributeOptions.length ? (
-                <div className="mt-2 flex flex-wrap gap-1.5">
+                <div className="mt-1.5 flex flex-wrap gap-1.5">
                   {attributeOptions.map((opt) => (
                     <span
                       key={`${opt.name}-${opt.value}`}
@@ -579,12 +594,12 @@ export function PdpContainer({
               ) : null}
 
               {resolvedMode === 'generic' && sizeOptions.length ? (
-                <div className="mt-3">
+                <div className="mt-2">
                   <div className="flex items-center justify-between">
-                    <div className="text-sm font-medium">Size</div>
-                    <div className="text-xs text-muted-foreground">Select a size</div>
+                    <div className="text-xs font-medium">Size</div>
+                    <div className="text-[11px] text-muted-foreground">Select a size</div>
                   </div>
-                  <div className="mt-2 flex flex-wrap gap-2">
+                  <div className="mt-1.5 flex flex-wrap gap-1.5">
                     {sizeOptions.map((size) => {
                       const isSelected = selectedSize === size;
                       return (
@@ -605,7 +620,7 @@ export function PdpContainer({
               ) : null}
 
               {resolvedMode === 'generic' && !sizeOptions.length && !colorOptions.length && variants.length > 1 ? (
-                <div className="mt-3">
+                <div className="mt-2">
                   <VariantSelector
                     variants={variants}
                     selectedVariantId={selectedVariant.variant_id}
@@ -621,7 +636,7 @@ export function PdpContainer({
           </div>
 
           {showTrustBadges ? (
-            <div className="mx-3 mt-2 flex items-center gap-2 rounded-lg bg-muted/50 px-3 py-2 text-[10px]">
+            <div className="mx-3 mt-1.5 flex items-center gap-2 rounded-lg bg-muted/50 px-3 py-1.5 text-[10px]">
               {trustBadges.map((badge, idx) => (
                 <div key={`${badge}-${idx}`} className="flex items-center gap-2">
                   <span>{badge}</span>
@@ -630,7 +645,7 @@ export function PdpContainer({
               ))}
             </div>
           ) : (payload.product.shipping?.eta_days_range?.length || payload.product.returns?.return_window_days) ? (
-            <div className="mx-3 rounded-lg bg-card border border-border px-3 py-2 text-xs text-muted-foreground flex flex-wrap gap-x-3 gap-y-1">
+            <div className="mx-3 rounded-lg bg-card border border-border px-3 py-1.5 text-xs text-muted-foreground flex flex-wrap gap-x-3 gap-y-1">
               {payload.product.shipping?.eta_days_range?.length ? (
                 <span>
                   Shipping {payload.product.shipping.eta_days_range[0]}–{payload.product.shipping.eta_days_range[1]} days
@@ -666,7 +681,7 @@ export function PdpContainer({
             ref={(el) => {
               sectionRefs.current.reviews = el;
             }}
-            className="border-t border-muted/60 scroll-mt-24"
+            className="border-t border-muted/60 scroll-mt-20"
           >
             <BeautyReviewsSection
               data={reviews as ReviewsPreviewData}
@@ -697,7 +712,7 @@ export function PdpContainer({
             ref={(el) => {
               sectionRefs.current.shades = el;
             }}
-            className="border-t border-muted/60 scroll-mt-24"
+            className="border-t border-muted/60 scroll-mt-20"
           >
             {resolvedMode === 'beauty' ? (
               <BeautyShadesSection
@@ -711,7 +726,7 @@ export function PdpContainer({
               />
             ) : (
               <div className="px-4 py-4">
-                <h2 className="text-sm font-semibold mb-3">Shades</h2>
+                <h2 className="text-sm font-semibold mb-2">Shades</h2>
                 <div className="grid grid-cols-3 gap-3">
                   {variants.map((variant) => {
                     const isSelected = variant.variant_id === selectedVariant.variant_id;
@@ -744,18 +759,18 @@ export function PdpContainer({
           </div>
         ) : null}
 
-        {showSize ? (
+        {showSizeGuide ? (
           <div
             ref={(el) => {
               sectionRefs.current.size = el;
             }}
-            className="border-t border-muted/60 scroll-mt-24"
+            className="border-t border-muted/60 scroll-mt-20"
           >
             {resolvedMode === 'generic' ? (
               <GenericSizeGuide sizeGuide={payload.product.size_guide} />
             ) : (
-              <div className="px-4 py-4">
-                <h2 className="text-sm font-semibold mb-3">Size Guide</h2>
+              <div className="px-4 py-3">
+                <h2 className="text-sm font-semibold mb-2">Size Guide</h2>
                 <div className="flex flex-wrap gap-2">
                   {sizeOptions.map((size) => {
                     const isSelected = selectedSize === size;
@@ -773,7 +788,7 @@ export function PdpContainer({
                     );
                   })}
                 </div>
-                <div className="mt-3 text-xs text-muted-foreground">Sizing is based on merchant-provided options.</div>
+                <div className="mt-2 text-xs text-muted-foreground">Sizing is based on merchant-provided options.</div>
               </div>
             )}
           </div>
@@ -784,7 +799,7 @@ export function PdpContainer({
             ref={(el) => {
               sectionRefs.current.details = el;
             }}
-            className="border-t border-muted/60 scroll-mt-24"
+            className="border-t border-muted/60 scroll-mt-20"
           >
             {resolvedMode === 'beauty' ? (
               <BeautyDetailsSection data={details} product={payload.product} media={media} />
@@ -804,87 +819,89 @@ export function PdpContainer({
             ref={(el) => {
               sectionRefs.current.similar = el;
             }}
-            className="border-t border-muted/60 scroll-mt-24"
+            className="border-t border-muted/60 scroll-mt-20"
           >
-            <div className="px-4 py-4">
+            <div className="px-3 py-3">
               <RecommendationsGrid data={recommendations} />
             </div>
           </div>
         ) : null}
       </div>
 
-      <div className="fixed bottom-0 left-0 right-0 z-40 bg-card border-t border-border">
-        <div className="safe-area-bottom max-w-md mx-auto">
-          {pricePromo?.promotions?.length ? (
-            <div className="flex items-center justify-between px-4 py-2 bg-primary/5 text-xs">
-              <span className="flex items-center gap-2">
-                <span className="text-primary">🎁</span>
-                <span>{pricePromo.promotions[0].label}</span>
-              </span>
-              <button className="text-muted-foreground" aria-label="Dismiss promotion">
-                ×
-              </button>
-            </div>
-          ) : null}
+      <div className="fixed bottom-3 left-0 right-0 z-40">
+        <div className="mx-auto max-w-md px-3">
+          <div className="rounded-2xl border border-border bg-card/95 shadow-lg backdrop-blur safe-area-bottom overflow-hidden">
+            {pricePromo?.promotions?.length ? (
+              <div className="flex items-center justify-between px-4 py-2 bg-primary/5 text-xs">
+                <span className="flex items-center gap-2">
+                  <span className="text-primary">🎁</span>
+                  <span>{pricePromo.promotions[0].label}</span>
+                </span>
+                <button className="text-muted-foreground" aria-label="Dismiss promotion">
+                  ×
+                </button>
+              </div>
+            ) : null}
 
-          <div className="flex items-center gap-3 px-4 py-3">
-            <div className="flex gap-2">
-              <button
-                onClick={() => pdpTracking.track('pdp_action_click', { action_type: 'favorite' })}
-                className="flex flex-col items-center gap-0.5 px-2"
-                aria-label="Save"
-              >
-                <Heart className="h-5 w-5 text-muted-foreground" />
-                <span className="text-[10px] text-muted-foreground">{formatCount(13000)}</span>
-              </button>
-              <button
-                onClick={handleShare}
-                className="flex flex-col items-center gap-0.5 px-2"
-                aria-label="Share"
-              >
-                <Share2 className="h-5 w-5 text-muted-foreground" />
-                <span className="text-[10px] text-muted-foreground">Share</span>
-              </button>
-              <button
-                onClick={() => pdpTracking.track('pdp_action_click', { action_type: 'ask' })}
-                className="flex flex-col items-center gap-0.5 px-2"
-                aria-label="Chat"
-              >
-                <MessageCircle className="h-5 w-5 text-muted-foreground" />
-                <span className="text-[10px] text-muted-foreground">Chat</span>
-              </button>
-            </div>
+            <div className="flex items-center gap-3 px-4 py-3">
+              <div className="flex gap-2">
+                <button
+                  onClick={() => pdpTracking.track('pdp_action_click', { action_type: 'favorite' })}
+                  className="flex flex-col items-center gap-0.5 px-2"
+                  aria-label="Save"
+                >
+                  <Heart className="h-5 w-5 text-muted-foreground" />
+                  <span className="text-[10px] text-muted-foreground">{formatCount(13000)}</span>
+                </button>
+                <button
+                  onClick={handleShare}
+                  className="flex flex-col items-center gap-0.5 px-2"
+                  aria-label="Share"
+                >
+                  <Share2 className="h-5 w-5 text-muted-foreground" />
+                  <span className="text-[10px] text-muted-foreground">Share</span>
+                </button>
+                <button
+                  onClick={() => pdpTracking.track('pdp_action_click', { action_type: 'ask' })}
+                  className="flex flex-col items-center gap-0.5 px-2"
+                  aria-label="Chat"
+                >
+                  <MessageCircle className="h-5 w-5 text-muted-foreground" />
+                  <span className="text-[10px] text-muted-foreground">Chat</span>
+                </button>
+              </div>
 
-            <div className="flex flex-1 gap-2">
-              <Button
-                variant="outline"
-                className="flex-1 h-11 rounded-full font-medium"
-                disabled={!isInStock}
-                onClick={() => {
-                  pdpTracking.track('pdp_action_click', { action_type: 'add_to_cart', variant_id: selectedVariant.variant_id });
-                  dispatchPdpAction('add_to_cart', {
-                    variant: selectedVariant,
-                    quantity: resolvedQuantity,
-                    onAddToCart,
-                  });
-                }}
-              >
-                {!isInStock ? 'Out of stock' : actionsByType.add_to_cart || 'Add to Cart'}
-              </Button>
-              <Button
-                className="flex-[1.5] h-11 rounded-full bg-primary hover:bg-primary/90 font-medium"
-                disabled={!isInStock}
-                onClick={() => {
-                  pdpTracking.track('pdp_action_click', { action_type: 'buy_now', variant_id: selectedVariant.variant_id });
-                  dispatchPdpAction('buy_now', {
-                    variant: selectedVariant,
-                    quantity: resolvedQuantity,
-                    onBuyNow,
-                  });
-                }}
-              >
-                {!isInStock ? 'Out of stock' : actionsByType.buy_now || 'Buy Now'}
-              </Button>
+              <div className="flex flex-1 gap-2">
+                <Button
+                  variant="outline"
+                  className="flex-1 h-11 rounded-full font-medium"
+                  disabled={!isInStock}
+                  onClick={() => {
+                    pdpTracking.track('pdp_action_click', { action_type: 'add_to_cart', variant_id: selectedVariant.variant_id });
+                    dispatchPdpAction('add_to_cart', {
+                      variant: selectedVariant,
+                      quantity: resolvedQuantity,
+                      onAddToCart,
+                    });
+                  }}
+                >
+                  {!isInStock ? 'Out of stock' : actionsByType.add_to_cart || 'Add to Cart'}
+                </Button>
+                <Button
+                  className="flex-[1.5] h-11 rounded-full bg-primary hover:bg-primary/90 font-medium"
+                  disabled={!isInStock}
+                  onClick={() => {
+                    pdpTracking.track('pdp_action_click', { action_type: 'buy_now', variant_id: selectedVariant.variant_id });
+                    dispatchPdpAction('buy_now', {
+                      variant: selectedVariant,
+                      quantity: resolvedQuantity,
+                      onBuyNow,
+                    });
+                  }}
+                >
+                  {!isInStock ? 'Out of stock' : actionsByType.buy_now || 'Buy Now'}
+                </Button>
+              </div>
             </div>
           </div>
         </div>

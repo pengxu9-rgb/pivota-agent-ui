@@ -35,27 +35,27 @@ export function BeautyDetailsSection({
     stripHtml(product.description) || stripHtml(remainingSections?.[0]?.content);
 
   return (
-    <div className="py-6">
+    <div className="py-4">
       {heroUrl ? (
         <div className="aspect-[4/5] bg-gradient-to-b from-muted to-background">
           <Image src={heroUrl} alt={product.title} fill className="object-contain" unoptimized />
         </div>
       ) : null}
 
-      <div className="px-4 py-8 text-center">
-        <h2 className="text-2xl font-serif tracking-wide">{product.title}</h2>
+      <div className="px-3 py-6 text-center">
+        <h2 className="text-xl font-serif tracking-wide">{product.title}</h2>
         {product.subtitle ? (
-          <p className="mt-3 text-sm text-muted-foreground">{product.subtitle}</p>
+          <p className="mt-2 text-sm text-muted-foreground">{product.subtitle}</p>
         ) : null}
         {introText ? (
-          <div className="mt-6 text-sm text-muted-foreground leading-relaxed max-w-xs mx-auto">
+          <div className="mt-4 text-sm text-muted-foreground leading-relaxed max-w-xs mx-auto">
             {introText}
           </div>
         ) : null}
       </div>
 
       {accentImages.length ? (
-        <div className="px-4 space-y-8">
+        <div className="px-3 space-y-6">
           <div className="grid grid-cols-2 gap-2 rounded-xl overflow-hidden">
             {accentImages.map((item, idx) => (
               <div key={`${item.url}-${idx}`} className="relative aspect-[3/4] bg-muted">
@@ -67,15 +67,15 @@ export function BeautyDetailsSection({
       ) : null}
 
       {product.brand_story || storySection ? (
-        <div className="px-4 py-8">
-          <h3 className="text-sm font-semibold mb-3">Brand Story</h3>
+        <div className="px-3 py-6">
+          <h3 className="text-sm font-semibold mb-2">Brand Story</h3>
           <p className="text-sm text-muted-foreground leading-relaxed">
             {product.brand_story || storySection?.content}
           </p>
         </div>
       ) : null}
 
-      <div className="mx-4">
+      <div className="mx-3">
         <DetailsAccordion data={{ sections: remainingSections.length ? remainingSections : data.sections }} />
       </div>
     </div>

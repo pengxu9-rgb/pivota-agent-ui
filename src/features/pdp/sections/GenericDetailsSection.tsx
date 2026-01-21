@@ -26,10 +26,10 @@ export function GenericDetailsSection({
   const detailImages = (media?.items || []).slice(1, 3);
 
   return (
-    <div className="p-4">
-      <h2 className="text-sm font-semibold mb-3">Product Details</h2>
-      <div className="mb-4">
-        <h3 className="text-sm font-semibold mb-2">{primarySection?.heading || 'Fabric & Care'}</h3>
+    <div className="p-3">
+      <h2 className="text-sm font-semibold mb-2">Product Details</h2>
+      <div className="mb-3">
+        <h3 className="text-sm font-semibold mb-1.5">{primarySection?.heading || 'Fabric & Care'}</h3>
         <p className="text-sm text-muted-foreground leading-relaxed">
           {description || 'Details not available.'}
         </p>
@@ -52,7 +52,7 @@ export function GenericDetailsSection({
       ) : null}
 
       {secondarySections.length ? (
-        <div className="mt-4">
+        <div className="mt-3">
           <DetailsAccordion data={{ sections: secondarySections }} />
         </div>
       ) : null}

@@ -45,9 +45,9 @@ export function BeautyReviewsSection({
   });
 
   return (
-    <div className="py-6">
-      <div className="mx-4 rounded-2xl bg-card border border-border p-4">
-        <div className="flex items-center justify-between mb-3">
+    <div className="py-4">
+      <div className="mx-3 rounded-2xl bg-card border border-border p-3">
+        <div className="flex items-center justify-between mb-2">
           <h3 className="text-sm font-semibold">Reviews ({data.review_count})</h3>
           {onWriteReview ? (
             <button onClick={onWriteReview} className="text-xs font-medium text-primary">
@@ -57,9 +57,9 @@ export function BeautyReviewsSection({
         </div>
 
         {hasSummary ? (
-          <div className="flex gap-6">
+          <div className="flex gap-4">
             <div className="text-center">
-              <div className="text-4xl font-bold">{ratingValue.toFixed(1)}</div>
+              <div className="text-3xl font-bold">{ratingValue.toFixed(1)}</div>
               <div className="flex gap-0.5 mt-1 justify-center">
                 {Array.from({ length: 5 }).map((_, i) => (
                   <Star key={i} className="h-3 w-3 fill-gold text-gold" />
@@ -69,7 +69,7 @@ export function BeautyReviewsSection({
             </div>
 
             {distribution?.length ? (
-              <div className="flex-1 space-y-1.5">
+              <div className="flex-1 space-y-1">
                 {distribution.slice(0, 5).map((dist) => (
                   <div key={dist.stars} className="flex items-center gap-2 text-xs">
                     <span className="w-3 text-muted-foreground">{dist.stars}</span>
@@ -92,7 +92,7 @@ export function BeautyReviewsSection({
         )}
 
         {data.dimension_ratings?.length ? (
-          <div className="flex justify-between mt-4 pt-4 border-t border-border">
+          <div className="flex justify-between mt-3 pt-3 border-t border-border">
             {data.dimension_ratings.slice(0, 3).map((dim) => (
               <div key={dim.label} className="text-center">
                 <span className="text-xs text-muted-foreground">{dim.label}</span>
@@ -104,8 +104,8 @@ export function BeautyReviewsSection({
       </div>
 
       {data.filter_chips?.length || showEmpty ? (
-        <div className="overflow-x-auto mt-4">
-          <div className="flex gap-2 px-4">
+        <div className="overflow-x-auto mt-3">
+          <div className="flex gap-2 px-3">
             {data.filter_chips?.map((chip) => (
               <button
                 key={chip.label}
@@ -127,9 +127,9 @@ export function BeautyReviewsSection({
       ) : null}
 
       {data.preview_items?.length ? (
-        <div className="mt-4 space-y-4 px-4">
+        <div className="mt-3 space-y-3 px-3">
           {data.preview_items.slice(0, 3).map((review) => (
-            <div key={review.review_id} className="flex gap-3 pb-4 border-b border-border last:border-0">
+            <div key={review.review_id} className="flex gap-3 pb-3 border-b border-border last:border-0">
               <div className="flex-1">
                 <div className="flex items-center gap-2 text-xs">
                   <span className="font-medium">{review.author_label || 'Verified buyer'}</span>
@@ -152,14 +152,14 @@ export function BeautyReviewsSection({
       {onSeeAll ? (
         <button
           onClick={onSeeAll}
-          className="w-full mt-2 py-3 text-sm text-muted-foreground flex items-center justify-center gap-1 hover:text-foreground"
+          className="w-full mt-2 py-2.5 text-sm text-muted-foreground flex items-center justify-center gap-1 hover:text-foreground"
         >
           {data.entry_points?.open_reviews?.label || 'View all reviews'} <ChevronRight className="h-4 w-4" />
         </button>
       ) : null}
 
       {data.questions?.length || showEmpty ? (
-        <div className="mt-4 px-4">
+        <div className="mt-3 px-3">
           <div className="flex items-center justify-between mb-2">
             <h3 className="text-sm font-semibold">Questions</h3>
             <button className="text-xs font-medium text-primary">Ask a question</button>
@@ -186,7 +186,7 @@ export function BeautyReviewsSection({
       ) : null}
 
       {(data.brand_card?.name || brandName) ? (
-        <div className="mt-6 mx-4 flex items-center gap-3 rounded-xl bg-card border border-border p-4">
+        <div className="mt-4 mx-3 flex items-center gap-3 rounded-xl bg-card border border-border p-3">
           <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center text-[10px] font-bold tracking-tight">
             {(data.brand_card?.name || brandName || '').slice(0, 12).toUpperCase()}
           </div>

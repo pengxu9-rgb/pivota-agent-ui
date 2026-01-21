@@ -57,13 +57,14 @@ export function StickyTabNav({
             <button
               key={tab.id}
               onClick={() => onTabChange(tab.id)}
-              className={`relative flex-1 py-3 text-sm font-medium transition-colors ${
-                activeTab === tab.id ? 'text-foreground' : 'text-muted-foreground'
+              className={`relative flex-1 py-2.5 text-xs font-medium transition-colors ${
+                activeTab === tab.id ? 'text-primary' : 'text-muted-foreground'
               }`}
+              aria-current={activeTab === tab.id ? 'page' : undefined}
             >
               {tab.label}
               {activeTab === tab.id ? (
-                <span className="absolute bottom-0 left-1/2 -translate-x-1/2 h-0.5 w-8 bg-foreground rounded-full" />
+                <span className="absolute bottom-0 left-1/2 -translate-x-1/2 h-0.5 w-10 bg-primary rounded-full" />
               ) : null}
             </button>
           ))}

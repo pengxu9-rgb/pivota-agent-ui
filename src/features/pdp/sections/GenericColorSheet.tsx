@@ -72,7 +72,9 @@ export function GenericColorSheet({
                       onClose();
                     }}
                     className={`flex flex-col items-center gap-0.5 p-1.5 rounded-md border text-center transition-colors ${
-                      isSelected ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50'
+                      isSelected
+                        ? 'border-primary bg-primary/10 ring-1 ring-primary/40'
+                        : 'border-border hover:border-primary/50'
                     }`}
                   >
                     <div className="relative h-16 w-11 rounded overflow-hidden bg-muted">
