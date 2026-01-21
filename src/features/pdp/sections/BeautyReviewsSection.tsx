@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import { Star, ChevronRight } from 'lucide-react';
 import type { ReviewsPreviewData } from '@/features/pdp/types';
 import { cn } from '@/lib/utils';
@@ -44,10 +45,10 @@ export function BeautyReviewsSection({
   });
 
   return (
-    <div className="py-6">
-      <div className="mx-4 rounded-2xl bg-card border border-border p-4">
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-semibold">Reviews ({data.review_count})</h3>
+    <div className="py-5">
+      <div className="mx-4 rounded-2xl bg-card border border-border p-3">
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="text-xs font-semibold">Reviews ({data.review_count})</h3>
           {onWriteReview ? (
             <button onClick={onWriteReview} className="text-xs font-medium text-primary">
               {data.entry_points?.write_review?.label || 'Write a review'}
@@ -56,15 +57,15 @@ export function BeautyReviewsSection({
         </div>
 
         {hasSummary ? (
-          <div className="flex gap-6">
+          <div className="flex gap-4">
             <div className="text-center">
-              <div className="text-4xl font-bold">{ratingValue.toFixed(1)}</div>
+              <div className="text-3xl font-bold">{ratingValue.toFixed(1)}</div>
               <div className="flex gap-0.5 mt-1 justify-center">
                 {Array.from({ length: 5 }).map((_, i) => (
                   <Star key={i} className="h-3 w-3 fill-yellow-400 text-yellow-400" />
                 ))}
               </div>
-              <p className="text-xs text-muted-foreground mt-1">{data.review_count} ratings</p>
+              <p className="text-[11px] text-muted-foreground mt-1">{data.review_count} ratings</p>
             </div>
 
             {distribution?.length ? (
@@ -87,11 +88,11 @@ export function BeautyReviewsSection({
             ) : null}
           </div>
         ) : (
-          <p className="text-sm text-muted-foreground">No reviews yet. Be the first to share your thoughts.</p>
+          <p className="text-xs text-muted-foreground">No reviews yet. Be the first to share your thoughts.</p>
         )}
 
         {data.dimension_ratings?.length ? (
-          <div className="flex justify-between mt-4 pt-4 border-t border-border">
+          <div className="flex justify-between mt-3 pt-3 border-t border-border">
             {data.dimension_ratings.slice(0, 3).map((dim) => (
               <div key={dim.label} className="text-center">
                 <span className="text-xs text-muted-foreground">{dim.label}</span>
@@ -103,7 +104,7 @@ export function BeautyReviewsSection({
       </div>
 
       {data.filter_chips?.length || showEmpty ? (
-        <div className="overflow-x-auto mt-4">
+        <div className="overflow-x-auto mt-3">
           <div className="flex gap-2 px-4">
             {data.filter_chips?.map((chip) => (
               <button
@@ -126,9 +127,9 @@ export function BeautyReviewsSection({
       ) : null}
 
       {data.preview_items?.length ? (
-        <div className="mt-4 space-y-4 px-4">
+        <div className="mt-3 space-y-3 px-4">
           {data.preview_items.slice(0, 3).map((review) => (
-            <div key={review.review_id} className="flex gap-3 pb-4 border-b border-border last:border-0">
+            <div key={review.review_id} className="flex gap-3 pb-3 border-b border-border last:border-0">
               <div className="flex-1">
                 <div className="flex items-center gap-2 text-xs">
                   <span className="font-medium">{review.author_label || 'Verified buyer'}</span>
@@ -136,11 +137,11 @@ export function BeautyReviewsSection({
                 <div className="mt-1">
                   <StarRating value={(review.rating / data.scale) * 5} />
                 </div>
-                <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{review.text_snippet}</p>
+                <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">{review.text_snippet}</p>
               </div>
               {review.media?.length ? (
-                <div className="relative h-16 w-16 rounded-lg overflow-hidden flex-shrink-0">
-                  <img src={review.media[0].url} alt="" className="h-full w-full object-cover" />
+                <div className="relative h-14 w-14 rounded-lg overflow-hidden flex-shrink-0">
+                  <Image src={review.media[0].url} alt="" fill className="object-cover" unoptimized />
                 </div>
               ) : null}
             </div>
@@ -151,16 +152,16 @@ export function BeautyReviewsSection({
       {onSeeAll ? (
         <button
           onClick={onSeeAll}
-          className="w-full mt-2 py-3 text-sm text-muted-foreground flex items-center justify-center gap-1 hover:text-foreground"
+          className="w-full mt-2 py-2 text-xs text-muted-foreground flex items-center justify-center gap-1 hover:text-foreground"
         >
-          {data.entry_points?.open_reviews?.label || 'View all reviews'} <ChevronRight className="h-4 w-4" />
+          {data.entry_points?.open_reviews?.label || 'View all reviews'} <ChevronRight className="h-3.5 w-3.5" />
         </button>
       ) : null}
 
       {data.questions?.length || showEmpty ? (
-        <div className="mt-4 px-4">
+        <div className="mt-3 px-4">
           <div className="flex items-center justify-between mb-2">
-            <h3 className="text-sm font-semibold">Questions</h3>
+            <h3 className="text-xs font-semibold">Questions</h3>
             <button className="text-xs font-medium text-primary">Ask a question</button>
           </div>
           <div className="flex gap-3 overflow-x-auto pb-2">
@@ -185,7 +186,7 @@ export function BeautyReviewsSection({
       ) : null}
 
       {(data.brand_card?.name || brandName) ? (
-        <div className="mt-4 mx-4 flex items-center gap-3 rounded-xl bg-card border border-border p-3">
+        <div className="mt-3 mx-4 flex items-center gap-3 rounded-xl bg-card border border-border p-3">
           <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center text-[10px] font-bold tracking-tight">
             {(data.brand_card?.name || brandName || '').slice(0, 12).toUpperCase()}
           </div>

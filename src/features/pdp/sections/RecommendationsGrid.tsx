@@ -17,13 +17,13 @@ export function RecommendationsGrid({ data }: { data: RecommendationsData }) {
   if (!data.items.length) return null;
   return (
     <div className="mt-4">
-      <div className="flex items-center justify-between mb-3">
-        <h3 className="text-sm font-semibold">You may also like</h3>
-        <button className="text-xs text-muted-foreground flex items-center gap-1 hover:text-foreground">
-          View all <ChevronRight className="h-4 w-4" />
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="text-xs font-semibold">You may also like</h3>
+        <button className="text-[11px] text-muted-foreground flex items-center gap-1 hover:text-foreground">
+          View all <ChevronRight className="h-3.5 w-3.5" />
         </button>
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-2.5">
         {data.items.slice(0, 6).map((p) => (
           <Link
             key={p.product_id}
@@ -39,10 +39,10 @@ export function RecommendationsGrid({ data }: { data: RecommendationsData }) {
                 </div>
               )}
             </div>
-            <div className="p-3">
-              <div className="text-sm font-medium line-clamp-2 min-h-[2.5rem]">{p.title}</div>
+            <div className="p-2.5">
+              <div className="text-xs font-medium line-clamp-2 min-h-[2.25rem]">{p.title}</div>
               {p.rating ? (
-                <div className="flex items-center gap-1 mt-2 text-xs">
+                <div className="flex items-center gap-1 mt-1.5 text-[11px]">
                   <Star className="h-3 w-3 fill-yellow-400 text-yellow-400" />
                   <span>{p.rating.toFixed(1)}</span>
                   {p.review_count ? (
@@ -51,7 +51,7 @@ export function RecommendationsGrid({ data }: { data: RecommendationsData }) {
                 </div>
               ) : null}
               {p.price ? (
-                <div className="mt-2 text-sm font-semibold">
+                <div className="mt-1.5 text-xs font-semibold">
                   {formatPrice(p.price.amount, p.price.currency)}
                 </div>
               ) : null}
@@ -59,7 +59,7 @@ export function RecommendationsGrid({ data }: { data: RecommendationsData }) {
           </Link>
         ))}
       </div>
-      <button className="w-full mt-4 py-3 text-sm text-muted-foreground hover:text-foreground">
+      <button className="w-full mt-3 py-2 text-xs text-muted-foreground hover:text-foreground">
         Load more recommendations
       </button>
     </div>

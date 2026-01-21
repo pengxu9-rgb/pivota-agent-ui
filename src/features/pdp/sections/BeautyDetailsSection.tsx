@@ -35,27 +35,27 @@ export function BeautyDetailsSection({
     stripHtml(product.description) || stripHtml(remainingSections?.[0]?.content);
 
   return (
-    <div className="py-6">
+    <div className="py-4">
       {heroUrl ? (
         <div className="relative aspect-[4/5] bg-gradient-to-b from-muted to-background">
           <Image src={heroUrl} alt={product.title} fill className="object-contain" unoptimized />
         </div>
       ) : null}
 
-      <div className="px-4 py-8 text-center">
-        <h2 className="text-2xl font-serif tracking-wide">{product.title}</h2>
+      <div className="px-4 py-6 text-center">
+        <h2 className="text-xl font-serif tracking-wide">{product.title}</h2>
         {product.subtitle ? (
-          <p className="mt-2 text-muted-foreground">{product.subtitle}</p>
+          <p className="mt-1.5 text-xs text-muted-foreground">{product.subtitle}</p>
         ) : null}
         {introText ? (
-          <div className="mt-4 text-sm text-muted-foreground leading-relaxed max-w-xs mx-auto">
+          <div className="mt-3 text-xs text-muted-foreground leading-relaxed max-w-sm mx-auto">
             {introText}
           </div>
         ) : null}
       </div>
 
       {accentImages.length ? (
-        <div className="px-4 space-y-6">
+        <div className="px-4 space-y-4">
           <div className="grid grid-cols-2 gap-2 rounded-xl overflow-hidden">
             {accentImages.map((item, idx) => (
               <div key={`${item.url}-${idx}`} className="relative aspect-[3/4] bg-muted">
@@ -67,9 +67,9 @@ export function BeautyDetailsSection({
       ) : null}
 
       {product.brand_story || storySection ? (
-        <div className="px-4 py-8">
-          <h3 className="text-sm font-semibold mb-3">Brand Story</h3>
-          <p className="text-sm text-muted-foreground leading-relaxed">
+        <div className="px-4 py-6">
+          <h3 className="text-xs font-semibold mb-2 uppercase tracking-wide text-muted-foreground">Brand Story</h3>
+          <p className="text-xs text-muted-foreground leading-relaxed">
             {product.brand_story || storySection?.content}
           </p>
         </div>

@@ -7,7 +7,7 @@ export function DetailsAccordion({ data }: { data: ProductDetailsData }) {
   const [open, setOpen] = useState<Set<number>>(() => new Set());
 
   return (
-    <div className="rounded-2xl border border-border bg-card overflow-hidden">
+    <div className="rounded-xl border border-border bg-card overflow-hidden">
       {data.sections.map((s, idx) => {
         const isOpen = open.has(idx);
         return (
@@ -21,18 +21,18 @@ export function DetailsAccordion({ data }: { data: ProductDetailsData }) {
                   return next;
                 })
               }
-              className="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-muted/20"
+              className="flex w-full items-center justify-between px-3 py-2 text-left hover:bg-muted/20"
             >
-              <span className="text-sm font-semibold">{s.heading}</span>
+              <span className="text-xs font-semibold">{s.heading}</span>
               <ChevronDown
                 className={cn(
-                  'h-4 w-4 text-muted-foreground transition-transform',
+                  'h-3.5 w-3.5 text-muted-foreground transition-transform',
                   isOpen ? 'rotate-180' : '',
                 )}
               />
             </button>
             {isOpen ? (
-              <div className="px-4 pb-4 text-sm text-muted-foreground leading-relaxed whitespace-pre-line">
+              <div className="px-3 pb-3 text-xs text-muted-foreground leading-relaxed whitespace-pre-line">
                 {s.content}
               </div>
             ) : null}

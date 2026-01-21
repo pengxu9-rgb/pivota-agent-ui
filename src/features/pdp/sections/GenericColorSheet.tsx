@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import { AnimatePresence, motion } from 'framer-motion';
 import { X } from 'lucide-react';
 import type { Variant } from '@/features/pdp/types';
@@ -46,17 +47,17 @@ export function GenericColorSheet({
             exit={{ y: '100%' }}
             transition={{ type: 'spring', damping: 30, stiffness: 320 }}
           >
-            <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-              <div className="text-sm font-semibold">Select Color ({variants.length})</div>
+            <div className="flex items-center justify-between px-4 py-2.5 border-b border-border">
+              <div className="text-xs font-semibold">Select Color ({variants.length})</div>
               <button
                 onClick={onClose}
-                className="h-8 w-8 rounded-full flex items-center justify-center hover:bg-secondary transition-colors"
+                className="h-7 w-7 rounded-full flex items-center justify-center hover:bg-secondary transition-colors"
                 aria-label="Close"
               >
                 <X className="h-4 w-4" />
               </button>
             </div>
-            <div className="max-h-[60vh] overflow-y-auto px-4 py-3 grid grid-cols-3 gap-3">
+            <div className="max-h-[60vh] overflow-y-auto px-4 py-3 grid grid-cols-3 gap-2.5">
               {variants.map((variant) => {
                 const isSelected = variant.variant_id === selectedVariantId;
                 const amount = variant.price?.current.amount ?? 0;
@@ -74,9 +75,9 @@ export function GenericColorSheet({
                       isSelected ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50'
                     }`}
                   >
-                    <div className="relative h-16 w-12 rounded-lg overflow-hidden bg-muted">
+                    <div className="relative h-14 w-10 rounded-lg overflow-hidden bg-muted">
                       {variant.image_url ? (
-                        <img src={variant.image_url} alt={colorLabel} className="h-full w-full object-cover" />
+                        <Image src={variant.image_url} alt={colorLabel} fill className="object-cover" unoptimized />
                       ) : variant.swatch?.hex ? (
                         <span className="absolute inset-0" style={{ backgroundColor: variant.swatch.hex }} />
                       ) : null}

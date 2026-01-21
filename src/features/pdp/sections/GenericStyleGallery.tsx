@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import { Play } from 'lucide-react';
 import type { MediaItem } from '@/features/pdp/types';
 
@@ -17,17 +18,17 @@ export function GenericStyleGallery({
   return (
     <div className="mt-4 px-4">
       <div className="flex items-center justify-between mb-2">
-        <h3 className="text-sm font-semibold">
+        <h3 className="text-xs font-semibold">
           {title}
           {items.length ? ` (${items.length})` : ''}
         </h3>
-        <button className="text-xs text-primary">Share yours +</button>
+        <button className="text-[11px] text-primary">Share yours +</button>
       </div>
       {items.length ? (
         <div className="grid grid-cols-3 gap-1 rounded-lg overflow-hidden">
           {items.slice(0, 6).map((item, idx) => (
             <div key={`${item.url}-${idx}`} className="relative aspect-[3/4]">
-              <img src={item.url} alt="" className="h-full w-full object-cover" />
+              <Image src={item.url} alt="" fill className="object-cover" unoptimized />
               {item.type === 'video' ? (
                 <div className="absolute inset-0 flex items-center justify-center">
                   <Play className="h-6 w-6 text-white drop-shadow-lg" fill="white" />

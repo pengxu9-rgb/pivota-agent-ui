@@ -42,7 +42,7 @@ export function StickyTabNav({
               <button
                 key={tab.id}
                 onClick={() => onTabChange(tab.id)}
-                className={`relative flex-1 py-2 text-xs font-medium transition-colors ${
+                className={`relative flex-1 py-1.5 text-[11px] font-medium transition-colors ${
                   activeTab === tab.id ? 'text-foreground' : 'text-muted-foreground'
                 }`}
               >

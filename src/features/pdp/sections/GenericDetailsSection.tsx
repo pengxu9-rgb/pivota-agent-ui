@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import type { MediaGalleryData, Product, ProductDetailsData } from '@/features/pdp/types';
 import { DetailsAccordion } from '@/features/pdp/sections/DetailsAccordion';
 
@@ -25,28 +26,33 @@ export function GenericDetailsSection({
   const detailImages = (media?.items || []).slice(1, 3);
 
   return (
-    <div className="p-4">
-      <h2 className="text-sm font-semibold mb-3">Product Details</h2>
-      <div className="mb-4">
-        <h3 className="text-sm font-semibold mb-2">{primarySection?.heading || 'Fabric & Care'}</h3>
-        <p className="text-sm text-muted-foreground">{description || 'Details not available.'}</p>
+    <div className="p-3">
+      <h2 className="text-xs font-semibold mb-2">Product Details</h2>
+      <div className="mb-3">
+        <h3 className="text-xs font-semibold mb-1">{primarySection?.heading || 'Fabric & Care'}</h3>
+        <p className="text-xs text-muted-foreground leading-relaxed">
+          {description || 'Details not available.'}
+        </p>
       </div>
 
       {detailImages.length ? (
         <div className="space-y-2">
           {detailImages.map((item, idx) => (
-            <img
+            <Image
               key={`${item.url}-${idx}`}
               src={item.url}
               alt=""
-              className="w-full rounded-lg"
+              width={800}
+              height={600}
+              className="w-full h-auto rounded-lg"
+              unoptimized
             />
           ))}
         </div>
       ) : null}
 
       {secondarySections.length ? (
-        <div className="mt-4">
+        <div className="mt-3">
           <DetailsAccordion data={{ sections: secondarySections }} />
         </div>
       ) : null}

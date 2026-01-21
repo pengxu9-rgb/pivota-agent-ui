@@ -18,11 +18,11 @@ export function BeautyUgcGallery({
   return (
     <div className="mt-4 px-4">
       <div className="flex items-center justify-between mb-2">
-        <h3 className="text-sm font-semibold">
+        <h3 className="text-xs font-semibold">
           {title}
           {items.length ? ` (${items.length})` : ''}
         </h3>
-        <button className="text-xs font-medium text-primary">Add yours +</button>
+        <button className="text-[11px] font-medium text-primary">Add yours +</button>
       </div>
       {items.length ? (
         <div className="grid grid-cols-3 gap-1 rounded-lg overflow-hidden">

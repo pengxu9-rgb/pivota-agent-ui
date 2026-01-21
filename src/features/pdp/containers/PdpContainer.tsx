@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import Image from 'next/image';
 import { ChevronLeft, ChevronRight, Heart, MessageCircle, Share2, Star } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type {
@@ -111,6 +112,21 @@ export function PdpContainer({
       : typeof payload.product.availability?.in_stock === 'boolean'
         ? payload.product.availability.in_stock
         : true;
+
+  const availableQuantity = useMemo(() => {
+    const qty = selectedVariant?.availability?.available_quantity ?? payload.product.availability?.available_quantity;
+    if (typeof qty !== 'number' || !Number.isFinite(qty)) return undefined;
+    return Math.max(0, Math.floor(qty));
+  }, [payload.product.availability?.available_quantity, selectedVariant?.availability?.available_quantity]);
+
+  const maxQuantity = availableQuantity != null && availableQuantity > 0 ? availableQuantity : undefined;
+  const atMaxQuantity = maxQuantity != null && quantity >= maxQuantity;
+  const resolvedQuantity = maxQuantity != null ? Math.min(quantity, maxQuantity) : quantity;
+
+  useEffect(() => {
+    if (maxQuantity == null) return;
+    setQuantity((q) => Math.min(Math.max(1, q), maxQuantity));
+  }, [maxQuantity, selectedVariantId]);
 
   const resolvedMode: 'beauty' | 'generic' = mode || (isBeautyProduct(payload.product) ? 'beauty' : 'generic');
 
@@ -360,24 +376,25 @@ export function PdpContainer({
 
       <StickyTabNav tabs={tabs} activeTab={activeTab} onTabChange={handleTabChange} />
 
-      <div
-        ref={(el) => {
-          sectionRefs.current.product = el;
-        }}
-        className="scroll-mt-24"
-      >
-        <div className="pb-3">
-          <div className="relative">
-            <MediaGallery
-              data={galleryData}
-              title={payload.product.title}
-              fallbackUrl={heroUrl}
-              activeIndex={activeMediaIndex}
-              onSelect={(index) => setActiveMediaIndex(index)}
-              aspectClass={resolvedMode === 'generic' ? 'aspect-square' : 'aspect-[6/5]'}
-              fit={resolvedMode === 'generic' ? 'object-contain' : 'object-cover'}
-            />
-          </div>
+      <div className="mx-auto w-full max-w-md">
+        <div
+          ref={(el) => {
+            sectionRefs.current.product = el;
+          }}
+          className="scroll-mt-24"
+        >
+          <div className="pb-3">
+            <div className="relative">
+              <MediaGallery
+                data={galleryData}
+                title={payload.product.title}
+                fallbackUrl={heroUrl}
+                activeIndex={activeMediaIndex}
+                onSelect={(index) => setActiveMediaIndex(index)}
+                aspectClass={resolvedMode === 'generic' ? 'aspect-square' : 'aspect-[6/5]'}
+                fit={resolvedMode === 'generic' ? 'object-contain' : 'object-cover'}
+              />
+            </div>
 
           {resolvedMode === 'beauty' && variants.length > 1 ? (
             <div className="border-b border-border bg-card py-2">
@@ -427,16 +444,16 @@ export function PdpContainer({
                         key={color}
                         onClick={() => handleColorSelect(color)}
                         className={cn(
-                          'relative flex-shrink-0 rounded-md overflow-hidden border-2',
+                          'relative flex-shrink-0 h-12 w-9 rounded-md overflow-hidden border-2',
                           isSelected ? 'border-primary' : 'border-transparent',
                         )}
                       >
                         {variantForColor.image_url ? (
-                          <img src={variantForColor.image_url} alt={color} className="h-14 w-10 object-cover" />
+                          <Image src={variantForColor.image_url} alt={color} fill className="object-cover" unoptimized />
                         ) : variantForColor.swatch?.hex ? (
-                          <span className="block h-14 w-10" style={{ backgroundColor: variantForColor.swatch.hex }} />
+                          <span className="block h-12 w-9" style={{ backgroundColor: variantForColor.swatch.hex }} />
                         ) : (
-                          <span className="flex h-14 w-10 items-center justify-center text-[10px] bg-muted">
+                          <span className="flex h-12 w-9 items-center justify-center text-[10px] bg-muted">
                             {color}
                           </span>
                         )}
@@ -445,7 +462,7 @@ export function PdpContainer({
                   })}
                   <button
                     onClick={() => setShowColorSheet(true)}
-                    className="flex-shrink-0 h-14 px-3 rounded-md bg-muted/50 text-xs text-muted-foreground flex flex-col items-center justify-center"
+                    className="flex-shrink-0 h-12 px-3 rounded-md bg-muted/50 text-xs text-muted-foreground flex flex-col items-center justify-center"
                   >
                     <span>Colors</span>
                     <span className="font-medium">{variants.length}</span>
@@ -626,164 +643,165 @@ export function PdpContainer({
               <GenericSizeHelper />
             </>
           ) : null}
-        </div>
-      </div>
-
-      {hasReviews ? (
-        <div
-          ref={(el) => {
-            sectionRefs.current.reviews = el;
-          }}
-          className="border-t border-muted/60 scroll-mt-24"
-        >
-          <BeautyReviewsSection
-            data={reviews as ReviewsPreviewData}
-            brandName={payload.product.brand?.name}
-            showEmpty
-            onWriteReview={
-              onWriteReview
-                ? () => {
-                    pdpTracking.track('pdp_action_click', { action_type: 'open_embed', target: 'write_review' });
-                    onWriteReview();
-                  }
-                : undefined
-            }
-            onSeeAll={
-              onSeeAllReviews
-                ? () => {
-                    pdpTracking.track('pdp_action_click', { action_type: 'open_embed', target: 'open_reviews' });
-                    onSeeAllReviews();
-                  }
-                : undefined
-            }
-          />
-        </div>
-      ) : null}
-
-      {showShades ? (
-        <div
-          ref={(el) => {
-            sectionRefs.current.shades = el;
-          }}
-          className="border-t border-muted/60 scroll-mt-24"
-        >
-          {resolvedMode === 'beauty' ? (
-            <BeautyShadesSection
-              variants={variants}
-              selectedVariant={selectedVariant}
-              onVariantChange={(variantId) => {
-                handleVariantSelect(variantId);
-                pdpTracking.track('pdp_action_click', { action_type: 'select_variant', variant_id: variantId });
-              }}
-              popularLooks={popularLooks}
-              bestFor={bestFor}
-              importantInfo={importantInfo}
-              mediaItems={media?.items || []}
-              brandName={payload.product.brand?.name}
-              showEmpty
-            />
-          ) : (
-            <div className="px-4 py-4">
-              <h2 className="text-sm font-semibold mb-3">Shades</h2>
-              <div className="grid grid-cols-3 gap-3">
-                {variants.map((variant) => {
-                  const isSelected = variant.variant_id === selectedVariant.variant_id;
-                  return (
-                    <button
-                      key={variant.variant_id}
-                      onClick={() => {
-                        handleVariantSelect(variant.variant_id);
-                        pdpTracking.track('pdp_action_click', { action_type: 'select_variant', variant_id: variant.variant_id });
-                      }}
-                      className={cn(
-                        'rounded-xl border p-3 text-left transition-colors',
-                        isSelected ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50',
-                      )}
-                    >
-                      <div className="flex items-center gap-2">
-                        {variant.swatch?.hex ? (
-                          <span className="h-6 w-6 rounded-full ring-1 ring-border" style={{ backgroundColor: variant.swatch.hex }} />
-                        ) : (
-                          <span className="h-6 w-6 rounded-full bg-muted" />
-                        )}
-                        <span className="text-xs font-medium">{variant.title}</span>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-        </div>
-      ) : null}
-
-      {showSize ? (
-        <div
-          ref={(el) => {
-            sectionRefs.current.size = el;
-          }}
-          className="border-t border-muted/60 scroll-mt-24"
-        >
-          {resolvedMode === 'generic' ? (
-            <GenericSizeGuide sizeGuide={payload.product.size_guide} />
-          ) : (
-            <div className="px-4 py-4">
-              <h2 className="text-sm font-semibold mb-3">Size Guide</h2>
-              <div className="flex flex-wrap gap-2">
-                {sizeOptions.map((size) => {
-                  const isSelected = selectedSize === size;
-                  return (
-                    <button
-                      key={size}
-                      onClick={() => handleSizeSelect(size)}
-                      className={cn(
-                        'rounded-full border px-3 py-1 text-xs transition-colors',
-                        isSelected ? 'border-primary bg-primary/10' : 'border-border hover:bg-muted/30',
-                      )}
-                    >
-                      {size}
-                    </button>
-                  );
-                })}
-              </div>
-              <div className="mt-3 text-xs text-muted-foreground">Sizing is based on merchant-provided options.</div>
-            </div>
-          )}
-        </div>
-      ) : null}
-
-      {details ? (
-        <div
-          ref={(el) => {
-            sectionRefs.current.details = el;
-          }}
-          className="border-t border-muted/60 scroll-mt-24"
-        >
-          {resolvedMode === 'beauty' ? (
-            <BeautyDetailsSection data={details} product={payload.product} media={media} />
-          ) : resolvedMode === 'generic' ? (
-            <GenericDetailsSection data={details} product={payload.product} media={media} />
-          ) : (
-            <div className="px-4 py-4">
-              <h2 className="text-sm font-semibold mb-3">Details</h2>
-              <DetailsAccordion data={details} />
-            </div>
-          )}
-        </div>
-      ) : null}
-
-      {recommendations ? (
-        <div
-          ref={(el) => {
-            sectionRefs.current.similar = el;
-          }}
-          className="border-t border-muted/60 scroll-mt-24"
-        >
-          <div className="px-4 py-4">
-            <RecommendationsGrid data={recommendations} />
           </div>
         </div>
-      ) : null}
+
+        {hasReviews ? (
+          <div
+            ref={(el) => {
+              sectionRefs.current.reviews = el;
+            }}
+            className="border-t border-muted/60 scroll-mt-24"
+          >
+            <BeautyReviewsSection
+              data={reviews as ReviewsPreviewData}
+              brandName={payload.product.brand?.name}
+              showEmpty
+              onWriteReview={
+                onWriteReview
+                  ? () => {
+                      pdpTracking.track('pdp_action_click', { action_type: 'open_embed', target: 'write_review' });
+                      onWriteReview();
+                    }
+                  : undefined
+              }
+              onSeeAll={
+                onSeeAllReviews
+                  ? () => {
+                      pdpTracking.track('pdp_action_click', { action_type: 'open_embed', target: 'open_reviews' });
+                      onSeeAllReviews();
+                    }
+                  : undefined
+              }
+            />
+          </div>
+        ) : null}
+
+        {showShades ? (
+          <div
+            ref={(el) => {
+              sectionRefs.current.shades = el;
+            }}
+            className="border-t border-muted/60 scroll-mt-24"
+          >
+            {resolvedMode === 'beauty' ? (
+              <BeautyShadesSection
+                variants={variants}
+                selectedVariant={selectedVariant}
+                onVariantChange={(variantId) => {
+                  handleVariantSelect(variantId);
+                  pdpTracking.track('pdp_action_click', { action_type: 'select_variant', variant_id: variantId });
+                }}
+                popularLooks={popularLooks}
+                bestFor={bestFor}
+                importantInfo={importantInfo}
+                mediaItems={media?.items || []}
+                brandName={payload.product.brand?.name}
+                showEmpty
+              />
+            ) : (
+              <div className="px-4 py-4">
+                <h2 className="text-sm font-semibold mb-3">Shades</h2>
+                <div className="grid grid-cols-3 gap-3">
+                  {variants.map((variant) => {
+                    const isSelected = variant.variant_id === selectedVariant.variant_id;
+                    return (
+                      <button
+                        key={variant.variant_id}
+                        onClick={() => {
+                          handleVariantSelect(variant.variant_id);
+                          pdpTracking.track('pdp_action_click', { action_type: 'select_variant', variant_id: variant.variant_id });
+                        }}
+                        className={cn(
+                          'rounded-xl border p-3 text-left transition-colors',
+                          isSelected ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50',
+                        )}
+                      >
+                        <div className="flex items-center gap-2">
+                          {variant.swatch?.hex ? (
+                            <span className="h-6 w-6 rounded-full ring-1 ring-border" style={{ backgroundColor: variant.swatch.hex }} />
+                          ) : (
+                            <span className="h-6 w-6 rounded-full bg-muted" />
+                          )}
+                          <span className="text-xs font-medium">{variant.title}</span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        ) : null}
+
+        {showSize ? (
+          <div
+            ref={(el) => {
+              sectionRefs.current.size = el;
+            }}
+            className="border-t border-muted/60 scroll-mt-24"
+          >
+            {resolvedMode === 'generic' ? (
+              <GenericSizeGuide sizeGuide={payload.product.size_guide} />
+            ) : (
+              <div className="px-4 py-4">
+                <h2 className="text-sm font-semibold mb-3">Size Guide</h2>
+                <div className="flex flex-wrap gap-2">
+                  {sizeOptions.map((size) => {
+                    const isSelected = selectedSize === size;
+                    return (
+                      <button
+                        key={size}
+                        onClick={() => handleSizeSelect(size)}
+                        className={cn(
+                          'rounded-full border px-3 py-1 text-xs transition-colors',
+                          isSelected ? 'border-primary bg-primary/10' : 'border-border hover:bg-muted/30',
+                        )}
+                      >
+                        {size}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="mt-3 text-xs text-muted-foreground">Sizing is based on merchant-provided options.</div>
+              </div>
+            )}
+          </div>
+        ) : null}
+
+        {details ? (
+          <div
+            ref={(el) => {
+              sectionRefs.current.details = el;
+            }}
+            className="border-t border-muted/60 scroll-mt-24"
+          >
+            {resolvedMode === 'beauty' ? (
+              <BeautyDetailsSection data={details} product={payload.product} media={media} />
+            ) : resolvedMode === 'generic' ? (
+              <GenericDetailsSection data={details} product={payload.product} media={media} />
+            ) : (
+              <div className="px-4 py-4">
+                <h2 className="text-sm font-semibold mb-3">Details</h2>
+                <DetailsAccordion data={details} />
+              </div>
+            )}
+          </div>
+        ) : null}
+
+        {recommendations ? (
+          <div
+            ref={(el) => {
+              sectionRefs.current.similar = el;
+            }}
+            className="border-t border-muted/60 scroll-mt-24"
+          >
+            <div className="px-4 py-4">
+              <RecommendationsGrid data={recommendations} />
+            </div>
+          </div>
+        ) : null}
+      </div>
 
       <div className="fixed bottom-20 left-4 right-4 z-50">
         <Button
@@ -794,7 +812,7 @@ export function PdpContainer({
             pdpTracking.track('pdp_action_click', { action_type: 'buy_now', variant_id: selectedVariant.variant_id });
             dispatchPdpAction('buy_now', {
               variant: selectedVariant,
-              quantity,
+              quantity: resolvedQuantity,
               onBuyNow,
             });
           }}
@@ -848,8 +866,13 @@ export function PdpContainer({
               <Button
                 variant="secondary"
                 size="icon"
-                disabled={!isInStock}
-                onClick={() => setQuantity((q) => q + 1)}
+                disabled={!isInStock || atMaxQuantity}
+                onClick={() =>
+                  setQuantity((q) => {
+                    const next = q + 1;
+                    return maxQuantity != null ? Math.min(next, maxQuantity) : next;
+                  })
+                }
                 aria-label="Increase quantity"
               >
                 +
@@ -864,7 +887,7 @@ export function PdpContainer({
                   pdpTracking.track('pdp_action_click', { action_type: 'add_to_cart', variant_id: selectedVariant.variant_id });
                   dispatchPdpAction('add_to_cart', {
                     variant: selectedVariant,
-                    quantity,
+                    quantity: resolvedQuantity,
                     onAddToCart,
                   });
                 }}
