@@ -16,21 +16,21 @@ function formatPrice(amount: number, currency: string) {
 export function RecommendationsGrid({ data }: { data: RecommendationsData }) {
   if (!data.items.length) return null;
   return (
-    <div className="mt-4">
-      <div className="flex items-center justify-between mb-2">
-        <h3 className="text-xs font-semibold">You may also like</h3>
-        <button className="text-[11px] text-muted-foreground flex items-center gap-1 hover:text-foreground">
-          View all <ChevronRight className="h-3.5 w-3.5" />
+    <div className="py-6">
+      <div className="px-4 flex items-center justify-between mb-3">
+        <h3 className="text-sm font-semibold">You May Also Like</h3>
+        <button className="text-xs text-muted-foreground flex items-center gap-1 hover:text-foreground">
+          View all <ChevronRight className="h-4 w-4" />
         </button>
       </div>
-      <div className="grid grid-cols-2 gap-2.5">
+      <div className="px-4 grid grid-cols-2 gap-3">
         {data.items.slice(0, 6).map((p) => (
           <Link
             key={p.product_id}
             href={`/products/${encodeURIComponent(p.product_id)}${p.merchant_id ? `?merchant_id=${encodeURIComponent(p.merchant_id)}` : ''}`}
-            className="rounded-2xl bg-card border border-border overflow-hidden hover:shadow-glass-hover transition-shadow"
+            className="rounded-xl bg-card border border-border overflow-hidden hover:shadow-md transition-shadow"
           >
-            <div className="relative aspect-square bg-black/5">
+            <div className="relative aspect-square bg-muted">
               {p.image_url ? (
                 <Image src={p.image_url} alt={p.title} fill className="object-cover" unoptimized />
               ) : (
@@ -39,19 +39,19 @@ export function RecommendationsGrid({ data }: { data: RecommendationsData }) {
                 </div>
               )}
             </div>
-            <div className="p-2.5">
-              <div className="text-xs font-medium line-clamp-2 min-h-[2.25rem]">{p.title}</div>
+            <div className="p-3">
+              <div className="text-sm font-medium line-clamp-2 min-h-[2.5rem]">{p.title}</div>
               {p.rating ? (
-                <div className="flex items-center gap-1 mt-1.5 text-[11px]">
-                  <Star className="h-3 w-3 fill-yellow-400 text-yellow-400" />
-                  <span>{p.rating.toFixed(1)}</span>
+                <div className="flex items-center gap-1 mt-2">
+                  <Star className="h-3 w-3 fill-gold text-gold" />
+                  <span className="text-xs">{p.rating.toFixed(1)}</span>
                   {p.review_count ? (
-                    <span className="text-muted-foreground">({p.review_count})</span>
+                    <span className="text-xs text-muted-foreground">({p.review_count})</span>
                   ) : null}
                 </div>
               ) : null}
               {p.price ? (
-                <div className="mt-1.5 text-xs font-semibold">
+                <div className="mt-2 text-sm font-bold">
                   {formatPrice(p.price.amount, p.price.currency)}
                 </div>
               ) : null}
@@ -59,7 +59,7 @@ export function RecommendationsGrid({ data }: { data: RecommendationsData }) {
           </Link>
         ))}
       </div>
-      <button className="w-full mt-3 py-2 text-xs text-muted-foreground hover:text-foreground">
+      <button className="w-full mt-4 py-3 text-sm text-muted-foreground hover:text-foreground">
         Load more recommendations
       </button>
     </div>

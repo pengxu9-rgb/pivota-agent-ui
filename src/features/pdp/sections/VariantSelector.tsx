@@ -32,7 +32,7 @@ export function VariantSelector({
               onClick={() => onChange(v.variant_id)}
               className={cn(
                 'flex items-center gap-2 rounded-full border px-3 py-1 text-xs transition-colors whitespace-nowrap',
-                isSelected ? 'border-primary bg-primary/10' : 'border-border hover:bg-muted/30',
+                isSelected ? 'border-primary bg-primary/5 font-medium' : 'border-border hover:border-primary/50',
               )}
             >
               {mode === 'beauty' && v.swatch?.hex ? (

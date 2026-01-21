@@ -16,13 +16,13 @@ export function GenericStyleGallery({
   if (!items.length && !showEmpty) return null;
 
   return (
-    <div className="mt-4 px-4">
+    <div className="mt-6 px-3">
       <div className="flex items-center justify-between mb-2">
-        <h3 className="text-xs font-semibold">
+        <h3 className="text-sm font-semibold">
           {title}
           {items.length ? ` (${items.length})` : ''}
         </h3>
-        <button className="text-[11px] text-primary">Share yours +</button>
+        <button className="text-xs text-primary">Share yours +</button>
       </div>
       {items.length ? (
         <div className="grid grid-cols-3 gap-1 rounded-lg overflow-hidden">
@@ -31,7 +31,7 @@ export function GenericStyleGallery({
               <Image src={item.url} alt="" fill className="object-cover" unoptimized />
               {item.type === 'video' ? (
                 <div className="absolute inset-0 flex items-center justify-center">
-                  <Play className="h-6 w-6 text-white drop-shadow-lg" fill="white" />
+                  <Play className="h-8 w-8 text-white drop-shadow-lg" fill="white" fillOpacity={0.3} />
                 </div>
               ) : null}
             </div>

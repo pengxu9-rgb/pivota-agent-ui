@@ -4,12 +4,9 @@ import Image from 'next/image';
 import { ChevronRight } from 'lucide-react';
 import type { MediaItem, Variant } from '@/features/pdp/types';
 import { getOptionValue } from '@/features/pdp/utils/variantOptions';
-import { cn } from '@/lib/utils';
 
 export function BeautyShadesSection({
-  variants,
   selectedVariant,
-  onVariantChange,
   popularLooks = [],
   bestFor = [],
   importantInfo = [],
@@ -17,9 +14,7 @@ export function BeautyShadesSection({
   brandName,
   showEmpty = false,
 }: {
-  variants: Variant[];
   selectedVariant: Variant;
-  onVariantChange: (variantId: string) => void;
   popularLooks?: string[];
   bestFor?: string[];
   importantInfo?: string[];
@@ -151,38 +146,6 @@ export function BeautyShadesSection({
         </div>
       ) : null}
 
-      {variants.length > 1 ? (
-        <div className="px-4 pt-3">
-          <h3 className="text-sm font-semibold mb-3">All Shades</h3>
-          <div className="grid grid-cols-3 gap-3">
-            {variants.map((variant) => {
-              const isSelected = variant.variant_id === selectedVariant.variant_id;
-              return (
-                <button
-                  key={variant.variant_id}
-                  onClick={() => onVariantChange(variant.variant_id)}
-                  className={cn(
-                    'rounded-xl border p-3 text-left transition-colors',
-                    isSelected ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50',
-                  )}
-                >
-                  <div className="flex items-center gap-2">
-                    {variant.swatch?.hex ? (
-                      <span
-                        className="h-6 w-6 rounded-full ring-1 ring-border"
-                        style={{ backgroundColor: variant.swatch.hex }}
-                      />
-                    ) : (
-                      <span className="h-6 w-6 rounded-full bg-muted" />
-                    )}
-                    <span className="text-xs font-medium line-clamp-2">{variant.title}</span>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      ) : null}
     </div>
   );
 }

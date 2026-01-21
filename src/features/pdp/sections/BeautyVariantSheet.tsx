@@ -39,7 +39,7 @@ export function BeautyVariantSheet({
             onClick={onClose}
           />
           <motion.div
-            className="fixed bottom-0 left-0 right-0 z-50 max-h-[75vh] rounded-t-2xl bg-card border border-border shadow-2xl"
+            className="fixed bottom-0 left-0 right-0 z-50 h-[70vh] rounded-t-2xl bg-card border border-border shadow-2xl"
             initial={{ y: '100%' }}
             animate={{ y: 0 }}
             exit={{ y: '100%' }}
@@ -55,7 +55,7 @@ export function BeautyVariantSheet({
                 <X className="h-4 w-4" />
               </button>
             </div>
-            <div className="max-h-[60vh] overflow-y-auto px-4 py-3 space-y-2">
+            <div className="overflow-y-auto py-2 space-y-1 px-4">
               {variants.map((variant) => {
                 const isSelected = variant.variant_id === selectedVariantId;
                 const amount = variant.price?.current.amount ?? 0;
@@ -67,20 +67,20 @@ export function BeautyVariantSheet({
                       onSelect(variant.variant_id);
                       onClose();
                     }}
-                    className={`flex w-full items-center gap-3 rounded-xl border px-3 py-2 text-left transition-colors ${
+                    className={`flex w-full items-center gap-2 rounded-md border px-2.5 py-1.5 text-left transition-colors ${
                       isSelected ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50'
                     }`}
                   >
                     {variant.swatch?.hex ? (
                       <span
-                        className="h-6 w-6 rounded-full ring-1 ring-border flex-shrink-0"
+                        className="h-5 w-5 rounded-full ring-1 ring-border flex-shrink-0"
                         style={{ backgroundColor: variant.swatch.hex }}
                       />
                     ) : (
-                      <span className="h-6 w-6 rounded-full bg-muted flex-shrink-0" />
+                      <span className="h-5 w-5 rounded-full bg-muted flex-shrink-0" />
                     )}
                     <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium truncate">{variant.title}</div>
+                      <div className="text-xs font-medium truncate">{variant.title}</div>
                       {variant.beauty_meta ? (
                         <div className="text-[10px] text-muted-foreground truncate">
                           {[variant.beauty_meta.undertone, variant.beauty_meta.finish, variant.beauty_meta.coverage]
@@ -89,8 +89,8 @@ export function BeautyVariantSheet({
                         </div>
                       ) : null}
                     </div>
-                    <div className="text-xs font-semibold">{formatPrice(amount, currency)}</div>
-                    {isSelected ? <span className="text-primary text-xs font-semibold">✓</span> : null}
+                    <div className="text-xs font-medium">{formatPrice(amount, currency)}</div>
+                    {isSelected ? <span className="text-primary text-[10px] font-medium">✓</span> : null}
                   </button>
                 );
               })}

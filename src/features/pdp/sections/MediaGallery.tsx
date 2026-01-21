@@ -27,10 +27,11 @@ export function MediaGallery({
       : 0;
   const hero = items[clampedIndex];
   const heroUrl = hero?.url || fallbackUrl;
+  const isContain = fit === 'object-contain';
 
   return (
     <div className="relative">
-      <div className={`relative ${aspectClass} bg-black/5`}>
+      <div className={cn('relative', aspectClass, isContain ? 'bg-muted/30' : 'bg-black/5')}>
         {heroUrl ? (
           <Image src={heroUrl} alt={hero?.alt_text || title} fill className={fit} unoptimized />
         ) : (
@@ -40,30 +41,41 @@ export function MediaGallery({
         )}
       </div>
       {items.length ? (
-        <div className="absolute top-2 right-2 rounded-full bg-black/50 px-2 py-0.5 text-[10px] text-white">
+        <div className="absolute top-3 right-3 rounded-full bg-foreground/60 px-2 py-0.5 text-[10px] text-white">
           {Math.min(clampedIndex + 1, items.length)}/{items.length}
         </div>
       ) : null}
       {items.length ? (
-        <div className="absolute bottom-2 left-2 right-2 flex gap-2 overflow-x-auto">
-          {items.slice(0, 6).map((item, idx) => (
+        <div className="absolute bottom-3 left-3 right-3 flex gap-1.5">
+          {items.slice(0, 4).map((item, idx) => (
             <button
               key={`${item.url}-${idx}`}
               type="button"
               onClick={() => onSelect?.(idx)}
               className={cn(
-                'relative h-10 w-10 rounded-lg overflow-hidden ring-1 transition',
-                idx === clampedIndex ? 'ring-white/80' : 'ring-white/30 hover:ring-white/60',
+                'relative h-12 w-12 rounded-md overflow-hidden ring-2 transition',
+                idx === clampedIndex ? 'ring-white' : 'ring-transparent',
               )}
             >
-              <Image src={item.url} alt={item.alt_text || `Media ${idx + 1}`} fill className="object-cover" unoptimized />
+              <Image
+                src={item.url}
+                alt={item.alt_text || `Media ${idx + 1}`}
+                fill
+                className="object-cover"
+                unoptimized
+              />
               {item.type === 'video' ? (
-                <div className="absolute inset-0 flex items-center justify-center bg-black/30">
+                <div className="absolute inset-0 flex items-center justify-center bg-foreground/30">
                   <Play className="h-3 w-3 text-white" fill="white" />
                 </div>
               ) : null}
             </button>
           ))}
+          {items.length > 4 ? (
+            <div className="flex h-12 w-12 items-center justify-center rounded-md bg-foreground/60 text-white text-xs font-medium">
+              +{items.length - 4}
+            </div>
+          ) : null}
         </div>
       ) : null}
     </div>

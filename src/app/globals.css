@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Cormorant+Garamond:wght@400;500;600;700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -165,6 +167,91 @@
 /* Gradient text */
 .gradient-text {
   @apply bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 via-purple-400 to-cyan-400;
+}
+
+@layer base {
+  .lovable-pdp {
+    --background: 0 0% 98%;
+    --foreground: 0 0% 10%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 10%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 10%;
+
+    --primary: 168 76% 42%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 0 0% 96%;
+    --secondary-foreground: 0 0% 20%;
+
+    --muted: 0 0% 96%;
+    --muted-foreground: 0 0% 45%;
+
+    --accent: 30 60% 95%;
+    --accent-foreground: 30 60% 30%;
+
+    --gold: 38 90% 50%;
+    --gold-foreground: 0 0% 100%;
+
+    --success: 145 60% 40%;
+    --success-foreground: 0 0% 100%;
+
+    --destructive: 0 65% 50%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 0 0% 92%;
+    --input: 0 0% 92%;
+    --ring: 168 76% 42%;
+
+    --radius: 0.5rem;
+
+    --shadow-sm: 0 1px 2px 0 hsl(20 10% 12% / 0.05);
+    --shadow-md: 0 4px 6px -1px hsl(20 10% 12% / 0.1), 0 2px 4px -2px hsl(20 10% 12% / 0.1);
+    --shadow-lg: 0 10px 15px -3px hsl(20 10% 12% / 0.1), 0 4px 6px -4px hsl(20 10% 12% / 0.1);
+    --shadow-xl: 0 20px 25px -5px hsl(20 10% 12% / 0.15), 0 8px 10px -6px hsl(20 10% 12% / 0.1);
+  }
+}
+
+@layer components {
+  .lovable-pdp .luxury-heading {
+    font-family: 'Inter', system-ui, sans-serif;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+
+  .lovable-pdp .luxury-caption {
+    font-family: 'Inter', system-ui, sans-serif;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    font-size: 0.75rem;
+  }
+
+  .lovable-pdp .swatch-ring {
+    @apply ring-2 ring-offset-2 ring-primary;
+  }
+
+  .lovable-pdp .safe-area-bottom {
+    padding-bottom: env(safe-area-inset-bottom, 0);
+  }
+
+  .lovable-pdp .shadow-sm {
+    box-shadow: var(--shadow-sm);
+  }
+
+  .lovable-pdp .shadow-md {
+    box-shadow: var(--shadow-md);
+  }
+
+  .lovable-pdp .shadow-lg {
+    box-shadow: var(--shadow-lg);
+  }
+
+  .lovable-pdp .shadow-xl {
+    box-shadow: var(--shadow-xl);
+  }
 }
 
 /* Scrollbar styles */

@@ -11,50 +11,64 @@ export function StickyTabNav({
   tabs,
   activeTab,
   onTabChange,
+  onVisibilityChange,
+  topOffset = 0,
 }: {
   tabs: Tab[];
   activeTab: string;
   onTabChange: (tabId: string) => void;
+  onVisibilityChange?: (visible: boolean) => void;
+  topOffset?: number;
 }) {
   const [isVisible, setIsVisible] = useState(false);
-  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  const lastVisibleRef = useRef(false);
 
   useEffect(() => {
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        setIsVisible(!entry.isIntersecting);
-      },
-      { threshold: 0, rootMargin: '-60px 0px 0px 0px' },
-    );
+    const updateVisibility = () => {
+      if (typeof window === 'undefined') return;
+      const nextVisible = window.scrollY >= window.innerHeight;
+      if (nextVisible === lastVisibleRef.current) return;
+      lastVisibleRef.current = nextVisible;
+      setIsVisible(nextVisible);
+      onVisibilityChange?.(nextVisible);
+    };
 
-    const node = sentinelRef.current;
-    if (node) observer.observe(node);
-    return () => observer.disconnect();
-  }, []);
+    updateVisibility();
+    window.addEventListener('scroll', updateVisibility, { passive: true });
+    window.addEventListener('resize', updateVisibility);
+    return () => {
+      window.removeEventListener('scroll', updateVisibility);
+      window.removeEventListener('resize', updateVisibility);
+    };
+  }, [onVisibilityChange]);
+
+  const topStyle = {
+    top: `calc(env(safe-area-inset-top, 0px) + ${topOffset}px)`,
+  };
 
   return (
-    <>
-      <div ref={sentinelRef} className="absolute top-[100vh]" />
-      {isVisible ? (
-        <nav className="fixed top-0 left-0 right-0 z-40 bg-card/95 backdrop-blur-sm border-b border-border shadow-sm animate-in slide-in-from-top-2 duration-200">
-          <div className="max-w-md mx-auto flex">
-            {tabs.map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => onTabChange(tab.id)}
-                className={`relative flex-1 py-1.5 text-[11px] font-medium transition-colors ${
-                  activeTab === tab.id ? 'text-foreground' : 'text-muted-foreground'
-                }`}
-              >
-                {tab.label}
-                {activeTab === tab.id ? (
-                  <span className="absolute bottom-0 left-1/2 -translate-x-1/2 h-0.5 w-8 bg-foreground rounded-full" />
-                ) : null}
-              </button>
-            ))}
-          </div>
-        </nav>
-      ) : null}
-    </>
+    isVisible ? (
+      <nav
+        className="fixed left-0 right-0 z-40 bg-card/95 backdrop-blur-sm border-b border-border shadow-sm animate-in slide-in-from-top-2 duration-200"
+        style={topStyle}
+      >
+        <div className="max-w-md mx-auto flex">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => onTabChange(tab.id)}
+              className={`relative flex-1 py-3 text-sm font-medium transition-colors ${
+                activeTab === tab.id ? 'text-foreground' : 'text-muted-foreground'
+              }`}
+            >
+              {tab.label}
+              {activeTab === tab.id ? (
+                <span className="absolute bottom-0 left-1/2 -translate-x-1/2 h-0.5 w-8 bg-foreground rounded-full" />
+              ) : null}
+            </button>
+          ))}
+        </div>
+      </nav>
+    ) : null
   );
 }

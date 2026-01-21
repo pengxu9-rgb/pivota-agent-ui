@@ -42,6 +42,10 @@ const config: Config = {
           DEFAULT: "hsl(var(--accent))",
           foreground: "hsl(var(--accent-foreground))",
         },
+        gold: {
+          DEFAULT: "hsl(var(--gold))",
+          foreground: "hsl(var(--gold-foreground))",
+        },
         success: "hsl(var(--success))",
         warning: "hsl(var(--warning))",
         popover: {
@@ -65,6 +69,10 @@ const config: Config = {
         'glass': 'var(--shadow-glass)',
         'glass-hover': 'var(--shadow-glass-hover)',
         'glow': 'var(--shadow-glow)',
+      },
+      fontFamily: {
+        serif: ['Cormorant Garamond', 'serif'],
+        sans: ['Inter', 'sans-serif'],
       },
       borderRadius: {
         lg: "var(--radius)",
@@ -100,4 +108,3 @@ const config: Config = {
   plugins: [require("tailwindcss-animate")],
 };
 export default config;
-

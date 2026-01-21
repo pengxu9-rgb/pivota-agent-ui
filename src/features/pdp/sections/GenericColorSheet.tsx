@@ -41,14 +41,14 @@ export function GenericColorSheet({
             onClick={onClose}
           />
           <motion.div
-            className="fixed bottom-0 left-0 right-0 z-50 max-h-[75vh] rounded-t-2xl bg-card border border-border shadow-2xl"
+            className="fixed bottom-0 left-0 right-0 z-50 h-[70vh] rounded-t-2xl bg-card border border-border shadow-2xl"
             initial={{ y: '100%' }}
             animate={{ y: 0 }}
             exit={{ y: '100%' }}
             transition={{ type: 'spring', damping: 30, stiffness: 320 }}
           >
-            <div className="flex items-center justify-between px-4 py-2.5 border-b border-border">
-              <div className="text-xs font-semibold">Select Color ({variants.length})</div>
+            <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+              <div className="text-sm font-semibold">Select Color ({variants.length})</div>
               <button
                 onClick={onClose}
                 className="h-7 w-7 rounded-full flex items-center justify-center hover:bg-secondary transition-colors"
@@ -57,7 +57,7 @@ export function GenericColorSheet({
                 <X className="h-4 w-4" />
               </button>
             </div>
-            <div className="max-h-[60vh] overflow-y-auto px-4 py-3 grid grid-cols-3 gap-2.5">
+            <div className="mt-2 grid grid-cols-4 gap-2 overflow-y-auto px-4 pb-4">
               {variants.map((variant) => {
                 const isSelected = variant.variant_id === selectedVariantId;
                 const amount = variant.price?.current.amount ?? 0;
@@ -71,19 +71,19 @@ export function GenericColorSheet({
                       onSelect(variant.variant_id);
                       onClose();
                     }}
-                    className={`flex flex-col items-center gap-1 rounded-xl border px-2 py-2 text-center transition-colors ${
+                    className={`flex flex-col items-center gap-0.5 p-1.5 rounded-md border text-center transition-colors ${
                       isSelected ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50'
                     }`}
                   >
-                    <div className="relative h-14 w-10 rounded-lg overflow-hidden bg-muted">
+                    <div className="relative h-16 w-11 rounded overflow-hidden bg-muted">
                       {variant.image_url ? (
                         <Image src={variant.image_url} alt={colorLabel} fill className="object-cover" unoptimized />
                       ) : variant.swatch?.hex ? (
                         <span className="absolute inset-0" style={{ backgroundColor: variant.swatch.hex }} />
                       ) : null}
                     </div>
-                    <span className="text-[10px] text-muted-foreground line-clamp-1">{colorLabel}</span>
-                    <span className="text-[10px] font-medium">{formatPrice(amount, currency)}</span>
+                    <span className="text-[9px] text-muted-foreground line-clamp-1">{colorLabel}</span>
+                    <span className="text-[9px] font-medium">{formatPrice(amount, currency)}</span>
                   </button>
                 );
               })}

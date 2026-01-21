@@ -16,13 +16,13 @@ export function BeautyUgcGallery({
   if (!items.length && !showEmpty) return null;
 
   return (
-    <div className="mt-4 px-4">
+    <div className="mt-6 px-4">
       <div className="flex items-center justify-between mb-2">
-        <h3 className="text-xs font-semibold">
+        <h3 className="text-sm font-semibold">
           {title}
           {items.length ? ` (${items.length})` : ''}
         </h3>
-        <button className="text-[11px] font-medium text-primary">Add yours +</button>
+        <button className="text-xs font-medium text-primary">Add yours +</button>
       </div>
       {items.length ? (
         <div className="grid grid-cols-3 gap-1 rounded-lg overflow-hidden">

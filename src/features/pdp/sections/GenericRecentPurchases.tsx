@@ -53,9 +53,9 @@ export function GenericRecentPurchases({
     : null;
 
   return (
-    <div className="mt-4 mx-4 border border-border rounded-lg overflow-hidden bg-card">
-      <div className="flex items-center justify-between px-3 py-1.5 border-b border-border">
-        <h3 className="text-xs font-semibold">
+    <div className="mt-4 mx-3 border border-border rounded-lg overflow-hidden bg-card">
+      <div className="flex items-center justify-between px-3 py-2 border-b border-border">
+        <h3 className="text-sm font-semibold">
           Recent Purchases ({displayCount})
         </h3>
         <span className="text-[10px] text-muted-foreground">
@@ -65,7 +65,7 @@ export function GenericRecentPurchases({
       {displayItems.length ? (
         <div className="divide-y divide-border">
           {displayItems.slice(0, 3).map((purchase, idx) => (
-            <div key={`${purchase.user_label}-${idx}`} className="flex items-center justify-between px-3 py-1.5 text-[11px]">
+            <div key={`${purchase.user_label}-${idx}`} className="flex items-center justify-between px-3 py-2 text-xs">
               <div className="flex items-center gap-2">
                 <div className="h-5 w-5 rounded-full bg-muted flex items-center justify-center text-[10px]">
                   {getInitial(purchase.user_label)}

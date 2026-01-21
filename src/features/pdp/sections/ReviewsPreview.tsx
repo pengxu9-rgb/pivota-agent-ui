@@ -11,7 +11,7 @@ function StarRating({ value }: { value: number }) {
           key={i}
           className={cn(
             'h-4 w-4',
-            i < rounded ? 'fill-yellow-400 text-yellow-400' : 'text-muted-foreground',
+            i < rounded ? 'fill-gold text-gold' : 'text-muted-foreground',
           )}
         />
       ))}

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
-import { ChevronLeft, ChevronRight, Heart, MessageCircle, Share2, Star } from 'lucide-react';
+import { ChevronLeft, Heart, MessageCircle, Share2, Star } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type {
   MediaGalleryData,
@@ -58,6 +58,11 @@ function formatPrice(amount: number, currency: string) {
   }
 }
 
+function formatCount(count: number) {
+  if (count >= 1000) return `${(count / 1000).toFixed(1)}k`;
+  return `${count}`;
+}
+
 function StarRating({ value }: { value: number }) {
   const rounded = Math.round(value);
   return (
@@ -65,7 +70,7 @@ function StarRating({ value }: { value: number }) {
       {Array.from({ length: 5 }).map((_, i) => (
         <Star
           key={i}
-          className={cn('h-3.5 w-3.5', i < rounded ? 'fill-yellow-400 text-yellow-400' : 'text-muted-foreground')}
+          className={cn('h-3 w-3', i < rounded ? 'fill-gold text-gold' : 'text-muted-foreground')}
         />
       ))}
     </div>
@@ -98,6 +103,7 @@ export function PdpContainer({
   const [showShadeSheet, setShowShadeSheet] = useState(false);
   const [showColorSheet, setShowColorSheet] = useState(false);
   const [activeMediaIndex, setActiveMediaIndex] = useState(0);
+  const [navVisible, setNavVisible] = useState(false);
   const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   const variants = useMemo(() => payload.product.variants ?? [], [payload.product.variants]);
@@ -120,7 +126,6 @@ export function PdpContainer({
   }, [payload.product.availability?.available_quantity, selectedVariant?.availability?.available_quantity]);
 
   const maxQuantity = availableQuantity != null && availableQuantity > 0 ? availableQuantity : undefined;
-  const atMaxQuantity = maxQuantity != null && quantity >= maxQuantity;
   const resolvedQuantity = maxQuantity != null ? Math.min(quantity, maxQuantity) : quantity;
 
   useEffect(() => {
@@ -208,6 +213,7 @@ export function PdpContainer({
     acc[action.action_type] = action.label;
     return acc;
   }, {});
+  const headerHeight = 48;
 
   const hasReviews = !!reviews;
   const hasRecommendations = !!recommendations?.items?.length;
@@ -354,27 +360,41 @@ export function PdpContainer({
   const showTrustBadges = resolvedMode === 'beauty' && trustBadges.length > 0;
 
   return (
-    <div className="relative min-h-screen bg-background pb-32">
-      <div className="fixed top-3 left-3 right-3 z-50 flex items-center justify-between pointer-events-none">
-        <button
-          type="button"
-          onClick={handleBack}
-          className="pointer-events-auto h-9 w-9 rounded-full border border-border bg-white/85 backdrop-blur flex items-center justify-center shadow-sm"
-          aria-label="Go back"
-        >
-          <ChevronLeft className="h-4 w-4 text-foreground" />
-        </button>
-        <button
-          type="button"
-          onClick={handleShare}
-          className="pointer-events-auto h-9 w-9 rounded-full border border-border bg-white/85 backdrop-blur flex items-center justify-center shadow-sm"
-          aria-label="Share"
-        >
-          <Share2 className="h-4 w-4 text-foreground" />
-        </button>
+    <div className="relative min-h-screen bg-background pb-36 lovable-pdp">
+      <div
+        className={cn(
+          'fixed left-0 right-0 z-50 transition-colors',
+          navVisible ? 'bg-card/95 backdrop-blur-sm' : 'bg-transparent',
+        )}
+        style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
+      >
+        <div className="mx-auto max-w-md flex items-center justify-between h-12 px-3">
+          <button
+            type="button"
+            onClick={handleBack}
+            className="h-9 w-9 rounded-full border border-border bg-card/90 backdrop-blur flex items-center justify-center shadow-sm"
+            aria-label="Go back"
+          >
+            <ChevronLeft className="h-4 w-4 text-foreground" />
+          </button>
+          <button
+            type="button"
+            onClick={handleShare}
+            className="h-9 w-9 rounded-full border border-border bg-card/90 backdrop-blur flex items-center justify-center shadow-sm"
+            aria-label="Share"
+          >
+            <Share2 className="h-4 w-4 text-foreground" />
+          </button>
+        </div>
       </div>
 
-      <StickyTabNav tabs={tabs} activeTab={activeTab} onTabChange={handleTabChange} />
+      <StickyTabNav
+        tabs={tabs}
+        activeTab={activeTab}
+        onTabChange={handleTabChange}
+        onVisibilityChange={setNavVisible}
+        topOffset={headerHeight}
+      />
 
       <div className="mx-auto w-full max-w-md">
         <div
@@ -383,7 +403,7 @@ export function PdpContainer({
           }}
           className="scroll-mt-24"
         >
-          <div className="pb-3">
+          <div className="pb-4">
             <div className="relative">
               <MediaGallery
                 data={galleryData}
@@ -396,216 +416,212 @@ export function PdpContainer({
               />
             </div>
 
-          {resolvedMode === 'beauty' && variants.length > 1 ? (
-            <div className="border-b border-border bg-card py-2">
-              <div className="overflow-x-auto">
-                <div className="flex items-center gap-2 px-3">
-                  {variants.slice(0, 6).map((variant) => {
-                    const isSelected = variant.variant_id === selectedVariant.variant_id;
-                    return (
+            {resolvedMode === 'beauty' && variants.length > 1 ? (
+              <div className="border-b border-border bg-card py-2">
+                <div className="overflow-x-auto">
+                  <div className="flex items-center gap-1.5 px-3">
+                    {variants.slice(0, 4).map((variant) => {
+                      const isSelected = variant.variant_id === selectedVariant.variant_id;
+                      return (
+                        <button
+                          key={variant.variant_id}
+                          onClick={() => {
+                            handleVariantSelect(variant.variant_id);
+                            pdpTracking.track('pdp_action_click', { action_type: 'select_variant', variant_id: variant.variant_id });
+                          }}
+                          className={cn(
+                            'flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] whitespace-nowrap transition-all',
+                            isSelected ? 'border-primary bg-primary/5 font-medium' : 'border-border hover:border-primary/50',
+                          )}
+                        >
+                          {variant.swatch?.hex ? (
+                            <span className="h-3 w-3 rounded-full ring-1 ring-border" style={{ backgroundColor: variant.swatch.hex }} />
+                          ) : null}
+                          <span>{variant.title}</span>
+                        </button>
+                      );
+                    })}
+                    {variants.length > 4 ? (
                       <button
-                        key={variant.variant_id}
-                        onClick={() => {
-                          handleVariantSelect(variant.variant_id);
-                          pdpTracking.track('pdp_action_click', { action_type: 'select_variant', variant_id: variant.variant_id });
-                        }}
-                        className={cn(
-                          'flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] whitespace-nowrap transition-all',
-                          isSelected ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50',
-                        )}
+                        onClick={() => setShowShadeSheet(true)}
+                        className="rounded-full border border-dashed border-border px-2.5 py-1 text-[10px] text-muted-foreground"
                       >
-                        {variant.swatch?.hex ? (
-                          <span className="h-3 w-3 rounded-full ring-1 ring-border" style={{ backgroundColor: variant.swatch.hex }} />
-                        ) : null}
-                        <span>{variant.title}</span>
+                        +{variants.length - 4} more
                       </button>
-                    );
-                  })}
-                  <button
-                    onClick={() => setShowShadeSheet(true)}
-                    className="ml-auto text-[10px] text-primary font-medium whitespace-nowrap"
-                  >
-                    {variants.length} colors →
-                  </button>
+                    ) : null}
+                    <button
+                      onClick={() => setShowShadeSheet(true)}
+                      className="ml-auto text-[10px] text-primary font-medium whitespace-nowrap"
+                    >
+                      {variants.length} colors →
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
-          ) : null}
+            ) : null}
 
-          {resolvedMode === 'generic' && colorOptions.length ? (
-            <div className="border-b border-border bg-card py-2">
-              <div className="overflow-x-auto">
-                <div className="flex items-center gap-2 px-3">
-                  {colorOptions.map((color) => {
-                    const variantForColor = variants.find((v) => getOptionValue(v, ['color', 'colour', 'shade', 'tone']) === color) || selectedVariant;
-                    const isSelected = selectedColor === color;
-                    return (
-                      <button
-                        key={color}
-                        onClick={() => handleColorSelect(color)}
-                        className={cn(
-                          'relative flex-shrink-0 h-12 w-9 rounded-md overflow-hidden border-2',
-                          isSelected ? 'border-primary' : 'border-transparent',
-                        )}
-                      >
-                        {variantForColor.image_url ? (
-                          <Image src={variantForColor.image_url} alt={color} fill className="object-cover" unoptimized />
-                        ) : variantForColor.swatch?.hex ? (
-                          <span className="block h-12 w-9" style={{ backgroundColor: variantForColor.swatch.hex }} />
-                        ) : (
-                          <span className="flex h-12 w-9 items-center justify-center text-[10px] bg-muted">
-                            {color}
-                          </span>
-                        )}
-                      </button>
-                    );
-                  })}
-                  <button
-                    onClick={() => setShowColorSheet(true)}
-                    className="flex-shrink-0 h-12 px-3 rounded-md bg-muted/50 text-xs text-muted-foreground flex flex-col items-center justify-center"
-                  >
-                    <span>Colors</span>
-                    <span className="font-medium">{variants.length}</span>
-                  </button>
+            {resolvedMode === 'generic' && colorOptions.length ? (
+              <div className="border-b border-border bg-card py-2">
+                <div className="overflow-x-auto">
+                  <div className="flex items-center gap-2 px-3">
+                    {colorOptions.map((color) => {
+                      const variantForColor =
+                        variants.find((v) => getOptionValue(v, ['color', 'colour', 'shade', 'tone']) === color) ||
+                        selectedVariant;
+                      const isSelected = selectedColor === color;
+                      return (
+                        <button
+                          key={color}
+                          onClick={() => handleColorSelect(color)}
+                          className={cn(
+                            'relative flex-shrink-0 rounded-md overflow-hidden border-2',
+                            isSelected ? 'border-primary' : 'border-transparent',
+                          )}
+                        >
+                          {variantForColor.image_url ? (
+                            <Image
+                              src={variantForColor.image_url}
+                              alt={color}
+                              width={40}
+                              height={56}
+                              className="h-14 w-10 object-cover"
+                              unoptimized
+                            />
+                          ) : variantForColor.swatch?.hex ? (
+                            <span className="block h-14 w-10" style={{ backgroundColor: variantForColor.swatch.hex }} />
+                          ) : (
+                            <span className="flex h-14 w-10 items-center justify-center text-[10px] bg-muted">
+                              {color}
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                    <button
+                      onClick={() => setShowColorSheet(true)}
+                      className="flex-shrink-0 h-14 px-3 rounded-md bg-muted/50 text-xs text-muted-foreground flex flex-col items-center justify-center"
+                    >
+                      <span>Colors</span>
+                      <span className="font-medium">{variants.length}</span>
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
-          ) : null}
+            ) : null}
 
-          <div className="px-4 py-3">
-            <div className="flex items-baseline gap-2 flex-wrap">
-              <div className="text-xl font-bold">{formatPrice(priceAmount, currency)}</div>
-              {!isInStock ? (
-                <span className="rounded-full border border-red-200 bg-red-50 px-2 py-0.5 text-[10px] font-medium text-red-700">
-                  Out of stock
-                </span>
+            <div className="px-3 py-2">
+              <div className="flex items-baseline gap-2 flex-wrap">
+                <span className="text-base font-bold text-foreground">{formatPrice(priceAmount, currency)}</span>
+                {!isInStock ? (
+                  <span className="rounded-full border border-red-200 bg-red-50 px-2 py-0.5 text-[10px] font-medium text-red-700">
+                    Out of stock
+                  </span>
+                ) : null}
+                {compareAmount && compareAmount > priceAmount ? (
+                  <span className="text-[10px] text-muted-foreground line-through">
+                    {formatPrice(compareAmount, currency)}
+                  </span>
+                ) : null}
+                {discountPercent ? (
+                  <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">
+                    -{discountPercent}%
+                  </span>
+                ) : null}
+              </div>
+
+              <h1 className="mt-1.5 text-base font-semibold leading-snug">
+                {payload.product.brand?.name ? `${payload.product.brand.name} ` : ''}{payload.product.title}
+              </h1>
+              {payload.product.subtitle ? (
+                <p className="mt-0.5 text-[11px] text-muted-foreground">{payload.product.subtitle}</p>
               ) : null}
-              {compareAmount && compareAmount > priceAmount ? (
-                <div className="text-xs text-muted-foreground line-through">
-                  {formatPrice(compareAmount, currency)}
+              {variants.length > 1 ? (
+                <div className="mt-0.5 text-[11px] text-muted-foreground">
+                  Selected: <span className="text-foreground">{selectedVariant?.title}</span>
                 </div>
               ) : null}
-              {discountPercent ? (
-                <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
-                  -{discountPercent}%
-                </span>
-              ) : null}
-              {reviews?.review_count && onSeeAllReviews ? (
+
+              {reviews?.review_count ? (
                 <button
-                  onClick={onSeeAllReviews}
-                  className="ml-auto text-[11px] text-muted-foreground flex items-center gap-1 whitespace-nowrap"
+                  className="mt-1.5 flex items-center gap-1.5"
+                  onClick={() => handleTabChange('reviews')}
                 >
-                  {reviews.review_count} reviews <ChevronRight className="h-3 w-3" />
+                  <StarRating value={(reviews.rating / reviews.scale) * 5} />
+                  <span className="text-[11px] font-medium">{reviews.rating.toFixed(1)}</span>
+                  <span className="text-[11px] text-muted-foreground">({reviews.review_count})</span>
                 </button>
               ) : null}
+
+              {resolvedMode === 'beauty' && beautyAttributes.length ? (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {beautyAttributes.map((opt) => (
+                    <span
+                      key={`${opt.label}-${opt.value}`}
+                      className="rounded-full border border-border bg-card px-2 py-0.5 text-[10px]"
+                    >
+                      {opt.value}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
+
+              {attributeOptions.length ? (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {attributeOptions.map((opt) => (
+                    <span
+                      key={`${opt.name}-${opt.value}`}
+                      className="rounded-full border border-border bg-card px-2 py-0.5 text-[10px]"
+                    >
+                      {opt.name}: {opt.value}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
+
+              {resolvedMode === 'generic' && sizeOptions.length ? (
+                <div className="mt-3">
+                  <div className="flex items-center justify-between">
+                    <div className="text-sm font-medium">Size</div>
+                    <div className="text-xs text-muted-foreground">Select a size</div>
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {sizeOptions.map((size) => {
+                      const isSelected = selectedSize === size;
+                      return (
+                        <button
+                          key={size}
+                          onClick={() => handleSizeSelect(size)}
+                          className={cn(
+                            'rounded-full border px-3 py-1 text-xs transition-colors',
+                            isSelected ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50',
+                          )}
+                        >
+                          {size}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
+
+              {resolvedMode === 'generic' && !sizeOptions.length && !colorOptions.length && variants.length > 1 ? (
+                <div className="mt-3">
+                  <VariantSelector
+                    variants={variants}
+                    selectedVariantId={selectedVariant.variant_id}
+                    onChange={(variantId) => {
+                      handleVariantSelect(variantId);
+                      pdpTracking.track('pdp_action_click', { action_type: 'select_variant', variant_id: variantId });
+                    }}
+                    mode={resolvedMode}
+                  />
+                </div>
+              ) : null}
             </div>
-
-            <h1 className="mt-1 text-base font-semibold leading-snug">
-              {payload.product.brand?.name ? `${payload.product.brand.name} ` : ''}{payload.product.title}
-            </h1>
-            {payload.product.subtitle ? (
-              <div className="mt-1 text-xs text-muted-foreground">{payload.product.subtitle}</div>
-            ) : null}
-            {variants.length > 1 ? (
-              <div className="mt-1 text-[11px] text-muted-foreground">
-                Selected: <span className="text-foreground">{selectedVariant?.title}</span>
-              </div>
-            ) : null}
-
-            {reviews?.review_count ? (
-              <button
-                className="mt-2 flex items-center gap-2 text-[11px] text-muted-foreground"
-                onClick={() => handleTabChange('reviews')}
-              >
-                <StarRating value={(reviews.rating / reviews.scale) * 5} />
-                <span>{reviews.rating.toFixed(1)}</span>
-                <span>({reviews.review_count})</span>
-              </button>
-            ) : null}
-
-            {resolvedMode === 'beauty' && beautyAttributes.length ? (
-              <div className="mt-2 flex flex-wrap gap-2">
-                {beautyAttributes.map((opt) => (
-                  <span
-                    key={`${opt.label}-${opt.value}`}
-                    className="rounded-full border border-border bg-card px-3 py-1 text-[10px] text-muted-foreground"
-                  >
-                    {opt.value}
-                  </span>
-                ))}
-              </div>
-            ) : null}
-
-            {attributeOptions.length ? (
-              <div className="mt-2 flex flex-wrap gap-2">
-                {attributeOptions.map((opt) => (
-                  <span
-                    key={`${opt.name}-${opt.value}`}
-                    className="rounded-full border border-border bg-card px-3 py-1 text-[10px] text-muted-foreground"
-                  >
-                    {opt.name}: {opt.value}
-                  </span>
-                ))}
-              </div>
-            ) : null}
-
-            {resolvedMode === 'generic' && sizeOptions.length ? (
-              <div className="mt-3">
-                <div className="flex items-center justify-between">
-                  <div className="text-sm font-medium">Size</div>
-                  <div className="text-xs text-muted-foreground">Select a size</div>
-                </div>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {sizeOptions.map((size) => {
-                    const isSelected = selectedSize === size;
-                    return (
-                      <button
-                        key={size}
-                        onClick={() => handleSizeSelect(size)}
-                        className={cn(
-                          'rounded-full border px-3 py-1 text-xs transition-colors',
-                          isSelected ? 'border-primary bg-primary/10' : 'border-border hover:bg-muted/30',
-                        )}
-                      >
-                        {size}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            ) : null}
-
-            {resolvedMode === 'beauty' && variants.length > 1 ? (
-              <div className="mt-3">
-                <VariantSelector
-                  variants={variants}
-                  selectedVariantId={selectedVariant.variant_id}
-                  onChange={(variantId) => {
-                    handleVariantSelect(variantId);
-                    pdpTracking.track('pdp_action_click', { action_type: 'select_variant', variant_id: variantId });
-                  }}
-                  mode={resolvedMode}
-                />
-              </div>
-            ) : null}
-
-            {resolvedMode === 'generic' && !sizeOptions.length && variants.length > 1 ? (
-              <div className="mt-3">
-                <VariantSelector
-                  variants={variants}
-                  selectedVariantId={selectedVariant.variant_id}
-                  onChange={(variantId) => {
-                    handleVariantSelect(variantId);
-                    pdpTracking.track('pdp_action_click', { action_type: 'select_variant', variant_id: variantId });
-                  }}
-                  mode={resolvedMode}
-                />
-              </div>
-            ) : null}
           </div>
 
           {showTrustBadges ? (
-            <div className="mx-4 mt-2 flex flex-wrap items-center gap-2 rounded-lg bg-muted/50 px-3 py-2 text-[10px]">
+            <div className="mx-3 mt-2 flex items-center gap-2 rounded-lg bg-muted/50 px-3 py-2 text-[10px]">
               {trustBadges.map((badge, idx) => (
                 <div key={`${badge}-${idx}`} className="flex items-center gap-2">
                   <span>{badge}</span>
@@ -614,7 +630,7 @@ export function PdpContainer({
               ))}
             </div>
           ) : (payload.product.shipping?.eta_days_range?.length || payload.product.returns?.return_window_days) ? (
-            <div className="mx-4 rounded-lg bg-card border border-border px-3 py-2 text-xs text-muted-foreground flex flex-wrap gap-x-3 gap-y-1">
+            <div className="mx-3 rounded-lg bg-card border border-border px-3 py-2 text-xs text-muted-foreground flex flex-wrap gap-x-3 gap-y-1">
               {payload.product.shipping?.eta_days_range?.length ? (
                 <span>
                   Shipping {payload.product.shipping.eta_days_range[0]}–{payload.product.shipping.eta_days_range[1]} days
@@ -686,12 +702,7 @@ export function PdpContainer({
           >
             {resolvedMode === 'beauty' ? (
               <BeautyShadesSection
-                variants={variants}
                 selectedVariant={selectedVariant}
-                onVariantChange={(variantId) => {
-                  handleVariantSelect(variantId);
-                  pdpTracking.track('pdp_action_click', { action_type: 'select_variant', variant_id: variantId });
-                }}
                 popularLooks={popularLooks}
                 bestFor={bestFor}
                 importantInfo={importantInfo}
@@ -803,85 +814,52 @@ export function PdpContainer({
         ) : null}
       </div>
 
-      <div className="fixed bottom-20 left-4 right-4 z-50">
-        <Button
-          variant="gradient"
-          className="w-full h-11 rounded-full font-medium shadow-lg"
-          disabled={!isInStock}
-          onClick={() => {
-            pdpTracking.track('pdp_action_click', { action_type: 'buy_now', variant_id: selectedVariant.variant_id });
-            dispatchPdpAction('buy_now', {
-              variant: selectedVariant,
-              quantity: resolvedQuantity,
-              onBuyNow,
-            });
-          }}
-        >
-          {!isInStock ? 'Out of stock' : actionsByType.buy_now || 'Buy Now'}
-        </Button>
-      </div>
-
       <div className="fixed bottom-0 left-0 right-0 z-40 bg-card border-t border-border">
-        <div className="max-w-md mx-auto">
+        <div className="safe-area-bottom max-w-md mx-auto">
           {pricePromo?.promotions?.length ? (
             <div className="flex items-center justify-between px-4 py-2 bg-primary/5 text-xs">
               <span className="flex items-center gap-2">
                 <span className="text-primary">🎁</span>
                 <span>{pricePromo.promotions[0].label}</span>
               </span>
+              <button className="text-muted-foreground" aria-label="Dismiss promotion">
+                ×
+              </button>
             </div>
           ) : null}
 
-          {resolvedMode === 'generic' ? (
-            <div className="flex items-center gap-2 px-4 pt-2">
+          <div className="flex items-center gap-3 px-4 py-3">
+            <div className="flex gap-2">
               <button
                 onClick={() => pdpTracking.track('pdp_action_click', { action_type: 'favorite' })}
-                className="h-8 w-8 rounded-full border border-border flex items-center justify-center hover:bg-muted/40 transition-colors"
+                className="flex flex-col items-center gap-0.5 px-2"
                 aria-label="Save"
               >
-                <Heart className="h-4 w-4 text-muted-foreground" />
+                <Heart className="h-5 w-5 text-muted-foreground" />
+                <span className="text-[10px] text-muted-foreground">{formatCount(13000)}</span>
+              </button>
+              <button
+                onClick={handleShare}
+                className="flex flex-col items-center gap-0.5 px-2"
+                aria-label="Share"
+              >
+                <Share2 className="h-5 w-5 text-muted-foreground" />
+                <span className="text-[10px] text-muted-foreground">Share</span>
               </button>
               <button
                 onClick={() => pdpTracking.track('pdp_action_click', { action_type: 'ask' })}
-                className="h-8 w-8 rounded-full border border-border flex items-center justify-center hover:bg-muted/40 transition-colors"
-                aria-label="Ask"
+                className="flex flex-col items-center gap-0.5 px-2"
+                aria-label="Chat"
               >
-                <MessageCircle className="h-4 w-4 text-muted-foreground" />
+                <MessageCircle className="h-5 w-5 text-muted-foreground" />
+                <span className="text-[10px] text-muted-foreground">Chat</span>
               </button>
             </div>
-          ) : null}
 
-          <div className="flex items-center gap-3 px-4 py-2">
-            <div className="flex items-center gap-2">
-              <Button
-                variant="secondary"
-                size="icon"
-                disabled={!isInStock}
-                onClick={() => setQuantity((q) => Math.max(1, q - 1))}
-                aria-label="Decrease quantity"
-              >
-                −
-              </Button>
-              <div className="w-10 text-center text-sm font-semibold">{quantity}</div>
-              <Button
-                variant="secondary"
-                size="icon"
-                disabled={!isInStock || atMaxQuantity}
-                onClick={() =>
-                  setQuantity((q) => {
-                    const next = q + 1;
-                    return maxQuantity != null ? Math.min(next, maxQuantity) : next;
-                  })
-                }
-                aria-label="Increase quantity"
-              >
-                +
-              </Button>
-            </div>
             <div className="flex flex-1 gap-2">
               <Button
                 variant="outline"
-                className="flex-1 h-10 rounded-full font-medium"
+                className="flex-1 h-11 rounded-full font-medium"
                 disabled={!isInStock}
                 onClick={() => {
                   pdpTracking.track('pdp_action_click', { action_type: 'add_to_cart', variant_id: selectedVariant.variant_id });
@@ -893,6 +871,20 @@ export function PdpContainer({
                 }}
               >
                 {!isInStock ? 'Out of stock' : actionsByType.add_to_cart || 'Add to Cart'}
+              </Button>
+              <Button
+                className="flex-[1.5] h-11 rounded-full bg-primary hover:bg-primary/90 font-medium"
+                disabled={!isInStock}
+                onClick={() => {
+                  pdpTracking.track('pdp_action_click', { action_type: 'buy_now', variant_id: selectedVariant.variant_id });
+                  dispatchPdpAction('buy_now', {
+                    variant: selectedVariant,
+                    quantity: resolvedQuantity,
+                    onBuyNow,
+                  });
+                }}
+              >
+                {!isInStock ? 'Out of stock' : actionsByType.buy_now || 'Buy Now'}
               </Button>
             </div>
           </div>
