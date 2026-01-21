@@ -190,6 +190,42 @@ function isRetryableQuoteError(err: any): boolean {
   )
 }
 
+function isQuoteDrift(err: any): boolean {
+  const code = String(err?.code || '').trim().toUpperCase()
+  return code === 'QUOTE_EXPIRED' || code === 'QUOTE_MISMATCH'
+}
+
+function isInventoryUnavailable(err: any): boolean {
+  const code = String(err?.code || '').trim().toUpperCase()
+  return code === 'OUT_OF_STOCK' || code === 'INSUFFICIENT_INVENTORY'
+}
+
+function extractInventoryIssue(err: any): {
+  variant_id?: string
+  requested_quantity?: number
+  available_quantity?: number
+} | null {
+  const d = err?.detail || null
+  const meta =
+    d?.error?.details?.details ||
+    d?.error?.details ||
+    d?.detail?.error?.details?.details ||
+    d?.detail?.error?.details ||
+    d?.details?.details ||
+    d?.details ||
+    null
+  if (!meta || typeof meta !== 'object') return null
+  const variant_id = String((meta as any)?.variant_id || '').trim() || undefined
+  const rqRaw = (meta as any)?.requested_quantity
+  const aqRaw = (meta as any)?.available_quantity
+  const requested_quantity =
+    typeof rqRaw === 'number' ? rqRaw : typeof rqRaw === 'string' ? Number(rqRaw) : undefined
+  const available_quantity =
+    typeof aqRaw === 'number' ? aqRaw : typeof aqRaw === 'string' ? Number(aqRaw) : undefined
+  if (!variant_id && requested_quantity == null && available_quantity == null) return null
+  return { variant_id, requested_quantity, available_quantity }
+}
+
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
@@ -303,6 +339,7 @@ function OrderFlowInner({
 
   // Prefill shipping details from a server-stored checkout intent (PII is never put into URL params).
   useEffect(() => {
+    if (step !== 'shipping') return
     const token = String(checkoutToken || '').trim() || null
     if (!token) return
 
@@ -345,7 +382,7 @@ function OrderFlowInner({
     return () => {
       cancelled = true
     }
-  }, [checkoutToken])
+  }, [checkoutToken, step])
 
   const buildQuoteRequest = (deliveryOptionOverride?: any) => {
     const quoteItems = items
@@ -405,7 +442,7 @@ function OrderFlowInner({
     }
   }
 
-  const refreshQuote = async (deliveryOptionOverride?: any) => {
+  const refreshQuote = async (deliveryOptionOverride?: any): Promise<QuotePreview> => {
     const quoteReq = buildQuoteRequest(deliveryOptionOverride ?? selectedDeliveryOption)
     if (!Array.isArray(quoteReq.items) || quoteReq.items.length !== items.length) {
       throw new Error('Some items are missing variant information and cannot be priced.')
@@ -424,17 +461,77 @@ function OrderFlowInner({
     } else {
       setSelectedDeliveryOption(null)
     }
+    return normalized
+  }
+
+  const refreshQuoteWithRetry = async (
+    deliveryOptionOverride?: any,
+  ): Promise<QuotePreview> => {
+    try {
+      setQuotePending(true)
+      return await refreshQuote(deliveryOptionOverride)
+    } catch (err: any) {
+      const code = String(err?.code || '').trim().toUpperCase()
+
+      if (isInventoryUnavailable(err)) {
+        const meta = extractInventoryIssue(err)
+        const itemTitle =
+          meta?.variant_id
+            ? items.find((it) => String(it.variant_id || '').trim() === meta.variant_id)?.title ||
+              null
+            : null
+        if (code === 'OUT_OF_STOCK') {
+          toast.error('Item is out of stock', {
+            description: itemTitle
+              ? `${itemTitle} is no longer available. Please update your cart.`
+              : 'Some items are no longer available. Please update your cart.',
+          })
+        } else {
+          const rq = meta?.requested_quantity
+          const aq = meta?.available_quantity
+          toast.error('Not enough stock available', {
+            description: itemTitle
+              ? `${itemTitle}${
+                  Number.isFinite(aq) ? ` (available: ${aq})` : ''
+                }${
+                  Number.isFinite(rq) ? ` (requested: ${rq})` : ''
+                }. Please adjust quantity and try again.`
+              : 'Please adjust quantity and try again.',
+          })
+        }
+        throw err
+      }
+
+      if (isRetryableQuoteError(err)) {
+        const msg =
+          code === 'UPSTREAM_TIMEOUT'
+            ? 'Store took too long to respond. Retrying…'
+            : code === 'TEMPORARY_UNAVAILABLE'
+              ? 'Checkout is busy. Retrying…'
+              : 'Retrying…'
+        toast.message(msg)
+        await sleep(1200)
+        return await refreshQuote(deliveryOptionOverride)
+      }
+
+      throw err
+    } finally {
+      setQuotePending(false)
+    }
   }
 
   // Helper to create order once and hydrate PSP/payment_action state
-  const createOrderIfNeeded = async (): Promise<string> => {
-    let orderId = createdOrderId
+  const createOrderIfNeeded = async (
+    quoteForOrder: QuotePreview,
+    options: { forceNew?: boolean } = {},
+  ): Promise<string> => {
+    let orderId = options.forceNew ? '' : createdOrderId
     if (orderId) return orderId
 
     const merchantId = items[0]?.merchant_id || getMerchantId()
 
     const lineItemPriceByVariant = new Map<string, number>()
-    for (const li of quote?.line_items || []) {
+    for (const li of quoteForOrder?.line_items || []) {
       if (!li?.variant_id) continue
       const price = Number((li as any).unit_price_effective)
       if (Number.isFinite(price)) lineItemPriceByVariant.set(li.variant_id, price)
@@ -443,8 +540,8 @@ function OrderFlowInner({
     const orderResponse = await createOrder({
       merchant_id: merchantId,
       customer_email: shipping.email,
-      currency,
-      ...(quote?.quote_id ? { quote_id: quote.quote_id } : {}),
+      currency: quoteForOrder.currency || currency,
+      ...(quoteForOrder?.quote_id ? { quote_id: quoteForOrder.quote_id } : {}),
       ...(selectedDeliveryOption ? { selected_delivery_option: selectedDeliveryOption } : {}),
       metadata: {
         ...(buyerRef ? { buyer_ref: buyerRef } : {}),
@@ -555,20 +652,25 @@ function OrderFlowInner({
       setPspUsed(null)
 
       try {
-        await refreshQuote()
+        await refreshQuoteWithRetry()
       } catch (err: any) {
-        if (isRetryableQuoteError(err)) {
-          toast.message('Pricing is busy. Retrying…')
-          await sleep(1200)
-          await refreshQuote()
-        } else {
-          throw err
+        if (isInventoryUnavailable(err)) {
+          if (onFailure) onFailure({ reason: 'action_required', stage: 'shipping' })
+          return
         }
+        throw err
       }
       setStep('payment')
     } catch (err: any) {
       console.error('Create order error:', err)
-      toast.error(err?.message || 'Failed to calculate pricing')
+      const code = String(err?.code || '').trim().toUpperCase()
+      const fallback =
+        code === 'TEMPORARY_UNAVAILABLE'
+          ? 'Service is temporarily busy. Please retry in a few seconds.'
+          : code === 'UPSTREAM_TIMEOUT'
+            ? 'The store took too long to respond. Please try again.'
+            : err?.message || 'Failed to calculate pricing'
+      toast.error(fallback)
       if (onFailure) onFailure({ reason: 'system_error', stage: 'shipping' })
     } finally {
       setIsProcessing(false)
@@ -587,9 +689,39 @@ function OrderFlowInner({
         throw new Error('Please enter your shipping address to calculate totals before paying.')
       }
 
-      const runPayment = async () => {
+      const runPayment = async (quoteOverride?: QuotePreview) => {
+        let quoteForPayment = quoteOverride || quote
+        if (!quoteForPayment || !quoteForPayment.quote_id) {
+          throw new Error('Please enter your shipping address to calculate totals before paying.')
+        }
+
+        let quoteDriftFixed = false
+        const resetForRequote = () => {
+          setCreatedOrderId('')
+          setInitialPaymentAction(null)
+          setPaymentActionType(null)
+          setPspUsed(null)
+        }
+
         // Step 1: Create order if not already created
-        const orderId = await createOrderIfNeeded()
+        let orderId = ''
+        try {
+          orderId = await createOrderIfNeeded(quoteForPayment)
+        } catch (err: any) {
+          if (isInventoryUnavailable(err)) {
+            if (onFailure) onFailure({ reason: 'action_required', stage: 'payment' })
+            throw err
+          }
+          if (isQuoteDrift(err) && !quoteDriftFixed) {
+            quoteDriftFixed = true
+            toast.message('Pricing updated. Refreshing totals…')
+            resetForRequote()
+            quoteForPayment = await refreshQuoteWithRetry()
+            orderId = await createOrderIfNeeded(quoteForPayment, { forceNew: true })
+          } else {
+            throw err
+          }
+        }
         
         // Step 2: Create/confirm payment intent via gateway
         const postPayReturnUrl =
@@ -598,15 +730,39 @@ function OrderFlowInner({
                 returnUrl ? `&return=${encodeURIComponent(returnUrl)}` : ''
               }`
             : undefined
-        const paymentResponse = await processPayment({
-          order_id: orderId,
-          total_amount: total,
-          currency,
-          payment_method: {
-            type: 'card'
-          },
-          return_url: postPayReturnUrl
-        })
+        let paymentResponse: any
+        try {
+          paymentResponse = await processPayment({
+            order_id: orderId,
+            total_amount: Number(quoteForPayment.pricing.total) || total,
+            currency: String(quoteForPayment.currency || currency || 'USD'),
+            payment_method: {
+              type: 'card',
+            },
+            return_url: postPayReturnUrl,
+          })
+        } catch (err: any) {
+          if (isInventoryUnavailable(err)) {
+            if (onFailure) onFailure({ reason: 'action_required', stage: 'payment' })
+            throw err
+          }
+          if (isQuoteDrift(err) && !quoteDriftFixed) {
+            quoteDriftFixed = true
+            toast.message('Pricing updated. Refreshing totals…')
+            resetForRequote()
+            quoteForPayment = await refreshQuoteWithRetry()
+            orderId = await createOrderIfNeeded(quoteForPayment, { forceNew: true })
+            paymentResponse = await processPayment({
+              order_id: orderId,
+              total_amount: Number(quoteForPayment.pricing.total) || total,
+              currency: String(quoteForPayment.currency || currency || 'USD'),
+              payment_method: { type: 'card' },
+              return_url: postPayReturnUrl,
+            })
+          } else {
+            throw err
+          }
+        }
 
         console.log('submit_payment response', paymentResponse)
 
@@ -812,7 +968,7 @@ function OrderFlowInner({
         await runPayment()
       } catch (err: any) {
         if (isTemporaryUnavailable(err)) {
-          toast.message('Temporary service issue. Retrying…')
+          toast.message('Checkout is busy. Retrying…')
           await sleep(1500)
           await runPayment()
         } else {
@@ -821,8 +977,30 @@ function OrderFlowInner({
       }
     } catch (error: any) {
       console.error('Payment error:', error)
-      toast.error(error.message || 'Payment failed. Please try again.')
-      if (onFailure) onFailure({ reason: 'payment_failed', stage: 'payment' })
+      const code = String(error?.code || '').trim().toUpperCase()
+      const isActionRequired = isInventoryUnavailable(error)
+      const isSystem =
+        code === 'TEMPORARY_UNAVAILABLE' ||
+        code === 'UPSTREAM_TIMEOUT' ||
+        code === 'SHOPIFY_PRICING_UNAVAILABLE'
+      toast.error(
+        error?.message ||
+          (isActionRequired
+            ? 'Some items are no longer available. Please update your cart.'
+            : isSystem
+              ? 'Checkout service is temporarily unavailable. Please try again.'
+              : 'Payment failed. Please try again.'),
+      )
+      if (onFailure) {
+        onFailure({
+          reason: isActionRequired
+            ? 'action_required'
+            : isSystem
+              ? 'system_error'
+              : 'payment_failed',
+          stage: 'payment',
+        })
+      }
     } finally {
       setIsProcessing(false)
     }
@@ -1136,13 +1314,14 @@ function OrderFlowInner({
                     const opt = deliveryOptions[idx]
                     if (!opt) return
                     try {
-                      setQuotePending(true)
-                      await refreshQuote(opt)
+                      await refreshQuoteWithRetry(opt)
                     } catch (err: any) {
                       console.error('refreshQuote failed', err)
+                      if (isInventoryUnavailable(err)) {
+                        if (onFailure) onFailure({ reason: 'action_required', stage: 'payment' })
+                        return
+                      }
                       toast.error(err?.message || 'Failed to update shipping option')
-                    } finally {
-                      setQuotePending(false)
                     }
                   }}
                 >

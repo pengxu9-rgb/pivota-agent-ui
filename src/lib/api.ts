@@ -13,6 +13,39 @@ const ACCOUNTS_BASE =
 
 type ApiError = Error & { code?: string; status?: number; detail?: any };
 
+function friendlyMessageForCode(args: {
+  code?: string | null;
+  operation?: string | null;
+  details?: any;
+}): string | null {
+  const code = String(args.code || '').trim().toUpperCase();
+  const op = String(args.operation || '').trim();
+  const opSuffix = op ? ` (${op})` : '';
+
+  if (!code) return null;
+
+  if (code === 'TEMPORARY_UNAVAILABLE') {
+    return `Service is temporarily busy${opSuffix}. Please retry in a few seconds.`;
+  }
+  if (code === 'UPSTREAM_TIMEOUT') {
+    return `The request timed out${opSuffix}. Please retry.`;
+  }
+  if (code === 'QUOTE_EXPIRED') {
+    return `Your quote expired${opSuffix}. Please retry to refresh totals.`;
+  }
+  if (code === 'QUOTE_MISMATCH') {
+    return `Checkout details changed${opSuffix}. Please retry to refresh totals.`;
+  }
+  if (code === 'OUT_OF_STOCK') {
+    return `Some items are out of stock${opSuffix}. Please update your cart and try again.`;
+  }
+  if (code === 'INSUFFICIENT_INVENTORY') {
+    return `Some items don’t have enough stock${opSuffix}. Please adjust quantity and try again.`;
+  }
+
+  return null;
+}
+
 // Merchant is provided via env or can be overridden at runtime (e.g., via query param / localStorage).
 export function getMerchantId(overrideId?: string): string {
   if (overrideId) return overrideId;
@@ -297,7 +330,10 @@ async function callGateway(body: InvokeBody) {
         : null) ||
       null;
 
-    const operation = (errorData as any)?.operation;
+    const operation =
+      (errorData as any)?.operation ||
+      (body as any)?.operation ||
+      null;
     const friendlyTopError =
       typeof topError === 'string'
         ? topError === 'UPSTREAM_TIMEOUT'
@@ -308,7 +344,7 @@ async function callGateway(body: InvokeBody) {
               ? `${topError} (${operation})`
               : topError
         : null;
-    const messageCandidate =
+    let messageCandidate =
       (typeof details?.message === 'string' && details.message) ||
       (typeof gatewayError?.details?.message === 'string' && gatewayError.details.message) ||
       (typeof gatewayError?.message === 'string' && gatewayError.message) ||
@@ -320,6 +356,15 @@ async function callGateway(body: InvokeBody) {
     err.code = codeCandidate || undefined;
     err.status = res.status;
     err.detail = errorData;
+
+    const friendly = friendlyMessageForCode({
+      code: err.code,
+      operation,
+      details,
+    });
+    if (friendly) {
+      err.message = friendly;
+    }
     throw err;
   }
 
