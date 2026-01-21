@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Image from 'next/image';
-import { ChevronLeft, Heart, MessageCircle, Share2, Star } from 'lucide-react';
+import { ChevronLeft, Share2, Star } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type {
   MediaGalleryData,
@@ -56,11 +56,6 @@ function formatPrice(amount: number, currency: string) {
   } catch {
     return `$${n.toFixed(2)}`;
   }
-}
-
-function formatCount(count: number) {
-  if (count >= 1000) return `${(count / 1000).toFixed(1)}k`;
-  return `${count}`;
 }
 
 function StarRating({ value }: { value: number }) {
@@ -920,33 +915,6 @@ export function PdpContainer({
                   ) : null}
 
                   <div className="flex items-center gap-3 px-3 py-2.5">
-                    <div className="flex gap-1.5">
-                      <button
-                        onClick={() => pdpTracking.track('pdp_action_click', { action_type: 'favorite' })}
-                        className="flex flex-col items-center gap-0.5 px-1.5"
-                        aria-label="Save"
-                      >
-                        <Heart className="h-5 w-5 text-muted-foreground" />
-                        <span className="text-[10px] text-muted-foreground">{formatCount(13000)}</span>
-                      </button>
-                      <button
-                        onClick={handleShare}
-                        className="flex flex-col items-center gap-0.5 px-1.5"
-                        aria-label="Share"
-                      >
-                        <Share2 className="h-5 w-5 text-muted-foreground" />
-                        <span className="text-[10px] text-muted-foreground">Share</span>
-                      </button>
-                      <button
-                        onClick={() => pdpTracking.track('pdp_action_click', { action_type: 'ask' })}
-                        className="flex flex-col items-center gap-0.5 px-1.5"
-                        aria-label="Chat"
-                      >
-                        <MessageCircle className="h-5 w-5 text-muted-foreground" />
-                        <span className="text-[10px] text-muted-foreground">Chat</span>
-                      </button>
-                    </div>
-
                     <div className="flex flex-1 gap-2">
                       <Button
                         variant="outline"
@@ -961,7 +929,7 @@ export function PdpContainer({
                           });
                         }}
                       >
-                        {!isInStock ? 'Out of stock' : actionsByType.add_to_cart || 'Add to Cart'}
+                        {actionsByType.add_to_cart || 'Add to Cart'}
                       </Button>
                       <Button
                         className="flex-[1.5] h-10 rounded-full bg-primary hover:bg-primary/90 font-semibold text-sm"
@@ -975,7 +943,7 @@ export function PdpContainer({
                           });
                         }}
                       >
-                        {!isInStock ? 'Out of stock' : actionsByType.buy_now || 'Buy Now'}
+                        {actionsByType.buy_now || 'Buy Now'}
                       </Button>
                     </div>
                   </div>
