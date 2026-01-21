@@ -139,6 +139,7 @@ export default function BrowseHistoryPage() {
               >
                 <ProductCard
                   product_id={item.product_id}
+                  merchant_id={item.merchant_id}
                   title={item.title}
                   price={item.price}
                   image={item.image}

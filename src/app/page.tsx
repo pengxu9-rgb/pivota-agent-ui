@@ -8,7 +8,6 @@ import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import ChatSidebar from '@/components/chat/ChatSidebar';
-import { ChatRecommendationCard } from '@/components/product/ChatRecommendationCard';
 import { useCartStore } from '@/store/cartStore';
 import { useAuthStore } from '@/store/authStore';
 import { useChatStore } from '@/store/chatStore';
@@ -247,21 +246,89 @@ export default function HomePage() {
                       <p className="text-[11px] text-primary-foreground/80">
                         Recommended pieces based on this chat:
                       </p>
-                      <div className="flex gap-3 overflow-x-auto pb-1">
-                        {message.products.map((product, productIdx) => (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                        {message.products.map((product, productIdx) => {
+                        const isExternal = Boolean(product.external_redirect_url);
+                        const cardHref = isExternal
+                          ? product.external_redirect_url || '#'
+                          : product.merchant_id
+                            ? `/products/${product.product_id}?merchant_id=${product.merchant_id}`
+                            : `/products/${product.product_id}`;
+                        return (
                           <motion.div
                             key={product.product_id}
-                            initial={{ opacity: 0, scale: 0.95 }}
+                            initial={{ opacity: 0, scale: 0.9 }}
                             animate={{ opacity: 1, scale: 1 }}
-                            transition={{ delay: productIdx * 0.04 }}
-                            className="w-[220px] flex-shrink-0"
+                            transition={{ delay: productIdx * 0.1 }}
+                            className="group relative bg-card backdrop-blur-xl rounded-2xl overflow-hidden border border-border shadow-md hover:shadow-lg hover:scale-[1.02] transition-all duration-300"
                           >
-                            <ChatRecommendationCard
-                              product={product as ProductResponse}
-                              onAddToCart={handleAddToCart}
-                            />
+                            <Link
+                              href={cardHref}
+                              target={isExternal ? '_blank' : undefined}
+                              rel={isExternal ? 'noreferrer' : undefined}
+                              className="block"
+                            >
+                              <div className="relative w-full aspect-[3/4] overflow-hidden bg-white">
+                                <Image
+                                  src={product.image_url || '/placeholder.svg'}
+                                  alt={product.title}
+                                  fill
+                                  className="object-cover group-hover:scale-105 transition-transform duration-300"
+                                  unoptimized
+                                />
+                              </div>
+                            </Link>
+
+                            <div className="p-4 flex flex-col gap-2">
+                              <Link
+                                href={cardHref}
+                                target={isExternal ? '_blank' : undefined}
+                                rel={isExternal ? 'noreferrer' : undefined}
+                              >
+                                <h4 className="font-semibold text-base mb-1 line-clamp-2 min-h-[2.5rem] text-foreground group-hover:text-primary transition-colors">
+                                  {product.title}
+                                </h4>
+                              </Link>
+
+                              {product.merchant_name && (
+                                <span className="text-xs text-muted-foreground line-clamp-1">
+                                  {product.merchant_name}
+                                </span>
+                              )}
+
+                              <div className="flex items-center justify-between">
+                                <span className="text-lg font-bold text-primary">
+                                  ${typeof product.price === 'number' ? product.price.toFixed(2) : product.price}
+                                </span>
+                              </div>
+
+                              {isExternal ? (
+                                <Button
+                                  variant="default"
+                                  size="sm"
+                                  onClick={() => {
+                                    if (product.external_redirect_url) {
+                                      window.open(product.external_redirect_url, '_blank', 'noopener,noreferrer');
+                                    }
+                                  }}
+                                  className="w-full h-9 text-xs font-medium"
+                                >
+                                  Open
+                                </Button>
+                              ) : (
+                                <Button
+                                  variant="default"
+                                  size="sm"
+                                  onClick={() => handleAddToCart(product)}
+                                  className="w-full h-9 text-xs font-medium"
+                                >
+                                  Add to Cart
+                                </Button>
+                              )}
+                            </div>
                           </motion.div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </div>
                   )}
@@ -302,10 +369,17 @@ export default function HomePage() {
               <div className="overflow-x-auto pb-2 -mx-2 px-2">
                 <div className="flex gap-3 min-w-max">
                   {hotDeals.length > 0 ? (
-                    hotDeals.map((product) => (
+                    hotDeals.map((product) => {
+                      const isExternal = Boolean(product.external_redirect_url);
+                      const cardHref = isExternal
+                        ? product.external_redirect_url || '#'
+                        : `/products/${product.product_id}`;
+                      return (
                       <Link
                         key={product.product_id}
-                        href={`/products/${product.product_id}`}
+                        href={cardHref}
+                        target={isExternal ? '_blank' : undefined}
+                        rel={isExternal ? 'noreferrer' : undefined}
                         className="flex-shrink-0 w-24 group"
                       >
                         <div className="relative aspect-square rounded-2xl overflow-hidden mb-2 ring-1 ring-border group-hover:ring-primary transition-all">
@@ -322,7 +396,8 @@ export default function HomePage() {
                         </p>
                         <p className="text-xs font-semibold">${typeof product.price === 'number' ? product.price.toFixed(2) : product.price}</p>
                       </Link>
-                    ))
+                      );
+                    })
                   ) : (
                     <p className="text-xs text-muted-foreground">Loading products...</p>
                   )}

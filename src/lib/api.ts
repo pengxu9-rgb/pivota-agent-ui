@@ -58,6 +58,10 @@ export interface ProductResponse {
   product_id: string;
   merchant_id?: string;
   merchant_name?: string;
+  external_redirect_url?: string;
+  external_seed_id?: string;
+  source?: string;
+  disclosure_text?: string;
   platform?: string;
   platform_product_id?: string;
   // Some backends include a "primary" variant id / sku id at the product level.
@@ -77,11 +81,20 @@ export interface ProductResponse {
   image_url?: string;
   category?: string;
   in_stock: boolean;
+  product_type?: string;
+  tags?: string[];
+  department?: string;
+  brand?: string;
+  images?: any[];
+  media?: any[];
   variants?: any[];
+  review_summary?: any;
+  shipping?: any;
+  returns?: any;
+  raw_detail?: any;
   attributes?: any;
   options?: any[] | null;
   product_options?: any[] | null;
-  review_summary?: any;
   seller_feedback_summary?: any;
 }
 
@@ -141,6 +154,17 @@ function normalizeProduct(
       ? anyP.description
       : anyP.description?.text || '';
 
+  const images = Array.isArray(anyP.images)
+    ? anyP.images
+    : Array.isArray(anyP.image_urls)
+      ? anyP.image_urls
+      : undefined;
+
+  const media = Array.isArray(anyP.media) ? anyP.media : undefined;
+  const variants = Array.isArray(anyP.variants) ? anyP.variants : undefined;
+  const reviewSummary =
+    anyP.review_summary || anyP.reviews_summary || anyP.reviews?.summary;
+
   return {
     product_id: anyP.product_id || anyP.id,
     merchant_id:
@@ -149,6 +173,13 @@ function normalizeProduct(
       anyP.merchant_uuid ||
       anyP.store_id,
     merchant_name: anyP.merchant_name || anyP.store_name,
+    external_redirect_url:
+      anyP.external_redirect_url ||
+      anyP.redirect_url ||
+      anyP.action?.redirect_url,
+    external_seed_id: anyP.external_seed_id || anyP.seed_id,
+    source: anyP.source,
+    disclosure_text: anyP.disclosure_text,
     platform: anyP.platform,
     platform_product_id: anyP.platform_product_id || anyP.product_id || anyP.id,
     variant_id:
@@ -178,11 +209,20 @@ function normalizeProduct(
             anyP.quantity ||
             anyP.stock ||
             0) > 0,
-    variants: anyP.variants,
+    product_type: anyP.product_type,
+    tags: Array.isArray(anyP.tags) ? anyP.tags : undefined,
+    department: anyP.department,
+    brand: anyP.brand?.name || anyP.brand,
+    images,
+    media,
+    variants,
+    review_summary: reviewSummary,
+    shipping: anyP.shipping,
+    returns: anyP.returns,
+    raw_detail: anyP,
     attributes: anyP.attributes,
     options: anyP.options ?? null,
     product_options: anyP.product_options ?? null,
-    review_summary: anyP.review_summary,
     seller_feedback_summary: anyP.seller_feedback_summary,
   };
 }

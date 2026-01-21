@@ -1,19 +1,19 @@
 'use client';
 
-import { Star } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { GlassCard } from '@/components/ui/glass-card';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { useCartStore } from '@/store/cartStore';
 import { toast } from 'sonner';
 
 interface ProductCardProps {
   product_id: string;
   merchant_id?: string;
+  merchant_name?: string;
   variant_id?: string;
   sku?: string;
+  external_redirect_url?: string;
   title: string;
   price: number;
   currency?: string;
@@ -26,8 +26,10 @@ interface ProductCardProps {
 export default function ProductCard({
   product_id,
   merchant_id,
+  merchant_name,
   variant_id,
   sku,
+  external_redirect_url,
   title,
   price,
   currency,
@@ -37,15 +39,18 @@ export default function ProductCard({
   onAddToCart,
 }: ProductCardProps) {
   const { addItem } = useCartStore();
+  const isExternal = Boolean(external_redirect_url);
 
-  const href = merchant_id
-    ? `/products/${product_id}?merchant_id=${merchant_id}`
-    : `/products/${product_id}`;
+  const href = isExternal
+    ? external_redirect_url || '#'
+    : merchant_id
+      ? `/products/${product_id}?merchant_id=${merchant_id}`
+      : `/products/${product_id}`;
 
   const handleAddToCart = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    
+
     if (onAddToCart) {
       onAddToCart();
     } else {
@@ -69,6 +74,14 @@ export default function ProductCard({
     }
   };
 
+  const handleOpenExternal = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (external_redirect_url) {
+      window.open(external_redirect_url, '_blank', 'noopener,noreferrer');
+    }
+  };
+
   const handleBuyNow = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -78,7 +91,11 @@ export default function ProductCard({
   };
 
   return (
-    <Link href={href}>
+    <Link
+      href={href}
+      target={isExternal ? '_blank' : undefined}
+      rel={isExternal ? 'noreferrer' : undefined}
+    >
       <GlassCard className="p-0 overflow-hidden group hover:shadow-glass-hover transition-all duration-300 hover:scale-[1.02]">
         <div className="relative aspect-[3/4] overflow-hidden bg-muted/30">
           <Image
@@ -89,36 +106,55 @@ export default function ProductCard({
             unoptimized
           />
         </div>
-        
+
         <div className="p-3 space-y-2">
           <h3 className="font-medium text-sm line-clamp-2 group-hover:text-primary transition-colors">
             {title}
           </h3>
-          
+
+          {merchant_name && (
+            <p className="text-xs text-muted-foreground line-clamp-1">
+              {merchant_name}
+            </p>
+          )}
+
           {description && (
             <p className="text-xs text-muted-foreground line-clamp-2">{description}</p>
           )}
-          
+
           <div className="text-lg font-bold text-primary">${price.toFixed(2)}</div>
-          
+
           <div className="flex gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleAddToCart}
-              className="flex-1"
-            >
-              Add to Cart
-            </Button>
-            {onBuy && (
+            {isExternal ? (
               <Button
                 variant="gradient"
                 size="sm"
-                onClick={handleBuyNow}
+                onClick={handleOpenExternal}
                 className="flex-1"
               >
-                Buy Now
+                Open
               </Button>
+            ) : (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleAddToCart}
+                  className="flex-1"
+                >
+                  Add to Cart
+                </Button>
+                {onBuy && (
+                  <Button
+                    variant="gradient"
+                    size="sm"
+                    onClick={handleBuyNow}
+                    className="flex-1"
+                  >
+                    Buy Now
+                  </Button>
+                )}
+              </>
             )}
           </div>
         </div>

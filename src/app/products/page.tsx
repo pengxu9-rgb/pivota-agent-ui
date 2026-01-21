@@ -169,18 +169,18 @@ export default function ProductsPage() {
                     : null;
                 const variantId =
                   String(
-                    product.variant_id ||
+                    (product as any).variant_id ||
                       (defaultVariant as any)?.variant_id ||
                       (defaultVariant as any)?.id ||
-                      product.product_ref?.variant_id ||
+                      (product as any).product_ref?.variant_id ||
                       '',
                   ).trim() || undefined;
                 const sku =
                   String(
                     (defaultVariant as any)?.sku ||
                       (defaultVariant as any)?.sku_id ||
-                      product.sku ||
-                      product.sku_id ||
+                      (product as any).sku ||
+                      (product as any).sku_id ||
                       '',
                   ).trim() || undefined;
 
@@ -195,8 +195,10 @@ export default function ProductsPage() {
                     <ProductCard
                       product_id={product.product_id}
                       merchant_id={product.merchant_id}
+                      merchant_name={product.merchant_name}
                       variant_id={variantId}
                       sku={sku}
+                      external_redirect_url={product.external_redirect_url}
                       title={product.title}
                       price={product.price}
                       currency={product.currency}
