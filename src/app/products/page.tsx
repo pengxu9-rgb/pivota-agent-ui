@@ -11,10 +11,67 @@ import { useCartStore } from '@/store/cartStore';
 import { sendMessage, getAllProducts, type ProductResponse } from '@/lib/api';
 import { toast } from 'sonner';
 
+const FALLBACK_TRENDS = ['Hoodies', 'Water Bottles', 'Tech'] as const;
+const GENERIC_CATEGORIES = new Set([
+  'general',
+  'misc',
+  'miscellaneous',
+  'other',
+  'unknown',
+  'default',
+]);
+
+function normalizeCategoryLabel(raw: unknown): string | null {
+  const value = typeof raw === 'string' ? raw : '';
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  const parts = trimmed
+    .split(/[/>|,]/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const leaf = parts.length > 0 ? parts[parts.length - 1] : trimmed;
+  const label = leaf.replace(/\s+/g, ' ').trim();
+  if (!label) return null;
+
+  const key = label.toLowerCase();
+  if (GENERIC_CATEGORIES.has(key)) return null;
+  if (label.length > 28) return null;
+
+  return label;
+}
+
+function deriveTrendingCategories(
+  products: ProductResponse[],
+  limit = 5,
+): string[] {
+  const counts = new Map<string, { label: string; count: number }>();
+
+  for (const product of products) {
+    const label = normalizeCategoryLabel(product.category);
+    if (!label) continue;
+
+    const key = label.toLowerCase();
+    const existing = counts.get(key);
+    if (existing) {
+      existing.count += 1;
+    } else {
+      counts.set(key, { label, count: 1 });
+    }
+  }
+
+  const sorted = Array.from(counts.values())
+    .sort((a, b) => b.count - a.count)
+    .map((item) => item.label);
+
+  return (sorted.length ? sorted : [...FALLBACK_TRENDS]).slice(0, limit);
+}
+
 export default function ProductsPage() {
   const [products, setProducts] = useState<ProductResponse[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(false);
+  const [trends, setTrends] = useState<string[]>([...FALLBACK_TRENDS]);
   const { items, open } = useCartStore();
 
   const itemCount = items.reduce((acc, item) => acc + item.quantity, 0);
@@ -28,10 +85,12 @@ export default function ProductsPage() {
     try {
       const data = await getAllProducts(48);
       setProducts(data);
+      setTrends(deriveTrendingCategories(data));
     } catch (error) {
       console.error('Failed to load products:', error);
       toast.error('Unable to load products. Please try again.');
       setProducts([]);
+      setTrends([...FALLBACK_TRENDS]);
     } finally {
       setLoading(false);
     }
@@ -126,7 +185,7 @@ export default function ProductsPage() {
           {/* Trending */}
           <div className="mt-4 flex items-center gap-3 flex-wrap">
             <span className="text-sm text-muted-foreground">Trending:</span>
-            {['Hoodies', 'Water Bottles', 'Tech'].map((trend) => (
+            {trends.map((trend) => (
               <Badge
                 key={trend}
                 variant="gradient"
