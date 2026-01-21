@@ -32,10 +32,23 @@ export default function ProductDetailPage({ params }: Props) {
 
   useEffect(() => {
     let cancelled = false;
+    const cacheKey = `pdp-cache:${merchantIdParam || 'default'}:${id}`;
 
     const loadProduct = async () => {
       setLoading(true);
       setError(null);
+      try {
+        const cached = sessionStorage.getItem(cacheKey);
+        if (cached) {
+          const parsed = JSON.parse(cached) as ProductResponse;
+          if (!cancelled) {
+            setProduct(parsed);
+            setLoading(false);
+          }
+        }
+      } catch {
+        // ignore cache failures
+      }
       try {
         const data = await getProductDetail(id, merchantIdParam);
         if (!data) {
@@ -49,6 +62,11 @@ export default function ProductDetailPage({ params }: Props) {
         if (cancelled) return;
         setProduct(data);
         setLoading(false);
+        try {
+          sessionStorage.setItem(cacheKey, JSON.stringify(data));
+        } catch {
+          // ignore cache failures
+        }
 
         void (async () => {
           try {
@@ -169,9 +187,9 @@ export default function ProductDetailPage({ params }: Props) {
     router.push(`/reviews/write?${params.toString()}`);
   };
 
-  if (loading) {
+  if (loading && !product) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-mesh">
+      <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="animate-pulse flex flex-col items-center gap-4">
           <div className="h-12 w-12 rounded-full bg-muted/20" />
           <div className="h-4 w-32 rounded bg-muted/20" />
@@ -182,7 +200,7 @@ export default function ProductDetailPage({ params }: Props) {
 
   if (error || !pdpPayload) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-mesh px-6">
+      <div className="min-h-screen flex items-center justify-center bg-background px-6">
         <div className="w-full max-w-md rounded-3xl border border-border bg-card/70 backdrop-blur p-6 text-center">
           <div className="text-lg font-semibold">Failed to load product</div>
           <div className="mt-2 text-sm text-muted-foreground">{error || 'Product unavailable'}</div>
@@ -208,7 +226,7 @@ export default function ProductDetailPage({ params }: Props) {
   const Container = resolvedMode === 'beauty' ? BeautyPDPContainer : GenericPDPContainer;
 
   return (
-    <div className="min-h-screen bg-gradient-mesh">
+    <div className="min-h-screen bg-background">
       <main className="px-0 py-0">
         <Container
           payload={pdpPayload}

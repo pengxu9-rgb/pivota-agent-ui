@@ -215,7 +215,7 @@ export function PdpContainer({
   }, {});
   const headerHeight = 44;
   const navRowHeight = navVisible ? 36 : 0;
-  const scrollMarginTop = headerHeight + navRowHeight + 12;
+  const scrollMarginTop = headerHeight + navRowHeight + 14;
 
   const hasReviews = !!reviews;
   const hasRecommendations = !!recommendations?.items?.length;
@@ -250,7 +250,7 @@ export function PdpContainer({
     const updateNavVisibility = () => {
       if (frame) cancelAnimationFrame(frame);
       frame = window.requestAnimationFrame(() => {
-        const nextVisible = window.scrollY >= window.innerHeight * 0.9;
+        const nextVisible = window.scrollY >= window.innerHeight * 1.2;
         setNavVisible(nextVisible);
       });
     };
@@ -270,7 +270,7 @@ export function PdpContainer({
     const updateActive = () => {
       if (frame) cancelAnimationFrame(frame);
       frame = window.requestAnimationFrame(() => {
-        const offset = headerHeight + (navVisible ? 36 : 0) + 8;
+        const offset = headerHeight + (navVisible ? 36 : 0) + 10;
         const entries = tabs
           .map((tab) => {
             const node = sectionRefs.current[tab.id];
@@ -387,7 +387,7 @@ export function PdpContainer({
   const showTrustBadges = resolvedMode === 'beauty' && trustBadges.length > 0;
 
   return (
-    <div className="relative min-h-screen bg-background pb-32 lovable-pdp">
+    <div className="relative min-h-screen bg-background pb-[calc(120px+env(safe-area-inset-bottom,0px))] lovable-pdp">
       <div
         className={cn(
           'fixed left-0 right-0 z-50 transition-colors',
@@ -399,7 +399,7 @@ export function PdpContainer({
           <button
             type="button"
             onClick={handleBack}
-            className="h-9 w-9 rounded-full border border-border bg-card/90 backdrop-blur flex items-center justify-center shadow-sm"
+            className="h-9 w-9 rounded-full border border-border bg-white/90 flex items-center justify-center"
             aria-label="Go back"
           >
             <ChevronLeft className="h-4 w-4 text-foreground" />
@@ -411,14 +411,14 @@ export function PdpContainer({
                 value={searchQuery}
                 onChange={(event) => setSearchQuery(event.target.value)}
                 placeholder="Search"
-                className="w-full h-8 rounded-full border border-border bg-card/90 px-3 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+                className="w-full h-8 rounded-full border border-border/70 bg-muted/40 px-3 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
               />
             </div>
           ) : null}
           <button
             type="button"
             onClick={handleShare}
-            className="h-9 w-9 rounded-full border border-border bg-card/90 backdrop-blur flex items-center justify-center shadow-sm ml-auto"
+            className="h-9 w-9 rounded-full border border-border bg-white/90 flex items-center justify-center ml-auto"
             aria-label="Share"
           >
             <Share2 className="h-4 w-4 text-foreground" />
@@ -455,7 +455,7 @@ export function PdpContainer({
           }}
           style={{ scrollMarginTop }}
         >
-          <div className="pb-3">
+          <div className="pb-2">
             <div className="relative">
               <MediaGallery
                 data={galleryData}
@@ -576,9 +576,9 @@ export function PdpContainer({
               </div>
             ) : null}
 
-            <div className="px-3 py-1.5">
+            <div className="px-3 py-1">
               <div className="flex items-baseline gap-2 flex-wrap">
-                <span className="text-base font-bold text-foreground">{formatPrice(priceAmount, currency)}</span>
+                <span className="text-[26px] font-semibold text-foreground leading-none">{formatPrice(priceAmount, currency)}</span>
                 {!isInStock ? (
                   <span className="rounded-full border border-red-200 bg-red-50 px-2 py-0.5 text-[10px] font-medium text-red-700">
                     Out of stock
@@ -596,14 +596,14 @@ export function PdpContainer({
                 ) : null}
               </div>
 
-              <h1 className="mt-1 text-base font-semibold leading-snug">
+              <h1 className="mt-1 text-[17px] font-semibold leading-snug text-foreground">
                 {payload.product.brand?.name ? `${payload.product.brand.name} ` : ''}{payload.product.title}
               </h1>
               {payload.product.subtitle ? (
                 <p className="mt-0.5 text-[11px] text-muted-foreground">{payload.product.subtitle}</p>
               ) : null}
               {variants.length > 1 ? (
-                <div className="mt-0.5 text-[11px] text-muted-foreground">
+                <div className="mt-0.5 text-xs text-muted-foreground">
                   Selected: <span className="text-foreground">{selectedVariant?.title}</span>
                 </div>
               ) : null}
@@ -614,8 +614,8 @@ export function PdpContainer({
                   onClick={() => handleTabChange('reviews')}
                 >
                   <StarRating value={(reviews.rating / reviews.scale) * 5} />
-                  <span className="text-[11px] font-medium">{reviews.rating.toFixed(1)}</span>
-                  <span className="text-[11px] text-muted-foreground">({reviews.review_count})</span>
+                  <span className="text-xs font-medium">{reviews.rating.toFixed(1)}</span>
+                  <span className="text-xs text-muted-foreground">({reviews.review_count})</span>
                 </button>
               ) : null}
 
@@ -648,7 +648,7 @@ export function PdpContainer({
               {resolvedMode === 'generic' && sizeOptions.length ? (
                 <div className="mt-2">
                   <div className="flex items-center justify-between">
-                    <div className="text-xs font-medium">Size</div>
+                    <div className="text-xs font-semibold">Size</div>
                     <div className="text-[11px] text-muted-foreground">Select a size</div>
                   </div>
                   <div className="mt-1.5 flex flex-wrap gap-1.5">
@@ -661,7 +661,7 @@ export function PdpContainer({
                           className={cn(
                             'rounded-full border px-3 py-1 text-xs transition-colors',
                             isSelected
-                              ? 'border-primary bg-primary/10 text-primary ring-1 ring-primary/40'
+                              ? 'border-primary bg-primary/15 text-primary ring-1 ring-primary/50'
                               : 'border-border hover:border-primary/50',
                           )}
                         >
@@ -887,9 +887,9 @@ export function PdpContainer({
         ) : null}
       </div>
 
-      <div className="fixed bottom-0 left-0 right-0 z-40">
+      <div className="fixed bottom-0 left-0 right-0 z-[60]">
         <div className="mx-auto max-w-md px-3">
-          <div className="rounded-2xl border border-border bg-card/95 shadow-lg backdrop-blur safe-area-bottom overflow-hidden mb-2">
+          <div className="rounded-2xl border border-border bg-white shadow-[0_-6px_18px_rgba(0,0,0,0.08)] safe-area-bottom overflow-hidden mb-2">
             {pricePromo?.promotions?.length ? (
               <div className="flex items-center justify-between px-4 py-2 bg-primary/5 text-xs">
                 <span className="flex items-center gap-2">
@@ -933,7 +933,7 @@ export function PdpContainer({
               <div className="flex flex-1 gap-2">
                 <Button
                   variant="outline"
-                  className="flex-1 h-10 rounded-full font-medium text-sm"
+                  className="flex-1 h-10 rounded-full font-semibold text-sm"
                   disabled={!isInStock}
                   onClick={() => {
                     pdpTracking.track('pdp_action_click', { action_type: 'add_to_cart', variant_id: selectedVariant.variant_id });
@@ -947,7 +947,7 @@ export function PdpContainer({
                   {!isInStock ? 'Out of stock' : actionsByType.add_to_cart || 'Add to Cart'}
                 </Button>
                 <Button
-                  className="flex-[1.5] h-10 rounded-full bg-primary hover:bg-primary/90 font-medium text-sm"
+                  className="flex-[1.5] h-10 rounded-full bg-primary hover:bg-primary/90 font-semibold text-sm"
                   disabled={!isInStock}
                   onClick={() => {
                     pdpTracking.track('pdp_action_click', { action_type: 'buy_now', variant_id: selectedVariant.variant_id });
