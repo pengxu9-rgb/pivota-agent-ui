@@ -1,5 +1,5 @@
 import Image from 'next/image';
-import { Play } from 'lucide-react';
+import { Grid3X3, Play } from 'lucide-react';
 import type { MediaGalleryData } from '@/features/pdp/types';
 import { cn } from '@/lib/utils';
 
@@ -9,6 +9,7 @@ export function MediaGallery({
   fallbackUrl,
   activeIndex,
   onSelect,
+  onOpenAll,
   aspectClass = 'aspect-[6/5]',
   fit = 'object-cover',
 }: {
@@ -17,6 +18,7 @@ export function MediaGallery({
   fallbackUrl?: string;
   activeIndex?: number;
   onSelect?: (index: number) => void;
+  onOpenAll?: () => void;
   aspectClass?: string;
   fit?: 'object-cover' | 'object-contain';
 }) {
@@ -75,11 +77,17 @@ export function MediaGallery({
                 ) : null}
               </button>
             ))}
-            {items.length > 5 ? (
-              <div className="flex h-12 w-12 items-center justify-center rounded-md border border-border bg-muted/40 text-xs font-medium text-muted-foreground flex-shrink-0">
-                +{items.length - 5}
-              </div>
-            ) : null}
+            <button
+              type="button"
+              onClick={() => onOpenAll?.()}
+              className="flex h-12 w-12 flex-shrink-0 flex-col items-center justify-center gap-0.5 rounded-md border border-border bg-muted/40 text-muted-foreground transition hover:bg-muted/60"
+              aria-label="View all media"
+            >
+              <Grid3X3 className="h-4 w-4" />
+              <span className="text-[9px] leading-none">
+                {items.length > 5 ? `+${items.length - 5}` : 'All'}
+              </span>
+            </button>
           </div>
         </div>
       ) : null}

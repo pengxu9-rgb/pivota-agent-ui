@@ -32,14 +32,14 @@ export function BeautyVariantSheet({
       {open ? (
         <>
           <motion.div
-            className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm"
+            className="fixed inset-0 z-[2147483647] bg-black/40 backdrop-blur-sm"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
           />
           <motion.div
-            className="fixed bottom-0 left-0 right-0 z-50 h-[70vh] rounded-t-2xl bg-card border border-border shadow-2xl"
+            className="fixed bottom-0 left-0 right-0 z-[2147483647] h-[70vh] rounded-t-2xl bg-card border border-border shadow-2xl"
             initial={{ y: '100%' }}
             animate={{ y: 0 }}
             exit={{ y: '100%' }}

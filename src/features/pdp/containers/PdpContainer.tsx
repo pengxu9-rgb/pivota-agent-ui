@@ -2,11 +2,11 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import Image from 'next/image';
 import { ChevronLeft, Share2, Star } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type {
   MediaGalleryData,
+  MediaItem,
   PDPPayload,
   PricePromoData,
   ProductDetailsData,
@@ -26,6 +26,7 @@ import {
 import { pdpTracking } from '@/features/pdp/tracking';
 import { dispatchPdpAction } from '@/features/pdp/actions';
 import { MediaGallery } from '@/features/pdp/sections/MediaGallery';
+import { MediaGallerySheet } from '@/features/pdp/sections/MediaGallerySheet';
 import { VariantSelector } from '@/features/pdp/sections/VariantSelector';
 import { DetailsAccordion } from '@/features/pdp/sections/DetailsAccordion';
 import { RecommendationsGrid } from '@/features/pdp/sections/RecommendationsGrid';
@@ -97,6 +98,7 @@ export function PdpContainer({
   const [activeTab, setActiveTab] = useState('product');
   const [showShadeSheet, setShowShadeSheet] = useState(false);
   const [showColorSheet, setShowColorSheet] = useState(false);
+  const [showMediaSheet, setShowMediaSheet] = useState(false);
   const [activeMediaIndex, setActiveMediaIndex] = useState(0);
   const [navVisible, setNavVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -188,7 +190,7 @@ export function PdpContainer({
   }, [reviews]);
 
   const baseMediaItems = useMemo(() => media?.items ?? [], [media]);
-  const galleryItems = useMemo(() => {
+  const galleryItems: MediaItem[] = useMemo(() => {
     if (!selectedVariant?.image_url) return baseMediaItems;
     const exists = baseMediaItems.some((item) => item.url === selectedVariant.image_url);
     if (exists) return baseMediaItems;
@@ -470,6 +472,7 @@ export function PdpContainer({
                 fallbackUrl={heroUrl}
                 activeIndex={activeMediaIndex}
                 onSelect={(index) => setActiveMediaIndex(index)}
+                onOpenAll={() => setShowMediaSheet(true)}
                 aspectClass={resolvedMode === 'generic' ? 'aspect-square' : 'aspect-[6/5]'}
                 fit={resolvedMode === 'generic' ? 'object-contain' : 'object-cover'}
               />
@@ -521,62 +524,6 @@ export function PdpContainer({
                       className="ml-auto text-[10px] text-primary font-medium whitespace-nowrap"
                     >
                       {variants.length} colors →
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ) : null}
-
-            {resolvedMode === 'generic' && colorOptions.length ? (
-              <div className="border-b border-border bg-card py-1.5">
-                <div className="overflow-x-auto">
-                  <div className="flex items-center gap-2 px-3">
-                    {colorOptions.map((color) => {
-                      const variantForColor =
-                        variants.find((v) => getOptionValue(v, ['color', 'colour', 'shade', 'tone']) === color) ||
-                        selectedVariant;
-                      const isSelected = selectedColor === color;
-                      return (
-                        <button
-                          key={color}
-                          onClick={() => handleColorSelect(color)}
-                          className={cn(
-                            'relative flex-shrink-0 rounded-md overflow-hidden border',
-                            isSelected
-                              ? 'border-primary ring-2 ring-primary/60 ring-offset-1 ring-offset-background'
-                              : 'border-border hover:border-primary/40',
-                          )}
-                        >
-                          {variantForColor.image_url ? (
-                            <Image
-                              src={variantForColor.image_url}
-                              alt={color}
-                              width={40}
-                              height={56}
-                              className="h-14 w-10 object-cover"
-                              unoptimized
-                            />
-                          ) : variantForColor.swatch?.hex ? (
-                            <span className="block h-14 w-10" style={{ backgroundColor: variantForColor.swatch.hex }} />
-                          ) : (
-                            <span className="flex h-14 w-10 items-center justify-center text-[10px] bg-muted">
-                              {color}
-                            </span>
-                          )}
-                          {isSelected ? (
-                            <span className="absolute top-1 right-1 h-4 w-4 rounded-full bg-primary text-[10px] text-white flex items-center justify-center">
-                              ✓
-                            </span>
-                          ) : null}
-                        </button>
-                      );
-                    })}
-                    <button
-                      onClick={() => setShowColorSheet(true)}
-                      className="flex-shrink-0 h-14 px-3 rounded-md bg-muted/50 text-xs text-muted-foreground flex flex-col items-center justify-center"
-                    >
-                      <span>Colors</span>
-                      <span className="font-medium">{variants.length}</span>
                     </button>
                   </div>
                 </div>
@@ -649,6 +596,51 @@ export function PdpContainer({
                       {opt.name}: {opt.value}
                     </span>
                   ))}
+                </div>
+              ) : null}
+
+              {resolvedMode === 'generic' && colorOptions.length ? (
+                <div className="mt-2">
+                  <div className="flex items-center justify-between">
+                    <div className="text-xs font-semibold">Color</div>
+                    <button
+                      type="button"
+                      onClick={() => setShowColorSheet(true)}
+                      className="text-[11px] font-medium text-primary"
+                    >
+                      View all →
+                    </button>
+                  </div>
+                  <div className="mt-1.5 overflow-x-auto">
+                    <div className="flex gap-1.5 pb-1">
+                      {colorOptions.slice(0, 8).map((color) => {
+                        const isSelected = selectedColor === color;
+                        return (
+                          <button
+                            key={color}
+                            onClick={() => handleColorSelect(color)}
+                            className={cn(
+                              'flex-shrink-0 rounded-full border px-3 py-1 text-xs transition-colors',
+                              isSelected
+                                ? 'border-primary bg-primary/20 text-primary ring-2 ring-primary/50'
+                                : 'border-border hover:border-primary/50',
+                            )}
+                          >
+                            {color}
+                          </button>
+                        );
+                      })}
+                      {colorOptions.length > 8 ? (
+                        <button
+                          type="button"
+                          onClick={() => setShowColorSheet(true)}
+                          className="flex-shrink-0 rounded-full border border-dashed border-border px-3 py-1 text-xs text-muted-foreground"
+                        >
+                          +{colorOptions.length - 8} more
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
                 </div>
               ) : null}
 
@@ -896,7 +888,7 @@ export function PdpContainer({
 
       {mounted
         ? createPortal(
-            <div className="fixed inset-x-0 bottom-0 z-[2147483647]">
+            <div className="fixed inset-x-0 bottom-0 z-[2147483646]">
               <div
                 className="mx-auto max-w-md px-3"
                 style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
@@ -953,6 +945,13 @@ export function PdpContainer({
             document.body,
           )
         : null}
+      <MediaGallerySheet
+        open={showMediaSheet}
+        onClose={() => setShowMediaSheet(false)}
+        items={galleryItems}
+        activeIndex={activeMediaIndex}
+        onSelect={(index) => setActiveMediaIndex(index)}
+      />
       <BeautyVariantSheet
         open={resolvedMode === 'beauty' && showShadeSheet}
         onClose={() => setShowShadeSheet(false)}
