@@ -16,14 +16,14 @@ export function VariantSelector({
   if (variants.length === 1) return null;
 
   return (
-    <div className="mt-4">
+    <div className="mt-3">
       <div className="flex items-center justify-between">
         <div className="text-sm font-medium">
           {mode === 'beauty' ? 'Shade' : 'Options'}
         </div>
         <div className="text-xs text-muted-foreground">{variants.length} variants</div>
       </div>
-      <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
+      <div className="mt-1.5 flex gap-2 overflow-x-auto pb-1">
         {variants.map((v) => {
           const isSelected = v.variant_id === selectedVariantId;
           return (
@@ -32,7 +32,9 @@ export function VariantSelector({
               onClick={() => onChange(v.variant_id)}
               className={cn(
                 'flex items-center gap-2 rounded-full border px-3 py-1 text-xs transition-colors whitespace-nowrap',
-                isSelected ? 'border-primary bg-primary/5 font-medium' : 'border-border hover:border-primary/50',
+                isSelected
+                  ? 'border-primary bg-primary/10 text-primary ring-1 ring-primary/40 font-semibold'
+                  : 'border-border hover:border-primary/50',
               )}
             >
               {mode === 'beauty' && v.swatch?.hex ? (

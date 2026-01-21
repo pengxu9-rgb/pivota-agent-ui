@@ -28,7 +28,6 @@ import { MediaGallery } from '@/features/pdp/sections/MediaGallery';
 import { VariantSelector } from '@/features/pdp/sections/VariantSelector';
 import { DetailsAccordion } from '@/features/pdp/sections/DetailsAccordion';
 import { RecommendationsGrid } from '@/features/pdp/sections/RecommendationsGrid';
-import { StickyTabNav } from '@/features/pdp/sections/StickyTabNav';
 import { BeautyReviewsSection } from '@/features/pdp/sections/BeautyReviewsSection';
 import { BeautyUgcGallery } from '@/features/pdp/sections/BeautyUgcGallery';
 import { BeautyRecentPurchases } from '@/features/pdp/sections/BeautyRecentPurchases';
@@ -215,6 +214,8 @@ export function PdpContainer({
     return acc;
   }, {});
   const headerHeight = 44;
+  const navRowHeight = navVisible ? 36 : 0;
+  const scrollMarginTop = headerHeight + navRowHeight + 12;
 
   const hasReviews = !!reviews;
   const hasRecommendations = !!recommendations?.items?.length;
@@ -244,33 +245,59 @@ export function PdpContainer({
   }, [tabs, activeTab]);
 
   useEffect(() => {
-    const sectionEntries = tabs
-      .map((tab) => ({ id: tab.id, node: sectionRefs.current[tab.id] }))
-      .filter((entry): entry is { id: string; node: HTMLDivElement } => Boolean(entry.node));
+    if (typeof window === 'undefined') return;
+    let frame = 0;
+    const updateNavVisibility = () => {
+      if (frame) cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(() => {
+        const nextVisible = window.scrollY >= window.innerHeight * 0.9;
+        setNavVisible(nextVisible);
+      });
+    };
+    updateNavVisibility();
+    window.addEventListener('scroll', updateNavVisibility, { passive: true });
+    window.addEventListener('resize', updateNavVisibility);
+    return () => {
+      if (frame) cancelAnimationFrame(frame);
+      window.removeEventListener('scroll', updateNavVisibility);
+      window.removeEventListener('resize', updateNavVisibility);
+    };
+  }, []);
 
-    if (!sectionEntries.length) return;
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    let frame = 0;
+    const updateActive = () => {
+      if (frame) cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(() => {
+        const offset = headerHeight + (navVisible ? 36 : 0) + 8;
+        const entries = tabs
+          .map((tab) => {
+            const node = sectionRefs.current[tab.id];
+            if (!node) return null;
+            return { id: tab.id, top: node.getBoundingClientRect().top };
+          })
+          .filter(Boolean) as Array<{ id: string; top: number }>;
 
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const visible = entries
-          .filter((entry) => entry.isIntersecting)
-          .sort((a, b) => Math.abs(a.boundingClientRect.top) - Math.abs(b.boundingClientRect.top));
-        const topEntry = visible[0];
-        const nextId = topEntry?.target.getAttribute('data-section-id');
-        if (nextId && nextId !== activeTab) {
-          setActiveTab(nextId);
+        if (!entries.length) return;
+        let current = entries[0].id;
+        entries.forEach((entry) => {
+          if (entry.top - offset <= 0) current = entry.id;
+        });
+        if (current && current !== activeTab) {
+          setActiveTab(current);
         }
-      },
-      { rootMargin: '-15% 0px -70% 0px', threshold: [0.1, 0.35, 0.6] },
-    );
-
-    sectionEntries.forEach(({ id, node }) => {
-      node.setAttribute('data-section-id', id);
-      observer.observe(node);
-    });
-
-    return () => observer.disconnect();
-  }, [tabs, activeTab]);
+      });
+    };
+    updateActive();
+    window.addEventListener('scroll', updateActive, { passive: true });
+    window.addEventListener('resize', updateActive);
+    return () => {
+      if (frame) cancelAnimationFrame(frame);
+      window.removeEventListener('scroll', updateActive);
+      window.removeEventListener('resize', updateActive);
+    };
+  }, [tabs, activeTab, navVisible, headerHeight]);
 
   const handleColorSelect = (value: string) => {
     setSelectedColor(value);
@@ -364,7 +391,7 @@ export function PdpContainer({
       <div
         className={cn(
           'fixed left-0 right-0 z-50 transition-colors',
-          navVisible ? 'bg-card/95 backdrop-blur-sm' : 'bg-transparent',
+          navVisible ? 'bg-card/95 backdrop-blur-sm border-b border-border shadow-sm' : 'bg-transparent',
         )}
         style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
       >
@@ -397,22 +424,36 @@ export function PdpContainer({
             <Share2 className="h-4 w-4 text-foreground" />
           </button>
         </div>
+        {navVisible ? (
+          <div className="border-t border-border/70">
+            <div className="max-w-md mx-auto flex">
+              {tabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => handleTabChange(tab.id)}
+                  className={cn(
+                    'relative flex-1 py-2.5 text-xs font-medium transition-colors',
+                    activeTab === tab.id ? 'text-primary' : 'text-muted-foreground',
+                  )}
+                  aria-current={activeTab === tab.id ? 'page' : undefined}
+                >
+                  {tab.label}
+                  {activeTab === tab.id ? (
+                    <span className="absolute bottom-0 left-1/2 -translate-x-1/2 h-0.5 w-10 bg-primary rounded-full" />
+                  ) : null}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
       </div>
 
-      <StickyTabNav
-        tabs={tabs}
-        activeTab={activeTab}
-        onTabChange={handleTabChange}
-        onVisibilityChange={setNavVisible}
-        topOffset={headerHeight}
-      />
-
-      <div className="mx-auto w-full max-w-md">
+        <div className="mx-auto w-full max-w-md">
         <div
           ref={(el) => {
             sectionRefs.current.product = el;
           }}
-          className="scroll-mt-20"
+          style={{ scrollMarginTop }}
         >
           <div className="pb-3">
             <div className="relative">
@@ -443,12 +484,18 @@ export function PdpContainer({
                           className={cn(
                             'flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] whitespace-nowrap transition-all',
                             isSelected
-                              ? 'border-primary bg-primary/10 font-medium text-primary ring-1 ring-primary/40'
+                              ? 'border-primary bg-primary/15 font-semibold text-primary ring-1 ring-primary/50 shadow-sm'
                               : 'border-border hover:border-primary/50',
                           )}
                         >
                           {variant.swatch?.hex ? (
-                            <span className="h-3 w-3 rounded-full ring-1 ring-border" style={{ backgroundColor: variant.swatch.hex }} />
+                            <span
+                              className={cn(
+                                'h-3 w-3 rounded-full ring-1 ring-border',
+                                isSelected ? 'ring-primary/50' : 'ring-border',
+                              )}
+                              style={{ backgroundColor: variant.swatch.hex }}
+                            />
                           ) : null}
                           <span>{variant.title}</span>
                         </button>
@@ -489,7 +536,7 @@ export function PdpContainer({
                           className={cn(
                             'relative flex-shrink-0 rounded-md overflow-hidden border',
                             isSelected
-                              ? 'border-primary ring-2 ring-primary/50 ring-offset-1 ring-offset-background'
+                              ? 'border-primary ring-2 ring-primary/60 ring-offset-1 ring-offset-background'
                               : 'border-border hover:border-primary/40',
                           )}
                         >
@@ -509,6 +556,11 @@ export function PdpContainer({
                               {color}
                             </span>
                           )}
+                          {isSelected ? (
+                            <span className="absolute top-1 right-1 h-4 w-4 rounded-full bg-primary text-[10px] text-white flex items-center justify-center">
+                              ✓
+                            </span>
+                          ) : null}
                         </button>
                       );
                     })}
@@ -608,7 +660,9 @@ export function PdpContainer({
                           onClick={() => handleSizeSelect(size)}
                           className={cn(
                             'rounded-full border px-3 py-1 text-xs transition-colors',
-                            isSelected ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50',
+                            isSelected
+                              ? 'border-primary bg-primary/10 text-primary ring-1 ring-primary/40'
+                              : 'border-border hover:border-primary/50',
                           )}
                         >
                           {size}
@@ -681,7 +735,8 @@ export function PdpContainer({
             ref={(el) => {
               sectionRefs.current.reviews = el;
             }}
-            className="border-t border-muted/60 scroll-mt-20"
+            className="border-t border-muted/60"
+            style={{ scrollMarginTop }}
           >
             <BeautyReviewsSection
               data={reviews as ReviewsPreviewData}
@@ -712,7 +767,8 @@ export function PdpContainer({
             ref={(el) => {
               sectionRefs.current.shades = el;
             }}
-            className="border-t border-muted/60 scroll-mt-20"
+            className="border-t border-muted/60"
+            style={{ scrollMarginTop }}
           >
             {resolvedMode === 'beauty' ? (
               <BeautyShadesSection
@@ -764,7 +820,8 @@ export function PdpContainer({
             ref={(el) => {
               sectionRefs.current.size = el;
             }}
-            className="border-t border-muted/60 scroll-mt-20"
+            className="border-t border-muted/60"
+            style={{ scrollMarginTop }}
           >
             {resolvedMode === 'generic' ? (
               <GenericSizeGuide sizeGuide={payload.product.size_guide} />
@@ -799,7 +856,8 @@ export function PdpContainer({
             ref={(el) => {
               sectionRefs.current.details = el;
             }}
-            className="border-t border-muted/60 scroll-mt-20"
+            className="border-t border-muted/60"
+            style={{ scrollMarginTop }}
           >
             {resolvedMode === 'beauty' ? (
               <BeautyDetailsSection data={details} product={payload.product} media={media} />
@@ -819,7 +877,8 @@ export function PdpContainer({
             ref={(el) => {
               sectionRefs.current.similar = el;
             }}
-            className="border-t border-muted/60 scroll-mt-20"
+            className="border-t border-muted/60"
+            style={{ scrollMarginTop }}
           >
             <div className="px-3 py-3">
               <RecommendationsGrid data={recommendations} />
@@ -828,9 +887,9 @@ export function PdpContainer({
         ) : null}
       </div>
 
-      <div className="fixed bottom-3 left-0 right-0 z-40">
+      <div className="fixed bottom-0 left-0 right-0 z-40">
         <div className="mx-auto max-w-md px-3">
-          <div className="rounded-2xl border border-border bg-card/95 shadow-lg backdrop-blur safe-area-bottom overflow-hidden">
+          <div className="rounded-2xl border border-border bg-card/95 shadow-lg backdrop-blur safe-area-bottom overflow-hidden mb-2">
             {pricePromo?.promotions?.length ? (
               <div className="flex items-center justify-between px-4 py-2 bg-primary/5 text-xs">
                 <span className="flex items-center gap-2">
@@ -843,11 +902,11 @@ export function PdpContainer({
               </div>
             ) : null}
 
-            <div className="flex items-center gap-3 px-4 py-3">
-              <div className="flex gap-2">
+            <div className="flex items-center gap-3 px-3 py-2.5">
+              <div className="flex gap-1.5">
                 <button
                   onClick={() => pdpTracking.track('pdp_action_click', { action_type: 'favorite' })}
-                  className="flex flex-col items-center gap-0.5 px-2"
+                  className="flex flex-col items-center gap-0.5 px-1.5"
                   aria-label="Save"
                 >
                   <Heart className="h-5 w-5 text-muted-foreground" />
@@ -855,7 +914,7 @@ export function PdpContainer({
                 </button>
                 <button
                   onClick={handleShare}
-                  className="flex flex-col items-center gap-0.5 px-2"
+                  className="flex flex-col items-center gap-0.5 px-1.5"
                   aria-label="Share"
                 >
                   <Share2 className="h-5 w-5 text-muted-foreground" />
@@ -863,7 +922,7 @@ export function PdpContainer({
                 </button>
                 <button
                   onClick={() => pdpTracking.track('pdp_action_click', { action_type: 'ask' })}
-                  className="flex flex-col items-center gap-0.5 px-2"
+                  className="flex flex-col items-center gap-0.5 px-1.5"
                   aria-label="Chat"
                 >
                   <MessageCircle className="h-5 w-5 text-muted-foreground" />
@@ -874,7 +933,7 @@ export function PdpContainer({
               <div className="flex flex-1 gap-2">
                 <Button
                   variant="outline"
-                  className="flex-1 h-11 rounded-full font-medium"
+                  className="flex-1 h-10 rounded-full font-medium text-sm"
                   disabled={!isInStock}
                   onClick={() => {
                     pdpTracking.track('pdp_action_click', { action_type: 'add_to_cart', variant_id: selectedVariant.variant_id });
@@ -888,7 +947,7 @@ export function PdpContainer({
                   {!isInStock ? 'Out of stock' : actionsByType.add_to_cart || 'Add to Cart'}
                 </Button>
                 <Button
-                  className="flex-[1.5] h-11 rounded-full bg-primary hover:bg-primary/90 font-medium"
+                  className="flex-[1.5] h-10 rounded-full bg-primary hover:bg-primary/90 font-medium text-sm"
                   disabled={!isInStock}
                   onClick={() => {
                     pdpTracking.track('pdp_action_click', { action_type: 'buy_now', variant_id: selectedVariant.variant_id });

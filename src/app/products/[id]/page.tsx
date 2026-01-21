@@ -42,21 +42,25 @@ export default function ProductDetailPage({ params }: Props) {
           if (!cancelled) {
             setProduct(null);
             setError('Product not found');
+            setLoading(false);
           }
           return;
         }
         if (cancelled) return;
         setProduct(data);
+        setLoading(false);
 
-        try {
-          const all = await getAllProducts(6, data.merchant_id);
-          if (!cancelled) {
-            setRelatedProducts(all.filter((p) => p.product_id !== id));
+        void (async () => {
+          try {
+            const all = await getAllProducts(6, data.merchant_id);
+            if (!cancelled) {
+              setRelatedProducts(all.filter((p) => p.product_id !== id));
+            }
+          } catch (relError) {
+            // eslint-disable-next-line no-console
+            console.error('Failed to load related products:', relError);
           }
-        } catch (relError) {
-          // eslint-disable-next-line no-console
-          console.error('Failed to load related products:', relError);
-        }
+        })();
 
         try {
           const history = JSON.parse(localStorage.getItem('browse_history') || '[]');
@@ -82,9 +86,8 @@ export default function ProductDetailPage({ params }: Props) {
         if (!cancelled) {
           setError((err as Error).message || 'Failed to load product');
           setProduct(null);
+          setLoading(false);
         }
-      } finally {
-        if (!cancelled) setLoading(false);
       }
     };
 
@@ -206,7 +209,7 @@ export default function ProductDetailPage({ params }: Props) {
 
   return (
     <div className="min-h-screen bg-gradient-mesh">
-      <main className="px-4 py-4">
+      <main className="px-0 py-0">
         <Container
           payload={pdpPayload}
           onAddToCart={handleAddToCart}
