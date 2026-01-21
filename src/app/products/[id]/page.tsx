@@ -117,10 +117,18 @@ export default function ProductDetailPage({ params }: Props) {
       window.open(product.external_redirect_url, '_blank', 'noopener,noreferrer');
       return;
     }
+    const resolvedVariantId = String(variant.variant_id || '').trim() || product.product_id;
+    const cartItemId = product.merchant_id
+      ? `${product.merchant_id}:${resolvedVariantId}`
+      : resolvedVariantId;
     addItem({
-      id: product.product_id,
+      id: cartItemId,
+      product_id: product.product_id,
+      variant_id: resolvedVariantId,
+      sku: variant.sku_id,
       title: product.title,
       price: variant.price?.current.amount ?? product.price,
+      currency: variant.price?.current.currency || product.currency,
       imageUrl: variant.image_url || product.image_url || '/placeholder.svg',
       merchant_id: product.merchant_id,
       quantity,

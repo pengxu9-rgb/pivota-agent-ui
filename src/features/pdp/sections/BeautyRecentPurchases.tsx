@@ -9,8 +9,6 @@ export function BeautyRecentPurchases({
   items: Array<{ user_label: string; variant_label?: string; time_label?: string }>;
   showEmpty?: boolean;
 }) {
-  if (!items.length && !showEmpty) return null;
-
   const mockData = useMemo(() => {
     const names = ['Ava', 'Mia', 'Luna', 'Chloe', 'Sofia', 'Zoe', 'Nora'];
     const variants = ['Rose', 'Nude', 'Honey', 'Coral', 'Mocha', 'Peach'];
@@ -24,8 +22,11 @@ export function BeautyRecentPurchases({
     return { count, list };
   }, []);
 
-  const displayItems = items.length ? items : mockData.list;
-  const displayCount = items.length ? items.length : mockData.count;
+  const hasItems = items.length > 0;
+  if (!hasItems && !showEmpty) return null;
+
+  const displayItems = hasItems ? items : mockData.list;
+  const displayCount = hasItems ? items.length : mockData.count;
 
   return (
     <div className="mt-4 px-4">

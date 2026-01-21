@@ -27,8 +27,6 @@ export function GenericRecentPurchases({
   }>;
   showEmpty?: boolean;
 }) {
-  if (!items.length && !showEmpty) return null;
-
   const mockData = useMemo(() => {
     const names = ['Liam', 'Noah', 'Eli', 'Maya', 'Aria', 'Leo', 'Nina'];
     const variants = ['Black', 'Stone', 'Olive', 'Navy', 'Sand', 'Charcoal'];
@@ -43,8 +41,11 @@ export function GenericRecentPurchases({
     return { count, list };
   }, []);
 
-  const displayItems = items.length ? items : mockData.list;
-  const displayCount = items.length ? items.length : mockData.count;
+  const hasItems = items.length > 0;
+  if (!hasItems && !showEmpty) return null;
+
+  const displayItems = hasItems ? items : mockData.list;
+  const displayCount = hasItems ? items.length : mockData.count;
 
   const prices = displayItems.map((item) => parsePrice(item.price_label)).filter((p) => p != null) as number[];
   const avgPrice = prices.length

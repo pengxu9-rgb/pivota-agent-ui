@@ -42,6 +42,9 @@ function friendlyMessageForCode(args: {
   if (code === 'INSUFFICIENT_INVENTORY') {
     return `Some items don’t have enough stock${opSuffix}. Please adjust quantity and try again.`;
   }
+  if (code === 'SHOPIFY_PRICING_UNAVAILABLE') {
+    return `Unable to calculate totals${opSuffix}. Please verify your shipping address and try again.`;
+  }
 
   return null;
 }

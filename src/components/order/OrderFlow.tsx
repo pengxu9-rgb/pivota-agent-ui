@@ -164,6 +164,71 @@ const SHIPPING_COUNTRY_GROUPS: Array<{
   },
 ]
 
+const SHIPPING_COUNTRY_CODE_SET = new Set(
+  SHIPPING_COUNTRY_GROUPS.flatMap((g) => g.countries.map((c) => String(c.code).toUpperCase())),
+)
+
+const SHIPPING_COUNTRY_NAME_TO_CODE = new Map<string, string>(
+  SHIPPING_COUNTRY_GROUPS.flatMap((g) =>
+    g.countries.flatMap((c) => {
+      const code = String(c.code).toUpperCase()
+      const name = String(c.name).toUpperCase()
+      const compact = name.replace(/[^A-Z]/g, '')
+      return [
+        [name, code] as const,
+        [compact, code] as const,
+      ]
+    }),
+  ),
+)
+
+const COUNTRY_ALIASES: Record<string, string> = {
+  UK: 'GB',
+  'UNITED KINGDOM': 'GB',
+  'GREAT BRITAIN': 'GB',
+  ENGLAND: 'GB',
+  SCOTLAND: 'GB',
+  WALES: 'GB',
+  'UNITED STATES': 'US',
+  USA: 'US',
+  'UNITED STATES OF AMERICA': 'US',
+  CHINA: 'CN',
+  PRC: 'CN',
+  'HONG KONG': 'HK',
+  HONGKONG: 'HK',
+  MACAU: 'MO',
+  'SOUTH KOREA': 'KR',
+  'KOREA, REPUBLIC OF': 'KR',
+  KOREA: 'KR',
+  TAIWAN: 'TW',
+  VIETNAM: 'VN',
+  'UNITED ARAB EMIRATES': 'AE',
+  UAE: 'AE',
+}
+
+function normalizeCountryCode(value: unknown): string | null {
+  const raw = String(value ?? '').trim()
+  if (!raw) return null
+  const upper = raw.toUpperCase()
+
+  if (upper.length === 2 && (SHIPPING_COUNTRY_CODE_SET.has(upper) || upper === 'ZZ')) {
+    return upper
+  }
+  if (upper.length === 3 && upper === 'USA') return 'US'
+
+  const alias = COUNTRY_ALIASES[upper]
+  if (alias) return alias
+
+  const byName = SHIPPING_COUNTRY_NAME_TO_CODE.get(upper)
+  if (byName) return byName
+
+  const compact = upper.replace(/[^A-Z]/g, '')
+  const byCompact = SHIPPING_COUNTRY_NAME_TO_CODE.get(compact)
+  if (byCompact) return byCompact
+
+  return null
+}
+
 function getVariantIdForItem(item: {
   product_id: string
   variant_id?: string
@@ -274,6 +339,13 @@ function OrderFlowInner({
   const [selectedDeliveryOption, setSelectedDeliveryOption] = useState<any>(null)
   const [quotePending, setQuotePending] = useState(false)
 
+  useEffect(() => {
+    const normalized = normalizeCountryCode(shipping.country)
+    if (normalized && normalized !== shipping.country) {
+      setShipping((prev) => ({ ...prev, country: normalized }))
+    }
+  }, [shipping.country])
+
   const estimatedSubtotal = items.reduce(
     (sum, item) => sum + item.unit_price * item.quantity,
     0,
@@ -358,6 +430,8 @@ function OrderFlowInner({
         if (cancelled) return
         if (!addr && !email) return
 
+        const prefCountry = normalizeCountryCode((addr as any)?.country) || null
+
         setShipping((prev) => ({
           ...prev,
           ...(email && !prev.email ? { email } : {}),
@@ -370,7 +444,7 @@ function OrderFlowInner({
                 ...(addr.city && !prev.city ? { city: String(addr.city) } : {}),
                 ...(addr.state && !prev.state ? { state: String(addr.state) } : {}),
                 ...(addr.postal_code && !prev.postal_code ? { postal_code: String(addr.postal_code) } : {}),
-                ...(addr.country && (!prev.country || prev.country === 'US') ? { country: String(addr.country) } : {}),
+                ...(prefCountry && (!prev.country || prev.country === 'US') ? { country: prefCountry } : {}),
               }
             : {}),
         }))
@@ -385,6 +459,10 @@ function OrderFlowInner({
   }, [checkoutToken, step])
 
   const buildQuoteRequest = (deliveryOptionOverride?: any) => {
+    const normalizedCountry = normalizeCountryCode(shipping.country)
+    if (!normalizedCountry) {
+      throw new Error('Please select a valid country.')
+    }
     const quoteItems = items
       .map((item) => {
         const productId = String(item.product_id || '').trim()
@@ -407,7 +485,7 @@ function OrderFlowInner({
         address_line2: shipping.address_line2 || undefined,
         city: shipping.city,
         ...(shipping.state ? { state: shipping.state } : {}),
-        country: shipping.country,
+        country: normalizedCountry,
         postal_code: shipping.postal_code,
         phone: shipping.phone || undefined,
       },
@@ -529,6 +607,10 @@ function OrderFlowInner({
     if (orderId) return orderId
 
     const merchantId = items[0]?.merchant_id || getMerchantId()
+    const normalizedCountry = normalizeCountryCode(shipping.country)
+    if (!normalizedCountry) {
+      throw new Error('Please select a valid country.')
+    }
 
     const lineItemPriceByVariant = new Map<string, number>()
     for (const li of quoteForOrder?.line_items || []) {
@@ -573,7 +655,7 @@ function OrderFlowInner({
         address_line2: shipping.address_line2,
         city: shipping.city,
         ...(shipping.state ? { state: shipping.state } : {}),
-        country: shipping.country,
+        country: normalizedCountry,
         postal_code: shipping.postal_code,
         phone: shipping.phone
       },
