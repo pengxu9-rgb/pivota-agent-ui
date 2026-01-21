@@ -43,6 +43,7 @@ import { GenericStyleGallery } from '@/features/pdp/sections/GenericStyleGallery
 import { GenericSizeHelper } from '@/features/pdp/sections/GenericSizeHelper';
 import { GenericSizeGuide } from '@/features/pdp/sections/GenericSizeGuide';
 import { GenericDetailsSection } from '@/features/pdp/sections/GenericDetailsSection';
+import { OfferSheet } from '@/features/pdp/offers/OfferSheet';
 import { cn } from '@/lib/utils';
 
 function getModuleData<T>(payload: PDPPayload, type: string): T | null {
@@ -86,8 +87,8 @@ export function PdpContainer({
   payload: PDPPayload;
   initialQuantity?: number;
   mode?: 'beauty' | 'generic';
-  onAddToCart: (args: { variant: Variant; quantity: number }) => void;
-  onBuyNow: (args: { variant: Variant; quantity: number }) => void;
+  onAddToCart: (args: { variant: Variant; quantity: number; merchant_id?: string; offer_id?: string }) => void;
+  onBuyNow: (args: { variant: Variant; quantity: number; merchant_id?: string; offer_id?: string }) => void;
   onWriteReview?: () => void;
   onSeeAllReviews?: () => void;
 }) {
@@ -100,6 +101,7 @@ export function PdpContainer({
   const [showShadeSheet, setShowShadeSheet] = useState(false);
   const [showColorSheet, setShowColorSheet] = useState(false);
   const [showMediaSheet, setShowMediaSheet] = useState(false);
+  const [showOfferSheet, setShowOfferSheet] = useState(false);
   const [activeMediaIndex, setActiveMediaIndex] = useState(0);
   const [navVisible, setNavVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -141,6 +143,28 @@ export function PdpContainer({
   const details = getModuleData<ProductDetailsData>(payload, 'product_details');
   const reviews = getModuleData<ReviewsPreviewData>(payload, 'reviews_preview');
   const recommendations = getModuleData<RecommendationsData>(payload, 'recommendations');
+
+  const offers = useMemo(() => payload.offers ?? [], [payload.offers]);
+  const [selectedOfferId, setSelectedOfferId] = useState<string | null>(() => {
+    const merchantId = String(payload.product.merchant_id || '').trim();
+    const merchantOfferId = merchantId
+      ? offers.find((o) => o.merchant_id === merchantId)?.offer_id
+      : null;
+    return merchantOfferId || payload.default_offer_id || offers[0]?.offer_id || null;
+  });
+  const selectedOffer = useMemo(() => {
+    if (!offers.length) return null;
+    if (!selectedOfferId) return offers[0] || null;
+    return offers.find((o) => o.offer_id === selectedOfferId) || offers[0] || null;
+  }, [offers, selectedOfferId]);
+
+  useEffect(() => {
+    const merchantId = String(payload.product.merchant_id || '').trim();
+    const merchantOfferId = merchantId
+      ? offers.find((o) => o.merchant_id === merchantId)?.offer_id
+      : null;
+    setSelectedOfferId(merchantOfferId || payload.default_offer_id || offers[0]?.offer_id || null);
+  }, [payload.product.product_id, payload.product.merchant_id, payload.default_offer_id, offers]);
 
   const colorOptions = useMemo(() => collectColorOptions(variants), [variants]);
   const sizeOptions = useMemo(() => collectSizeOptions(variants), [variants]);
@@ -208,8 +232,20 @@ export function PdpContainer({
   const galleryData = useMemo(() => ({ items: galleryItems }), [galleryItems]);
 
   const heroUrl = selectedVariant?.image_url || payload.product.image_url || '';
-  const currency = selectedVariant.price?.current.currency || payload.product.price?.current.currency || 'USD';
-  const priceAmount = selectedVariant.price?.current.amount ?? payload.product.price?.current.amount ?? 0;
+  const baseCurrency =
+    selectedVariant.price?.current.currency || payload.product.price?.current.currency || 'USD';
+  const basePriceAmount =
+    selectedVariant.price?.current.amount ?? payload.product.price?.current.amount ?? 0;
+  const offerCurrency = selectedOffer?.price?.currency || baseCurrency;
+  const offerShippingCost = Number(selectedOffer?.shipping?.cost?.amount) || 0;
+  const offerTotalPrice = selectedOffer ? (Number(selectedOffer.price.amount) || 0) + offerShippingCost : null;
+  const displayCurrency = selectedOffer ? offerCurrency : baseCurrency;
+  const displayPriceAmount = selectedOffer && offerTotalPrice != null ? offerTotalPrice : basePriceAmount;
+
+  const effectiveMerchantId = selectedOffer?.merchant_id || payload.product.merchant_id;
+  const effectiveShippingEta =
+    selectedOffer?.shipping?.eta_days_range || payload.product.shipping?.eta_days_range;
+  const effectiveReturns = selectedOffer?.returns || payload.product.returns;
   const actionsByType = payload.actions.reduce<Record<string, string>>((acc, action) => {
     acc[action.action_type] = action.label;
     return acc;
@@ -367,8 +403,8 @@ export function PdpContainer({
     selectedVariant.price?.compare_at?.amount ??
     payload.product.price?.compare_at?.amount;
   const discountPercent =
-    compareAmount && compareAmount > priceAmount
-      ? Math.round((1 - priceAmount / compareAmount) * 100)
+    compareAmount && compareAmount > displayPriceAmount
+      ? Math.round((1 - displayPriceAmount / compareAmount) * 100)
       : null;
   const ugcFromReviews =
     reviews?.preview_items?.flatMap((item) => item.media || []) || [];
@@ -385,16 +421,16 @@ export function PdpContainer({
   const importantInfo = payload.product.beauty_meta?.important_info || [];
   const trustBadges = [];
   if (payload.product.brand?.name) trustBadges.push('Authentic');
-  if (payload.product.returns?.return_window_days) {
+  if (effectiveReturns?.return_window_days) {
     trustBadges.push(
-      payload.product.returns.free_returns
+      effectiveReturns.free_returns
         ? 'Free returns'
-        : `Returns · ${payload.product.returns.return_window_days} days`,
+        : `Returns · ${effectiveReturns.return_window_days} days`,
     );
   }
-  if (payload.product.shipping?.eta_days_range?.length) {
+  if (effectiveShippingEta?.length) {
     trustBadges.push(
-      `Shipping ${payload.product.shipping.eta_days_range[0]}–${payload.product.shipping.eta_days_range[1]} days`,
+      `Shipping ${effectiveShippingEta[0]}–${effectiveShippingEta[1]} days`,
     );
   }
   const showTrustBadges = resolvedMode === 'beauty' && trustBadges.length > 0;
@@ -543,21 +579,33 @@ export function PdpContainer({
 
             <div className="px-3 py-1">
               <div className="flex items-baseline gap-2 flex-wrap">
-                <span className="text-[26px] font-semibold text-foreground leading-none">{formatPrice(priceAmount, currency)}</span>
+                <span className="text-[26px] font-semibold text-foreground leading-none">{formatPrice(displayPriceAmount, displayCurrency)}</span>
                 {!isInStock ? (
                   <span className="rounded-full border border-red-200 bg-red-50 px-2 py-0.5 text-[10px] font-medium text-red-700">
                     Out of stock
                   </span>
                 ) : null}
-                {compareAmount && compareAmount > priceAmount ? (
+                {compareAmount && compareAmount > displayPriceAmount ? (
                   <span className="text-[10px] text-muted-foreground line-through">
-                    {formatPrice(compareAmount, currency)}
+                    {formatPrice(compareAmount, displayCurrency)}
                   </span>
                 ) : null}
                 {discountPercent ? (
                   <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">
                     -{discountPercent}%
                   </span>
+                ) : null}
+                {offers.length > 1 ? (
+                  <button
+                    type="button"
+                    className="ml-auto text-[11px] font-semibold text-primary"
+                    onClick={() => {
+                      pdpTracking.track('pdp_action_click', { action_type: 'open_offer_sheet' });
+                      setShowOfferSheet(true);
+                    }}
+                  >
+                    Other offers ({Math.max(0, offers.length - 1)})
+                  </button>
                 ) : null}
               </div>
 
@@ -708,16 +756,16 @@ export function PdpContainer({
                 </div>
               ))}
             </div>
-          ) : (payload.product.shipping?.eta_days_range?.length || payload.product.returns?.return_window_days) ? (
+          ) : (effectiveShippingEta?.length || effectiveReturns?.return_window_days) ? (
             <div className="mx-3 rounded-lg bg-card border border-border px-3 py-1.5 text-xs text-muted-foreground flex flex-wrap gap-x-3 gap-y-1">
-              {payload.product.shipping?.eta_days_range?.length ? (
+              {effectiveShippingEta?.length ? (
                 <span>
-                  Shipping {payload.product.shipping.eta_days_range[0]}–{payload.product.shipping.eta_days_range[1]} days
+                  Shipping {effectiveShippingEta[0]}–{effectiveShippingEta[1]} days
                 </span>
               ) : null}
-              {payload.product.returns?.return_window_days ? (
+              {effectiveReturns?.return_window_days ? (
                 <span>
-                  {payload.product.returns.free_returns ? 'Free returns' : 'Returns'} · {payload.product.returns.return_window_days} days
+                  {effectiveReturns.free_returns ? 'Free returns' : 'Returns'} · {effectiveReturns.return_window_days} days
                 </span>
               ) : null}
             </div>
@@ -928,6 +976,8 @@ export function PdpContainer({
                           dispatchPdpAction('add_to_cart', {
                             variant: selectedVariant,
                             quantity: resolvedQuantity,
+                            merchant_id: effectiveMerchantId,
+                            offer_id: selectedOffer?.offer_id || undefined,
                             onAddToCart,
                           });
                         }}
@@ -942,6 +992,8 @@ export function PdpContainer({
                           dispatchPdpAction('buy_now', {
                             variant: selectedVariant,
                             quantity: resolvedQuantity,
+                            merchant_id: effectiveMerchantId,
+                            offer_id: selectedOffer?.offer_id || undefined,
                             onBuyNow,
                           });
                         }}
@@ -981,6 +1033,24 @@ export function PdpContainer({
         onSelect={(variantId) => {
           handleVariantSelect(variantId);
           pdpTracking.track('pdp_action_click', { action_type: 'select_variant', variant_id: variantId });
+        }}
+      />
+      <OfferSheet
+        open={showOfferSheet}
+        offers={offers}
+        selectedOfferId={selectedOfferId}
+        defaultOfferId={payload.default_offer_id}
+        bestPriceOfferId={payload.best_price_offer_id}
+        onClose={() => setShowOfferSheet(false)}
+        onSelect={(offerId) => {
+          setSelectedOfferId(offerId);
+          setShowOfferSheet(false);
+          const offer = offers.find((o) => o.offer_id === offerId) || null;
+          pdpTracking.track('pdp_action_click', {
+            action_type: 'select_offer',
+            offer_id: offerId,
+            merchant_id: offer?.merchant_id,
+          });
         }}
       />
     </div>

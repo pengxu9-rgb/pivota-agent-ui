@@ -12,6 +12,19 @@ const ACCOUNTS_BASE =
     'https://web-production-fedb.up.railway.app/accounts').replace(/\/$/, '');
 
 type ApiError = Error & { code?: string; status?: number; detail?: any };
+type AmbiguousProductError = ApiError & {
+  code: 'AMBIGUOUS_PRODUCT_ID';
+  candidates: ProductResponse[];
+};
+
+function isAmbiguousProductError(err: unknown): err is AmbiguousProductError {
+  return Boolean(
+    err &&
+      typeof err === 'object' &&
+      (err as any).code === 'AMBIGUOUS_PRODUCT_ID' &&
+      Array.isArray((err as any).candidates),
+  );
+}
 
 function friendlyMessageForCode(args: {
   code?: string | null;
@@ -601,7 +614,21 @@ export async function getProductDetail(
 
       const product = (data as any).product;
       if (product) {
-        return normalizeProduct(product);
+        const enriched = {
+          ...product,
+          ...(typeof (data as any).product_group_id === 'string'
+            ? { product_group_id: (data as any).product_group_id }
+            : {}),
+          ...(Array.isArray((data as any).offers) ? { offers: (data as any).offers } : {}),
+          ...((data as any).offers_count != null ? { offers_count: (data as any).offers_count } : {}),
+          ...(typeof (data as any).default_offer_id === 'string'
+            ? { default_offer_id: (data as any).default_offer_id }
+            : {}),
+          ...(typeof (data as any).best_price_offer_id === 'string'
+            ? { best_price_offer_id: (data as any).best_price_offer_id }
+            : {}),
+        };
+        return normalizeProduct(enriched);
       }
     }
   } catch (err) {
@@ -624,13 +651,29 @@ export async function getProductDetail(
       const products: ProductResponse[] = ((data as any).products || []).map(
         (p: RealAPIProduct | ProductResponse) => normalizeProduct(p) as ProductResponse,
       );
-      return products.find((p: ProductResponse) => p.product_id === productId);
+      const matches = products.filter((p: ProductResponse) => p.product_id === productId);
+      const deduped = Array.from(
+        new Map(matches.map((p) => [String(p.merchant_id || ''), p])).values(),
+      ).filter((p) => p.merchant_id);
+
+      if (deduped.length === 1) return { found: deduped[0], candidates: deduped };
+      if (deduped.length > 1) return { found: null, candidates: deduped };
+      return { found: null, candidates: [] };
     };
 
     // Try broad fetch then targeted by productId
-    let found = await searchAndFind('', 500);
-    if (!found) {
-      found = await searchAndFind(productId, 500);
+    let { found, candidates } = await searchAndFind('', 500);
+    if (!found && candidates.length === 0) {
+      const second = await searchAndFind(productId, 500);
+      found = second.found;
+      candidates = second.candidates;
+    }
+
+    if (!found && candidates.length > 1) {
+      const err = new Error('Multiple sellers found for this product. Please choose a seller.') as AmbiguousProductError;
+      err.code = 'AMBIGUOUS_PRODUCT_ID';
+      err.candidates = candidates;
+      throw err;
     }
 
     if (found && found.merchant_id) {
@@ -645,14 +688,32 @@ export async function getProductDetail(
           },
         });
         const product = (detail as any).product;
-        if (product) return normalizeProduct(product);
+        if (product) {
+          const enriched = {
+            ...product,
+            ...(typeof (detail as any).product_group_id === 'string'
+              ? { product_group_id: (detail as any).product_group_id }
+              : {}),
+            ...(Array.isArray((detail as any).offers) ? { offers: (detail as any).offers } : {}),
+            ...((detail as any).offers_count != null ? { offers_count: (detail as any).offers_count } : {}),
+            ...(typeof (detail as any).default_offer_id === 'string'
+              ? { default_offer_id: (detail as any).default_offer_id }
+              : {}),
+            ...(typeof (detail as any).best_price_offer_id === 'string'
+              ? { best_price_offer_id: (detail as any).best_price_offer_id }
+              : {}),
+          };
+          return normalizeProduct(enriched);
+        }
       } catch (e) {
         console.error('Fallback detail fetch failed:', e);
+        if (isAmbiguousProductError(e)) throw e;
         return found;
       }
     }
     return found || null;
   } catch (err) {
+    if (isAmbiguousProductError(err)) throw err;
     console.error('getProductDetail fallback error:', err);
     return null;
   }

@@ -2,6 +2,7 @@ import type { ProductResponse } from '@/lib/api';
 import type {
   DetailSection,
   MediaGalleryData,
+  Offer,
   PDPPayload,
   PricePromoData,
   ProductDetailsData,
@@ -417,6 +418,105 @@ export function mapToPdpPayload(args: {
   const raw = rawDetail || (product as any).raw_detail || (product as any)._raw || {};
 
   const currency = product.currency || 'USD';
+  const productGroupId: string | undefined =
+    raw.product_group_id ||
+    raw.productGroupId ||
+    raw.product_group ||
+    raw.productGroup ||
+    undefined;
+  const offersRaw = Array.isArray(raw.offers) ? raw.offers : [];
+  const offers: Offer[] = offersRaw
+    .map((offer: any) => {
+      const offerId = String(offer?.offer_id || offer?.offerId || '').trim();
+      const merchantId = String(
+        offer?.merchant_id || offer?.merchantId || offer?.seller_id || '',
+      ).trim();
+      if (!offerId || !merchantId) return null;
+
+      const priceAmount = Number(
+        offer?.price?.amount ??
+          offer?.price_amount ??
+          offer?.price ??
+          offer?.item_price?.amount ??
+          offer?.item_price ??
+          0,
+      );
+      const priceCurrency = String(
+        offer?.price?.currency || offer?.currency || currency || 'USD',
+      );
+
+      const etaRaw = offer?.shipping?.eta_days_range || offer?.shipping?.etaDaysRange || null;
+      const etaRange =
+        Array.isArray(etaRaw) && etaRaw.length >= 2
+          ? ([Number(etaRaw[0]) || 0, Number(etaRaw[1]) || 0] as [number, number])
+          : undefined;
+
+      const shipCostRaw =
+        offer?.shipping?.cost ?? offer?.shipping_cost ?? offer?.shippingFee ?? null;
+      const shipCostAmount =
+        shipCostRaw == null
+          ? undefined
+          : Number(typeof shipCostRaw === 'object' ? shipCostRaw.amount : shipCostRaw);
+      const shipCostCurrency =
+        shipCostRaw && typeof shipCostRaw === 'object'
+          ? String(shipCostRaw.currency || priceCurrency)
+          : priceCurrency;
+
+      const returnsRaw = offer?.returns || null;
+
+      const shipping =
+        offer?.shipping || etaRange || shipCostAmount != null
+          ? {
+              method_label: offer?.shipping?.method_label || offer?.shipping?.methodLabel,
+              eta_days_range: etaRange,
+              ...(shipCostAmount != null && Number.isFinite(shipCostAmount)
+                ? { cost: { amount: shipCostAmount, currency: shipCostCurrency } }
+                : {}),
+            }
+          : undefined;
+
+      const returns = returnsRaw
+        ? {
+            return_window_days:
+              returnsRaw.return_window_days ??
+              returnsRaw.returnWindowDays ??
+              returnsRaw.window_days ??
+              returnsRaw.windowDays ??
+              undefined,
+            free_returns:
+              typeof returnsRaw.free_returns === 'boolean'
+                ? returnsRaw.free_returns
+                : typeof returnsRaw.freeReturns === 'boolean'
+                  ? returnsRaw.freeReturns
+                  : undefined,
+          }
+        : undefined;
+
+      return {
+        offer_id: offerId,
+        product_group_id: String(
+          offer?.product_group_id || productGroupId || '',
+        ).trim() || undefined,
+        merchant_id: merchantId,
+        merchant_name:
+          offer?.merchant_name || offer?.merchantName || offer?.seller_name || undefined,
+        tier: offer?.tier ? String(offer.tier) : undefined,
+        fulfillment_type: offer?.fulfillment_type || offer?.fulfillmentType || undefined,
+        inventory: offer?.inventory || undefined,
+        price: { amount: Number.isFinite(priceAmount) ? priceAmount : 0, currency: priceCurrency },
+        shipping,
+        returns,
+      } satisfies Offer;
+    })
+    .filter(Boolean) as Offer[];
+
+  const offersCount: number | undefined =
+    raw.offers_count != null ? Number(raw.offers_count) : offers.length || undefined;
+  const defaultOfferId: string | undefined =
+    raw.default_offer_id || raw.defaultOfferId || undefined;
+  const bestPriceOfferId: string | undefined =
+    raw.best_price_offer_id || raw.bestPriceOfferId || undefined;
+
   const variants = buildVariants(product, raw);
   const defaultVariant = variants[0] || toVariant(product);
 
@@ -560,6 +660,15 @@ export function mapToPdpPayload(args: {
       entry_point: entryPoint,
       ...(experiment ? { experiment } : {}),
     },
+    ...(productGroupId ? { product_group_id: String(productGroupId) } : {}),
+    ...(offers.length
+      ? {
+          offers,
+          offers_count: offersCount,
+          default_offer_id: defaultOfferId,
+          best_price_offer_id: bestPriceOfferId,
+        }
+      : {}),
     product: {
       product_id: product.product_id,
       merchant_id: product.merchant_id,

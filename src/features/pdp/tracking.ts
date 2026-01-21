@@ -2,6 +2,8 @@ export type PdpTrackingEvent =
   | 'pdp_view'
   | 'pdp_module_impression'
   | 'pdp_action_click'
+  | 'pdp_choose_seller_impression'
+  | 'pdp_choose_seller_select'
   | 'reviews_shell_open'
   | 'reviews_shell_close';
 
@@ -28,4 +30,3 @@ class PdpTracking {
 }
 
 export const pdpTracking = new PdpTracking();
-

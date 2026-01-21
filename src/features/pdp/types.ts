@@ -3,6 +3,11 @@ export interface PDPPayload {
   page_type: string;
   tracking: PageTracking;
   product: Product;
+  product_group_id?: string;
+  offers?: Offer[];
+  offers_count?: number;
+  default_offer_id?: string;
+  best_price_offer_id?: string;
   modules: Module[];
   actions: GlobalAction[];
 }
@@ -80,6 +85,29 @@ export interface Variant {
 export interface Price {
   amount: number;
   currency: string;
+}
+
+export interface Offer {
+  offer_id: string;
+  product_group_id?: string;
+  merchant_id: string;
+  merchant_name?: string;
+  price: Price;
+  shipping?: {
+    eta_days_range?: [number, number];
+    cost?: Price;
+    method_label?: string;
+  };
+  returns?: {
+    return_window_days?: number;
+    free_returns?: boolean;
+  };
+  inventory?: {
+    in_stock?: boolean;
+    available_quantity?: number;
+  };
+  fulfillment_type?: 'platform' | 'merchant' | '3pl' | string;
+  tier?: string;
 }
 
 export interface Module {

@@ -10,6 +10,7 @@ import { isBeautyProduct } from '@/features/pdp/utils/isBeautyProduct';
 import { BeautyPDPContainer } from '@/features/pdp/containers/BeautyPDPContainer';
 import { GenericPDPContainer } from '@/features/pdp/containers/GenericPDPContainer';
 import type { Variant } from '@/features/pdp/types';
+import { pdpTracking } from '@/features/pdp/tracking';
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -24,6 +25,7 @@ export default function ProductDetailPage({ params }: Props) {
 
   const [product, setProduct] = useState<ProductResponse | null>(null);
   const [relatedProducts, setRelatedProducts] = useState<ProductResponse[]>([]);
+  const [sellerCandidates, setSellerCandidates] = useState<ProductResponse[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
@@ -37,6 +39,7 @@ export default function ProductDetailPage({ params }: Props) {
     const loadProduct = async () => {
       setLoading(true);
       setError(null);
+      setSellerCandidates(null);
       try {
         const cached = sessionStorage.getItem(cacheKey);
         if (cached) {
@@ -55,6 +58,7 @@ export default function ProductDetailPage({ params }: Props) {
           if (!cancelled) {
             setProduct(null);
             setError('Product not found');
+            setSellerCandidates(null);
             setLoading(false);
           }
           return;
@@ -101,9 +105,20 @@ export default function ProductDetailPage({ params }: Props) {
           console.error('Failed to save browse history:', browseError);
         }
       } catch (err) {
+        if ((err as any)?.code === 'AMBIGUOUS_PRODUCT_ID' && Array.isArray((err as any)?.candidates)) {
+          if (!cancelled) {
+            setProduct(null);
+            setRelatedProducts([]);
+            setError(null);
+            setSellerCandidates((err as any).candidates as ProductResponse[]);
+            setLoading(false);
+          }
+          return;
+        }
         if (!cancelled) {
           setError((err as Error).message || 'Failed to load product');
           setProduct(null);
+          setSellerCandidates(null);
           setLoading(false);
         }
       }
@@ -114,6 +129,14 @@ export default function ProductDetailPage({ params }: Props) {
       cancelled = true;
     };
   }, [id, merchantIdParam, reloadKey]);
+
+  useEffect(() => {
+    if (!sellerCandidates?.length) return;
+    pdpTracking.track('pdp_choose_seller_impression', {
+      product_id: id,
+      candidates_count: sellerCandidates.length,
+    });
+  }, [id, sellerCandidates]);
 
   const pdpPayload = useMemo(() => {
     if (!product) return null;
@@ -132,15 +155,24 @@ export default function ProductDetailPage({ params }: Props) {
     return isBeautyProduct(pdpPayload.product) ? 'beauty' : 'generic';
   }, [pdpOverride, pdpPayload]);
 
-  const handleAddToCart = ({ variant, quantity }: { variant: Variant; quantity: number }) => {
+  const handleAddToCart = ({
+    variant,
+    quantity,
+    merchant_id,
+  }: {
+    variant: Variant;
+    quantity: number;
+    merchant_id?: string;
+  }) => {
     if (!product) return;
     if (product.external_redirect_url) {
       window.open(product.external_redirect_url, '_blank', 'noopener,noreferrer');
       return;
     }
+    const resolvedMerchantId = String(merchant_id || product.merchant_id || '').trim() || product.merchant_id;
     const resolvedVariantId = String(variant.variant_id || '').trim() || product.product_id;
-    const cartItemId = product.merchant_id
-      ? `${product.merchant_id}:${resolvedVariantId}`
+    const cartItemId = resolvedMerchantId
+      ? `${resolvedMerchantId}:${resolvedVariantId}`
       : resolvedVariantId;
     addItem({
       id: cartItemId,
@@ -151,23 +183,32 @@ export default function ProductDetailPage({ params }: Props) {
       price: variant.price?.current.amount ?? product.price,
       currency: variant.price?.current.currency || product.currency,
       imageUrl: variant.image_url || product.image_url || '/placeholder.svg',
-      merchant_id: product.merchant_id,
+      merchant_id: resolvedMerchantId,
       quantity,
     });
     toast.success(`✓ Added ${quantity}x ${product.title} to cart!`);
     open();
   };
 
-  const handleBuyNow = ({ variant, quantity }: { variant: Variant; quantity: number }) => {
+  const handleBuyNow = ({
+    variant,
+    quantity,
+    merchant_id,
+  }: {
+    variant: Variant;
+    quantity: number;
+    merchant_id?: string;
+  }) => {
     if (!product) return;
     if (product.external_redirect_url) {
       window.open(product.external_redirect_url, '_blank', 'noopener,noreferrer');
       return;
     }
+    const resolvedMerchantId = String(merchant_id || product.merchant_id || '').trim() || product.merchant_id;
     const checkoutItems = [
       {
         product_id: product.product_id,
-        merchant_id: product.merchant_id,
+        merchant_id: resolvedMerchantId,
         title: product.title,
         quantity,
         unit_price: variant.price?.current.amount ?? product.price,
@@ -193,6 +234,61 @@ export default function ProductDetailPage({ params }: Props) {
         <div className="animate-pulse flex flex-col items-center gap-4">
           <div className="h-12 w-12 rounded-full bg-muted/20" />
           <div className="h-4 w-32 rounded bg-muted/20" />
+        </div>
+      </div>
+    );
+  }
+
+  if (!loading && !product && sellerCandidates?.length) {
+    const sorted = [...sellerCandidates].sort((a, b) => (Number(a.price) || 0) - (Number(b.price) || 0));
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center px-6">
+        <div className="w-full max-w-md rounded-3xl border border-border bg-card/70 backdrop-blur p-6">
+          <div className="text-lg font-semibold">Choose a seller</div>
+          <div className="mt-1 text-sm text-muted-foreground">
+            Multiple sellers match this product. Select one to continue.
+          </div>
+          <div className="mt-4 space-y-3">
+            {sorted.map((candidate) => {
+              const merchantId = String(candidate.merchant_id || '').trim();
+              const label = candidate.merchant_name || merchantId || 'Unknown seller';
+              return (
+                <button
+                  key={`${merchantId}:${candidate.product_id}`}
+                  type="button"
+                  className="w-full rounded-2xl border border-border bg-white/60 hover:bg-white/80 transition-colors px-4 py-3 text-left disabled:opacity-60"
+                  onClick={() => {
+                    if (!merchantId) return;
+                    pdpTracking.track('pdp_choose_seller_select', {
+                      product_id: id,
+                      merchant_id: merchantId,
+                    });
+                    router.push(`/products/${encodeURIComponent(id)}?merchant_id=${encodeURIComponent(merchantId)}`);
+                  }}
+                  disabled={!merchantId}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-semibold">{label}</div>
+                      <div className="mt-0.5 text-xs text-muted-foreground">{merchantId}</div>
+                    </div>
+                    <div className="text-sm font-semibold">
+                      {new Intl.NumberFormat(undefined, {
+                        style: 'currency',
+                        currency: candidate.currency || 'USD',
+                      }).format(Number(candidate.price) || 0)}
+                    </div>
+                  </div>
+                  {candidate.in_stock === false ? (
+                    <div className="mt-2 text-xs text-red-600">Out of stock</div>
+                  ) : null}
+                </button>
+              );
+            })}
+          </div>
+          <div className="mt-4 text-xs text-muted-foreground">
+            This prevents selecting the wrong seller when <code>merchant_id</code> is missing.
+          </div>
         </div>
       </div>
     );
