@@ -16,6 +16,14 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const checkoutToken = String(req.headers.get('x-checkout-token') || '').trim() || null;
+    if (process.env.NODE_ENV !== 'production') {
+      // Log only safe details in dev (no tokens/headers/body payload).
+      // eslint-disable-next-line no-console
+      console.log('[gateway-proxy]', {
+        upstream: UPSTREAM_BASE,
+        operation: body?.operation,
+      });
+    }
 
     const upstreamRes = await fetch(`${UPSTREAM_BASE}/agent/shop/v1/invoke`, {
       method: 'POST',

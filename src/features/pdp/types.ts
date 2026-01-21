@@ -18,7 +18,23 @@ export interface Product {
   title: string;
   subtitle?: string;
   brand?: { name: string };
+  brand_story?: string;
   category_path?: string[];
+  image_url?: string;
+  tags?: string[];
+  department?: string;
+  beauty_meta?: {
+    popular_looks?: string[];
+    best_for?: string[];
+    important_info?: string[];
+  };
+  recent_purchases?: Array<{
+    user_label: string;
+    variant_label?: string;
+    time_label?: string;
+    price_label?: string;
+  }>;
+  size_guide?: SizeGuide;
   default_variant_id: string;
   variants: Variant[];
   price?: VariantPrice;
@@ -27,6 +43,16 @@ export interface Product {
   returns?: { return_window_days?: number; free_returns?: boolean };
   description?: string;
   merchant_id?: string;
+}
+
+export interface SizeGuide {
+  columns: string[];
+  rows: Array<{
+    label: string;
+    values: string[];
+  }>;
+  note?: string;
+  model_info?: string;
 }
 
 export interface VariantPrice {
@@ -40,6 +66,12 @@ export interface Variant {
   title: string;
   options?: { name: string; value: string }[];
   swatch?: { hex?: string };
+  beauty_meta?: {
+    shade_hex?: string;
+    finish?: string;
+    coverage?: string;
+    undertone?: string;
+  };
   price?: VariantPrice;
   availability?: { in_stock: boolean };
   image_url?: string;
@@ -117,8 +149,28 @@ export interface ReviewsPreviewData {
   scale: number;
   rating: number;
   review_count: number;
-  open_reviews_url?: string;
-  write_review_url?: string;
+  star_distribution?: Array<{
+    stars: number;
+    count?: number;
+    percent?: number;
+  }>;
+  dimension_ratings?: Array<{
+    label: string;
+    score: number;
+  }>;
+  filter_chips?: Array<{
+    label: string;
+    count?: number;
+  }>;
+  questions?: Array<{
+    question: string;
+    answer?: string;
+    replies?: number;
+  }>;
+  brand_card?: {
+    name: string;
+    subtitle?: string;
+  };
   preview_items?: Array<{
     review_id: string;
     rating: number;

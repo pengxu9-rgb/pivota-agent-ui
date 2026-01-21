@@ -1,0 +1,46 @@
+'use client';
+
+import { Play } from 'lucide-react';
+import type { MediaItem } from '@/features/pdp/types';
+
+export function GenericStyleGallery({
+  items,
+  showEmpty = false,
+  title = 'Style Gallery',
+}: {
+  items: MediaItem[];
+  showEmpty?: boolean;
+  title?: string;
+}) {
+  if (!items.length && !showEmpty) return null;
+
+  return (
+    <div className="mt-6 px-4">
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="text-sm font-semibold">
+          {title}
+          {items.length ? ` (${items.length})` : ''}
+        </h3>
+        <button className="text-xs text-primary">Share yours +</button>
+      </div>
+      {items.length ? (
+        <div className="grid grid-cols-3 gap-1 rounded-lg overflow-hidden">
+          {items.slice(0, 6).map((item, idx) => (
+            <div key={`${item.url}-${idx}`} className="relative aspect-[3/4]">
+              <img src={item.url} alt="" className="h-full w-full object-cover" />
+              {item.type === 'video' ? (
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <Play className="h-6 w-6 text-white drop-shadow-lg" fill="white" />
+                </div>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="rounded-xl border border-dashed border-border bg-card px-3 py-3 text-xs text-muted-foreground">
+          No style gallery items yet.
+        </div>
+      )}
+    </div>
+  );
+}

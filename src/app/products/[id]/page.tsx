@@ -1,20 +1,17 @@
 'use client';
 
-import { useState, useEffect, use } from 'react';
-import { motion } from 'framer-motion';
-import {
-  ShoppingCart,
-  Sparkles,
-} from 'lucide-react';
+import { useEffect, useMemo, useState, use } from 'react';
 import Link from 'next/link';
-import { notFound } from 'next/navigation';
-import { useCartStore } from '@/store/cartStore';
-import { getProductDetail, getAllProducts, listGroupReviews, listSkuReviews } from '@/lib/api';
-import { toast } from 'sonner';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { ProductDetailsPdp } from '@/components/pdp/ProductDetailsPdp';
-import { mapProductToPdpViewModel } from '@/lib/pdp/mapProductToPdpViewModel';
-import type { Module, ReviewsPreviewData } from '@/lib/pdp/types';
+import { ShoppingCart, Sparkles } from 'lucide-react';
+import { toast } from 'sonner';
+import { useCartStore } from '@/store/cartStore';
+import { getAllProducts, getProductDetail, type ProductResponse } from '@/lib/api';
+import { mapToPdpPayload } from '@/features/pdp/adapter/mapToPdpPayload';
+import { isBeautyProduct } from '@/features/pdp/utils/isBeautyProduct';
+import { BeautyPDPContainer } from '@/features/pdp/containers/BeautyPDPContainer';
+import { GenericPDPContainer } from '@/features/pdp/containers/GenericPDPContainer';
+import type { Variant } from '@/features/pdp/types';
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -24,98 +21,49 @@ export default function ProductDetailPage({ params }: Props) {
   const { id } = use(params);
   const searchParams = useSearchParams();
   const merchantIdParam = searchParams.get('merchant_id') || undefined;
-  const pdpOverride = (searchParams.get('pdp') || '').toLowerCase(); // beauty | generic
+  const pdpOverride = (searchParams.get('pdp') || '').toLowerCase();
   const router = useRouter();
-  const [product, setProduct] = useState<any>(null);
-  const [relatedProducts, setRelatedProducts] = useState<any[]>([]);
+
+  const [product, setProduct] = useState<ProductResponse | null>(null);
+  const [relatedProducts, setRelatedProducts] = useState<ProductResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
-
-  const [reviewsPreview, setReviewsPreview] = useState<ReviewsPreviewData | null>(null);
 
   const { addItem, items, open } = useCartStore();
   const itemCount = items.reduce((acc, item) => acc + item.quantity, 0);
 
   useEffect(() => {
+    let cancelled = false;
+
     const loadProduct = async () => {
+      setLoading(true);
       setError(null);
-      setReviewsPreview(null);
       try {
         const data = await getProductDetail(id, merchantIdParam);
         if (!data) {
-          notFound();
-        }
-        setProduct(data);
-        try {
-          const summary = (data as any).review_summary;
-          const hasGroup = Boolean(summary?.has_group);
-          const countRaw = hasGroup ? summary?.group_total_review_count : summary?.merchant_review_count;
-          const reviewCount = Number(countRaw || 0);
-
-          if (reviewCount > 0 && data.merchant_id && (data as any).platform && (data as any).platform_product_id) {
-            let resp: any = null;
-            if (hasGroup && summary?.default_view === 'group' && summary?.group_id) {
-              resp = await listGroupReviews({ group_id: Number(summary.group_id), filters: { limit: 6 } });
-            } else {
-              resp = await listSkuReviews({
-                sku: {
-                  merchant_id: String(data.merchant_id),
-                  platform: String((data as any).platform),
-                  platform_product_id: String((data as any).platform_product_id),
-                  variant_id: null,
-                },
-                filters: { limit: 6 },
-              });
-            }
-
-            const items = Array.isArray(resp?.items) ? resp.items : [];
-            if (items.length) {
-              const avg =
-                items.reduce((acc: number, r: any) => acc + (Number(r?.rating) || 0), 0) / Math.max(1, items.length);
-              const query = new URLSearchParams({
-                merchant_id: String(data.merchant_id),
-                platform: String((data as any).platform),
-                platform_product_id: String((data as any).platform_product_id),
-              });
-              if ((data as any).variant_id) {
-                query.set('variant_id', String((data as any).variant_id));
-              }
-
-              const preview: ReviewsPreviewData = {
-                scale: 5,
-                rating: Number.isFinite(avg) ? avg : 0,
-                review_count: reviewCount,
-                open_reviews_url: `/reviews?${query.toString()}`,
-                preview_items: items.slice(0, 3).map((r: any) => ({
-                  review_id: String(r.review_id),
-                  rating: Number(r.rating) || 0,
-                  author_label: (r.verification || 'verified_buyer') === 'verified_buyer' ? 'Verified buyer' : undefined,
-                  text_snippet: String(r.snippet || r.body || '').trim() || '—',
-                  media: Array.isArray(r.media)
-                    ? r.media.slice(0, 1).map((m: any) => ({ type: 'image', url: String(m.url) }))
-                    : undefined,
-                })),
-              };
-
-              setReviewsPreview(preview);
-            }
+          if (!cancelled) {
+            setProduct(null);
+            setError('Product not found');
           }
-        } catch (e) {
-          console.error('Failed to load reviews preview:', e);
-          setReviewsPreview(null);
+          return;
+        }
+        if (cancelled) return;
+        setProduct(data);
+
+        try {
+          const all = await getAllProducts(6, data.merchant_id);
+          if (!cancelled) {
+            setRelatedProducts(all.filter((p) => p.product_id !== id));
+          }
+        } catch (relError) {
+          // eslint-disable-next-line no-console
+          console.error('Failed to load related products:', relError);
         }
 
-        // Save to browse history with full product data
         try {
-          const history = JSON.parse(
-            localStorage.getItem('browse_history') || '[]',
-          );
-          // Remove existing entry if present
-          const filtered = history.filter(
-            (item: any) => item.product_id !== id,
-          );
-          // Add current product to the beginning
+          const history = JSON.parse(localStorage.getItem('browse_history') || '[]');
+          const filtered = history.filter((item: any) => item.product_id !== id);
           const newHistory = [
             {
               product_id: data.product_id,
@@ -127,24 +75,91 @@ export default function ProductDetailPage({ params }: Props) {
               timestamp: Date.now(),
             },
             ...filtered,
-          ].slice(0, 50); // Keep max 50 items
+          ].slice(0, 50);
           localStorage.setItem('browse_history', JSON.stringify(newHistory));
-        } catch (error) {
-          console.error('Failed to save browse history:', error);
+        } catch (browseError) {
+          // eslint-disable-next-line no-console
+          console.error('Failed to save browse history:', browseError);
         }
-
-        // Load related products
-        const all = await getAllProducts(6);
-        setRelatedProducts(all.filter((p) => p.product_id !== id));
-      } catch (error) {
-        console.error('Failed to load product:', error);
-        setError(error instanceof Error ? error.message : 'Failed to load product');
+      } catch (err) {
+        if (!cancelled) {
+          setError((err as Error).message || 'Failed to load product');
+          setProduct(null);
+        }
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
+
     loadProduct();
+    return () => {
+      cancelled = true;
+    };
   }, [id, merchantIdParam, reloadKey]);
+
+  const pdpPayload = useMemo(() => {
+    if (!product) return null;
+    return mapToPdpPayload({
+      product,
+      rawDetail: product.raw_detail,
+      relatedProducts,
+      entryPoint: 'product_detail',
+    });
+  }, [product, relatedProducts]);
+
+  const resolvedMode = useMemo(() => {
+    if (pdpOverride === 'beauty') return 'beauty';
+    if (pdpOverride === 'generic') return 'generic';
+    if (!pdpPayload) return 'generic';
+    return isBeautyProduct(pdpPayload.product) ? 'beauty' : 'generic';
+  }, [pdpOverride, pdpPayload]);
+
+  const handleAddToCart = ({ variant, quantity }: { variant: Variant; quantity: number }) => {
+    if (!product) return;
+    if (product.external_redirect_url) {
+      window.open(product.external_redirect_url, '_blank', 'noopener,noreferrer');
+      return;
+    }
+    addItem({
+      id: product.product_id,
+      title: product.title,
+      price: variant.price?.current.amount ?? product.price,
+      imageUrl: variant.image_url || product.image_url || '/placeholder.svg',
+      merchant_id: product.merchant_id,
+      quantity,
+    });
+    toast.success(`✓ Added ${quantity}x ${product.title} to cart!`);
+    open();
+  };
+
+  const handleBuyNow = ({ variant, quantity }: { variant: Variant; quantity: number }) => {
+    if (!product) return;
+    if (product.external_redirect_url) {
+      window.open(product.external_redirect_url, '_blank', 'noopener,noreferrer');
+      return;
+    }
+    const checkoutItems = [
+      {
+        product_id: product.product_id,
+        merchant_id: product.merchant_id,
+        title: product.title,
+        quantity,
+        unit_price: variant.price?.current.amount ?? product.price,
+        image_url: variant.image_url || product.image_url || '/placeholder.svg',
+        variant_id: variant.variant_id,
+      },
+    ];
+    const encoded = encodeURIComponent(JSON.stringify(checkoutItems));
+    router.push(`/order?items=${encoded}`);
+  };
+
+  const handleWriteReview = () => {
+    if (!product) return;
+    const params = new URLSearchParams();
+    params.set('product_id', product.product_id);
+    if (product.merchant_id) params.set('merchant_id', product.merchant_id);
+    router.push(`/reviews/write?${params.toString()}`);
+  };
 
   if (loading) {
     return (
@@ -157,12 +172,12 @@ export default function ProductDetailPage({ params }: Props) {
     );
   }
 
-  if (error) {
+  if (error || !pdpPayload) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-mesh px-6">
         <div className="w-full max-w-md rounded-3xl border border-border bg-card/70 backdrop-blur p-6 text-center">
           <div className="text-lg font-semibold">Failed to load product</div>
-          <div className="mt-2 text-sm text-muted-foreground">{error}</div>
+          <div className="mt-2 text-sm text-muted-foreground">{error || 'Product unavailable'}</div>
           <div className="mt-4">
             <button
               className="text-sm font-medium text-primary"
@@ -182,72 +197,10 @@ export default function ProductDetailPage({ params }: Props) {
     );
   }
 
-  if (!product) return null;
-
-  const productUrl = `https://agent.pivota.cc/products/${product.product_id}`;
-
-  const payloadBase = mapProductToPdpViewModel({
-    product,
-    relatedProducts,
-    entryPoint: 'product_detail',
-    experiment: 'lovable_pdp_mvp',
-  });
-
-  const payload = reviewsPreview
-    ? {
-        ...payloadBase,
-        modules: [
-          ...payloadBase.modules,
-          {
-            module_id: 'm_reviews',
-            type: 'reviews_preview',
-            priority: 60,
-            data: reviewsPreview,
-          } as Module,
-        ],
-      }
-    : payloadBase;
-
-  // Optional override for validation (does not change default selection logic).
-  // - `?pdp=beauty` forces beauty
-  // - `?pdp=generic` forces generic
-  if (pdpOverride === 'beauty') payload.product.category_path = ['Beauty'];
-  if (pdpOverride === 'generic') payload.product.category_path = ['General'];
-
-  const productJsonLd = {
-    '@context': 'https://schema.org',
-    '@type': 'Product',
-    name: product.title,
-    description: String(product.description || '')
-      .replace(/<[^>]+>/g, ' ')
-      .replace(/&nbsp;/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim(),
-    image: product.image_url || '/placeholder.svg',
-    sku: product.product_id,
-    url: productUrl,
-    offers: {
-      '@type': 'Offer',
-      price: product.price,
-      priceCurrency: product.currency || 'USD',
-      availability: product.in_stock
-        ? 'https://schema.org/InStock'
-        : 'https://schema.org/OutOfStock',
-      url: productUrl,
-    },
-  };
+  const Container = resolvedMode === 'beauty' ? BeautyPDPContainer : GenericPDPContainer;
 
   return (
     <div className="min-h-screen bg-gradient-mesh">
-      <script
-        type="application/ld+json"
-        suppressHydrationWarning
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(productJsonLd) }}
-      />
-      {/* Animated background */}
-      <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-gradient-to-r from-indigo-500/20 via-purple-500/20 to-cyan-400/10 blur-3xl -z-10 animate-pulse" />
-
-      {/* Header */}
       <header className="sticky top-0 z-40 bg-card/70 backdrop-blur-xl border-b border-border">
         <div className="max-w-7xl mx-auto px-4 lg:px-8 h-16 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2 group">
@@ -269,63 +222,13 @@ export default function ProductDetailPage({ params }: Props) {
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 lg:px-8 py-6">
-        {/* Breadcrumb */}
-        <div className="flex items-center gap-2 text-sm text-muted-foreground mb-8">
-          <Link href="/products" className="hover:text-foreground transition-colors">
-            Products
-          </Link>
-          <span>/</span>
-          <span>{product.title}</span>
-        </div>
-
-        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
-          <ProductDetailsPdp
-            payload={payload}
-            onAddToCart={({ variant, quantity }) => {
-              const unitPrice = Number(variant.price?.current.amount ?? product.price ?? 0);
-              const currency = String(variant.price?.current.currency || product.currency || 'USD');
-              const imageUrl = variant.image_url || product.image_url || '/placeholder.svg';
-              const resolvedVariantId = variant.variant_id || product.product_id;
-              const cartItemId = product.merchant_id
-                ? `${product.merchant_id}:${resolvedVariantId}`
-                : resolvedVariantId;
-              addItem({
-                id: cartItemId,
-                product_id: product.product_id,
-                variant_id: resolvedVariantId,
-                sku: variant.sku_id,
-                title: product.title,
-                price: unitPrice,
-                currency,
-                imageUrl,
-                merchant_id: product.merchant_id,
-                quantity,
-              });
-              toast.success(`✓ Added ${quantity}x ${product.title} to cart!`);
-            }}
-            onBuyNow={({ variant, quantity }) => {
-              const unitPrice = Number(variant.price?.current.amount ?? product.price ?? 0);
-              const currency = String(variant.price?.current.currency || product.currency || 'USD');
-              const imageUrl = variant.image_url || product.image_url || '/placeholder.svg';
-              const checkoutItems = [
-                {
-                  product_id: product.product_id,
-                  variant_id: variant.variant_id || product.product_id,
-                  sku: variant.sku_id,
-                  merchant_id: product.merchant_id,
-                  title: product.title,
-                  quantity,
-                  unit_price: unitPrice,
-                  currency,
-                  image_url: imageUrl,
-                },
-              ];
-              const encoded = encodeURIComponent(JSON.stringify(checkoutItems));
-              router.push(`/order?items=${encoded}`);
-            }}
-          />
-        </motion.div>
+      <main className="px-4 py-6">
+        <Container
+          payload={pdpPayload}
+          onAddToCart={handleAddToCart}
+          onBuyNow={handleBuyNow}
+          onWriteReview={handleWriteReview}
+        />
       </main>
     </div>
   );

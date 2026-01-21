@@ -1,4 +1,4 @@
-import type { Product } from '@/lib/pdp/types';
+import type { Product } from '@/features/pdp/types';
 
 const BEAUTY_KEYWORDS = [
   'beauty',
@@ -21,7 +21,10 @@ const BEAUTY_KEYWORDS = [
 export function isBeautyProduct(product: Product): boolean {
   const category = (product.category_path || []).join(' ').toLowerCase();
   const title = String(product.title || '').toLowerCase();
-  const combined = `${category} ${title}`;
+  const subtitle = String(product.subtitle || '').toLowerCase();
+  const brand = product.brand?.name ? String(product.brand.name).toLowerCase() : '';
+  const tags = Array.isArray(product.tags) ? product.tags.join(' ').toLowerCase() : '';
+  const department = product.department ? String(product.department).toLowerCase() : '';
+  const combined = `${category} ${title} ${subtitle} ${brand} ${tags} ${department}`;
   return BEAUTY_KEYWORDS.some((kw) => combined.includes(kw));
 }
-
