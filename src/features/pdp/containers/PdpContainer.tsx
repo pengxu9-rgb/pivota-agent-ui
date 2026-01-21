@@ -397,7 +397,7 @@ export function PdpContainer({
       <div
         className={cn(
           'fixed left-0 right-0 z-50 transition-colors',
-          navVisible ? 'bg-gradient-to-b from-white via-white to-white/95 border-b border-border shadow-sm' : 'bg-transparent',
+          navVisible ? 'bg-gradient-to-b from-white via-white to-white/95 shadow-sm' : 'bg-transparent',
         )}
         style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
       >
@@ -437,7 +437,7 @@ export function PdpContainer({
           </button>
         </div>
         {navVisible ? (
-          <div className="border-t border-border/50 bg-white">
+          <div className="bg-white border-b border-border/60">
             <div className="max-w-md mx-auto flex">
               {tabs.map((tab) => (
                 <button
@@ -901,9 +901,12 @@ export function PdpContainer({
 
       {mounted
         ? createPortal(
-            <div className="fixed bottom-0 left-0 right-0 z-[100] pointer-events-none">
-              <div className="mx-auto max-w-md px-3 pointer-events-auto">
-                <div className="rounded-2xl border border-border bg-white shadow-[0_-6px_18px_rgba(0,0,0,0.08)] safe-area-bottom overflow-hidden mb-2">
+            <div className="fixed inset-x-0 bottom-0 z-[2147483647]">
+              <div
+                className="mx-auto max-w-md px-3"
+                style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
+              >
+                <div className="rounded-2xl border border-border bg-white shadow-[0_-10px_24px_rgba(0,0,0,0.12)] overflow-hidden mb-2">
                   {pricePromo?.promotions?.length ? (
                     <div className="flex items-center justify-between px-4 py-2 bg-primary/5 text-xs">
                       <span className="flex items-center gap-2">
