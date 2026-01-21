@@ -1,5 +1,7 @@
 'use client';
 
+import { useMemo } from 'react';
+
 function getInitial(label: string) {
   if (!label) return '?';
   return `${label.trim().charAt(0).toUpperCase()}*`;
@@ -27,7 +29,24 @@ export function GenericRecentPurchases({
 }) {
   if (!items.length && !showEmpty) return null;
 
-  const prices = items.map((item) => parsePrice(item.price_label)).filter((p) => p != null) as number[];
+  const mockData = useMemo(() => {
+    const names = ['Liam', 'Noah', 'Eli', 'Maya', 'Aria', 'Leo', 'Nina'];
+    const variants = ['Black', 'Stone', 'Olive', 'Navy', 'Sand', 'Charcoal'];
+    const times = ['2m ago', '15m ago', '45m ago', '2h ago', 'Today'];
+    const count = Math.floor(Math.random() * 20) + 1;
+    const list = Array.from({ length: Math.min(3, count) }).map((_, idx) => ({
+      user_label: `${names[idx % names.length]}*`,
+      variant_label: variants[idx % variants.length],
+      time_label: times[idx % times.length],
+      price_label: `$${24 + idx * 6}`,
+    }));
+    return { count, list };
+  }, []);
+
+  const displayItems = items.length ? items : mockData.list;
+  const displayCount = items.length ? items.length : mockData.count;
+
+  const prices = displayItems.map((item) => parsePrice(item.price_label)).filter((p) => p != null) as number[];
   const avgPrice = prices.length
     ? `$${(prices.reduce((acc, value) => acc + value, 0) / prices.length).toFixed(0)}`
     : null;
@@ -36,15 +55,15 @@ export function GenericRecentPurchases({
     <div className="mt-4 mx-4 border border-border rounded-lg overflow-hidden bg-card">
       <div className="flex items-center justify-between px-3 py-2 border-b border-border">
         <h3 className="text-sm font-semibold">
-          Recent Purchases{items.length ? ` (${items.length})` : ''}
+          Recent Purchases ({displayCount})
         </h3>
         <span className="text-[10px] text-muted-foreground">
           {avgPrice ? `3-day avg ${avgPrice}` : '3-day avg --'}
         </span>
       </div>
-      {items.length ? (
+      {displayItems.length ? (
         <div className="divide-y divide-border">
-          {items.slice(0, 3).map((purchase, idx) => (
+          {displayItems.slice(0, 3).map((purchase, idx) => (
             <div key={`${purchase.user_label}-${idx}`} className="flex items-center justify-between px-3 py-2 text-xs">
               <div className="flex items-center gap-2">
                 <div className="h-5 w-5 rounded-full bg-muted flex items-center justify-center text-[10px]">

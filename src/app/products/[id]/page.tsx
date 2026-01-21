@@ -1,9 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState, use } from 'react';
-import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { ShoppingCart, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import { useCartStore } from '@/store/cartStore';
 import { getAllProducts, getProductDetail, type ProductResponse } from '@/lib/api';
@@ -30,8 +28,7 @@ export default function ProductDetailPage({ params }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
 
-  const { addItem, items, open } = useCartStore();
-  const itemCount = items.reduce((acc, item) => acc + item.quantity, 0);
+  const { addItem, open } = useCartStore();
 
   useEffect(() => {
     let cancelled = false;
@@ -201,28 +198,7 @@ export default function ProductDetailPage({ params }: Props) {
 
   return (
     <div className="min-h-screen bg-gradient-mesh">
-      <header className="sticky top-0 z-40 bg-card/70 backdrop-blur-xl border-b border-border">
-        <div className="max-w-7xl mx-auto px-4 lg:px-8 h-16 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2 group">
-            <Sparkles className="h-6 w-6 text-cyan-400 group-hover:rotate-12 transition-transform" />
-            <span className="text-xl font-semibold gradient-text">Pivota</span>
-          </Link>
-
-          <button
-            onClick={open}
-            className="relative h-10 w-10 rounded-full flex items-center justify-center bg-secondary hover:bg-secondary/80 transition-colors"
-          >
-            <ShoppingCart className="h-5 w-5 text-muted-foreground" />
-            {itemCount > 0 && (
-              <span className="absolute -top-1 -right-1 h-5 w-5 rounded-full bg-gradient-to-r from-indigo-500 to-purple-500 flex items-center justify-center text-xs font-semibold text-white">
-                {itemCount}
-              </span>
-            )}
-          </button>
-        </div>
-      </header>
-
-      <main className="px-4 py-6">
+      <main className="px-4 py-4">
         <Container
           payload={pdpPayload}
           onAddToCart={handleAddToCart}

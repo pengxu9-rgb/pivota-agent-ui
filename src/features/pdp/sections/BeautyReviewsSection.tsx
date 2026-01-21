@@ -185,7 +185,7 @@ export function BeautyReviewsSection({
       ) : null}
 
       {(data.brand_card?.name || brandName) ? (
-        <div className="mt-6 mx-4 flex items-center gap-3 rounded-xl bg-card border border-border p-4">
+        <div className="mt-4 mx-4 flex items-center gap-3 rounded-xl bg-card border border-border p-3">
           <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center text-[10px] font-bold tracking-tight">
             {(data.brand_card?.name || brandName || '').slice(0, 12).toUpperCase()}
           </div>

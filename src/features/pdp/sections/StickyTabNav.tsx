@@ -36,13 +36,13 @@ export function StickyTabNav({
     <>
       <div ref={sentinelRef} className="absolute top-[100vh]" />
       {isVisible ? (
-        <nav className="fixed top-0 left-0 right-0 z-50 bg-card/95 backdrop-blur-sm border-b border-border shadow-sm animate-in slide-in-from-top-2 duration-200">
+        <nav className="fixed top-0 left-0 right-0 z-40 bg-card/95 backdrop-blur-sm border-b border-border shadow-sm animate-in slide-in-from-top-2 duration-200">
           <div className="max-w-md mx-auto flex">
             {tabs.map((tab) => (
               <button
                 key={tab.id}
                 onClick={() => onTabChange(tab.id)}
-                className={`relative flex-1 py-3 text-sm font-medium transition-colors ${
+                className={`relative flex-1 py-2 text-xs font-medium transition-colors ${
                   activeTab === tab.id ? 'text-foreground' : 'text-muted-foreground'
                 }`}
               >

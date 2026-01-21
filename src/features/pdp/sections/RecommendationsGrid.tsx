@@ -16,7 +16,7 @@ function formatPrice(amount: number, currency: string) {
 export function RecommendationsGrid({ data }: { data: RecommendationsData }) {
   if (!data.items.length) return null;
   return (
-    <div className="mt-6">
+    <div className="mt-4">
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-sm font-semibold">You may also like</h3>
         <button className="text-xs text-muted-foreground flex items-center gap-1 hover:text-foreground">

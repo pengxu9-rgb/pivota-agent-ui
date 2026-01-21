@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronRight, Heart, MessageCircle, Share2, Star } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Heart, MessageCircle, Share2, Star } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type {
   MediaGalleryData,
@@ -88,17 +88,29 @@ export function PdpContainer({
   onWriteReview?: () => void;
   onSeeAllReviews?: () => void;
 }) {
-  const [selectedVariantId, setSelectedVariantId] = useState(payload.product.default_variant_id);
+  const [selectedVariantId, setSelectedVariantId] = useState(
+    payload.product.default_variant_id || payload.product.variants?.[0]?.variant_id,
+  );
   const [quantity, setQuantity] = useState(initialQuantity);
   const reviewsTracked = useRef(false);
   const [activeTab, setActiveTab] = useState('product');
   const [showShadeSheet, setShowShadeSheet] = useState(false);
   const [showColorSheet, setShowColorSheet] = useState(false);
+  const [activeMediaIndex, setActiveMediaIndex] = useState(0);
   const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
+  const variants = useMemo(() => payload.product.variants ?? [], [payload.product.variants]);
+
   const selectedVariant = useMemo(() => {
-    return payload.product.variants.find((v) => v.variant_id === selectedVariantId) || payload.product.variants[0];
-  }, [payload, selectedVariantId]);
+    return variants.find((v) => v.variant_id === selectedVariantId) || variants[0];
+  }, [variants, selectedVariantId]);
+
+  const isInStock =
+    typeof selectedVariant?.availability?.in_stock === 'boolean'
+      ? selectedVariant.availability.in_stock
+      : typeof payload.product.availability?.in_stock === 'boolean'
+        ? payload.product.availability.in_stock
+        : true;
 
   const resolvedMode: 'beauty' | 'generic' = mode || (isBeautyProduct(payload.product) ? 'beauty' : 'generic');
 
@@ -108,7 +120,6 @@ export function PdpContainer({
   const reviews = getModuleData<ReviewsPreviewData>(payload, 'reviews_preview');
   const recommendations = getModuleData<RecommendationsData>(payload, 'recommendations');
 
-  const variants = payload.product.variants || [];
   const colorOptions = useMemo(() => collectColorOptions(variants), [variants]);
   const sizeOptions = useMemo(() => collectSizeOptions(variants), [variants]);
   const [selectedColor, setSelectedColor] = useState<string | null>(
@@ -122,6 +133,24 @@ export function PdpContainer({
     setSelectedColor(getOptionValue(selectedVariant, ['color', 'colour', 'shade', 'tone']) || null);
     setSelectedSize(getOptionValue(selectedVariant, ['size', 'fit']) || null);
   }, [selectedVariantId, selectedVariant]);
+
+  useEffect(() => {
+    const nextVariantId = payload.product.default_variant_id || variants[0]?.variant_id;
+    if (nextVariantId) {
+      setSelectedVariantId(nextVariantId);
+    }
+    setActiveMediaIndex(0);
+  }, [payload.product.product_id, payload.product.default_variant_id, variants]);
+
+  useEffect(() => {
+    setActiveMediaIndex(0);
+  }, [selectedVariantId]);
+
+  useEffect(() => {
+    if (!isInStock) {
+      setQuantity(1);
+    }
+  }, [isInStock]);
 
   useEffect(() => {
     pdpTracking.setBaseContext({
@@ -140,7 +169,23 @@ export function PdpContainer({
     }
   }, [reviews]);
 
-  const heroUrl = media?.items?.[0]?.url || selectedVariant.image_url || payload.product.image_url || '';
+  const baseMediaItems = useMemo(() => media?.items ?? [], [media]);
+  const galleryItems = useMemo(() => {
+    if (!selectedVariant?.image_url) return baseMediaItems;
+    const exists = baseMediaItems.some((item) => item.url === selectedVariant.image_url);
+    if (exists) return baseMediaItems;
+    return [
+      {
+        type: 'image' as const,
+        url: selectedVariant.image_url,
+        alt_text: selectedVariant.title,
+      },
+      ...baseMediaItems,
+    ];
+  }, [baseMediaItems, selectedVariant?.image_url, selectedVariant?.title]);
+  const galleryData = useMemo(() => ({ items: galleryItems }), [galleryItems]);
+
+  const heroUrl = selectedVariant?.image_url || payload.product.image_url || '';
   const currency = selectedVariant.price?.current.currency || payload.product.price?.current.currency || 'USD';
   const priceAmount = selectedVariant.price?.current.amount ?? payload.product.price?.current.amount ?? 0;
   const actionsByType = payload.actions.reduce<Record<string, string>>((acc, action) => {
@@ -154,30 +199,103 @@ export function PdpContainer({
   const showSize =
     resolvedMode === 'generic' && (sizeOptions.length > 0 || !!payload.product.size_guide);
 
-  const tabs = [
-    { id: 'product', label: 'Product' },
-    ...(hasReviews ? [{ id: 'reviews', label: 'Reviews' }] : []),
-    ...(showShades ? [{ id: 'shades', label: 'Shades' }] : []),
-    ...(showSize ? [{ id: 'size', label: 'Size' }] : []),
-    { id: 'details', label: 'Details' },
-    ...(hasRecommendations ? [{ id: 'similar', label: 'Similar' }] : []),
-  ];
+  const tabs = useMemo(() => {
+    return [
+      { id: 'product', label: 'Product' },
+      ...(hasReviews ? [{ id: 'reviews', label: 'Reviews' }] : []),
+      ...(showShades ? [{ id: 'shades', label: 'Shades' }] : []),
+      ...(showSize ? [{ id: 'size', label: 'Size' }] : []),
+      { id: 'details', label: 'Details' },
+      ...(hasRecommendations ? [{ id: 'similar', label: 'Similar' }] : []),
+    ];
+  }, [hasReviews, showShades, showSize, hasRecommendations]);
 
   const handleTabChange = (tabId: string) => {
     setActiveTab(tabId);
     sectionRefs.current[tabId]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
+  useEffect(() => {
+    if (!tabs.some((tab) => tab.id === activeTab)) {
+      setActiveTab('product');
+    }
+  }, [tabs, activeTab]);
+
+  useEffect(() => {
+    const sectionEntries = tabs
+      .map((tab) => ({ id: tab.id, node: sectionRefs.current[tab.id] }))
+      .filter((entry): entry is { id: string; node: HTMLDivElement } => Boolean(entry.node));
+
+    if (!sectionEntries.length) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries
+          .filter((entry) => entry.isIntersecting)
+          .sort((a, b) => Math.abs(a.boundingClientRect.top) - Math.abs(b.boundingClientRect.top));
+        const topEntry = visible[0];
+        const nextId = topEntry?.target.getAttribute('data-section-id');
+        if (nextId && nextId !== activeTab) {
+          setActiveTab(nextId);
+        }
+      },
+      { rootMargin: '-25% 0px -55% 0px', threshold: [0.1, 0.25, 0.5] },
+    );
+
+    sectionEntries.forEach(({ id, node }) => {
+      node.setAttribute('data-section-id', id);
+      observer.observe(node);
+    });
+
+    return () => observer.disconnect();
+  }, [tabs, activeTab]);
+
   const handleColorSelect = (value: string) => {
     setSelectedColor(value);
     const match = findVariantByOptions({ variants, color: value, size: selectedSize });
-    if (match) setSelectedVariantId(match.variant_id);
+    if (match) {
+      setSelectedVariantId(match.variant_id);
+      setActiveMediaIndex(0);
+    }
   };
 
   const handleSizeSelect = (value: string) => {
     setSelectedSize(value);
     const match = findVariantByOptions({ variants, color: selectedColor, size: value });
-    if (match) setSelectedVariantId(match.variant_id);
+    if (match) {
+      setSelectedVariantId(match.variant_id);
+      setActiveMediaIndex(0);
+    }
+  };
+
+  const handleVariantSelect = (variantId: string) => {
+    setSelectedVariantId(variantId);
+    setActiveMediaIndex(0);
+  };
+
+  const handleBack = () => {
+    if (typeof window !== 'undefined') {
+      window.history.back();
+    }
+  };
+
+  const handleShare = () => {
+    if (typeof window === 'undefined') return;
+    const url = window.location.href;
+    pdpTracking.track('pdp_action_click', { action_type: 'share' });
+
+    if (navigator.share) {
+      navigator.share({ title: payload.product.title, url }).catch(() => {
+        // ignore share cancel
+      });
+      return;
+    }
+
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(url).catch(() => {
+        // ignore clipboard failures
+      });
+    }
   };
 
   const attributeOptions = extractAttributeOptions(selectedVariant);
@@ -220,16 +338,42 @@ export function PdpContainer({
   const showTrustBadges = resolvedMode === 'beauty' && trustBadges.length > 0;
 
   return (
-    <div className="relative min-h-screen bg-background pb-36">
+    <div className="relative min-h-screen bg-background pb-32">
+      <div className="fixed top-3 left-3 right-3 z-50 flex items-center justify-between pointer-events-none">
+        <button
+          type="button"
+          onClick={handleBack}
+          className="pointer-events-auto h-9 w-9 rounded-full border border-border bg-white/85 backdrop-blur flex items-center justify-center shadow-sm"
+          aria-label="Go back"
+        >
+          <ChevronLeft className="h-4 w-4 text-foreground" />
+        </button>
+        <button
+          type="button"
+          onClick={handleShare}
+          className="pointer-events-auto h-9 w-9 rounded-full border border-border bg-white/85 backdrop-blur flex items-center justify-center shadow-sm"
+          aria-label="Share"
+        >
+          <Share2 className="h-4 w-4 text-foreground" />
+        </button>
+      </div>
+
       <StickyTabNav tabs={tabs} activeTab={activeTab} onTabChange={handleTabChange} />
 
-      <div ref={(el) => { sectionRefs.current.product = el; }}>
-        <div className="pb-4">
+      <div
+        ref={(el) => {
+          sectionRefs.current.product = el;
+        }}
+        className="scroll-mt-24"
+      >
+        <div className="pb-3">
           <div className="relative">
             <MediaGallery
-              data={media}
+              data={galleryData}
               title={payload.product.title}
               fallbackUrl={heroUrl}
+              activeIndex={activeMediaIndex}
+              onSelect={(index) => setActiveMediaIndex(index)}
               aspectClass={resolvedMode === 'generic' ? 'aspect-square' : 'aspect-[6/5]'}
               fit={resolvedMode === 'generic' ? 'object-contain' : 'object-cover'}
             />
@@ -245,7 +389,7 @@ export function PdpContainer({
                       <button
                         key={variant.variant_id}
                         onClick={() => {
-                          setSelectedVariantId(variant.variant_id);
+                          handleVariantSelect(variant.variant_id);
                           pdpTracking.track('pdp_action_click', { action_type: 'select_variant', variant_id: variant.variant_id });
                         }}
                         className={cn(
@@ -311,11 +455,16 @@ export function PdpContainer({
             </div>
           ) : null}
 
-          <div className="px-4 py-4">
+          <div className="px-4 py-3">
             <div className="flex items-baseline gap-2 flex-wrap">
-              <div className="text-2xl font-bold">{formatPrice(priceAmount, currency)}</div>
+              <div className="text-xl font-bold">{formatPrice(priceAmount, currency)}</div>
+              {!isInStock ? (
+                <span className="rounded-full border border-red-200 bg-red-50 px-2 py-0.5 text-[10px] font-medium text-red-700">
+                  Out of stock
+                </span>
+              ) : null}
               {compareAmount && compareAmount > priceAmount ? (
-                <div className="text-sm text-muted-foreground line-through">
+                <div className="text-xs text-muted-foreground line-through">
                   {formatPrice(compareAmount, currency)}
                 </div>
               ) : null}
@@ -334,16 +483,21 @@ export function PdpContainer({
               ) : null}
             </div>
 
-            <h1 className="mt-2 text-lg font-semibold leading-snug">
+            <h1 className="mt-1 text-base font-semibold leading-snug">
               {payload.product.brand?.name ? `${payload.product.brand.name} ` : ''}{payload.product.title}
             </h1>
             {payload.product.subtitle ? (
-              <div className="mt-1 text-sm text-muted-foreground">{payload.product.subtitle}</div>
+              <div className="mt-1 text-xs text-muted-foreground">{payload.product.subtitle}</div>
+            ) : null}
+            {variants.length > 1 ? (
+              <div className="mt-1 text-[11px] text-muted-foreground">
+                Selected: <span className="text-foreground">{selectedVariant?.title}</span>
+              </div>
             ) : null}
 
             {reviews?.review_count ? (
               <button
-                className="mt-2 flex items-center gap-2 text-xs text-muted-foreground"
+                className="mt-2 flex items-center gap-2 text-[11px] text-muted-foreground"
                 onClick={() => handleTabChange('reviews')}
               >
                 <StarRating value={(reviews.rating / reviews.scale) * 5} />
@@ -353,7 +507,7 @@ export function PdpContainer({
             ) : null}
 
             {resolvedMode === 'beauty' && beautyAttributes.length ? (
-              <div className="mt-3 flex flex-wrap gap-2">
+              <div className="mt-2 flex flex-wrap gap-2">
                 {beautyAttributes.map((opt) => (
                   <span
                     key={`${opt.label}-${opt.value}`}
@@ -366,7 +520,7 @@ export function PdpContainer({
             ) : null}
 
             {attributeOptions.length ? (
-              <div className="mt-3 flex flex-wrap gap-2">
+              <div className="mt-2 flex flex-wrap gap-2">
                 {attributeOptions.map((opt) => (
                   <span
                     key={`${opt.name}-${opt.value}`}
@@ -379,7 +533,7 @@ export function PdpContainer({
             ) : null}
 
             {resolvedMode === 'generic' && sizeOptions.length ? (
-              <div className="mt-4">
+              <div className="mt-3">
                 <div className="flex items-center justify-between">
                   <div className="text-sm font-medium">Size</div>
                   <div className="text-xs text-muted-foreground">Select a size</div>
@@ -405,12 +559,12 @@ export function PdpContainer({
             ) : null}
 
             {resolvedMode === 'beauty' && variants.length > 1 ? (
-              <div className="mt-4">
+              <div className="mt-3">
                 <VariantSelector
                   variants={variants}
                   selectedVariantId={selectedVariant.variant_id}
                   onChange={(variantId) => {
-                    setSelectedVariantId(variantId);
+                    handleVariantSelect(variantId);
                     pdpTracking.track('pdp_action_click', { action_type: 'select_variant', variant_id: variantId });
                   }}
                   mode={resolvedMode}
@@ -419,12 +573,12 @@ export function PdpContainer({
             ) : null}
 
             {resolvedMode === 'generic' && !sizeOptions.length && variants.length > 1 ? (
-              <div className="mt-4">
+              <div className="mt-3">
                 <VariantSelector
                   variants={variants}
                   selectedVariantId={selectedVariant.variant_id}
                   onChange={(variantId) => {
-                    setSelectedVariantId(variantId);
+                    handleVariantSelect(variantId);
                     pdpTracking.track('pdp_action_click', { action_type: 'select_variant', variant_id: variantId });
                   }}
                   mode={resolvedMode}
@@ -434,7 +588,7 @@ export function PdpContainer({
           </div>
 
           {showTrustBadges ? (
-            <div className="mx-4 mt-3 flex flex-wrap items-center gap-2 rounded-lg bg-muted/50 px-3 py-2 text-[10px]">
+            <div className="mx-4 mt-2 flex flex-wrap items-center gap-2 rounded-lg bg-muted/50 px-3 py-2 text-[10px]">
               {trustBadges.map((badge, idx) => (
                 <div key={`${badge}-${idx}`} className="flex items-center gap-2">
                   <span>{badge}</span>
@@ -443,7 +597,7 @@ export function PdpContainer({
               ))}
             </div>
           ) : (payload.product.shipping?.eta_days_range?.length || payload.product.returns?.return_window_days) ? (
-            <div className="mx-4 rounded-2xl bg-card border border-border px-4 py-3 text-xs text-muted-foreground flex flex-wrap gap-x-3 gap-y-1">
+            <div className="mx-4 rounded-lg bg-card border border-border px-3 py-2 text-xs text-muted-foreground flex flex-wrap gap-x-3 gap-y-1">
               {payload.product.shipping?.eta_days_range?.length ? (
                 <span>
                   Shipping {payload.product.shipping.eta_days_range[0]}–{payload.product.shipping.eta_days_range[1]} days
@@ -476,7 +630,12 @@ export function PdpContainer({
       </div>
 
       {hasReviews ? (
-        <div ref={(el) => { sectionRefs.current.reviews = el; }} className="border-t-8 border-muted">
+        <div
+          ref={(el) => {
+            sectionRefs.current.reviews = el;
+          }}
+          className="border-t border-muted/60 scroll-mt-24"
+        >
           <BeautyReviewsSection
             data={reviews as ReviewsPreviewData}
             brandName={payload.product.brand?.name}
@@ -502,13 +661,18 @@ export function PdpContainer({
       ) : null}
 
       {showShades ? (
-        <div ref={(el) => { sectionRefs.current.shades = el; }} className="border-t-8 border-muted">
+        <div
+          ref={(el) => {
+            sectionRefs.current.shades = el;
+          }}
+          className="border-t border-muted/60 scroll-mt-24"
+        >
           {resolvedMode === 'beauty' ? (
             <BeautyShadesSection
               variants={variants}
               selectedVariant={selectedVariant}
               onVariantChange={(variantId) => {
-                setSelectedVariantId(variantId);
+                handleVariantSelect(variantId);
                 pdpTracking.track('pdp_action_click', { action_type: 'select_variant', variant_id: variantId });
               }}
               popularLooks={popularLooks}
@@ -519,7 +683,7 @@ export function PdpContainer({
               showEmpty
             />
           ) : (
-            <div className="px-4 py-6">
+            <div className="px-4 py-4">
               <h2 className="text-sm font-semibold mb-3">Shades</h2>
               <div className="grid grid-cols-3 gap-3">
                 {variants.map((variant) => {
@@ -528,7 +692,7 @@ export function PdpContainer({
                     <button
                       key={variant.variant_id}
                       onClick={() => {
-                        setSelectedVariantId(variant.variant_id);
+                        handleVariantSelect(variant.variant_id);
                         pdpTracking.track('pdp_action_click', { action_type: 'select_variant', variant_id: variant.variant_id });
                       }}
                       className={cn(
@@ -554,11 +718,16 @@ export function PdpContainer({
       ) : null}
 
       {showSize ? (
-        <div ref={(el) => { sectionRefs.current.size = el; }} className="border-t-8 border-muted">
+        <div
+          ref={(el) => {
+            sectionRefs.current.size = el;
+          }}
+          className="border-t border-muted/60 scroll-mt-24"
+        >
           {resolvedMode === 'generic' ? (
             <GenericSizeGuide sizeGuide={payload.product.size_guide} />
           ) : (
-            <div className="px-4 py-6">
+            <div className="px-4 py-4">
               <h2 className="text-sm font-semibold mb-3">Size Guide</h2>
               <div className="flex flex-wrap gap-2">
                 {sizeOptions.map((size) => {
@@ -584,13 +753,18 @@ export function PdpContainer({
       ) : null}
 
       {details ? (
-        <div ref={(el) => { sectionRefs.current.details = el; }} className="border-t-8 border-muted">
+        <div
+          ref={(el) => {
+            sectionRefs.current.details = el;
+          }}
+          className="border-t border-muted/60 scroll-mt-24"
+        >
           {resolvedMode === 'beauty' ? (
             <BeautyDetailsSection data={details} product={payload.product} media={media} />
           ) : resolvedMode === 'generic' ? (
             <GenericDetailsSection data={details} product={payload.product} media={media} />
           ) : (
-            <div className="px-4 py-6">
+            <div className="px-4 py-4">
               <h2 className="text-sm font-semibold mb-3">Details</h2>
               <DetailsAccordion data={details} />
             </div>
@@ -599,12 +773,35 @@ export function PdpContainer({
       ) : null}
 
       {recommendations ? (
-        <div ref={(el) => { sectionRefs.current.similar = el; }} className="border-t-8 border-muted">
-          <div className="px-4 py-6">
+        <div
+          ref={(el) => {
+            sectionRefs.current.similar = el;
+          }}
+          className="border-t border-muted/60 scroll-mt-24"
+        >
+          <div className="px-4 py-4">
             <RecommendationsGrid data={recommendations} />
           </div>
         </div>
       ) : null}
+
+      <div className="fixed bottom-20 left-4 right-4 z-50">
+        <Button
+          variant="gradient"
+          className="w-full h-11 rounded-full font-medium shadow-lg"
+          disabled={!isInStock}
+          onClick={() => {
+            pdpTracking.track('pdp_action_click', { action_type: 'buy_now', variant_id: selectedVariant.variant_id });
+            dispatchPdpAction('buy_now', {
+              variant: selectedVariant,
+              quantity,
+              onBuyNow,
+            });
+          }}
+        >
+          {!isInStock ? 'Out of stock' : actionsByType.buy_now || 'Buy Now'}
+        </Button>
+      </div>
 
       <div className="fixed bottom-0 left-0 right-0 z-40 bg-card border-t border-border">
         <div className="max-w-md mx-auto">
@@ -618,36 +815,30 @@ export function PdpContainer({
           ) : null}
 
           {resolvedMode === 'generic' ? (
-            <div className="flex items-center gap-2 px-4 pt-3">
+            <div className="flex items-center gap-2 px-4 pt-2">
               <button
                 onClick={() => pdpTracking.track('pdp_action_click', { action_type: 'favorite' })}
-                className="h-9 w-9 rounded-full border border-border flex items-center justify-center hover:bg-muted/40 transition-colors"
+                className="h-8 w-8 rounded-full border border-border flex items-center justify-center hover:bg-muted/40 transition-colors"
                 aria-label="Save"
               >
                 <Heart className="h-4 w-4 text-muted-foreground" />
               </button>
               <button
                 onClick={() => pdpTracking.track('pdp_action_click', { action_type: 'ask' })}
-                className="h-9 w-9 rounded-full border border-border flex items-center justify-center hover:bg-muted/40 transition-colors"
+                className="h-8 w-8 rounded-full border border-border flex items-center justify-center hover:bg-muted/40 transition-colors"
                 aria-label="Ask"
               >
                 <MessageCircle className="h-4 w-4 text-muted-foreground" />
               </button>
-              <button
-                onClick={() => pdpTracking.track('pdp_action_click', { action_type: 'share' })}
-                className="h-9 w-9 rounded-full border border-border flex items-center justify-center hover:bg-muted/40 transition-colors"
-                aria-label="Share"
-              >
-                <Share2 className="h-4 w-4 text-muted-foreground" />
-              </button>
             </div>
           ) : null}
 
-          <div className="flex items-center gap-3 px-4 py-3">
+          <div className="flex items-center gap-3 px-4 py-2">
             <div className="flex items-center gap-2">
               <Button
                 variant="secondary"
                 size="icon"
+                disabled={!isInStock}
                 onClick={() => setQuantity((q) => Math.max(1, q - 1))}
                 aria-label="Decrease quantity"
               >
@@ -657,6 +848,7 @@ export function PdpContainer({
               <Button
                 variant="secondary"
                 size="icon"
+                disabled={!isInStock}
                 onClick={() => setQuantity((q) => q + 1)}
                 aria-label="Increase quantity"
               >
@@ -666,7 +858,8 @@ export function PdpContainer({
             <div className="flex flex-1 gap-2">
               <Button
                 variant="outline"
-                className="flex-1 h-11 rounded-full font-medium"
+                className="flex-1 h-10 rounded-full font-medium"
+                disabled={!isInStock}
                 onClick={() => {
                   pdpTracking.track('pdp_action_click', { action_type: 'add_to_cart', variant_id: selectedVariant.variant_id });
                   dispatchPdpAction('add_to_cart', {
@@ -676,21 +869,7 @@ export function PdpContainer({
                   });
                 }}
               >
-                {actionsByType.add_to_cart || 'Add to Cart'}
-              </Button>
-              <Button
-                variant="gradient"
-                className="flex-[1.2] h-11 rounded-full font-medium"
-                onClick={() => {
-                  pdpTracking.track('pdp_action_click', { action_type: 'buy_now', variant_id: selectedVariant.variant_id });
-                  dispatchPdpAction('buy_now', {
-                    variant: selectedVariant,
-                    quantity,
-                    onBuyNow,
-                  });
-                }}
-              >
-                {actionsByType.buy_now || 'Buy Now'}
+                {!isInStock ? 'Out of stock' : actionsByType.add_to_cart || 'Add to Cart'}
               </Button>
             </div>
           </div>
@@ -702,7 +881,7 @@ export function PdpContainer({
         variants={variants}
         selectedVariantId={selectedVariant.variant_id}
         onSelect={(variantId) => {
-          setSelectedVariantId(variantId);
+          handleVariantSelect(variantId);
           pdpTracking.track('pdp_action_click', { action_type: 'select_variant', variant_id: variantId });
         }}
       />
@@ -712,7 +891,7 @@ export function PdpContainer({
         variants={variants}
         selectedVariantId={selectedVariant.variant_id}
         onSelect={(variantId) => {
-          setSelectedVariantId(variantId);
+          handleVariantSelect(variantId);
           pdpTracking.track('pdp_action_click', { action_type: 'select_variant', variant_id: variantId });
         }}
       />
