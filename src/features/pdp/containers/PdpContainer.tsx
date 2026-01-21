@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import Image from 'next/image';
 import { ChevronLeft, Heart, MessageCircle, Share2, Star } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -104,6 +105,7 @@ export function PdpContainer({
   const [activeMediaIndex, setActiveMediaIndex] = useState(0);
   const [navVisible, setNavVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [mounted, setMounted] = useState(false);
   const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   const variants = useMemo(() => payload.product.variants ?? [], [payload.product.variants]);
@@ -243,6 +245,10 @@ export function PdpContainer({
       setActiveTab('product');
     }
   }, [tabs, activeTab]);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -391,7 +397,7 @@ export function PdpContainer({
       <div
         className={cn(
           'fixed left-0 right-0 z-50 transition-colors',
-          navVisible ? 'bg-card/95 backdrop-blur-sm border-b border-border shadow-sm' : 'bg-transparent',
+          navVisible ? 'bg-gradient-to-b from-white via-white to-white/95 border-b border-border shadow-sm' : 'bg-transparent',
         )}
         style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
       >
@@ -399,7 +405,10 @@ export function PdpContainer({
           <button
             type="button"
             onClick={handleBack}
-            className="h-9 w-9 rounded-full border border-border bg-white/90 flex items-center justify-center"
+            className={cn(
+              'h-9 w-9 rounded-full border border-border flex items-center justify-center',
+              navVisible ? 'bg-white' : 'bg-white/90',
+            )}
             aria-label="Go back"
           >
             <ChevronLeft className="h-4 w-4 text-foreground" />
@@ -418,21 +427,24 @@ export function PdpContainer({
           <button
             type="button"
             onClick={handleShare}
-            className="h-9 w-9 rounded-full border border-border bg-white/90 flex items-center justify-center ml-auto"
+            className={cn(
+              'h-9 w-9 rounded-full border border-border flex items-center justify-center ml-auto',
+              navVisible ? 'bg-white' : 'bg-white/90',
+            )}
             aria-label="Share"
           >
             <Share2 className="h-4 w-4 text-foreground" />
           </button>
         </div>
         {navVisible ? (
-          <div className="border-t border-border/70">
+          <div className="border-t border-border/50 bg-white">
             <div className="max-w-md mx-auto flex">
               {tabs.map((tab) => (
                 <button
                   key={tab.id}
                   onClick={() => handleTabChange(tab.id)}
                   className={cn(
-                    'relative flex-1 py-2.5 text-xs font-medium transition-colors',
+                    'relative flex-1 py-2.5 text-xs font-semibold transition-colors',
                     activeTab === tab.id ? 'text-primary' : 'text-muted-foreground',
                   )}
                   aria-current={activeTab === tab.id ? 'page' : undefined}
@@ -484,7 +496,7 @@ export function PdpContainer({
                           className={cn(
                             'flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] whitespace-nowrap transition-all',
                             isSelected
-                              ? 'border-primary bg-primary/15 font-semibold text-primary ring-1 ring-primary/50 shadow-sm'
+                              ? 'border-primary bg-primary/20 font-semibold text-primary ring-2 ring-primary/50 shadow-sm'
                               : 'border-border hover:border-primary/50',
                           )}
                         >
@@ -661,7 +673,7 @@ export function PdpContainer({
                           className={cn(
                             'rounded-full border px-3 py-1 text-xs transition-colors',
                             isSelected
-                              ? 'border-primary bg-primary/15 text-primary ring-1 ring-primary/50'
+                              ? 'border-primary bg-primary/20 text-primary ring-2 ring-primary/50'
                               : 'border-border hover:border-primary/50',
                           )}
                         >
@@ -887,84 +899,89 @@ export function PdpContainer({
         ) : null}
       </div>
 
-      <div className="fixed bottom-0 left-0 right-0 z-[60]">
-        <div className="mx-auto max-w-md px-3">
-          <div className="rounded-2xl border border-border bg-white shadow-[0_-6px_18px_rgba(0,0,0,0.08)] safe-area-bottom overflow-hidden mb-2">
-            {pricePromo?.promotions?.length ? (
-              <div className="flex items-center justify-between px-4 py-2 bg-primary/5 text-xs">
-                <span className="flex items-center gap-2">
-                  <span className="text-primary">🎁</span>
-                  <span>{pricePromo.promotions[0].label}</span>
-                </span>
-                <button className="text-muted-foreground" aria-label="Dismiss promotion">
-                  ×
-                </button>
-              </div>
-            ) : null}
+      {mounted
+        ? createPortal(
+            <div className="fixed bottom-0 left-0 right-0 z-[100] pointer-events-none">
+              <div className="mx-auto max-w-md px-3 pointer-events-auto">
+                <div className="rounded-2xl border border-border bg-white shadow-[0_-6px_18px_rgba(0,0,0,0.08)] safe-area-bottom overflow-hidden mb-2">
+                  {pricePromo?.promotions?.length ? (
+                    <div className="flex items-center justify-between px-4 py-2 bg-primary/5 text-xs">
+                      <span className="flex items-center gap-2">
+                        <span className="text-primary">🎁</span>
+                        <span>{pricePromo.promotions[0].label}</span>
+                      </span>
+                      <button className="text-muted-foreground" aria-label="Dismiss promotion">
+                        ×
+                      </button>
+                    </div>
+                  ) : null}
 
-            <div className="flex items-center gap-3 px-3 py-2.5">
-              <div className="flex gap-1.5">
-                <button
-                  onClick={() => pdpTracking.track('pdp_action_click', { action_type: 'favorite' })}
-                  className="flex flex-col items-center gap-0.5 px-1.5"
-                  aria-label="Save"
-                >
-                  <Heart className="h-5 w-5 text-muted-foreground" />
-                  <span className="text-[10px] text-muted-foreground">{formatCount(13000)}</span>
-                </button>
-                <button
-                  onClick={handleShare}
-                  className="flex flex-col items-center gap-0.5 px-1.5"
-                  aria-label="Share"
-                >
-                  <Share2 className="h-5 w-5 text-muted-foreground" />
-                  <span className="text-[10px] text-muted-foreground">Share</span>
-                </button>
-                <button
-                  onClick={() => pdpTracking.track('pdp_action_click', { action_type: 'ask' })}
-                  className="flex flex-col items-center gap-0.5 px-1.5"
-                  aria-label="Chat"
-                >
-                  <MessageCircle className="h-5 w-5 text-muted-foreground" />
-                  <span className="text-[10px] text-muted-foreground">Chat</span>
-                </button>
-              </div>
+                  <div className="flex items-center gap-3 px-3 py-2.5">
+                    <div className="flex gap-1.5">
+                      <button
+                        onClick={() => pdpTracking.track('pdp_action_click', { action_type: 'favorite' })}
+                        className="flex flex-col items-center gap-0.5 px-1.5"
+                        aria-label="Save"
+                      >
+                        <Heart className="h-5 w-5 text-muted-foreground" />
+                        <span className="text-[10px] text-muted-foreground">{formatCount(13000)}</span>
+                      </button>
+                      <button
+                        onClick={handleShare}
+                        className="flex flex-col items-center gap-0.5 px-1.5"
+                        aria-label="Share"
+                      >
+                        <Share2 className="h-5 w-5 text-muted-foreground" />
+                        <span className="text-[10px] text-muted-foreground">Share</span>
+                      </button>
+                      <button
+                        onClick={() => pdpTracking.track('pdp_action_click', { action_type: 'ask' })}
+                        className="flex flex-col items-center gap-0.5 px-1.5"
+                        aria-label="Chat"
+                      >
+                        <MessageCircle className="h-5 w-5 text-muted-foreground" />
+                        <span className="text-[10px] text-muted-foreground">Chat</span>
+                      </button>
+                    </div>
 
-              <div className="flex flex-1 gap-2">
-                <Button
-                  variant="outline"
-                  className="flex-1 h-10 rounded-full font-semibold text-sm"
-                  disabled={!isInStock}
-                  onClick={() => {
-                    pdpTracking.track('pdp_action_click', { action_type: 'add_to_cart', variant_id: selectedVariant.variant_id });
-                    dispatchPdpAction('add_to_cart', {
-                      variant: selectedVariant,
-                      quantity: resolvedQuantity,
-                      onAddToCart,
-                    });
-                  }}
-                >
-                  {!isInStock ? 'Out of stock' : actionsByType.add_to_cart || 'Add to Cart'}
-                </Button>
-                <Button
-                  className="flex-[1.5] h-10 rounded-full bg-primary hover:bg-primary/90 font-semibold text-sm"
-                  disabled={!isInStock}
-                  onClick={() => {
-                    pdpTracking.track('pdp_action_click', { action_type: 'buy_now', variant_id: selectedVariant.variant_id });
-                    dispatchPdpAction('buy_now', {
-                      variant: selectedVariant,
-                      quantity: resolvedQuantity,
-                      onBuyNow,
-                    });
-                  }}
-                >
-                  {!isInStock ? 'Out of stock' : actionsByType.buy_now || 'Buy Now'}
-                </Button>
+                    <div className="flex flex-1 gap-2">
+                      <Button
+                        variant="outline"
+                        className="flex-1 h-10 rounded-full font-semibold text-sm"
+                        disabled={!isInStock}
+                        onClick={() => {
+                          pdpTracking.track('pdp_action_click', { action_type: 'add_to_cart', variant_id: selectedVariant.variant_id });
+                          dispatchPdpAction('add_to_cart', {
+                            variant: selectedVariant,
+                            quantity: resolvedQuantity,
+                            onAddToCart,
+                          });
+                        }}
+                      >
+                        {!isInStock ? 'Out of stock' : actionsByType.add_to_cart || 'Add to Cart'}
+                      </Button>
+                      <Button
+                        className="flex-[1.5] h-10 rounded-full bg-primary hover:bg-primary/90 font-semibold text-sm"
+                        disabled={!isInStock}
+                        onClick={() => {
+                          pdpTracking.track('pdp_action_click', { action_type: 'buy_now', variant_id: selectedVariant.variant_id });
+                          dispatchPdpAction('buy_now', {
+                            variant: selectedVariant,
+                            quantity: resolvedQuantity,
+                            onBuyNow,
+                          });
+                        }}
+                      >
+                        {!isInStock ? 'Out of stock' : actionsByType.buy_now || 'Buy Now'}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
-        </div>
-      </div>
+            </div>,
+            document.body,
+          )
+        : null}
       <BeautyVariantSheet
         open={resolvedMode === 'beauty' && showShadeSheet}
         onClose={() => setShowShadeSheet(false)}
