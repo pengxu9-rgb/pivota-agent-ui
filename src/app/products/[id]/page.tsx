@@ -173,6 +173,7 @@ export default function ProductDetailPage({ params }: Props) {
           useConfiguredMerchantId: Boolean(merchantIdParam),
           allowBroadScan: Boolean(merchantIdParam),
           timeout_ms: merchantIdParam ? undefined : fastTimeoutMs,
+          throwOnError: true,
         });
         if (!data) {
           if (!cancelled) {

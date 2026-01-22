@@ -157,6 +157,15 @@ export function PdpContainer({
     if (!selectedOfferId) return offers[0] || null;
     return offers.find((o) => o.offer_id === selectedOfferId) || offers[0] || null;
   }, [offers, selectedOfferId]);
+  const offerDebugEnabled = useMemo(() => {
+    if (typeof window === 'undefined') return false;
+    const params = new URLSearchParams(window.location.search);
+    const raw = String(params.get('pdp_debug') || params.get('debug') || '').trim().toLowerCase();
+    if (!raw || raw === '0' || raw === 'false') return false;
+    const envAllowed = String(process.env.NEXT_PUBLIC_PDP_DEBUG || '').trim() === '1';
+    if (process.env.NODE_ENV === 'production' && !envAllowed) return false;
+    return true;
+  }, []);
 
   useEffect(() => {
     const merchantId = String(payload.product.merchant_id || '').trim();
@@ -165,6 +174,29 @@ export function PdpContainer({
       : null;
     setSelectedOfferId(merchantOfferId || payload.default_offer_id || offers[0]?.offer_id || null);
   }, [payload.product.product_id, payload.product.merchant_id, payload.default_offer_id, offers]);
+
+  useEffect(() => {
+    if (!offerDebugEnabled) return;
+    // eslint-disable-next-line no-console
+    console.info('[pdp][offer-debug]', {
+      product_id: payload.product.product_id,
+      product_group_id: payload.product_group_id || selectedOffer?.product_group_id || null,
+      selected_offer_id: selectedOfferId,
+      default_offer_id: payload.default_offer_id || null,
+      best_price_offer_id: payload.best_price_offer_id || null,
+      merchant_id: selectedOffer?.merchant_id || payload.product.merchant_id || null,
+    });
+  }, [
+    offerDebugEnabled,
+    payload.product.product_id,
+    payload.product_group_id,
+    payload.default_offer_id,
+    payload.best_price_offer_id,
+    payload.product.merchant_id,
+    selectedOfferId,
+    selectedOffer?.merchant_id,
+    selectedOffer?.product_group_id,
+  ]);
 
   const colorOptions = useMemo(() => collectColorOptions(variants), [variants]);
   const sizeOptions = useMemo(() => collectSizeOptions(variants), [variants]);
@@ -1053,6 +1085,20 @@ export function PdpContainer({
           });
         }}
       />
+      {offerDebugEnabled ? (
+        <details className="mx-auto max-w-md px-3 pb-2 text-xs text-muted-foreground">
+          <summary className="cursor-pointer select-none">Offer debug</summary>
+          <div className="mt-2 rounded-xl border border-border bg-card/60 p-3 font-mono text-[11px] leading-relaxed">
+            <div>selected_offer_id: {selectedOfferId || 'null'}</div>
+            <div>default_offer_id: {payload.default_offer_id || 'null'}</div>
+            <div>best_price_offer_id: {payload.best_price_offer_id || 'null'}</div>
+            <div>
+              product_group_id: {payload.product_group_id || selectedOffer?.product_group_id || 'null'}
+            </div>
+            <div>merchant_id: {selectedOffer?.merchant_id || payload.product.merchant_id || 'null'}</div>
+          </div>
+        </details>
+      ) : null}
     </div>
   );
 }

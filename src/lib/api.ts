@@ -687,11 +687,13 @@ export async function getProductDetail(
     allowBroadScan?: boolean;
     timeout_ms?: number;
     useConfiguredMerchantId?: boolean;
+    throwOnError?: boolean;
   },
 ): Promise<ProductResponse | null> {
   const allowBroadScan = options?.allowBroadScan !== false;
   const timeoutMs = options?.timeout_ms;
   const useConfiguredMerchantId = options?.useConfiguredMerchantId !== false;
+  const throwOnError = options?.throwOnError === true;
 
   // Try to resolve merchant_id, fallback to cross-merchant search if missing.
   let merchantId: string | undefined = merchantIdOverride;
@@ -740,6 +742,7 @@ export async function getProductDetail(
   } catch (err) {
     // In MOCK mode or when backend returns 404, gracefully fall back to list search
     console.error('getProductDetail primary error, falling back to list:', err);
+    if (throwOnError) throw err;
   }
 
   try {
@@ -795,6 +798,7 @@ export async function getProductDetail(
     return found || null;
   } catch (err) {
     if (isAmbiguousProductError(err)) throw err;
+    if (throwOnError) throw err;
     return null;
   }
 }
