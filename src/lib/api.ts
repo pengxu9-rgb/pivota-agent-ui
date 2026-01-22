@@ -305,6 +305,7 @@ function normalizeProduct(
 interface InvokeBody {
   operation: string;
   payload: any;
+  metadata?: Record<string, any>;
 }
 
 function getCheckoutToken(): string | null {
@@ -340,6 +341,14 @@ async function callGateway(body: InvokeBody, options: GatewayCallOptions = {}) {
   const isProxy = API_BASE.startsWith('/api/gateway');
   const url = isProxy ? API_BASE : `${API_BASE}/agent/shop/v1/invoke`;
   const checkoutToken = getCheckoutToken();
+  const gatewaySource = process.env.NEXT_PUBLIC_GATEWAY_SOURCE || 'shopping-agent-ui';
+  const requestBody: InvokeBody = {
+    ...body,
+    metadata: {
+      source: gatewaySource,
+      ...(body.metadata || {}),
+    },
+  };
 
   const res = await fetch(url, {
     method: 'POST',
@@ -348,7 +357,7 @@ async function callGateway(body: InvokeBody, options: GatewayCallOptions = {}) {
       ...(checkoutToken ? { 'X-Checkout-Token': checkoutToken } : {}),
     },
     signal: options.signal,
-    body: JSON.stringify(body),
+    body: JSON.stringify(requestBody),
   });
 
   if (!res.ok) {
