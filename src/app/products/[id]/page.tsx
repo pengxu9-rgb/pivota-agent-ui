@@ -16,6 +16,33 @@ interface Props {
   params: Promise<{ id: string }>;
 }
 
+function ProductDetailLoading() {
+  return (
+    <div className="min-h-screen bg-background">
+      <div className="mx-auto max-w-md px-4 pt-6">
+        <div className="flex items-center gap-3">
+          <div className="h-10 w-10 rounded-full bg-muted/25 animate-pulse" />
+          <div className="h-10 flex-1 rounded-full bg-muted/20 animate-pulse" />
+          <div className="h-10 w-10 rounded-full bg-muted/25 animate-pulse" />
+        </div>
+
+        <div className="mt-4 aspect-[3/4] rounded-3xl bg-muted/20 animate-pulse" />
+
+        <div className="mt-5 space-y-2">
+          <div className="h-8 w-32 rounded bg-muted/20 animate-pulse" />
+          <div className="h-5 w-full rounded bg-muted/20 animate-pulse" />
+          <div className="h-5 w-3/4 rounded bg-muted/20 animate-pulse" />
+          <div className="h-4 w-1/2 rounded bg-muted/20 animate-pulse" />
+        </div>
+
+        <div className="mt-6 text-center text-sm text-muted-foreground">
+          Loading product details…
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function ProductDetailPage({ params }: Props) {
   const { id } = use(params);
   const searchParams = useSearchParams();
@@ -229,14 +256,7 @@ export default function ProductDetailPage({ params }: Props) {
   };
 
   if (loading && !product) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="animate-pulse flex flex-col items-center gap-4">
-          <div className="h-12 w-12 rounded-full bg-muted/20" />
-          <div className="h-4 w-32 rounded bg-muted/20" />
-        </div>
-      </div>
-    );
+    return <ProductDetailLoading />;
   }
 
   if (!loading && !product && sellerCandidates?.length) {

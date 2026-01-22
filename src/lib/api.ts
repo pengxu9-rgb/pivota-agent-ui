@@ -661,12 +661,23 @@ export async function getProductDetail(
       return { found: null, candidates: [] };
     };
 
-    // Try broad fetch then targeted by productId
-    let { found, candidates } = await searchAndFind('', 500);
+    // Prefer an ID-targeted search first for numeric IDs (Shopify product ids, etc.).
+    // This avoids slow "empty query" catalog scans when the upstream supports identifier search.
+    const shouldTryIdQueryFirst = /^\d{8,}$/.test(productId);
+
+    let found: ProductResponse | null = null;
+    let candidates: ProductResponse[] = [];
+
+    if (shouldTryIdQueryFirst) {
+      const first = await searchAndFind(productId, 100);
+      found = first.found;
+      candidates = first.candidates;
+    }
+
     if (!found && candidates.length === 0) {
-      const second = await searchAndFind(productId, 500);
-      found = second.found;
-      candidates = second.candidates;
+      const broad = await searchAndFind('', 100);
+      found = broad.found;
+      candidates = broad.candidates;
     }
 
     if (!found && candidates.length > 1) {
@@ -676,45 +687,9 @@ export async function getProductDetail(
       throw err;
     }
 
-    if (found && found.merchant_id) {
-      try {
-        const detail = await callGateway({
-          operation: 'get_product_detail',
-          payload: {
-            product: {
-              merchant_id: found.merchant_id,
-              product_id: productId,
-            },
-          },
-        });
-        const product = (detail as any).product;
-        if (product) {
-          const enriched = {
-            ...product,
-            ...(typeof (detail as any).product_group_id === 'string'
-              ? { product_group_id: (detail as any).product_group_id }
-              : {}),
-            ...(Array.isArray((detail as any).offers) ? { offers: (detail as any).offers } : {}),
-            ...((detail as any).offers_count != null ? { offers_count: (detail as any).offers_count } : {}),
-            ...(typeof (detail as any).default_offer_id === 'string'
-              ? { default_offer_id: (detail as any).default_offer_id }
-              : {}),
-            ...(typeof (detail as any).best_price_offer_id === 'string'
-              ? { best_price_offer_id: (detail as any).best_price_offer_id }
-              : {}),
-          };
-          return normalizeProduct(enriched);
-        }
-      } catch (e) {
-        console.error('Fallback detail fetch failed:', e);
-        if (isAmbiguousProductError(e)) throw e;
-        return found;
-      }
-    }
     return found || null;
   } catch (err) {
     if (isAmbiguousProductError(err)) throw err;
-    console.error('getProductDetail fallback error:', err);
     return null;
   }
 }
