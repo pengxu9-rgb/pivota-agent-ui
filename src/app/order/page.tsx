@@ -69,6 +69,8 @@ function OrderContent() {
   const checkoutToken =
     (searchParams.get('checkout_token') || searchParams.get('checkoutToken') || '').trim() ||
     null
+  const checkoutDebug =
+    (searchParams.get('checkout_debug') || searchParams.get('debug') || '').trim() || null
 
   const markUcpCheckoutSessionFailure = async (
     checkoutId: string,
@@ -263,6 +265,7 @@ function OrderContent() {
     if (sellerDomain) sellerParams.set('seller_domain', sellerDomain)
     if (billingDescriptor) sellerParams.set('billing_descriptor', billingDescriptor)
     if (ucpCheckoutSessionId) sellerParams.set('ucp_checkout_session_id', ucpCheckoutSessionId)
+    if (checkoutDebug) sellerParams.set('checkout_debug', checkoutDebug)
     const sellerSuffix = sellerParams.toString() ? `&${sellerParams.toString()}` : ''
 
     router.push(

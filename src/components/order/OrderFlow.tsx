@@ -87,7 +87,7 @@ type QuotePreview = {
 }
 
 const publishableKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || ''
-const stripePromise = publishableKey ? loadStripe(publishableKey) : null
+const stripePromise = publishableKey ? loadStripe(publishableKey) : Promise.resolve(null)
 const ADYEN_CLIENT_KEY =
   process.env.NEXT_PUBLIC_ADYEN_CLIENT_KEY ||
   'test_RMFUADZPQBBYJIWI56KVOQSNUUT657ML' // public test key; replace in env for prod
@@ -351,6 +351,13 @@ function OrderFlowInner({
   const [quote, setQuote] = useState<QuotePreview | null>(null)
   const [selectedDeliveryOption, setSelectedDeliveryOption] = useState<any>(null)
   const [quotePending, setQuotePending] = useState(false)
+  const [orderDebug, setOrderDebug] = useState<{
+    order_id?: string | null
+    resolved_offer_id?: string | null
+    resolved_merchant_id?: string | null
+    order_lines?: any[] | null
+  } | null>(null)
+  const [debugEnabled, setDebugEnabled] = useState(false)
 
   useEffect(() => {
     const normalized = normalizeCountryCode(shipping.country)
@@ -358,6 +365,17 @@ function OrderFlowInner({
       setShipping((prev) => ({ ...prev, country: normalized }))
     }
   }, [shipping.country])
+
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'production') {
+      if (String(process.env.NEXT_PUBLIC_CHECKOUT_DEBUG || '').trim() !== '1') return
+    }
+    if (typeof window === 'undefined') return
+    const params = new URLSearchParams(window.location.search)
+    const raw = String(params.get('checkout_debug') || params.get('debug') || '').trim().toLowerCase()
+    if (!raw || raw === '0' || raw === 'false') return
+    setDebugEnabled(true)
+  }, [])
 
   const estimatedSubtotal = items.reduce(
     (sum, item) => sum + item.unit_price * item.quantity,
@@ -725,6 +743,22 @@ function OrderFlowInner({
       resolved_offer_id: (orderResponse as any)?.resolved_offer_id || null,
       resolved_merchant_id: (orderResponse as any)?.resolved_merchant_id || null,
     })
+    const nextOrderDebug = {
+      order_id: (orderResponse as any)?.order_id || null,
+      resolved_offer_id: (orderResponse as any)?.resolved_offer_id || null,
+      resolved_merchant_id: (orderResponse as any)?.resolved_merchant_id || null,
+      order_lines: Array.isArray((orderResponse as any)?.order_lines)
+        ? (orderResponse as any).order_lines
+        : null,
+    }
+    setOrderDebug(nextOrderDebug)
+    try {
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem('pivota_checkout_debug', JSON.stringify(nextOrderDebug))
+      }
+    } catch {
+      // ignore storage errors
+    }
 
     orderId = orderResponse.order_id
     setCreatedOrderId(orderId)
@@ -1661,18 +1695,31 @@ function OrderFlowInner({
           </p>
         </div>
       )}
+      {debugEnabled ? (
+        <div className="mt-6 rounded-lg border border-dashed border-border/70 bg-muted/20 p-3 text-xs text-muted-foreground">
+          <div className="font-semibold text-foreground mb-2">Checkout Debug</div>
+          <pre className="whitespace-pre-wrap break-words">
+            {JSON.stringify(
+              {
+                selected_offer_id: offerIdForOrder || null,
+                selected_merchant_id: merchantIdForOrder || null,
+                ...(orderDebug || {}),
+              },
+              null,
+              2,
+            )}
+          </pre>
+        </div>
+      ) : null}
     </div>
   )
 }
 
 export default function OrderFlow(props: OrderFlowProps) {
-  // If Stripe publishable key is present, wrap with Elements; otherwise render without card input
-  if (stripePromise) {
-    return (
-      <Elements stripe={stripePromise}>
-        <OrderFlowInner {...props} />
-      </Elements>
-    )
-  }
-  return <OrderFlowInner {...props} />
+  // Always provide Elements context so useStripe/useElements hooks don't throw.
+  return (
+    <Elements stripe={stripePromise}>
+      <OrderFlowInner {...props} />
+    </Elements>
+  )
 }
