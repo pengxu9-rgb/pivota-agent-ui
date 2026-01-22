@@ -41,11 +41,9 @@ export default function ProductCard({
   const { addItem } = useCartStore();
   const isExternal = Boolean(external_redirect_url);
 
-  const href = isExternal
-    ? external_redirect_url || '#'
-    : merchant_id
-      ? `/products/${product_id}?merchant_id=${merchant_id}`
-      : `/products/${product_id}`;
+  const href = merchant_id
+    ? `/products/${product_id}?merchant_id=${encodeURIComponent(merchant_id)}`
+    : `/products/${product_id}`;
 
   const handleAddToCart = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -93,8 +91,6 @@ export default function ProductCard({
   return (
     <Link
       href={href}
-      target={isExternal ? '_blank' : undefined}
-      rel={isExternal ? 'noreferrer' : undefined}
     >
       <GlassCard className="p-0 overflow-hidden group hover:shadow-glass-hover transition-all duration-300 hover:scale-[1.02]">
         <div className="relative aspect-[3/4] overflow-hidden bg-muted/30">
@@ -132,7 +128,7 @@ export default function ProductCard({
                 onClick={handleOpenExternal}
                 className="flex-1"
               >
-                Open
+                Visit Site
               </Button>
             ) : (
               <>

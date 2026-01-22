@@ -249,11 +249,9 @@ export default function HomePage() {
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                         {message.products.map((product, productIdx) => {
                         const isExternal = Boolean(product.external_redirect_url);
-                        const cardHref = isExternal
-                          ? product.external_redirect_url || '#'
-                          : product.merchant_id
-                            ? `/products/${product.product_id}?merchant_id=${product.merchant_id}`
-                            : `/products/${product.product_id}`;
+                        const cardHref = product.merchant_id
+                          ? `/products/${product.product_id}?merchant_id=${encodeURIComponent(product.merchant_id)}`
+                          : `/products/${product.product_id}`;
                         return (
                           <motion.div
                             key={product.product_id}
@@ -264,8 +262,6 @@ export default function HomePage() {
                           >
                             <Link
                               href={cardHref}
-                              target={isExternal ? '_blank' : undefined}
-                              rel={isExternal ? 'noreferrer' : undefined}
                               className="block"
                             >
                               <div className="relative w-full aspect-[3/4] overflow-hidden bg-white">
@@ -282,8 +278,6 @@ export default function HomePage() {
                             <div className="p-4 flex flex-col gap-2">
                               <Link
                                 href={cardHref}
-                                target={isExternal ? '_blank' : undefined}
-                                rel={isExternal ? 'noreferrer' : undefined}
                               >
                                 <h4 className="font-semibold text-base mb-1 line-clamp-2 min-h-[2.5rem] text-foreground group-hover:text-primary transition-colors">
                                   {product.title}
@@ -313,7 +307,7 @@ export default function HomePage() {
                                   }}
                                   className="w-full h-9 text-xs font-medium"
                                 >
-                                  Open
+                                  Visit Site
                                 </Button>
                               ) : (
                                 <Button
@@ -371,15 +365,13 @@ export default function HomePage() {
                   {hotDeals.length > 0 ? (
                     hotDeals.map((product) => {
                       const isExternal = Boolean(product.external_redirect_url);
-                      const cardHref = isExternal
-                        ? product.external_redirect_url || '#'
+                      const cardHref = product.merchant_id
+                        ? `/products/${product.product_id}?merchant_id=${encodeURIComponent(product.merchant_id)}`
                         : `/products/${product.product_id}`;
                       return (
                       <Link
                         key={product.product_id}
                         href={cardHref}
-                        target={isExternal ? '_blank' : undefined}
-                        rel={isExternal ? 'noreferrer' : undefined}
                         className="flex-shrink-0 w-24 group"
                       >
                         <div className="relative aspect-square rounded-2xl overflow-hidden mb-2 ring-1 ring-border group-hover:ring-primary transition-all">
