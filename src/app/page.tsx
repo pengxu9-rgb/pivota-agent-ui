@@ -8,6 +8,7 @@ import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import ChatSidebar from '@/components/chat/ChatSidebar';
+import { ChatRecommendationCard } from '@/components/product/ChatRecommendationCard';
 import { useCartStore } from '@/store/cartStore';
 import { useAuthStore } from '@/store/authStore';
 import { useChatStore } from '@/store/chatStore';
@@ -219,110 +220,48 @@ export default function HomePage() {
                     : 'justify-start'
                 }`}
               >
-                <div
-                  className={`${
-                    idx === 0 && message.role === 'assistant'
-                      ? 'text-center max-w-md space-y-3'
-                      : message.role === 'user'
-                      ? 'max-w-[80%] bg-secondary border border-border rounded-3xl rounded-br-sm px-4 py-3 text-sm'
-                      : 'max-w-[80%] bg-primary text-primary-foreground rounded-3xl rounded-bl-sm px-4 py-3 text-sm shadow-lg'
-                  }`}
-                >
-                  {idx === 0 && message.role === 'assistant' ? (
-                    <>
-                      <h1 className="text-3xl md:text-4xl font-semibold tracking-tight">
-                        <span className="gradient-text">Shop Anything</span>
-                        <br />
-                        <span className="text-foreground">Through Conversation</span>
-                      </h1>
-                    </>
-                  ) : (
-                    message.content
-                  )}
-
-                  {/* Product Cards */}
-                  {message.products && message.products.length > 0 && (
-                    <div className="mt-4 space-y-2 max-w-3xl">
-                      <p className="text-[11px] text-primary-foreground/80">
-                        Recommended pieces based on this chat:
-                      </p>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                        {message.products.map((product, productIdx) => {
-                        const isExternal = Boolean(product.external_redirect_url);
-                        const cardHref = product.merchant_id
-                          ? `/products/${product.product_id}?merchant_id=${encodeURIComponent(product.merchant_id)}`
-                          : `/products/${product.product_id}`;
-                        return (
-                          <motion.div
-                            key={product.product_id}
-                            initial={{ opacity: 0, scale: 0.9 }}
-                            animate={{ opacity: 1, scale: 1 }}
-                            transition={{ delay: productIdx * 0.1 }}
-                            className="group relative bg-card backdrop-blur-xl rounded-2xl overflow-hidden border border-border shadow-md hover:shadow-lg hover:scale-[1.02] transition-all duration-300"
-                          >
-                            <Link
-                              href={cardHref}
-                              className="block"
-                            >
-                              <div className="relative w-full aspect-[3/4] overflow-hidden bg-white">
-                                <Image
-                                  src={product.image_url || '/placeholder.svg'}
-                                  alt={product.title}
-                                  fill
-                                  className="object-cover group-hover:scale-105 transition-transform duration-300"
-                                  unoptimized
-                                />
-                              </div>
-                            </Link>
-
-                            <div className="p-4 flex flex-col gap-2">
-                              <Link
-                                href={cardHref}
-                              >
-                                <h4 className="font-semibold text-base mb-1 line-clamp-2 min-h-[2.5rem] text-foreground group-hover:text-primary transition-colors">
-                                  {product.title}
-                                </h4>
-                              </Link>
-
-                              {product.merchant_name && (
-                                <span className="text-xs text-muted-foreground line-clamp-1">
-                                  {product.merchant_name}
-                                </span>
-                              )}
-
-                              <div className="flex items-center justify-between">
-                                <span className="text-lg font-bold text-primary">
-                                  ${typeof product.price === 'number' ? product.price.toFixed(2) : product.price}
-                                </span>
-                              </div>
-
-                              {isExternal ? (
-                                <Button
-                                  asChild
-                                  variant="default"
-                                  size="sm"
-                                  className="w-full h-9 text-xs font-medium"
-                                >
-                                  <Link href={cardHref}>View details</Link>
-                                </Button>
-                              ) : (
-                                <Button
-                                  variant="default"
-                                  size="sm"
-                                  onClick={() => handleAddToCart(product)}
-                                  className="w-full h-9 text-xs font-medium"
-                                >
-                                  Add to Cart
-                                </Button>
-                              )}
-                            </div>
-                          </motion.div>
-                          );
-                        })}
-                      </div>
+                {idx === 0 && message.role === 'assistant' ? (
+                  <div className="text-center max-w-md space-y-3">
+                    <h1 className="text-3xl md:text-4xl font-semibold tracking-tight">
+                      <span className="gradient-text">Shop Anything</span>
+                      <br />
+                      <span className="text-foreground">Through Conversation</span>
+                    </h1>
+                  </div>
+                ) : (
+                  <div className="max-w-[80%] space-y-2">
+                    <div
+                      className={
+                        message.role === 'user'
+                          ? 'bg-secondary border border-border rounded-3xl rounded-br-sm px-4 py-3 text-sm'
+                          : 'bg-primary text-primary-foreground rounded-3xl rounded-bl-sm px-4 py-3 text-sm shadow-lg'
+                      }
+                    >
+                      {message.content}
                     </div>
-                  )}
-                </div>
+
+                    {message.products && message.products.length > 0 && (
+                      <div className="space-y-2">
+                        <p className="text-[11px] text-muted-foreground">
+                          Recommended pieces based on this chat:
+                        </p>
+                        <div className="flex gap-3 overflow-x-auto pb-1 sm:grid sm:grid-cols-2 sm:gap-5 sm:overflow-visible">
+                          {message.products.slice(0, 10).map((product) => (
+                            <div
+                              key={product.product_id}
+                              className="w-[220px] flex-shrink-0 sm:w-auto"
+                            >
+                              <ChatRecommendationCard
+                                product={product}
+                                onAddToCart={handleAddToCart}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </motion.div>
             ))}
           </AnimatePresence>
