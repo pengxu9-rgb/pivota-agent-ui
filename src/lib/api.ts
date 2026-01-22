@@ -147,6 +147,32 @@ export interface ProductResponse {
   seller_feedback_summary?: any;
 }
 
+export type ResolveProductCandidatesOffer = {
+  offer_id: string;
+  merchant_id: string;
+  merchant_name?: string;
+  price?: { amount?: number; currency?: string } | number;
+  shipping?: any;
+  returns?: any;
+  inventory?: any;
+  fulfillment_type?: string;
+  risk_tier?: string;
+};
+
+export type ResolveProductCandidatesResponse = {
+  status?: string;
+  product_group_id?: string;
+  offers_count?: number;
+  offers?: ResolveProductCandidatesOffer[];
+  default_offer_id?: string;
+  best_price_offer_id?: string;
+  cache?: {
+    hit?: boolean;
+    age_ms?: number;
+    ttl_ms?: number;
+  };
+};
+
 function normalizeProduct(
   p: RealAPIProduct | ProductResponse,
 ): ProductResponse {
@@ -305,7 +331,11 @@ function getCheckoutToken(): string | null {
   }
 }
 
-async function callGateway(body: InvokeBody) {
+type GatewayCallOptions = {
+  signal?: AbortSignal;
+};
+
+async function callGateway(body: InvokeBody, options: GatewayCallOptions = {}) {
   // If API_BASE is our same-origin proxy (/api/gateway), hit it directly; otherwise append the invoke path.
   const isProxy = API_BASE.startsWith('/api/gateway');
   const url = isProxy ? API_BASE : `${API_BASE}/agent/shop/v1/invoke`;
@@ -317,6 +347,7 @@ async function callGateway(body: InvokeBody) {
       'Content-Type': 'application/json',
       ...(checkoutToken ? { 'X-Checkout-Token': checkoutToken } : {}),
     },
+    signal: options.signal,
     body: JSON.stringify(body),
   });
 
@@ -385,6 +416,29 @@ async function callGateway(body: InvokeBody) {
   }
 
   return res.json();
+}
+
+async function callGatewayWithTimeout<T = any>(
+  body: InvokeBody,
+  timeoutMs?: number,
+): Promise<T> {
+  const ms = Number(timeoutMs);
+  if (!Number.isFinite(ms) || ms <= 0) return (await callGateway(body)) as T;
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  try {
+    return (await callGateway(body, { signal: controller.signal })) as T;
+  } catch (err) {
+    if ((err as any)?.name === 'AbortError') {
+      const timeoutErr = new Error('The request timed out. Please retry.') as ApiError;
+      timeoutErr.code = 'UPSTREAM_TIMEOUT';
+      throw timeoutErr;
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 
@@ -585,14 +639,63 @@ export async function getAllProducts(
   );
 }
 
+export async function resolveProductCandidates(args: {
+  product_id: string;
+  merchant_id?: string | null;
+  country?: string | null;
+  postal_code?: string | null;
+  limit?: number;
+  include_offers?: boolean;
+  timeout_ms?: number;
+  debug?: boolean;
+  cache_bypass?: boolean;
+}): Promise<ResolveProductCandidatesResponse | null> {
+  const productId = String(args.product_id || '').trim();
+  if (!productId) return null;
+
+  const data = await callGatewayWithTimeout(
+    {
+      operation: 'resolve_product_candidates',
+      payload: {
+        product_ref: {
+          product_id: productId,
+          ...(args.merchant_id ? { merchant_id: args.merchant_id } : {}),
+        },
+        context: {
+          ...(args.country ? { country: args.country } : {}),
+          ...(args.postal_code ? { postal_code: args.postal_code } : {}),
+        },
+        options: {
+          limit: Math.min(Math.max(1, Number(args.limit || 10) || 10), 50),
+          include_offers: args.include_offers !== false,
+          ...(args.debug ? { debug: true } : {}),
+          ...(args.cache_bypass ? { cache_bypass: true } : {}),
+        },
+      },
+    },
+    args.timeout_ms,
+  );
+
+  return data as ResolveProductCandidatesResponse;
+}
+
 // Single product detail
 export async function getProductDetail(
   productId: string,
   merchantIdOverride?: string,
+  options?: {
+    allowBroadScan?: boolean;
+    timeout_ms?: number;
+    useConfiguredMerchantId?: boolean;
+  },
 ): Promise<ProductResponse | null> {
+  const allowBroadScan = options?.allowBroadScan !== false;
+  const timeoutMs = options?.timeout_ms;
+  const useConfiguredMerchantId = options?.useConfiguredMerchantId !== false;
+
   // Try to resolve merchant_id, fallback to cross-merchant search if missing.
   let merchantId: string | undefined = merchantIdOverride;
-  if (!merchantId) {
+  if (!merchantId && useConfiguredMerchantId) {
     try {
       merchantId = getMerchantId();
     } catch (e) {
@@ -602,15 +705,18 @@ export async function getProductDetail(
 
   try {
     if (merchantId) {
-      const data = await callGateway({
-        operation: 'get_product_detail',
-        payload: {
-          product: {
-            merchant_id: merchantId,
-            product_id: productId,
+      const data = await callGatewayWithTimeout(
+        {
+          operation: 'get_product_detail',
+          payload: {
+            product: {
+              merchant_id: merchantId,
+              product_id: productId,
+            },
           },
         },
-      });
+        timeoutMs,
+      );
 
       const product = (data as any).product;
       if (product) {
@@ -639,15 +745,18 @@ export async function getProductDetail(
   try {
     // Fallback: cross-merchant search to locate the product and its merchant_id
     const searchAndFind = async (query: string, limit = 500) => {
-      const data = await callGateway({
-        operation: 'find_products_multi',
-        payload: {
-          search: {
-            query,
-            limit,
+      const data = await callGatewayWithTimeout(
+        {
+          operation: 'find_products_multi',
+          payload: {
+            search: {
+              query,
+              limit,
+            },
           },
         },
-      });
+        timeoutMs,
+      );
       const products: ProductResponse[] = ((data as any).products || []).map(
         (p: RealAPIProduct | ProductResponse) => normalizeProduct(p) as ProductResponse,
       );
@@ -661,20 +770,16 @@ export async function getProductDetail(
       return { found: null, candidates: [] };
     };
 
-    // Prefer an ID-targeted search first for numeric IDs (Shopify product ids, etc.).
-    // This avoids slow "empty query" catalog scans when the upstream supports identifier search.
-    const shouldTryIdQueryFirst = /^\d{8,}$/.test(productId);
-
     let found: ProductResponse | null = null;
     let candidates: ProductResponse[] = [];
 
-    if (shouldTryIdQueryFirst) {
-      const first = await searchAndFind(productId, 100);
-      found = first.found;
-      candidates = first.candidates;
-    }
+    // Prefer an ID-targeted search first.
+    // This avoids slow "empty query" catalog scans when the upstream supports identifier search.
+    const first = await searchAndFind(productId, 100);
+    found = first.found;
+    candidates = first.candidates;
 
-    if (!found && candidates.length === 0) {
+    if (!found && candidates.length === 0 && allowBroadScan) {
       const broad = await searchAndFind('', 100);
       found = broad.found;
       candidates = broad.candidates;
@@ -700,6 +805,7 @@ export async function createOrder(orderData: {
   merchant_id: string;
   customer_email: string;
   currency?: string;
+  offer_id?: string;
   items: Array<{
     merchant_id: string;
     product_id: string;
@@ -738,7 +844,8 @@ export async function createOrder(orderData: {
 }
 
 export async function previewQuote(quote: {
-  merchant_id: string;
+  merchant_id?: string;
+  offer_id?: string;
   items: Array<{ product_id: string; variant_id: string; quantity: number }>;
   customer_email?: string;
   shipping_address?: any;

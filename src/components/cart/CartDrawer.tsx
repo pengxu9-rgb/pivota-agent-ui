@@ -19,6 +19,7 @@ export default function CartDrawer() {
       variant_id: item.variant_id || item.product_id || item.id,
       sku: item.sku,
       merchant_id: item.merchant_id,
+      offer_id: item.offer_id,
       title: item.title,
       quantity: item.quantity,
       unit_price: item.price,

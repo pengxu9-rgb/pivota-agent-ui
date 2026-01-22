@@ -25,6 +25,7 @@ interface OrderItem {
   variant_id?: string
   sku?: string
   merchant_id?: string
+  offer_id?: string
   title: string
   quantity: number
   unit_price: number
@@ -463,6 +464,18 @@ function OrderFlowInner({
     if (!normalizedCountry) {
       throw new Error('Please select a valid country.')
     }
+    const offerIds = Array.from(
+      new Set(
+        items
+          .map((item) => String(item.offer_id || '').trim())
+          .filter(Boolean),
+      ),
+    )
+    if (offerIds.length > 1) {
+      throw new Error('Multiple offers in one checkout are not supported yet.')
+    }
+    const offerId = offerIds[0] || null
+
     const quoteItems = items
       .map((item) => {
         const productId = String(item.product_id || '').trim()
@@ -476,6 +489,7 @@ function OrderFlowInner({
       .filter((it) => Boolean(it.product_id) && Boolean(it.variant_id))
 
     return {
+      ...(offerId ? { offer_id: offerId } : {}),
       merchant_id: merchantIdForOrder,
       items: quoteItems,
       customer_email: shipping.email,
@@ -607,6 +621,18 @@ function OrderFlowInner({
     if (orderId) return orderId
 
     const merchantId = items[0]?.merchant_id || getMerchantId()
+    const offerIds = Array.from(
+      new Set(
+        items
+          .map((item) => String(item.offer_id || '').trim())
+          .filter(Boolean),
+      ),
+    )
+    if (offerIds.length > 1) {
+      throw new Error('Multiple offers in one checkout are not supported yet.')
+    }
+    const offerId = offerIds[0] || null
+
     const normalizedCountry = normalizeCountryCode(shipping.country)
     if (!normalizedCountry) {
       throw new Error('Please select a valid country.')
@@ -623,6 +649,7 @@ function OrderFlowInner({
       merchant_id: merchantId,
       customer_email: shipping.email,
       currency: quoteForOrder.currency || currency,
+      ...(offerId ? { offer_id: offerId } : {}),
       ...(quoteForOrder?.quote_id ? { quote_id: quoteForOrder.quote_id } : {}),
       ...(selectedDeliveryOption ? { selected_delivery_option: selectedDeliveryOption } : {}),
       metadata: {
@@ -662,7 +689,13 @@ function OrderFlowInner({
       ...(FORCE_PSP ? { preferred_psp: FORCE_PSP } : {})
     })
 
-    console.log('createOrder response', orderResponse)
+    // Minimal, token-safe debug logging (do not print payment client secrets / tokens).
+    // eslint-disable-next-line no-console
+    console.log('[checkout] createOrder', {
+      order_id: (orderResponse as any)?.order_id || null,
+      resolved_offer_id: (orderResponse as any)?.resolved_offer_id || null,
+      resolved_merchant_id: (orderResponse as any)?.resolved_merchant_id || null,
+    })
 
     orderId = orderResponse.order_id
     setCreatedOrderId(orderId)

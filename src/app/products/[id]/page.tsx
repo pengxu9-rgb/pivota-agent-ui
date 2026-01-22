@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState, use } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 import { useCartStore } from '@/store/cartStore';
-import { getAllProducts, getProductDetail, type ProductResponse } from '@/lib/api';
+import { getAllProducts, getProductDetail, resolveProductCandidates, type ProductResponse } from '@/lib/api';
 import { mapToPdpPayload } from '@/features/pdp/adapter/mapToPdpPayload';
 import { isBeautyProduct } from '@/features/pdp/utils/isBeautyProduct';
 import { BeautyPDPContainer } from '@/features/pdp/containers/BeautyPDPContainer';
@@ -61,26 +61,119 @@ export default function ProductDetailPage({ params }: Props) {
 
   useEffect(() => {
     let cancelled = false;
-    const cacheKey = `pdp-cache:${merchantIdParam || 'default'}:${id}`;
+    const cacheKey = merchantIdParam ? `pdp-cache:${merchantIdParam}:${id}` : null;
+    const isNumericProductId = /^\d+$/.test(id);
+    const fastTimeoutMs = 2500;
 
     const loadProduct = async () => {
       setLoading(true);
       setError(null);
       setSellerCandidates(null);
+
+      // Fast path: resolve candidates/offers when merchant_id is missing.
+      // This avoids expensive empty-query multi-merchant scans.
+      if (!merchantIdParam) {
+        try {
+          const resolved = await resolveProductCandidates({
+            product_id: id,
+            limit: 10,
+            include_offers: true,
+            timeout_ms: fastTimeoutMs,
+          });
+          const offers = Array.isArray(resolved?.offers) ? resolved!.offers! : [];
+          const offersCount =
+            typeof resolved?.offers_count === 'number'
+              ? resolved.offers_count
+              : offers.length;
+
+          pdpTracking.track('pdp_candidates_resolved', {
+            product_id: id,
+            offers_count: offersCount,
+          });
+
+          if (offersCount > 1 && offers.length > 0) {
+            const candidates: ProductResponse[] = offers
+              .map((offer) => {
+                const merchantId = String(offer?.merchant_id || '').trim();
+                if (!merchantId) return null;
+                const priceAmount =
+                  typeof offer?.price === 'number'
+                    ? Number(offer.price) || 0
+                    : Number((offer as any)?.price?.amount || 0);
+                const priceCurrency =
+                  typeof offer?.price === 'number'
+                    ? 'USD'
+                    : String((offer as any)?.price?.currency || 'USD');
+
+                return {
+                  product_id: id,
+                  merchant_id: merchantId,
+                  merchant_name: (offer as any)?.merchant_name || undefined,
+                  title: '',
+                  description: '',
+                  price: priceAmount,
+                  currency: priceCurrency,
+                  in_stock: (offer as any)?.inventory?.in_stock !== false,
+                } satisfies ProductResponse;
+              })
+              .filter(Boolean) as ProductResponse[];
+
+            if (!cancelled) {
+              setProduct(null);
+              setRelatedProducts([]);
+              setError(null);
+              setSellerCandidates(candidates);
+              setLoading(false);
+            }
+            return;
+          }
+
+          if (offersCount === 1 && offers.length === 1) {
+            const merchantId = String(offers[0]?.merchant_id || '').trim();
+            if (merchantId) {
+              router.replace(
+                `/products/${encodeURIComponent(id)}?merchant_id=${encodeURIComponent(merchantId)}`,
+              );
+              return;
+            }
+          }
+        } catch {
+          // Fallback (safe + fast): avoid broad empty-query scans.
+          // - numeric product ids: try an ID-targeted lookup
+          // - non-numeric ids: show retry UI (can’t safely resolve sellers)
+          if (!isNumericProductId) {
+            if (!cancelled) {
+              setProduct(null);
+              setRelatedProducts([]);
+              setSellerCandidates(null);
+              setError('Can’t load sellers for this product right now. Please retry.');
+              setLoading(false);
+            }
+            return;
+          }
+        }
+      }
+
       try {
-        const cached = sessionStorage.getItem(cacheKey);
-        if (cached) {
-          const parsed = JSON.parse(cached) as ProductResponse;
-          if (!cancelled) {
-            setProduct(parsed);
-            setLoading(false);
+        if (cacheKey) {
+          const cached = sessionStorage.getItem(cacheKey);
+          if (cached) {
+            const parsed = JSON.parse(cached) as ProductResponse;
+            if (!cancelled) {
+              setProduct(parsed);
+              setLoading(false);
+            }
           }
         }
       } catch {
         // ignore cache failures
       }
       try {
-        const data = await getProductDetail(id, merchantIdParam);
+        const data = await getProductDetail(id, merchantIdParam, {
+          useConfiguredMerchantId: Boolean(merchantIdParam),
+          allowBroadScan: Boolean(merchantIdParam),
+          timeout_ms: merchantIdParam ? undefined : fastTimeoutMs,
+        });
         if (!data) {
           if (!cancelled) {
             setProduct(null);
@@ -91,10 +184,20 @@ export default function ProductDetailPage({ params }: Props) {
           return;
         }
         if (cancelled) return;
+
+        if (!merchantIdParam && data.merchant_id) {
+          router.replace(
+            `/products/${encodeURIComponent(id)}?merchant_id=${encodeURIComponent(String(data.merchant_id))}`,
+          );
+          return;
+        }
+
         setProduct(data);
         setLoading(false);
         try {
-          sessionStorage.setItem(cacheKey, JSON.stringify(data));
+          if (cacheKey) {
+            sessionStorage.setItem(cacheKey, JSON.stringify(data));
+          }
         } catch {
           // ignore cache failures
         }
@@ -155,7 +258,7 @@ export default function ProductDetailPage({ params }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [id, merchantIdParam, reloadKey]);
+  }, [id, merchantIdParam, reloadKey, router]);
 
   useEffect(() => {
     if (!sellerCandidates?.length) return;
@@ -186,10 +289,12 @@ export default function ProductDetailPage({ params }: Props) {
     variant,
     quantity,
     merchant_id,
+    offer_id,
   }: {
     variant: Variant;
     quantity: number;
     merchant_id?: string;
+    offer_id?: string;
   }) => {
     if (!product) return;
     if (product.external_redirect_url) {
@@ -211,6 +316,7 @@ export default function ProductDetailPage({ params }: Props) {
       currency: variant.price?.current.currency || product.currency,
       imageUrl: variant.image_url || product.image_url || '/placeholder.svg',
       merchant_id: resolvedMerchantId,
+      offer_id: offer_id ? String(offer_id) : undefined,
       quantity,
     });
     toast.success(`✓ Added ${quantity}x ${product.title} to cart!`);
@@ -221,10 +327,12 @@ export default function ProductDetailPage({ params }: Props) {
     variant,
     quantity,
     merchant_id,
+    offer_id,
   }: {
     variant: Variant;
     quantity: number;
     merchant_id?: string;
+    offer_id?: string;
   }) => {
     if (!product) return;
     if (product.external_redirect_url) {
@@ -241,6 +349,7 @@ export default function ProductDetailPage({ params }: Props) {
         unit_price: variant.price?.current.amount ?? product.price,
         image_url: variant.image_url || product.image_url || '/placeholder.svg',
         variant_id: variant.variant_id,
+        offer_id: offer_id ? String(offer_id) : undefined,
       },
     ];
     const encoded = encodeURIComponent(JSON.stringify(checkoutItems));

@@ -2,6 +2,7 @@ export type PdpTrackingEvent =
   | 'pdp_view'
   | 'pdp_module_impression'
   | 'pdp_action_click'
+  | 'pdp_candidates_resolved'
   | 'pdp_choose_seller_impression'
   | 'pdp_choose_seller_select'
   | 'reviews_shell_open'

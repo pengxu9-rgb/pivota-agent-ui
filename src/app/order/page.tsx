@@ -12,6 +12,7 @@ interface OrderItem {
   variant_id?: string
   sku?: string
   merchant_id?: string
+  offer_id?: string
   title: string
   quantity: number
   unit_price: number
