@@ -7,6 +7,7 @@ import type {
   PricePromoData,
   ProductDetailsData,
   RecommendationsData,
+  SizeGuide,
   Variant,
   ReviewsPreviewData,
   VariantPrice,
@@ -29,6 +30,146 @@ function stripHtml(input: string): string {
     .replace(/&nbsp;/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function normalizeTextForLineParsing(input: unknown): string {
+  const raw = typeof input === 'string' ? input : '';
+  if (!raw) return '';
+  return raw
+    .replace(/\r/g, '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p\s*>/gi, '\n')
+    .replace(/<p[^>]*>/gi, '\n')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/[–—−]/g, '-') // normalize dashes
+    .replace(/\t/g, ' ')
+    .replace(/[ ]{2,}/g, ' ')
+    .trim();
+}
+
+function isLikelySizeLabel(label: string): boolean {
+  const normalized = label.trim().toUpperCase().replace(/\s+/g, ' ');
+  return [
+    'XXS',
+    'XS',
+    'S',
+    'M',
+    'L',
+    'XL',
+    'XXL',
+    'XXXL',
+    '2XL',
+    '3XL',
+    '4XL',
+    '5XL',
+    'ONE SIZE',
+    'ONESIZE',
+    'OS',
+    'FREE SIZE',
+    'FREESIZE',
+  ].includes(normalized);
+}
+
+function parseWeightSizeRow(line: string): { label: string; kg?: string; lb?: string } | null {
+  const cleaned = String(line || '')
+    .replace(/\s*kg\b/gi, ' kg')
+    .replace(/\s*lbs?\b/gi, ' lb')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!cleaned) return null;
+
+  // Example: "M - 40.0-52.5 kg / 88.2-115.7 lb"
+  const m = cleaned.match(
+    /^([A-Za-z0-9][A-Za-z0-9 ]{0,14}?)\s*[-:]\s*([0-9]+(?:\.[0-9]+)?)\s*-\s*([0-9]+(?:\.[0-9]+)?)\s*kg\b(?:\s*\/\s*([0-9]+(?:\.[0-9]+)?)\s*-\s*([0-9]+(?:\.[0-9]+)?)\s*lb\b)?\s*$/i,
+  );
+  if (!m) return null;
+
+  const label = String(m[1] || '').trim();
+  if (!label) return null;
+
+  const kgMin = String(m[2] || '').trim();
+  const kgMax = String(m[3] || '').trim();
+  const lbMin = String(m[4] || '').trim();
+  const lbMax = String(m[5] || '').trim();
+
+  const kg = kgMin && kgMax ? `${kgMin}–${kgMax}` : undefined;
+  const lb = lbMin && lbMax ? `${lbMin}–${lbMax}` : undefined;
+  if (!kg && !lb) return null;
+
+  return { label, kg, lb };
+}
+
+function inferSizeGuideFromDescription(input: unknown): SizeGuide | null {
+  const normalized = normalizeTextForLineParsing(input);
+  if (!normalized) return null;
+
+  const rawLines = normalized.split('\n');
+  const lines = rawLines.map((l) => l.trim()).filter(Boolean);
+  if (!lines.length) return null;
+
+  const headerIdx = lines.findIndex((l) => /^size\b/i.test(l));
+
+  const collectRows = (startIdx: number): Array<{ label: string; kg?: string; lb?: string }> => {
+    const rows: Array<{ label: string; kg?: string; lb?: string }> = [];
+    let started = false;
+    for (let i = startIdx; i < lines.length; i += 1) {
+      const row = parseWeightSizeRow(lines[i] || '');
+      if (row) {
+        rows.push(row);
+        started = true;
+        continue;
+      }
+      if (started) break;
+    }
+    return rows;
+  };
+
+  let rows: Array<{ label: string; kg?: string; lb?: string }> = [];
+  if (headerIdx >= 0) {
+    rows = collectRows(headerIdx + 1);
+  }
+
+  if (rows.length < 2) {
+    const scanned = lines.map((l) => parseWeightSizeRow(l)).filter(Boolean) as Array<{
+      label: string;
+      kg?: string;
+      lb?: string;
+    }>;
+    const likely = scanned.filter((r) => isLikelySizeLabel(r.label));
+    if (likely.length >= 3) {
+      rows = likely;
+    }
+  }
+
+  if (rows.length < 2) return null;
+
+  const uniqueByLabel = new Map<string, { label: string; kg?: string; lb?: string }>();
+  rows.forEach((r) => {
+    const key = r.label.trim().toUpperCase();
+    if (!key) return;
+    if (!uniqueByLabel.has(key)) uniqueByLabel.set(key, r);
+  });
+  const deduped = Array.from(uniqueByLabel.values());
+  if (deduped.length < 2) return null;
+
+  const hasKg = deduped.some((r) => Boolean(r.kg));
+  const hasLb = deduped.some((r) => Boolean(r.lb));
+  const columns = hasKg && hasLb ? ['Suitable Weight (kg)', 'Suitable Weight (lb)'] : ['Suitable Weight (kg)'];
+
+  return {
+    columns,
+    rows: deduped.map((r) => ({
+      label: r.label.trim(),
+      values:
+        columns.length === 2
+          ? [r.kg || '--', r.lb || '--']
+          : [r.kg || '--'],
+    })),
+    note:
+      columns.length === 2
+        ? '* Suitable weight ranges. Units: kg / lb.'
+        : '* Suitable weight ranges. Units: kg.',
+  };
 }
 
 function inferCategoryPath(product: ProductResponse): string[] {
@@ -572,7 +713,13 @@ export function mapToPdpPayload(args: {
     (value) => Array.isArray(value) && value.length > 0,
   );
   const sizeGuideRaw = raw?.size_guide || raw?.sizeGuide;
-  const sizeGuide = sizeGuideRaw
+  const descriptionForSizeGuide =
+    typeof raw?.description === 'string'
+      ? raw.description
+      : typeof raw?.description?.text === 'string'
+        ? raw.description.text
+        : product.description;
+  const sizeGuide: SizeGuide | undefined = sizeGuideRaw
     ? {
         columns: Array.isArray(sizeGuideRaw.columns)
           ? sizeGuideRaw.columns.map((col: any) => String(col))
@@ -590,7 +737,7 @@ export function mapToPdpPayload(args: {
         note: sizeGuideRaw.note ? String(sizeGuideRaw.note) : undefined,
         model_info: sizeGuideRaw.model_info ? String(sizeGuideRaw.model_info) : undefined,
       }
-    : undefined;
+    : inferSizeGuideFromDescription(descriptionForSizeGuide) || undefined;
   const hasSizeGuide =
     sizeGuide &&
     Array.isArray(sizeGuide.columns) &&
