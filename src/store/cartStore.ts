@@ -34,6 +34,9 @@ export const useCartStore = create<CartStore>()(
       isOpen: false,
       
       addItem: (newItem) => {
+        if (newItem?.merchant_id === 'external_seed') {
+          return;
+        }
         set((state) => {
           const existingItem = state.items.find(item => item.id === newItem.id)
           

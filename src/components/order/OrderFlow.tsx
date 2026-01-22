@@ -237,6 +237,18 @@ function getVariantIdForItem(item: {
   return String(item.variant_id || '').trim()
 }
 
+function extractMerchantIdFromOfferId(offerId: unknown): string | null {
+  const raw = String(offerId || '').trim()
+  if (!raw) return null
+  const prefix = 'of:v1:'
+  if (!raw.startsWith(prefix)) return null
+  const rest = raw.slice(prefix.length)
+  const idx = rest.indexOf(':')
+  if (idx <= 0) return null
+  const merchantId = rest.slice(0, idx).trim()
+  return merchantId || null
+}
+
 function isTemporaryUnavailable(err: any): boolean {
   const code = String(err?.code || '').trim().toUpperCase()
   if (code === 'TEMPORARY_UNAVAILABLE') return true
@@ -389,7 +401,29 @@ function OrderFlowInner({
 
   const deliveryOptions = Array.isArray(quote?.delivery_options) ? quote?.delivery_options : []
 
-  const merchantIdForOrder = items[0]?.merchant_id || getMerchantId()
+  const offerIdsInCart = useMemo(() => {
+    return Array.from(
+      new Set(
+        items
+          .map((item) => String(item.offer_id || '').trim())
+          .filter(Boolean),
+      ),
+    )
+  }, [items])
+  const offerIdForOrder = offerIdsInCart.length === 1 ? offerIdsInCart[0] : null
+  // Do not memoize: `getMerchantId()` may rely on runtime overrides (e.g., localStorage) that can
+  // change independently from React deps.
+  const merchantIdForOrder = (() => {
+    const fromItems = String(items[0]?.merchant_id || '').trim()
+    if (fromItems) return fromItems
+    const fromOffer = offerIdForOrder ? extractMerchantIdFromOfferId(offerIdForOrder) : null
+    if (fromOffer) return fromOffer
+    try {
+      return getMerchantId()
+    } catch {
+      return null
+    }
+  })()
 
   const itemCurrencies = useMemo(() => {
     const set = new Set<string>()
@@ -464,17 +498,14 @@ function OrderFlowInner({
     if (!normalizedCountry) {
       throw new Error('Please select a valid country.')
     }
-    const offerIds = Array.from(
-      new Set(
-        items
-          .map((item) => String(item.offer_id || '').trim())
-          .filter(Boolean),
-      ),
-    )
-    if (offerIds.length > 1) {
+    if (offerIdsInCart.length > 1) {
       throw new Error('Multiple offers in one checkout are not supported yet.')
     }
-    const offerId = offerIds[0] || null
+    const offerId = offerIdForOrder || null
+
+    if (!merchantIdForOrder && !offerId) {
+      throw new Error('Missing seller selection. Please go back and choose a seller.')
+    }
 
     const quoteItems = items
       .map((item) => {
@@ -490,7 +521,7 @@ function OrderFlowInner({
 
     return {
       ...(offerId ? { offer_id: offerId } : {}),
-      merchant_id: merchantIdForOrder,
+      ...(merchantIdForOrder ? { merchant_id: merchantIdForOrder } : {}),
       items: quoteItems,
       customer_email: shipping.email,
       shipping_address: {
@@ -620,18 +651,15 @@ function OrderFlowInner({
     let orderId = options.forceNew ? '' : createdOrderId
     if (orderId) return orderId
 
-    const merchantId = items[0]?.merchant_id || getMerchantId()
-    const offerIds = Array.from(
-      new Set(
-        items
-          .map((item) => String(item.offer_id || '').trim())
-          .filter(Boolean),
-      ),
-    )
-    if (offerIds.length > 1) {
+    if (offerIdsInCart.length > 1) {
       throw new Error('Multiple offers in one checkout are not supported yet.')
     }
-    const offerId = offerIds[0] || null
+    const offerId = offerIdForOrder || null
+    const merchantIdFromOffer = offerId ? extractMerchantIdFromOfferId(offerId) : null
+    const merchantId = String(items[0]?.merchant_id || '').trim() || merchantIdForOrder || merchantIdFromOffer
+    if (!merchantId && !offerId) {
+      throw new Error('Missing seller selection. Please go back and choose a seller.')
+    }
 
     const normalizedCountry = normalizeCountryCode(shipping.country)
     if (!normalizedCountry) {
@@ -646,7 +674,8 @@ function OrderFlowInner({
     }
 
     const orderResponse = await createOrder({
-      merchant_id: merchantId,
+      // Keep backwards compatibility: merchant_id is still sent even when offer_id is present.
+      merchant_id: merchantId || 'unknown',
       customer_email: shipping.email,
       currency: quoteForOrder.currency || currency,
       ...(offerId ? { offer_id: offerId } : {}),
@@ -666,7 +695,7 @@ function OrderFlowInner({
             ? Number(lineItemPriceByVariant.get(variantId))
             : item.unit_price
         return {
-          merchant_id: item.merchant_id || merchantId,
+          merchant_id: item.merchant_id || merchantId || 'unknown',
           product_id: item.product_id,
           product_title: item.title,
           ...(variantId ? { variant_id: variantId } : {}),
@@ -751,6 +780,36 @@ function OrderFlowInner({
       setVerifiedEmail(user.email || null)
     }
   }, [user])
+
+  const hasSellerSelection = Boolean(merchantIdForOrder || offerIdForOrder)
+  if (items.length > 0 && !hasSellerSelection) {
+    return (
+      <div className="min-h-[70vh] bg-background flex items-center justify-center px-6">
+        <div className="w-full max-w-md rounded-3xl border border-border bg-card/70 backdrop-blur p-6">
+          <div className="text-lg font-semibold">Choose a seller to continue</div>
+          <div className="mt-1 text-sm text-muted-foreground">
+            This checkout requires an explicit seller selection. Please go back and choose a seller/offer, then retry.
+          </div>
+          <div className="mt-5 flex gap-3">
+            <button
+              type="button"
+              className="flex-1 rounded-2xl border border-border bg-white/70 hover:bg-white/90 transition-colors px-4 py-2 text-sm font-semibold"
+              onClick={() => router.back()}
+            >
+              Go back
+            </button>
+            <button
+              type="button"
+              className="flex-1 rounded-2xl bg-primary text-primary-foreground hover:bg-primary/90 transition-colors px-4 py-2 text-sm font-semibold"
+              onClick={() => router.push('/products')}
+            >
+              Browse products
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   const handleShippingSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -879,7 +938,19 @@ function OrderFlowInner({
           }
         }
 
-        console.log('submit_payment response', paymentResponse)
+        // Token-safe debug logging: do not print client secrets / tokens.
+        // eslint-disable-next-line no-console
+        console.log('[checkout] submitPayment', {
+          payment_id: (paymentResponse as any)?.payment_id || (paymentResponse as any)?.payment?.payment_id || null,
+          payment_intent_id:
+            (paymentResponse as any)?.payment_intent_id ||
+            (paymentResponse as any)?.payment?.payment_intent_id ||
+            null,
+          payment_action_type:
+            (paymentResponse as any)?.payment_action?.type ||
+            (paymentResponse as any)?.payment?.payment_action?.type ||
+            null,
+        })
 
         const paymentObj = (paymentResponse as any)?.payment || {}
         let action: any =
