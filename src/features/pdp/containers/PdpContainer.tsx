@@ -109,6 +109,9 @@ export function PdpContainer({
   const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const router = useRouter();
 
+  const allowMockRecentPurchases =
+    (payload.product.merchant_id || '') !== 'external_seed';
+
   const variants = useMemo(() => payload.product.variants ?? [], [payload.product.variants]);
 
   const selectedVariant = useMemo(() => {
@@ -807,13 +810,16 @@ export function PdpContainer({
             <>
               <BeautyRecentPurchases
                 items={payload.product.recent_purchases || []}
-                showEmpty
+                showEmpty={allowMockRecentPurchases}
               />
               <BeautyUgcGallery items={ugcItems} showEmpty />
             </>
           ) : resolvedMode === 'generic' ? (
             <>
-              <GenericRecentPurchases items={payload.product.recent_purchases || []} showEmpty />
+              <GenericRecentPurchases
+                items={payload.product.recent_purchases || []}
+                showEmpty={allowMockRecentPurchases}
+              />
               <GenericStyleGallery items={ugcItems} showEmpty />
               <GenericSizeHelper />
             </>
