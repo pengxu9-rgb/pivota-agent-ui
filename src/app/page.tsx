@@ -298,16 +298,12 @@ export default function HomePage() {
 
                               {isExternal ? (
                                 <Button
+                                  asChild
                                   variant="default"
                                   size="sm"
-                                  onClick={() => {
-                                    if (product.external_redirect_url) {
-                                      window.open(product.external_redirect_url, '_blank', 'noopener,noreferrer');
-                                    }
-                                  }}
                                   className="w-full h-9 text-xs font-medium"
                                 >
-                                  Visit Site
+                                  <Link href={cardHref}>View details</Link>
                                 </Button>
                               ) : (
                                 <Button

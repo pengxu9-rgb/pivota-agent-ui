@@ -2,6 +2,7 @@
 
 import Image from 'next/image';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { GlassCard } from '@/components/ui/glass-card';
 import { Button } from '@/components/ui/button';
 import { useCartStore } from '@/store/cartStore';
@@ -38,6 +39,7 @@ export default function ProductCard({
   onBuy,
   onAddToCart,
 }: ProductCardProps) {
+  const router = useRouter();
   const { addItem } = useCartStore();
   const isExternal = Boolean(external_redirect_url);
 
@@ -72,12 +74,10 @@ export default function ProductCard({
     }
   };
 
-  const handleOpenExternal = (e: React.MouseEvent) => {
+  const handleViewDetails = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (external_redirect_url) {
-      window.open(external_redirect_url, '_blank', 'noopener,noreferrer');
-    }
+    router.push(href);
   };
 
   const handleBuyNow = (e: React.MouseEvent) => {
@@ -125,10 +125,10 @@ export default function ProductCard({
               <Button
                 variant="gradient"
                 size="sm"
-                onClick={handleOpenExternal}
+                onClick={handleViewDetails}
                 className="flex-1"
               >
-                Visit Site
+                View details
               </Button>
             ) : (
               <>
