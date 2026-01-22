@@ -62,7 +62,7 @@ export function ChatRecommendationCard({ product, onAddToCart }: Props) {
 
   return (
     <div
-      className="group flex cursor-pointer flex-col overflow-hidden rounded-2xl bg-white shadow-[0_14px_34px_rgba(63,49,37,0.12)] transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_20px_54px_rgba(63,49,37,0.16)]"
+      className="group flex cursor-pointer flex-col overflow-hidden rounded-2xl border border-border bg-card/50 backdrop-blur-xl shadow-glass transition-all duration-300 hover:-translate-y-1 hover:shadow-glass-hover"
       role="button"
       tabIndex={0}
       onClick={handleCardClickSafe}
@@ -76,7 +76,7 @@ export function ChatRecommendationCard({ product, onAddToCart }: Props) {
         }
       }}
     >
-      <div className="relative aspect-[4/5] w-full bg-[#f5e3d4]">
+      <div className="relative aspect-[4/5] w-full bg-muted/30">
         {product.image_url ? (
           <Image
             src={product.image_url}
@@ -95,7 +95,7 @@ export function ChatRecommendationCard({ product, onAddToCart }: Props) {
             onAddToCart(product);
           }}
           onTouchEnd={(e) => e.stopPropagation()}
-          className="absolute bottom-2 right-2 inline-flex h-9 w-9 items-center justify-center rounded-full bg-[#f6b59b] text-[#3f3125] shadow-sm hover:bg-[#f29b7f]"
+          className="absolute bottom-2 right-2 inline-flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-r from-indigo-500 via-purple-500 to-cyan-500 text-white shadow-glow transition hover:brightness-110"
           aria-label="Add to cart"
         >
           <ShoppingCart className="h-4 w-4" />
@@ -103,19 +103,18 @@ export function ChatRecommendationCard({ product, onAddToCart }: Props) {
       </div>
 
       <div className="flex flex-1 flex-col px-3 pb-3 pt-3">
-        <div className="line-clamp-2 text-[12px] font-semibold text-[#3f3125]">
+        <div className="line-clamp-2 text-[12px] font-semibold text-foreground group-hover:text-primary transition-colors">
           {product.title}
         </div>
         {product.category ? (
-          <div className="mt-1 line-clamp-1 text-[10px] text-[#a38b78]">
+          <div className="mt-1 line-clamp-1 text-[10px] text-muted-foreground">
             {product.category}
           </div>
         ) : null}
-        <div className="mt-2 text-sm font-semibold text-[#3f3125]">
+        <div className="mt-2 text-sm font-semibold text-primary">
           {formatPrice(product)}
         </div>
       </div>
     </div>
   );
 }
-
