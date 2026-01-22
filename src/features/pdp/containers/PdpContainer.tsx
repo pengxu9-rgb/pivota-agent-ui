@@ -30,7 +30,7 @@ import { MediaGallery } from '@/features/pdp/sections/MediaGallery';
 import { MediaGallerySheet } from '@/features/pdp/sections/MediaGallerySheet';
 import { VariantSelector } from '@/features/pdp/sections/VariantSelector';
 import { DetailsAccordion } from '@/features/pdp/sections/DetailsAccordion';
-import { RecommendationsGrid } from '@/features/pdp/sections/RecommendationsGrid';
+import { RecommendationsGrid, RecommendationsSkeleton } from '@/features/pdp/sections/RecommendationsGrid';
 import { BeautyReviewsSection } from '@/features/pdp/sections/BeautyReviewsSection';
 import { BeautyUgcGallery } from '@/features/pdp/sections/BeautyUgcGallery';
 import { BeautyRecentPurchases } from '@/features/pdp/sections/BeautyRecentPurchases';
@@ -291,6 +291,8 @@ export function PdpContainer({
 
   const hasReviews = !!reviews;
   const hasRecommendations = !!recommendations?.items?.length;
+  const isRecommendationsLoading = payload.x_recommendations_state === 'loading';
+  const showRecommendationsSection = hasRecommendations || isRecommendationsLoading;
   const showShades = resolvedMode === 'beauty' && variants.length > 1;
   const showSizeGuide = resolvedMode === 'generic' && !!payload.product.size_guide;
 
@@ -301,9 +303,9 @@ export function PdpContainer({
       ...(showShades ? [{ id: 'shades', label: 'Shades' }] : []),
       ...(showSizeGuide ? [{ id: 'size', label: 'Size' }] : []),
       { id: 'details', label: 'Details' },
-      ...(hasRecommendations ? [{ id: 'similar', label: 'Similar' }] : []),
+      ...(showRecommendationsSection ? [{ id: 'similar', label: 'Similar' }] : []),
     ];
-  }, [hasReviews, showShades, showSizeGuide, hasRecommendations]);
+  }, [hasReviews, showShades, showSizeGuide, showRecommendationsSection]);
 
   const handleTabChange = (tabId: string) => {
     setActiveTab(tabId);
@@ -326,7 +328,16 @@ export function PdpContainer({
     const updateNavVisibility = () => {
       if (frame) cancelAnimationFrame(frame);
       frame = window.requestAnimationFrame(() => {
-        const nextVisible = window.scrollY >= window.innerHeight * 1.2;
+        const maxScroll = Math.max(
+          0,
+          document.documentElement.scrollHeight - window.innerHeight,
+        );
+        const viewportThreshold = window.innerHeight * 1.1;
+        const threshold =
+          maxScroll >= viewportThreshold
+            ? viewportThreshold
+            : Math.max(80, maxScroll * 0.4);
+        const nextVisible = maxScroll > 0 && window.scrollY >= threshold;
         setNavVisible(nextVisible);
       });
     };
@@ -968,7 +979,7 @@ export function PdpContainer({
           </div>
         ) : null}
 
-        {recommendations ? (
+        {showRecommendationsSection ? (
           <div
             ref={(el) => {
               sectionRefs.current.similar = el;
@@ -977,7 +988,11 @@ export function PdpContainer({
             style={{ scrollMarginTop }}
           >
             <div className="px-3 py-3">
-              <RecommendationsGrid data={recommendations} />
+              {recommendations?.items?.length ? (
+                <RecommendationsGrid data={recommendations} />
+              ) : isRecommendationsLoading ? (
+                <RecommendationsSkeleton />
+              ) : null}
             </div>
           </div>
         ) : null}

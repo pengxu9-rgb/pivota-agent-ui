@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState, use } from 'react';
+import { useEffect, useMemo, useState, useRef, use } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 import { useCartStore } from '@/store/cartStore';
@@ -16,7 +16,7 @@ interface Props {
   params: Promise<{ id: string }>;
 }
 
-function ProductDetailLoading() {
+function ProductDetailLoading({ label }: { label: string }) {
   return (
     <div className="min-h-screen bg-background">
       <div className="mx-auto max-w-md px-4 pt-6">
@@ -36,7 +36,7 @@ function ProductDetailLoading() {
         </div>
 
         <div className="mt-6 text-center text-sm text-muted-foreground">
-          Loading product details…
+          {label}
         </div>
       </div>
     </div>
@@ -54,8 +54,13 @@ export default function ProductDetailPage({ params }: Props) {
   const [relatedProducts, setRelatedProducts] = useState<ProductResponse[]>([]);
   const [sellerCandidates, setSellerCandidates] = useState<ProductResponse[] | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadingStage, setLoadingStage] = useState<'resolve' | 'detail' | null>(null);
+  const [recommendationsLoading, setRecommendationsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  const lastLoadedKeyRef = useRef<string | null>(null);
+  const lastRelatedKeyRef = useRef<string | null>(null);
+  const lastProductIdRef = useRef<string | null>(null);
 
   const { addItem, open } = useCartStore();
 
@@ -66,9 +71,27 @@ export default function ProductDetailPage({ params }: Props) {
     const fastTimeoutMs = 2500;
 
     const loadProduct = async () => {
+      const explicitMerchantId = merchantIdParam ? String(merchantIdParam).trim() : null;
+      const explicitLoadedKey = explicitMerchantId ? `${explicitMerchantId}:${id}` : null;
+      if (explicitLoadedKey && lastLoadedKeyRef.current === explicitLoadedKey) {
+        setLoading(false);
+        setError(null);
+        setSellerCandidates(null);
+        setLoadingStage(null);
+        setRecommendationsLoading(false);
+        return;
+      }
+
       setLoading(true);
+      setLoadingStage(merchantIdParam ? 'detail' : 'resolve');
       setError(null);
       setSellerCandidates(null);
+      if (lastProductIdRef.current !== id) {
+        lastProductIdRef.current = id;
+        setRelatedProducts([]);
+      }
+      setRecommendationsLoading(false);
+      let resolvedMerchantId: string | null = explicitMerchantId;
 
       // Fast path: resolve candidates/offers when merchant_id is missing.
       // This avoids expensive empty-query multi-merchant scans.
@@ -124,6 +147,8 @@ export default function ProductDetailPage({ params }: Props) {
               setError(null);
               setSellerCandidates(candidates);
               setLoading(false);
+              setLoadingStage(null);
+              setRecommendationsLoading(false);
             }
             return;
           }
@@ -131,10 +156,8 @@ export default function ProductDetailPage({ params }: Props) {
           if (offersCount === 1 && offers.length === 1) {
             const merchantId = String(offers[0]?.merchant_id || '').trim();
             if (merchantId) {
-              router.replace(
-                `/products/${encodeURIComponent(id)}?merchant_id=${encodeURIComponent(merchantId)}`,
-              );
-              return;
+              resolvedMerchantId = merchantId;
+              setLoadingStage('detail');
             }
           }
         } catch {
@@ -148,6 +171,8 @@ export default function ProductDetailPage({ params }: Props) {
               setSellerCandidates(null);
               setError('Can’t load sellers for this product right now. Please retry.');
               setLoading(false);
+              setLoadingStage(null);
+              setRecommendationsLoading(false);
             }
             return;
           }
@@ -155,13 +180,22 @@ export default function ProductDetailPage({ params }: Props) {
       }
 
       try {
-        if (cacheKey) {
-          const cached = sessionStorage.getItem(cacheKey);
+        const resolvedCacheKey = resolvedMerchantId ? `pdp-cache:${resolvedMerchantId}:${id}` : null;
+        const cacheToRead = resolvedCacheKey || cacheKey;
+        if (cacheToRead) {
+          const cached = sessionStorage.getItem(cacheToRead);
           if (cached) {
             const parsed = JSON.parse(cached) as ProductResponse;
             if (!cancelled) {
               setProduct(parsed);
               setLoading(false);
+              setLoadingStage(null);
+              if (resolvedMerchantId) {
+                lastLoadedKeyRef.current = `${resolvedMerchantId}:${id}`;
+              } else if (merchantIdParam) {
+                lastLoadedKeyRef.current = `${merchantIdParam}:${id}`;
+              }
+              setRecommendationsLoading(false);
             }
           }
         }
@@ -169,10 +203,11 @@ export default function ProductDetailPage({ params }: Props) {
         // ignore cache failures
       }
       try {
-        const data = await getProductDetail(id, merchantIdParam, {
-          useConfiguredMerchantId: Boolean(merchantIdParam),
+        setLoadingStage('detail');
+        const data = await getProductDetail(id, resolvedMerchantId || undefined, {
+          useConfiguredMerchantId: Boolean(resolvedMerchantId),
           allowBroadScan: Boolean(merchantIdParam),
-          timeout_ms: merchantIdParam ? undefined : fastTimeoutMs,
+          timeout_ms: resolvedMerchantId ? undefined : fastTimeoutMs,
           throwOnError: true,
         });
         if (!data) {
@@ -181,39 +216,70 @@ export default function ProductDetailPage({ params }: Props) {
             setError('Product not found');
             setSellerCandidates(null);
             setLoading(false);
+            setLoadingStage(null);
+            setRecommendationsLoading(false);
           }
           return;
         }
         if (cancelled) return;
 
-        if (!merchantIdParam && data.merchant_id) {
-          router.replace(
-            `/products/${encodeURIComponent(id)}?merchant_id=${encodeURIComponent(String(data.merchant_id))}`,
-          );
-          return;
-        }
-
         setProduct(data);
         setLoading(false);
+        setLoadingStage(null);
+        const resolvedFromData = String(data.merchant_id || '').trim() || null;
+        if (resolvedFromData) {
+          lastLoadedKeyRef.current = `${resolvedFromData}:${id}`;
+        }
         try {
-          if (cacheKey) {
+          const resolvedCacheKey = resolvedFromData
+            ? `pdp-cache:${resolvedFromData}:${id}`
+            : null;
+          if (resolvedCacheKey) {
+            sessionStorage.setItem(resolvedCacheKey, JSON.stringify(data));
+          } else if (cacheKey) {
             sessionStorage.setItem(cacheKey, JSON.stringify(data));
           }
         } catch {
           // ignore cache failures
         }
 
-        void (async () => {
-          try {
-            const all = await getAllProducts(6, data.merchant_id);
-            if (!cancelled) {
-              setRelatedProducts(all.filter((p) => p.product_id !== id));
-            }
-          } catch (relError) {
-            // eslint-disable-next-line no-console
-            console.error('Failed to load related products:', relError);
+        if (!merchantIdParam && resolvedFromData) {
+          router.replace(
+            `/products/${encodeURIComponent(id)}?merchant_id=${encodeURIComponent(resolvedFromData)}`,
+          );
+          return;
+        }
+
+        const relatedKey = `${resolvedFromData || 'unknown'}:${id}`;
+        if (lastRelatedKeyRef.current !== relatedKey) {
+          lastRelatedKeyRef.current = relatedKey;
+          setRecommendationsLoading(true);
+          const scheduleRelated = () => {
+            void (async () => {
+              try {
+                const all = await getAllProducts(6, data.merchant_id);
+                if (!cancelled) {
+                  setRelatedProducts(all.filter((p) => p.product_id !== id));
+                }
+              } catch (relError) {
+                // eslint-disable-next-line no-console
+                console.error('Failed to load related products:', relError);
+              } finally {
+                if (!cancelled) {
+                  setRecommendationsLoading(false);
+                }
+              }
+            })();
+          };
+
+          if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
+            (window as any).requestIdleCallback(scheduleRelated, { timeout: 1200 });
+          } else {
+            setTimeout(scheduleRelated, 400);
           }
-        })();
+        } else {
+          setRecommendationsLoading(false);
+        }
 
         try {
           const history = JSON.parse(localStorage.getItem('browse_history') || '[]');
@@ -243,6 +309,8 @@ export default function ProductDetailPage({ params }: Props) {
             setError(null);
             setSellerCandidates((err as any).candidates as ProductResponse[]);
             setLoading(false);
+            setLoadingStage(null);
+            setRecommendationsLoading(false);
           }
           return;
         }
@@ -251,6 +319,8 @@ export default function ProductDetailPage({ params }: Props) {
           setProduct(null);
           setSellerCandidates(null);
           setLoading(false);
+          setLoadingStage(null);
+          setRecommendationsLoading(false);
         }
       }
     };
@@ -275,9 +345,10 @@ export default function ProductDetailPage({ params }: Props) {
       product,
       rawDetail: product.raw_detail,
       relatedProducts,
+      recommendationsLoading,
       entryPoint: 'product_detail',
     });
-  }, [product, relatedProducts]);
+  }, [product, relatedProducts, recommendationsLoading]);
 
   const resolvedMode = useMemo(() => {
     if (pdpOverride === 'beauty') return 'beauty';
@@ -366,7 +437,15 @@ export default function ProductDetailPage({ params }: Props) {
   };
 
   if (loading && !product) {
-    return <ProductDetailLoading />;
+    const label =
+      loadingStage === 'resolve'
+        ? 'Resolving sellers…'
+        : loadingStage === 'detail'
+          ? 'Loading product details…'
+          : merchantIdParam
+            ? 'Loading product details…'
+            : 'Resolving sellers and loading product…';
+    return <ProductDetailLoading label={label} />;
   }
 
   if (!loading && !product && sellerCandidates?.length) {

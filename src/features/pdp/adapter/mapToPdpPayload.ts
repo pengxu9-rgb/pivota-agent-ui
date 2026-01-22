@@ -325,17 +325,32 @@ function buildVariants(product: ProductResponse, raw: any): Variant[] {
 
 function buildMediaItems(product: ProductResponse, raw: any, variants: Variant[]): MediaGalleryData {
   const items: MediaGalleryData['items'] = [];
+  const seenUrls = new Set<string>();
+  const pushItem = (item: MediaGalleryData['items'][number]) => {
+    if (!item.url) return;
+    if (seenUrls.has(item.url)) return;
+    seenUrls.add(item.url);
+    items.push(item);
+  };
   const rawMedia = Array.isArray(raw?.media) ? raw.media : [];
-  const rawImages = Array.isArray(raw?.images)
-    ? raw.images
-    : Array.isArray(raw?.image_urls)
-      ? raw.image_urls
-      : [];
+  const rawImagesCandidates = [
+    raw?.images,
+    raw?.image_urls,
+    raw?.imageUrls,
+    raw?.seed_data?.image_urls,
+    raw?.seed_data?.snapshot?.image_urls,
+    raw?.seed_data?.snapshot?.images,
+    (product as any).images,
+  ];
+  const rawImages: any[] = [];
+  rawImagesCandidates.forEach((candidate) => {
+    if (Array.isArray(candidate)) rawImages.push(...candidate);
+  });
 
   rawMedia.forEach((m: any) => {
     const url = normalizeImageUrl(m.url || m.image_url || m.src);
     if (!url) return;
-    items.push({
+    pushItem({
       type: m.type || m.media_type || 'image',
       url,
       thumbnail_url: normalizeImageUrl(m.thumbnail_url || m.thumbnail),
@@ -346,9 +361,12 @@ function buildMediaItems(product: ProductResponse, raw: any, variants: Variant[]
   });
 
   rawImages.forEach((img: any) => {
-    const url = normalizeImageUrl(typeof img === 'string' ? img : img.url || img.image_url);
+    const rawUrl =
+      typeof img === 'string' ? img : img?.url || img?.image_url || img?.src;
+    const url =
+      typeof rawUrl === 'string' ? normalizeImageUrl(rawUrl) : undefined;
     if (!url) return;
-    items.push({
+    pushItem({
       type: 'image',
       url,
       alt_text: typeof img === 'object' ? img.alt_text : product.title,
@@ -358,8 +376,8 @@ function buildMediaItems(product: ProductResponse, raw: any, variants: Variant[]
   });
 
   variants.forEach((v) => {
-    if (v.image_url && !items.some((i) => i.url === v.image_url)) {
-      items.push({
+    if (v.image_url) {
+      pushItem({
         type: 'image',
         url: v.image_url,
         alt_text: product.title,
@@ -368,7 +386,7 @@ function buildMediaItems(product: ProductResponse, raw: any, variants: Variant[]
   });
 
   if (!items.length && product.image_url) {
-    items.push({
+    pushItem({
       type: 'image',
       url: normalizeImageUrl(product.image_url) || product.image_url,
       alt_text: product.title,
@@ -552,10 +570,18 @@ export function mapToPdpPayload(args: {
   product: ProductResponse;
   rawDetail?: any;
   relatedProducts?: ProductResponse[];
+  recommendationsLoading?: boolean;
   entryPoint?: string;
   experiment?: string;
 }): PDPPayload {
-  const { product, rawDetail, relatedProducts = [], entryPoint = 'products_list', experiment } = args;
+  const {
+    product,
+    rawDetail,
+    relatedProducts = [],
+    recommendationsLoading = false,
+    entryPoint = 'products_list',
+    experiment,
+  } = args;
   const raw = rawDetail || (product as any).raw_detail || (product as any)._raw || {};
 
   const currency = product.currency || 'USD';
@@ -799,6 +825,11 @@ export function mapToPdpPayload(args: {
       : []),
   ];
 
+  const recommendationsState =
+    recommendationsLoading || recommendations.items.length
+      ? (recommendationsLoading ? 'loading' : 'ready')
+      : undefined;
+
   return {
     schema_version: '1.0.0',
     page_type: 'product_detail',
@@ -807,6 +838,7 @@ export function mapToPdpPayload(args: {
       entry_point: entryPoint,
       ...(experiment ? { experiment } : {}),
     },
+    ...(recommendationsState ? { x_recommendations_state: recommendationsState } : {}),
     ...(productGroupId ? { product_group_id: String(productGroupId) } : {}),
     ...(offers.length
       ? {
@@ -869,6 +901,7 @@ export function mapProductToPdpViewModel(args: {
   product: ProductResponse;
   rawDetail?: any;
   relatedProducts?: ProductResponse[];
+  recommendationsLoading?: boolean;
   entryPoint?: string;
   experiment?: string;
 }): PDPPayload {

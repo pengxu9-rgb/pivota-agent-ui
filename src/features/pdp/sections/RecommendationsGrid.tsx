@@ -65,3 +65,29 @@ export function RecommendationsGrid({ data }: { data: RecommendationsData }) {
     </div>
   );
 }
+
+export function RecommendationsSkeleton() {
+  return (
+    <div className="py-6">
+      <div className="px-4 flex items-center justify-between mb-3">
+        <div className="h-4 w-32 rounded bg-muted/30 animate-pulse" />
+        <div className="h-3 w-12 rounded bg-muted/20 animate-pulse" />
+      </div>
+      <div className="px-4 grid grid-cols-2 gap-3">
+        {Array.from({ length: 4 }).map((_, idx) => (
+          <div
+            key={idx}
+            className="rounded-xl bg-card border border-border overflow-hidden"
+          >
+            <div className="aspect-square bg-muted/25 animate-pulse" />
+            <div className="p-3 space-y-2">
+              <div className="h-3 w-full rounded bg-muted/25 animate-pulse" />
+              <div className="h-3 w-3/4 rounded bg-muted/20 animate-pulse" />
+              <div className="h-3 w-1/2 rounded bg-muted/20 animate-pulse" />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}

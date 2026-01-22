@@ -8,6 +8,7 @@ export interface PDPPayload {
   offers_count?: number;
   default_offer_id?: string;
   best_price_offer_id?: string;
+  x_recommendations_state?: 'loading' | 'ready';
   modules: Module[];
   actions: GlobalAction[];
 }
