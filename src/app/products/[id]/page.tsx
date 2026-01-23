@@ -243,7 +243,13 @@ export default function ProductDetailPage({ params }: Props) {
           // ignore cache failures
         }
 
-        if (!merchantIdParam && resolvedFromData) {
+        const isExternalProduct =
+          Boolean((data as any).external_redirect_url) ||
+          String((data as any).product_type || '').toLowerCase() === 'external' ||
+          String((data as any).platform || '').toLowerCase() === 'external' ||
+          (data as any).source === 'external_seed';
+
+        if (!merchantIdParam && resolvedFromData && !isExternalProduct) {
           router.replace(
             `/products/${encodeURIComponent(id)}?merchant_id=${encodeURIComponent(resolvedFromData)}`,
           );
@@ -257,7 +263,7 @@ export default function ProductDetailPage({ params }: Props) {
           const scheduleRelated = () => {
             void (async () => {
               try {
-                const all = await getAllProducts(6, data.merchant_id);
+                const all = await getAllProducts(6, isExternalProduct ? undefined : data.merchant_id);
                 if (!cancelled) {
                   setRelatedProducts(all.filter((p) => p.product_id !== id));
                 }

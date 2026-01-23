@@ -3,6 +3,7 @@
 import Image from 'next/image';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Grid3X3, Play, X } from 'lucide-react';
+import { useEffect } from 'react';
 import type { MediaItem } from '@/features/pdp/types';
 import { cn } from '@/lib/utils';
 
@@ -19,6 +20,30 @@ export function MediaGallerySheet({
   activeIndex: number;
   onSelect: (index: number) => void;
 }) {
+  useEffect(() => {
+    if (!open) return;
+    if (typeof document === 'undefined') return;
+
+    const prevOverflow = document.body.style.overflow;
+    const prevPaddingRight = document.body.style.paddingRight;
+
+    try {
+      const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+      if (scrollbarWidth > 0) {
+        document.body.style.paddingRight = `${scrollbarWidth}px`;
+      }
+    } catch {
+      // ignore
+    }
+
+    document.body.style.overflow = 'hidden';
+
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      document.body.style.paddingRight = prevPaddingRight;
+    };
+  }, [open]);
+
   return (
     <AnimatePresence>
       {open ? (
@@ -31,7 +56,7 @@ export function MediaGallerySheet({
             onClick={onClose}
           />
           <motion.div
-            className="fixed bottom-0 left-0 right-0 z-[2147483647] h-[75vh] rounded-t-2xl bg-white border border-border shadow-2xl"
+            className="fixed bottom-0 left-0 right-0 z-[2147483647] h-[75vh] rounded-t-2xl bg-white border border-border shadow-2xl flex flex-col overflow-hidden"
             initial={{ y: '100%' }}
             animate={{ y: 0 }}
             exit={{ y: '100%' }}
@@ -51,7 +76,7 @@ export function MediaGallerySheet({
               </button>
             </div>
 
-            <div className="px-4 py-3 overflow-y-auto">
+            <div className="px-4 py-3 overflow-y-auto overscroll-contain flex-1 [-webkit-overflow-scrolling:touch]">
               <div className="grid grid-cols-3 gap-2">
                 {items.map((item, idx) => {
                   const isSelected = idx === activeIndex;
@@ -91,4 +116,3 @@ export function MediaGallerySheet({
     </AnimatePresence>
   );
 }
-

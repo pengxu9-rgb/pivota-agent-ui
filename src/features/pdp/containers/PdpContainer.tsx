@@ -295,6 +295,49 @@ export function PdpContainer({
   const showRecommendationsSection = hasRecommendations || isRecommendationsLoading;
   const showShades = resolvedMode === 'beauty' && variants.length > 1;
   const showSizeGuide = resolvedMode === 'generic' && !!payload.product.size_guide;
+  const showSizeHelper = useMemo(() => {
+    if (resolvedMode !== 'generic') return false;
+    const categoryPath = payload.product.category_path || [];
+    const tags = Array.isArray(payload.product.tags) ? payload.product.tags : [];
+    const department = payload.product.department ? [payload.product.department] : [];
+    const haystack = [...categoryPath, ...tags, ...department].join(' ').toLowerCase();
+    if (!haystack) return false;
+
+    const keywords = [
+      // apparel
+      'apparel',
+      'clothing',
+      'tops',
+      'bottoms',
+      'pants',
+      'jeans',
+      'dress',
+      'skirt',
+      'outerwear',
+      'jacket',
+      'coat',
+      'hoodie',
+      'sweater',
+      'shirt',
+      't-shirt',
+      'tee',
+      'activewear',
+      // footwear
+      'footwear',
+      'shoe',
+      'shoes',
+      'sneaker',
+      'sneakers',
+      'boot',
+      'boots',
+      'heel',
+      'heels',
+      'sandals',
+      'slippers',
+    ];
+
+    return keywords.some((kw) => haystack.includes(kw));
+  }, [payload.product.category_path, payload.product.department, payload.product.tags, resolvedMode]);
 
   const tabs = useMemo(() => {
     return [
@@ -832,7 +875,7 @@ export function PdpContainer({
                 showEmpty={allowMockRecentPurchases}
               />
               <GenericStyleGallery items={ugcItems} showEmpty />
-              <GenericSizeHelper />
+              {showSizeHelper ? <GenericSizeHelper /> : null}
             </>
           ) : null}
         </div>
