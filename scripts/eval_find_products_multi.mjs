@@ -141,6 +141,39 @@ function extractFallbackReason(resp) {
   return null;
 }
 
+function extractTop1(products) {
+  const p = Array.isArray(products) ? products[0] : null;
+  if (!p || typeof p !== 'object') {
+    return { product_id: '', title: '', merchant_id: '' };
+  }
+
+  const productId = p?.product_id ?? p?.productId ?? p?.id ?? '';
+  const title = p?.title ?? p?.name ?? '';
+  const merchantId = p?.merchant_id ?? p?.merchantId ?? '';
+
+  return {
+    product_id: String(productId || '').trim(),
+    title: String(title || '').trim(),
+    merchant_id: String(merchantId || '').trim(),
+  };
+}
+
+function normalizeExpectedKeywords(turn) {
+  const kws = turn?.expected?.must_include_keywords;
+  const arr = Array.isArray(kws) ? kws : [];
+  return arr
+    .map((v) => String(v || '').trim())
+    .filter(Boolean)
+    .slice(0, 10);
+}
+
+function expectedHitForTop1Title({ expectedKeywords, top1Title }) {
+  if (!expectedKeywords || expectedKeywords.length === 0) return null;
+  if (!top1Title) return 0;
+  const hay = String(top1Title).toLowerCase();
+  return expectedKeywords.every((kw) => hay.includes(String(kw).toLowerCase())) ? 1 : 0;
+}
+
 async function readJsonlTurns(filePath) {
   const turns = [];
   const rl = readline.createInterface({
@@ -233,6 +266,15 @@ async function main() {
         let noResult = null;
         let fallbackReason = null;
         let querySource = '';
+        let total = null;
+        let top1ProductId = '';
+        let top1Title = '';
+        let top1MerchantId = '';
+        let debugRewrittenQuery = '';
+        let debugHistoryUsed = null;
+        let debugUsedRecentQueriesCount = null;
+        const expectedKeywords = normalizeExpectedKeywords(t);
+        let top1ExpectedHit = null;
 
         if (resp.ok) {
           const candidates = extractCandidates(resp.json);
@@ -240,6 +282,26 @@ async function main() {
           noResult = candidatesCount === 0;
           fallbackReason = extractFallbackReason(resp.json);
           querySource = String(resp.json?.metadata?.query_source || '').trim();
+          total = Number.isFinite(Number(resp.json?.total)) ? Number(resp.json?.total) : null;
+
+          const top1 = extractTop1(candidates);
+          top1ProductId = top1.product_id;
+          top1Title = top1.title;
+          top1MerchantId = top1.merchant_id;
+          top1ExpectedHit = expectedHitForTop1Title({ expectedKeywords, top1Title });
+
+          debugRewrittenQuery = String(resp.json?.debug?.rewritten_query || '').trim();
+          debugHistoryUsed =
+            typeof resp.json?.debug?.history_used === 'boolean'
+              ? resp.json.debug.history_used
+                ? 1
+                : 0
+              : null;
+          debugUsedRecentQueriesCount = Number.isFinite(
+            Number(resp.json?.debug?.used_recent_queries_count),
+          )
+            ? Number(resp.json.debug.used_recent_queries_count)
+            : null;
 
           fs.writeFileSync(
             path.join(outDir, `${fileBase}.json`),
@@ -266,9 +328,18 @@ async function main() {
           status: resp.status,
           no_result: resp.ok ? (noResult ? 1 : 0) : null,
           candidates_count: candidatesCount,
+          total,
           fallback: resp.ok ? (fallbackReason ? 1 : 0) : null,
           fallback_reason: fallbackReason || '',
           query_source: querySource,
+          top1_product_id: resp.ok ? top1ProductId : null,
+          top1_title: resp.ok ? top1Title : null,
+          top1_merchant_id: resp.ok ? top1MerchantId : null,
+          expected_must_include_keywords: expectedKeywords.length ? expectedKeywords : null,
+          top1_expected_hit: resp.ok ? top1ExpectedHit : null,
+          debug_rewritten_query: resp.ok ? debugRewrittenQuery : null,
+          debug_history_used: resp.ok ? debugHistoryUsed : null,
+          debug_used_recent_queries_count: resp.ok ? debugUsedRecentQueriesCount : null,
         });
 
         // B variant: request uses history first, then we enqueue the current query.
