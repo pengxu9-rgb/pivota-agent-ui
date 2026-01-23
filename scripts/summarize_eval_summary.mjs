@@ -54,6 +54,10 @@ function numberOrNull(v) {
   return Number.isFinite(n) ? n : null;
 }
 
+function normalizeString(v) {
+  return String(v || '').trim();
+}
+
 function main() {
   const input = process.argv[2];
   if (!input) {
@@ -83,6 +87,8 @@ function main() {
         no_result: 0,
         fallback: 0,
         candidates: [],
+        expected_n: 0,
+        expected_hit: 0,
       });
     }
     const a = agg.get(k);
@@ -96,6 +102,12 @@ function main() {
     a.fallback += Number(r?.fallback || 0) ? 1 : 0;
     const c = numberOrNull(r?.candidates_count);
     if (c != null) a.candidates.push(c);
+
+    const expectedHit = numberOrNull(r?.top1_expected_hit);
+    if (expectedHit != null) {
+      a.expected_n += 1;
+      a.expected_hit += expectedHit === 1 ? 1 : 0;
+    }
   }
 
   const outDir = path.dirname(input);
@@ -114,6 +126,8 @@ function main() {
     'candidates_p50',
     'candidates_p90',
     'candidates_mean',
+    'expected_n',
+    'top1_expected_hit_rate',
   ].join(',');
 
   const lines = [header];
@@ -140,6 +154,8 @@ function main() {
         quantile(a.candidates, 0.5),
         quantile(a.candidates, 0.9),
         mean == null ? '' : mean.toFixed(2),
+        a.expected_n,
+        a.expected_n ? rate(a.expected_hit, a.expected_n) : '',
       ].join(','),
     );
   }
@@ -169,7 +185,52 @@ function main() {
     'candidates_p50_A',
     'candidates_p50_B',
     'candidates_p50_delta(B-A)',
+    'expected_n_A',
+    'expected_n_B',
+    'top1_expected_hit_rate_A',
+    'top1_expected_hit_rate_B',
+    'top1_expected_hit_rate_delta(B-A)',
+    'pair_n',
+    'top1_changed_n',
+    'top1_changed_rate',
   ].join(',');
+
+  // Pairwise top1 diff: (entry, turn_bucket, suite_id, convo_id, turn_id) join A/B.
+  const SEP = '\u001f';
+  const joinKey = (parts) => parts.join(SEP);
+  const top1A = new Map();
+  const top1B = new Map();
+  for (const r of rows) {
+    const variant = normalizeVariant(r?.variant);
+    if (!variant) continue;
+    if (!isHttpOk(r)) continue;
+
+    const entry = normalizeEntry(r?.entry);
+    const turn_bucket = turnBucketOf(r?.turn_id);
+    const suiteId = normalizeString(r?.suite_id);
+    const convoId = normalizeString(r?.convo_id);
+    const turnId = String(r?.turn_id ?? '').trim();
+    const top1Id = normalizeString(r?.top1_product_id);
+    if (!top1Id) continue;
+    if (!suiteId || !convoId || !turnId) continue;
+
+    const key = joinKey([entry, turn_bucket, suiteId, convoId, turnId]);
+    if (variant === 'A') top1A.set(key, top1Id);
+    if (variant === 'B') top1B.set(key, top1Id);
+  }
+  const top1DiffAgg = new Map(); // bucket -> {pair_n, changed_n}
+  for (const [key, aId] of top1A.entries()) {
+    const bId = top1B.get(key);
+    if (!bId) continue;
+    const parts = key.split(SEP);
+    const entry = parts[0] || 'unknown';
+    const turn_bucket = parts[1] || 'turn1';
+    const bucket = bucketKey({ entry, turn_bucket });
+    if (!top1DiffAgg.has(bucket)) top1DiffAgg.set(bucket, { pair_n: 0, changed_n: 0 });
+    const b = top1DiffAgg.get(bucket);
+    b.pair_n += 1;
+    if (aId !== bId) b.changed_n += 1;
+  }
 
   const liftLines = [liftHeader];
   const buckets = new Set([...mapA.keys(), ...mapB.keys()]);
@@ -192,6 +253,15 @@ function main() {
     const B_p50 = B ? quantile(B.candidates, 0.5) : '';
     const deltaP50 = A_p50 !== '' && B_p50 !== '' ? Number(B_p50) - Number(A_p50) : null;
 
+    const A_exp_rate = A && A.expected_n ? A.expected_hit / A.expected_n : null;
+    const B_exp_rate = B && B.expected_n ? B.expected_hit / B.expected_n : null;
+    const deltaExp = A_exp_rate != null && B_exp_rate != null ? B_exp_rate - A_exp_rate : null;
+
+    const diff = top1DiffAgg.get(b);
+    const pairN = diff ? diff.pair_n : 0;
+    const changedN = diff ? diff.changed_n : 0;
+    const changedRate = pairN ? changedN / pairN : null;
+
     liftLines.push(
       [
         entry,
@@ -208,6 +278,14 @@ function main() {
         A_p50,
         B_p50,
         deltaP50 == null ? '' : String(deltaP50),
+        A?.expected_n ?? 0,
+        B?.expected_n ?? 0,
+        A_exp_rate == null ? '' : A_exp_rate.toFixed(6),
+        B_exp_rate == null ? '' : B_exp_rate.toFixed(6),
+        deltaExp == null ? '' : deltaExp.toFixed(6),
+        pairN || '',
+        pairN ? changedN : '',
+        changedRate == null ? '' : changedRate.toFixed(6),
       ].join(','),
     );
   }
