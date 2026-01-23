@@ -58,6 +58,10 @@ function normalizeString(v) {
   return String(v || '').trim();
 }
 
+function normalizeLower(v) {
+  return String(v || '').trim().toLowerCase();
+}
+
 function main() {
   const input = process.argv[2];
   if (!input) {
@@ -89,6 +93,13 @@ function main() {
         candidates: [],
         expected_n: 0,
         expected_hit: 0,
+        history_used_n: 0,
+        history_used_sum: 0,
+        used_recent_queries_count_n: 0,
+        used_recent_queries_count_sum: 0,
+        used_recent_queries_gt0: 0,
+        rewritten_query_n: 0,
+        rewritten_query_changed: 0,
       });
     }
     const a = agg.get(k);
@@ -107,6 +118,27 @@ function main() {
     if (expectedHit != null) {
       a.expected_n += 1;
       a.expected_hit += expectedHit === 1 ? 1 : 0;
+    }
+
+    const historyUsed = numberOrNull(r?.debug_history_used);
+    if (historyUsed != null) {
+      a.history_used_n += 1;
+      a.history_used_sum += historyUsed === 1 ? 1 : 0;
+    }
+
+    const usedCount = numberOrNull(r?.debug_used_recent_queries_count);
+    if (usedCount != null) {
+      a.used_recent_queries_count_n += 1;
+      a.used_recent_queries_count_sum += usedCount;
+      if (usedCount > 0) a.used_recent_queries_gt0 += 1;
+    }
+
+    const rewritten = normalizeString(r?.debug_rewritten_query);
+    if (rewritten) {
+      a.rewritten_query_n += 1;
+      const q = normalizeLower(r?.query);
+      const rw = normalizeLower(rewritten);
+      if (q && rw && q !== rw) a.rewritten_query_changed += 1;
     }
   }
 
@@ -128,6 +160,13 @@ function main() {
     'candidates_mean',
     'expected_n',
     'top1_expected_hit_rate',
+    'history_used_n',
+    'history_used_rate',
+    'used_recent_queries_count_n',
+    'used_recent_queries_count_mean',
+    'used_recent_queries_gt0_rate',
+    'rewritten_query_n',
+    'rewritten_query_changed_rate',
   ].join(',');
 
   const lines = [header];
@@ -156,6 +195,17 @@ function main() {
         mean == null ? '' : mean.toFixed(2),
         a.expected_n,
         a.expected_n ? rate(a.expected_hit, a.expected_n) : '',
+        a.history_used_n,
+        a.history_used_n ? rate(a.history_used_sum, a.history_used_n) : '',
+        a.used_recent_queries_count_n,
+        a.used_recent_queries_count_n
+          ? (a.used_recent_queries_count_sum / a.used_recent_queries_count_n).toFixed(2)
+          : '',
+        a.used_recent_queries_count_n
+          ? rate(a.used_recent_queries_gt0, a.used_recent_queries_count_n)
+          : '',
+        a.rewritten_query_n,
+        a.rewritten_query_n ? rate(a.rewritten_query_changed, a.rewritten_query_n) : '',
       ].join(','),
     );
   }
@@ -190,6 +240,18 @@ function main() {
     'top1_expected_hit_rate_A',
     'top1_expected_hit_rate_B',
     'top1_expected_hit_rate_delta(B-A)',
+    'history_used_rate_A',
+    'history_used_rate_B',
+    'history_used_rate_delta(B-A)',
+    'used_recent_queries_gt0_rate_A',
+    'used_recent_queries_gt0_rate_B',
+    'used_recent_queries_gt0_rate_delta(B-A)',
+    'used_recent_queries_count_mean_A',
+    'used_recent_queries_count_mean_B',
+    'used_recent_queries_count_mean_delta(B-A)',
+    'rewritten_query_changed_rate_A',
+    'rewritten_query_changed_rate_B',
+    'rewritten_query_changed_rate_delta(B-A)',
     'pair_n',
     'top1_changed_n',
     'top1_changed_rate',
@@ -257,6 +319,39 @@ function main() {
     const B_exp_rate = B && B.expected_n ? B.expected_hit / B.expected_n : null;
     const deltaExp = A_exp_rate != null && B_exp_rate != null ? B_exp_rate - A_exp_rate : null;
 
+    const A_hist_rate =
+      A && A.history_used_n ? A.history_used_sum / A.history_used_n : null;
+    const B_hist_rate =
+      B && B.history_used_n ? B.history_used_sum / B.history_used_n : null;
+    const deltaHist = A_hist_rate != null && B_hist_rate != null ? B_hist_rate - A_hist_rate : null;
+
+    const A_gt0_rate =
+      A && A.used_recent_queries_count_n
+        ? A.used_recent_queries_gt0 / A.used_recent_queries_count_n
+        : null;
+    const B_gt0_rate =
+      B && B.used_recent_queries_count_n
+        ? B.used_recent_queries_gt0 / B.used_recent_queries_count_n
+        : null;
+    const deltaGt0 = A_gt0_rate != null && B_gt0_rate != null ? B_gt0_rate - A_gt0_rate : null;
+
+    const A_used_mean =
+      A && A.used_recent_queries_count_n
+        ? A.used_recent_queries_count_sum / A.used_recent_queries_count_n
+        : null;
+    const B_used_mean =
+      B && B.used_recent_queries_count_n
+        ? B.used_recent_queries_count_sum / B.used_recent_queries_count_n
+        : null;
+    const deltaUsedMean =
+      A_used_mean != null && B_used_mean != null ? B_used_mean - A_used_mean : null;
+
+    const A_rw_rate =
+      A && A.rewritten_query_n ? A.rewritten_query_changed / A.rewritten_query_n : null;
+    const B_rw_rate =
+      B && B.rewritten_query_n ? B.rewritten_query_changed / B.rewritten_query_n : null;
+    const deltaRw = A_rw_rate != null && B_rw_rate != null ? B_rw_rate - A_rw_rate : null;
+
     const diff = top1DiffAgg.get(b);
     const pairN = diff ? diff.pair_n : 0;
     const changedN = diff ? diff.changed_n : 0;
@@ -283,6 +378,18 @@ function main() {
         A_exp_rate == null ? '' : A_exp_rate.toFixed(6),
         B_exp_rate == null ? '' : B_exp_rate.toFixed(6),
         deltaExp == null ? '' : deltaExp.toFixed(6),
+        A_hist_rate == null ? '' : A_hist_rate.toFixed(6),
+        B_hist_rate == null ? '' : B_hist_rate.toFixed(6),
+        deltaHist == null ? '' : deltaHist.toFixed(6),
+        A_gt0_rate == null ? '' : A_gt0_rate.toFixed(6),
+        B_gt0_rate == null ? '' : B_gt0_rate.toFixed(6),
+        deltaGt0 == null ? '' : deltaGt0.toFixed(6),
+        A_used_mean == null ? '' : A_used_mean.toFixed(2),
+        B_used_mean == null ? '' : B_used_mean.toFixed(2),
+        deltaUsedMean == null ? '' : deltaUsedMean.toFixed(2),
+        A_rw_rate == null ? '' : A_rw_rate.toFixed(6),
+        B_rw_rate == null ? '' : B_rw_rate.toFixed(6),
+        deltaRw == null ? '' : deltaRw.toFixed(6),
         pairN || '',
         pairN ? changedN : '',
         changedRate == null ? '' : changedRate.toFixed(6),
