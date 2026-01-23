@@ -1,0 +1,4 @@
+{"suite_id":"carry_probe_small","convo_id":"c001","turn_id":1,"entry":"search","query":"foundation brush"}
+{"suite_id":"carry_probe_small","convo_id":"c001","turn_id":2,"entry":"search","query":"brush","expected":{"must_include_keywords":["foundation"]}}
+{"suite_id":"carry_probe_small","convo_id":"c002","turn_id":1,"entry":"search","query":"concealer brush"}
+{"suite_id":"carry_probe_small","convo_id":"c002","turn_id":2,"entry":"search","query":"brush","expected":{"must_include_keywords":["concealer"]}}

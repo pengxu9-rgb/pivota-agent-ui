@@ -1,0 +1,6 @@
+{"suite_id":"mock_en_v1","convo_id":"c001","turn_id":1,"entry":"search","query":"water bottle"}
+{"suite_id":"mock_en_v1","convo_id":"c001","turn_id":2,"entry":"search","query":"24oz"}
+{"suite_id":"mock_en_v1","convo_id":"c002","turn_id":1,"entry":"plp","query":"headphones"}
+{"suite_id":"mock_en_v1","convo_id":"c003","turn_id":1,"entry":"plp","query":"kitchen scale"}
+{"suite_id":"mock_en_v1","convo_id":"c004","turn_id":1,"entry":"search","query":"essential oil diffuser"}
+{"suite_id":"mock_en_v1","convo_id":"c005","turn_id":1,"entry":"search","query":"power bank"}

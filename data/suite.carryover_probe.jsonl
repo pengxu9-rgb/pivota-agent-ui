@@ -1,0 +1,10 @@
+{"suite_id":"carry_probe_v1","convo_id":"c001","turn_id":1,"entry":"search","query":"foundation brush"}
+{"suite_id":"carry_probe_v1","convo_id":"c001","turn_id":2,"entry":"search","query":"brush","expected":{"must_include_keywords":["foundation"]}}
+{"suite_id":"carry_probe_v1","convo_id":"c002","turn_id":1,"entry":"search","query":"concealer brush"}
+{"suite_id":"carry_probe_v1","convo_id":"c002","turn_id":2,"entry":"search","query":"brush","expected":{"must_include_keywords":["concealer"]}}
+{"suite_id":"carry_probe_v1","convo_id":"c003","turn_id":1,"entry":"search","query":"eyeshadow brush"}
+{"suite_id":"carry_probe_v1","convo_id":"c003","turn_id":2,"entry":"search","query":"brush","expected":{"must_include_keywords":["eyeshadow"]}}
+{"suite_id":"carry_probe_v1","convo_id":"c004","turn_id":1,"entry":"search","query":"blush brush"}
+{"suite_id":"carry_probe_v1","convo_id":"c004","turn_id":2,"entry":"search","query":"brush","expected":{"must_include_keywords":["blush"]}}
+{"suite_id":"carry_probe_v1","convo_id":"c005","turn_id":1,"entry":"search","query":"powder brush"}
+{"suite_id":"carry_probe_v1","convo_id":"c005","turn_id":2,"entry":"search","query":"brush","expected":{"must_include_keywords":["powder"]}}

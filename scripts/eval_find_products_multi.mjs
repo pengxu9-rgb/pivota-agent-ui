@@ -19,6 +19,7 @@ import readline from 'node:readline';
  *   EVAL_AGENT_API_KEY     Optional. Used when hitting invoke directly.
  *   EVAL_CHECKOUT_TOKEN    Optional. Used when hitting invoke directly.
  *   EVAL_LIMIT             Optional. Default 50.
+ *   EVAL_CONCURRENCY       Optional. Default 1. Parallel convos (turns remain sequential per convo).
  *   EVAL_RUN_ID            Optional. Default run_<timestamp>.
  */
 
@@ -203,12 +204,29 @@ function groupTurnsByConvo(turns) {
   return byConvo;
 }
 
+async function runWithConcurrency(items, concurrency, worker) {
+  const n = Math.max(1, Math.floor(Number(concurrency || 1)));
+  let cursor = 0;
+
+  const runners = Array.from({ length: n }, async () => {
+    while (true) {
+      const idx = cursor;
+      cursor += 1;
+      if (idx >= items.length) break;
+      await worker(items[idx], idx);
+    }
+  });
+
+  await Promise.all(runners);
+}
+
 async function main() {
   const inputFile = process.argv[2];
   const invokeUrl = resolveInvokeUrl(process.env.EVAL_INVOKE_URL);
   const agentApiKey = process.env.EVAL_AGENT_API_KEY || '';
   const checkoutToken = process.env.EVAL_CHECKOUT_TOKEN || '';
   const limit = Number(process.env.EVAL_LIMIT || 50);
+  const concurrency = Number(process.env.EVAL_CONCURRENCY || 1);
 
   if (!inputFile) {
     console.error('Usage: node scripts/eval_find_products_multi.mjs <suite.jsonl>');
@@ -219,6 +237,10 @@ async function main() {
     console.error('EVAL_LIMIT must be a positive number');
     process.exit(1);
   }
+  if (!Number.isFinite(concurrency) || concurrency <= 0) {
+    console.error('EVAL_CONCURRENCY must be a positive number');
+    process.exit(1);
+  }
 
   const runId = String(process.env.EVAL_RUN_ID || `run_${Date.now()}`);
   const suiteIdFallback = path.basename(inputFile).replace(/\.[^.]+$/, '');
@@ -227,12 +249,13 @@ async function main() {
 
   const turns = await readJsonlTurns(inputFile);
   const byConvo = groupTurnsByConvo(turns);
+  const convoEntries = [...byConvo.entries()].sort(([a], [b]) => String(a).localeCompare(String(b)));
 
   const variants = ['A', 'B'];
   const summary = [];
 
   for (const variant of variants) {
-    for (const [convoId, convoTurns] of byConvo) {
+    await runWithConcurrency(convoEntries, concurrency, async ([convoId, convoTurns]) => {
       let history = [];
 
       for (const t of convoTurns) {
@@ -347,8 +370,18 @@ async function main() {
           history = uniqPush(history, query, 8);
         }
       }
-    }
+    });
   }
+
+  summary.sort((a, b) => {
+    const av = String(a.variant || '');
+    const bv = String(b.variant || '');
+    if (av !== bv) return av.localeCompare(bv);
+    const ac = String(a.convo_id || '');
+    const bc = String(b.convo_id || '');
+    if (ac !== bc) return ac.localeCompare(bc);
+    return Number(a.turn_id || 0) - Number(b.turn_id || 0);
+  });
 
   fs.writeFileSync(
     path.join(outDir, 'summary.json'),
