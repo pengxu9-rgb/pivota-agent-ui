@@ -14,8 +14,16 @@ export default function AuthInit() {
       setChecked(true)
       return
     }
-    accountsMe()
-      .then((data) => {
+
+    // Guard against stale /auth/me responses: the buyer may log in while this
+    // request is in-flight. In that case we must ignore the earlier 401
+    // response and not clear the newly established session.
+    let cancelled = false
+
+    ;(async () => {
+      try {
+        const data = await accountsMe()
+        if (cancelled) return
         if ((data as any)?.user) {
           setSession({
             user: (data as any).user,
@@ -23,13 +31,19 @@ export default function AuthInit() {
             active_merchant_id: (data as any).active_merchant_id,
           })
         }
-      })
-      .catch((err: any) => {
+      } catch (err: any) {
+        if (cancelled) return
         if (err?.status === 401 || err?.code === 'UNAUTHENTICATED') {
           clear()
         }
-      })
-      .finally(() => setChecked(true))
+      } finally {
+        if (!cancelled) setChecked(true)
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
   }, [user, setSession, clear])
 
   // No UI; could return null or a minimal marker if needed
