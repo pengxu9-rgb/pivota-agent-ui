@@ -214,8 +214,8 @@ async function main() {
         });
 
         const fileBase = `${variant}_${safeFilePart(convoId)}_t${turn_id}`;
-        let candidatesCount = 0;
-        let noResult = true;
+        let candidatesCount = null;
+        let noResult = null;
         let fallbackReason = null;
         let querySource = '';
 
@@ -245,11 +245,13 @@ async function main() {
           turn_id,
           entry: entry || '',
           query,
+          http_ok: resp.ok ? 1 : 0,
+          http_status: resp.status,
           ok: resp.ok ? 1 : 0,
           status: resp.status,
-          no_result: noResult ? 1 : 0,
+          no_result: resp.ok ? (noResult ? 1 : 0) : null,
           candidates_count: candidatesCount,
-          fallback: fallbackReason ? 1 : 0,
+          fallback: resp.ok ? (fallbackReason ? 1 : 0) : null,
           fallback_reason: fallbackReason || '',
           query_source: querySource,
         });
@@ -273,4 +275,3 @@ main().catch((e) => {
   console.error(e);
   process.exit(1);
 });
-
