@@ -24,6 +24,9 @@ export default function AuthInit() {
       try {
         const data = await accountsMe()
         if (cancelled) return
+        // If the buyer logged in while /auth/me was in-flight, do not overwrite
+        // the newly established session with a stale response.
+        if (useAuthStore.getState().user) return
         if ((data as any)?.user) {
           setSession({
             user: (data as any).user,
@@ -34,7 +37,9 @@ export default function AuthInit() {
       } catch (err: any) {
         if (cancelled) return
         if (err?.status === 401 || err?.code === 'UNAUTHENTICATED') {
-          clear()
+          // Same guard: ignore stale 401s if the buyer logged in while this
+          // request was in-flight.
+          if (!useAuthStore.getState().user) clear()
         }
       } finally {
         if (!cancelled) setChecked(true)
