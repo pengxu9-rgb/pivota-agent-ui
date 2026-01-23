@@ -82,7 +82,53 @@ export default function HomePage() {
     setLoading(true);
 
     try {
-      const products = await sendMessage(input);
+      // Optional eval metadata for offline/AA-B testing runs (best-effort).
+      let evalMetadata: Record<string, any> | undefined;
+      try {
+        const params = new URLSearchParams(window.location.search);
+        const baseFromUrl = {
+          run_id: (params.get('eval_run_id') || '').trim() || undefined,
+          variant: (params.get('eval_variant') || '').trim() || undefined,
+          suite_id: (params.get('eval_suite_id') || '').trim() || undefined,
+          convo_id: (params.get('eval_convo_id') || '').trim() || undefined,
+          turn_id: (() => {
+            const raw = (params.get('eval_turn_id') || '').trim();
+            return raw && Number.isFinite(Number(raw)) ? Number(raw) : undefined;
+          })(),
+        };
+
+        const hasEvalParams = Object.values(baseFromUrl).some((v) => v != null && v !== '');
+        if (hasEvalParams) {
+          window.sessionStorage.setItem('pivota_eval_meta_v1', JSON.stringify(baseFromUrl));
+        }
+
+        const raw = window.sessionStorage.getItem('pivota_eval_meta_v1');
+        const base = raw ? JSON.parse(raw) : null;
+        if (base && typeof base === 'object') {
+          const state = useChatStore.getState();
+          const convoId = state.currentConversationId || undefined;
+          const userTurns = Array.isArray(state.messages)
+            ? state.messages.filter((m) => m?.role === 'user').length
+            : undefined;
+          evalMetadata = {
+            eval: {
+              ...(base as any),
+              ...(convoId ? { convo_id: (base as any).convo_id || convoId } : {}),
+              ...(typeof userTurns === 'number' && (base as any).turn_id == null
+                ? { turn_id: userTurns }
+                : {}),
+            },
+          };
+        }
+      } catch {
+        // ignore
+      }
+
+      const products = await sendMessage(
+        input,
+        undefined,
+        evalMetadata ? { metadata: evalMetadata } : undefined,
+      );
       
       const assistantMessage = {
         id: (Date.now() + 1).toString(),

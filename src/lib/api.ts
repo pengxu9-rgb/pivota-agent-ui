@@ -310,12 +310,21 @@ interface InvokeBody {
 
 const RECENT_QUERIES_STORAGE_KEY = 'pivota_recent_queries_v1';
 const MAX_RECENT_QUERIES = 8;
+const EVAL_META_STORAGE_KEY = 'pivota_eval_meta_v1';
 
 type ShoppingScopeCatalog = 'global' | 'category' | 'promo_pool';
 type ShoppingScope = {
   catalog: ShoppingScopeCatalog;
   region: string | null;
   language: string | null;
+};
+
+type ShoppingEvalMeta = {
+  run_id?: string;
+  variant?: 'A' | 'B' | string;
+  suite_id?: string;
+  convo_id?: string;
+  turn_id?: number;
 };
 
 type ShoppingEntry =
@@ -361,6 +370,64 @@ function inferRegionFromLanguage(language: string | null): string | null {
 
 function isPlainObject(value: unknown): value is Record<string, any> {
   return Boolean(value && typeof value === 'object' && !Array.isArray(value));
+}
+
+function readEvalMetaFromSessionStorage(): ShoppingEvalMeta | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.sessionStorage.getItem(EVAL_META_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : null;
+    return isPlainObject(parsed) ? (parsed as ShoppingEvalMeta) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeEvalMetaToSessionStorage(meta: ShoppingEvalMeta) {
+  if (typeof window === 'undefined') return;
+  try {
+    window.sessionStorage.setItem(EVAL_META_STORAGE_KEY, JSON.stringify(meta));
+  } catch {
+    // ignore storage errors
+  }
+}
+
+function readEvalMetaFromUrl(): ShoppingEvalMeta | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const params = new URLSearchParams(String(window.location?.search || ''));
+
+    const run_id = String(params.get('eval_run_id') || '').trim() || undefined;
+    const variant = String(params.get('eval_variant') || '').trim() || undefined;
+    const suite_id = String(params.get('eval_suite_id') || '').trim() || undefined;
+    const convo_id = String(params.get('eval_convo_id') || '').trim() || undefined;
+    const turnRaw = String(params.get('eval_turn_id') || '').trim();
+    const turn_id = turnRaw && Number.isFinite(Number(turnRaw)) ? Number(turnRaw) : undefined;
+
+    if (!run_id && !variant && !suite_id && !convo_id && turn_id == null) return null;
+
+    return { run_id, variant, suite_id, convo_id, turn_id };
+  } catch {
+    return null;
+  }
+}
+
+function getEvalMetaBase(): ShoppingEvalMeta | null {
+  if (typeof window === 'undefined') return null;
+  const fromUrl = readEvalMetaFromUrl();
+  if (fromUrl) {
+    writeEvalMetaToSessionStorage(fromUrl);
+    return fromUrl;
+  }
+  return readEvalMetaFromSessionStorage();
+}
+
+function getEvalVariant(): 'A' | 'B' | null {
+  const meta = getEvalMetaBase();
+  const raw = String(meta?.variant || '').trim().toUpperCase();
+  if (raw === 'A') return 'A';
+  if (raw === 'B') return 'B';
+  return null;
 }
 
 function getDefaultShoppingScope(): ShoppingScope {
@@ -508,6 +575,14 @@ async function callGateway(body: InvokeBody, options: GatewayCallOptions = {}) {
     SHOPPING_ENTRY_VALUES.has(requestMetadata.entry as ShoppingEntry)
       ? (requestMetadata.entry as ShoppingEntry)
       : null;
+  const evalFromRuntime = getEvalMetaBase();
+  const evalFromCaller = isPlainObject(requestMetadata.eval)
+    ? (requestMetadata.eval as ShoppingEvalMeta)
+    : null;
+  const evalMerged =
+    evalFromRuntime || evalFromCaller
+      ? ({ ...(evalFromRuntime || {}), ...(evalFromCaller || {}) } as ShoppingEvalMeta)
+      : null;
 
   const requestBody: InvokeBody = {
     ...body,
@@ -519,6 +594,7 @@ async function callGateway(body: InvokeBody, options: GatewayCallOptions = {}) {
         ...scopeOverride,
       },
       entry: entryOverride || inferredEntry,
+      ...(evalMerged ? { eval: evalMerged } : {}),
       // Never allow callers to override the source in this UI.
       source: gatewaySource,
     },
@@ -734,9 +810,10 @@ async function callAccounts(
 export async function sendMessage(
   message: string,
   merchantIdOverride?: string,
+  options?: { metadata?: Record<string, any> },
 ): Promise<ProductResponse[]> {
   const query = message.trim();
-  const recentQueries = readRecentQueries();
+  const recentQueries = getEvalVariant() === 'A' ? [] : readRecentQueries();
 
   const data = await callGateway({
     operation: 'find_products_multi',
@@ -753,6 +830,7 @@ export async function sendMessage(
         recent_queries: recentQueries,
       },
     },
+    ...(isPlainObject(options?.metadata) ? { metadata: options?.metadata } : {}),
   });
 
   let products = ((data as any).products || []).map(
