@@ -6,6 +6,7 @@ export interface CartItem {
   product_id?: string
   variant_id?: string
   sku?: string
+  selected_options?: Record<string, string>
   offer_id?: string
   title: string
   price: number

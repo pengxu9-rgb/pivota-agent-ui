@@ -24,6 +24,7 @@ interface OrderItem {
   product_id: string
   variant_id?: string
   sku?: string
+  selected_options?: Record<string, string>
   merchant_id?: string
   offer_id?: string
   title: string
@@ -529,10 +530,17 @@ function OrderFlowInner({
       .map((item) => {
         const productId = String(item.product_id || '').trim()
         const variantId = getVariantIdForItem(item)
+        const sku = String(item.sku || '').trim() || undefined
+        const selectedOptions =
+          item.selected_options && typeof item.selected_options === 'object'
+            ? item.selected_options
+            : undefined
         return {
           product_id: productId,
           variant_id: variantId,
           quantity: item.quantity,
+          ...(sku ? { sku } : {}),
+          ...(selectedOptions ? { selected_options: selectedOptions } : {}),
         }
       })
       .filter((it) => Boolean(it.product_id) && Boolean(it.variant_id))
@@ -718,6 +726,7 @@ function OrderFlowInner({
           product_title: item.title,
           ...(variantId ? { variant_id: variantId } : {}),
           ...(item.sku ? { sku: item.sku } : {}),
+          ...(item.selected_options ? { selected_options: item.selected_options } : {}),
           quantity: item.quantity,
           unit_price: effectiveUnitPrice,
           subtotal: effectiveUnitPrice * item.quantity,

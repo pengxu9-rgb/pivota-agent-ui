@@ -92,6 +92,7 @@ export default function ProductDetailPage({ params }: Props) {
       }
       setRecommendationsLoading(false);
       let resolvedMerchantId: string | null = explicitMerchantId;
+      let resolvedOffersPayload: any = null;
 
       // Fast path: resolve candidates/offers when merchant_id is missing.
       // This avoids expensive empty-query multi-merchant scans.
@@ -114,47 +115,45 @@ export default function ProductDetailPage({ params }: Props) {
             offers_count: offersCount,
           });
 
-          if (offersCount > 1 && offers.length > 0) {
-            const candidates: ProductResponse[] = offers
-              .map((offer) => {
-                const merchantId = String(offer?.merchant_id || '').trim();
-                if (!merchantId) return null;
-                const priceAmount =
-                  typeof offer?.price === 'number'
-                    ? Number(offer.price) || 0
-                    : Number((offer as any)?.price?.amount || 0);
-                const priceCurrency =
-                  typeof offer?.price === 'number'
-                    ? 'USD'
-                    : String((offer as any)?.price?.currency || 'USD');
-
-                return {
-                  product_id: id,
-                  merchant_id: merchantId,
-                  merchant_name: (offer as any)?.merchant_name || undefined,
-                  title: '',
-                  description: '',
-                  price: priceAmount,
-                  currency: priceCurrency,
-                  in_stock: (offer as any)?.inventory?.in_stock !== false,
-                } satisfies ProductResponse;
-              })
-              .filter(Boolean) as ProductResponse[];
-
-            if (!cancelled) {
-              setProduct(null);
-              setRelatedProducts([]);
-              setError(null);
-              setSellerCandidates(candidates);
-              setLoading(false);
-              setLoadingStage(null);
-              setRecommendationsLoading(false);
-            }
-            return;
-          }
+          resolvedOffersPayload = {
+            ...(typeof (resolved as any)?.product_group_id === 'string'
+              ? { product_group_id: (resolved as any).product_group_id }
+              : {}),
+            ...(Array.isArray((resolved as any)?.offers) ? { offers: (resolved as any).offers } : {}),
+            ...((resolved as any)?.offers_count != null
+              ? { offers_count: Number((resolved as any).offers_count) }
+              : {}),
+            ...(typeof (resolved as any)?.default_offer_id === 'string'
+              ? { default_offer_id: (resolved as any).default_offer_id }
+              : {}),
+            ...(typeof (resolved as any)?.best_price_offer_id === 'string'
+              ? { best_price_offer_id: (resolved as any).best_price_offer_id }
+              : {}),
+          };
 
           if (offersCount === 1 && offers.length === 1) {
             const merchantId = String(offers[0]?.merchant_id || '').trim();
+            if (merchantId) {
+              resolvedMerchantId = merchantId;
+              setLoadingStage('detail');
+            }
+          }
+
+          if (!resolvedMerchantId && offersCount > 1 && offers.length > 0) {
+            const defaultOfferId =
+              String((resolved as any)?.default_offer_id || (resolved as any)?.best_price_offer_id || '').trim() ||
+              null;
+            const pickPrice = (offer: any) =>
+              typeof offer?.price === 'number'
+                ? Number(offer.price) || 0
+                : Number(offer?.price?.amount || 0);
+            const chosen =
+              (defaultOfferId
+                ? offers.find((o: any) => String(o?.offer_id || o?.offerId || '').trim() === defaultOfferId)
+                : null) ||
+              [...offers].sort((a: any, b: any) => pickPrice(a) - pickPrice(b))[0] ||
+              null;
+            const merchantId = String(chosen?.merchant_id || '').trim() || null;
             if (merchantId) {
               resolvedMerchantId = merchantId;
               setLoadingStage('detail');
@@ -223,7 +222,18 @@ export default function ProductDetailPage({ params }: Props) {
         }
         if (cancelled) return;
 
-        setProduct(data);
+        const merged = resolvedOffersPayload
+          ? {
+              ...data,
+              ...resolvedOffersPayload,
+              raw_detail: {
+                ...(data as any).raw_detail,
+                ...resolvedOffersPayload,
+              },
+            }
+          : data;
+
+        setProduct(merged);
         setLoading(false);
         setLoadingStage(null);
         const resolvedFromData = String(data.merchant_id || '').trim() || null;
@@ -249,7 +259,12 @@ export default function ProductDetailPage({ params }: Props) {
           String((data as any).platform || '').toLowerCase() === 'external' ||
           (data as any).source === 'external_seed';
 
-        if (!merchantIdParam && resolvedFromData && !isExternalProduct) {
+        const hasMultipleOffers =
+          resolvedOffersPayload &&
+          typeof resolvedOffersPayload.offers_count === 'number' &&
+          resolvedOffersPayload.offers_count > 1;
+
+        if (!merchantIdParam && resolvedFromData && !isExternalProduct && !hasMultipleOffers) {
           router.replace(
             `/products/${encodeURIComponent(id)}?merchant_id=${encodeURIComponent(resolvedFromData)}`,
           );
@@ -381,6 +396,10 @@ export default function ProductDetailPage({ params }: Props) {
     }
     const resolvedMerchantId = String(merchant_id || product.merchant_id || '').trim() || product.merchant_id;
     const resolvedVariantId = String(variant.variant_id || '').trim() || product.product_id;
+    const selectedOptions =
+      Array.isArray(variant.options) && variant.options.length > 0
+        ? Object.fromEntries(variant.options.map((o) => [o.name, o.value]))
+        : undefined;
     const cartItemId = resolvedMerchantId
       ? `${resolvedMerchantId}:${resolvedVariantId}`
       : resolvedVariantId;
@@ -389,6 +408,7 @@ export default function ProductDetailPage({ params }: Props) {
       product_id: product.product_id,
       variant_id: resolvedVariantId,
       sku: variant.sku_id,
+      selected_options: selectedOptions,
       title: product.title,
       price: variant.price?.current.amount ?? product.price,
       currency: variant.price?.current.currency || product.currency,
@@ -418,6 +438,10 @@ export default function ProductDetailPage({ params }: Props) {
       return;
     }
     const resolvedMerchantId = String(merchant_id || product.merchant_id || '').trim() || product.merchant_id;
+    const selectedOptions =
+      Array.isArray(variant.options) && variant.options.length > 0
+        ? Object.fromEntries(variant.options.map((o) => [o.name, o.value]))
+        : undefined;
     const checkoutItems = [
       {
         product_id: product.product_id,
@@ -427,6 +451,8 @@ export default function ProductDetailPage({ params }: Props) {
         unit_price: variant.price?.current.amount ?? product.price,
         image_url: variant.image_url || product.image_url || '/placeholder.svg',
         variant_id: variant.variant_id,
+        sku: variant.sku_id,
+        selected_options: selectedOptions,
         offer_id: offer_id ? String(offer_id) : undefined,
       },
     ];
