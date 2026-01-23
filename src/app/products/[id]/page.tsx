@@ -69,6 +69,7 @@ export default function ProductDetailPage({ params }: Props) {
     const cacheKey = merchantIdParam ? `pdp-cache:${merchantIdParam}:${id}` : null;
     const isNumericProductId = /^\d+$/.test(id);
     const fastTimeoutMs = 2500;
+    const offersResolveTimeoutMs = 12000;
 
     const loadProduct = async () => {
       const explicitMerchantId = merchantIdParam ? String(merchantIdParam).trim() : null;
@@ -120,7 +121,9 @@ export default function ProductDetailPage({ params }: Props) {
             merchant_id: explicitMerchantId,
             limit: 10,
             include_offers: true,
-            timeout_ms: fastTimeoutMs,
+            // Offers resolution can involve backend group lookups + per-merchant detail fetches.
+            // Keep it best-effort and non-blocking, but allow a longer timeout than the fast-path.
+            timeout_ms: offersResolveTimeoutMs,
           })
             .then((resolved) => {
               if (!resolved) return null;
