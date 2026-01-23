@@ -245,11 +245,11 @@ export default function HomePage() {
                         <p className="text-[11px] text-muted-foreground">
                           Recommended pieces based on this chat:
                         </p>
-                        <div className="flex gap-3 overflow-x-auto pb-1 sm:grid sm:grid-cols-2 sm:gap-5 sm:overflow-visible">
+                        <div className="flex gap-3 overflow-x-auto pb-1 pr-1 snap-x snap-mandatory scroll-smooth">
                           {message.products.slice(0, 10).map((product) => (
                             <div
                               key={product.product_id}
-                              className="w-[220px] flex-shrink-0 sm:w-auto"
+                              className="w-[220px] flex-shrink-0 snap-start"
                             >
                               <ChatRecommendationCard
                                 product={product}
