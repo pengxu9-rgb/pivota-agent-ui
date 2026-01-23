@@ -1,9 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const UPSTREAM_BASE =
+const SHOP_UPSTREAM_BASE =
   process.env.NEXT_PUBLIC_UPSTREAM_API_URL ||
   process.env.NEXT_PUBLIC_API_URL ||
   'https://pivota-agent-production.up.railway.app';
+
+const REVIEWS_UPSTREAM_BASE =
+  process.env.NEXT_PUBLIC_REVIEWS_API_URL ||
+  process.env.NEXT_PUBLIC_REVIEWS_BACKEND_URL ||
+  process.env.REVIEWS_BACKEND_URL ||
+  'https://web-production-fedb.up.railway.app';
+
+const REVIEWS_OPERATIONS = new Set([
+  'get_review_summary',
+  'list_sku_reviews',
+  'list_group_reviews',
+  'list_group_merchants',
+  'list_seller_feedback',
+  'list_review_entrypoints',
+  'resolve_review_intent',
+]);
 
 const AGENT_API_KEY =
   process.env.NEXT_PUBLIC_AGENT_API_KEY ||
@@ -16,16 +32,18 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const checkoutToken = String(req.headers.get('x-checkout-token') || '').trim() || null;
+    const operation = String(body?.operation || '').trim();
+    const upstreamBase = REVIEWS_OPERATIONS.has(operation) ? REVIEWS_UPSTREAM_BASE : SHOP_UPSTREAM_BASE;
     if (process.env.NODE_ENV !== 'production') {
       // Log only safe details in dev (no tokens/headers/body payload).
       // eslint-disable-next-line no-console
       console.log('[gateway-proxy]', {
-        upstream: UPSTREAM_BASE,
-        operation: body?.operation,
+        upstream: upstreamBase,
+        operation,
       });
     }
 
-    const upstreamRes = await fetch(`${UPSTREAM_BASE}/agent/shop/v1/invoke`, {
+    const upstreamRes = await fetch(`${upstreamBase}/agent/shop/v1/invoke`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

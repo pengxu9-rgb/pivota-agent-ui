@@ -949,6 +949,55 @@ export async function resolveProductCandidates(args: {
   return data as ResolveProductCandidatesResponse;
 }
 
+function _inferReviewSubjectFromProduct(product: ProductResponse): {
+  merchant_id: string;
+  platform: string;
+  platform_product_id: string;
+  variant_id: string | null;
+} | null {
+  const merchantId = String(product.merchant_id || '').trim();
+  const platform = String(product.platform || product.product_ref?.platform || '').trim();
+  const platformProductId = String(
+    product.platform_product_id || product.product_ref?.platform_product_id || product.product_id || '',
+  ).trim();
+
+  if (!merchantId || !platform || !platformProductId) return null;
+
+  // PDP-level summary: aggregate across variants by omitting variant_id.
+  return {
+    merchant_id: merchantId,
+    platform,
+    platform_product_id: platformProductId,
+    variant_id: null,
+  };
+}
+
+async function _attachReviewSummaryBestEffort(product: ProductResponse): Promise<ProductResponse> {
+  if (!product || (product as any).review_summary) return product;
+  const subject = _inferReviewSubjectFromProduct(product);
+  if (!subject) return product;
+
+  try {
+    const data = await callGateway({
+      operation: 'get_review_summary',
+      payload: { sku: subject },
+    });
+    const summary = (data as any)?.review_summary;
+    if (!summary || typeof summary !== 'object') return product;
+
+    return {
+      ...product,
+      review_summary: summary,
+      raw_detail: {
+        ...(product as any).raw_detail,
+        review_summary: summary,
+      },
+    };
+  } catch {
+    return product;
+  }
+}
+
 // Single product detail
 export async function getProductDetail(
   productId: string,
@@ -1006,7 +1055,7 @@ export async function getProductDetail(
             ? { best_price_offer_id: (data as any).best_price_offer_id }
             : {}),
         };
-        return normalizeProduct(enriched);
+        return await _attachReviewSummaryBestEffort(normalizeProduct(enriched));
       }
     }
   } catch (err) {
@@ -1065,7 +1114,7 @@ export async function getProductDetail(
       throw err;
     }
 
-    return found || null;
+    return found ? await _attachReviewSummaryBestEffort(found) : null;
   } catch (err) {
     if (isAmbiguousProductError(err)) throw err;
     if (throwOnError) throw err;
