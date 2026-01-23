@@ -20,6 +20,8 @@ import readline from 'node:readline';
  *   EVAL_CHECKOUT_TOKEN    Optional. Used when hitting invoke directly.
  *   EVAL_LIMIT             Optional. Default 50.
  *   EVAL_CONCURRENCY       Optional. Default 1. Parallel convos (turns remain sequential per convo).
+ *   EVAL_REQUEST_TIMEOUT_MS Optional. Default 60000.
+ *   EVAL_PROGRESS_EVERY     Optional. Default 25. Prints progress every N requests per variant.
  *   EVAL_RUN_ID            Optional. Default run_<timestamp>.
  */
 
@@ -57,6 +59,7 @@ async function callInvoke({
   recentQueries,
   evalMeta,
   limit,
+  timeoutMs,
 }) {
   const body = {
     operation: 'find_products_multi',
@@ -82,26 +85,36 @@ async function callInvoke({
     ...(!checkoutToken && agentApiKey ? { 'X-Agent-API-Key': agentApiKey } : {}),
   };
 
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), Math.max(1, Number(timeoutMs || 0)));
+
   let res;
   try {
     res = await fetch(invokeUrl, {
       method: 'POST',
       headers,
       body: JSON.stringify(body),
+      signal: controller.signal,
     });
   } catch (err) {
+    clearTimeout(timeout);
     const msg = err instanceof Error ? err.message : String(err);
     const cause = err && typeof err === 'object' && 'cause' in err ? err.cause : undefined;
     return {
       ok: false,
       status: 0,
       error: {
-        type: 'FETCH_FAILED',
+        type:
+          err && typeof err === 'object' && 'name' in err && err.name === 'AbortError'
+            ? 'FETCH_TIMEOUT'
+            : 'FETCH_FAILED',
         message: msg,
         cause: cause ? String(cause) : undefined,
       },
     };
   }
+
+  clearTimeout(timeout);
 
   const text = await res.text();
   let json = null;
@@ -227,6 +240,8 @@ async function main() {
   const checkoutToken = process.env.EVAL_CHECKOUT_TOKEN || '';
   const limit = Number(process.env.EVAL_LIMIT || 50);
   const concurrency = Number(process.env.EVAL_CONCURRENCY || 1);
+  const timeoutMs = Number(process.env.EVAL_REQUEST_TIMEOUT_MS || 60000);
+  const progressEvery = Number(process.env.EVAL_PROGRESS_EVERY || 25);
 
   if (!inputFile) {
     console.error('Usage: node scripts/eval_find_products_multi.mjs <suite.jsonl>');
@@ -239,6 +254,14 @@ async function main() {
   }
   if (!Number.isFinite(concurrency) || concurrency <= 0) {
     console.error('EVAL_CONCURRENCY must be a positive number');
+    process.exit(1);
+  }
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+    console.error('EVAL_REQUEST_TIMEOUT_MS must be a positive number');
+    process.exit(1);
+  }
+  if (!Number.isFinite(progressEvery) || progressEvery <= 0) {
+    console.error('EVAL_PROGRESS_EVERY must be a positive number');
     process.exit(1);
   }
 
@@ -255,6 +278,16 @@ async function main() {
   const summary = [];
 
   for (const variant of variants) {
+    const startedAt = Date.now();
+    const totalReq = turns.length;
+    let done = 0;
+    let okCount = 0;
+    let failCount = 0;
+
+    console.log(
+      `[${runId}] variant=${variant} start (requests=${totalReq}, concurrency=${concurrency}, timeoutMs=${timeoutMs})`,
+    );
+
     await runWithConcurrency(convoEntries, concurrency, async ([convoId, convoTurns]) => {
       let history = [];
 
@@ -282,6 +315,7 @@ async function main() {
           recentQueries,
           evalMeta,
           limit,
+          timeoutMs,
         });
 
         const fileBase = `${variant}_${safeFilePart(convoId)}_t${turn_id}`;
@@ -365,12 +399,30 @@ async function main() {
           debug_used_recent_queries_count: resp.ok ? debugUsedRecentQueriesCount : null,
         });
 
+        done += 1;
+        if (resp.ok) okCount += 1;
+        else failCount += 1;
+        if (done % progressEvery === 0 || done === totalReq) {
+          const elapsedS = (Date.now() - startedAt) / 1000;
+          const rps = elapsedS > 0 ? done / elapsedS : 0;
+          console.log(
+            `[${runId}] variant=${variant} progress ${done}/${totalReq} ok=${okCount} fail=${failCount} rps=${rps.toFixed(2)}`,
+          );
+        }
+
         // B variant: request uses history first, then we enqueue the current query.
         if (variant === 'B') {
           history = uniqPush(history, query, 8);
         }
       }
     });
+
+    console.log(
+      `[${runId}] variant=${variant} done ok=${okCount} fail=${failCount} elapsedS=${(
+        (Date.now() - startedAt) /
+        1000
+      ).toFixed(1)}`,
+    );
   }
 
   summary.sort((a, b) => {
