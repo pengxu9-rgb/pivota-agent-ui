@@ -44,9 +44,9 @@ export default function BrowseHistoryPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-mesh">
+    <div className="min-h-screen bg-gradient-mesh overflow-x-hidden relative">
       {/* Animated background */}
-      <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-gradient-to-r from-indigo-500/20 via-purple-500/20 to-cyan-400/10 blur-3xl -z-10 animate-pulse" />
+      <div className="absolute top-1/4 left-1/4 w-72 h-72 sm:w-96 sm:h-96 bg-gradient-to-r from-indigo-500/20 via-purple-500/20 to-cyan-400/10 blur-3xl -z-10 animate-pulse" />
 
       {/* Header */}
       <header className="sticky top-0 z-40 bg-card/70 backdrop-blur-xl border-b border-border">

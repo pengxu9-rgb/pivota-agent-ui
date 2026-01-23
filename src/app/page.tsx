@@ -143,11 +143,11 @@ export default function HomePage() {
   };
 
   return (
-    <div className="flex h-screen w-full bg-gradient-mesh">
+    <div className="flex h-screen w-full bg-gradient-mesh overflow-x-hidden relative">
       {/* Animated background gradients */}
       <div className="absolute inset-0 -z-10 opacity-40" />
-      <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-gradient-to-r from-indigo-500/30 via-purple-500/30 to-cyan-400/20 blur-3xl -z-10 animate-pulse" />
-      <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-gradient-to-l from-cyan-400/20 via-purple-500/30 to-indigo-500/30 blur-3xl -z-10 animate-pulse" />
+      <div className="absolute top-1/4 left-1/4 w-72 h-72 sm:w-96 sm:h-96 bg-gradient-to-r from-indigo-500/30 via-purple-500/30 to-cyan-400/20 blur-3xl -z-10 animate-pulse" />
+      <div className="absolute bottom-1/4 right-1/4 w-72 h-72 sm:w-96 sm:h-96 bg-gradient-to-l from-cyan-400/20 via-purple-500/30 to-indigo-500/30 blur-3xl -z-10 animate-pulse" />
 
       {/* Sidebar */}
       <ChatSidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
