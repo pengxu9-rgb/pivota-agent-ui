@@ -318,6 +318,29 @@ type ShoppingScope = {
   language: string | null;
 };
 
+type ShoppingEntry =
+  | 'home'
+  | 'search'
+  | 'plp'
+  | 'pdp'
+  | 'cart'
+  | 'checkout'
+  | 'order'
+  | 'chat'
+  | 'other';
+
+const SHOPPING_ENTRY_VALUES: ReadonlySet<ShoppingEntry> = new Set([
+  'home',
+  'search',
+  'plp',
+  'pdp',
+  'cart',
+  'checkout',
+  'order',
+  'chat',
+  'other',
+]);
+
 function getBrowserLanguage(): string | null {
   if (typeof window === 'undefined') return null;
   try {
@@ -348,6 +371,58 @@ function getDefaultShoppingScope(): ShoppingScope {
     region,
     language,
   };
+}
+
+function inferShoppingEntryFromLocation(body: InvokeBody): ShoppingEntry {
+  if (typeof window === 'undefined') return 'other';
+
+  const pathname = String(window.location?.pathname || '').trim() || '/';
+  const params = new URLSearchParams(String(window.location?.search || ''));
+
+  // Exact routes first.
+  if (pathname === '/') return 'home';
+  if (pathname === '/chat') return 'chat';
+  if (pathname === '/cart') return 'cart';
+  if (pathname.startsWith('/checkout')) return 'checkout';
+
+  // Checkout flow in this app lives under /order.
+  if (pathname === '/order' || pathname.startsWith('/order/')) {
+    // /order/track is an order-related surface (not checkout form itself).
+    if (pathname.startsWith('/order/track')) return 'order';
+    return 'checkout';
+  }
+
+  // Orders surfaces.
+  if (
+    pathname === '/my-orders' ||
+    pathname.startsWith('/orders') ||
+    pathname.startsWith('/after-sale')
+  ) {
+    return 'order';
+  }
+
+  // PDP (detail) routes.
+  if (pathname.startsWith('/products/')) return 'pdp';
+
+  // Search / listing routes.
+  if (pathname.startsWith('/search')) return 'search';
+  if (
+    pathname.startsWith('/category') ||
+    pathname.startsWith('/collection') ||
+    pathname.startsWith('/c/')
+  ) {
+    return 'plp';
+  }
+
+  // /products is used as both PLP and a search results page in this UI.
+  if (pathname === '/products') {
+    const urlQ = (params.get('q') || '').trim();
+    const payloadQ = String((body as any)?.payload?.search?.query || '').trim();
+    const hasSearchIntent = Boolean(urlQ || payloadQ);
+    return hasSearchIntent ? 'search' : 'plp';
+  }
+
+  return 'other';
 }
 
 function readRecentQueries(): string[] {
@@ -427,6 +502,12 @@ async function callGateway(body: InvokeBody, options: GatewayCallOptions = {}) {
   const defaultScope = getDefaultShoppingScope();
   const requestMetadata = isPlainObject(body.metadata) ? body.metadata : {};
   const scopeOverride = isPlainObject(requestMetadata.scope) ? requestMetadata.scope : {};
+  const inferredEntry = inferShoppingEntryFromLocation(body);
+  const entryOverride =
+    typeof requestMetadata.entry === 'string' &&
+    SHOPPING_ENTRY_VALUES.has(requestMetadata.entry as ShoppingEntry)
+      ? (requestMetadata.entry as ShoppingEntry)
+      : null;
 
   const requestBody: InvokeBody = {
     ...body,
@@ -437,6 +518,7 @@ async function callGateway(body: InvokeBody, options: GatewayCallOptions = {}) {
         ...defaultScope,
         ...scopeOverride,
       },
+      entry: entryOverride || inferredEntry,
       // Never allow callers to override the source in this UI.
       source: gatewaySource,
     },
