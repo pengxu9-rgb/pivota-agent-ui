@@ -94,6 +94,53 @@ export default function ProductDetailPage({ params }: Props) {
       let resolvedMerchantId: string | null = explicitMerchantId;
       let resolvedOffersPayload: any = null;
 
+      const buildResolvedOffersPayload = (resolved: any) => {
+        if (!resolved || typeof resolved !== 'object') return null;
+        return {
+          ...(typeof (resolved as any)?.product_group_id === 'string'
+            ? { product_group_id: (resolved as any).product_group_id }
+            : {}),
+          ...(Array.isArray((resolved as any)?.offers) ? { offers: (resolved as any).offers } : {}),
+          ...((resolved as any)?.offers_count != null
+            ? { offers_count: Number((resolved as any).offers_count) }
+            : {}),
+          ...(typeof (resolved as any)?.default_offer_id === 'string'
+            ? { default_offer_id: (resolved as any).default_offer_id }
+            : {}),
+          ...(typeof (resolved as any)?.best_price_offer_id === 'string'
+            ? { best_price_offer_id: (resolved as any).best_price_offer_id }
+            : {}),
+        };
+      };
+
+      // When merchant_id is present, we can still fetch offers/product_group_id so PDP can show multi-seller offers.
+      const offersResolvePromise = explicitMerchantId
+        ? resolveProductCandidates({
+            product_id: id,
+            merchant_id: explicitMerchantId,
+            limit: 10,
+            include_offers: true,
+            timeout_ms: fastTimeoutMs,
+          })
+            .then((resolved) => {
+              if (!resolved) return null;
+              const offers = Array.isArray(resolved?.offers) ? resolved.offers : [];
+              const offersCount =
+                typeof resolved?.offers_count === 'number'
+                  ? resolved.offers_count
+                  : offers.length;
+
+              pdpTracking.track('pdp_candidates_resolved', {
+                product_id: id,
+                merchant_id: explicitMerchantId,
+                offers_count: offersCount,
+              });
+
+              return buildResolvedOffersPayload(resolved);
+            })
+            .catch(() => null)
+        : null;
+
       // Fast path: resolve candidates/offers when merchant_id is missing.
       // This avoids expensive empty-query multi-merchant scans.
       if (!merchantIdParam) {
@@ -115,21 +162,7 @@ export default function ProductDetailPage({ params }: Props) {
             offers_count: offersCount,
           });
 
-          resolvedOffersPayload = {
-            ...(typeof (resolved as any)?.product_group_id === 'string'
-              ? { product_group_id: (resolved as any).product_group_id }
-              : {}),
-            ...(Array.isArray((resolved as any)?.offers) ? { offers: (resolved as any).offers } : {}),
-            ...((resolved as any)?.offers_count != null
-              ? { offers_count: Number((resolved as any).offers_count) }
-              : {}),
-            ...(typeof (resolved as any)?.default_offer_id === 'string'
-              ? { default_offer_id: (resolved as any).default_offer_id }
-              : {}),
-            ...(typeof (resolved as any)?.best_price_offer_id === 'string'
-              ? { best_price_offer_id: (resolved as any).best_price_offer_id }
-              : {}),
-          };
+          resolvedOffersPayload = buildResolvedOffersPayload(resolved);
 
           if (offersCount === 1 && offers.length === 1) {
             const merchantId = String(offers[0]?.merchant_id || '').trim();
@@ -251,6 +284,23 @@ export default function ProductDetailPage({ params }: Props) {
           }
         } catch {
           // ignore cache failures
+        }
+
+        if (offersResolvePromise) {
+          void offersResolvePromise.then((offersPayload) => {
+            if (!offersPayload || cancelled) return;
+            setProduct((current) => {
+              if (!current) return current;
+              return {
+                ...current,
+                ...offersPayload,
+                raw_detail: {
+                  ...(current as any).raw_detail,
+                  ...offersPayload,
+                },
+              };
+            });
+          });
         }
 
         const isExternalProduct =
