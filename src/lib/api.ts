@@ -308,6 +308,47 @@ interface InvokeBody {
   metadata?: Record<string, any>;
 }
 
+const RECENT_QUERIES_STORAGE_KEY = 'pivota_recent_queries_v1';
+const MAX_RECENT_QUERIES = 8;
+
+function readRecentQueries(): string[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = window.localStorage.getItem(RECENT_QUERIES_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map((v) => (typeof v === 'string' ? v.trim() : ''))
+      .filter(Boolean)
+      .slice(0, MAX_RECENT_QUERIES);
+  } catch {
+    return [];
+  }
+}
+
+function writeRecentQueries(queries: string[]) {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(
+      RECENT_QUERIES_STORAGE_KEY,
+      JSON.stringify(queries.slice(0, MAX_RECENT_QUERIES)),
+    );
+  } catch {
+    // ignore storage errors
+  }
+}
+
+function rememberRecentQuery(query: string) {
+  const q = String(query || '').trim();
+  if (!q) return;
+  const existing = readRecentQueries();
+  const next = [q, ...existing.filter((x) => x !== q)].slice(
+    0,
+    MAX_RECENT_QUERIES,
+  );
+  writeRecentQueries(next);
+}
+
 function getCheckoutToken(): string | null {
   if (typeof window === 'undefined') return null;
 
@@ -562,6 +603,7 @@ export async function sendMessage(
   merchantIdOverride?: string,
 ): Promise<ProductResponse[]> {
   const query = message.trim();
+  const recentQueries = readRecentQueries();
 
   const data = await callGateway({
     operation: 'find_products_multi',
@@ -571,6 +613,11 @@ export async function sendMessage(
         in_stock_only: false, // allow showing results even if inventory is zero for demo
         query,
         limit: 10,
+      },
+      user: {
+        // Provide lightweight context to stabilize intent/constraint extraction
+        // across follow-up queries (aligned with creator-agent contract).
+        recent_queries: recentQueries,
       },
     },
   });
@@ -609,6 +656,9 @@ export async function sendMessage(
       console.error('Fallback product search error:', err);
     }
   }
+
+  // Update the local recent query list after using the previous context.
+  rememberRecentQuery(query);
 
   return products;
 }
