@@ -311,6 +311,45 @@ interface InvokeBody {
 const RECENT_QUERIES_STORAGE_KEY = 'pivota_recent_queries_v1';
 const MAX_RECENT_QUERIES = 8;
 
+type ShoppingScopeCatalog = 'global' | 'category' | 'promo_pool';
+type ShoppingScope = {
+  catalog: ShoppingScopeCatalog;
+  region: string | null;
+  language: string | null;
+};
+
+function getBrowserLanguage(): string | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const lang = String(window.navigator?.language || '').trim();
+    return lang || null;
+  } catch {
+    return null;
+  }
+}
+
+function inferRegionFromLanguage(language: string | null): string | null {
+  if (!language) return null;
+  // e.g. "en-US" => "US", "zh-CN" => "CN"
+  const match = language.match(/-([A-Za-z]{2}|\d{3})$/);
+  const region = match?.[1] ? String(match[1]).toUpperCase() : null;
+  return region || null;
+}
+
+function isPlainObject(value: unknown): value is Record<string, any> {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value));
+}
+
+function getDefaultShoppingScope(): ShoppingScope {
+  const language = getBrowserLanguage();
+  const region = inferRegionFromLanguage(language);
+  return {
+    catalog: 'global',
+    region,
+    language,
+  };
+}
+
 function readRecentQueries(): string[] {
   if (typeof window === 'undefined') return [];
   try {
@@ -382,12 +421,24 @@ async function callGateway(body: InvokeBody, options: GatewayCallOptions = {}) {
   const isProxy = API_BASE.startsWith('/api/gateway');
   const url = isProxy ? API_BASE : `${API_BASE}/agent/shop/v1/invoke`;
   const checkoutToken = getCheckoutToken();
-  const gatewaySource = process.env.NEXT_PUBLIC_GATEWAY_SOURCE || 'shopping-agent-ui';
+  // Lock the "shopping agent retrieval contract" for reproducible evaluation.
+  // Even if the backend doesn't use these fields yet, we always send them.
+  const gatewaySource = process.env.NEXT_PUBLIC_GATEWAY_SOURCE || 'shopping_agent';
+  const defaultScope = getDefaultShoppingScope();
+  const requestMetadata = isPlainObject(body.metadata) ? body.metadata : {};
+  const scopeOverride = isPlainObject(requestMetadata.scope) ? requestMetadata.scope : {};
+
   const requestBody: InvokeBody = {
     ...body,
     metadata: {
+      ...requestMetadata,
+      // Merge scope but always ensure required keys exist.
+      scope: {
+        ...defaultScope,
+        ...scopeOverride,
+      },
+      // Never allow callers to override the source in this UI.
       source: gatewaySource,
-      ...(body.metadata || {}),
     },
   };
 
