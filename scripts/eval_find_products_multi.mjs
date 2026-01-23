@@ -81,11 +81,26 @@ async function callInvoke({
     ...(!checkoutToken && agentApiKey ? { 'X-Agent-API-Key': agentApiKey } : {}),
   };
 
-  const res = await fetch(invokeUrl, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(body),
-  });
+  let res;
+  try {
+    res = await fetch(invokeUrl, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    const cause = err && typeof err === 'object' && 'cause' in err ? err.cause : undefined;
+    return {
+      ok: false,
+      status: 0,
+      error: {
+        type: 'FETCH_FAILED',
+        message: msg,
+        cause: cause ? String(cause) : undefined,
+      },
+    };
+  }
 
   const text = await res.text();
   let json = null;
