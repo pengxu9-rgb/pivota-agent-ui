@@ -69,7 +69,7 @@ export default function ProductDetailPage({ params }: Props) {
     const cacheKey = merchantIdParam ? `pdp-cache:${merchantIdParam}:${id}` : null;
     const isNumericProductId = /^\d+$/.test(id);
     const fastTimeoutMs = 2500;
-    const offersResolveTimeoutMs = 12000;
+    const offersResolveTimeoutMs = 25000;
     const sellerResolveTimeoutMs = isNumericProductId ? fastTimeoutMs : offersResolveTimeoutMs;
 
     const loadProduct = async () => {
