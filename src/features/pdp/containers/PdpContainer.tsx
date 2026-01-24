@@ -1147,6 +1147,20 @@ export function PdpContainer({
             offer_id: offerId,
             merchant_id: offer?.merchant_id,
           });
+          const nextMerchantId = String(offer?.merchant_id || '').trim();
+          const currentMerchantId = String(payload.product.merchant_id || '').trim();
+          const nextProductId = String(offer?.product_id || payload.product.product_id || '').trim();
+          const currentProductId = String(payload.product.product_id || '').trim();
+          if (
+            nextMerchantId &&
+            (nextMerchantId !== currentMerchantId || (nextProductId && nextProductId !== currentProductId))
+          ) {
+            router.push(
+              `/products/${encodeURIComponent(nextProductId || currentProductId)}?merchant_id=${encodeURIComponent(
+                nextMerchantId,
+              )}`,
+            );
+          }
         }}
       />
       {offerDebugEnabled ? (

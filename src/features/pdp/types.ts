@@ -91,6 +91,7 @@ export interface Price {
 export interface Offer {
   offer_id: string;
   product_group_id?: string;
+  product_id?: string;
   merchant_id: string;
   merchant_name?: string;
   price: Price;

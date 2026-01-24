@@ -664,6 +664,7 @@ export function mapToPdpPayload(args: {
         product_group_id: String(
           offer?.product_group_id || productGroupId || '',
         ).trim() || undefined,
+        product_id: String(offer?.product_id || offer?.productId || '').trim() || undefined,
         merchant_id: merchantId,
         merchant_name:
           offer?.merchant_name || offer?.merchantName || offer?.seller_name || undefined,
