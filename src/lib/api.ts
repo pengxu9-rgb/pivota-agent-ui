@@ -198,6 +198,37 @@ export type ResolveProductGroupResponse = {
   members?: ResolveProductGroupMember[];
 };
 
+export type GetPdpV2Module = {
+  type: string;
+  required?: boolean;
+  data: any;
+  reason?: string;
+};
+
+export type GetPdpV2Response = {
+  status?: string;
+  pdp_version?: string;
+  request_id?: string;
+  build_id?: string | null;
+  generated_at?: string;
+  subject?: {
+    type?: string;
+    id?: string;
+    canonical_product_ref?: {
+      merchant_id: string;
+      product_id: string;
+      platform?: string;
+    } | null;
+  };
+  capabilities?: {
+    client?: string | null;
+    client_version?: string | null;
+  };
+  modules?: GetPdpV2Module[];
+  warnings?: any[];
+  missing?: Array<{ type: string; reason?: string }>;
+};
+
 function normalizeProduct(
   p: RealAPIProduct | ProductResponse,
 ): ProductResponse {
@@ -1002,6 +1033,49 @@ export async function resolveProductGroup(args: {
   );
 
   return data as ResolveProductGroupResponse;
+}
+
+export async function getPdpV2(args: {
+  product_id: string;
+  merchant_id?: string | null;
+  include?: string[] | string | null;
+  timeout_ms?: number;
+  debug?: boolean;
+  cache_bypass?: boolean;
+}): Promise<GetPdpV2Response> {
+  const productId = String(args.product_id || '').trim();
+  if (!productId) {
+    throw new Error('product_id is required');
+  }
+
+  const include =
+    args.include == null
+      ? ['offers', 'reviews_preview', 'similar']
+      : args.include;
+
+  const data = await callGatewayWithTimeout(
+    {
+      operation: 'get_pdp_v2',
+      payload: {
+        product_ref: {
+          product_id: productId,
+          ...(args.merchant_id ? { merchant_id: args.merchant_id } : {}),
+        },
+        ...(include ? { include } : {}),
+        options: {
+          ...(args.debug ? { debug: true } : {}),
+          ...(args.cache_bypass ? { cache_bypass: true } : {}),
+        },
+        capabilities: {
+          client: 'shopping',
+          client_version: process.env.NEXT_PUBLIC_APP_VERSION || null,
+        },
+      },
+    },
+    args.timeout_ms,
+  );
+
+  return data as GetPdpV2Response;
 }
 
 function _inferReviewSubjectFromProduct(product: ProductResponse): {

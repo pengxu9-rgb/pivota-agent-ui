@@ -5,17 +5,17 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 import { useCartStore } from '@/store/cartStore';
 import {
-  getAllProducts,
+  getPdpV2,
   getProductDetail,
-  resolveProductCandidates,
   resolveProductGroup,
   type ProductResponse,
 } from '@/lib/api';
 import { mapToPdpPayload } from '@/features/pdp/adapter/mapToPdpPayload';
+import { mapPdpV2ToPdpPayload } from '@/features/pdp/adapter/mapPdpV2ToPdpPayload';
 import { isBeautyProduct } from '@/features/pdp/utils/isBeautyProduct';
 import { BeautyPDPContainer } from '@/features/pdp/containers/BeautyPDPContainer';
 import { GenericPDPContainer } from '@/features/pdp/containers/GenericPDPContainer';
-import type { Variant } from '@/features/pdp/types';
+import type { PDPPayload, Variant } from '@/features/pdp/types';
 import { pdpTracking } from '@/features/pdp/tracking';
 
 interface Props {
@@ -106,355 +106,117 @@ export default function ProductDetailPage({ params }: Props) {
   const pdpOverride = (searchParams.get('pdp') || '').toLowerCase();
   const router = useRouter();
 
-  const [product, setProduct] = useState<ProductResponse | null>(null);
-  const [relatedProducts, setRelatedProducts] = useState<ProductResponse[]>([]);
+  const [pdpPayload, setPdpPayload] = useState<PDPPayload | null>(null);
   const [sellerCandidates, setSellerCandidates] = useState<ProductResponse[] | null>(null);
   const [loading, setLoading] = useState(true);
-  const [loadingStage, setLoadingStage] = useState<'resolve' | 'detail' | null>(null);
-  const [recommendationsLoading, setRecommendationsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
-  const lastLoadedKeyRef = useRef<string | null>(null);
-  const lastRelatedKeyRef = useRef<string | null>(null);
-  const lastProductIdRef = useRef<string | null>(null);
   const offerProductDetailCacheRef = useRef<Map<string, ProductResponse>>(new Map());
 
   const { addItem, open } = useCartStore();
 
   useEffect(() => {
     let cancelled = false;
-    const groupResolveTimeoutMs = 8000;
-    const detailTimeoutMs = 15000;
-    const quickAttemptTimeoutMs = 2500;
-    const offersResolveTimeoutMs = 25000;
+    const v2TimeoutMs = 20000;
+    const fallbackTimeoutMs = 20000;
 
     const loadProduct = async () => {
       const explicitMerchantId = merchantIdParam ? String(merchantIdParam).trim() : null;
 
       setLoading(true);
-      setLoadingStage(explicitMerchantId ? 'detail' : 'resolve');
       setError(null);
       setSellerCandidates(null);
-      if (lastProductIdRef.current !== id) {
-        lastProductIdRef.current = id;
-        setRelatedProducts([]);
-      }
-      setRecommendationsLoading(false);
-      let groupResolved: any = null;
-      let resolvedCanonicalRef: { merchant_id: string; product_id: string } | null = null;
-      let resolvedOffersPayload: any = null;
-      let loadedProductRef: { merchant_id: string; product_id: string } | null = null;
-
-      const buildResolvedOffersPayload = (resolved: any) => {
-        if (!resolved || typeof resolved !== 'object') return null;
-        return {
-          ...(typeof (resolved as any)?.product_group_id === 'string'
-            ? { product_group_id: (resolved as any).product_group_id }
-            : {}),
-          ...(Array.isArray((resolved as any)?.offers) ? { offers: (resolved as any).offers } : {}),
-          ...((resolved as any)?.offers_count != null
-            ? { offers_count: Number((resolved as any).offers_count) }
-            : {}),
-          ...(typeof (resolved as any)?.default_offer_id === 'string'
-            ? { default_offer_id: (resolved as any).default_offer_id }
-            : {}),
-          ...(typeof (resolved as any)?.best_price_offer_id === 'string'
-            ? { best_price_offer_id: (resolved as any).best_price_offer_id }
-            : {}),
-        };
-      };
-
-      const offersUpdate = (offersPayload: any) => {
-        if (!offersPayload || cancelled) return;
-        setProduct((current) => {
-          if (!current) return current;
-          return {
-            ...current,
-            ...offersPayload,
-            raw_detail: {
-              ...(current as any).raw_detail,
-              ...offersPayload,
-            },
-          };
-        });
-      };
-
-      const writeSessionCache = (key: string | null, value: ProductResponse) => {
-        if (!key || typeof window === 'undefined') return;
-        try {
-          window.sessionStorage.setItem(key, JSON.stringify(value));
-        } catch {
-          // ignore cache failures
-        }
-      };
-
-      const groupResolvePromise = resolveProductGroup({
-        product_id: id,
-        ...(explicitMerchantId ? { merchant_id: explicitMerchantId } : {}),
-        timeout_ms: groupResolveTimeoutMs,
-      }).catch(() => null);
-
-      let data: ProductResponse | null = null;
-      let detailError: unknown = null;
-      let targetProductId: string = id;
-      let targetMerchantId: string | null = explicitMerchantId;
-
-      if (explicitMerchantId) {
-        const gr = await groupResolvePromise;
-        if (cancelled) return;
-        groupResolved = gr;
-
-        if (
-          gr?.canonical_product_ref?.merchant_id &&
-          gr?.canonical_product_ref?.product_id
-        ) {
-          resolvedCanonicalRef = {
-            merchant_id: String(gr.canonical_product_ref.merchant_id),
-            product_id: String(gr.canonical_product_ref.product_id),
-          };
-          targetMerchantId = resolvedCanonicalRef.merchant_id;
-          targetProductId = resolvedCanonicalRef.product_id;
-        }
-      }
+      setPdpPayload(null);
 
       try {
-        data = explicitMerchantId
-          ? await getProductDetail(targetProductId, targetMerchantId || undefined, {
-              useConfiguredMerchantId: false,
-              allowBroadScan: false,
-              timeout_ms: detailTimeoutMs,
-              throwOnError: true,
-              includeReviewSummary: true,
-            })
-          : await getProductDetail(id, undefined, {
-              useConfiguredMerchantId: true,
-              allowBroadScan: false,
-              timeout_ms: quickAttemptTimeoutMs,
-              throwOnError: true,
-              includeReviewSummary: true,
-            });
-      } catch (err) {
-        detailError = err;
-      }
-
-      if (!explicitMerchantId && !data) {
-        const gr = await groupResolvePromise;
-        if (cancelled) return;
-        groupResolved = gr;
-        const canonical =
-          gr?.canonical_product_ref?.merchant_id && gr?.canonical_product_ref?.product_id
-            ? {
-                merchant_id: String(gr.canonical_product_ref.merchant_id),
-                product_id: String(gr.canonical_product_ref.product_id),
-              }
-            : resolvedCanonicalRef;
-
-        if (canonical) {
-          resolvedCanonicalRef = canonical;
-          setLoadingStage('detail');
-
-          try {
-            data = await getProductDetail(canonical.product_id, canonical.merchant_id, {
-              useConfiguredMerchantId: false,
-              allowBroadScan: false,
-              timeout_ms: detailTimeoutMs,
-              throwOnError: true,
-              includeReviewSummary: true,
-            });
-          } catch (err) {
-            detailError = err;
-          }
-        }
-      }
-
-      if (
-        !explicitMerchantId &&
-        !data &&
-        (detailError as any)?.code === 'AMBIGUOUS_PRODUCT_ID' &&
-        Array.isArray((detailError as any)?.candidates)
-      ) {
-        if (!cancelled) {
-          setProduct(null);
-          setRelatedProducts([]);
-          setError(null);
-          setSellerCandidates((detailError as any).candidates as ProductResponse[]);
-          setLoading(false);
-          setLoadingStage(null);
-          setRecommendationsLoading(false);
-        }
-        return;
-      }
-
-      if (!data) {
-        const message =
-          detailError && (detailError as Error).message ? (detailError as Error).message : 'Failed to load product';
-        if (!cancelled) {
-          setError(message);
-          setProduct(null);
-          setSellerCandidates(null);
-          setLoading(false);
-          setLoadingStage(null);
-          setRecommendationsLoading(false);
-        }
-        return;
-      }
-      if (cancelled) return;
-
-      loadedProductRef = {
-        merchant_id: String(data.merchant_id || ''),
-        product_id: String(data.product_id || ''),
-      };
-
-      const baseRawDetail = {
-        ...(data as any).raw_detail,
-        ...(groupResolved?.product_group_id ? { product_group_id: groupResolved.product_group_id } : {}),
-        ...(resolvedCanonicalRef ? { canonical_product_ref: resolvedCanonicalRef } : {}),
-        entry_product_ref: {
+        const v2 = await getPdpV2({
           product_id: id,
           ...(explicitMerchantId ? { merchant_id: explicitMerchantId } : {}),
-        },
-      };
+          timeout_ms: v2TimeoutMs,
+        });
+        if (cancelled) return;
+        const assembled = mapPdpV2ToPdpPayload(v2);
+        if (!assembled) throw new Error('Invalid PDP response');
+        setPdpPayload(assembled);
+        setLoading(false);
+        return;
+      } catch (v2Err) {
+        // Fall back to legacy per-merchant product detail so PDP can still render.
+        try {
+          const resolvedGroup =
+            explicitMerchantId
+              ? await resolveProductGroup({
+                  product_id: id,
+                  merchant_id: explicitMerchantId,
+                  timeout_ms: 8000,
+                }).catch(() => null)
+              : await resolveProductGroup({
+                  product_id: id,
+                  timeout_ms: 8000,
+                }).catch(() => null);
 
-      const merged: ProductResponse = {
-        ...data,
-        ...(resolvedOffersPayload ? { ...resolvedOffersPayload } : {}),
-        raw_detail: {
-          ...baseRawDetail,
-          ...(resolvedOffersPayload ? { ...resolvedOffersPayload } : {}),
-        },
-      };
+          if (cancelled) return;
 
-      setProduct(merged);
-      setLoading(false);
-      setLoadingStage(null);
-      const resolvedFromData = String(data.merchant_id || '').trim() || null;
-      if (resolvedFromData) {
-        lastLoadedKeyRef.current = `${resolvedFromData}:${data.product_id}`;
-      }
-      writeSessionCache(
-        resolvedFromData && data.product_id
-          ? `pdp-cache:${resolvedFromData}:${data.product_id}`
-          : null,
-        merged,
-      );
-
-      const offersRef = explicitMerchantId
-        ? resolvedCanonicalRef
-          ? {
-              product_id: resolvedCanonicalRef.product_id,
-              merchant_id: resolvedCanonicalRef.merchant_id,
-            }
-          : { product_id: id, merchant_id: explicitMerchantId }
-        : loadedProductRef?.merchant_id
-          ? { product_id: loadedProductRef.product_id, merchant_id: loadedProductRef.merchant_id }
-          : { product_id: id };
-
-      void resolveProductCandidates({
-        ...offersRef,
-        limit: 10,
-        include_offers: true,
-        timeout_ms: offersResolveTimeoutMs,
-      })
-        .then((resolved) => {
-          if (!resolved || cancelled) return;
-          const offers = Array.isArray(resolved?.offers) ? resolved.offers : [];
-          const offersCount =
-            typeof resolved?.offers_count === 'number'
-              ? resolved.offers_count
-              : offers.length;
-
-          pdpTracking.track('pdp_candidates_resolved', {
-            product_id: id,
-            ...(explicitMerchantId ? { merchant_id: explicitMerchantId } : {}),
-            offers_count: offersCount,
-          });
-
-          resolvedOffersPayload = buildResolvedOffersPayload(resolved);
-          offersUpdate(resolvedOffersPayload);
-
-          const canonical =
-            resolved?.canonical_product_ref &&
-            typeof resolved.canonical_product_ref === 'object' &&
-            resolved.canonical_product_ref.merchant_id &&
-            resolved.canonical_product_ref.product_id
+          const canonicalRef =
+            resolvedGroup?.canonical_product_ref?.merchant_id &&
+            resolvedGroup?.canonical_product_ref?.product_id
               ? {
-                  merchant_id: String(resolved.canonical_product_ref.merchant_id),
-                  product_id: String(resolved.canonical_product_ref.product_id),
+                  merchant_id: String(resolvedGroup.canonical_product_ref.merchant_id),
+                  product_id: String(resolvedGroup.canonical_product_ref.product_id),
                 }
               : null;
 
-          if (canonical) {
-            resolvedCanonicalRef = resolvedCanonicalRef || canonical;
+          const targetMerchantId = canonicalRef?.merchant_id || explicitMerchantId || undefined;
+          const targetProductId = canonicalRef?.product_id || id;
+
+          const detail = await getProductDetail(targetProductId, targetMerchantId, {
+            useConfiguredMerchantId: false,
+            allowBroadScan: false,
+            timeout_ms: fallbackTimeoutMs,
+            throwOnError: true,
+            includeReviewSummary: true,
+          });
+
+          if (cancelled) return;
+
+          if (!detail) throw v2Err;
+
+          const legacyPayload = mapToPdpPayload({
+            product: detail,
+            rawDetail: detail.raw_detail,
+            relatedProducts: [],
+            recommendationsLoading: false,
+            entryPoint: 'product_detail',
+          });
+          setPdpPayload(legacyPayload);
+          setLoading(false);
+          return;
+        } catch (fallbackErr) {
+          if (cancelled) return;
+          if (
+            (fallbackErr as any)?.code === 'AMBIGUOUS_PRODUCT_ID' &&
+            Array.isArray((fallbackErr as any)?.candidates)
+          ) {
+            setSellerCandidates((fallbackErr as any).candidates as ProductResponse[]);
+            setLoading(false);
+            return;
           }
-        })
-        .catch(() => null);
 
-      void groupResolvePromise;
-
-      const isExternalProduct =
-        Boolean((data as any).external_redirect_url) ||
-        String((data as any).product_type || '').toLowerCase() === 'external' ||
-        String((data as any).platform || '').toLowerCase() === 'external' ||
-        (data as any).source === 'external_seed';
-
-      const relatedKey = `${resolvedFromData || 'unknown'}:${data.product_id || id}`;
-      if (lastRelatedKeyRef.current !== relatedKey) {
-        lastRelatedKeyRef.current = relatedKey;
-        setRecommendationsLoading(true);
-        const scheduleRelated = () => {
-          void (async () => {
-            try {
-              const all = await getAllProducts(6, isExternalProduct ? undefined : data.merchant_id);
-              if (!cancelled) {
-                setRelatedProducts(all.filter((p) => p.product_id !== data.product_id));
-              }
-            } catch (relError) {
-              // eslint-disable-next-line no-console
-              console.error('Failed to load related products:', relError);
-            } finally {
-              if (!cancelled) {
-                setRecommendationsLoading(false);
-              }
-            }
-          })();
-        };
-
-        if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
-          (window as any).requestIdleCallback(scheduleRelated, { timeout: 1200 });
-        } else {
-          setTimeout(scheduleRelated, 400);
+          const message =
+            (fallbackErr as Error)?.message ||
+            (v2Err as Error)?.message ||
+            'Failed to load product';
+          setError(message);
+          setLoading(false);
         }
-      } else {
-        setRecommendationsLoading(false);
-      }
-
-      try {
-        const history = JSON.parse(localStorage.getItem('browse_history') || '[]');
-        const filtered = history.filter((item: any) => item.product_id !== data.product_id);
-        const newHistory = [
-          {
-            product_id: data.product_id,
-            merchant_id: data.merchant_id,
-            title: data.title,
-            price: data.price,
-            image: data.image_url || '/placeholder.svg',
-            description: data.description,
-            timestamp: Date.now(),
-          },
-          ...filtered,
-        ].slice(0, 50);
-        localStorage.setItem('browse_history', JSON.stringify(newHistory));
-      } catch (browseError) {
-        // eslint-disable-next-line no-console
-        console.error('Failed to save browse history:', browseError);
       }
     };
 
-    loadProduct();
+    void loadProduct();
     return () => {
       cancelled = true;
     };
-  }, [id, merchantIdParam, reloadKey, router]);
+  }, [id, merchantIdParam, reloadKey]);
 
   useEffect(() => {
     if (!sellerCandidates?.length) return;
@@ -463,17 +225,6 @@ export default function ProductDetailPage({ params }: Props) {
       candidates_count: sellerCandidates.length,
     });
   }, [id, sellerCandidates]);
-
-  const pdpPayload = useMemo(() => {
-    if (!product) return null;
-    return mapToPdpPayload({
-      product,
-      rawDetail: product.raw_detail,
-      relatedProducts,
-      recommendationsLoading,
-      entryPoint: 'product_detail',
-    });
-  }, [product, relatedProducts, recommendationsLoading]);
 
   const resolvedMode = useMemo(() => {
     if (pdpOverride === 'beauty') return 'beauty';
@@ -558,26 +309,36 @@ export default function ProductDetailPage({ params }: Props) {
     product_id?: string;
     offer_id?: string;
   }) => {
-    if (!product) return;
+    if (!pdpPayload) return;
     void (async () => {
-      if (product.external_redirect_url) {
-        window.open(product.external_redirect_url, '_blank', 'noopener,noreferrer');
-        return;
-      }
-
       const resolvedMerchantId =
-        String(merchant_id || product.merchant_id || '').trim() || product.merchant_id;
+        String(merchant_id || pdpPayload.product.merchant_id || '').trim() || pdpPayload.product.merchant_id;
       const resolvedProductId =
-        String(product_id || '').trim() || String(product.product_id || '').trim();
+        String(product_id || '').trim() || String(pdpPayload.product.product_id || '').trim();
 
       if (!resolvedMerchantId || !resolvedProductId) {
         toast.error('This offer is missing merchant/product info.');
         return;
       }
 
+      if (resolvedMerchantId === 'external_seed') {
+        const detail = await getProductDetail(resolvedProductId, resolvedMerchantId, {
+          useConfiguredMerchantId: false,
+          allowBroadScan: false,
+          throwOnError: false,
+        });
+        const redirectUrl = detail?.external_redirect_url;
+        if (redirectUrl) {
+          window.open(redirectUrl, '_blank', 'noopener,noreferrer');
+        } else {
+          toast.error('This item is only available on an external site.');
+        }
+        return;
+      }
+
       const needsVariantMapping =
-        resolvedMerchantId !== String(product.merchant_id || '').trim() ||
-        resolvedProductId !== String(product.product_id || '').trim();
+        resolvedMerchantId !== String(pdpPayload.product.merchant_id || '').trim() ||
+        resolvedProductId !== String(pdpPayload.product.product_id || '').trim();
       const purchaseVariant = needsVariantMapping
         ? await resolveVariantForPurchase({
             merchant_id: resolvedMerchantId,
@@ -596,11 +357,9 @@ export default function ProductDetailPage({ params }: Props) {
           ? Object.fromEntries(purchaseVariant.options.map((o) => [o.name, o.value]))
           : undefined;
 
-      const offers = Array.isArray((product as any)?.raw_detail?.offers)
-        ? ((product as any).raw_detail.offers as any[])
-        : Array.isArray((product as any)?.offers)
-          ? ((product as any).offers as any[])
-          : [];
+      const offers = Array.isArray((pdpPayload as any)?.offers)
+        ? ((pdpPayload as any).offers as any[])
+        : [];
       const offer =
         offer_id && offers.length
           ? offers.find((o) => String(o?.offer_id || o?.offerId || '').trim() === String(offer_id))
@@ -609,13 +368,20 @@ export default function ProductDetailPage({ params }: Props) {
         ? Number(offer?.price?.amount ?? offer?.price_amount ?? offer?.price ?? 0)
         : undefined;
       const offerCurrency = offer
-        ? String(offer?.price?.currency || offer?.currency || product.currency || 'USD')
+        ? String(
+            offer?.price?.currency ||
+              offer?.currency ||
+              pdpPayload.product.price?.current.currency ||
+              'USD',
+          )
         : undefined;
       const offerShipping = offer
         ? Number(offer?.shipping?.cost?.amount ?? offer?.shipping_cost ?? offer?.shippingFee ?? 0)
         : 0;
       const displayPrice =
-        offerItemPrice != null ? offerItemPrice + offerShipping : purchaseVariant.price?.current.amount ?? product.price;
+        offerItemPrice != null
+          ? offerItemPrice + offerShipping
+          : purchaseVariant.price?.current.amount ?? pdpPayload.product.price?.current.amount ?? 0;
 
       const resolvedVariantId = String(purchaseVariant.variant_id || '').trim() || resolvedProductId;
       const cartItemId = `${resolvedMerchantId}:${resolvedVariantId}`;
@@ -626,15 +392,16 @@ export default function ProductDetailPage({ params }: Props) {
         variant_id: resolvedVariantId,
         sku: purchaseVariant.sku_id,
         selected_options: selectedOptions,
-        title: product.title,
+        title: pdpPayload.product.title,
         price: displayPrice,
-        currency: offerCurrency || purchaseVariant.price?.current.currency || product.currency,
-        imageUrl: purchaseVariant.image_url || product.image_url || '/placeholder.svg',
+        currency:
+          offerCurrency || purchaseVariant.price?.current.currency || pdpPayload.product.price?.current.currency || 'USD',
+        imageUrl: purchaseVariant.image_url || pdpPayload.product.image_url || '/placeholder.svg',
         merchant_id: resolvedMerchantId,
         offer_id: offer_id ? String(offer_id) : undefined,
         quantity,
       });
-      toast.success(`✓ Added ${quantity}x ${product.title} to cart!`);
+      toast.success(`✓ Added ${quantity}x ${pdpPayload.product.title} to cart!`);
       open();
     })();
   };
@@ -652,26 +419,36 @@ export default function ProductDetailPage({ params }: Props) {
     product_id?: string;
     offer_id?: string;
   }) => {
-    if (!product) return;
+    if (!pdpPayload) return;
     void (async () => {
-      if (product.external_redirect_url) {
-        window.open(product.external_redirect_url, '_blank', 'noopener,noreferrer');
-        return;
-      }
-
       const resolvedMerchantId =
-        String(merchant_id || product.merchant_id || '').trim() || product.merchant_id;
+        String(merchant_id || pdpPayload.product.merchant_id || '').trim() || pdpPayload.product.merchant_id;
       const resolvedProductId =
-        String(product_id || '').trim() || String(product.product_id || '').trim();
+        String(product_id || '').trim() || String(pdpPayload.product.product_id || '').trim();
 
       if (!resolvedMerchantId || !resolvedProductId) {
         toast.error('This offer is missing merchant/product info.');
         return;
       }
 
+      if (resolvedMerchantId === 'external_seed') {
+        const detail = await getProductDetail(resolvedProductId, resolvedMerchantId, {
+          useConfiguredMerchantId: false,
+          allowBroadScan: false,
+          throwOnError: false,
+        });
+        const redirectUrl = detail?.external_redirect_url;
+        if (redirectUrl) {
+          window.open(redirectUrl, '_blank', 'noopener,noreferrer');
+        } else {
+          toast.error('This item is only available on an external site.');
+        }
+        return;
+      }
+
       const needsVariantMapping =
-        resolvedMerchantId !== String(product.merchant_id || '').trim() ||
-        resolvedProductId !== String(product.product_id || '').trim();
+        resolvedMerchantId !== String(pdpPayload.product.merchant_id || '').trim() ||
+        resolvedProductId !== String(pdpPayload.product.product_id || '').trim();
       const purchaseVariant = needsVariantMapping
         ? await resolveVariantForPurchase({
             merchant_id: resolvedMerchantId,
@@ -690,11 +467,9 @@ export default function ProductDetailPage({ params }: Props) {
           ? Object.fromEntries(purchaseVariant.options.map((o) => [o.name, o.value]))
           : undefined;
 
-      const offers = Array.isArray((product as any)?.raw_detail?.offers)
-        ? ((product as any).raw_detail.offers as any[])
-        : Array.isArray((product as any)?.offers)
-          ? ((product as any).offers as any[])
-          : [];
+      const offers = Array.isArray((pdpPayload as any)?.offers)
+        ? ((pdpPayload as any).offers as any[])
+        : [];
       const offer =
         offer_id && offers.length
           ? offers.find((o) => String(o?.offer_id || o?.offerId || '').trim() === String(offer_id))
@@ -707,12 +482,21 @@ export default function ProductDetailPage({ params }: Props) {
         {
           product_id: resolvedProductId,
           merchant_id: resolvedMerchantId,
-          title: product.title,
+          title: pdpPayload.product.title,
           quantity,
-          unit_price: offerItemPrice != null ? offerItemPrice : purchaseVariant.price?.current.amount ?? product.price,
+          unit_price:
+            offerItemPrice != null
+              ? offerItemPrice
+              : purchaseVariant.price?.current.amount ?? pdpPayload.product.price?.current.amount ?? 0,
           currency:
-            String(offer?.price?.currency || offer?.currency || purchaseVariant.price?.current.currency || product.currency || 'USD'),
-          image_url: purchaseVariant.image_url || product.image_url || '/placeholder.svg',
+            String(
+              offer?.price?.currency ||
+                offer?.currency ||
+                purchaseVariant.price?.current.currency ||
+                pdpPayload.product.price?.current.currency ||
+                'USD',
+            ),
+          image_url: purchaseVariant.image_url || pdpPayload.product.image_url || '/placeholder.svg',
           variant_id: purchaseVariant.variant_id,
           sku: purchaseVariant.sku_id,
           selected_options: selectedOptions,
@@ -725,26 +509,18 @@ export default function ProductDetailPage({ params }: Props) {
   };
 
   const handleWriteReview = () => {
-    if (!product) return;
+    if (!pdpPayload) return;
     const params = new URLSearchParams();
-    params.set('product_id', product.product_id);
-    if (product.merchant_id) params.set('merchant_id', product.merchant_id);
+    params.set('product_id', pdpPayload.product.product_id);
+    if (pdpPayload.product.merchant_id) params.set('merchant_id', pdpPayload.product.merchant_id);
     router.push(`/reviews/write?${params.toString()}`);
   };
 
-  if (loading && !product) {
-    const label =
-      loadingStage === 'resolve'
-        ? 'Resolving sellers…'
-        : loadingStage === 'detail'
-          ? 'Loading product details…'
-          : merchantIdParam
-            ? 'Loading product details…'
-            : 'Resolving sellers and loading product…';
-    return <ProductDetailLoading label={label} />;
+  if (loading && !pdpPayload) {
+    return <ProductDetailLoading label="Loading product…" />;
   }
 
-  if (!loading && !product && sellerCandidates?.length) {
+  if (!loading && !pdpPayload && sellerCandidates?.length) {
     const sorted = [...sellerCandidates].sort((a, b) => (Number(a.price) || 0) - (Number(b.price) || 0));
     return (
       <div className="min-h-screen bg-background flex items-center justify-center px-6">
@@ -810,9 +586,9 @@ export default function ProductDetailPage({ params }: Props) {
               className="text-sm font-medium text-primary"
               onClick={() => {
                 setLoading(true);
-                setProduct(null);
-                setRelatedProducts([]);
+                setPdpPayload(null);
                 setError(null);
+                setSellerCandidates(null);
                 setReloadKey((k) => k + 1);
               }}
             >
