@@ -4,7 +4,13 @@ import { useEffect, useMemo, useState, useRef, use } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 import { useCartStore } from '@/store/cartStore';
-import { getAllProducts, getProductDetail, resolveProductCandidates, type ProductResponse } from '@/lib/api';
+import {
+  getAllProducts,
+  getProductDetail,
+  resolveProductCandidates,
+  resolveProductGroup,
+  type ProductResponse,
+} from '@/lib/api';
 import { mapToPdpPayload } from '@/features/pdp/adapter/mapToPdpPayload';
 import { isBeautyProduct } from '@/features/pdp/utils/isBeautyProduct';
 import { BeautyPDPContainer } from '@/features/pdp/containers/BeautyPDPContainer';
@@ -14,6 +20,56 @@ import { pdpTracking } from '@/features/pdp/tracking';
 
 interface Props {
   params: Promise<{ id: string }>;
+}
+
+function normalizeVariantOptionToken(value: string): string {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function normalizeVariantOptionName(name: string): string {
+  const normalized = normalizeVariantOptionToken(name);
+  if (!normalized) return '';
+  if (normalized.includes('colour') || normalized.includes('color') || normalized.includes('shade') || normalized.includes('tone')) {
+    return 'color';
+  }
+  if (normalized.includes('size') || normalized.includes('fit')) {
+    return 'size';
+  }
+  return normalized;
+}
+
+function normalizeVariantOptionValue(value: string): string {
+  return String(value || '').trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+function variantOptionSignature(options?: Array<{ name: string; value: string }>): string {
+  if (!Array.isArray(options) || options.length === 0) return '';
+  const pairs = options
+    .map((opt) => {
+      const key = normalizeVariantOptionName(opt?.name || '');
+      const val = normalizeVariantOptionValue(opt?.value || '');
+      if (!key || !val) return null;
+      return [key, val] as const;
+    })
+    .filter(Boolean) as Array<readonly [string, string]>;
+  if (!pairs.length) return '';
+  pairs.sort((a, b) => a[0].localeCompare(b[0]) || a[1].localeCompare(b[1]));
+  return pairs.map(([k, v]) => `${k}=${v}`).join('|');
+}
+
+function getNormalizedVariantOptionValue(
+  options: Array<{ name: string; value: string }> | undefined,
+  normalizedKey: string,
+): string | null {
+  if (!Array.isArray(options) || !options.length) return null;
+  const wanted = String(normalizedKey || '').trim().toLowerCase();
+  if (!wanted) return null;
+  const match = options.find((opt) => normalizeVariantOptionName(opt?.name || '') === wanted);
+  const value = normalizeVariantOptionValue(match?.value || '');
+  return value || null;
 }
 
 function ProductDetailLoading({ label }: { label: string }) {
@@ -61,31 +117,20 @@ export default function ProductDetailPage({ params }: Props) {
   const lastLoadedKeyRef = useRef<string | null>(null);
   const lastRelatedKeyRef = useRef<string | null>(null);
   const lastProductIdRef = useRef<string | null>(null);
+  const offerProductDetailCacheRef = useRef<Map<string, ProductResponse>>(new Map());
 
   const { addItem, open } = useCartStore();
 
   useEffect(() => {
     let cancelled = false;
-    const cacheKey = merchantIdParam ? `pdp-cache:${merchantIdParam}:${id}` : null;
-    const isNumericProductId = /^\d+$/.test(id);
     const fastTimeoutMs = 2500;
     const offersResolveTimeoutMs = 25000;
-    const sellerResolveTimeoutMs = isNumericProductId ? fastTimeoutMs : offersResolveTimeoutMs;
 
     const loadProduct = async () => {
       const explicitMerchantId = merchantIdParam ? String(merchantIdParam).trim() : null;
-      const explicitLoadedKey = explicitMerchantId ? `${explicitMerchantId}:${id}` : null;
-      if (explicitLoadedKey && lastLoadedKeyRef.current === explicitLoadedKey) {
-        setLoading(false);
-        setError(null);
-        setSellerCandidates(null);
-        setLoadingStage(null);
-        setRecommendationsLoading(false);
-        return;
-      }
 
       setLoading(true);
-      setLoadingStage(merchantIdParam ? 'detail' : 'resolve');
+      setLoadingStage('resolve');
       setError(null);
       setSellerCandidates(null);
       if (lastProductIdRef.current !== id) {
@@ -94,7 +139,10 @@ export default function ProductDetailPage({ params }: Props) {
       }
       setRecommendationsLoading(false);
       let resolvedMerchantId: string | null = explicitMerchantId;
+      let resolvedCanonicalRef: { merchant_id: string; product_id: string } | null = null;
       let resolvedOffersPayload: any = null;
+      let loadedProductRef: { merchant_id: string; product_id: string } | null = null;
+      let groupResolved: any = null;
 
       const buildResolvedOffersPayload = (resolved: any) => {
         if (!resolved || typeof resolved !== 'object') return null;
@@ -115,47 +163,39 @@ export default function ProductDetailPage({ params }: Props) {
         };
       };
 
-      // When merchant_id is present, we can still fetch offers/product_group_id so PDP can show multi-seller offers.
-      const offersResolvePromise = explicitMerchantId
-        ? resolveProductCandidates({
-            product_id: id,
-            merchant_id: explicitMerchantId,
-            limit: 10,
-            include_offers: true,
-            // Offers resolution can involve backend group lookups + per-merchant detail fetches.
-            // Keep it best-effort and non-blocking, but allow a longer timeout than the fast-path.
-            timeout_ms: offersResolveTimeoutMs,
-          })
-            .then((resolved) => {
-              if (!resolved) return null;
-              const offers = Array.isArray(resolved?.offers) ? resolved.offers : [];
-              const offersCount =
-                typeof resolved?.offers_count === 'number'
-                  ? resolved.offers_count
-                  : offers.length;
+      const groupResolvePromise = resolveProductGroup({
+        product_id: id,
+        ...(explicitMerchantId ? { merchant_id: explicitMerchantId } : {}),
+        timeout_ms: fastTimeoutMs,
+      }).catch(() => null);
 
-              pdpTracking.track('pdp_candidates_resolved', {
-                product_id: id,
-                merchant_id: explicitMerchantId,
-                offers_count: offersCount,
-              });
+      const offersUpdate = (offersPayload: any) => {
+        if (!offersPayload || cancelled) return;
+        setProduct((current) => {
+          if (!current) return current;
+          return {
+            ...current,
+            ...offersPayload,
+            raw_detail: {
+              ...(current as any).raw_detail,
+              ...offersPayload,
+            },
+          };
+        });
+      };
 
-              return buildResolvedOffersPayload(resolved);
-            })
-            .catch(() => null)
-        : null;
-
-      // Fast path: resolve candidates/offers when merchant_id is missing.
-      // This avoids expensive empty-query multi-merchant scans.
-      if (!merchantIdParam) {
-        try {
-          const resolved = await resolveProductCandidates({
-            product_id: id,
-            limit: 10,
-            include_offers: true,
-            timeout_ms: sellerResolveTimeoutMs,
-          });
-          const offers = Array.isArray(resolved?.offers) ? resolved!.offers! : [];
+      const offersResolvePromise = resolveProductCandidates({
+        product_id: id,
+        ...(explicitMerchantId ? { merchant_id: explicitMerchantId } : {}),
+        limit: 10,
+        include_offers: true,
+        // Offers resolution can involve backend group lookups + per-merchant detail fetches.
+        // Keep it best-effort and non-blocking, but allow a longer timeout than the fast-path.
+        timeout_ms: offersResolveTimeoutMs,
+      })
+        .then((resolved) => {
+          if (!resolved) return null;
+          const offers = Array.isArray(resolved?.offers) ? resolved.offers : [];
           const offersCount =
             typeof resolved?.offers_count === 'number'
               ? resolved.offers_count
@@ -163,74 +203,98 @@ export default function ProductDetailPage({ params }: Props) {
 
           pdpTracking.track('pdp_candidates_resolved', {
             product_id: id,
+            ...(explicitMerchantId ? { merchant_id: explicitMerchantId } : {}),
             offers_count: offersCount,
           });
 
           resolvedOffersPayload = buildResolvedOffersPayload(resolved);
+          const canonicalRef =
+            resolved?.canonical_product_ref &&
+            typeof resolved.canonical_product_ref === 'object' &&
+            resolved.canonical_product_ref.merchant_id &&
+            resolved.canonical_product_ref.product_id
+              ? {
+                  merchant_id: String(resolved.canonical_product_ref.merchant_id),
+                  product_id: String(resolved.canonical_product_ref.product_id),
+                }
+              : null;
 
-          if (offersCount === 1 && offers.length === 1) {
-            const merchantId = String(offers[0]?.merchant_id || '').trim();
-            if (merchantId) {
-              resolvedMerchantId = merchantId;
-              setLoadingStage('detail');
-            }
+          offersUpdate(resolvedOffersPayload);
+
+          if (
+            !resolvedCanonicalRef &&
+            canonicalRef &&
+            loadedProductRef &&
+            (loadedProductRef.merchant_id !== canonicalRef.merchant_id ||
+              loadedProductRef.product_id !== canonicalRef.product_id)
+          ) {
+            void (async () => {
+              try {
+                const canonicalData = await getProductDetail(
+                  canonicalRef.product_id,
+                  canonicalRef.merchant_id,
+                  {
+                    useConfiguredMerchantId: false,
+                    allowBroadScan: false,
+                    throwOnError: true,
+                  },
+                );
+                if (!canonicalData || cancelled) return;
+                setProduct({
+                  ...canonicalData,
+                  ...(resolvedOffersPayload ? { ...resolvedOffersPayload } : {}),
+                  raw_detail: {
+                    ...(canonicalData as any).raw_detail,
+                    ...(resolvedOffersPayload ? { ...resolvedOffersPayload } : {}),
+                    ...(groupResolved?.product_group_id
+                      ? { product_group_id: groupResolved.product_group_id }
+                      : {}),
+                    canonical_product_ref: canonicalRef,
+                    entry_product_ref: {
+                      product_id: id,
+                      ...(explicitMerchantId ? { merchant_id: explicitMerchantId } : {}),
+                    },
+                  },
+                });
+              } catch {
+                // ignore
+              }
+            })();
           }
 
-          if (!resolvedMerchantId && offersCount > 1 && offers.length > 0) {
-            const defaultOfferId =
-              String((resolved as any)?.default_offer_id || (resolved as any)?.best_price_offer_id || '').trim() ||
-              null;
-            const pickPrice = (offer: any) =>
-              typeof offer?.price === 'number'
-                ? Number(offer.price) || 0
-                : Number(offer?.price?.amount || 0);
-            const chosen =
-              (defaultOfferId
-                ? offers.find((o: any) => String(o?.offer_id || o?.offerId || '').trim() === defaultOfferId)
-                : null) ||
-              [...offers].sort((a: any, b: any) => pickPrice(a) - pickPrice(b))[0] ||
-              null;
-            const merchantId = String(chosen?.merchant_id || '').trim() || null;
-            if (merchantId) {
-              resolvedMerchantId = merchantId;
-              setLoadingStage('detail');
-            }
-          }
-        } catch {
-          // Fallback (safe + fast): avoid broad empty-query scans.
-          // - numeric product ids: try an ID-targeted lookup
-          // - non-numeric ids: show retry UI (can’t safely resolve sellers)
-          if (!isNumericProductId) {
-            if (!cancelled) {
-              setProduct(null);
-              setRelatedProducts([]);
-              setSellerCandidates(null);
-              setError('Can’t load sellers for this product right now. Please retry.');
-              setLoading(false);
-              setLoadingStage(null);
-              setRecommendationsLoading(false);
-            }
-            return;
-          }
-        }
+          return { offersPayload: resolvedOffersPayload, canonicalRef };
+        })
+        .catch(() => null);
+
+      groupResolved = await groupResolvePromise;
+      if (cancelled) return;
+      if (
+        groupResolved?.canonical_product_ref?.merchant_id &&
+        groupResolved?.canonical_product_ref?.product_id
+      ) {
+        resolvedCanonicalRef = {
+          merchant_id: String(groupResolved.canonical_product_ref.merchant_id),
+          product_id: String(groupResolved.canonical_product_ref.product_id),
+        };
+      }
+
+      if (resolvedCanonicalRef) {
+        resolvedMerchantId = resolvedCanonicalRef.merchant_id;
+        setLoadingStage('detail');
       }
 
       try {
-        const resolvedCacheKey = resolvedMerchantId ? `pdp-cache:${resolvedMerchantId}:${id}` : null;
-        const cacheToRead = resolvedCacheKey || cacheKey;
-        if (cacheToRead) {
-          const cached = sessionStorage.getItem(cacheToRead);
+        const cacheToRead = resolvedCanonicalRef
+          ? `pdp-cache:${resolvedCanonicalRef.merchant_id}:${resolvedCanonicalRef.product_id}`
+          : null;
+        if (cacheToRead && typeof window !== 'undefined') {
+          const cached = window.sessionStorage.getItem(cacheToRead);
           if (cached) {
             const parsed = JSON.parse(cached) as ProductResponse;
             if (!cancelled) {
               setProduct(parsed);
               setLoading(false);
               setLoadingStage(null);
-              if (resolvedMerchantId) {
-                lastLoadedKeyRef.current = `${resolvedMerchantId}:${id}`;
-              } else if (merchantIdParam) {
-                lastLoadedKeyRef.current = `${merchantIdParam}:${id}`;
-              }
               setRecommendationsLoading(false);
             }
           }
@@ -240,12 +304,18 @@ export default function ProductDetailPage({ params }: Props) {
       }
       try {
         setLoadingStage('detail');
-        const data = await getProductDetail(id, resolvedMerchantId || undefined, {
-          useConfiguredMerchantId: Boolean(resolvedMerchantId),
-          allowBroadScan: Boolean(merchantIdParam),
-          timeout_ms: resolvedMerchantId ? undefined : fastTimeoutMs,
-          throwOnError: true,
-        });
+        const data = resolvedCanonicalRef
+          ? await getProductDetail(resolvedCanonicalRef.product_id, resolvedCanonicalRef.merchant_id, {
+              useConfiguredMerchantId: false,
+              allowBroadScan: false,
+              throwOnError: true,
+            })
+          : await getProductDetail(id, resolvedMerchantId || undefined, {
+              useConfiguredMerchantId: Boolean(resolvedMerchantId),
+              allowBroadScan: Boolean(merchantIdParam),
+              timeout_ms: resolvedMerchantId ? undefined : fastTimeoutMs,
+              throwOnError: true,
+            });
         if (!data) {
           if (!cancelled) {
             setProduct(null);
@@ -259,53 +329,49 @@ export default function ProductDetailPage({ params }: Props) {
         }
         if (cancelled) return;
 
-        const merged = resolvedOffersPayload
-          ? {
-              ...data,
-              ...resolvedOffersPayload,
-              raw_detail: {
-                ...(data as any).raw_detail,
-                ...resolvedOffersPayload,
-              },
-            }
-          : data;
+        loadedProductRef = {
+          merchant_id: String(data.merchant_id || ''),
+          product_id: String(data.product_id || ''),
+        };
+
+        const baseRawDetail = {
+          ...(data as any).raw_detail,
+          ...(groupResolved?.product_group_id ? { product_group_id: groupResolved.product_group_id } : {}),
+          ...(resolvedCanonicalRef ? { canonical_product_ref: resolvedCanonicalRef } : {}),
+          entry_product_ref: {
+            product_id: id,
+            ...(explicitMerchantId ? { merchant_id: explicitMerchantId } : {}),
+          },
+        };
+
+        const merged: ProductResponse = {
+          ...data,
+          ...(resolvedOffersPayload ? { ...resolvedOffersPayload } : {}),
+          raw_detail: {
+            ...baseRawDetail,
+            ...(resolvedOffersPayload ? { ...resolvedOffersPayload } : {}),
+          },
+        };
 
         setProduct(merged);
         setLoading(false);
         setLoadingStage(null);
         const resolvedFromData = String(data.merchant_id || '').trim() || null;
         if (resolvedFromData) {
-          lastLoadedKeyRef.current = `${resolvedFromData}:${id}`;
+          lastLoadedKeyRef.current = `${resolvedFromData}:${data.product_id}`;
         }
         try {
-          const resolvedCacheKey = resolvedFromData
-            ? `pdp-cache:${resolvedFromData}:${id}`
-            : null;
-          if (resolvedCacheKey) {
-            sessionStorage.setItem(resolvedCacheKey, JSON.stringify(data));
-          } else if (cacheKey) {
-            sessionStorage.setItem(cacheKey, JSON.stringify(data));
+          const resolvedCacheKey =
+            resolvedFromData && data.product_id
+              ? `pdp-cache:${resolvedFromData}:${data.product_id}`
+              : null;
+          if (resolvedCacheKey && typeof window !== 'undefined') {
+            window.sessionStorage.setItem(resolvedCacheKey, JSON.stringify(merged));
           }
         } catch {
           // ignore cache failures
         }
-
-        if (offersResolvePromise) {
-          void offersResolvePromise.then((offersPayload) => {
-            if (!offersPayload || cancelled) return;
-            setProduct((current) => {
-              if (!current) return current;
-              return {
-                ...current,
-                ...offersPayload,
-                raw_detail: {
-                  ...(current as any).raw_detail,
-                  ...offersPayload,
-                },
-              };
-            });
-          });
-        }
+        void offersResolvePromise;
 
         const isExternalProduct =
           Boolean((data as any).external_redirect_url) ||
@@ -313,19 +379,7 @@ export default function ProductDetailPage({ params }: Props) {
           String((data as any).platform || '').toLowerCase() === 'external' ||
           (data as any).source === 'external_seed';
 
-        const hasMultipleOffers =
-          resolvedOffersPayload &&
-          typeof resolvedOffersPayload.offers_count === 'number' &&
-          resolvedOffersPayload.offers_count > 1;
-
-        if (!merchantIdParam && resolvedFromData && !isExternalProduct && !hasMultipleOffers) {
-          router.replace(
-            `/products/${encodeURIComponent(id)}?merchant_id=${encodeURIComponent(resolvedFromData)}`,
-          );
-          return;
-        }
-
-        const relatedKey = `${resolvedFromData || 'unknown'}:${id}`;
+        const relatedKey = `${resolvedFromData || 'unknown'}:${data.product_id || id}`;
         if (lastRelatedKeyRef.current !== relatedKey) {
           lastRelatedKeyRef.current = relatedKey;
           setRecommendationsLoading(true);
@@ -334,7 +388,7 @@ export default function ProductDetailPage({ params }: Props) {
               try {
                 const all = await getAllProducts(6, isExternalProduct ? undefined : data.merchant_id);
                 if (!cancelled) {
-                  setRelatedProducts(all.filter((p) => p.product_id !== id));
+                  setRelatedProducts(all.filter((p) => p.product_id !== data.product_id));
                 }
               } catch (relError) {
                 // eslint-disable-next-line no-console
@@ -358,7 +412,7 @@ export default function ProductDetailPage({ params }: Props) {
 
         try {
           const history = JSON.parse(localStorage.getItem('browse_history') || '[]');
-          const filtered = history.filter((item: any) => item.product_id !== id);
+          const filtered = history.filter((item: any) => item.product_id !== data.product_id);
           const newHistory = [
             {
               product_id: data.product_id,
@@ -432,86 +486,246 @@ export default function ProductDetailPage({ params }: Props) {
     return isBeautyProduct(pdpPayload.product) ? 'beauty' : 'generic';
   }, [pdpOverride, pdpPayload]);
 
+  const resolveVariantForPurchase = async (args: {
+    merchant_id: string;
+    product_id: string;
+    desired_variant: Variant;
+  }): Promise<Variant | null> => {
+    try {
+      const merchantId = String(args.merchant_id || '').trim();
+      const productId = String(args.product_id || '').trim();
+      if (!merchantId || !productId) return null;
+
+      const cacheKey = `${merchantId}:${productId}`;
+      let detail = offerProductDetailCacheRef.current.get(cacheKey) || null;
+      if (!detail) {
+        detail = await getProductDetail(productId, merchantId, {
+          useConfiguredMerchantId: false,
+          allowBroadScan: false,
+          throwOnError: false,
+        });
+        if (detail) {
+          offerProductDetailCacheRef.current.set(cacheKey, detail);
+        }
+      }
+      if (!detail) return null;
+
+      const detailPayload = mapToPdpPayload({
+        product: detail,
+        rawDetail: detail.raw_detail,
+        relatedProducts: [],
+        recommendationsLoading: false,
+        entryPoint: 'product_detail',
+      });
+      const variants = Array.isArray(detailPayload?.product?.variants)
+        ? detailPayload.product.variants
+        : [];
+      if (!variants.length) return null;
+
+      const desiredSig = variantOptionSignature(args.desired_variant.options);
+      if (desiredSig) {
+        const exact = variants.find((v) => variantOptionSignature(v.options) === desiredSig) || null;
+        if (exact) return exact;
+      }
+
+      const desiredColor = getNormalizedVariantOptionValue(args.desired_variant.options, 'color');
+      const desiredSize = getNormalizedVariantOptionValue(args.desired_variant.options, 'size');
+      if (desiredColor || desiredSize) {
+        const partial =
+          variants.find((v) => {
+            const color = getNormalizedVariantOptionValue(v.options, 'color');
+            const size = getNormalizedVariantOptionValue(v.options, 'size');
+            const colorMatch = desiredColor ? color === desiredColor : true;
+            const sizeMatch = desiredSize ? size === desiredSize : true;
+            return colorMatch && sizeMatch;
+          }) || null;
+        if (partial) return partial;
+      }
+
+      if (variants.length === 1) return variants[0];
+      return null;
+    } catch {
+      return null;
+    }
+  };
+
   const handleAddToCart = ({
     variant,
     quantity,
     merchant_id,
+    product_id,
     offer_id,
   }: {
     variant: Variant;
     quantity: number;
     merchant_id?: string;
+    product_id?: string;
     offer_id?: string;
   }) => {
     if (!product) return;
-    if (product.external_redirect_url) {
-      window.open(product.external_redirect_url, '_blank', 'noopener,noreferrer');
-      return;
-    }
-    const resolvedMerchantId = String(merchant_id || product.merchant_id || '').trim() || product.merchant_id;
-    const resolvedVariantId = String(variant.variant_id || '').trim() || product.product_id;
-    const selectedOptions =
-      Array.isArray(variant.options) && variant.options.length > 0
-        ? Object.fromEntries(variant.options.map((o) => [o.name, o.value]))
+    void (async () => {
+      if (product.external_redirect_url) {
+        window.open(product.external_redirect_url, '_blank', 'noopener,noreferrer');
+        return;
+      }
+
+      const resolvedMerchantId =
+        String(merchant_id || product.merchant_id || '').trim() || product.merchant_id;
+      const resolvedProductId =
+        String(product_id || '').trim() || String(product.product_id || '').trim();
+
+      if (!resolvedMerchantId || !resolvedProductId) {
+        toast.error('This offer is missing merchant/product info.');
+        return;
+      }
+
+      const needsVariantMapping =
+        resolvedMerchantId !== String(product.merchant_id || '').trim() ||
+        resolvedProductId !== String(product.product_id || '').trim();
+      const purchaseVariant = needsVariantMapping
+        ? await resolveVariantForPurchase({
+            merchant_id: resolvedMerchantId,
+            product_id: resolvedProductId,
+            desired_variant: variant,
+          })
+        : variant;
+
+      if (!purchaseVariant) {
+        toast.error('This seller doesn’t have the selected options. Try another offer.');
+        return;
+      }
+
+      const selectedOptions =
+        Array.isArray(purchaseVariant.options) && purchaseVariant.options.length > 0
+          ? Object.fromEntries(purchaseVariant.options.map((o) => [o.name, o.value]))
+          : undefined;
+
+      const offers = Array.isArray((product as any)?.raw_detail?.offers)
+        ? ((product as any).raw_detail.offers as any[])
+        : Array.isArray((product as any)?.offers)
+          ? ((product as any).offers as any[])
+          : [];
+      const offer =
+        offer_id && offers.length
+          ? offers.find((o) => String(o?.offer_id || o?.offerId || '').trim() === String(offer_id))
+          : null;
+      const offerItemPrice = offer
+        ? Number(offer?.price?.amount ?? offer?.price_amount ?? offer?.price ?? 0)
         : undefined;
-    const cartItemId = resolvedMerchantId
-      ? `${resolvedMerchantId}:${resolvedVariantId}`
-      : resolvedVariantId;
-    addItem({
-      id: cartItemId,
-      product_id: product.product_id,
-      variant_id: resolvedVariantId,
-      sku: variant.sku_id,
-      selected_options: selectedOptions,
-      title: product.title,
-      price: variant.price?.current.amount ?? product.price,
-      currency: variant.price?.current.currency || product.currency,
-      imageUrl: variant.image_url || product.image_url || '/placeholder.svg',
-      merchant_id: resolvedMerchantId,
-      offer_id: offer_id ? String(offer_id) : undefined,
-      quantity,
-    });
-    toast.success(`✓ Added ${quantity}x ${product.title} to cart!`);
-    open();
+      const offerCurrency = offer
+        ? String(offer?.price?.currency || offer?.currency || product.currency || 'USD')
+        : undefined;
+      const offerShipping = offer
+        ? Number(offer?.shipping?.cost?.amount ?? offer?.shipping_cost ?? offer?.shippingFee ?? 0)
+        : 0;
+      const displayPrice =
+        offerItemPrice != null ? offerItemPrice + offerShipping : purchaseVariant.price?.current.amount ?? product.price;
+
+      const resolvedVariantId = String(purchaseVariant.variant_id || '').trim() || resolvedProductId;
+      const cartItemId = `${resolvedMerchantId}:${resolvedVariantId}`;
+
+      addItem({
+        id: cartItemId,
+        product_id: resolvedProductId,
+        variant_id: resolvedVariantId,
+        sku: purchaseVariant.sku_id,
+        selected_options: selectedOptions,
+        title: product.title,
+        price: displayPrice,
+        currency: offerCurrency || purchaseVariant.price?.current.currency || product.currency,
+        imageUrl: purchaseVariant.image_url || product.image_url || '/placeholder.svg',
+        merchant_id: resolvedMerchantId,
+        offer_id: offer_id ? String(offer_id) : undefined,
+        quantity,
+      });
+      toast.success(`✓ Added ${quantity}x ${product.title} to cart!`);
+      open();
+    })();
   };
 
   const handleBuyNow = ({
     variant,
     quantity,
     merchant_id,
+    product_id,
     offer_id,
   }: {
     variant: Variant;
     quantity: number;
     merchant_id?: string;
+    product_id?: string;
     offer_id?: string;
   }) => {
     if (!product) return;
-    if (product.external_redirect_url) {
-      window.open(product.external_redirect_url, '_blank', 'noopener,noreferrer');
-      return;
-    }
-    const resolvedMerchantId = String(merchant_id || product.merchant_id || '').trim() || product.merchant_id;
-    const selectedOptions =
-      Array.isArray(variant.options) && variant.options.length > 0
-        ? Object.fromEntries(variant.options.map((o) => [o.name, o.value]))
+    void (async () => {
+      if (product.external_redirect_url) {
+        window.open(product.external_redirect_url, '_blank', 'noopener,noreferrer');
+        return;
+      }
+
+      const resolvedMerchantId =
+        String(merchant_id || product.merchant_id || '').trim() || product.merchant_id;
+      const resolvedProductId =
+        String(product_id || '').trim() || String(product.product_id || '').trim();
+
+      if (!resolvedMerchantId || !resolvedProductId) {
+        toast.error('This offer is missing merchant/product info.');
+        return;
+      }
+
+      const needsVariantMapping =
+        resolvedMerchantId !== String(product.merchant_id || '').trim() ||
+        resolvedProductId !== String(product.product_id || '').trim();
+      const purchaseVariant = needsVariantMapping
+        ? await resolveVariantForPurchase({
+            merchant_id: resolvedMerchantId,
+            product_id: resolvedProductId,
+            desired_variant: variant,
+          })
+        : variant;
+
+      if (!purchaseVariant) {
+        toast.error('This seller doesn’t have the selected options. Try another offer.');
+        return;
+      }
+
+      const selectedOptions =
+        Array.isArray(purchaseVariant.options) && purchaseVariant.options.length > 0
+          ? Object.fromEntries(purchaseVariant.options.map((o) => [o.name, o.value]))
+          : undefined;
+
+      const offers = Array.isArray((product as any)?.raw_detail?.offers)
+        ? ((product as any).raw_detail.offers as any[])
+        : Array.isArray((product as any)?.offers)
+          ? ((product as any).offers as any[])
+          : [];
+      const offer =
+        offer_id && offers.length
+          ? offers.find((o) => String(o?.offer_id || o?.offerId || '').trim() === String(offer_id))
+          : null;
+      const offerItemPrice = offer
+        ? Number(offer?.price?.amount ?? offer?.price_amount ?? offer?.price ?? 0)
         : undefined;
-    const checkoutItems = [
-      {
-        product_id: product.product_id,
-        merchant_id: resolvedMerchantId,
-        title: product.title,
-        quantity,
-        unit_price: variant.price?.current.amount ?? product.price,
-        image_url: variant.image_url || product.image_url || '/placeholder.svg',
-        variant_id: variant.variant_id,
-        sku: variant.sku_id,
-        selected_options: selectedOptions,
-        offer_id: offer_id ? String(offer_id) : undefined,
-      },
-    ];
-    const encoded = encodeURIComponent(JSON.stringify(checkoutItems));
-    router.push(`/order?items=${encoded}`);
+
+      const checkoutItems = [
+        {
+          product_id: resolvedProductId,
+          merchant_id: resolvedMerchantId,
+          title: product.title,
+          quantity,
+          unit_price: offerItemPrice != null ? offerItemPrice : purchaseVariant.price?.current.amount ?? product.price,
+          currency:
+            String(offer?.price?.currency || offer?.currency || purchaseVariant.price?.current.currency || product.currency || 'USD'),
+          image_url: purchaseVariant.image_url || product.image_url || '/placeholder.svg',
+          variant_id: purchaseVariant.variant_id,
+          sku: purchaseVariant.sku_id,
+          selected_options: selectedOptions,
+          offer_id: offer_id ? String(offer_id) : undefined,
+        },
+      ];
+      const encoded = encodeURIComponent(JSON.stringify(checkoutItems));
+      router.push(`/order?items=${encoded}`);
+    })();
   };
 
   const handleWriteReview = () => {

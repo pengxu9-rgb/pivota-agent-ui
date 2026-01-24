@@ -149,6 +149,7 @@ export interface ProductResponse {
 
 export type ResolveProductCandidatesOffer = {
   offer_id: string;
+  product_id?: string;
   merchant_id: string;
   merchant_name?: string;
   price?: { amount?: number; currency?: string } | number;
@@ -162,6 +163,11 @@ export type ResolveProductCandidatesOffer = {
 export type ResolveProductCandidatesResponse = {
   status?: string;
   product_group_id?: string;
+  canonical_product_ref?: {
+    merchant_id: string;
+    product_id: string;
+    platform?: string;
+  } | null;
   offers_count?: number;
   offers?: ResolveProductCandidatesOffer[];
   default_offer_id?: string;
@@ -171,6 +177,25 @@ export type ResolveProductCandidatesResponse = {
     age_ms?: number;
     ttl_ms?: number;
   };
+};
+
+export type ResolveProductGroupMember = {
+  merchant_id: string;
+  merchant_name?: string;
+  product_id: string;
+  platform?: string;
+  is_primary?: boolean;
+};
+
+export type ResolveProductGroupResponse = {
+  status?: string;
+  product_group_id?: string;
+  canonical_product_ref?: {
+    merchant_id: string;
+    product_id: string;
+    platform?: string;
+  } | null;
+  members?: ResolveProductGroupMember[];
 };
 
 function normalizeProduct(
@@ -947,6 +972,36 @@ export async function resolveProductCandidates(args: {
   );
 
   return data as ResolveProductCandidatesResponse;
+}
+
+export async function resolveProductGroup(args: {
+  product_id: string;
+  merchant_id?: string | null;
+  timeout_ms?: number;
+  debug?: boolean;
+  cache_bypass?: boolean;
+}): Promise<ResolveProductGroupResponse | null> {
+  const productId = String(args.product_id || '').trim();
+  if (!productId) return null;
+
+  const data = await callGatewayWithTimeout(
+    {
+      operation: 'resolve_product_group',
+      payload: {
+        product_ref: {
+          product_id: productId,
+          ...(args.merchant_id ? { merchant_id: args.merchant_id } : {}),
+        },
+        options: {
+          ...(args.debug ? { debug: true } : {}),
+          ...(args.cache_bypass ? { cache_bypass: true } : {}),
+        },
+      },
+    },
+    args.timeout_ms,
+  );
+
+  return data as ResolveProductGroupResponse;
 }
 
 function _inferReviewSubjectFromProduct(product: ProductResponse): {

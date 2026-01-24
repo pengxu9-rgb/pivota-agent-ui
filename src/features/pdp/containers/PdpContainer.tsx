@@ -87,8 +87,20 @@ export function PdpContainer({
   payload: PDPPayload;
   initialQuantity?: number;
   mode?: 'beauty' | 'generic';
-  onAddToCart: (args: { variant: Variant; quantity: number; merchant_id?: string; offer_id?: string }) => void;
-  onBuyNow: (args: { variant: Variant; quantity: number; merchant_id?: string; offer_id?: string }) => void;
+  onAddToCart: (args: {
+    variant: Variant;
+    quantity: number;
+    merchant_id?: string;
+    product_id?: string;
+    offer_id?: string;
+  }) => void;
+  onBuyNow: (args: {
+    variant: Variant;
+    quantity: number;
+    merchant_id?: string;
+    product_id?: string;
+    offer_id?: string;
+  }) => void;
   onWriteReview?: () => void;
   onSeeAllReviews?: () => void;
 }) {
@@ -278,6 +290,7 @@ export function PdpContainer({
   const displayPriceAmount = selectedOffer && offerTotalPrice != null ? offerTotalPrice : basePriceAmount;
 
   const effectiveMerchantId = selectedOffer?.merchant_id || payload.product.merchant_id;
+  const effectiveProductId = String(selectedOffer?.product_id || payload.product.product_id || '').trim();
   const effectiveShippingEta =
     selectedOffer?.shipping?.eta_days_range || payload.product.shipping?.eta_days_range;
   const effectiveReturns = selectedOffer?.returns || payload.product.returns;
@@ -1073,6 +1086,7 @@ export function PdpContainer({
                             variant: selectedVariant,
                             quantity: resolvedQuantity,
                             merchant_id: effectiveMerchantId,
+                            product_id: effectiveProductId || undefined,
                             offer_id: selectedOffer?.offer_id || undefined,
                             onAddToCart,
                           });
@@ -1089,6 +1103,7 @@ export function PdpContainer({
                             variant: selectedVariant,
                             quantity: resolvedQuantity,
                             merchant_id: effectiveMerchantId,
+                            product_id: effectiveProductId || undefined,
                             offer_id: selectedOffer?.offer_id || undefined,
                             onBuyNow,
                           });
@@ -1147,20 +1162,6 @@ export function PdpContainer({
             offer_id: offerId,
             merchant_id: offer?.merchant_id,
           });
-          const nextMerchantId = String(offer?.merchant_id || '').trim();
-          const currentMerchantId = String(payload.product.merchant_id || '').trim();
-          const nextProductId = String(offer?.product_id || payload.product.product_id || '').trim();
-          const currentProductId = String(payload.product.product_id || '').trim();
-          if (
-            nextMerchantId &&
-            (nextMerchantId !== currentMerchantId || (nextProductId && nextProductId !== currentProductId))
-          ) {
-            router.push(
-              `/products/${encodeURIComponent(nextProductId || currentProductId)}?merchant_id=${encodeURIComponent(
-                nextMerchantId,
-              )}`,
-            );
-          }
         }}
       />
       {offerDebugEnabled ? (

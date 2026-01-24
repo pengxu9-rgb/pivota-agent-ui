@@ -4,9 +4,22 @@ type ActionContext = {
   variant?: Variant;
   quantity?: number;
   merchant_id?: string;
+  product_id?: string;
   offer_id?: string;
-  onAddToCart?: (args: { variant: Variant; quantity: number; merchant_id?: string; offer_id?: string }) => void;
-  onBuyNow?: (args: { variant: Variant; quantity: number; merchant_id?: string; offer_id?: string }) => void;
+  onAddToCart?: (args: {
+    variant: Variant;
+    quantity: number;
+    merchant_id?: string;
+    product_id?: string;
+    offer_id?: string;
+  }) => void;
+  onBuyNow?: (args: {
+    variant: Variant;
+    quantity: number;
+    merchant_id?: string;
+    product_id?: string;
+    offer_id?: string;
+  }) => void;
   onSelectVariant?: (variantId: string) => void;
   onOpenEmbed?: (target: ActionTarget) => void;
 };
@@ -23,6 +36,7 @@ export function dispatchPdpAction(
           variant: context.variant,
           quantity: context.quantity || 1,
           merchant_id: context.merchant_id,
+          product_id: context.product_id,
           offer_id: context.offer_id,
         });
       }
@@ -33,6 +47,7 @@ export function dispatchPdpAction(
           variant: context.variant,
           quantity: context.quantity || 1,
           merchant_id: context.merchant_id,
+          product_id: context.product_id,
           offer_id: context.offer_id,
         });
       }
