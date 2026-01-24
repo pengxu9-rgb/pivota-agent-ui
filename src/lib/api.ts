@@ -1062,12 +1062,14 @@ export async function getProductDetail(
     timeout_ms?: number;
     useConfiguredMerchantId?: boolean;
     throwOnError?: boolean;
+    includeReviewSummary?: boolean;
   },
 ): Promise<ProductResponse | null> {
   const allowBroadScan = options?.allowBroadScan !== false;
   const timeoutMs = options?.timeout_ms;
   const useConfiguredMerchantId = options?.useConfiguredMerchantId !== false;
   const throwOnError = options?.throwOnError === true;
+  const includeReviewSummary = options?.includeReviewSummary === true;
 
   // Try to resolve merchant_id, fallback to cross-merchant search if missing.
   let merchantId: string | undefined = merchantIdOverride;
@@ -1110,7 +1112,10 @@ export async function getProductDetail(
             ? { best_price_offer_id: (data as any).best_price_offer_id }
             : {}),
         };
-        return await _attachReviewSummaryBestEffort(normalizeProduct(enriched));
+        const normalized = normalizeProduct(enriched) as ProductResponse;
+        return includeReviewSummary
+          ? await _attachReviewSummaryBestEffort(normalized)
+          : normalized;
       }
     }
   } catch (err) {
@@ -1169,7 +1174,9 @@ export async function getProductDetail(
       throw err;
     }
 
-    return found ? await _attachReviewSummaryBestEffort(found) : null;
+    return found && includeReviewSummary
+      ? await _attachReviewSummaryBestEffort(found)
+      : found;
   } catch (err) {
     if (isAmbiguousProductError(err)) throw err;
     if (throwOnError) throw err;

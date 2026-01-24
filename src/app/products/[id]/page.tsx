@@ -123,14 +123,16 @@ export default function ProductDetailPage({ params }: Props) {
 
   useEffect(() => {
     let cancelled = false;
-    const fastTimeoutMs = 2500;
+    const groupResolveTimeoutMs = 8000;
+    const detailTimeoutMs = 15000;
+    const quickAttemptTimeoutMs = 2500;
     const offersResolveTimeoutMs = 25000;
 
     const loadProduct = async () => {
       const explicitMerchantId = merchantIdParam ? String(merchantIdParam).trim() : null;
 
       setLoading(true);
-      setLoadingStage('resolve');
+      setLoadingStage(explicitMerchantId ? 'detail' : 'resolve');
       setError(null);
       setSellerCandidates(null);
       if (lastProductIdRef.current !== id) {
@@ -138,11 +140,11 @@ export default function ProductDetailPage({ params }: Props) {
         setRelatedProducts([]);
       }
       setRecommendationsLoading(false);
-      let resolvedMerchantId: string | null = explicitMerchantId;
+      let groupResolved: any = null;
       let resolvedCanonicalRef: { merchant_id: string; product_id: string } | null = null;
       let resolvedOffersPayload: any = null;
       let loadedProductRef: { merchant_id: string; product_id: string } | null = null;
-      let groupResolved: any = null;
+      let canonicalDetailInFlight = false;
 
       const buildResolvedOffersPayload = (resolved: any) => {
         if (!resolved || typeof resolved !== 'object') return null;
@@ -163,12 +165,6 @@ export default function ProductDetailPage({ params }: Props) {
         };
       };
 
-      const groupResolvePromise = resolveProductGroup({
-        product_id: id,
-        ...(explicitMerchantId ? { merchant_id: explicitMerchantId } : {}),
-        timeout_ms: fastTimeoutMs,
-      }).catch(() => null);
-
       const offersUpdate = (offersPayload: any) => {
         if (!offersPayload || cancelled) return;
         setProduct((current) => {
@@ -184,17 +180,264 @@ export default function ProductDetailPage({ params }: Props) {
         });
       };
 
-      const offersResolvePromise = resolveProductCandidates({
+      const applyCanonicalDetail = (args: {
+        canonicalRef: { merchant_id: string; product_id: string };
+        group: any;
+      }) => {
+        const canonicalRef = args.canonicalRef;
+        const group = args.group;
+        if (canonicalDetailInFlight) return;
+        canonicalDetailInFlight = true;
+
+        void (async () => {
+          try {
+            const canonicalData = await getProductDetail(
+              canonicalRef.product_id,
+              canonicalRef.merchant_id,
+              {
+                useConfiguredMerchantId: false,
+                allowBroadScan: false,
+                timeout_ms: detailTimeoutMs,
+                throwOnError: true,
+              },
+            );
+            if (!canonicalData || cancelled) return;
+
+            loadedProductRef = {
+              merchant_id: String(canonicalData.merchant_id || canonicalRef.merchant_id),
+              product_id: String(canonicalData.product_id || canonicalRef.product_id),
+            };
+
+            setProduct({
+              ...canonicalData,
+              ...(resolvedOffersPayload ? { ...resolvedOffersPayload } : {}),
+              raw_detail: {
+                ...(canonicalData as any).raw_detail,
+                ...(resolvedOffersPayload ? { ...resolvedOffersPayload } : {}),
+                ...(group?.product_group_id ? { product_group_id: group.product_group_id } : {}),
+                canonical_product_ref: canonicalRef,
+                entry_product_ref: {
+                  product_id: id,
+                  ...(explicitMerchantId ? { merchant_id: explicitMerchantId } : {}),
+                },
+              },
+            });
+          } catch {
+            // ignore
+          } finally {
+            canonicalDetailInFlight = false;
+          }
+        })();
+      };
+
+      const readSessionCache = (key: string | null) => {
+        if (!key || typeof window === 'undefined') return;
+        try {
+          const cached = window.sessionStorage.getItem(key);
+          if (!cached) return;
+          const parsed = JSON.parse(cached) as ProductResponse;
+          if (!cancelled) {
+            setProduct(parsed);
+            setLoading(false);
+            setLoadingStage(null);
+            setRecommendationsLoading(false);
+          }
+        } catch {
+          // ignore cache failures
+        }
+      };
+
+      const writeSessionCache = (key: string | null, value: ProductResponse) => {
+        if (!key || typeof window === 'undefined') return;
+        try {
+          window.sessionStorage.setItem(key, JSON.stringify(value));
+        } catch {
+          // ignore cache failures
+        }
+      };
+
+      const groupResolvePromise = resolveProductGroup({
         product_id: id,
         ...(explicitMerchantId ? { merchant_id: explicitMerchantId } : {}),
+        timeout_ms: groupResolveTimeoutMs,
+      })
+        .then((gr) => {
+          if (!gr || cancelled) return null;
+          groupResolved = gr;
+          const canonical =
+            gr?.canonical_product_ref?.merchant_id && gr?.canonical_product_ref?.product_id
+              ? {
+                  merchant_id: String(gr.canonical_product_ref.merchant_id),
+                  product_id: String(gr.canonical_product_ref.product_id),
+                }
+              : null;
+
+          if (canonical) {
+            resolvedCanonicalRef = canonical;
+            if (!explicitMerchantId) {
+              setLoadingStage('detail');
+            }
+            if (
+              loadedProductRef &&
+              (loadedProductRef.merchant_id !== canonical.merchant_id ||
+                loadedProductRef.product_id !== canonical.product_id)
+            ) {
+              applyCanonicalDetail({ canonicalRef: canonical, group: gr });
+            }
+          }
+
+          return gr;
+        })
+        .catch(() => null);
+
+      if (explicitMerchantId) {
+        readSessionCache(`pdp-cache:${explicitMerchantId}:${id}`);
+      }
+
+      let data: ProductResponse | null = null;
+      let detailError: unknown = null;
+
+      try {
+        data = explicitMerchantId
+          ? await getProductDetail(id, explicitMerchantId, {
+              useConfiguredMerchantId: false,
+              allowBroadScan: false,
+              timeout_ms: detailTimeoutMs,
+              throwOnError: true,
+            })
+          : await getProductDetail(id, undefined, {
+              useConfiguredMerchantId: true,
+              allowBroadScan: false,
+              timeout_ms: quickAttemptTimeoutMs,
+              throwOnError: true,
+            });
+      } catch (err) {
+        detailError = err;
+      }
+
+      if (!explicitMerchantId && !data) {
+        const gr = await groupResolvePromise;
+        if (cancelled) return;
+        const canonical =
+          gr?.canonical_product_ref?.merchant_id && gr?.canonical_product_ref?.product_id
+            ? {
+                merchant_id: String(gr.canonical_product_ref.merchant_id),
+                product_id: String(gr.canonical_product_ref.product_id),
+              }
+            : resolvedCanonicalRef;
+
+        if (canonical) {
+          resolvedCanonicalRef = canonical;
+          setLoadingStage('detail');
+
+          readSessionCache(`pdp-cache:${canonical.merchant_id}:${canonical.product_id}`);
+
+          try {
+            data = await getProductDetail(canonical.product_id, canonical.merchant_id, {
+              useConfiguredMerchantId: false,
+              allowBroadScan: false,
+              timeout_ms: detailTimeoutMs,
+              throwOnError: true,
+            });
+          } catch (err) {
+            detailError = err;
+          }
+        }
+      }
+
+      if (
+        !explicitMerchantId &&
+        !data &&
+        (detailError as any)?.code === 'AMBIGUOUS_PRODUCT_ID' &&
+        Array.isArray((detailError as any)?.candidates)
+      ) {
+        if (!cancelled) {
+          setProduct(null);
+          setRelatedProducts([]);
+          setError(null);
+          setSellerCandidates((detailError as any).candidates as ProductResponse[]);
+          setLoading(false);
+          setLoadingStage(null);
+          setRecommendationsLoading(false);
+        }
+        return;
+      }
+
+      if (!data) {
+        const message =
+          detailError && (detailError as Error).message ? (detailError as Error).message : 'Failed to load product';
+        if (!cancelled) {
+          setError(message);
+          setProduct(null);
+          setSellerCandidates(null);
+          setLoading(false);
+          setLoadingStage(null);
+          setRecommendationsLoading(false);
+        }
+        return;
+      }
+      if (cancelled) return;
+
+      loadedProductRef = {
+        merchant_id: String(data.merchant_id || ''),
+        product_id: String(data.product_id || ''),
+      };
+
+      const baseRawDetail = {
+        ...(data as any).raw_detail,
+        ...(groupResolved?.product_group_id ? { product_group_id: groupResolved.product_group_id } : {}),
+        ...(resolvedCanonicalRef ? { canonical_product_ref: resolvedCanonicalRef } : {}),
+        entry_product_ref: {
+          product_id: id,
+          ...(explicitMerchantId ? { merchant_id: explicitMerchantId } : {}),
+        },
+      };
+
+      const merged: ProductResponse = {
+        ...data,
+        ...(resolvedOffersPayload ? { ...resolvedOffersPayload } : {}),
+        raw_detail: {
+          ...baseRawDetail,
+          ...(resolvedOffersPayload ? { ...resolvedOffersPayload } : {}),
+        },
+      };
+
+      setProduct(merged);
+      setLoading(false);
+      setLoadingStage(null);
+      const resolvedFromData = String(data.merchant_id || '').trim() || null;
+      if (resolvedFromData) {
+        lastLoadedKeyRef.current = `${resolvedFromData}:${data.product_id}`;
+      }
+      writeSessionCache(
+        resolvedFromData && data.product_id
+          ? `pdp-cache:${resolvedFromData}:${data.product_id}`
+          : null,
+        merged,
+      );
+
+      if (
+        resolvedCanonicalRef &&
+        (loadedProductRef.merchant_id !== resolvedCanonicalRef.merchant_id ||
+          loadedProductRef.product_id !== resolvedCanonicalRef.product_id)
+      ) {
+        applyCanonicalDetail({ canonicalRef: resolvedCanonicalRef, group: groupResolved });
+      }
+
+      const offersRef = explicitMerchantId
+        ? { product_id: id, merchant_id: explicitMerchantId }
+        : loadedProductRef?.merchant_id
+          ? { product_id: loadedProductRef.product_id, merchant_id: loadedProductRef.merchant_id }
+          : { product_id: id };
+
+      void resolveProductCandidates({
+        ...offersRef,
         limit: 10,
         include_offers: true,
-        // Offers resolution can involve backend group lookups + per-merchant detail fetches.
-        // Keep it best-effort and non-blocking, but allow a longer timeout than the fast-path.
         timeout_ms: offersResolveTimeoutMs,
       })
         .then((resolved) => {
-          if (!resolved) return null;
+          if (!resolved || cancelled) return;
           const offers = Array.isArray(resolved?.offers) ? resolved.offers : [];
           const offersCount =
             typeof resolved?.offers_count === 'number'
@@ -208,7 +451,9 @@ export default function ProductDetailPage({ params }: Props) {
           });
 
           resolvedOffersPayload = buildResolvedOffersPayload(resolved);
-          const canonicalRef =
+          offersUpdate(resolvedOffersPayload);
+
+          const canonical =
             resolved?.canonical_product_ref &&
             typeof resolved.canonical_product_ref === 'object' &&
             resolved.canonical_product_ref.merchant_id &&
@@ -219,238 +464,78 @@ export default function ProductDetailPage({ params }: Props) {
                 }
               : null;
 
-          offersUpdate(resolvedOffersPayload);
-
-          if (
-            !resolvedCanonicalRef &&
-            canonicalRef &&
-            loadedProductRef &&
-            (loadedProductRef.merchant_id !== canonicalRef.merchant_id ||
-              loadedProductRef.product_id !== canonicalRef.product_id)
-          ) {
-            void (async () => {
-              try {
-                const canonicalData = await getProductDetail(
-                  canonicalRef.product_id,
-                  canonicalRef.merchant_id,
-                  {
-                    useConfiguredMerchantId: false,
-                    allowBroadScan: false,
-                    throwOnError: true,
-                  },
-                );
-                if (!canonicalData || cancelled) return;
-                setProduct({
-                  ...canonicalData,
-                  ...(resolvedOffersPayload ? { ...resolvedOffersPayload } : {}),
-                  raw_detail: {
-                    ...(canonicalData as any).raw_detail,
-                    ...(resolvedOffersPayload ? { ...resolvedOffersPayload } : {}),
-                    ...(groupResolved?.product_group_id
-                      ? { product_group_id: groupResolved.product_group_id }
-                      : {}),
-                    canonical_product_ref: canonicalRef,
-                    entry_product_ref: {
-                      product_id: id,
-                      ...(explicitMerchantId ? { merchant_id: explicitMerchantId } : {}),
-                    },
-                  },
-                });
-              } catch {
-                // ignore
-              }
-            })();
+          if (canonical) {
+            resolvedCanonicalRef = resolvedCanonicalRef || canonical;
+            const currentRef = loadedProductRef;
+            if (
+              currentRef &&
+              (currentRef.merchant_id !== canonical.merchant_id ||
+                currentRef.product_id !== canonical.product_id)
+            ) {
+              applyCanonicalDetail({ canonicalRef: canonical, group: groupResolved });
+            }
           }
-
-          return { offersPayload: resolvedOffersPayload, canonicalRef };
         })
         .catch(() => null);
 
-      groupResolved = await groupResolvePromise;
-      if (cancelled) return;
-      if (
-        groupResolved?.canonical_product_ref?.merchant_id &&
-        groupResolved?.canonical_product_ref?.product_id
-      ) {
-        resolvedCanonicalRef = {
-          merchant_id: String(groupResolved.canonical_product_ref.merchant_id),
-          product_id: String(groupResolved.canonical_product_ref.product_id),
-        };
-      }
+      void groupResolvePromise;
 
-      if (resolvedCanonicalRef) {
-        resolvedMerchantId = resolvedCanonicalRef.merchant_id;
-        setLoadingStage('detail');
-      }
+      const isExternalProduct =
+        Boolean((data as any).external_redirect_url) ||
+        String((data as any).product_type || '').toLowerCase() === 'external' ||
+        String((data as any).platform || '').toLowerCase() === 'external' ||
+        (data as any).source === 'external_seed';
 
-      try {
-        const cacheToRead = resolvedCanonicalRef
-          ? `pdp-cache:${resolvedCanonicalRef.merchant_id}:${resolvedCanonicalRef.product_id}`
-          : null;
-        if (cacheToRead && typeof window !== 'undefined') {
-          const cached = window.sessionStorage.getItem(cacheToRead);
-          if (cached) {
-            const parsed = JSON.parse(cached) as ProductResponse;
-            if (!cancelled) {
-              setProduct(parsed);
-              setLoading(false);
-              setLoadingStage(null);
-              setRecommendationsLoading(false);
-            }
-          }
-        }
-      } catch {
-        // ignore cache failures
-      }
-      try {
-        setLoadingStage('detail');
-        const data = resolvedCanonicalRef
-          ? await getProductDetail(resolvedCanonicalRef.product_id, resolvedCanonicalRef.merchant_id, {
-              useConfiguredMerchantId: false,
-              allowBroadScan: false,
-              throwOnError: true,
-            })
-          : await getProductDetail(id, resolvedMerchantId || undefined, {
-              useConfiguredMerchantId: Boolean(resolvedMerchantId),
-              allowBroadScan: Boolean(merchantIdParam),
-              timeout_ms: resolvedMerchantId ? undefined : fastTimeoutMs,
-              throwOnError: true,
-            });
-        if (!data) {
-          if (!cancelled) {
-            setProduct(null);
-            setError('Product not found');
-            setSellerCandidates(null);
-            setLoading(false);
-            setLoadingStage(null);
-            setRecommendationsLoading(false);
-          }
-          return;
-        }
-        if (cancelled) return;
-
-        loadedProductRef = {
-          merchant_id: String(data.merchant_id || ''),
-          product_id: String(data.product_id || ''),
-        };
-
-        const baseRawDetail = {
-          ...(data as any).raw_detail,
-          ...(groupResolved?.product_group_id ? { product_group_id: groupResolved.product_group_id } : {}),
-          ...(resolvedCanonicalRef ? { canonical_product_ref: resolvedCanonicalRef } : {}),
-          entry_product_ref: {
-            product_id: id,
-            ...(explicitMerchantId ? { merchant_id: explicitMerchantId } : {}),
-          },
-        };
-
-        const merged: ProductResponse = {
-          ...data,
-          ...(resolvedOffersPayload ? { ...resolvedOffersPayload } : {}),
-          raw_detail: {
-            ...baseRawDetail,
-            ...(resolvedOffersPayload ? { ...resolvedOffersPayload } : {}),
-          },
-        };
-
-        setProduct(merged);
-        setLoading(false);
-        setLoadingStage(null);
-        const resolvedFromData = String(data.merchant_id || '').trim() || null;
-        if (resolvedFromData) {
-          lastLoadedKeyRef.current = `${resolvedFromData}:${data.product_id}`;
-        }
-        try {
-          const resolvedCacheKey =
-            resolvedFromData && data.product_id
-              ? `pdp-cache:${resolvedFromData}:${data.product_id}`
-              : null;
-          if (resolvedCacheKey && typeof window !== 'undefined') {
-            window.sessionStorage.setItem(resolvedCacheKey, JSON.stringify(merged));
-          }
-        } catch {
-          // ignore cache failures
-        }
-        void offersResolvePromise;
-
-        const isExternalProduct =
-          Boolean((data as any).external_redirect_url) ||
-          String((data as any).product_type || '').toLowerCase() === 'external' ||
-          String((data as any).platform || '').toLowerCase() === 'external' ||
-          (data as any).source === 'external_seed';
-
-        const relatedKey = `${resolvedFromData || 'unknown'}:${data.product_id || id}`;
-        if (lastRelatedKeyRef.current !== relatedKey) {
-          lastRelatedKeyRef.current = relatedKey;
-          setRecommendationsLoading(true);
-          const scheduleRelated = () => {
-            void (async () => {
-              try {
-                const all = await getAllProducts(6, isExternalProduct ? undefined : data.merchant_id);
-                if (!cancelled) {
-                  setRelatedProducts(all.filter((p) => p.product_id !== data.product_id));
-                }
-              } catch (relError) {
-                // eslint-disable-next-line no-console
-                console.error('Failed to load related products:', relError);
-              } finally {
-                if (!cancelled) {
-                  setRecommendationsLoading(false);
-                }
+      const relatedKey = `${resolvedFromData || 'unknown'}:${data.product_id || id}`;
+      if (lastRelatedKeyRef.current !== relatedKey) {
+        lastRelatedKeyRef.current = relatedKey;
+        setRecommendationsLoading(true);
+        const scheduleRelated = () => {
+          void (async () => {
+            try {
+              const all = await getAllProducts(6, isExternalProduct ? undefined : data.merchant_id);
+              if (!cancelled) {
+                setRelatedProducts(all.filter((p) => p.product_id !== data.product_id));
               }
-            })();
-          };
+            } catch (relError) {
+              // eslint-disable-next-line no-console
+              console.error('Failed to load related products:', relError);
+            } finally {
+              if (!cancelled) {
+                setRecommendationsLoading(false);
+              }
+            }
+          })();
+        };
 
-          if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
-            (window as any).requestIdleCallback(scheduleRelated, { timeout: 1200 });
-          } else {
-            setTimeout(scheduleRelated, 400);
-          }
+        if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
+          (window as any).requestIdleCallback(scheduleRelated, { timeout: 1200 });
         } else {
-          setRecommendationsLoading(false);
+          setTimeout(scheduleRelated, 400);
         }
+      } else {
+        setRecommendationsLoading(false);
+      }
 
-        try {
-          const history = JSON.parse(localStorage.getItem('browse_history') || '[]');
-          const filtered = history.filter((item: any) => item.product_id !== data.product_id);
-          const newHistory = [
-            {
-              product_id: data.product_id,
-              merchant_id: data.merchant_id,
-              title: data.title,
-              price: data.price,
-              image: data.image_url || '/placeholder.svg',
-              description: data.description,
-              timestamp: Date.now(),
-            },
-            ...filtered,
-          ].slice(0, 50);
-          localStorage.setItem('browse_history', JSON.stringify(newHistory));
-        } catch (browseError) {
-          // eslint-disable-next-line no-console
-          console.error('Failed to save browse history:', browseError);
-        }
-      } catch (err) {
-        if ((err as any)?.code === 'AMBIGUOUS_PRODUCT_ID' && Array.isArray((err as any)?.candidates)) {
-          if (!cancelled) {
-            setProduct(null);
-            setRelatedProducts([]);
-            setError(null);
-            setSellerCandidates((err as any).candidates as ProductResponse[]);
-            setLoading(false);
-            setLoadingStage(null);
-            setRecommendationsLoading(false);
-          }
-          return;
-        }
-        if (!cancelled) {
-          setError((err as Error).message || 'Failed to load product');
-          setProduct(null);
-          setSellerCandidates(null);
-          setLoading(false);
-          setLoadingStage(null);
-          setRecommendationsLoading(false);
-        }
+      try {
+        const history = JSON.parse(localStorage.getItem('browse_history') || '[]');
+        const filtered = history.filter((item: any) => item.product_id !== data.product_id);
+        const newHistory = [
+          {
+            product_id: data.product_id,
+            merchant_id: data.merchant_id,
+            title: data.title,
+            price: data.price,
+            image: data.image_url || '/placeholder.svg',
+            description: data.description,
+            timestamp: Date.now(),
+          },
+          ...filtered,
+        ].slice(0, 50);
+        localStorage.setItem('browse_history', JSON.stringify(newHistory));
+      } catch (browseError) {
+        // eslint-disable-next-line no-console
+        console.error('Failed to save browse history:', browseError);
       }
     };
 
