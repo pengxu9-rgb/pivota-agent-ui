@@ -37,12 +37,17 @@ export function BeautyReviewsSection({
 }) {
   const hasSummary = data.review_count > 0 && data.rating > 0;
   const ratingValue = data.scale ? (data.rating / data.scale) * 5 : 0;
-  const distribution = data.star_distribution?.map((item) => {
-    const percent =
-      item.percent ??
-      (item.count && data.review_count ? item.count / data.review_count : 0);
-    return { ...item, percent };
-  });
+  const distribution = data.star_distribution
+    ?.map((item) => {
+      const computed =
+        item.percent ??
+        (item.count && data.review_count ? item.count / data.review_count : 0);
+      const percent = Number.isFinite(computed)
+        ? Math.max(0, Math.min(1, computed))
+        : 0;
+      return { ...item, percent };
+    })
+    .sort((a, b) => (b.stars || 0) - (a.stars || 0));
 
   return (
     <div className="py-4">

@@ -451,6 +451,16 @@ function buildDetailSections(product: ProductResponse, raw: any): DetailSection[
 }
 
 function buildReviewsPreview(product: ProductResponse, raw: any): ReviewsPreviewData | null {
+  const normalizeStarDistributionPercent = (value: unknown): number | undefined => {
+    const rawNum = typeof value === 'string' ? Number(value.replace('%', '').trim()) : Number(value);
+    if (!Number.isFinite(rawNum)) return undefined;
+
+    // Upstreams may return percent as 0-1 ratio or 0-100 percentage. Normalize to 0-1.
+    const normalized = rawNum > 1 ? rawNum / 100 : rawNum;
+    if (!Number.isFinite(normalized)) return undefined;
+    return Math.max(0, Math.min(1, normalized));
+  };
+
   const summary =
     raw?.review_summary ||
     raw?.reviews_summary ||
@@ -497,8 +507,8 @@ function buildReviewsPreview(product: ProductResponse, raw: any): ReviewsPreview
     star_distribution: Array.isArray(summary.star_distribution)
       ? summary.star_distribution.map((item: any) => ({
           stars: Number(item.stars || item.rating || 0) || 0,
-          count: item.count ?? item.total,
-          percent: item.percent ?? item.ratio,
+          count: Number(item.count ?? item.total ?? 0) || 0,
+          percent: normalizeStarDistributionPercent(item.percent ?? item.ratio),
         }))
       : undefined,
     dimension_ratings: Array.isArray(summary.dimension_ratings)
