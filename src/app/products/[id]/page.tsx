@@ -70,6 +70,7 @@ export default function ProductDetailPage({ params }: Props) {
     const isNumericProductId = /^\d+$/.test(id);
     const fastTimeoutMs = 2500;
     const offersResolveTimeoutMs = 12000;
+    const sellerResolveTimeoutMs = isNumericProductId ? fastTimeoutMs : offersResolveTimeoutMs;
 
     const loadProduct = async () => {
       const explicitMerchantId = merchantIdParam ? String(merchantIdParam).trim() : null;
@@ -152,7 +153,7 @@ export default function ProductDetailPage({ params }: Props) {
             product_id: id,
             limit: 10,
             include_offers: true,
-            timeout_ms: fastTimeoutMs,
+            timeout_ms: sellerResolveTimeoutMs,
           });
           const offers = Array.isArray(resolved?.offers) ? resolved!.offers! : [];
           const offersCount =

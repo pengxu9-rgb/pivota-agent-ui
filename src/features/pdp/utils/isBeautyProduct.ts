@@ -44,11 +44,6 @@ export function isBeautyProduct(product: Product): boolean {
   const department = product.department ? String(product.department).toLowerCase() : '';
   const combined = `${category} ${title} ${subtitle} ${brand} ${tags} ${department}`;
 
-  // Strict signal: beauty_meta is only populated for beauty PDP experiences.
-  if (product.beauty_meta && Object.values(product.beauty_meta).some((v) => Array.isArray(v) && v.length > 0)) {
-    return true;
-  }
-
   const normalizedCombined = normalizeText(combined);
   const tokens = new Set(normalizedCombined.split(' ').filter(Boolean));
 
