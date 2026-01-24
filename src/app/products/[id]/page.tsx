@@ -144,7 +144,6 @@ export default function ProductDetailPage({ params }: Props) {
       let resolvedCanonicalRef: { merchant_id: string; product_id: string } | null = null;
       let resolvedOffersPayload: any = null;
       let loadedProductRef: { merchant_id: string; product_id: string } | null = null;
-      let canonicalDetailInFlight = false;
 
       const buildResolvedOffersPayload = (resolved: any) => {
         if (!resolved || typeof resolved !== 'object') return null;
@@ -180,73 +179,6 @@ export default function ProductDetailPage({ params }: Props) {
         });
       };
 
-      const applyCanonicalDetail = (args: {
-        canonicalRef: { merchant_id: string; product_id: string };
-        group: any;
-      }) => {
-        const canonicalRef = args.canonicalRef;
-        const group = args.group;
-        if (canonicalDetailInFlight) return;
-        canonicalDetailInFlight = true;
-
-        void (async () => {
-          try {
-            const canonicalData = await getProductDetail(
-              canonicalRef.product_id,
-              canonicalRef.merchant_id,
-              {
-                useConfiguredMerchantId: false,
-                allowBroadScan: false,
-                timeout_ms: detailTimeoutMs,
-                throwOnError: true,
-              },
-            );
-            if (!canonicalData || cancelled) return;
-
-            loadedProductRef = {
-              merchant_id: String(canonicalData.merchant_id || canonicalRef.merchant_id),
-              product_id: String(canonicalData.product_id || canonicalRef.product_id),
-            };
-
-            setProduct({
-              ...canonicalData,
-              ...(resolvedOffersPayload ? { ...resolvedOffersPayload } : {}),
-              raw_detail: {
-                ...(canonicalData as any).raw_detail,
-                ...(resolvedOffersPayload ? { ...resolvedOffersPayload } : {}),
-                ...(group?.product_group_id ? { product_group_id: group.product_group_id } : {}),
-                canonical_product_ref: canonicalRef,
-                entry_product_ref: {
-                  product_id: id,
-                  ...(explicitMerchantId ? { merchant_id: explicitMerchantId } : {}),
-                },
-              },
-            });
-          } catch {
-            // ignore
-          } finally {
-            canonicalDetailInFlight = false;
-          }
-        })();
-      };
-
-      const readSessionCache = (key: string | null) => {
-        if (!key || typeof window === 'undefined') return;
-        try {
-          const cached = window.sessionStorage.getItem(key);
-          if (!cached) return;
-          const parsed = JSON.parse(cached) as ProductResponse;
-          if (!cancelled) {
-            setProduct(parsed);
-            setLoading(false);
-            setLoadingStage(null);
-            setRecommendationsLoading(false);
-          }
-        } catch {
-          // ignore cache failures
-        }
-      };
-
       const writeSessionCache = (key: string | null, value: ProductResponse) => {
         if (!key || typeof window === 'undefined') return;
         try {
@@ -260,46 +192,34 @@ export default function ProductDetailPage({ params }: Props) {
         product_id: id,
         ...(explicitMerchantId ? { merchant_id: explicitMerchantId } : {}),
         timeout_ms: groupResolveTimeoutMs,
-      })
-        .then((gr) => {
-          if (!gr || cancelled) return null;
-          groupResolved = gr;
-          const canonical =
-            gr?.canonical_product_ref?.merchant_id && gr?.canonical_product_ref?.product_id
-              ? {
-                  merchant_id: String(gr.canonical_product_ref.merchant_id),
-                  product_id: String(gr.canonical_product_ref.product_id),
-                }
-              : null;
-
-          if (canonical) {
-            resolvedCanonicalRef = canonical;
-            if (!explicitMerchantId) {
-              setLoadingStage('detail');
-            }
-            if (
-              loadedProductRef &&
-              (loadedProductRef.merchant_id !== canonical.merchant_id ||
-                loadedProductRef.product_id !== canonical.product_id)
-            ) {
-              applyCanonicalDetail({ canonicalRef: canonical, group: gr });
-            }
-          }
-
-          return gr;
-        })
-        .catch(() => null);
-
-      if (explicitMerchantId) {
-        readSessionCache(`pdp-cache:${explicitMerchantId}:${id}`);
-      }
+      }).catch(() => null);
 
       let data: ProductResponse | null = null;
       let detailError: unknown = null;
+      let targetProductId: string = id;
+      let targetMerchantId: string | null = explicitMerchantId;
+
+      if (explicitMerchantId) {
+        const gr = await groupResolvePromise;
+        if (cancelled) return;
+        groupResolved = gr;
+
+        if (
+          gr?.canonical_product_ref?.merchant_id &&
+          gr?.canonical_product_ref?.product_id
+        ) {
+          resolvedCanonicalRef = {
+            merchant_id: String(gr.canonical_product_ref.merchant_id),
+            product_id: String(gr.canonical_product_ref.product_id),
+          };
+          targetMerchantId = resolvedCanonicalRef.merchant_id;
+          targetProductId = resolvedCanonicalRef.product_id;
+        }
+      }
 
       try {
         data = explicitMerchantId
-          ? await getProductDetail(id, explicitMerchantId, {
+          ? await getProductDetail(targetProductId, targetMerchantId || undefined, {
               useConfiguredMerchantId: false,
               allowBroadScan: false,
               timeout_ms: detailTimeoutMs,
@@ -318,6 +238,7 @@ export default function ProductDetailPage({ params }: Props) {
       if (!explicitMerchantId && !data) {
         const gr = await groupResolvePromise;
         if (cancelled) return;
+        groupResolved = gr;
         const canonical =
           gr?.canonical_product_ref?.merchant_id && gr?.canonical_product_ref?.product_id
             ? {
@@ -329,8 +250,6 @@ export default function ProductDetailPage({ params }: Props) {
         if (canonical) {
           resolvedCanonicalRef = canonical;
           setLoadingStage('detail');
-
-          readSessionCache(`pdp-cache:${canonical.merchant_id}:${canonical.product_id}`);
 
           try {
             data = await getProductDetail(canonical.product_id, canonical.merchant_id, {
@@ -416,16 +335,13 @@ export default function ProductDetailPage({ params }: Props) {
         merged,
       );
 
-      if (
-        resolvedCanonicalRef &&
-        (loadedProductRef.merchant_id !== resolvedCanonicalRef.merchant_id ||
-          loadedProductRef.product_id !== resolvedCanonicalRef.product_id)
-      ) {
-        applyCanonicalDetail({ canonicalRef: resolvedCanonicalRef, group: groupResolved });
-      }
-
       const offersRef = explicitMerchantId
-        ? { product_id: id, merchant_id: explicitMerchantId }
+        ? resolvedCanonicalRef
+          ? {
+              product_id: resolvedCanonicalRef.product_id,
+              merchant_id: resolvedCanonicalRef.merchant_id,
+            }
+          : { product_id: id, merchant_id: explicitMerchantId }
         : loadedProductRef?.merchant_id
           ? { product_id: loadedProductRef.product_id, merchant_id: loadedProductRef.merchant_id }
           : { product_id: id };
@@ -466,14 +382,6 @@ export default function ProductDetailPage({ params }: Props) {
 
           if (canonical) {
             resolvedCanonicalRef = resolvedCanonicalRef || canonical;
-            const currentRef = loadedProductRef;
-            if (
-              currentRef &&
-              (currentRef.merchant_id !== canonical.merchant_id ||
-                currentRef.product_id !== canonical.product_id)
-            ) {
-              applyCanonicalDetail({ canonicalRef: canonical, group: groupResolved });
-            }
           }
         })
         .catch(() => null);
