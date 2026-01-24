@@ -224,12 +224,14 @@ export default function ProductDetailPage({ params }: Props) {
               allowBroadScan: false,
               timeout_ms: detailTimeoutMs,
               throwOnError: true,
+              includeReviewSummary: true,
             })
           : await getProductDetail(id, undefined, {
               useConfiguredMerchantId: true,
               allowBroadScan: false,
               timeout_ms: quickAttemptTimeoutMs,
               throwOnError: true,
+              includeReviewSummary: true,
             });
       } catch (err) {
         detailError = err;
@@ -257,6 +259,7 @@ export default function ProductDetailPage({ params }: Props) {
               allowBroadScan: false,
               timeout_ms: detailTimeoutMs,
               throwOnError: true,
+              includeReviewSummary: true,
             });
           } catch (err) {
             detailError = err;
