@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, Suspense, useRef } from 'react'
+import Image from 'next/image'
 import { useRouter, useSearchParams } from 'next/navigation'
 import OrderFlow from '@/components/order/OrderFlow'
 import { ArrowLeft } from 'lucide-react'
@@ -308,16 +309,20 @@ function OrderContent() {
               aria-label="Back to chat"
             >
               <ArrowLeft className="w-5 h-5" />
-            </button>
-            <div className="flex items-center gap-2">
-              <div className="w-9 h-9 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center">
-                <span className="text-white font-bold text-base">P</span>
-              </div>
-              <h1 className="text-xl md:text-2xl font-bold text-gray-800">Pivota Checkout</h1>
-            </div>
-          </div>
-        </div>
-      </header>
+	            </button>
+	            <div className="flex items-center gap-2">
+	              <Image
+	                src="/pivota-logo-pink.png"
+	                alt="Pivota"
+	                width={36}
+	                height={36}
+	                className="w-9 h-9 rounded-lg"
+	              />
+	              <h1 className="text-xl md:text-2xl font-bold text-gray-800">Pivota Checkout</h1>
+	            </div>
+	          </div>
+	        </div>
+	      </header>
 
       <div className="py-4 md:py-6">
         {ucpFailure && (returnUrl || ucpCheckoutSessionId) && (

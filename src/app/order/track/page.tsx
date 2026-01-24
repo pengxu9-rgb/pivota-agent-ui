@@ -1,6 +1,7 @@
 'use client'
 
 import { Suspense, useEffect, useMemo, useState } from 'react'
+import Image from 'next/image'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Package, Truck, CheckCircle, Clock, Mail } from 'lucide-react'
@@ -164,17 +165,21 @@ function TrackContent() {
   return (
     <main className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
       <header className="bg-white shadow-sm border-b sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-4 py-4">
-          <div className="flex items-center gap-2">
-            <Link href="/">
-              <div className="w-10 h-10 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center hover:opacity-90">
-                <span className="text-white font-bold text-lg">P</span>
-              </div>
-            </Link>
-            <h1 className="text-2xl font-bold text-gray-800">Track Your Order</h1>
-          </div>
-        </div>
-      </header>
+	        <div className="max-w-7xl mx-auto px-4 py-4">
+	          <div className="flex items-center gap-2">
+	            <Link href="/">
+	              <Image
+	                src="/pivota-logo-pink.png"
+	                alt="Pivota"
+	                width={40}
+	                height={40}
+	                className="w-10 h-10 rounded-lg hover:opacity-90"
+	              />
+	            </Link>
+	            <h1 className="text-2xl font-bold text-gray-800">Track Your Order</h1>
+	          </div>
+	        </div>
+	      </header>
 
       <div className="max-w-4xl mx-auto px-4 py-8 space-y-6">
         <div className="bg-white rounded-lg shadow-md p-6 space-y-4">
