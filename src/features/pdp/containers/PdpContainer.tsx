@@ -304,8 +304,10 @@ export function PdpContainer({
 
   const hasReviews = !!reviews;
   const hasRecommendations = !!recommendations?.items?.length;
-  const isRecommendationsLoading = payload.x_recommendations_state === 'loading';
-  const showRecommendationsSection = hasRecommendations || isRecommendationsLoading;
+  const recommendationsState = payload.x_recommendations_state;
+  const isRecommendationsLoading = recommendationsState === 'loading';
+  const showRecommendationsSection =
+    hasRecommendations || isRecommendationsLoading || recommendationsState === 'ready';
   const showShades = resolvedMode === 'beauty' && variants.length > 1;
   const showSizeGuide = resolvedMode === 'generic' && !!payload.product.size_guide;
   const showSizeHelper = useMemo(() => {

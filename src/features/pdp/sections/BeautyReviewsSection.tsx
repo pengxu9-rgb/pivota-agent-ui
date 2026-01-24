@@ -39,12 +39,12 @@ export function BeautyReviewsSection({
   const ratingValue = data.scale ? (data.rating / data.scale) * 5 : 0;
   const distribution = data.star_distribution
     ?.map((item) => {
-      const computed =
+      const raw =
         item.percent ??
         (item.count && data.review_count ? item.count / data.review_count : 0);
-      const percent = Number.isFinite(computed)
-        ? Math.max(0, Math.min(1, computed))
-        : 0;
+      const rawNum = Number(raw);
+      const normalized = Number.isFinite(rawNum) && rawNum > 1 ? rawNum / 100 : rawNum;
+      const percent = Number.isFinite(normalized) ? Math.max(0, Math.min(1, normalized)) : 0;
       return { ...item, percent };
     })
     .sort((a, b) => (b.stars || 0) - (a.stars || 0));

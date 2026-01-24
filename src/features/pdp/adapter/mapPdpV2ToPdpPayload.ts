@@ -84,6 +84,19 @@ export function mapPdpV2ToPdpPayload(response: GetPdpV2Response): PDPPayload | n
       title: 'Reviews',
       data: reviewsData,
     });
+  } else if (reviewsModule) {
+    // If the server returned the module but data is unavailable, keep a stable UI section.
+    next = upsertPayloadModule(next, {
+      module_id: 'reviews_preview',
+      type: 'reviews_preview',
+      priority: 50,
+      title: 'Reviews',
+      data: {
+        scale: 5,
+        rating: 0,
+        review_count: 0,
+      },
+    });
   }
 
   const similarModule = getModule(response, 'similar');
@@ -96,6 +109,9 @@ export function mapPdpV2ToPdpPayload(response: GetPdpV2Response): PDPPayload | n
       title: 'Similar',
       data: similarData,
     });
+    next.x_recommendations_state = 'ready';
+  } else if (similarModule) {
+    // The caller explicitly requested Similar; render an empty section instead of hiding it.
     next.x_recommendations_state = 'ready';
   }
 
