@@ -1189,7 +1189,7 @@ export async function getPdpV2(args: {
 
   const include =
     args.include == null
-      ? ['offers', 'reviews_preview', 'similar']
+      ? ['offers', 'reviews_preview']
       : args.include;
 
   const data = await callGatewayWithTimeout(
@@ -1517,6 +1517,7 @@ export interface AccountsUser {
   phone: string | null;
   primary_role: string;
   is_guest: boolean;
+  has_password?: boolean;
 }
 
 export interface Membership {
@@ -1556,6 +1557,23 @@ export async function accountsVerify(email: string, otp: string) {
   return callAccounts('/auth/verify', {
     method: 'POST',
     body: JSON.stringify({ channel: 'email', email, otp }),
+  });
+}
+
+export async function accountsLoginWithPassword(email: string, password: string) {
+  return callAccounts('/auth/password/login', {
+    method: 'POST',
+    body: JSON.stringify({ email, password }),
+  });
+}
+
+export async function accountsSetPassword(newPassword: string, currentPassword?: string) {
+  return callAccounts('/auth/password/set', {
+    method: 'POST',
+    body: JSON.stringify({
+      new_password: newPassword,
+      current_password: currentPassword || undefined,
+    }),
   });
 }
 

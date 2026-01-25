@@ -213,12 +213,20 @@ export default function HomePage() {
           <div className="flex items-center gap-3">
             {user ? (
               <>
-                <div className="hidden sm:flex items-center gap-2 px-3 py-1 rounded-full border border-border bg-card/60">
+                <Link
+                  href="/account"
+                  className="hidden sm:flex items-center gap-2 px-3 py-1 rounded-full border border-border bg-card/60 hover:bg-card/80 transition-colors"
+                >
                   <User className="h-4 w-4 text-muted-foreground" />
                   <span className="text-sm text-muted-foreground truncate max-w-[160px]">
                     {user.email || user.id}
                   </span>
-                </div>
+                </Link>
+                <Link href="/account" className="sm:hidden">
+                  <Button variant="ghost" size="icon" aria-label="Account">
+                    <User className="h-5 w-5 text-muted-foreground" />
+                  </Button>
+                </Link>
               </>
             ) : (
               <>
