@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { ChevronLeft, Share2, Star } from 'lucide-react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import type {
   MediaGalleryData,
@@ -15,6 +16,8 @@ import type {
   ReviewsPreviewData,
   Variant,
 } from '@/features/pdp/types';
+import type { UgcCapabilities } from '@/lib/api';
+import { postQuestion } from '@/lib/api';
 import { isBeautyProduct } from '@/features/pdp/utils/isBeautyProduct';
 import {
   collectColorOptions,
@@ -45,6 +48,11 @@ import { GenericSizeGuide } from '@/features/pdp/sections/GenericSizeGuide';
 import { GenericDetailsSection } from '@/features/pdp/sections/GenericDetailsSection';
 import { OfferSheet } from '@/features/pdp/offers/OfferSheet';
 import { cn } from '@/lib/utils';
+
+function nonEmptyText(value: unknown, fallback: string): string {
+  const text = String(value ?? '').trim();
+  return text ? text : fallback;
+}
 
 function getModuleData<T>(payload: PDPPayload, type: string): T | null {
   const m = payload.modules.find((x) => x.type === type);
@@ -83,6 +91,7 @@ export function PdpContainer({
   onBuyNow,
   onWriteReview,
   onSeeAllReviews,
+  ugcCapabilities,
 }: {
   payload: PDPPayload;
   initialQuantity?: number;
@@ -103,6 +112,7 @@ export function PdpContainer({
   }) => void;
   onWriteReview?: () => void;
   onSeeAllReviews?: () => void;
+  ugcCapabilities?: UgcCapabilities | null;
 }) {
   const [selectedVariantId, setSelectedVariantId] = useState(
     payload.product.default_variant_id || payload.product.variants?.[0]?.variant_id,
@@ -120,6 +130,9 @@ export function PdpContainer({
   const [mounted, setMounted] = useState(false);
   const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const router = useRouter();
+  const [questionOpen, setQuestionOpen] = useState(false);
+  const [questionText, setQuestionText] = useState('');
+  const [questionSubmitting, setQuestionSubmitting] = useState(false);
 
   const allowMockRecentPurchases =
     (payload.product.merchant_id || '') !== 'external_seed';
@@ -539,6 +552,149 @@ export function PdpContainer({
   }
   const showTrustBadges = resolvedMode === 'beauty' && trustBadges.length > 0;
 
+  const productId = String(payload.product.product_id || '').trim();
+  const productGroupId = String(payload.product_group_id || selectedOffer?.product_group_id || '').trim() || null;
+
+  const canUploadMedia = Boolean(ugcCapabilities?.canUploadMedia);
+  const canWriteReview = Boolean(ugcCapabilities?.canWriteReview);
+  const canAskQuestion = Boolean(ugcCapabilities?.canAskQuestion);
+  const uploadReason = ugcCapabilities?.reasons?.upload;
+  const reviewReason = ugcCapabilities?.reasons?.review;
+  const questionReason = ugcCapabilities?.reasons?.question;
+  const ugcUserState =
+    uploadReason === 'NOT_AUTHENTICATED' ||
+    reviewReason === 'NOT_AUTHENTICATED' ||
+    questionReason === 'NOT_AUTHENTICATED'
+      ? 'anonymous'
+      : reviewReason === 'ALREADY_REVIEWED'
+        ? 'already_reviewed'
+        : canUploadMedia || canWriteReview
+          ? 'purchaser'
+          : 'non_purchaser';
+
+  const requireLogin = (intent: 'upload' | 'review' | 'question') => {
+    const redirect =
+      typeof window !== 'undefined'
+        ? `${window.location.pathname}${window.location.search}`
+        : '/';
+    const label =
+      intent === 'upload'
+        ? 'share media'
+        : intent === 'review'
+          ? 'write a review'
+          : 'ask a question';
+    toast.message(`Please log in to ${label}.`);
+    router.push(`/login?redirect=${encodeURIComponent(redirect)}`);
+  };
+
+  const handleUploadMedia = () => {
+    pdpTracking.track('pdp_action_click', {
+      action_type: 'ugc_upload',
+      entry_point: 'station',
+      user_state: ugcUserState,
+      reason: uploadReason || null,
+    });
+    if (canUploadMedia) {
+      toast.message('Uploads are coming soon.');
+      return;
+    }
+    if (uploadReason === 'NOT_AUTHENTICATED') {
+      requireLogin('upload');
+      return;
+    }
+    toast.message('Purchase required to share media.');
+  };
+
+  const handleWriteReview = () => {
+    pdpTracking.track('pdp_action_click', {
+      action_type: 'open_embed',
+      target: 'write_review',
+      entry_point: 'station',
+      user_state: ugcUserState,
+      reason: reviewReason || null,
+    });
+    if (canWriteReview) {
+      if (onWriteReview) {
+        onWriteReview();
+      } else {
+        const params = new URLSearchParams();
+        params.set('product_id', productId);
+        if (payload.product.merchant_id) params.set('merchant_id', payload.product.merchant_id);
+        router.push(`/reviews/write?${params.toString()}`);
+      }
+      return;
+    }
+    if (reviewReason === 'NOT_AUTHENTICATED') {
+      requireLogin('review');
+      return;
+    }
+    if (reviewReason === 'ALREADY_REVIEWED') {
+      toast.message('You already reviewed this product.');
+      return;
+    }
+    toast.message('Only purchasers can write a review.');
+  };
+
+  const handleAskQuestion = () => {
+    pdpTracking.track('pdp_action_click', {
+      action_type: 'open_embed',
+      target: 'ask_question',
+      entry_point: 'station',
+      user_state: ugcUserState,
+      reason: questionReason || null,
+    });
+    if (canAskQuestion) {
+      setQuestionOpen(true);
+      return;
+    }
+    if (questionReason === 'NOT_AUTHENTICATED') {
+      requireLogin('question');
+      return;
+    }
+    if (questionReason === 'RATE_LIMITED') {
+      toast.message('Too many questions. Please try again in a minute.');
+      return;
+    }
+    requireLogin('question');
+  };
+
+  const submitQuestion = async () => {
+    if (questionSubmitting) return;
+    const question = questionText.trim();
+    if (!question) {
+      toast.message('Please enter a question.');
+      return;
+    }
+    if (!productId) {
+      toast.error('Missing product id.');
+      return;
+    }
+
+    setQuestionSubmitting(true);
+    try {
+      await postQuestion({
+        productId,
+        ...(productGroupId ? { productGroupId } : {}),
+        question,
+      });
+      toast.success('Question submitted.');
+      setQuestionText('');
+      setQuestionOpen(false);
+    } catch (err: any) {
+      if (err?.code === 'NOT_AUTHENTICATED' || err?.status === 401) {
+        requireLogin('question');
+        return;
+      }
+      if (err?.code === 'RATE_LIMITED' || err?.status === 429) {
+        toast.error('Too many questions. Please try again in a minute.');
+        return;
+      }
+      toast.error(err?.message || 'Failed to submit question.');
+    } finally {
+      setQuestionSubmitting(false);
+    }
+  };
+
   return (
     <div className="relative min-h-screen bg-background pb-[calc(120px+env(safe-area-inset-bottom,0px))] lovable-pdp">
       <div
@@ -888,7 +1044,13 @@ export function PdpContainer({
                 items={payload.product.recent_purchases || []}
                 showEmpty={allowMockRecentPurchases}
               />
-              <BeautyUgcGallery items={ugcItems} showEmpty />
+              <BeautyUgcGallery
+                items={ugcItems}
+                showEmpty
+                ctaLabel="Share yours +"
+                ctaEnabled={canUploadMedia}
+                onCtaClick={handleUploadMedia}
+              />
             </>
           ) : resolvedMode === 'generic' ? (
             <>
@@ -896,7 +1058,13 @@ export function PdpContainer({
                 items={payload.product.recent_purchases || []}
                 showEmpty={allowMockRecentPurchases}
               />
-              <GenericStyleGallery items={ugcItems} showEmpty />
+              <GenericStyleGallery
+                items={ugcItems}
+                showEmpty
+                ctaLabel="Share yours +"
+                ctaEnabled={canUploadMedia}
+                onCtaClick={handleUploadMedia}
+              />
               {showSizeHelper ? <GenericSizeHelper /> : null}
             </>
           ) : null}
@@ -910,29 +1078,32 @@ export function PdpContainer({
             className="border-t border-muted/60"
             style={{ scrollMarginTop }}
           >
-            <BeautyReviewsSection
-              data={reviews as ReviewsPreviewData}
-              brandName={payload.product.brand?.name}
-              showEmpty
-              onWriteReview={
-                onWriteReview
-                  ? () => {
-                      pdpTracking.track('pdp_action_click', { action_type: 'open_embed', target: 'write_review' });
-                      onWriteReview();
-                    }
-                  : undefined
-              }
-              onSeeAll={
-                onSeeAllReviews
+              <BeautyReviewsSection
+                data={reviews as ReviewsPreviewData}
+                brandName={payload.product.brand?.name}
+                showEmpty
+                onWriteReview={() => {
+                  handleWriteReview();
+                }}
+                writeReviewLabel={nonEmptyText(reviews?.entry_points?.write_review?.label, 'Write a review')}
+                writeReviewEnabled={canWriteReview}
+                onSeeAll={
+                  onSeeAllReviews
                   ? () => {
                       pdpTracking.track('pdp_action_click', { action_type: 'open_embed', target: 'open_reviews' });
                       onSeeAllReviews();
                     }
                   : undefined
               }
-            />
-          </div>
-        ) : null}
+                openReviewsLabel={nonEmptyText(reviews?.entry_points?.open_reviews?.label, 'View all reviews')}
+                onAskQuestion={() => {
+                  handleAskQuestion();
+                }}
+                askQuestionLabel="Ask a question"
+                askQuestionEnabled={canAskQuestion}
+              />
+            </div>
+          ) : null}
 
         {showShades ? (
           <div
@@ -951,6 +1122,9 @@ export function PdpContainer({
                 mediaItems={media?.items || []}
                 brandName={payload.product.brand?.name}
                 showEmpty
+                shareCtaLabel="Share yours +"
+                shareCtaEnabled={canUploadMedia}
+                onShareCtaClick={handleUploadMedia}
               />
             ) : (
               <div className="px-4 py-4">
@@ -1135,6 +1309,52 @@ export function PdpContainer({
         activeIndex={activeMediaIndex}
         onSelect={(index) => setActiveMediaIndex(index)}
       />
+      {questionOpen ? (
+        <div className="fixed inset-0 z-[2147483647] flex items-end justify-center bg-black/40 px-3 py-6">
+          <div className="w-full max-w-md rounded-2xl bg-white p-4 shadow-xl">
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-semibold">Ask a question</h3>
+              <button
+                type="button"
+                className="h-8 w-8 rounded-full border border-border text-muted-foreground"
+                onClick={() => {
+                  if (!questionSubmitting) setQuestionOpen(false);
+                }}
+                aria-label="Close"
+              >
+                ×
+              </button>
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Ask about sizing, materials, shipping, or anything else.
+            </p>
+            <textarea
+              className="mt-3 w-full min-h-[120px] rounded-xl border border-border bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--focus-ring)]"
+              placeholder="Type your question…"
+              value={questionText}
+              onChange={(e) => setQuestionText(e.target.value)}
+              disabled={questionSubmitting}
+            />
+            <div className="mt-3 flex gap-2">
+              <Button
+                variant="outline"
+                className="flex-1 rounded-xl"
+                disabled={questionSubmitting}
+                onClick={() => setQuestionOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                className="flex-1 rounded-xl"
+                disabled={questionSubmitting}
+                onClick={submitQuestion}
+              >
+                {questionSubmitting ? 'Submitting…' : 'Submit'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
       <BeautyVariantSheet
         open={resolvedMode === 'beauty' && showShadeSheet}
         onClose={() => setShowShadeSheet(false)}

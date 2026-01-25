@@ -4,11 +4,14 @@ import { useEffect, useMemo, useState, useRef, use } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 import { useCartStore } from '@/store/cartStore';
+import { useAuthStore } from '@/store/authStore';
 import {
   getPdpV2,
+  getPdpV2Personalization,
   getProductDetail,
   resolveProductGroup,
   type ProductResponse,
+  type UgcCapabilities,
 } from '@/lib/api';
 import { mapToPdpPayload } from '@/features/pdp/adapter/mapToPdpPayload';
 import { mapPdpV2ToPdpPayload } from '@/features/pdp/adapter/mapPdpV2ToPdpPayload';
@@ -105,6 +108,7 @@ export default function ProductDetailPage({ params }: Props) {
   const merchantIdParam = searchParams.get('merchant_id') || undefined;
   const pdpOverride = (searchParams.get('pdp') || '').toLowerCase();
   const router = useRouter();
+  const user = useAuthStore((s) => s.user);
 
   const [pdpPayload, setPdpPayload] = useState<PDPPayload | null>(null);
   const [sellerCandidates, setSellerCandidates] = useState<ProductResponse[] | null>(null);
@@ -112,6 +116,16 @@ export default function ProductDetailPage({ params }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const offerProductDetailCacheRef = useRef<Map<string, ProductResponse>>(new Map());
+  const [ugcCapabilities, setUgcCapabilities] = useState<UgcCapabilities | null>({
+    canUploadMedia: false,
+    canWriteReview: false,
+    canAskQuestion: false,
+    reasons: {
+      upload: 'NOT_AUTHENTICATED',
+      review: 'NOT_AUTHENTICATED',
+      question: 'NOT_AUTHENTICATED',
+    },
+  });
 
   const { addItem, open } = useCartStore();
 
@@ -217,6 +231,63 @@ export default function ProductDetailPage({ params }: Props) {
       cancelled = true;
     };
   }, [id, merchantIdParam, reloadKey]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const productId = String(pdpPayload?.product?.product_id || '').trim();
+    const productGroupId = String(pdpPayload?.product_group_id || '').trim() || null;
+
+    if (!productId) return;
+
+    if (!user) {
+      setUgcCapabilities({
+        canUploadMedia: false,
+        canWriteReview: false,
+        canAskQuestion: false,
+        reasons: {
+          upload: 'NOT_AUTHENTICATED',
+          review: 'NOT_AUTHENTICATED',
+          question: 'NOT_AUTHENTICATED',
+        },
+      });
+      return;
+    }
+
+    // Safe optimistic default while personalization is loading.
+    setUgcCapabilities({
+      canUploadMedia: false,
+      canWriteReview: false,
+      canAskQuestion: true,
+      reasons: {
+        upload: 'NOT_PURCHASER',
+        review: 'NOT_PURCHASER',
+      },
+    });
+
+    (async () => {
+      try {
+        const res = await getPdpV2Personalization({
+          productId,
+          ...(productGroupId ? { productGroupId } : {}),
+        });
+        if (cancelled) return;
+        const caps = res?.ugcCapabilities;
+        if (!caps || typeof caps !== 'object') return;
+        setUgcCapabilities({
+          canUploadMedia: Boolean(caps.canUploadMedia),
+          canWriteReview: Boolean(caps.canWriteReview),
+          canAskQuestion: Boolean(caps.canAskQuestion),
+          reasons: caps.reasons || {},
+        });
+      } catch {
+        // Keep optimistic defaults.
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [pdpPayload?.product?.product_id, pdpPayload?.product_group_id, user?.id]);
 
   useEffect(() => {
     if (!sellerCandidates?.length) return;
@@ -610,6 +681,7 @@ export default function ProductDetailPage({ params }: Props) {
           onAddToCart={handleAddToCart}
           onBuyNow={handleBuyNow}
           onWriteReview={handleWriteReview}
+          ugcCapabilities={ugcCapabilities}
         />
       </main>
     </div>
