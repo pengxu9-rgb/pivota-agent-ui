@@ -561,6 +561,16 @@ export function PdpContainer({
   const uploadReason = ugcCapabilities?.reasons?.upload;
   const reviewReason = ugcCapabilities?.reasons?.review;
   const questionReason = ugcCapabilities?.reasons?.question;
+  const ugcUserState =
+    uploadReason === 'NOT_AUTHENTICATED' ||
+    reviewReason === 'NOT_AUTHENTICATED' ||
+    questionReason === 'NOT_AUTHENTICATED'
+      ? 'anonymous'
+      : reviewReason === 'ALREADY_REVIEWED'
+        ? 'already_reviewed'
+        : canUploadMedia || canWriteReview
+          ? 'purchaser'
+          : 'non_purchaser';
 
   const requireLogin = (intent: 'upload' | 'review' | 'question') => {
     const redirect =
@@ -578,6 +588,12 @@ export function PdpContainer({
   };
 
   const handleUploadMedia = () => {
+    pdpTracking.track('pdp_action_click', {
+      action_type: 'ugc_upload',
+      entry_point: 'station',
+      user_state: ugcUserState,
+      reason: uploadReason || null,
+    });
     if (canUploadMedia) {
       toast.message('Uploads are coming soon.');
       return;
@@ -590,6 +606,13 @@ export function PdpContainer({
   };
 
   const handleWriteReview = () => {
+    pdpTracking.track('pdp_action_click', {
+      action_type: 'open_embed',
+      target: 'write_review',
+      entry_point: 'station',
+      user_state: ugcUserState,
+      reason: reviewReason || null,
+    });
     if (canWriteReview) {
       if (onWriteReview) {
         onWriteReview();
@@ -613,6 +636,13 @@ export function PdpContainer({
   };
 
   const handleAskQuestion = () => {
+    pdpTracking.track('pdp_action_click', {
+      action_type: 'open_embed',
+      target: 'ask_question',
+      entry_point: 'station',
+      user_state: ugcUserState,
+      reason: questionReason || null,
+    });
     if (canAskQuestion) {
       setQuestionOpen(true);
       return;
@@ -1048,34 +1078,32 @@ export function PdpContainer({
             className="border-t border-muted/60"
             style={{ scrollMarginTop }}
           >
-            <BeautyReviewsSection
-              data={reviews as ReviewsPreviewData}
-              brandName={payload.product.brand?.name}
-              showEmpty
-              onWriteReview={() => {
-                pdpTracking.track('pdp_action_click', { action_type: 'open_embed', target: 'write_review' });
-                handleWriteReview();
-              }}
-              writeReviewLabel={nonEmptyText(reviews?.entry_points?.write_review?.label, 'Write a review')}
-              writeReviewEnabled={canWriteReview}
-              onSeeAll={
-                onSeeAllReviews
+              <BeautyReviewsSection
+                data={reviews as ReviewsPreviewData}
+                brandName={payload.product.brand?.name}
+                showEmpty
+                onWriteReview={() => {
+                  handleWriteReview();
+                }}
+                writeReviewLabel={nonEmptyText(reviews?.entry_points?.write_review?.label, 'Write a review')}
+                writeReviewEnabled={canWriteReview}
+                onSeeAll={
+                  onSeeAllReviews
                   ? () => {
                       pdpTracking.track('pdp_action_click', { action_type: 'open_embed', target: 'open_reviews' });
                       onSeeAllReviews();
                     }
                   : undefined
               }
-              openReviewsLabel={nonEmptyText(reviews?.entry_points?.open_reviews?.label, 'View all reviews')}
-              onAskQuestion={() => {
-                pdpTracking.track('pdp_action_click', { action_type: 'open_embed', target: 'ask_question' });
-                handleAskQuestion();
-              }}
-              askQuestionLabel="Ask a question"
-              askQuestionEnabled={canAskQuestion}
-            />
-          </div>
-        ) : null}
+                openReviewsLabel={nonEmptyText(reviews?.entry_points?.open_reviews?.label, 'View all reviews')}
+                onAskQuestion={() => {
+                  handleAskQuestion();
+                }}
+                askQuestionLabel="Ask a question"
+                askQuestionEnabled={canAskQuestion}
+              />
+            </div>
+          ) : null}
 
         {showShades ? (
           <div
