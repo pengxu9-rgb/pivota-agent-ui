@@ -1,7 +1,7 @@
 'use client';
 
 import { motion, AnimatePresence } from 'framer-motion';
-import { MessageSquare, Package, ShoppingCart, History, Sparkles, X, Sun, Moon } from 'lucide-react';
+import { MessageSquare, Package, ShoppingCart, History, Sparkles, X, Sun, Moon, User } from 'lucide-react';
 import Link from 'next/link';
 import { useCartStore } from '@/store/cartStore';
 import { useChatStore } from '@/store/chatStore';
@@ -27,6 +27,7 @@ export default function ChatSidebar({ isOpen, onClose }: ChatSidebarProps) {
 
   const menuItems = [
     { icon: Package, label: 'My Orders', link: '/orders' },
+    { icon: User, label: 'Account', link: '/account' },
     { icon: ShoppingCart, label: 'Shopping Cart', count: itemCount, onClick: openCart },
     { icon: History, label: 'Browse History', link: '/browse-history' },
   ];

@@ -8,6 +8,7 @@ import {
   processPayment,
   getMerchantId,
   accountsLogin,
+  accountsLoginWithPassword,
   accountsVerify,
   previewQuote,
   confirmOrderPayment,
@@ -344,6 +345,8 @@ function OrderFlowInner({
   const [otpSent, setOtpSent] = useState(false)
   const [otpLoading, setOtpLoading] = useState(false)
   const [verifiedEmail, setVerifiedEmail] = useState<string | null>(null)
+  const [authMethod, setAuthMethod] = useState<'otp' | 'password'>('otp')
+  const [loginPassword, setLoginPassword] = useState('')
   const adyenContainerRef = useRef<HTMLDivElement>(null)
   const [adyenMounted, setAdyenMounted] = useState(false)
   const [paymentActionType, setPaymentActionType] = useState<string | null>(null)
@@ -1285,65 +1288,140 @@ function OrderFlowInner({
                 />
                 {!user && !skipEmailVerification && (
                   <div className="mt-3 space-y-2">
-                    <div className="flex flex-col sm:flex-row gap-2">
+                    <div className="flex gap-2 text-xs">
                       <button
                         type="button"
-                        onClick={async () => {
-                          setOtpLoading(true)
-                          try {
-                            await accountsLogin(shipping.email.trim())
-                            setOtpSent(true)
-                            toast.success('Code sent to your email')
-                          } catch (err: any) {
-                            const code = err?.code
-                            if (code === 'INVALID_INPUT') toast.error('Please enter a valid email')
-                            else if (code === 'RATE_LIMITED')
-                              toast.error('Too many requests, please retry later')
-                            else toast.error(err?.message || 'Failed to send code')
-                          } finally {
-                            setOtpLoading(false)
-                          }
-                        }}
-                        className="px-3 py-2 rounded-lg bg-secondary hover:bg-secondary/80 text-sm"
-                        disabled={otpLoading || !shipping.email}
+                        disabled={otpLoading}
+                        onClick={() => setAuthMethod('password')}
+                        className={`px-3 py-1.5 rounded-lg border ${
+                          authMethod === 'password'
+                            ? 'bg-blue-600 text-white border-blue-600'
+                            : 'bg-white text-gray-700 border-gray-200'
+                        } disabled:opacity-60`}
                       >
-                        {otpLoading ? 'Sending...' : otpSent ? 'Resend code' : 'Send code'}
+                        Password
                       </button>
-                      <input
-                        placeholder="6-digit code"
-                        value={otp}
-                        onChange={(e) => setOtp(e.target.value)}
-                        className="flex-1 rounded-lg border border-gray-200 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                      />
                       <button
                         type="button"
-                        onClick={async () => {
-                          setOtpLoading(true)
-                          try {
-                            const data = await accountsVerify(shipping.email.trim(), otp.trim())
-                            setSession({
-                              user: (data as any).user,
-                              memberships: (data as any).memberships || [],
-                              active_merchant_id: (data as any).active_merchant_id,
-                            })
-                            setVerifiedEmail(shipping.email.trim())
-                            toast.success('Email verified and logged in')
-                          } catch (err: any) {
-                            const code = err?.code
-                            if (code === 'INVALID_OTP') toast.error('Code invalid or expired')
-                            else if (code === 'RATE_LIMITED')
-                              toast.error('Too many attempts, please retry later')
-                            else toast.error(err?.message || 'Verification failed')
-                          } finally {
-                            setOtpLoading(false)
-                          }
-                        }}
-                        className="px-3 py-2 rounded-lg bg-blue-600 text-white text-sm disabled:opacity-60"
-                        disabled={otpLoading || !otp || !shipping.email}
+                        disabled={otpLoading}
+                        onClick={() => setAuthMethod('otp')}
+                        className={`px-3 py-1.5 rounded-lg border ${
+                          authMethod === 'otp'
+                            ? 'bg-blue-600 text-white border-blue-600'
+                            : 'bg-white text-gray-700 border-gray-200'
+                        } disabled:opacity-60`}
                       >
-                        Verify
+                        Email code
                       </button>
                     </div>
+
+                    {authMethod === 'password' ? (
+                      <div className="flex flex-col sm:flex-row gap-2">
+                        <input
+                          type="password"
+                          placeholder="Password"
+                          value={loginPassword}
+                          onChange={(e) => setLoginPassword(e.target.value)}
+                          className="flex-1 rounded-lg border border-gray-200 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                        />
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            setOtpLoading(true)
+                            try {
+                              const data = await accountsLoginWithPassword(
+                                shipping.email.trim(),
+                                loginPassword,
+                              )
+                              setSession({
+                                user: (data as any).user,
+                                memberships: (data as any).memberships || [],
+                                active_merchant_id: (data as any).active_merchant_id,
+                              })
+                              setVerifiedEmail(shipping.email.trim())
+                              setLoginPassword('')
+                              toast.success('Signed in')
+                            } catch (err: any) {
+                              const code = err?.code
+                              if (code === 'NO_PASSWORD') {
+                                toast.error('No password is set. Use email code once, then set a password.')
+                                setAuthMethod('otp')
+                              } else if (code === 'INVALID_CREDENTIALS') {
+                                toast.error('Email or password is incorrect')
+                              } else {
+                                toast.error(err?.message || 'Sign in failed')
+                              }
+                            } finally {
+                              setOtpLoading(false)
+                            }
+                          }}
+                          className="px-3 py-2 rounded-lg bg-blue-600 text-white text-sm disabled:opacity-60"
+                          disabled={otpLoading || !loginPassword || !shipping.email}
+                        >
+                          {otpLoading ? 'Signing in...' : 'Sign in'}
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col sm:flex-row gap-2">
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            setOtpLoading(true)
+                            try {
+                              await accountsLogin(shipping.email.trim())
+                              setOtpSent(true)
+                              toast.success('Code sent to your email')
+                            } catch (err: any) {
+                              const code = err?.code
+                              if (code === 'INVALID_INPUT') toast.error('Please enter a valid email')
+                              else if (code === 'RATE_LIMITED')
+                                toast.error('Too many requests, please retry later')
+                              else toast.error(err?.message || 'Failed to send code')
+                            } finally {
+                              setOtpLoading(false)
+                            }
+                          }}
+                          className="px-3 py-2 rounded-lg bg-secondary hover:bg-secondary/80 text-sm"
+                          disabled={otpLoading || !shipping.email}
+                        >
+                          {otpLoading ? 'Sending...' : otpSent ? 'Resend code' : 'Send code'}
+                        </button>
+                        <input
+                          placeholder="6-digit code"
+                          value={otp}
+                          onChange={(e) => setOtp(e.target.value)}
+                          className="flex-1 rounded-lg border border-gray-200 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                        />
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            setOtpLoading(true)
+                            try {
+                              const data = await accountsVerify(shipping.email.trim(), otp.trim())
+                              setSession({
+                                user: (data as any).user,
+                                memberships: (data as any).memberships || [],
+                                active_merchant_id: (data as any).active_merchant_id,
+                              })
+                              setVerifiedEmail(shipping.email.trim())
+                              toast.success('Email verified and logged in')
+                            } catch (err: any) {
+                              const code = err?.code
+                              if (code === 'INVALID_OTP') toast.error('Code invalid or expired')
+                              else if (code === 'RATE_LIMITED')
+                                toast.error('Too many attempts, please retry later')
+                              else toast.error(err?.message || 'Verification failed')
+                            } finally {
+                              setOtpLoading(false)
+                            }
+                          }}
+                          className="px-3 py-2 rounded-lg bg-blue-600 text-white text-sm disabled:opacity-60"
+                          disabled={otpLoading || !otp || !shipping.email}
+                        >
+                          Verify
+                        </button>
+                      </div>
+                    )}
                     {verifiedEmail === shipping.email.trim() && (
                       <p className="text-xs text-green-600">Email verified</p>
                     )}
