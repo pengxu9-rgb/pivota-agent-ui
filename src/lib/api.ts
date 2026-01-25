@@ -6,10 +6,10 @@ const API_BASE =
   process.env.NEXT_PUBLIC_API_URL ||
   '/api/gateway'; // default to same-origin proxy to avoid CORS
 
-// Accounts API base (for auth + orders). Defaults to production accounts endpoint.
-const ACCOUNTS_BASE =
-  (process.env.NEXT_PUBLIC_ACCOUNTS_BASE ||
-    'https://web-production-fedb.up.railway.app/accounts').replace(/\/$/, '');
+// Accounts API is proxied through same-origin routes so auth cookies remain first-party.
+// This avoids third-party cookie issues (e.g. in-app browsers / iOS Safari) and reduces CORS risk.
+const ACCOUNTS_API_BASE = '/api/accounts';
+const ACCOUNTS_ROOT_API_BASE = '/api/accounts-root';
 
 type ApiError = Error & { code?: string; status?: number; detail?: any };
 type AmbiguousProductError = ApiError & {
@@ -848,17 +848,12 @@ export type ReviewEligibilityResponse = {
   reason?: 'NOT_PURCHASER' | 'ALREADY_REVIEWED';
 };
 
-function getAccountsOriginBase(): string {
-  const base = String(ACCOUNTS_BASE || '').trim().replace(/\/$/, '');
-  if (base.endsWith('/accounts')) return base.slice(0, -'/accounts'.length);
-  return base;
-}
-
-async function callAccounts(
+async function callAccountsBase(
+  base: string,
   path: string,
   options: RequestInit & { skipJson?: boolean } = {},
 ) {
-  const url = `${ACCOUNTS_BASE}${path}`;
+  const url = `${base}${path}`;
   const { skipJson, headers, method, body, ...rest } = options as any;
   const res = await fetch(url, {
     ...rest,
@@ -894,6 +889,14 @@ async function callAccounts(
     throw err;
   }
   return data;
+}
+
+async function callAccounts(path: string, options: RequestInit & { skipJson?: boolean } = {}) {
+  return callAccountsBase(ACCOUNTS_API_BASE, path, options);
+}
+
+async function callAccountsRoot(path: string, options: RequestInit & { skipJson?: boolean } = {}) {
+  return callAccountsBase(ACCOUNTS_ROOT_API_BASE, path, options);
 }
 
 export async function getPdpV2Personalization(args: {
@@ -955,15 +958,12 @@ export async function createReviewFromUser(args: {
   title?: string | null;
   body?: string | null;
 }): Promise<{ status?: string; review_id?: number; moderation_state?: string } | null> {
-  const root = getAccountsOriginBase();
   const productId = String(args.productId || '').trim();
-  if (!root || !productId) return null;
+  if (!productId) return null;
 
-  const res = await fetch(`${root}/buyer/reviews/v1/reviews/from_user`, {
+  return (await callAccountsRoot('/buyer/reviews/v1/reviews/from_user', {
     method: 'POST',
-    credentials: 'include',
     cache: 'no-store',
-    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       product_id: productId,
       ...(args.productGroupId ? { product_group_id: String(args.productGroupId) } : {}),
@@ -977,28 +977,7 @@ export async function createReviewFromUser(args: {
       title: args.title == null ? null : String(args.title),
       body: args.body == null ? null : String(args.body),
     }),
-  });
-
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    const code =
-      (typeof (data as any)?.detail === 'string' ? (data as any).detail : undefined) ||
-      (data as any)?.detail?.error?.code ||
-      (data as any)?.error?.code ||
-      undefined;
-    const message =
-      (typeof (data as any)?.detail === 'string' ? (data as any).detail : undefined) ||
-      (data as any)?.detail?.error?.message ||
-      (data as any)?.error?.message ||
-      res.statusText;
-    const err = new Error(message) as ApiError;
-    err.code = code;
-    err.status = res.status;
-    err.detail = data;
-    throw err;
-  }
-
-  return data as any;
+  })) as any;
 }
 
 export async function postQuestion(args: {
@@ -1006,42 +985,18 @@ export async function postQuestion(args: {
   productGroupId?: string | null;
   question: string;
 }): Promise<{ status?: string; question_id?: number } | null> {
-  const root = getAccountsOriginBase();
   const productId = String(args.productId || '').trim();
-  if (!root || !productId) return null;
+  if (!productId) return null;
 
-  const res = await fetch(`${root}/questions`, {
+  return (await callAccountsRoot('/questions', {
     method: 'POST',
-    credentials: 'include',
     cache: 'no-store',
-    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       productId,
       ...(args.productGroupId ? { productGroupId: String(args.productGroupId) } : {}),
       question: String(args.question || ''),
     }),
-  });
-
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    const code =
-      (typeof (data as any)?.detail === 'string' ? (data as any).detail : undefined) ||
-      (data as any)?.detail?.error?.code ||
-      (data as any)?.error?.code ||
-      undefined;
-    const message =
-      (typeof (data as any)?.detail === 'string' ? (data as any).detail : undefined) ||
-      (data as any)?.detail?.error?.message ||
-      (data as any)?.error?.message ||
-      res.statusText;
-    const err = new Error(message) as ApiError;
-    err.code = code;
-    err.status = res.status;
-    err.detail = data;
-    throw err;
-  }
-
-  return data as any;
+  })) as any;
 }
 
 // -------- Product search helpers --------
