@@ -822,22 +822,56 @@ export async function listGroupReviews(args: {
 
 // -------- Accounts API helpers --------
 
+export type UgcCapabilityReason =
+  | 'NOT_AUTHENTICATED'
+  | 'NOT_PURCHASER'
+  | 'ALREADY_REVIEWED'
+  | 'RATE_LIMITED';
+
+export type UgcCapabilities = {
+  canUploadMedia: boolean;
+  canWriteReview: boolean;
+  canAskQuestion: boolean;
+  reasons?: {
+    upload?: UgcCapabilityReason;
+    review?: UgcCapabilityReason;
+    question?: UgcCapabilityReason;
+  };
+};
+
+export type GetPdpV2PersonalizationResponse = {
+  ugcCapabilities?: UgcCapabilities;
+};
+
+export type ReviewEligibilityResponse = {
+  eligible: boolean;
+  reason?: 'NOT_PURCHASER' | 'ALREADY_REVIEWED';
+};
+
+function getAccountsOriginBase(): string {
+  const base = String(ACCOUNTS_BASE || '').trim().replace(/\/$/, '');
+  if (base.endsWith('/accounts')) return base.slice(0, -'/accounts'.length);
+  return base;
+}
+
 async function callAccounts(
   path: string,
   options: RequestInit & { skipJson?: boolean } = {},
 ) {
   const url = `${ACCOUNTS_BASE}${path}`;
+  const { skipJson, headers, method, body, ...rest } = options as any;
   const res = await fetch(url, {
-    method: options.method || 'GET',
+    ...rest,
+    method: method || 'GET',
     credentials: 'include', // rely on HttpOnly cookies
     headers: {
       'Content-Type': 'application/json',
-      ...(options.headers || {}),
+      ...(headers || {}),
     },
-    body: options.body,
+    body,
   });
 
-  if (options.skipJson) {
+  if (skipJson) {
     return res;
   }
 
@@ -845,10 +879,12 @@ async function callAccounts(
   if (!res.ok) {
     const code =
       (data as any)?.detail?.error?.code ||
+      (typeof (data as any)?.detail === 'string' ? (data as any).detail : undefined) ||
       (data as any)?.error?.code ||
       undefined;
     const message =
       (data as any)?.detail?.error?.message ||
+      (typeof (data as any)?.detail === 'string' ? (data as any).detail : undefined) ||
       (data as any)?.error?.message ||
       res.statusText;
     const err = new Error(message) as ApiError;
@@ -858,6 +894,154 @@ async function callAccounts(
     throw err;
   }
   return data;
+}
+
+export async function getPdpV2Personalization(args: {
+  productId: string;
+  productGroupId?: string | null;
+}): Promise<GetPdpV2PersonalizationResponse | null> {
+  const productId = String(args.productId || '').trim();
+  if (!productId) return null;
+
+  const params = new URLSearchParams({ productId });
+  const groupId = String(args.productGroupId || '').trim();
+  if (groupId) params.set('productGroupId', groupId);
+
+  try {
+    return (await callAccounts(`/pdp/v2/personalization?${params.toString()}`, {
+      cache: 'no-store',
+    })) as GetPdpV2PersonalizationResponse;
+  } catch (err: any) {
+    if (err?.status === 401 || err?.code === 'NOT_AUTHENTICATED' || err?.code === 'UNAUTHENTICATED') {
+      return { ugcCapabilities: undefined };
+    }
+    throw err;
+  }
+}
+
+export async function getReviewEligibility(args: {
+  productId: string;
+  productGroupId?: string | null;
+}): Promise<ReviewEligibilityResponse | null> {
+  const productId = String(args.productId || '').trim();
+  if (!productId) return null;
+
+  const params = new URLSearchParams({ productId });
+  const groupId = String(args.productGroupId || '').trim();
+  if (groupId) params.set('productGroupId', groupId);
+
+  try {
+    return (await callAccounts(`/reviews/eligibility?${params.toString()}`, {
+      cache: 'no-store',
+    })) as ReviewEligibilityResponse;
+  } catch (err: any) {
+    if (err?.status === 401 || err?.code === 'NOT_AUTHENTICATED' || err?.code === 'UNAUTHENTICATED') {
+      return null;
+    }
+    throw err;
+  }
+}
+
+export async function createReviewFromUser(args: {
+  productId: string;
+  productGroupId?: string | null;
+  subject: {
+    merchant_id: string;
+    platform: string;
+    platform_product_id: string;
+    variant_id?: string | null;
+  };
+  rating: number;
+  title?: string | null;
+  body?: string | null;
+}): Promise<{ status?: string; review_id?: number; moderation_state?: string } | null> {
+  const root = getAccountsOriginBase();
+  const productId = String(args.productId || '').trim();
+  if (!root || !productId) return null;
+
+  const res = await fetch(`${root}/buyer/reviews/v1/reviews/from_user`, {
+    method: 'POST',
+    credentials: 'include',
+    cache: 'no-store',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      product_id: productId,
+      ...(args.productGroupId ? { product_group_id: String(args.productGroupId) } : {}),
+      subject: {
+        merchant_id: String(args.subject?.merchant_id || ''),
+        platform: String(args.subject?.platform || ''),
+        platform_product_id: String(args.subject?.platform_product_id || ''),
+        variant_id: args.subject?.variant_id == null ? null : String(args.subject.variant_id),
+      },
+      rating: Number(args.rating),
+      title: args.title == null ? null : String(args.title),
+      body: args.body == null ? null : String(args.body),
+    }),
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const code =
+      (typeof (data as any)?.detail === 'string' ? (data as any).detail : undefined) ||
+      (data as any)?.detail?.error?.code ||
+      (data as any)?.error?.code ||
+      undefined;
+    const message =
+      (typeof (data as any)?.detail === 'string' ? (data as any).detail : undefined) ||
+      (data as any)?.detail?.error?.message ||
+      (data as any)?.error?.message ||
+      res.statusText;
+    const err = new Error(message) as ApiError;
+    err.code = code;
+    err.status = res.status;
+    err.detail = data;
+    throw err;
+  }
+
+  return data as any;
+}
+
+export async function postQuestion(args: {
+  productId: string;
+  productGroupId?: string | null;
+  question: string;
+}): Promise<{ status?: string; question_id?: number } | null> {
+  const root = getAccountsOriginBase();
+  const productId = String(args.productId || '').trim();
+  if (!root || !productId) return null;
+
+  const res = await fetch(`${root}/questions`, {
+    method: 'POST',
+    credentials: 'include',
+    cache: 'no-store',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      productId,
+      ...(args.productGroupId ? { productGroupId: String(args.productGroupId) } : {}),
+      question: String(args.question || ''),
+    }),
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const code =
+      (typeof (data as any)?.detail === 'string' ? (data as any).detail : undefined) ||
+      (data as any)?.detail?.error?.code ||
+      (data as any)?.error?.code ||
+      undefined;
+    const message =
+      (typeof (data as any)?.detail === 'string' ? (data as any).detail : undefined) ||
+      (data as any)?.detail?.error?.message ||
+      (data as any)?.error?.message ||
+      res.statusText;
+    const err = new Error(message) as ApiError;
+    err.code = code;
+    err.status = res.status;
+    err.detail = data;
+    throw err;
+  }
+
+  return data as any;
 }
 
 // -------- Product search helpers --------
