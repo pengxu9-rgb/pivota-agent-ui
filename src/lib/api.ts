@@ -1003,6 +1003,7 @@ export type QuestionListItem = {
   question_id: number;
   question: string;
   created_at?: string | null;
+  replies?: number | null;
 };
 
 export async function listQuestions(args: {
@@ -1032,11 +1033,83 @@ export async function listQuestions(args: {
       question_id: Number(it?.question_id ?? it?.questionId ?? it?.id) || 0,
       question: String(it?.question ?? '').trim(),
       created_at: it?.created_at ?? it?.createdAt ?? null,
+      replies: Number(it?.replies ?? it?.reply_count ?? it?.replyCount) || 0,
     }))
     .filter((it: any) => it.question);
   const countRaw = Number(res?.count);
   const count = Number.isFinite(countRaw) ? countRaw : items.length;
   return { count, items };
+}
+
+export type QuestionReplyListItem = {
+  reply_id: number;
+  body: string;
+  created_at?: string | null;
+};
+
+export async function getQuestion(args: {
+  questionId: number | string;
+}): Promise<{
+  question_id: number;
+  subject_type: string;
+  subject_id: string;
+  question: string;
+  created_at?: string | null;
+  replies: number;
+} | null> {
+  const qid = Number(args.questionId);
+  if (!Number.isFinite(qid) || qid <= 0) return null;
+  const res = (await callAccountsRoot(`/questions/${qid}`, { cache: 'no-store' })) as any;
+  if (!res || res.status !== 'success') return null;
+  return {
+    question_id: Number(res.question_id ?? res.id ?? qid) || qid,
+    subject_type: String(res.subject_type ?? ''),
+    subject_id: String(res.subject_id ?? ''),
+    question: String(res.question ?? '').trim(),
+    created_at: res.created_at ?? res.createdAt ?? null,
+    replies: Number(res.replies) || 0,
+  };
+}
+
+export async function listQuestionReplies(args: {
+  questionId: number | string;
+  limit?: number;
+}): Promise<{ count: number; items: QuestionReplyListItem[] } | null> {
+  const qid = Number(args.questionId);
+  if (!Number.isFinite(qid) || qid <= 0) return null;
+
+  const params = new URLSearchParams();
+  const limitRaw = args.limit;
+  if (typeof limitRaw === 'number' && Number.isFinite(limitRaw)) {
+    params.set('limit', String(Math.max(1, Math.min(50, Math.floor(limitRaw)))));
+  }
+
+  const suffix = params.toString() ? `?${params.toString()}` : '';
+  const res = (await callAccountsRoot(`/questions/${qid}/replies${suffix}`, { cache: 'no-store' })) as any;
+  const itemsRaw = Array.isArray(res?.items) ? res.items : [];
+  const items: QuestionReplyListItem[] = itemsRaw
+    .map((it: any) => ({
+      reply_id: Number(it?.reply_id ?? it?.replyId ?? it?.id) || 0,
+      body: String(it?.body ?? it?.text ?? '').trim(),
+      created_at: it?.created_at ?? it?.createdAt ?? null,
+    }))
+    .filter((it: any) => it.body);
+  const countRaw = Number(res?.count);
+  const count = Number.isFinite(countRaw) ? countRaw : items.length;
+  return { count, items };
+}
+
+export async function postQuestionReply(args: {
+  questionId: number | string;
+  body: string;
+}) {
+  const qid = Number(args.questionId);
+  if (!Number.isFinite(qid) || qid <= 0) return null;
+  return (await callAccountsRoot(`/questions/${qid}/replies`, {
+    method: 'POST',
+    cache: 'no-store',
+    body: JSON.stringify({ body: String(args.body || '') }),
+  })) as any;
 }
 
 // -------- Product search helpers --------
