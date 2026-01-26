@@ -75,6 +75,35 @@ function getNormalizedVariantOptionValue(
   return value || null;
 }
 
+function normalizeHttpUrl(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (!/^https?:\/\//i.test(trimmed)) return null;
+  return trimmed;
+}
+
+function getExternalRedirectUrlFromOffer(offer: unknown): string | null {
+  if (!offer || typeof offer !== 'object') return null;
+  const typed = offer as any;
+  const direct =
+    normalizeHttpUrl(typed.external_redirect_url) ||
+    normalizeHttpUrl(typed.externalRedirectUrl) ||
+    normalizeHttpUrl(typed.redirect_url) ||
+    normalizeHttpUrl(typed.redirectUrl);
+  if (direct) return direct;
+  const action = typed.action;
+  if (action && typeof action === 'object') {
+    return (
+      normalizeHttpUrl((action as any).redirect_url) ||
+      normalizeHttpUrl((action as any).redirectUrl) ||
+      normalizeHttpUrl((action as any).url) ||
+      normalizeHttpUrl((action as any).href)
+    );
+  }
+  return null;
+}
+
 function ProductDetailLoading({ label }: { label: string }) {
   return (
     <div className="min-h-screen bg-background">
@@ -524,15 +553,36 @@ export default function ProductDetailPage({ params }: Props) {
         return;
       }
 
-      if (resolvedMerchantId === 'external_seed') {
+      const offers = Array.isArray((pdpPayload as any)?.offers)
+        ? ((pdpPayload as any).offers as any[])
+        : [];
+      const offer =
+        offer_id && offers.length
+          ? offers.find((o) => String(o?.offer_id || o?.offerId || '').trim() === String(offer_id))
+          : null;
+      const offerRedirectUrl = offer ? getExternalRedirectUrlFromOffer(offer) : null;
+      const payloadRedirectUrl = normalizeHttpUrl((pdpPayload as any)?.product?.external_redirect_url);
+      const isExternal =
+        Boolean(offerRedirectUrl || payloadRedirectUrl) ||
+        resolvedMerchantId === 'external_seed' ||
+        String((pdpPayload as any)?.product?.source || '').trim() === 'external_seed';
+
+      if (isExternal) {
+        const redirectUrl = offerRedirectUrl || payloadRedirectUrl;
+        if (redirectUrl) {
+          window.open(redirectUrl, '_blank', 'noopener,noreferrer');
+          return;
+        }
+
         const detail = await getProductDetail(resolvedProductId, resolvedMerchantId, {
           useConfiguredMerchantId: false,
           allowBroadScan: false,
           throwOnError: false,
+          timeout_ms: 8000,
         });
-        const redirectUrl = detail?.external_redirect_url;
-        if (redirectUrl) {
-          window.open(redirectUrl, '_blank', 'noopener,noreferrer');
+        const detailRedirectUrl = normalizeHttpUrl(detail?.external_redirect_url);
+        if (detailRedirectUrl) {
+          window.open(detailRedirectUrl, '_blank', 'noopener,noreferrer');
         } else {
           toast.error('This item is only available on an external site.');
         }
@@ -560,13 +610,6 @@ export default function ProductDetailPage({ params }: Props) {
           ? Object.fromEntries(purchaseVariant.options.map((o) => [o.name, o.value]))
           : undefined;
 
-      const offers = Array.isArray((pdpPayload as any)?.offers)
-        ? ((pdpPayload as any).offers as any[])
-        : [];
-      const offer =
-        offer_id && offers.length
-          ? offers.find((o) => String(o?.offer_id || o?.offerId || '').trim() === String(offer_id))
-          : null;
       const offerItemPrice = offer
         ? Number(offer?.price?.amount ?? offer?.price_amount ?? offer?.price ?? 0)
         : undefined;
@@ -629,23 +672,50 @@ export default function ProductDetailPage({ params }: Props) {
       const resolvedProductId =
         String(product_id || '').trim() || String(pdpPayload.product.product_id || '').trim();
 
-      if (!resolvedMerchantId || !resolvedProductId) {
-        toast.error('This offer is missing merchant/product info.');
-        return;
-      }
+      const offers = Array.isArray((pdpPayload as any)?.offers)
+        ? ((pdpPayload as any).offers as any[])
+        : [];
+      const offer =
+        offer_id && offers.length
+          ? offers.find((o) => String(o?.offer_id || o?.offerId || '').trim() === String(offer_id))
+          : null;
 
-      if (resolvedMerchantId === 'external_seed') {
+      const offerRedirectUrl = offer ? getExternalRedirectUrlFromOffer(offer) : null;
+      const payloadRedirectUrl = normalizeHttpUrl((pdpPayload as any)?.product?.external_redirect_url);
+      const isExternal =
+        Boolean(offerRedirectUrl || payloadRedirectUrl) ||
+        resolvedMerchantId === 'external_seed' ||
+        String((pdpPayload as any)?.product?.source || '').trim() === 'external_seed';
+
+      if (isExternal) {
+        const redirectUrl = offerRedirectUrl || payloadRedirectUrl;
+        if (redirectUrl) {
+          window.open(redirectUrl, '_blank', 'noopener,noreferrer');
+          return;
+        }
+
+        if (!resolvedMerchantId || !resolvedProductId) {
+          toast.error('This item is only available on an external site.');
+          return;
+        }
+
         const detail = await getProductDetail(resolvedProductId, resolvedMerchantId, {
           useConfiguredMerchantId: false,
           allowBroadScan: false,
           throwOnError: false,
+          timeout_ms: 8000,
         });
-        const redirectUrl = detail?.external_redirect_url;
-        if (redirectUrl) {
-          window.open(redirectUrl, '_blank', 'noopener,noreferrer');
+        const detailRedirectUrl = normalizeHttpUrl(detail?.external_redirect_url);
+        if (detailRedirectUrl) {
+          window.open(detailRedirectUrl, '_blank', 'noopener,noreferrer');
         } else {
           toast.error('This item is only available on an external site.');
         }
+        return;
+      }
+
+      if (!resolvedMerchantId || !resolvedProductId) {
+        toast.error('This offer is missing merchant/product info.');
         return;
       }
 
@@ -670,13 +740,6 @@ export default function ProductDetailPage({ params }: Props) {
           ? Object.fromEntries(purchaseVariant.options.map((o) => [o.name, o.value]))
           : undefined;
 
-      const offers = Array.isArray((pdpPayload as any)?.offers)
-        ? ((pdpPayload as any).offers as any[])
-        : [];
-      const offer =
-        offer_id && offers.length
-          ? offers.find((o) => String(o?.offer_id || o?.offerId || '').trim() === String(offer_id))
-          : null;
       const offerItemPrice = offer
         ? Number(offer?.price?.amount ?? offer?.price_amount ?? offer?.price ?? 0)
         : undefined;
