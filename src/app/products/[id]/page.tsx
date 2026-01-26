@@ -147,6 +147,7 @@ export default function ProductDetailPage({ params }: Props) {
   const pdpOverride = (searchParams.get('pdp') || '').toLowerCase();
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
+  const userId = user?.id;
 
   const [pdpPayload, setPdpPayload] = useState<PDPPayload | null>(null);
   const [sellerCandidates, setSellerCandidates] = useState<ProductResponse[] | null>(null);
@@ -409,7 +410,7 @@ export default function ProductDetailPage({ params }: Props) {
 
     if (!productId) return;
 
-    if (!user) {
+    if (!userId) {
       setUgcCapabilities({
         canUploadMedia: false,
         canWriteReview: false,
@@ -457,7 +458,7 @@ export default function ProductDetailPage({ params }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [pdpPayload?.product?.product_id, pdpPayload?.product_group_id, user?.id]);
+  }, [pdpPayload?.product?.product_id, pdpPayload?.product_group_id, userId]);
 
   useEffect(() => {
     if (!sellerCandidates?.length) return;
