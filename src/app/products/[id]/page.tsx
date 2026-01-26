@@ -83,6 +83,15 @@ function normalizeHttpUrl(value: unknown): string | null {
   return trimmed;
 }
 
+function buildExternalRedirectNotice(url: string): string {
+  try {
+    const host = new URL(url).hostname;
+    return host ? `Redirecting to ${host} in a new tab…` : 'Redirecting to external website in a new tab…';
+  } catch {
+    return 'Redirecting to external website in a new tab…';
+  }
+}
+
 function getExternalRedirectUrlFromOffer(offer: unknown): string | null {
   if (!offer || typeof offer !== 'object') return null;
   const typed = offer as any;
@@ -570,6 +579,7 @@ export default function ProductDetailPage({ params }: Props) {
       if (isExternal) {
         const redirectUrl = offerRedirectUrl || payloadRedirectUrl;
         if (redirectUrl) {
+          toast.success(buildExternalRedirectNotice(redirectUrl));
           window.open(redirectUrl, '_blank', 'noopener,noreferrer');
           return;
         }
@@ -582,6 +592,7 @@ export default function ProductDetailPage({ params }: Props) {
         });
         const detailRedirectUrl = normalizeHttpUrl(detail?.external_redirect_url);
         if (detailRedirectUrl) {
+          toast.success(buildExternalRedirectNotice(detailRedirectUrl));
           window.open(detailRedirectUrl, '_blank', 'noopener,noreferrer');
         } else {
           toast.error('This item is only available on an external site.');
@@ -690,6 +701,7 @@ export default function ProductDetailPage({ params }: Props) {
       if (isExternal) {
         const redirectUrl = offerRedirectUrl || payloadRedirectUrl;
         if (redirectUrl) {
+          toast.success(buildExternalRedirectNotice(redirectUrl));
           window.open(redirectUrl, '_blank', 'noopener,noreferrer');
           return;
         }
@@ -707,6 +719,7 @@ export default function ProductDetailPage({ params }: Props) {
         });
         const detailRedirectUrl = normalizeHttpUrl(detail?.external_redirect_url);
         if (detailRedirectUrl) {
+          toast.success(buildExternalRedirectNotice(detailRedirectUrl));
           window.open(detailRedirectUrl, '_blank', 'noopener,noreferrer');
         } else {
           toast.error('This item is only available on an external site.');
