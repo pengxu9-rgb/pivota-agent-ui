@@ -1,3 +1,9 @@
+import path from "path";
+import { fileURLToPath } from "url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 /** @type {import('next').NextConfig} */
 const UCP_WEB_BASE_URL =
   (process.env.UCP_WEB_BASE_URL || 'https://ucp-web-production-production.up.railway.app').replace(
@@ -7,6 +13,8 @@ const UCP_WEB_BASE_URL =
 
 const nextConfig = {
   reactStrictMode: true,
+  // Avoid Next.js picking an incorrect monorepo root (can slow builds and break output tracing).
+  outputFileTracingRoot: __dirname,
   typescript: {
     ignoreBuildErrors: false,
   },

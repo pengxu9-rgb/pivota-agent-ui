@@ -16,8 +16,7 @@ import type {
   ReviewsPreviewData,
   Variant,
 } from '@/features/pdp/types';
-import type { UgcCapabilities } from '@/lib/api';
-import { postQuestion } from '@/lib/api';
+import { listQuestions, postQuestion, type QuestionListItem, type UgcCapabilities } from '@/lib/api';
 import { isBeautyProduct } from '@/features/pdp/utils/isBeautyProduct';
 import {
   collectColorOptions,
@@ -133,6 +132,7 @@ export function PdpContainer({
   const [questionOpen, setQuestionOpen] = useState(false);
   const [questionText, setQuestionText] = useState('');
   const [questionSubmitting, setQuestionSubmitting] = useState(false);
+  const [ugcQuestions, setUgcQuestions] = useState<QuestionListItem[]>([]);
 
   const allowMockRecentPurchases =
     (payload.product.merchant_id || '') !== 'external_seed';
@@ -315,7 +315,8 @@ export function PdpContainer({
   const navRowHeight = navVisible ? 36 : 0;
   const scrollMarginTop = headerHeight + navRowHeight + 14;
 
-  const hasReviews = !!reviews;
+  const isReviewsLoading = payload.x_reviews_state === 'loading';
+  const hasReviews = !!reviews || isReviewsLoading;
   const hasRecommendations = !!recommendations?.items?.length;
   const recommendationsState = payload.x_recommendations_state;
   const isRecommendationsLoading = recommendationsState === 'loading';
@@ -555,6 +556,59 @@ export function PdpContainer({
   const productId = String(payload.product.product_id || '').trim();
   const productGroupId = String(payload.product_group_id || selectedOffer?.product_group_id || '').trim() || null;
 
+  useEffect(() => {
+    let cancelled = false;
+
+    async function run() {
+      if (!productId) return;
+      try {
+        const res = await listQuestions({
+          productId,
+          ...(productGroupId ? { productGroupId } : {}),
+          limit: 10,
+        });
+        if (cancelled) return;
+        setUgcQuestions(res?.items || []);
+      } catch {
+        // ignore
+      }
+    }
+
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [productGroupId, productId]);
+
+  const mergedQuestions = useMemo(() => {
+    const seen = new Set<string>();
+    const out: Array<{ question: string; answer?: string; replies?: number }> = [];
+
+    for (const q of ugcQuestions) {
+      const text = String(q?.question || '').trim();
+      if (!text || seen.has(text)) continue;
+      seen.add(text);
+      out.push({ question: text });
+    }
+
+    const legacy = (reviews as any)?.questions;
+    if (Array.isArray(legacy)) {
+      for (const q of legacy) {
+        const text = String(q?.question || '').trim();
+        if (!text || seen.has(text)) continue;
+        seen.add(text);
+        out.push(q);
+      }
+    }
+
+    return out;
+  }, [reviews, ugcQuestions]);
+
+  const reviewsForRender = useMemo(() => {
+    if (!reviews) return null;
+    return { ...(reviews as any), questions: mergedQuestions } as ReviewsPreviewData;
+  }, [mergedQuestions, reviews]);
+
   const canUploadMedia = Boolean(ugcCapabilities?.canUploadMedia);
   const canWriteReview = Boolean(ugcCapabilities?.canWriteReview);
   const canAskQuestion = Boolean(ugcCapabilities?.canAskQuestion);
@@ -678,6 +732,14 @@ export function PdpContainer({
         question,
       });
       toast.success('Question submitted.');
+      setUgcQuestions((prev) => {
+        const next: QuestionListItem = {
+          question_id: Date.now(),
+          question,
+          created_at: new Date().toISOString(),
+        };
+        return [next, ...(prev || []).filter((it) => String(it?.question || '').trim() !== question)].slice(0, 10);
+      });
       setQuestionText('');
       setQuestionOpen(false);
     } catch (err: any) {
@@ -1078,8 +1140,9 @@ export function PdpContainer({
             className="border-t border-muted/60"
             style={{ scrollMarginTop }}
           >
+            {reviews ? (
               <BeautyReviewsSection
-                data={reviews as ReviewsPreviewData}
+                data={(reviewsForRender || reviews) as ReviewsPreviewData}
                 brandName={payload.product.brand?.name}
                 showEmpty
                 onWriteReview={() => {
@@ -1089,12 +1152,12 @@ export function PdpContainer({
                 writeReviewEnabled={canWriteReview}
                 onSeeAll={
                   onSeeAllReviews
-                  ? () => {
-                      pdpTracking.track('pdp_action_click', { action_type: 'open_embed', target: 'open_reviews' });
-                      onSeeAllReviews();
-                    }
-                  : undefined
-              }
+                    ? () => {
+                        pdpTracking.track('pdp_action_click', { action_type: 'open_embed', target: 'open_reviews' });
+                        onSeeAllReviews();
+                      }
+                    : undefined
+                }
                 openReviewsLabel={nonEmptyText(reviews?.entry_points?.open_reviews?.label, 'View all reviews')}
                 onAskQuestion={() => {
                   handleAskQuestion();
@@ -1102,7 +1165,29 @@ export function PdpContainer({
                 askQuestionLabel="Ask a question"
                 askQuestionEnabled={canAskQuestion}
               />
-            </div>
+            ) : isReviewsLoading ? (
+              <div className="px-4 py-5">
+                <div className="rounded-2xl border border-border bg-white p-4 shadow-sm">
+                  <div className="flex items-start gap-4">
+                    <div className="w-24">
+                      <div className="h-8 w-16 rounded bg-muted/20 animate-pulse" />
+                      <div className="mt-2 h-4 w-20 rounded bg-muted/20 animate-pulse" />
+                      <div className="mt-2 h-4 w-16 rounded bg-muted/20 animate-pulse" />
+                    </div>
+                    <div className="flex-1 space-y-2">
+                      {[0, 1, 2, 3, 4].map((i) => (
+                        <div key={i} className="flex items-center gap-2">
+                          <div className="h-3 w-4 rounded bg-muted/20 animate-pulse" />
+                          <div className="h-3 flex-1 rounded-full bg-muted/20 animate-pulse" />
+                          <div className="h-3 w-10 rounded bg-muted/20 animate-pulse" />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+          </div>
           ) : null}
 
         {showShades ? (
