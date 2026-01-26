@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
+import Image from 'next/image';
 import { ChevronLeft, Share2, Star } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -39,7 +40,7 @@ import { BeautyRecentPurchases } from '@/features/pdp/sections/BeautyRecentPurch
 import { BeautyShadesSection } from '@/features/pdp/sections/BeautyShadesSection';
 import { BeautyDetailsSection } from '@/features/pdp/sections/BeautyDetailsSection';
 import { BeautyVariantSheet } from '@/features/pdp/sections/BeautyVariantSheet';
-import { GenericColorSheet } from '@/features/pdp/sections/GenericColorSheet';
+import { GenericColorSheet, type GenericColorOption } from '@/features/pdp/sections/GenericColorSheet';
 import { GenericRecentPurchases } from '@/features/pdp/sections/GenericRecentPurchases';
 import { GenericStyleGallery } from '@/features/pdp/sections/GenericStyleGallery';
 import { GenericSizeHelper } from '@/features/pdp/sections/GenericSizeHelper';
@@ -227,6 +228,32 @@ export function PdpContainer({
   ]);
 
   const colorOptions = useMemo(() => collectColorOptions(variants), [variants]);
+  const colorSheetOptions = useMemo<GenericColorOption[]>(() => {
+    if (!colorOptions.length) return [];
+
+    const byValue = new Map<string, GenericColorOption>();
+    const score = (opt: GenericColorOption) =>
+      (opt.label_image_url ? 3 : 0) + (opt.image_url ? 2 : 0) + (opt.swatch_hex ? 1 : 0);
+
+    variants.forEach((variant) => {
+      const value = getOptionValue(variant, ['color', 'colour', 'shade', 'tone']);
+      if (!value) return;
+
+      const candidate: GenericColorOption = {
+        value,
+        label_image_url: variant.label_image_url,
+        image_url: variant.image_url,
+        swatch_hex: variant.swatch?.hex || variant.beauty_meta?.shade_hex,
+      };
+
+      const existing = byValue.get(value);
+      if (!existing || score(candidate) > score(existing)) {
+        byValue.set(value, candidate);
+      }
+    });
+
+    return colorOptions.map((value) => byValue.get(value) || { value });
+  }, [colorOptions, variants]);
   const sizeOptions = useMemo(() => collectSizeOptions(variants), [variants]);
   const [selectedColor, setSelectedColor] = useState<string | null>(
     getOptionValue(selectedVariant, ['color', 'colour', 'shade', 'tone']) || null,
@@ -898,7 +925,16 @@ export function PdpContainer({
                               : 'border-border hover:bg-muted/30 hover:border-muted-foreground/40',
                           )}
                         >
-                          {variant.swatch?.hex ? (
+                          {variant.label_image_url ? (
+                            <span
+                              className={cn(
+                                'relative h-3 w-3 overflow-hidden rounded-full ring-1 bg-muted',
+                                isSelected ? 'ring-[color:var(--accent-600)]' : 'ring-border',
+                              )}
+                            >
+                              <Image src={variant.label_image_url} alt="" fill className="object-cover" unoptimized />
+                            </span>
+                          ) : variant.swatch?.hex ? (
                             <span
                               className={cn(
                                 'h-3 w-3 rounded-full ring-1',
@@ -1492,11 +1528,15 @@ export function PdpContainer({
       <GenericColorSheet
         open={resolvedMode === 'generic' && showColorSheet}
         onClose={() => setShowColorSheet(false)}
-        variants={variants}
-        selectedVariantId={selectedVariant.variant_id}
-        onSelect={(variantId) => {
-          handleVariantSelect(variantId);
-          pdpTracking.track('pdp_action_click', { action_type: 'select_variant', variant_id: variantId });
+        options={colorSheetOptions}
+        selectedValue={selectedColor}
+        onSelect={(value) => {
+          handleColorSelect(value);
+          pdpTracking.track('pdp_action_click', {
+            action_type: 'select_variant',
+            option_name: 'color',
+            option_value: value,
+          });
         }}
       />
       <OfferSheet

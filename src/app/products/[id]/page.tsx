@@ -187,6 +187,7 @@ export default function ProductDetailPage({ params }: Props) {
   const [reloadKey, setReloadKey] = useState(0);
   const [loadedViaPdpV2, setLoadedViaPdpV2] = useState(false);
   const offerProductDetailCacheRef = useRef<Map<string, ProductResponse>>(new Map());
+  const offersFetchKeyRef = useRef<string | null>(null);
   const reviewsFetchKeyRef = useRef<string | null>(null);
   const similarFetchKeyRef = useRef<string | null>(null);
   const [ugcCapabilities, setUgcCapabilities] = useState<UgcCapabilities | null>({
@@ -215,6 +216,7 @@ export default function ProductDetailPage({ params }: Props) {
       setSellerCandidates(null);
       setPdpPayload(null);
       setLoadedViaPdpV2(false);
+      offersFetchKeyRef.current = null;
       reviewsFetchKeyRef.current = null;
       similarFetchKeyRef.current = null;
 
@@ -222,12 +224,13 @@ export default function ProductDetailPage({ params }: Props) {
         const v2 = await getPdpV2({
           product_id: id,
           ...(explicitMerchantId ? { merchant_id: explicitMerchantId } : {}),
-          include: ['offers'],
+          include: [],
           timeout_ms: v2TimeoutMs,
         });
         if (cancelled) return;
         const assembled = mapPdpV2ToPdpPayload(v2);
         if (!assembled) throw new Error('Invalid PDP response');
+        const hasOffers = Array.isArray((assembled as any).offers) && (assembled as any).offers.length > 0;
         const hasReviews =
           Array.isArray(assembled.modules) &&
           assembled.modules.some((m) => m?.type === 'reviews_preview');
@@ -241,6 +244,7 @@ export default function ProductDetailPage({ params }: Props) {
 
         setPdpPayload({
           ...assembled,
+          ...(hasOffers ? {} : { x_offers_state: 'loading' }),
           ...(hasReviews ? {} : { x_reviews_state: 'loading' }),
           ...(hasRecommendations ? {} : { x_recommendations_state: 'loading' }),
         });
@@ -325,6 +329,62 @@ export default function ProductDetailPage({ params }: Props) {
       cancelled = true;
     };
   }, [id, merchantIdParam, reloadKey]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const run = async () => {
+      if (!loadedViaPdpV2) return;
+      if (!pdpPayload) return;
+      if (pdpPayload.x_offers_state !== 'loading') return;
+
+      const merchantId = String(pdpPayload.product.merchant_id || '').trim();
+      const productId = String(pdpPayload.product.product_id || id || '').trim();
+      if (!merchantId || !productId) {
+        setPdpPayload((prev) => (prev ? { ...prev, x_offers_state: undefined } : prev));
+        return;
+      }
+
+      const key = `${merchantId}:${productId}`;
+      if (offersFetchKeyRef.current === key) return;
+      offersFetchKeyRef.current = key;
+
+      try {
+        const v2 = await getPdpV2({
+          product_id: productId,
+          merchant_id: merchantId,
+          include: ['offers'],
+          timeout_ms: 8000,
+        });
+        if (cancelled) return;
+
+        const assembled = mapPdpV2ToPdpPayload(v2);
+        const offers = assembled && Array.isArray((assembled as any).offers) ? (assembled as any).offers : null;
+
+        setPdpPayload((prev) => {
+          if (!prev) return prev;
+          if (!offers) return { ...prev, x_offers_state: undefined };
+          return {
+            ...prev,
+            offers,
+            ...(assembled?.offers_count != null ? { offers_count: assembled.offers_count } : {}),
+            ...(assembled?.default_offer_id ? { default_offer_id: assembled.default_offer_id } : {}),
+            ...(assembled?.best_price_offer_id ? { best_price_offer_id: assembled.best_price_offer_id } : {}),
+            ...(assembled?.product_group_id ? { product_group_id: assembled.product_group_id } : {}),
+            x_offers_state: 'ready',
+          };
+        });
+      } catch {
+        if (cancelled) return;
+        setPdpPayload((prev) => (prev ? { ...prev, x_offers_state: undefined } : prev));
+      }
+    };
+
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [id, loadedViaPdpV2, pdpPayload, pdpPayload?.x_offers_state]);
 
   useEffect(() => {
     let cancelled = false;

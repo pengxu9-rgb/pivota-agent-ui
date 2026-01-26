@@ -8,6 +8,7 @@ export interface PDPPayload {
   offers_count?: number;
   default_offer_id?: string;
   best_price_offer_id?: string;
+  x_offers_state?: 'loading' | 'ready';
   x_reviews_state?: 'loading' | 'ready';
   x_recommendations_state?: 'loading' | 'ready';
   modules: Module[];
@@ -82,6 +83,7 @@ export interface Variant {
   price?: VariantPrice;
   availability?: { in_stock: boolean; available_quantity?: number };
   image_url?: string;
+  label_image_url?: string;
 }
 
 export interface Price {

@@ -1,3 +1,4 @@
+import Image from 'next/image';
 import type { Variant } from '@/features/pdp/types';
 import { cn } from '@/lib/utils';
 
@@ -37,11 +38,17 @@ export function VariantSelector({
                   : 'border-border hover:border-primary/50',
               )}
             >
-              {mode === 'beauty' && v.swatch?.hex ? (
-                <span
-                  className="h-3 w-3 rounded-full ring-1 ring-border"
-                  style={{ backgroundColor: v.swatch.hex }}
-                />
+              {mode === 'beauty' ? (
+                v.label_image_url ? (
+                  <span className="relative h-3 w-3 overflow-hidden rounded-full ring-1 ring-border bg-muted">
+                    <Image src={v.label_image_url} alt="" fill className="object-cover" unoptimized />
+                  </span>
+                ) : v.swatch?.hex ? (
+                  <span
+                    className="h-3 w-3 rounded-full ring-1 ring-border"
+                    style={{ backgroundColor: v.swatch.hex }}
+                  />
+                ) : null
               ) : null}
               <span className={cn('truncate', isSelected ? 'font-semibold' : 'font-medium')}>
                 {v.title}
