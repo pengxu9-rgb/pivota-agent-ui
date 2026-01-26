@@ -232,7 +232,8 @@ export function PdpContainer({
     if (!colorOptions.length) return [];
 
     const byValue = new Map<string, GenericColorOption>();
-    const score = (opt: GenericColorOption) => (opt.image_url ? 2 : 0) + (opt.swatch_hex ? 1 : 0);
+    const score = (opt: GenericColorOption) =>
+      (opt.label_image_url ? 3 : 0) + (opt.image_url ? 2 : 0) + (opt.swatch_hex ? 1 : 0);
 
     variants.forEach((variant) => {
       const value = getOptionValue(variant, ['color', 'colour', 'shade', 'tone']);
@@ -240,6 +241,7 @@ export function PdpContainer({
 
       const candidate: GenericColorOption = {
         value,
+        label_image_url: variant.label_image_url,
         image_url: variant.image_url,
         swatch_hex: variant.swatch?.hex || variant.beauty_meta?.shade_hex,
       };
@@ -1526,11 +1528,15 @@ export function PdpContainer({
       <GenericColorSheet
         open={resolvedMode === 'generic' && showColorSheet}
         onClose={() => setShowColorSheet(false)}
-        variants={variants}
-        selectedVariantId={selectedVariant.variant_id}
-        onSelect={(variantId) => {
-          handleVariantSelect(variantId);
-          pdpTracking.track('pdp_action_click', { action_type: 'select_variant', variant_id: variantId });
+        options={colorSheetOptions}
+        selectedValue={selectedColor}
+        onSelect={(value) => {
+          handleColorSelect(value);
+          pdpTracking.track('pdp_action_click', {
+            action_type: 'select_variant',
+            option_name: 'color',
+            option_value: value,
+          });
         }}
       />
       <OfferSheet
