@@ -115,7 +115,10 @@ export default function ProductDetailPage({ params }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  const [loadedViaPdpV2, setLoadedViaPdpV2] = useState(false);
   const offerProductDetailCacheRef = useRef<Map<string, ProductResponse>>(new Map());
+  const reviewsFetchKeyRef = useRef<string | null>(null);
+  const similarFetchKeyRef = useRef<string | null>(null);
   const [ugcCapabilities, setUgcCapabilities] = useState<UgcCapabilities | null>({
     canUploadMedia: false,
     canWriteReview: false,
@@ -141,17 +144,37 @@ export default function ProductDetailPage({ params }: Props) {
       setError(null);
       setSellerCandidates(null);
       setPdpPayload(null);
+      setLoadedViaPdpV2(false);
+      reviewsFetchKeyRef.current = null;
+      similarFetchKeyRef.current = null;
 
       try {
         const v2 = await getPdpV2({
           product_id: id,
           ...(explicitMerchantId ? { merchant_id: explicitMerchantId } : {}),
+          include: ['offers'],
           timeout_ms: v2TimeoutMs,
         });
         if (cancelled) return;
         const assembled = mapPdpV2ToPdpPayload(v2);
         if (!assembled) throw new Error('Invalid PDP response');
-        setPdpPayload(assembled);
+        const hasReviews =
+          Array.isArray(assembled.modules) &&
+          assembled.modules.some((m) => m?.type === 'reviews_preview');
+        const hasRecommendations =
+          Array.isArray(assembled.modules) &&
+          assembled.modules.some((m) => {
+            if (m?.type !== 'recommendations') return false;
+            const items = (m as any)?.data?.items;
+            return Array.isArray(items) && items.length > 0;
+          });
+
+        setPdpPayload({
+          ...assembled,
+          ...(hasReviews ? {} : { x_reviews_state: 'loading' }),
+          ...(hasRecommendations ? {} : { x_recommendations_state: 'loading' }),
+        });
+        setLoadedViaPdpV2(true);
         setLoading(false);
         return;
       } catch (v2Err) {
@@ -203,6 +226,7 @@ export default function ProductDetailPage({ params }: Props) {
             entryPoint: 'product_detail',
           });
           setPdpPayload(legacyPayload);
+          setLoadedViaPdpV2(false);
           setLoading(false);
           return;
         } catch (fallbackErr) {
@@ -231,6 +255,114 @@ export default function ProductDetailPage({ params }: Props) {
       cancelled = true;
     };
   }, [id, merchantIdParam, reloadKey]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const run = async () => {
+      if (!loadedViaPdpV2) return;
+      if (!pdpPayload) return;
+      if (pdpPayload.x_reviews_state !== 'loading') return;
+
+      const merchantId = String(pdpPayload.product.merchant_id || '').trim();
+      const productId = String(pdpPayload.product.product_id || id || '').trim();
+      if (!merchantId || !productId) {
+        setPdpPayload((prev) => (prev ? { ...prev, x_reviews_state: undefined } : prev));
+        return;
+      }
+
+      const key = `${merchantId}:${productId}`;
+      if (reviewsFetchKeyRef.current === key) return;
+      reviewsFetchKeyRef.current = key;
+
+      try {
+        const v2 = await getPdpV2({
+          product_id: productId,
+          merchant_id: merchantId,
+          include: ['reviews_preview'],
+          timeout_ms: 5000,
+        });
+        if (cancelled) return;
+
+        const assembled = mapPdpV2ToPdpPayload(v2);
+        const reviewsModule =
+          assembled && Array.isArray(assembled.modules)
+            ? assembled.modules.find((m) => m?.type === 'reviews_preview') || null
+            : null;
+
+        setPdpPayload((prev) => {
+          if (!prev) return prev;
+          if (!reviewsModule) return { ...prev, x_reviews_state: undefined };
+          const modules = Array.isArray(prev.modules) ? prev.modules : [];
+          const filtered = modules.filter((m) => m?.type !== 'reviews_preview');
+          return { ...prev, modules: [...filtered, reviewsModule], x_reviews_state: 'ready' };
+        });
+      } catch {
+        if (cancelled) return;
+        setPdpPayload((prev) => (prev ? { ...prev, x_reviews_state: undefined } : prev));
+      }
+    };
+
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [id, loadedViaPdpV2, pdpPayload, pdpPayload?.x_reviews_state]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const run = async () => {
+      if (!loadedViaPdpV2) return;
+      if (!pdpPayload) return;
+      if (pdpPayload.x_recommendations_state !== 'loading') return;
+
+      const merchantId = String(pdpPayload.product.merchant_id || '').trim();
+      const productId = String(pdpPayload.product.product_id || id || '').trim();
+      if (!merchantId || !productId) {
+        setPdpPayload((prev) => (prev ? { ...prev, x_recommendations_state: undefined } : prev));
+        return;
+      }
+
+      const key = `${merchantId}:${productId}`;
+      if (similarFetchKeyRef.current === key) return;
+      similarFetchKeyRef.current = key;
+
+      try {
+        const v2 = await getPdpV2({
+          product_id: productId,
+          merchant_id: merchantId,
+          include: ['similar'],
+          timeout_ms: 8000,
+        });
+        if (cancelled) return;
+
+        const assembled = mapPdpV2ToPdpPayload(v2);
+        const recModule =
+          assembled && Array.isArray(assembled.modules)
+            ? assembled.modules.find((m) => m?.type === 'recommendations') || null
+            : null;
+        const items = (recModule as any)?.data?.items;
+        const hasItems = Array.isArray(items) && items.length > 0;
+
+        setPdpPayload((prev) => {
+          if (!prev) return prev;
+          if (!recModule || !hasItems) return { ...prev, x_recommendations_state: undefined };
+          const modules = Array.isArray(prev.modules) ? prev.modules : [];
+          const filtered = modules.filter((m) => m?.type !== 'recommendations');
+          return { ...prev, modules: [...filtered, recModule], x_recommendations_state: 'ready' };
+        });
+      } catch {
+        if (cancelled) return;
+        setPdpPayload((prev) => (prev ? { ...prev, x_recommendations_state: undefined } : prev));
+      }
+    };
+
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [id, loadedViaPdpV2, pdpPayload, pdpPayload?.x_recommendations_state]);
 
   useEffect(() => {
     let cancelled = false;
