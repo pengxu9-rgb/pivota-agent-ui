@@ -56,6 +56,7 @@ export function GenericColorSheet({
               {options.map((option) => {
                 const isSelected = option.value === selectedValue;
                 const imageUrl = option.label_image_url || option.image_url;
+                const hasPreview = Boolean(imageUrl) || Boolean(option.swatch_hex);
                 return (
                   <button
                     key={option.value}
@@ -63,26 +64,27 @@ export function GenericColorSheet({
                       onSelect(option.value);
                       onClose();
                     }}
-                    className={`flex flex-col items-center gap-0.5 p-1.5 rounded-md border text-center transition-colors ${
+                    className={`flex flex-col items-center gap-1.5 p-2 rounded-xl border text-center transition-colors bg-white ${
                       isSelected
-                        ? 'border-primary bg-primary/10 ring-1 ring-primary/40'
-                        : 'border-border hover:border-primary/50'
-                    }`}
+                        ? 'border-[color:var(--accent-600)] ring-1 ring-[color:var(--accent-600)]'
+                        : 'border-border hover:border-muted-foreground/40'
+                    } ${hasPreview ? '' : 'justify-center min-h-[56px]'}`}
                   >
-                    <div className="relative h-16 w-11 rounded overflow-hidden bg-muted">
-                      {imageUrl ? (
-                        <Image
-                          src={imageUrl}
-                          alt={option.value}
-                          fill
-                          className="object-cover"
-                          unoptimized
-                        />
-                      ) : option.swatch_hex ? (
-                        <span className="absolute inset-0" style={{ backgroundColor: option.swatch_hex }} />
-                      ) : null}
-                    </div>
-                    <span className="text-[9px] text-muted-foreground line-clamp-1">{option.value}</span>
+                    {hasPreview ? (
+                      <div className="relative h-14 w-14 rounded-lg overflow-hidden bg-muted">
+                        {imageUrl ? (
+                          <Image src={imageUrl} alt={option.value} fill className="object-cover" unoptimized />
+                        ) : option.swatch_hex ? (
+                          <span className="absolute inset-0" style={{ backgroundColor: option.swatch_hex }} />
+                        ) : null}
+                      </div>
+                    ) : null}
+
+                    <span
+                      className={`${hasPreview ? 'text-[11px] text-muted-foreground' : 'text-[13px] font-medium text-foreground'} line-clamp-1`}
+                    >
+                      {option.value}
+                    </span>
                   </button>
                 );
               })}
