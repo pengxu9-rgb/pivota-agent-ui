@@ -325,11 +325,57 @@ function buildVariants(product: ProductResponse, raw: any): Variant[] {
 
 function buildMediaItems(product: ProductResponse, raw: any, variants: Variant[]): MediaGalleryData {
   const items: MediaGalleryData['items'] = [];
-  const seenUrls = new Set<string>();
+  const seenKeys = new Set<string>();
+
+  const unwrapProxiedImageUrl = (url: string): string => {
+    try {
+      const u = new URL(url, 'http://localhost');
+      if (u.pathname === '/api/image-proxy') {
+        const inner = u.searchParams.get('url');
+        if (inner) return inner;
+      }
+    } catch {
+      // ignore
+    }
+    return url;
+  };
+
+  const canonicalImageKey = (url: string): string => {
+    const rawUrl = unwrapProxiedImageUrl(url);
+    try {
+      const u = new URL(rawUrl);
+      if (u.protocol !== 'http:' && u.protocol !== 'https:') return rawUrl;
+
+      const host = u.hostname.toLowerCase();
+      let path = u.pathname;
+      if (host.includes('cdn.shopify.com')) {
+        path = path.replace(/_(\d{2,4})x(\d{0,4})?(?=\.(?:jpe?g|png|webp|gif|avif))/i, '');
+      }
+      const params = new URLSearchParams(u.search);
+      ['width', 'w', 'height', 'h', 'dpr', 'quality', 'q'].forEach((k) => params.delete(k));
+      const sorted = Array.from(params.entries()).sort(([a, av], [b, bv]) => {
+        const kc = a.localeCompare(b);
+        return kc !== 0 ? kc : av.localeCompare(bv);
+      });
+      const normalized = new URLSearchParams(sorted);
+      const qs = normalized.toString();
+      return `${host}${path}${qs ? `?${qs}` : ''}`;
+    } catch {
+      return rawUrl;
+    }
+  };
+
+  const mediaDedupeKey = (item: MediaGalleryData['items'][number]) => {
+    const t = item.type || 'image';
+    if (t !== 'image') return `${t}:${item.url}`;
+    return `image:${canonicalImageKey(item.url)}`;
+  };
+
   const pushItem = (item: MediaGalleryData['items'][number]) => {
     if (!item.url) return;
-    if (seenUrls.has(item.url)) return;
-    seenUrls.add(item.url);
+    const key = mediaDedupeKey(item);
+    if (seenKeys.has(key)) return;
+    seenKeys.add(key);
     items.push(item);
   };
   const rawMedia = Array.isArray(raw?.media) ? raw.media : [];
