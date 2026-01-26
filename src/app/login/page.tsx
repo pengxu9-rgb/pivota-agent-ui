@@ -6,13 +6,14 @@ import { Mail, ArrowRight, ShieldCheck } from 'lucide-react'
 import { accountsLogin, accountsLoginWithPassword, accountsSetPassword, accountsVerify } from '@/lib/api'
 import { useAuthStore } from '@/store/authStore'
 import { toast } from 'sonner'
+import { safeReturnUrl } from '@/lib/returnUrl'
 
 type LoginMethod = 'otp' | 'password'
 
 function LoginContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const redirect = searchParams.get('redirect') || '/my-orders'
+  const redirect = safeReturnUrl(searchParams.get('redirect')) || '/my-orders'
 
   const { setSession, user } = useAuthStore()
   const [method, setMethod] = useState<LoginMethod>('otp')
