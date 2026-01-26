@@ -157,6 +157,12 @@ export function PdpContainer({
     return Math.max(0, Math.floor(qty));
   }, [payload.product.availability?.available_quantity, selectedVariant?.availability?.available_quantity]);
 
+  const stockEstimateLabel = isInStock
+    ? availableQuantity != null && availableQuantity <= 5
+      ? 'Low stock'
+      : 'In stock'
+    : null;
+
   const maxQuantity = availableQuantity != null && availableQuantity > 0 ? availableQuantity : undefined;
   const resolvedQuantity = maxQuantity != null ? Math.min(quantity, maxQuantity) : quantity;
 
@@ -972,6 +978,17 @@ export function PdpContainer({
                 {!isInStock ? (
                   <span className="rounded-full border border-red-200 bg-red-50 px-2 py-0.5 text-[10px] font-medium text-red-700">
                     Out of stock
+                  </span>
+                ) : stockEstimateLabel ? (
+                  <span
+                    className={cn(
+                      'rounded-full border px-2 py-0.5 text-[10px] font-medium',
+                      stockEstimateLabel === 'Low stock'
+                        ? 'border-amber-200 bg-amber-50 text-amber-700'
+                        : 'border-emerald-200 bg-emerald-50 text-emerald-700',
+                    )}
+                  >
+                    {stockEstimateLabel}
                   </span>
                 ) : null}
                 {compareAmount && compareAmount > displayPriceAmount ? (

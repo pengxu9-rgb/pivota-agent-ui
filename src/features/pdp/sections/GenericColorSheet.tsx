@@ -3,6 +3,7 @@
 import Image from 'next/image';
 import { AnimatePresence, motion } from 'framer-motion';
 import { X } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 export type GenericColorOption = {
   value: string;
@@ -24,6 +25,9 @@ export function GenericColorSheet({
   selectedValue: string | null;
   onSelect: (value: string) => void;
 }) {
+  const hasAnyPreview = options.some(
+    (option) => Boolean(option.label_image_url || option.image_url || option.swatch_hex),
+  );
   return (
     <AnimatePresence>
       {open ? (
@@ -52,7 +56,12 @@ export function GenericColorSheet({
                 <X className="h-4 w-4" />
               </button>
             </div>
-            <div className="mt-2 grid grid-cols-4 gap-2 overflow-y-auto px-4 pb-4">
+            <div
+              className={cn(
+                'mt-2 grid gap-2 overflow-y-auto px-4 pb-4',
+                hasAnyPreview ? 'grid-cols-4' : 'grid-cols-2',
+              )}
+            >
               {options.map((option) => {
                 const isSelected = option.value === selectedValue;
                 const imageUrl = option.label_image_url || option.image_url;
@@ -81,7 +90,12 @@ export function GenericColorSheet({
                     ) : null}
 
                     <span
-                      className={`${hasPreview ? 'text-[11px] text-muted-foreground' : 'text-[13px] font-medium text-foreground'} line-clamp-1`}
+                      className={cn(
+                        'w-full truncate',
+                        hasPreview
+                          ? 'text-[11px] text-muted-foreground'
+                          : 'text-[13px] font-medium text-foreground',
+                      )}
                     >
                       {option.value}
                     </span>
