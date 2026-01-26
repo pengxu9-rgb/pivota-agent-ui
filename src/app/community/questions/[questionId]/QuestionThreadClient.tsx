@@ -21,6 +21,9 @@ export default function QuestionThreadClient() {
   const params = useParams();
   const search = useSearchParams();
 
+  const productId = (search.get('product_id') || search.get('productId') || '').trim();
+  const merchantId = (search.get('merchant_id') || search.get('merchantId') || '').trim();
+
   const questionId = useMemo(() => {
     const raw = (params as any)?.questionId;
     return Number(Array.isArray(raw) ? raw[0] : raw);
@@ -30,6 +33,12 @@ export default function QuestionThreadClient() {
     const qs = search.toString();
     return `/community/questions${qs ? `?${qs}` : ''}`;
   }, [search]);
+
+  const backToProductHref = useMemo(() => {
+    if (!productId) return '';
+    const base = `/products/${encodeURIComponent(productId)}`;
+    return merchantId ? `${base}?merchant_id=${encodeURIComponent(merchantId)}` : base;
+  }, [merchantId, productId]);
 
   const [loading, setLoading] = useState(true);
   const [question, setQuestion] = useState<{ question: string; created_at?: string | null; replies?: number } | null>(null);
@@ -123,6 +132,11 @@ export default function QuestionThreadClient() {
               </Link>
             </div>
           </div>
+          {backToProductHref ? (
+            <Link href={backToProductHref} className="text-xs font-medium text-primary hover:underline">
+              Back to product
+            </Link>
+          ) : null}
         </div>
 
         {loading ? (
