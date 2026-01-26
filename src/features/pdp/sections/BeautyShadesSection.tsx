@@ -43,10 +43,16 @@ export function BeautyShadesSection({
         </div>
 
         <div className="flex items-center gap-3 mb-3">
-          <span
-            className="h-10 w-10 rounded-full ring-2 ring-primary ring-offset-2"
-            style={{ backgroundColor: shadeHex || '#ddd' }}
-          />
+          <span className="relative h-10 w-10 rounded-full ring-2 ring-primary ring-offset-2 overflow-hidden bg-muted">
+            {selectedVariant.label_image_url ? (
+              <Image src={selectedVariant.label_image_url} alt="" fill className="object-cover" unoptimized />
+            ) : (
+              <span
+                className="absolute inset-0"
+                style={{ backgroundColor: shadeHex || '#ddd' }}
+              />
+            )}
+          </span>
           <div>
             <p className="font-medium">{selectedVariant.title}</p>
             {undertone ? (

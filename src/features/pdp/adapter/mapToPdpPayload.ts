@@ -316,6 +316,15 @@ function buildVariants(product: ProductResponse, raw: any): Variant[] {
           ...(availableQuantity != null ? { available_quantity: availableQuantity } : {}),
         },
         image_url: normalizeImageUrl(v.image_url || v.image || v.images?.[0]),
+        label_image_url: normalizeImageUrl(
+          v.label_image_url ||
+            v.swatch_image_url ||
+            v.thumbnail_url ||
+            v.thumbnail ||
+            v.swatch?.image_url ||
+            v.swatch?.imageUrl ||
+            undefined,
+        ),
       } as Variant;
     })
     .filter(Boolean);

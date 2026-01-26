@@ -83,6 +83,7 @@ export interface Variant {
   price?: VariantPrice;
   availability?: { in_stock: boolean; available_quantity?: number };
   image_url?: string;
+  label_image_url?: string;
 }
 
 export interface Price {

@@ -78,8 +78,14 @@ export function GenericColorSheet({
                     }`}
                   >
                     <div className="relative h-16 w-11 rounded overflow-hidden bg-muted">
-                      {variant.image_url ? (
-                        <Image src={variant.image_url} alt={colorLabel} fill className="object-cover" unoptimized />
+                      {variant.label_image_url || variant.image_url ? (
+                        <Image
+                          src={variant.label_image_url || variant.image_url}
+                          alt={colorLabel}
+                          fill
+                          className="object-cover"
+                          unoptimized
+                        />
                       ) : variant.swatch?.hex ? (
                         <span className="absolute inset-0" style={{ backgroundColor: variant.swatch.hex }} />
                       ) : null}
