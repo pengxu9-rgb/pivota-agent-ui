@@ -285,7 +285,9 @@ export default function ProductDetailPage({ params }: Props) {
         const v2 = await getPdpV2({
           product_id: id,
           ...(explicitMerchantId ? { merchant_id: explicitMerchantId } : {}),
-          include: [],
+          // Fetch reviews + similar in the initial call to avoid re-fetching canonical payload later.
+          // If the backend can’t serve these modules, the progressive loaders below will still kick in.
+          include: ['reviews_preview', 'similar'],
           timeout_ms: v2TimeoutMs,
         });
         if (cancelled) return;
