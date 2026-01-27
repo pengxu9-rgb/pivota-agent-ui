@@ -229,6 +229,21 @@ export type GetPdpV2Response = {
   missing?: Array<{ type: string; reason?: string }>;
 };
 
+export type FindSimilarProductsResponse = {
+  status?: string;
+  strategy?: string;
+  products?: Array<any>;
+  total?: number;
+  page?: number;
+  page_size?: number;
+  debug?: any;
+  cache?: {
+    hit?: boolean;
+    age_ms?: number;
+    ttl_ms?: number;
+  };
+};
+
 function normalizeProduct(
   p: RealAPIProduct | ProductResponse,
 ): ProductResponse {
@@ -1328,6 +1343,44 @@ export async function getPdpV2(args: {
   );
 
   return data as GetPdpV2Response;
+}
+
+export async function findSimilarProducts(args: {
+  product_id: string;
+  merchant_id?: string | null;
+  limit?: number;
+  timeout_ms?: number;
+  debug?: boolean;
+  cache_bypass?: boolean;
+}): Promise<FindSimilarProductsResponse> {
+  const productId = String(args.product_id || '').trim();
+  if (!productId) throw new Error('product_id is required');
+  const merchantId = args.merchant_id ? String(args.merchant_id).trim() : '';
+  const limit = Math.max(1, Math.min(Number(args.limit || 6) || 6, 30));
+
+  const data = await callGatewayWithTimeout(
+    {
+      operation: 'find_similar_products',
+      payload: {
+        similar: {
+          product_id: productId,
+          ...(merchantId ? { merchant_id: merchantId } : {}),
+          limit,
+        },
+        options: {
+          ...(args.debug ? { debug: true } : {}),
+          ...(args.cache_bypass ? { cache_bypass: true } : {}),
+        },
+        capabilities: {
+          client: 'shopping',
+          client_version: process.env.NEXT_PUBLIC_APP_VERSION || null,
+        },
+      },
+    },
+    args.timeout_ms,
+  );
+
+  return data as FindSimilarProductsResponse;
 }
 
 function _inferReviewSubjectFromProduct(product: ProductResponse): {

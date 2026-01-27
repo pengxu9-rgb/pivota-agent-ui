@@ -8,6 +8,7 @@ import { useAuthStore } from '@/store/authStore';
 import {
   getPdpV2,
   getPdpV2Personalization,
+  findSimilarProducts,
   getProductDetail,
   resolveProductGroup,
   type ProductResponse,
@@ -142,6 +143,66 @@ function getExternalRedirectUrlFromOffer(offer: unknown): string | null {
     );
   }
   return null;
+}
+
+function normalizeRecommendationItem(input: unknown) {
+  if (!input || typeof input !== 'object') return null;
+  const typed = input as any;
+  const product_id = String(typed.product_id || typed.id || typed.variant_id || '').trim();
+  const title = String(typed.title || typed.name || '').trim();
+  if (!product_id || !title) return null;
+
+  const merchant_id = typed.merchant_id ? String(typed.merchant_id).trim() : undefined;
+
+  const image_url =
+    typeof typed.image_url === 'string'
+      ? typed.image_url
+      : typeof typed.image === 'string'
+        ? typed.image
+        : typeof typed.imageUrl === 'string'
+          ? typed.imageUrl
+          : undefined;
+
+  const currencyCandidate =
+    (typeof typed.currency === 'string' && typed.currency) ||
+    (typeof typed.price?.currency === 'string' && typed.price.currency) ||
+    (typeof typed.price?.current?.currency === 'string' && typed.price.current.currency) ||
+    'USD';
+
+  let price: { amount: number; currency: string } | undefined;
+  const rawPrice = typed.price;
+  if (typeof rawPrice === 'number' && Number.isFinite(rawPrice)) {
+    price = { amount: rawPrice, currency: String(currencyCandidate) };
+  } else if (rawPrice && typeof rawPrice === 'object') {
+    const amt =
+      (typeof (rawPrice as any).amount === 'number' && (rawPrice as any).amount) ||
+      (typeof (rawPrice as any).current?.amount === 'number' && (rawPrice as any).current.amount) ||
+      null;
+    if (typeof amt === 'number' && Number.isFinite(amt)) {
+      price = {
+        amount: amt,
+        currency: String((rawPrice as any).currency || (rawPrice as any).current?.currency || currencyCandidate),
+      };
+    }
+  }
+
+  const rating = typeof typed.rating === 'number' ? typed.rating : undefined;
+  const review_count =
+    typeof typed.review_count === 'number'
+      ? typed.review_count
+      : typeof typed.reviews_count === 'number'
+        ? typed.reviews_count
+        : undefined;
+
+  return {
+    product_id,
+    title,
+    ...(image_url ? { image_url } : {}),
+    ...(price ? { price } : {}),
+    ...(typeof rating === 'number' ? { rating } : {}),
+    ...(typeof review_count === 'number' ? { review_count } : {}),
+    ...(merchant_id ? { merchant_id } : {}),
+  };
 }
 
 function ProductDetailLoading({ label }: { label: string }) {
@@ -459,21 +520,29 @@ export default function ProductDetailPage({ params }: Props) {
       similarFetchKeyRef.current = key;
 
       try {
-        const v2 = await getPdpV2({
+        const similar = await findSimilarProducts({
           product_id: productId,
           merchant_id: merchantId,
-          include: ['similar'],
-          timeout_ms: 8000,
+          limit: 6,
+          timeout_ms: 5000,
         });
         if (cancelled) return;
 
-        const assembled = mapPdpV2ToPdpPayload(v2);
-        const recModule =
-          assembled && Array.isArray(assembled.modules)
-            ? assembled.modules.find((m) => m?.type === 'recommendations') || null
-            : null;
-        const items = (recModule as any)?.data?.items;
-        const hasItems = Array.isArray(items) && items.length > 0;
+        const products = Array.isArray((similar as any)?.products) ? (similar as any).products : [];
+        const items = products.map(normalizeRecommendationItem).filter(Boolean) as any[];
+        const hasItems = items.length > 0;
+        const recModule = hasItems
+          ? {
+              module_id: 'recommendations',
+              type: 'recommendations' as const,
+              priority: 90,
+              title: 'Similar',
+              data: {
+                strategy: (similar as any)?.strategy || 'related_products',
+                items,
+              },
+            }
+          : null;
 
         setPdpPayload((prev) => {
           if (!prev) return prev;
