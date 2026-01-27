@@ -471,7 +471,7 @@ export default function ProductDetailPage({ params }: Props) {
           product_id: productId,
           merchant_id: merchantId,
           include: ['reviews_preview'],
-          timeout_ms: 5000,
+          timeout_ms: 12000,
         });
         if (cancelled) return;
 
@@ -524,7 +524,7 @@ export default function ProductDetailPage({ params }: Props) {
           product_id: productId,
           merchant_id: merchantId,
           limit: 6,
-          timeout_ms: 5000,
+          timeout_ms: 8000,
         });
         if (cancelled) return;
 
