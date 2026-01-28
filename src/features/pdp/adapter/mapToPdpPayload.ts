@@ -12,6 +12,7 @@ import type {
   ReviewsPreviewData,
   VariantPrice,
 } from '@/features/pdp/types';
+import { formatDescriptionText } from '@/features/pdp/utils/formatDescriptionText';
 
 function createPageRequestId() {
   try {
@@ -22,14 +23,6 @@ function createPageRequestId() {
     // ignore
   }
   return `pr_${Math.random().toString(36).slice(2)}_${Date.now().toString(36)}`;
-}
-
-function stripHtml(input: string): string {
-  return (input || '')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
 }
 
 function normalizeTextForLineParsing(input: unknown): string {
@@ -452,7 +445,7 @@ function buildMediaItems(product: ProductResponse, raw: any, variants: Variant[]
 }
 
 function buildDetailSections(product: ProductResponse, raw: any): DetailSection[] {
-  const desc = stripHtml(product.description || '');
+  const desc = formatDescriptionText(product.description || '');
   const sections: DetailSection[] = [];
 
   if (desc) {
@@ -479,7 +472,7 @@ function buildDetailSections(product: ProductResponse, raw: any): DetailSection[
     sections.push({
       heading: String(heading),
       content_type: 'text',
-      content: stripHtml(String(content)),
+      content: formatDescriptionText(String(content)),
       collapsed_by_default: s.collapsed_by_default ?? true,
     });
   });
