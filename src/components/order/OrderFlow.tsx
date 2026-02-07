@@ -436,6 +436,11 @@ function OrderFlowInner({
   // Do not memoize: `getMerchantId()` may rely on runtime overrides (e.g., localStorage) that can
   // change independently from React deps.
   const merchantIdForOrder = (() => {
+    const merchantIds = Array.from(
+      new Set(items.map((item) => String(item.merchant_id || '').trim()).filter(Boolean)),
+    )
+    if (merchantIds.length === 1) return merchantIds[0]
+
     const fromItems = String(items[0]?.merchant_id || '').trim()
     if (fromItems) return fromItems
     const fromOffer = offerIdForOrder ? extractMerchantIdFromOfferId(offerIdForOrder) : null

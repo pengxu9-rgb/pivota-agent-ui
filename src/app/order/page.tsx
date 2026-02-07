@@ -103,22 +103,45 @@ function OrderContent() {
   useEffect(() => {
     // In a real app, this would come from cart state or API
     // For demo, we'll parse from URL params or use mock data
-    const items = searchParams.get('items')
-    if (items) {
+    const itemsParam = searchParams.get('items')
+    if (itemsParam) {
       try {
-        setOrderItems(JSON.parse(decodeURIComponent(items)))
+        // `URLSearchParams.get()` already returns a decoded string. Calling `decodeURIComponent`
+        // again will throw for common product titles like "10%".
+        // Still, some callers may pass an already-encoded payload, so we try both.
+        const parsed =
+          (() => {
+            try {
+              return JSON.parse(itemsParam)
+            } catch {
+              // ignore
+            }
+            try {
+              return JSON.parse(decodeURIComponent(itemsParam))
+            } catch {
+              // ignore
+            }
+            return null
+          })() || null
+
+        if (!Array.isArray(parsed)) {
+          throw new Error('items param is not an array')
+        }
+
+        setOrderItems(parsed as OrderItem[])
+
+        // Best-effort: persist a merchant override so checkout can recover seller selection
+        // even if an item payload is missing merchant_id.
+        const merchantId =
+          parsed
+            .map((it: any) => String(it?.merchant_id || '').trim())
+            .find(Boolean) || null
+        if (merchantId) {
+          setMerchantId(merchantId)
+        }
       } catch (e) {
-        // Use mock data if parsing fails
-        setOrderItems([
-          {
-            product_id: 'BOTTLE_001',
-            merchant_id: undefined,
-            title: 'Stainless Steel Water Bottle - 24oz',
-            quantity: 1,
-            unit_price: 24.99,
-            image_url: 'https://m.media-amazon.com/images/I/61CGHv1V7AL._AC_SL1500_.jpg'
-          }
-        ])
+        console.error('[Order] Failed to parse items query param:', e)
+        setOrderItems([])
       }
     } else {
       // If this order page was opened via UCP `continue_url`, fetch server-side UI payload.
