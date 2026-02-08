@@ -26,7 +26,12 @@ function decodeCheckoutTokenPayload(token: string | null): any | null {
 function SuccessContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const orderId = searchParams.get('orderId')
+  const orderId =
+    (searchParams.get('orderId') ||
+      searchParams.get('order_id') ||
+      searchParams.get('orderID') ||
+      searchParams.get('order') ||
+      '').trim() || null
   const saveTokenFromUrl = (searchParams.get('save_token') || '').trim() || null
   const ucpCheckoutSessionId =
     (searchParams.get('ucp_checkout_session_id') ||
@@ -55,6 +60,14 @@ function SuccessContent() {
 
   useEffect(() => {
     try {
+      const params = new URLSearchParams(window.location.search)
+      const tokenFromUrl = (params.get('checkout_token') || params.get('checkoutToken') || '').trim()
+      if (tokenFromUrl) {
+        window.sessionStorage.setItem('pivota_checkout_token', tokenFromUrl)
+        setCheckoutToken(tokenFromUrl)
+        return
+      }
+
       const token = window.sessionStorage.getItem('pivota_checkout_token')
       setCheckoutToken(token ? String(token).trim() : null)
     } catch {
@@ -179,14 +192,20 @@ function SuccessContent() {
               </div>
             ) : (
               <button
+                type="button"
                 onClick={() => void attemptSave({ intent_id: intentId || undefined, order_id: orderId || undefined })}
-                disabled={!intentId || !orderId || saveStatus === 'saving'}
+                disabled={!checkoutToken || saveStatus === 'saving'}
                 className="w-full px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-60"
               >
                 {saveStatus === 'saving' ? 'Saving…' : 'Save'}
               </button>
             )}
             {saveStatus === 'error' && saveError ? <p className="text-xs text-red-700 mt-2">{saveError}</p> : null}
+            {!checkoutToken ? (
+              <p className="text-xs text-gray-600 mt-2">
+                Missing checkout session. Please return to the app and retry checkout.
+              </p>
+            ) : null}
           </div>
         </div>
         
