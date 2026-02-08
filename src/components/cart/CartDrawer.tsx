@@ -4,12 +4,15 @@ import { X, Minus, Plus, Trash2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
+import { useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { useCartStore } from '@/store/cartStore';
+import { isAuroraEmbedMode, postRequestCloseToParent } from '@/lib/auroraEmbed';
 
 export default function CartDrawer() {
   const router = useRouter();
   const { items, isOpen, close, removeItem, updateQuantity, getTotal, clearCart } = useCartStore();
+  const isEmbed = useMemo(() => isAuroraEmbedMode(), []);
 
   const handleCheckout = () => {
     if (items.length === 0) return;
@@ -78,10 +81,14 @@ export default function CartDrawer() {
                       className="mt-4"
                       onClick={() => {
                         close();
+                        if (isEmbed) {
+                          postRequestCloseToParent({ reason: 'empty_cart_back' });
+                          return;
+                        }
                         router.push('/products');
                       }}
                     >
-                      Browse Products
+                      {isEmbed ? 'Back to Aurora' : 'Browse Products'}
                     </Button>
                   </motion.div>
                 ) : (

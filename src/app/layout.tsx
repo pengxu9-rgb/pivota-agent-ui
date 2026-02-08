@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import type { Metadata } from "next";
 import "./globals.css";
 import { Toaster } from "sonner";
@@ -30,7 +31,9 @@ export default function RootLayout({
       <body className="antialiased font-sans">
         <ThemeProvider defaultTheme="light" storageKey="pivota-ui-theme">
           <AuthInitGate />
-          <AuroraEmbedBridge />
+          <Suspense fallback={null}>
+            <AuroraEmbedBridge />
+          </Suspense>
           {children}
           <CartDrawer />
           <Toaster position="top-center" richColors />

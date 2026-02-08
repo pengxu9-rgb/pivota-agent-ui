@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { Menu, ShoppingCart, Send, Package, User } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
@@ -12,10 +12,53 @@ import { ChatRecommendationCard } from '@/components/product/ChatRecommendationC
 import { useCartStore } from '@/store/cartStore';
 import { useAuthStore } from '@/store/authStore';
 import { useChatStore } from '@/store/chatStore';
+import { getAllowedParentOrigin, isAuroraEmbedMode, postRequestCloseToParent } from '@/lib/auroraEmbed';
 import { sendMessage, getAllProducts, type ProductResponse } from '@/lib/api';
 import { toast } from 'sonner';
 
+function AuroraEmbedCartHost() {
+  const canPost = useMemo(() => Boolean(getAllowedParentOrigin()), []);
+
+  return (
+    <div className="flex h-screen w-full flex-col items-center justify-center bg-background px-6 text-center">
+      <div className="text-sm font-semibold text-foreground">Cart</div>
+      <div className="mt-2 max-w-sm text-xs text-muted-foreground">
+        If the cart panel didn’t open automatically, please go back and retry from Aurora.
+      </div>
+      <button
+        type="button"
+        className="mt-5 inline-flex h-11 items-center justify-center rounded-2xl border border-border/60 bg-muted/30 px-4 text-sm font-semibold text-foreground/80"
+        onClick={() => {
+          const posted = postRequestCloseToParent({ reason: 'embed_host_close' });
+          if (!posted) {
+            // Fallback: closing will reveal the embed host, but users can still close the Aurora drawer.
+            try {
+              window.history.back();
+            } catch {
+              // ignore
+            }
+          }
+        }}
+        aria-label="Back to Aurora"
+        title={canPost ? 'Back to Aurora' : 'Back'}
+      >
+        Back to Aurora
+      </button>
+      {!canPost ? (
+        <div className="mt-2 text-[11px] text-muted-foreground">
+          Close this panel from Aurora.
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export default function HomePage() {
+  const isEmbed = useMemo(() => isAuroraEmbedMode(), []);
+  return isEmbed ? <AuroraEmbedCartHost /> : <HomePageApp />;
+}
+
+function HomePageApp() {
   const [input, setInput] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(false); // Mobile: closed by default, Desktop: always visible
   const [loading, setLoading] = useState(false);
