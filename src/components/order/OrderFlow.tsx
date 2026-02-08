@@ -951,9 +951,18 @@ function OrderFlowInner({
         // Step 2: Create/confirm payment intent via gateway
         const postPayReturnUrl =
           typeof window !== 'undefined'
-            ? `${window.location.origin}/order/success?orderId=${encodeURIComponent(orderId)}${
-                returnUrl ? `&return=${encodeURIComponent(returnUrl)}` : ''
-              }`
+            ? (() => {
+                const url = new URL('/order/success', window.location.origin)
+                url.searchParams.set('orderId', orderId)
+                if (returnUrl) url.searchParams.set('return', returnUrl)
+                const current = new URL(window.location.href)
+                const passthrough = ['entry', 'embed', 'lang', 'aurora_uid', 'parent_origin']
+                for (const key of passthrough) {
+                  const value = (current.searchParams.get(key) || '').trim()
+                  if (value) url.searchParams.set(key, value)
+                }
+                return url.toString()
+              })()
             : undefined
         let paymentResponse: any
         try {

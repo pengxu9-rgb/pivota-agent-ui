@@ -4,6 +4,7 @@ import { Suspense, useEffect, useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Check, Package, ArrowRight } from 'lucide-react'
 import { safeReturnUrl, withReturnParams } from '@/lib/returnUrl'
+import { isAuroraEmbedMode, postRequestCloseToParent } from '@/lib/auroraEmbed'
 
 function decodeCheckoutTokenPayload(token: string | null): any | null {
   const raw = String(token || '').trim()
@@ -50,6 +51,7 @@ function SuccessContent() {
     searchParams.get('return_url')
   const returnUrl = safeReturnUrl(rawReturn)
   const hasReturnHint = Boolean(rawReturn && !returnUrl)
+  const isEmbedMode = useMemo(() => isAuroraEmbedMode(), [])
 
   const [checkoutToken, setCheckoutToken] = useState<string | null>(null)
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'step_up' | 'error'>(
@@ -126,6 +128,20 @@ function SuccessContent() {
     void attemptSave({ save_token: saveTokenFromUrl })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [saveTokenFromUrl])
+
+  const continueShopping = () => {
+    if (isEmbedMode || (typeof window !== 'undefined' && window.parent !== window)) {
+      const posted = postRequestCloseToParent({ reason: 'order_success_continue' })
+      if (posted) return
+      try {
+        window.history.back()
+        return
+      } catch {
+        // ignore
+      }
+    }
+    router.push('/')
+  }
 
   return (
     <main className="min-h-screen bg-gradient-to-br from-green-50 to-blue-100 flex items-center justify-center">
@@ -225,6 +241,8 @@ function SuccessContent() {
             <button
               onClick={() => {
                 if (!returnUrl) {
+                  const posted = postRequestCloseToParent({ reason: 'order_success_return_invalid' })
+                  if (posted) return
                   // When a return param exists but is not allowed, avoid routing into Pivota Shopping.
                   // Best-effort: close tab/window; otherwise user can manually go back.
                   window.close()
@@ -255,7 +273,7 @@ function SuccessContent() {
               </button>
 
               <button
-                onClick={() => router.push('/')}
+                onClick={continueShopping}
                 className="w-full px-6 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
               >
                 Continue Shopping

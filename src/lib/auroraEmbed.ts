@@ -2,6 +2,7 @@
 
 const SCHEMA_VERSION = '0.1' as const;
 const SHOP_KIND = 'pivota_shop_bridge' as const;
+const PARENT_ORIGIN_STORAGE_KEY = 'aurora_embed_parent_origin_v1';
 
 type ShopBridgeEnvelope<TEvent extends string, TPayload> = {
   schema_version: typeof SCHEMA_VERSION;
@@ -28,6 +29,17 @@ const safeUrlOrigin = (value: string): string | null => {
 };
 
 const safeReferrerOrigin = (): string | null => safeUrlOrigin(String(document.referrer || '').trim());
+const safeParentOriginFromQuery = (): string | null => {
+  try {
+    const sp = new URLSearchParams(window.location.search);
+    return (
+      safeUrlOrigin(String(sp.get('parent_origin') || '').trim()) ||
+      safeUrlOrigin(String(sp.get('parentOrigin') || '').trim())
+    );
+  } catch {
+    return null;
+  }
+};
 
 const parseAllowedParentOrigins = (): string[] => {
   const raw = String(process.env.NEXT_PUBLIC_EMBED_ALLOWED_ORIGINS || '').trim();
@@ -59,10 +71,36 @@ export const isAuroraEmbedMode = (): boolean => {
 export const getAllowedParentOrigin = (): string | null => {
   if (typeof window === 'undefined') return null;
   if (window.parent === window) return null;
-  const origin = safeReferrerOrigin();
-  if (!origin) return null;
   const allow = parseAllowedParentOrigins();
-  return allow.includes(origin) ? origin : null;
+
+  const remember = (origin: string) => {
+    try {
+      window.sessionStorage.setItem(PARENT_ORIGIN_STORAGE_KEY, origin);
+    } catch {
+      // ignore
+    }
+  };
+
+  const fromQuery = safeParentOriginFromQuery();
+  if (fromQuery && allow.includes(fromQuery)) {
+    remember(fromQuery);
+    return fromQuery;
+  }
+
+  const fromReferrer = safeReferrerOrigin();
+  if (fromReferrer && allow.includes(fromReferrer)) {
+    remember(fromReferrer);
+    return fromReferrer;
+  }
+
+  try {
+    const fromStorage = safeUrlOrigin(String(window.sessionStorage.getItem(PARENT_ORIGIN_STORAGE_KEY) || '').trim());
+    if (fromStorage && allow.includes(fromStorage)) return fromStorage;
+  } catch {
+    // ignore
+  }
+
+  return null;
 };
 
 export const postRequestCloseToParent = (args: { reason?: string }): boolean => {
@@ -87,4 +125,3 @@ export const postRequestCloseToParent = (args: { reason?: string }): boolean => 
     return false;
   }
 };
-
