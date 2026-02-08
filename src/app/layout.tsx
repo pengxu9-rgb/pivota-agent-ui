@@ -4,6 +4,7 @@ import { Toaster } from "sonner";
 import CartDrawer from "@/components/cart/CartDrawer";
 import { ThemeProvider } from "@/components/theme-provider";
 import AuthInitGate from "@/components/auth/AuthInitGate";
+import AuroraEmbedBridge from "@/components/aurora/AuroraEmbedBridge";
 
 export const metadata: Metadata = {
   title: "Pivota Shopping AI",
@@ -29,6 +30,7 @@ export default function RootLayout({
       <body className="antialiased font-sans">
         <ThemeProvider defaultTheme="light" storageKey="pivota-ui-theme">
           <AuthInitGate />
+          <AuroraEmbedBridge />
           {children}
           <CartDrawer />
           <Toaster position="top-center" richColors />
