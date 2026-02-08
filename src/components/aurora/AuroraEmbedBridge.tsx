@@ -123,6 +123,22 @@ const buildCartSnapshot = (): CartSnapshot => {
   };
 };
 
+const consumeOpenCartParam = () => {
+  // Allow parent to deep-link cart without requiring the bridge to be enabled.
+  // This is safe even when loaded standalone; it does not leak any data.
+  try {
+    const sp = new URLSearchParams(window.location.search);
+    if (sp.get('open') !== 'cart') return;
+    useCartStore.getState().open();
+    sp.delete('open');
+    const next = sp.toString();
+    const url = `${window.location.pathname}${next ? `?${next}` : ''}${window.location.hash || ''}`;
+    window.history.replaceState({}, '', url);
+  } catch {
+    // ignore
+  }
+};
+
 export default function AuroraEmbedBridge() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -136,6 +152,10 @@ export default function AuroraEmbedBridge() {
     if (!origin) return null;
     const allow = parseAllowedParentOrigins();
     return allow.includes(origin) ? origin : null;
+  }, []);
+
+  useEffect(() => {
+    consumeOpenCartParam();
   }, []);
 
   useEffect(() => {
@@ -190,20 +210,6 @@ export default function AuroraEmbedBridge() {
 
     window.addEventListener('message', onMessage);
 
-    // Support opening cart via query param (so parent can deep-link without postMessage).
-    try {
-      const sp = new URLSearchParams(window.location.search);
-      if (sp.get('open') === 'cart') {
-        useCartStore.getState().open();
-        sp.delete('open');
-        const next = sp.toString();
-        const url = `${window.location.pathname}${next ? `?${next}` : ''}${window.location.hash || ''}`;
-        window.history.replaceState({}, '', url);
-      }
-    } catch {
-      // ignore
-    }
-
     return () => {
       unsubscribe();
       window.removeEventListener('message', onMessage);
@@ -251,4 +257,3 @@ export default function AuroraEmbedBridge() {
 
   return null;
 }
-
