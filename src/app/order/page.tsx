@@ -312,6 +312,10 @@ function OrderContent() {
       window.location.assign(url)
       return
     }
+    if (typeof window !== 'undefined' && window.history.length > 1) {
+      router.back()
+      return
+    }
     router.push('/')
   }
 
@@ -326,13 +330,17 @@ function OrderContent() {
                   handleCancel()
                   return
                 }
+                if (typeof window !== 'undefined' && window.history.length > 1) {
+                  router.back()
+                  return
+                }
                 router.push('/')
               }}
               className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-              aria-label="Back to chat"
+              aria-label="Back"
             >
               <ArrowLeft className="w-5 h-5" />
-	            </button>
+		            </button>
 	            <div className="flex items-center gap-2">
 	              <Image
 	                src="/pivota-logo-pink.png"
