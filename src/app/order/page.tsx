@@ -101,6 +101,15 @@ function OrderContent() {
   }
 
   useEffect(() => {
+    if (!checkoutToken) return
+    try {
+      window.sessionStorage.setItem('pivota_checkout_token', checkoutToken)
+    } catch {
+      // ignore storage errors
+    }
+  }, [checkoutToken])
+
+  useEffect(() => {
     // In a real app, this would come from cart state or API
     // For demo, we'll parse from URL params or use mock data
     const itemsParam = searchParams.get('items')
@@ -291,6 +300,7 @@ function OrderContent() {
     if (billingDescriptor) sellerParams.set('billing_descriptor', billingDescriptor)
     if (ucpCheckoutSessionId) sellerParams.set('ucp_checkout_session_id', ucpCheckoutSessionId)
     if (checkoutDebug) sellerParams.set('checkout_debug', checkoutDebug)
+    if (checkoutToken) sellerParams.set('checkout_token', checkoutToken)
     const sellerSuffix = sellerParams.toString() ? `&${sellerParams.toString()}` : ''
 
     router.push(

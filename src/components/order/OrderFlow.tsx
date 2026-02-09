@@ -961,6 +961,7 @@ function OrderFlowInner({
                   const value = (current.searchParams.get(key) || '').trim()
                   if (value) url.searchParams.set(key, value)
                 }
+                if (checkoutToken) url.searchParams.set('checkout_token', checkoutToken)
                 return url.toString()
               })()
             : undefined
