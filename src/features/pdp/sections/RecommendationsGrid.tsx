@@ -13,22 +13,35 @@ function formatPrice(amount: number, currency: string) {
   }
 }
 
-export function RecommendationsGrid({ data }: { data: RecommendationsData }) {
+export function RecommendationsGrid({
+  data,
+  onItemClick,
+  onOpenAll,
+}: {
+  data: RecommendationsData;
+  onItemClick?: (item: RecommendationsData['items'][number], index: number) => void;
+  onOpenAll?: () => void;
+}) {
   if (!data.items.length) return null;
   return (
     <div className="py-6">
       <div className="px-4 flex items-center justify-between mb-3">
         <h3 className="text-sm font-semibold">You May Also Like</h3>
-        <button className="text-xs text-muted-foreground flex items-center gap-1 hover:text-foreground">
+        <button
+          type="button"
+          onClick={onOpenAll}
+          className="text-xs text-muted-foreground flex items-center gap-1 hover:text-foreground"
+        >
           View all <ChevronRight className="h-4 w-4" />
         </button>
       </div>
       <div className="px-4 grid grid-cols-2 gap-3">
-        {data.items.slice(0, 6).map((p) => (
+        {data.items.slice(0, 6).map((p, idx) => (
           <Link
             key={p.product_id}
             href={`/products/${encodeURIComponent(p.product_id)}${p.merchant_id ? `?merchant_id=${encodeURIComponent(p.merchant_id)}` : ''}`}
             className="rounded-xl bg-card border border-border overflow-hidden hover:shadow-md transition-shadow"
+            onClick={() => onItemClick?.(p, idx)}
           >
             <div className="relative aspect-square bg-muted">
               {p.image_url ? (

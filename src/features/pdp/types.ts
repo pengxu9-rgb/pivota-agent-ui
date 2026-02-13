@@ -8,12 +8,23 @@ export interface PDPPayload {
   offers_count?: number;
   default_offer_id?: string;
   best_price_offer_id?: string;
-  x_offers_state?: 'loading' | 'ready';
-  x_reviews_state?: 'loading' | 'ready';
-  x_recommendations_state?: 'loading' | 'ready';
+  x_offers_state?: 'loading' | 'ready' | 'error';
+  x_reviews_state?: 'loading' | 'ready' | 'error';
+  x_recommendations_state?: 'loading' | 'ready' | 'error';
+  x_module_states?: Partial<Record<PdpModuleStateKey, PdpModuleState>>;
+  x_source_locks?: Partial<Record<PdpSourceLockKey, boolean>>;
+  x_height_spec?: Partial<Record<PdpModuleStateKey, number>>;
   modules: Module[];
   actions: GlobalAction[];
 }
+
+export type PdpModuleState = 'ABSENT' | 'LOADING' | 'READY' | 'EMPTY' | 'ERROR';
+export type PdpModuleStateKey =
+  | 'offers'
+  | 'reviews_preview'
+  | 'ugc_preview'
+  | 'similar';
+export type PdpSourceLockKey = 'reviews' | 'similar' | 'ugc';
 
 export interface PageTracking {
   page_request_id: string;

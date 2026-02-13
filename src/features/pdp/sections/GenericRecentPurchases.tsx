@@ -1,7 +1,5 @@
 'use client';
 
-import { useMemo } from 'react';
-
 function getInitial(label: string) {
   if (!label) return '?';
   return `${label.trim().charAt(0).toUpperCase()}*`;
@@ -27,25 +25,14 @@ export function GenericRecentPurchases({
   }>;
   showEmpty?: boolean;
 }) {
-  const mockData = useMemo(() => {
-    const names = ['Liam', 'Noah', 'Eli', 'Maya', 'Aria', 'Leo', 'Nina'];
-    const variants = ['Black', 'Stone', 'Olive', 'Navy', 'Sand', 'Charcoal'];
-    const times = ['2m ago', '15m ago', '45m ago', '2h ago', 'Today'];
-    const count = Math.floor(Math.random() * 20) + 1;
-    const list = Array.from({ length: Math.min(3, count) }).map((_, idx) => ({
-      user_label: `${names[idx % names.length]}*`,
-      variant_label: variants[idx % variants.length],
-      time_label: times[idx % times.length],
-      price_label: `$${24 + idx * 6}`,
-    }));
-    return { count, list };
-  }, []);
-
-  const hasItems = items.length > 0;
+  const normalizedItems = Array.isArray(items)
+    ? items.filter((item) => String(item?.user_label || '').trim())
+    : [];
+  const hasItems = normalizedItems.length > 0;
   if (!hasItems && !showEmpty) return null;
 
-  const displayItems = hasItems ? items : mockData.list;
-  const displayCount = hasItems ? items.length : mockData.count;
+  const displayItems = normalizedItems;
+  const displayCount = normalizedItems.length;
 
   const prices = displayItems.map((item) => parsePrice(item.price_label)).filter((p) => p != null) as number[];
   const avgPrice = prices.length
@@ -62,7 +49,7 @@ export function GenericRecentPurchases({
           {avgPrice ? `3-day avg ${avgPrice}` : '3-day avg --'}
         </span>
       </div>
-      {displayItems.length ? (
+      {hasItems ? (
         <div className="divide-y divide-border">
           {displayItems.slice(0, 3).map((purchase, idx) => (
             <div key={`${purchase.user_label}-${idx}`} className="flex items-center justify-between px-3 py-1.5 text-xs">

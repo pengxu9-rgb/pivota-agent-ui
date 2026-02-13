@@ -1,6 +1,12 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+} from 'react';
 import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
@@ -47,6 +53,10 @@ import { GenericSizeHelper } from '@/features/pdp/sections/GenericSizeHelper';
 import { GenericSizeGuide } from '@/features/pdp/sections/GenericSizeGuide';
 import { GenericDetailsSection } from '@/features/pdp/sections/GenericDetailsSection';
 import { OfferSheet } from '@/features/pdp/offers/OfferSheet';
+import { ModuleShell } from '@/features/pdp/components/ModuleShell';
+import { DEFAULT_UGC_SNAPSHOT, lockFirstUgcSource } from '@/features/pdp/state/freezePolicy';
+import { getStableGalleryItems, resolveHeroMediaUrl } from '@/features/pdp/state/heroMedia';
+import { buildPdpViewModel } from '@/features/pdp/state/viewModel';
 import { cn } from '@/lib/utils';
 
 function nonEmptyText(value: unknown, fallback: string): string {
@@ -119,6 +129,9 @@ export function PdpContainer({
   );
   const [quantity, setQuantity] = useState(initialQuantity);
   const reviewsTracked = useRef(false);
+  const recentPurchasesTracked = useRef(false);
+  const ugcTracked = useRef(false);
+  const similarTracked = useRef(false);
   const [activeTab, setActiveTab] = useState('product');
   const [showShadeSheet, setShowShadeSheet] = useState(false);
   const [showColorSheet, setShowColorSheet] = useState(false);
@@ -128,15 +141,13 @@ export function PdpContainer({
   const [navVisible, setNavVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [mounted, setMounted] = useState(false);
+  const [ugcSnapshot, setUgcSnapshot] = useState(DEFAULT_UGC_SNAPSHOT);
   const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const router = useRouter();
   const [questionOpen, setQuestionOpen] = useState(false);
   const [questionText, setQuestionText] = useState('');
   const [questionSubmitting, setQuestionSubmitting] = useState(false);
   const [ugcQuestions, setUgcQuestions] = useState<QuestionListItem[]>([]);
-
-  const allowMockRecentPurchases =
-    (payload.product.merchant_id || '') !== 'external_seed';
 
   const variants = useMemo(() => payload.product.variants ?? [], [payload.product.variants]);
 
@@ -286,6 +297,13 @@ export function PdpContainer({
   }, [selectedVariantId]);
 
   useEffect(() => {
+    reviewsTracked.current = false;
+    recentPurchasesTracked.current = false;
+    ugcTracked.current = false;
+    similarTracked.current = false;
+  }, [payload.product.product_id]);
+
+  useEffect(() => {
     if (!isInStock) {
       setQuantity(1);
     }
@@ -309,22 +327,18 @@ export function PdpContainer({
   }, [reviews]);
 
   const baseMediaItems = useMemo(() => media?.items ?? [], [media]);
-  const galleryItems: MediaItem[] = useMemo(() => {
-    if (!selectedVariant?.image_url) return baseMediaItems;
-    const exists = baseMediaItems.some((item) => item.url === selectedVariant.image_url);
-    if (exists) return baseMediaItems;
-    return [
-      {
-        type: 'image' as const,
-        url: selectedVariant.image_url,
-        alt_text: selectedVariant.title,
-      },
-      ...baseMediaItems,
-    ];
-  }, [baseMediaItems, selectedVariant?.image_url, selectedVariant?.title]);
+  const galleryItems: MediaItem[] = useMemo(
+    () => getStableGalleryItems(baseMediaItems),
+    [baseMediaItems],
+  );
   const galleryData = useMemo(() => ({ items: galleryItems }), [galleryItems]);
 
-  const heroUrl = selectedVariant?.image_url || payload.product.image_url || '';
+  const heroUrl = resolveHeroMediaUrl({
+    activeMediaIndex,
+    selectedVariantImageUrl: selectedVariant?.image_url || null,
+    galleryItems,
+    fallbackUrl: payload.product.image_url || '',
+  });
   const baseCurrency =
     selectedVariant.price?.current.currency || payload.product.price?.current.currency || 'USD';
   const basePriceAmount =
@@ -348,13 +362,116 @@ export function PdpContainer({
   const navRowHeight = navVisible ? 36 : 0;
   const scrollMarginTop = headerHeight + navRowHeight + 14;
 
-  const isReviewsLoading = payload.x_reviews_state === 'loading';
-  const hasReviews = !!reviews || isReviewsLoading;
-  const hasRecommendations = !!recommendations?.items?.length;
-  const recommendationsState = payload.x_recommendations_state;
-  const isRecommendationsLoading = recommendationsState === 'loading';
-  const showRecommendationsSection =
-    hasRecommendations || isRecommendationsLoading || recommendationsState === 'ready';
+  const ugcFromReviews =
+    reviews?.preview_items?.flatMap((item) => item.media || []) || [];
+  const ugcFromMedia = (media?.items || []).slice(1);
+  const normalizedReviewUgc = ugcFromReviews.filter((item) => item?.url);
+  const normalizedMediaUgc = ugcFromMedia.filter((item) => item?.url);
+
+  useEffect(() => {
+    setUgcSnapshot(DEFAULT_UGC_SNAPSHOT);
+  }, [payload.product.product_id]);
+
+  useEffect(() => {
+    setUgcSnapshot((prev) =>
+      lockFirstUgcSource({
+        current: prev,
+        reviewsItems: normalizedReviewUgc,
+        mediaItems: normalizedMediaUgc,
+      }),
+    );
+  }, [normalizedMediaUgc, normalizedReviewUgc]);
+
+  const ugcItems = ugcSnapshot.locked
+    ? ugcSnapshot.items
+    : (normalizedReviewUgc.length ? normalizedReviewUgc : normalizedMediaUgc);
+
+  const sourceLocks = useMemo(
+    () => ({
+      reviews:
+        Boolean(payload.x_source_locks?.reviews) ||
+        payload.x_reviews_state === 'ready',
+      similar:
+        Boolean(payload.x_source_locks?.similar) ||
+        payload.x_recommendations_state === 'ready',
+      ugc: ugcSnapshot.locked,
+    }),
+    [
+      payload.x_source_locks?.reviews,
+      payload.x_source_locks?.similar,
+      payload.x_reviews_state,
+      payload.x_recommendations_state,
+      ugcSnapshot.locked,
+    ],
+  );
+
+  const pdpViewModel = useMemo(
+    () =>
+      buildPdpViewModel({
+        offers,
+        reviews,
+        recommendations,
+        ugcCount: ugcItems.length,
+        offersLoadState: payload.x_offers_state,
+        reviewsLoadState: payload.x_reviews_state,
+        similarLoadState: payload.x_recommendations_state,
+        sourceLocks,
+      }),
+    [
+      offers,
+      payload.x_offers_state,
+      payload.x_recommendations_state,
+      payload.x_reviews_state,
+      recommendations,
+      reviews,
+      sourceLocks,
+      ugcItems.length,
+    ],
+  );
+
+  const moduleStates = pdpViewModel.moduleStates;
+  const hasReviews = moduleStates.reviews_preview !== 'ABSENT';
+  const showRecommendationsSection = moduleStates.similar !== 'ABSENT';
+
+  useEffect(() => {
+    const count = Array.isArray(payload.product.recent_purchases)
+      ? payload.product.recent_purchases.length
+      : 0;
+    if (count <= 0 || recentPurchasesTracked.current) return;
+    recentPurchasesTracked.current = true;
+    pdpTracking.track('pdp_recent_purchases_impression', { count });
+  }, [payload.product.recent_purchases]);
+
+  useEffect(() => {
+    if (!ugcItems.length || ugcTracked.current) return;
+    ugcTracked.current = true;
+    pdpTracking.track('ugc_impression', {
+      count_shown: Math.min(9, ugcItems.length),
+      source: ugcSnapshot.source || 'unknown',
+      locked: ugcSnapshot.locked,
+    });
+  }, [ugcItems, ugcSnapshot.locked, ugcSnapshot.source]);
+
+  useEffect(() => {
+    const count = Array.isArray(recommendations?.items)
+      ? recommendations.items.length
+      : 0;
+    if (count <= 0 || similarTracked.current) return;
+    similarTracked.current = true;
+    pdpTracking.track('similar_impression', {
+      count,
+      source: pdpViewModel.sourceLocks.similar ? 'locked' : 'live',
+      latency_bucket:
+        payload.x_recommendations_state === 'loading'
+          ? 'late'
+          : 'early',
+    });
+  }, [
+    payload.x_recommendations_state,
+    pdpViewModel.sourceLocks.similar,
+    recommendations?.items,
+  ]);
+
   const showShades = resolvedMode === 'beauty' && variants.length > 1;
   const showSizeGuide = resolvedMode === 'generic' && !!payload.product.size_guide;
   const showSizeHelper = useMemo(() => {
@@ -400,6 +517,9 @@ export function PdpContainer({
 
     return keywords.some((kw) => haystack.includes(kw));
   }, [payload.product.category_path, payload.product.department, payload.product.tags, resolvedMode]);
+  const recentPurchases = Array.isArray(payload.product.recent_purchases)
+    ? payload.product.recent_purchases
+    : [];
 
   const tabs = useMemo(() => {
     return [
@@ -547,6 +667,12 @@ export function PdpContainer({
     router.push(`/products?q=${encodeURIComponent(query)}`);
   };
 
+  const openUgcMedia = (item: MediaItem, fallbackIndex = 0) => {
+    const matchedIndex = galleryItems.findIndex((mediaItem) => mediaItem.url === item.url);
+    setActiveMediaIndex(matchedIndex >= 0 ? matchedIndex : fallbackIndex);
+    setShowMediaSheet(true);
+  };
+
   const attributeOptions = extractAttributeOptions(selectedVariant);
   const beautyAttributes = extractBeautyAttributes(selectedVariant);
   const compareAmount =
@@ -557,12 +683,6 @@ export function PdpContainer({
     compareAmount && compareAmount > displayPriceAmount
       ? Math.round((1 - displayPriceAmount / compareAmount) * 100)
       : null;
-  const ugcFromReviews =
-    reviews?.preview_items?.flatMap((item) => item.media || []) || [];
-  const ugcFromMedia = (media?.items || []).slice(1);
-  const ugcItems = (ugcFromReviews.length ? ugcFromReviews : ugcFromMedia).filter(
-    (item) => item?.url,
-  );
   const tagList = payload.product.tags || [];
   const halfTagCount = Math.ceil(tagList.length / 2);
   const popularLooks =
@@ -901,10 +1021,20 @@ export function PdpContainer({
               <MediaGallery
                 data={galleryData}
                 title={payload.product.title}
-                fallbackUrl={heroUrl}
+                fallbackUrl={payload.product.image_url}
+                heroUrlOverride={heroUrl}
                 activeIndex={activeMediaIndex}
-                onSelect={(index) => setActiveMediaIndex(index)}
-                onOpenAll={() => setShowMediaSheet(true)}
+                onSelect={(index) => {
+                  setActiveMediaIndex(index);
+                  pdpTracking.track('ugc_click_item', {
+                    index,
+                    source: 'media_gallery',
+                  });
+                }}
+                onOpenAll={() => {
+                  pdpTracking.track('ugc_open_all', { source: 'media_gallery' });
+                  setShowMediaSheet(true);
+                }}
                 aspectClass={resolvedMode === 'generic' ? 'aspect-square' : 'aspect-[6/5]'}
                 fit={resolvedMode === 'generic' ? 'object-contain' : 'object-cover'}
               />
@@ -1183,33 +1313,112 @@ export function PdpContainer({
             </div>
           ) : null}
 
+          <ModuleShell
+            state={moduleStates.offers}
+            height={pdpViewModel.heightSpec.offers}
+            skeleton={(
+              <div className="mx-3 mt-2 rounded-lg border border-border bg-card px-3 py-3 space-y-2">
+                <div className="h-3 w-28 rounded bg-muted/30 animate-pulse" />
+                <div className="h-3 w-full rounded bg-muted/20 animate-pulse" />
+              </div>
+            )}
+          >
+            {null}
+          </ModuleShell>
+
           {resolvedMode === 'beauty' ? (
             <>
-              <BeautyRecentPurchases
-                items={payload.product.recent_purchases || []}
-                showEmpty={allowMockRecentPurchases}
-              />
-              <BeautyUgcGallery
-                items={ugcItems}
-                showEmpty
-                ctaLabel="Share yours +"
-                ctaEnabled={canUploadMedia}
-                onCtaClick={handleUploadMedia}
-              />
+              {recentPurchases.length ? (
+                <BeautyRecentPurchases
+                  items={recentPurchases}
+                  showEmpty={false}
+                />
+              ) : null}
+              <ModuleShell
+                state={moduleStates.ugc_preview}
+                height={pdpViewModel.heightSpec.ugc_preview}
+                skeleton={(
+                  <div className="mt-4 px-3">
+                    <div className="h-4 w-32 rounded bg-muted/20 animate-pulse" />
+                    <div className="mt-2 grid grid-cols-3 gap-1">
+                      {Array.from({ length: 9 }).map((_, idx) => (
+                        <div
+                          key={idx}
+                          className="aspect-square rounded-md bg-muted/20 animate-pulse"
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+              >
+                <BeautyUgcGallery
+                  items={ugcItems}
+                  showEmpty={false}
+                  ctaLabel="Share yours +"
+                  ctaEnabled={canUploadMedia}
+                  onCtaClick={handleUploadMedia}
+                  onOpenAll={() => {
+                    pdpTracking.track('ugc_open_all', {
+                      source: ugcSnapshot.source || 'unknown',
+                    });
+                    setShowMediaSheet(true);
+                  }}
+                  onItemClick={(index, item) => {
+                    pdpTracking.track('ugc_click_item', {
+                      index,
+                      source: ugcSnapshot.source || 'unknown',
+                    });
+                    openUgcMedia(item, index + 1);
+                  }}
+                />
+              </ModuleShell>
             </>
           ) : resolvedMode === 'generic' ? (
             <>
-              <GenericRecentPurchases
-                items={payload.product.recent_purchases || []}
-                showEmpty={allowMockRecentPurchases}
-              />
-              <GenericStyleGallery
-                items={ugcItems}
-                showEmpty
-                ctaLabel="Share yours +"
-                ctaEnabled={canUploadMedia}
-                onCtaClick={handleUploadMedia}
-              />
+              {recentPurchases.length ? (
+                <GenericRecentPurchases
+                  items={recentPurchases}
+                  showEmpty={false}
+                />
+              ) : null}
+              <ModuleShell
+                state={moduleStates.ugc_preview}
+                height={pdpViewModel.heightSpec.ugc_preview}
+                skeleton={(
+                  <div className="mt-4 px-3">
+                    <div className="h-4 w-32 rounded bg-muted/20 animate-pulse" />
+                    <div className="mt-2 grid grid-cols-3 gap-1">
+                      {Array.from({ length: 9 }).map((_, idx) => (
+                        <div
+                          key={idx}
+                          className="aspect-[3/4] rounded-md bg-muted/20 animate-pulse"
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+              >
+                <GenericStyleGallery
+                  items={ugcItems}
+                  showEmpty={false}
+                  ctaLabel="Share yours +"
+                  ctaEnabled={canUploadMedia}
+                  onCtaClick={handleUploadMedia}
+                  onOpenAll={() => {
+                    pdpTracking.track('ugc_open_all', {
+                      source: ugcSnapshot.source || 'unknown',
+                    });
+                    setShowMediaSheet(true);
+                  }}
+                  onItemClick={(index, item) => {
+                    pdpTracking.track('ugc_click_item', {
+                      index,
+                      source: ugcSnapshot.source || 'unknown',
+                    });
+                    openUgcMedia(item, index + 1);
+                  }}
+                />
+              </ModuleShell>
               {showSizeHelper ? <GenericSizeHelper /> : null}
             </>
           ) : null}
@@ -1223,62 +1432,68 @@ export function PdpContainer({
             className="border-t border-muted/60"
             style={{ scrollMarginTop }}
           >
-            {reviews ? (
-              <BeautyReviewsSection
-                data={(reviewsForRender || reviews) as ReviewsPreviewData}
-                brandName={payload.product.brand?.name}
-                showEmpty
-                onWriteReview={() => {
-                  handleWriteReview();
-                }}
-                writeReviewLabel={nonEmptyText(reviews?.entry_points?.write_review?.label, 'Write a review')}
-                writeReviewEnabled={canWriteReview}
-                onSeeAll={
-                  onSeeAllReviews
-                    ? () => {
-                        pdpTracking.track('pdp_action_click', { action_type: 'open_embed', target: 'open_reviews' });
-                        onSeeAllReviews();
-                      }
-                    : undefined
-                }
-                openReviewsLabel={nonEmptyText(reviews?.entry_points?.open_reviews?.label, 'View all reviews')}
-                onAskQuestion={() => {
-                  handleAskQuestion();
-                }}
-                askQuestionLabel="Ask a question"
-                askQuestionEnabled={canAskQuestion}
-                onSeeAllQuestions={() => {
-                  pdpTracking.track('pdp_action_click', { action_type: 'open_embed', target: 'open_questions' });
-                  openQuestionsHub();
-                }}
-                openQuestionsLabel="View all"
-                onOpenQuestion={(questionId) => {
-                  pdpTracking.track('pdp_action_click', { action_type: 'open_embed', target: 'open_question_thread' });
-                  openQuestionThread(questionId);
-                }}
-              />
-            ) : isReviewsLoading ? (
-              <div className="px-4 py-5">
-                <div className="rounded-2xl border border-border bg-white p-4 shadow-sm">
-                  <div className="flex items-start gap-4">
-                    <div className="w-24">
-                      <div className="h-8 w-16 rounded bg-muted/20 animate-pulse" />
-                      <div className="mt-2 h-4 w-20 rounded bg-muted/20 animate-pulse" />
-                      <div className="mt-2 h-4 w-16 rounded bg-muted/20 animate-pulse" />
-                    </div>
-                    <div className="flex-1 space-y-2">
-                      {[0, 1, 2, 3, 4].map((i) => (
-                        <div key={i} className="flex items-center gap-2">
-                          <div className="h-3 w-4 rounded bg-muted/20 animate-pulse" />
-                          <div className="h-3 flex-1 rounded-full bg-muted/20 animate-pulse" />
-                          <div className="h-3 w-10 rounded bg-muted/20 animate-pulse" />
-                        </div>
-                      ))}
+            <ModuleShell
+              state={moduleStates.reviews_preview}
+              height={pdpViewModel.heightSpec.reviews_preview}
+              skeleton={(
+                <div className="px-4 py-5">
+                  <div className="rounded-2xl border border-border bg-white p-4 shadow-sm">
+                    <div className="flex items-start gap-4">
+                      <div className="w-24">
+                        <div className="h-8 w-16 rounded bg-muted/20 animate-pulse" />
+                        <div className="mt-2 h-4 w-20 rounded bg-muted/20 animate-pulse" />
+                        <div className="mt-2 h-4 w-16 rounded bg-muted/20 animate-pulse" />
+                      </div>
+                      <div className="flex-1 space-y-2">
+                        {[0, 1, 2, 3, 4].map((i) => (
+                          <div key={i} className="flex items-center gap-2">
+                            <div className="h-3 w-4 rounded bg-muted/20 animate-pulse" />
+                            <div className="h-3 flex-1 rounded-full bg-muted/20 animate-pulse" />
+                            <div className="h-3 w-10 rounded bg-muted/20 animate-pulse" />
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            ) : null}
+              )}
+            >
+              {reviews ? (
+                <BeautyReviewsSection
+                  data={(reviewsForRender || reviews) as ReviewsPreviewData}
+                  brandName={payload.product.brand?.name}
+                  showEmpty
+                  onWriteReview={() => {
+                    handleWriteReview();
+                  }}
+                  writeReviewLabel={nonEmptyText(reviews?.entry_points?.write_review?.label, 'Write a review')}
+                  writeReviewEnabled={canWriteReview}
+                  onSeeAll={
+                    onSeeAllReviews
+                      ? () => {
+                          pdpTracking.track('pdp_action_click', { action_type: 'open_embed', target: 'open_reviews' });
+                          onSeeAllReviews();
+                        }
+                      : undefined
+                  }
+                  openReviewsLabel={nonEmptyText(reviews?.entry_points?.open_reviews?.label, 'View all reviews')}
+                  onAskQuestion={() => {
+                    handleAskQuestion();
+                  }}
+                  askQuestionLabel="Ask a question"
+                  askQuestionEnabled={canAskQuestion}
+                  onSeeAllQuestions={() => {
+                    pdpTracking.track('pdp_action_click', { action_type: 'open_embed', target: 'open_questions' });
+                    openQuestionsHub();
+                  }}
+                  openQuestionsLabel="View all"
+                  onOpenQuestion={(questionId) => {
+                    pdpTracking.track('pdp_action_click', { action_type: 'open_embed', target: 'open_question_thread' });
+                    openQuestionThread(questionId);
+                  }}
+                />
+              ) : null}
+            </ModuleShell>
           </div>
           ) : null}
 
@@ -1403,13 +1618,31 @@ export function PdpContainer({
             className="border-t border-muted/60"
             style={{ scrollMarginTop }}
           >
-            <div className="px-3 py-3">
+            <ModuleShell
+              state={moduleStates.similar}
+              height={pdpViewModel.heightSpec.similar}
+              className="px-3 py-3"
+              skeleton={<RecommendationsSkeleton />}
+            >
               {recommendations?.items?.length ? (
-                <RecommendationsGrid data={recommendations} />
-              ) : isRecommendationsLoading ? (
-                <RecommendationsSkeleton />
+                <RecommendationsGrid
+                  data={recommendations}
+                  onOpenAll={() => {
+                    pdpTracking.track('pdp_action_click', {
+                      action_type: 'open_similar_all',
+                    });
+                  }}
+                  onItemClick={(item, index) => {
+                    pdpTracking.track('similar_click', {
+                      index,
+                      product_id: item.product_id,
+                      merchant_id: item.merchant_id || null,
+                      source: pdpViewModel.sourceLocks.similar ? 'locked' : 'live',
+                    });
+                  }}
+                />
               ) : null}
-            </div>
+            </ModuleShell>
           </div>
         ) : null}
       </div>

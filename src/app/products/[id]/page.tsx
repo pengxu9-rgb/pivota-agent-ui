@@ -19,8 +19,12 @@ import { mapPdpV2ToPdpPayload } from '@/features/pdp/adapter/mapPdpV2ToPdpPayloa
 import { isBeautyProduct } from '@/features/pdp/utils/isBeautyProduct';
 import { BeautyPDPContainer } from '@/features/pdp/containers/BeautyPDPContainer';
 import { GenericPDPContainer } from '@/features/pdp/containers/GenericPDPContainer';
-import type { PDPPayload, Variant } from '@/features/pdp/types';
+import type { Module, PDPPayload, Variant } from '@/features/pdp/types';
 import { pdpTracking } from '@/features/pdp/tracking';
+import {
+  DEFAULT_MODULE_SOURCE_LOCKS,
+  upsertLockedModule,
+} from '@/features/pdp/state/freezePolicy';
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -205,6 +209,20 @@ function normalizeRecommendationItem(input: unknown) {
   };
 }
 
+function hasModule(response: PDPPayload | null, type: 'reviews_preview' | 'recommendations'): boolean {
+  if (!response || !Array.isArray(response.modules)) return false;
+  return response.modules.some((m) => m?.type === type);
+}
+
+function hasRecommendationsItems(response: PDPPayload | null): boolean {
+  if (!response || !Array.isArray(response.modules)) return false;
+  return response.modules.some((m) => {
+    if (m?.type !== 'recommendations') return false;
+    const items = (m as any)?.data?.items;
+    return Array.isArray(items) && items.length > 0;
+  });
+}
+
 function ProductDetailLoading({ label }: { label: string }) {
   return (
     <div className="min-h-screen bg-background">
@@ -251,6 +269,7 @@ export default function ProductDetailPage({ params }: Props) {
   const offersFetchKeyRef = useRef<string | null>(null);
   const reviewsFetchKeyRef = useRef<string | null>(null);
   const similarFetchKeyRef = useRef<string | null>(null);
+  const moduleSourceLocksRef = useRef({ ...DEFAULT_MODULE_SOURCE_LOCKS });
   const [ugcCapabilities, setUgcCapabilities] = useState<UgcCapabilities | null>({
     canUploadMedia: false,
     canWriteReview: false,
@@ -280,8 +299,10 @@ export default function ProductDetailPage({ params }: Props) {
       offersFetchKeyRef.current = null;
       reviewsFetchKeyRef.current = null;
       similarFetchKeyRef.current = null;
+      moduleSourceLocksRef.current = { ...DEFAULT_MODULE_SOURCE_LOCKS };
 
       try {
+        const v2StartedAt = Date.now();
         const v2 = await getPdpV2({
           product_id: id,
           ...(explicitMerchantId ? { merchant_id: explicitMerchantId } : {}),
@@ -294,23 +315,57 @@ export default function ProductDetailPage({ params }: Props) {
         const assembled = mapPdpV2ToPdpPayload(v2);
         if (!assembled) throw new Error('Invalid PDP response');
         const hasOffers = Array.isArray((assembled as any).offers) && (assembled as any).offers.length > 0;
-        const hasReviews =
-          Array.isArray(assembled.modules) &&
-          assembled.modules.some((m) => m?.type === 'reviews_preview');
-        const hasRecommendations =
-          Array.isArray(assembled.modules) &&
-          assembled.modules.some((m) => {
-            if (m?.type !== 'recommendations') return false;
-            const items = (m as any)?.data?.items;
-            return Array.isArray(items) && items.length > 0;
-          });
+        const hasReviewsModule = hasModule(assembled, 'reviews_preview');
+        const hasSimilarModule = hasModule(assembled, 'recommendations');
+        const hasRecommendations = hasRecommendationsItems(assembled);
+        const similarCount = Array.isArray(
+          (assembled.modules.find((m) => m?.type === 'recommendations') as any)?.data
+            ?.items,
+        )
+          ? (
+              assembled.modules.find(
+                (m) => m?.type === 'recommendations',
+              ) as any
+            ).data.items.length
+          : 0;
+
+        moduleSourceLocksRef.current = {
+          ...DEFAULT_MODULE_SOURCE_LOCKS,
+          reviews: hasReviewsModule,
+          similar: hasSimilarModule,
+        };
 
         setPdpPayload({
           ...assembled,
           ...(hasOffers ? {} : { x_offers_state: 'loading' }),
-          ...(hasReviews ? {} : { x_reviews_state: 'loading' }),
-          ...(hasRecommendations ? {} : { x_recommendations_state: 'loading' }),
+          x_reviews_state: hasReviewsModule ? 'ready' : 'loading',
+          x_recommendations_state: hasSimilarModule ? 'ready' : 'loading',
+          x_source_locks: {
+            reviews: hasReviewsModule,
+            similar: hasSimilarModule,
+            ugc: false,
+          },
         });
+        pdpTracking.track('pdp_core_ready', {
+          source: 'get_pdp_v2',
+          latency_ms: Date.now() - v2StartedAt,
+          has_offers: hasOffers,
+          has_reviews_module: hasReviewsModule,
+          has_similar_module: hasSimilarModule,
+        });
+        if (hasReviewsModule) {
+          pdpTracking.track('pdp_module_ready', {
+            module: 'reviews_preview',
+            source: 'get_pdp_v2',
+          });
+        }
+        if (hasRecommendations) {
+          pdpTracking.track('pdp_module_ready', {
+            module: 'similar',
+            source: 'get_pdp_v2',
+            count: similarCount,
+          });
+        }
         setLoadedViaPdpV2(true);
         setLoading(false);
         return;
@@ -362,7 +417,21 @@ export default function ProductDetailPage({ params }: Props) {
             recommendationsLoading: false,
             entryPoint: 'product_detail',
           });
-          setPdpPayload(legacyPayload);
+          setPdpPayload({
+            ...legacyPayload,
+            x_source_locks: {
+              reviews: false,
+              similar: false,
+              ugc: false,
+            },
+          });
+          pdpTracking.track('pdp_fallback_used', {
+            source: 'legacy_get_product_detail',
+            reason: 'get_pdp_v2_failed',
+          });
+          pdpTracking.track('pdp_core_ready', {
+            source: 'legacy_get_product_detail',
+          });
           setLoadedViaPdpV2(false);
           setLoading(false);
           return;
@@ -404,7 +473,7 @@ export default function ProductDetailPage({ params }: Props) {
       const merchantId = String(pdpPayload.product.merchant_id || '').trim();
       const productId = String(pdpPayload.product.product_id || id || '').trim();
       if (!merchantId || !productId) {
-        setPdpPayload((prev) => (prev ? { ...prev, x_offers_state: undefined } : prev));
+        setPdpPayload((prev) => (prev ? { ...prev, x_offers_state: 'error' } : prev));
         return;
       }
 
@@ -426,7 +495,7 @@ export default function ProductDetailPage({ params }: Props) {
 
         setPdpPayload((prev) => {
           if (!prev) return prev;
-          if (!offers) return { ...prev, x_offers_state: undefined };
+          if (!offers) return { ...prev, x_offers_state: 'error' };
           return {
             ...prev,
             offers,
@@ -437,9 +506,14 @@ export default function ProductDetailPage({ params }: Props) {
             x_offers_state: 'ready',
           };
         });
+        pdpTracking.track('pdp_module_ready', {
+          module: 'offers',
+          source: 'get_pdp_v2_backfill',
+          count: Array.isArray(offers) ? offers.length : 0,
+        });
       } catch {
         if (cancelled) return;
-        setPdpPayload((prev) => (prev ? { ...prev, x_offers_state: undefined } : prev));
+        setPdpPayload((prev) => (prev ? { ...prev, x_offers_state: 'error' } : prev));
       }
     };
 
@@ -460,7 +534,7 @@ export default function ProductDetailPage({ params }: Props) {
       const merchantId = String(pdpPayload.product.merchant_id || '').trim();
       const productId = String(pdpPayload.product.product_id || id || '').trim();
       if (!merchantId || !productId) {
-        setPdpPayload((prev) => (prev ? { ...prev, x_reviews_state: undefined } : prev));
+        setPdpPayload((prev) => (prev ? { ...prev, x_reviews_state: 'error' } : prev));
         return;
       }
 
@@ -485,14 +559,31 @@ export default function ProductDetailPage({ params }: Props) {
 
         setPdpPayload((prev) => {
           if (!prev) return prev;
-          if (!reviewsModule) return { ...prev, x_reviews_state: undefined };
-          const modules = Array.isArray(prev.modules) ? prev.modules : [];
-          const filtered = modules.filter((m) => m?.type !== 'reviews_preview');
-          return { ...prev, modules: [...filtered, reviewsModule], x_reviews_state: 'ready' };
+          const merged = upsertLockedModule({
+            currentModules: prev.modules,
+            type: 'reviews_preview',
+            nextModule: reviewsModule as Module | null,
+            locked: moduleSourceLocksRef.current.reviews,
+          });
+          moduleSourceLocksRef.current.reviews = merged.locked;
+          return {
+            ...prev,
+            modules: merged.modules,
+            x_reviews_state: reviewsModule || merged.locked ? 'ready' : 'error',
+            x_source_locks: {
+              ...(prev.x_source_locks || {}),
+              reviews: merged.locked,
+            },
+          };
+        });
+        pdpTracking.track('pdp_module_ready', {
+          module: 'reviews_preview',
+          source: 'get_pdp_v2_backfill',
+          frozen: moduleSourceLocksRef.current.reviews,
         });
       } catch {
         if (cancelled) return;
-        setPdpPayload((prev) => (prev ? { ...prev, x_reviews_state: undefined } : prev));
+        setPdpPayload((prev) => (prev ? { ...prev, x_reviews_state: 'error' } : prev));
       }
     };
 
@@ -513,7 +604,7 @@ export default function ProductDetailPage({ params }: Props) {
       const merchantId = String(pdpPayload.product.merchant_id || '').trim();
       const productId = String(pdpPayload.product.product_id || id || '').trim();
       if (!merchantId || !productId) {
-        setPdpPayload((prev) => (prev ? { ...prev, x_recommendations_state: undefined } : prev));
+        setPdpPayload((prev) => (prev ? { ...prev, x_recommendations_state: 'error' } : prev));
         return;
       }
 
@@ -548,14 +639,32 @@ export default function ProductDetailPage({ params }: Props) {
 
         setPdpPayload((prev) => {
           if (!prev) return prev;
-          if (!recModule || !hasItems) return { ...prev, x_recommendations_state: undefined };
-          const modules = Array.isArray(prev.modules) ? prev.modules : [];
-          const filtered = modules.filter((m) => m?.type !== 'recommendations');
-          return { ...prev, modules: [...filtered, recModule], x_recommendations_state: 'ready' };
+          const merged = upsertLockedModule({
+            currentModules: prev.modules,
+            type: 'recommendations',
+            nextModule: recModule as Module | null,
+            locked: moduleSourceLocksRef.current.similar,
+          });
+          moduleSourceLocksRef.current.similar = merged.locked;
+          return {
+            ...prev,
+            modules: merged.modules,
+            x_recommendations_state: 'ready',
+            x_source_locks: {
+              ...(prev.x_source_locks || {}),
+              similar: merged.locked,
+            },
+          };
+        });
+        pdpTracking.track('pdp_module_ready', {
+          module: 'similar',
+          source: 'find_similar_products',
+          count: items.length,
+          frozen: moduleSourceLocksRef.current.similar,
         });
       } catch {
         if (cancelled) return;
-        setPdpPayload((prev) => (prev ? { ...prev, x_recommendations_state: undefined } : prev));
+        setPdpPayload((prev) => (prev ? { ...prev, x_recommendations_state: 'error' } : prev));
       }
     };
 

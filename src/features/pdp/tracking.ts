@@ -1,10 +1,19 @@
 export type PdpTrackingEvent =
   | 'pdp_view'
+  | 'pdp_core_ready'
   | 'pdp_module_impression'
+  | 'pdp_module_ready'
+  | 'pdp_fallback_used'
   | 'pdp_action_click'
   | 'pdp_candidates_resolved'
   | 'pdp_choose_seller_impression'
   | 'pdp_choose_seller_select'
+  | 'pdp_recent_purchases_impression'
+  | 'ugc_impression'
+  | 'ugc_open_all'
+  | 'ugc_click_item'
+  | 'similar_impression'
+  | 'similar_click'
   | 'reviews_shell_open'
   | 'reviews_shell_close';
 

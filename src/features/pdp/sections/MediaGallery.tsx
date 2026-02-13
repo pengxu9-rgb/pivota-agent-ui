@@ -7,6 +7,7 @@ export function MediaGallery({
   data,
   title,
   fallbackUrl,
+  heroUrlOverride,
   activeIndex,
   onSelect,
   onOpenAll,
@@ -16,6 +17,7 @@ export function MediaGallery({
   data?: MediaGalleryData | null;
   title: string;
   fallbackUrl?: string;
+  heroUrlOverride?: string;
   activeIndex?: number;
   onSelect?: (index: number) => void;
   onOpenAll?: () => void;
@@ -28,7 +30,7 @@ export function MediaGallery({
       ? activeIndex
       : 0;
   const hero = items[clampedIndex];
-  const heroUrl = hero?.url || fallbackUrl;
+  const heroUrl = heroUrlOverride || hero?.url || fallbackUrl;
   const isContain = fit === 'object-contain';
 
   return (

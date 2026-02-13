@@ -12,6 +12,8 @@ export function BeautyUgcGallery({
   ctaLabel = 'Share yours +',
   ctaEnabled = true,
   onCtaClick,
+  onOpenAll,
+  onItemClick,
 }: {
   items: MediaItem[];
   title?: string;
@@ -19,6 +21,8 @@ export function BeautyUgcGallery({
   ctaLabel?: string;
   ctaEnabled?: boolean;
   onCtaClick?: () => void;
+  onOpenAll?: () => void;
+  onItemClick?: (index: number, item: MediaItem) => void;
 }) {
   if (!items.length && !showEmpty) return null;
 
@@ -29,27 +33,44 @@ export function BeautyUgcGallery({
           {title}
           {items.length ? ` (${items.length})` : ''}
         </h3>
-        <button
-          type="button"
-          onClick={onCtaClick}
-          aria-disabled={!ctaEnabled}
-          className={cn(
-            'text-xs font-medium text-primary transition-opacity',
-            ctaEnabled ? 'hover:underline' : 'opacity-50 cursor-not-allowed',
-          )}
-        >
-          {ctaLabel}
-        </button>
+        <div className="flex items-center gap-2">
+          {items.length > 9 ? (
+            <button
+              type="button"
+              onClick={onOpenAll}
+              className="text-xs font-medium text-muted-foreground transition hover:text-foreground"
+            >
+              View all
+            </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={onCtaClick}
+            aria-disabled={!ctaEnabled}
+            className={cn(
+              'text-xs font-medium text-primary transition-opacity',
+              ctaEnabled ? 'hover:underline' : 'opacity-50 cursor-not-allowed',
+            )}
+          >
+            {ctaLabel}
+          </button>
+        </div>
       </div>
       {items.length ? (
         <div className="grid grid-cols-3 gap-1 rounded-lg overflow-hidden">
-          {items.slice(0, 6).map((item, idx) => (
-            <div key={`${item.url}-${idx}`} className="relative aspect-square">
+          {items.slice(0, 9).map((item, idx) => (
+            <button
+              type="button"
+              key={`${item.url}-${idx}`}
+              className="relative aspect-square text-left"
+              onClick={() => onItemClick?.(idx, item)}
+              aria-label={`Open customer media ${idx + 1}`}
+            >
               <Image src={item.url} alt="" fill className="object-cover" unoptimized />
               {item.type === 'video' ? (
                 <Play className="absolute top-2 right-2 h-4 w-4 text-white drop-shadow-lg" />
               ) : null}
-            </div>
+            </button>
           ))}
         </div>
       ) : (
