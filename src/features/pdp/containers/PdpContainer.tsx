@@ -364,7 +364,8 @@ export function PdpContainer({
 
   const ugcFromReviews =
     reviews?.preview_items?.flatMap((item) => item.media || []) || [];
-  const ugcFromMedia = (media?.items || []).slice(1);
+  // Keep gallery visible by falling back to product gallery media when UGC is sparse.
+  const ugcFromMedia = media?.items || [];
   const normalizedReviewUgc = ugcFromReviews.filter((item) => item?.url);
   const normalizedMediaUgc = ugcFromMedia.filter((item) => item?.url);
 
@@ -385,6 +386,12 @@ export function PdpContainer({
   const ugcItems = ugcSnapshot.locked
     ? ugcSnapshot.items
     : (normalizedReviewUgc.length ? normalizedReviewUgc : normalizedMediaUgc);
+  const ugcSectionTitle =
+    ugcSnapshot.source === 'media' || (!ugcSnapshot.source && normalizedMediaUgc.length > 0)
+      ? 'Gallery'
+      : resolvedMode === 'beauty'
+        ? 'Customer Photos'
+        : 'Style Gallery';
 
   const sourceLocks = useMemo(
     () => ({
@@ -1351,7 +1358,8 @@ export function PdpContainer({
               >
                 <BeautyUgcGallery
                   items={ugcItems}
-                  showEmpty={false}
+                  title={ugcSectionTitle}
+                  showEmpty
                   ctaLabel="Share yours +"
                   ctaEnabled={canUploadMedia}
                   onCtaClick={handleUploadMedia}
@@ -1398,7 +1406,8 @@ export function PdpContainer({
               >
                 <GenericStyleGallery
                   items={ugcItems}
-                  showEmpty={false}
+                  title={ugcSectionTitle}
+                  showEmpty
                   ctaLabel="Share yours +"
                   ctaEnabled={canUploadMedia}
                   onCtaClick={handleUploadMedia}
