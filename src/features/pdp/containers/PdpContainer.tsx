@@ -1313,18 +1313,16 @@ export function PdpContainer({
             </div>
           ) : null}
 
-          <ModuleShell
-            state={moduleStates.offers}
-            height={pdpViewModel.heightSpec.offers}
-            skeleton={(
-              <div className="mx-3 mt-2 rounded-lg border border-border bg-card px-3 py-3 space-y-2">
-                <div className="h-3 w-28 rounded bg-muted/30 animate-pulse" />
-                <div className="h-3 w-full rounded bg-muted/20 animate-pulse" />
-              </div>
-            )}
-          >
-            {null}
-          </ModuleShell>
+          {moduleStates.offers === 'LOADING' ? (
+            <div
+              className="mx-3 mt-2 rounded-lg border border-border bg-card px-3 py-3 space-y-2"
+              style={{ minHeight: pdpViewModel.heightSpec.offers }}
+              data-module-state="loading"
+            >
+              <div className="h-3 w-28 rounded bg-muted/30 animate-pulse" />
+              <div className="h-3 w-full rounded bg-muted/20 animate-pulse" />
+            </div>
+          ) : null}
 
           {resolvedMode === 'beauty' ? (
             <>
