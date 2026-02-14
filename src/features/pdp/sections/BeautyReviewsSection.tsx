@@ -172,7 +172,7 @@ export function BeautyReviewsSection({
               </div>
               {review.media?.length ? (
                 <div className="relative h-16 w-16 rounded-lg overflow-hidden flex-shrink-0">
-                  <Image src={review.media[0].url} alt="" fill className="object-cover" unoptimized />
+                  <Image src={review.media[0].url} alt="" fill className="object-cover" sizes="64px" loading="lazy" />
                 </div>
               ) : null}
             </div>

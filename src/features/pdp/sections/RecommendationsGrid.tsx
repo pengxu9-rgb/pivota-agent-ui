@@ -45,7 +45,14 @@ export function RecommendationsGrid({
           >
             <div className="relative aspect-square bg-muted">
               {p.image_url ? (
-                <Image src={p.image_url} alt={p.title} fill className="object-cover" unoptimized />
+                <Image
+                  src={p.image_url}
+                  alt={p.title}
+                  fill
+                  className="object-cover"
+                  sizes="(max-width: 768px) 50vw, 220px"
+                  loading="lazy"
+                />
               ) : (
                 <div className="absolute inset-0 flex items-center justify-center text-xs text-muted-foreground">
                   No image

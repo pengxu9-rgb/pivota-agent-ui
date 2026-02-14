@@ -278,9 +278,9 @@ export function PdpMediaViewer({
     onClose();
   };
 
-  const renderImage = (item: MediaItem, imageAlt: string) => (
+  const renderImage = (item: MediaItem, imageAlt: string, sizes = '100vw') => (
     <>
-      <Image src={item.url} alt={imageAlt} fill className="object-contain" unoptimized loading="lazy" />
+      <Image src={item.url} alt={imageAlt} fill className="object-contain" sizes={sizes} loading="lazy" />
       {item.type === 'video' ? (
         <div className="absolute inset-0 flex items-center justify-center bg-black/25">
           <Play className="h-10 w-10 text-white drop-shadow-lg" fill="white" fillOpacity={0.35} />
@@ -325,6 +325,7 @@ export function PdpMediaViewer({
         {renderImage(
           officialItems[officialIndex],
           officialItems[officialIndex]?.alt_text || `Official media ${officialIndex + 1}`,
+          '100vw',
         )}
       </div>
 
@@ -511,8 +512,14 @@ export function PdpMediaViewer({
                         setShowGrid(false);
                       }}
                       aria-label={`Open ${mode} media ${idx + 1}`}
-                    >
-                      <Image src={item.url} alt={item.alt_text || ''} fill className="object-cover" unoptimized />
+                      >
+                      <Image
+                        src={item.url}
+                        alt={item.alt_text || ''}
+                        fill
+                        className="object-cover"
+                        sizes="(max-width: 768px) 33vw, 220px"
+                      />
                       {item.type === 'video' ? (
                         <div className="absolute inset-0 flex items-center justify-center bg-black/25">
                           <Play className="h-6 w-6 text-white" fill="white" fillOpacity={0.35} />

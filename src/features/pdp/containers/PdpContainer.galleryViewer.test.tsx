@@ -6,8 +6,22 @@ import { PdpContainer } from './PdpContainer';
 import type { PDPPayload } from '@/features/pdp/types';
 
 vi.mock('next/image', () => ({
-  default: (props: React.ImgHTMLAttributes<HTMLImageElement> & { fill?: boolean; unoptimized?: boolean }) => {
-    const { fill: _fill, unoptimized: _unoptimized, alt, ...rest } = props;
+  default: (
+    props: React.ImgHTMLAttributes<HTMLImageElement> & {
+      fill?: boolean;
+      unoptimized?: boolean;
+      priority?: boolean;
+      fetchPriority?: string;
+    },
+  ) => {
+    const {
+      fill: _fill,
+      unoptimized: _unoptimized,
+      priority: _priority,
+      fetchPriority: _fetchPriority,
+      alt,
+      ...rest
+    } = props;
     return <img {...rest} alt={typeof alt === 'string' ? alt : ''} />;
   },
 }));

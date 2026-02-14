@@ -1126,7 +1126,7 @@ export function PdpContainer({
                                 isSelected ? 'ring-[color:var(--accent-600)]' : 'ring-border',
                               )}
                             >
-                              <Image src={variant.label_image_url} alt="" fill className="object-cover" unoptimized />
+                              <Image src={variant.label_image_url} alt="" fill className="object-cover" sizes="12px" loading="lazy" />
                             </span>
                           ) : variant.swatch?.hex ? (
                             <span

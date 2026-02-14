@@ -66,7 +66,14 @@ export function BeautyUgcGallery({
               onClick={() => onItemClick?.(idx, item)}
               aria-label={`Open customer media ${idx + 1}`}
             >
-              <Image src={item.url} alt="" fill className="object-cover" unoptimized />
+              <Image
+                src={item.url}
+                alt=""
+                fill
+                className="object-cover"
+                sizes="(max-width: 768px) 33vw, 220px"
+                loading="lazy"
+              />
               {item.type === 'video' ? (
                 <Play className="absolute top-2 right-2 h-4 w-4 text-white drop-shadow-lg" />
               ) : null}

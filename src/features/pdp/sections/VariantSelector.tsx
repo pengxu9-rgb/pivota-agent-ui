@@ -41,7 +41,7 @@ export function VariantSelector({
               {mode === 'beauty' ? (
                 v.label_image_url ? (
                   <span className="relative h-3 w-3 overflow-hidden rounded-full ring-1 ring-border bg-muted">
-                    <Image src={v.label_image_url} alt="" fill className="object-cover" unoptimized />
+                    <Image src={v.label_image_url} alt="" fill className="object-cover" sizes="12px" loading="lazy" />
                   </span>
                 ) : v.swatch?.hex ? (
                   <span

@@ -60,8 +60,9 @@ export function GenericDetailsSection({
               alt=""
               width={800}
               height={600}
+              sizes="(max-width: 768px) 100vw, 720px"
+              loading="lazy"
               className="w-full h-auto rounded-lg"
-              unoptimized
             />
           ))}
         </div>

@@ -45,7 +45,7 @@ export function BeautyShadesSection({
         <div className="flex items-center gap-3 mb-3">
           <span className="relative h-10 w-10 rounded-full ring-2 ring-primary ring-offset-2 overflow-hidden bg-muted">
             {selectedVariant.label_image_url ? (
-              <Image src={selectedVariant.label_image_url} alt="" fill className="object-cover" unoptimized />
+              <Image src={selectedVariant.label_image_url} alt="" fill className="object-cover" sizes="40px" loading="lazy" />
             ) : (
               <span
                 className="absolute inset-0"
@@ -162,7 +162,7 @@ export function BeautyShadesSection({
           <div className="grid grid-cols-2 gap-2 rounded-xl overflow-hidden">
             {galleryItems.map((item, idx) => (
               <div key={`${item.url}-${idx}`} className="relative aspect-[3/4] bg-muted">
-                <Image src={item.url} alt="" fill className="object-cover" unoptimized />
+                <Image src={item.url} alt="" fill className="object-cover" sizes="(max-width: 768px) 50vw, 320px" loading="lazy" />
               </div>
             ))}
           </div>

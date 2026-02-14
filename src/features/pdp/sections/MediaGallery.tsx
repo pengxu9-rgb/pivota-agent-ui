@@ -79,7 +79,15 @@ export function MediaGallery({
           }}
         >
           {heroUrl ? (
-            <Image src={heroUrl} alt={hero?.alt_text || title} fill className={fit} unoptimized />
+            <Image
+              src={heroUrl}
+              alt={hero?.alt_text || title}
+              fill
+              className={fit}
+              sizes="(max-width: 768px) 100vw, 640px"
+              priority
+              fetchPriority="high"
+            />
           ) : (
             <div className="absolute inset-0 flex items-center justify-center text-sm text-muted-foreground">
               No media
@@ -111,7 +119,7 @@ export function MediaGallery({
                   alt={item.alt_text || `Media ${idx + 1}`}
                   fill
                   className="object-cover"
-                  unoptimized
+                  sizes="48px"
                 />
                 {item.type === 'video' ? (
                   <div className="absolute inset-0 flex items-center justify-center bg-foreground/20">

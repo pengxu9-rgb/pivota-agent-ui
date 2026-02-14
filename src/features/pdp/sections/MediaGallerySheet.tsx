@@ -94,7 +94,7 @@ export function MediaGallerySheet({
                       )}
                       aria-label={`Select media ${idx + 1}`}
                     >
-                      <Image src={item.url} alt={item.alt_text || ''} fill className="object-cover" unoptimized />
+                      <Image src={item.url} alt={item.alt_text || ''} fill className="object-cover" sizes="(max-width: 768px) 33vw, 220px" loading="lazy" />
                       {item.type === 'video' ? (
                         <div className="absolute inset-0 flex items-center justify-center bg-foreground/15">
                           <Play className="h-8 w-8 text-white drop-shadow-lg" fill="white" fillOpacity={0.35} />

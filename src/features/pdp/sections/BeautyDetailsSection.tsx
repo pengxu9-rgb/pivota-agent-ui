@@ -41,7 +41,14 @@ export function BeautyDetailsSection({
     <div className="py-4">
       {heroUrl ? (
         <div className="aspect-[4/5] bg-gradient-to-b from-muted to-background">
-          <Image src={heroUrl} alt={product.title} fill className="object-contain" unoptimized />
+          <Image
+            src={heroUrl}
+            alt={product.title}
+            fill
+            className="object-contain"
+            sizes="(max-width: 768px) 100vw, 640px"
+            loading="lazy"
+          />
         </div>
       ) : null}
 
@@ -62,7 +69,7 @@ export function BeautyDetailsSection({
           <div className="grid grid-cols-2 gap-2 rounded-xl overflow-hidden">
             {accentImages.map((item, idx) => (
               <div key={`${item.url}-${idx}`} className="relative aspect-[3/4] bg-muted">
-                <Image src={item.url} alt="" fill className="object-cover" unoptimized />
+                <Image src={item.url} alt="" fill className="object-cover" sizes="(max-width: 768px) 50vw, 320px" loading="lazy" />
               </div>
             ))}
           </div>
