@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -36,7 +37,7 @@ import {
 import { pdpTracking } from '@/features/pdp/tracking';
 import { dispatchPdpAction } from '@/features/pdp/actions';
 import { MediaGallery } from '@/features/pdp/sections/MediaGallery';
-import { MediaGallerySheet } from '@/features/pdp/sections/MediaGallerySheet';
+import { PdpMediaViewer } from '@/features/pdp/components/PdpMediaViewer';
 import { VariantSelector } from '@/features/pdp/sections/VariantSelector';
 import { DetailsAccordion } from '@/features/pdp/sections/DetailsAccordion';
 import { RecommendationsGrid, RecommendationsSkeleton } from '@/features/pdp/sections/RecommendationsGrid';
@@ -135,9 +136,19 @@ export function PdpContainer({
   const [activeTab, setActiveTab] = useState('product');
   const [showShadeSheet, setShowShadeSheet] = useState(false);
   const [showColorSheet, setShowColorSheet] = useState(false);
-  const [showMediaSheet, setShowMediaSheet] = useState(false);
   const [showOfferSheet, setShowOfferSheet] = useState(false);
   const [activeMediaIndex, setActiveMediaIndex] = useState(0);
+  const [mediaViewer, setMediaViewer] = useState<{
+    isOpen: boolean;
+    mode: 'official' | 'ugc';
+    source: string;
+    initialIndex: number;
+  }>({
+    isOpen: false,
+    mode: 'official',
+    source: 'media_gallery',
+    initialIndex: 0,
+  });
   const [navVisible, setNavVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [mounted, setMounted] = useState(false);
@@ -674,11 +685,45 @@ export function PdpContainer({
     router.push(`/products?q=${encodeURIComponent(query)}`);
   };
 
-  const openUgcMedia = (item: MediaItem, fallbackIndex = 0) => {
-    const matchedIndex = galleryItems.findIndex((mediaItem) => mediaItem.url === item.url);
-    setActiveMediaIndex(matchedIndex >= 0 ? matchedIndex : fallbackIndex);
-    setShowMediaSheet(true);
-  };
+  const openViewer = useCallback(
+    ({
+      mode: nextMode,
+      source,
+      index,
+      trackThumbnail = false,
+    }: {
+      mode: 'official' | 'ugc';
+      source: string;
+      index: number;
+      trackThumbnail?: boolean;
+    }) => {
+      const total = nextMode === 'official' ? galleryItems.length : ugcItems.length;
+      const safeIndex = total > 0 ? Math.min(Math.max(Math.floor(index), 0), total - 1) : 0;
+      if (trackThumbnail) {
+        pdpTracking.track('pdp_gallery_click_thumbnail', {
+          source,
+          index: safeIndex,
+          mode: nextMode,
+        });
+      }
+      pdpTracking.track('pdp_gallery_open_viewer', {
+        mode: nextMode,
+        source,
+        from_index: safeIndex,
+        total,
+      });
+      if (nextMode === 'official') {
+        setActiveMediaIndex(safeIndex);
+      }
+      setMediaViewer({
+        isOpen: true,
+        mode: nextMode,
+        source,
+        initialIndex: safeIndex,
+      });
+    },
+    [galleryItems.length, ugcItems.length],
+  );
 
   const attributeOptions = extractAttributeOptions(selectedVariant);
   const beautyAttributes = extractBeautyAttributes(selectedVariant);
@@ -1032,15 +1077,19 @@ export function PdpContainer({
                 heroUrlOverride={heroUrl}
                 activeIndex={activeMediaIndex}
                 onSelect={(index) => {
-                  setActiveMediaIndex(index);
-                  pdpTracking.track('ugc_click_item', {
-                    index,
+                  openViewer({
+                    mode: 'official',
                     source: 'media_gallery',
+                    index,
+                    trackThumbnail: true,
                   });
                 }}
                 onOpenAll={() => {
-                  pdpTracking.track('ugc_open_all', { source: 'media_gallery' });
-                  setShowMediaSheet(true);
+                  openViewer({
+                    mode: 'official',
+                    source: 'media_gallery',
+                    index: activeMediaIndex,
+                  });
                 }}
                 aspectClass={resolvedMode === 'generic' ? 'aspect-square' : 'aspect-[6/5]'}
                 fit={resolvedMode === 'generic' ? 'object-contain' : 'object-cover'}
@@ -1367,14 +1416,23 @@ export function PdpContainer({
                     pdpTracking.track('ugc_open_all', {
                       source: ugcSnapshot.source || 'unknown',
                     });
-                    setShowMediaSheet(true);
+                    openViewer({
+                      mode: 'ugc',
+                      source: ugcSnapshot.source || 'unknown',
+                      index: 0,
+                    });
                   }}
-                  onItemClick={(index, item) => {
+                  onItemClick={(index) => {
                     pdpTracking.track('ugc_click_item', {
                       index,
                       source: ugcSnapshot.source || 'unknown',
                     });
-                    openUgcMedia(item, index + 1);
+                    openViewer({
+                      mode: 'ugc',
+                      source: ugcSnapshot.source || 'unknown',
+                      index,
+                      trackThumbnail: true,
+                    });
                   }}
                 />
               </ModuleShell>
@@ -1415,14 +1473,23 @@ export function PdpContainer({
                     pdpTracking.track('ugc_open_all', {
                       source: ugcSnapshot.source || 'unknown',
                     });
-                    setShowMediaSheet(true);
+                    openViewer({
+                      mode: 'ugc',
+                      source: ugcSnapshot.source || 'unknown',
+                      index: 0,
+                    });
                   }}
-                  onItemClick={(index, item) => {
+                  onItemClick={(index) => {
                     pdpTracking.track('ugc_click_item', {
                       index,
                       source: ugcSnapshot.source || 'unknown',
                     });
-                    openUgcMedia(item, index + 1);
+                    openViewer({
+                      mode: 'ugc',
+                      source: ugcSnapshot.source || 'unknown',
+                      index,
+                      trackThumbnail: true,
+                    });
                   }}
                 />
               </ModuleShell>
@@ -1719,12 +1786,47 @@ export function PdpContainer({
             document.body,
           )
         : null}
-      <MediaGallerySheet
-        open={showMediaSheet}
-        onClose={() => setShowMediaSheet(false)}
-        items={galleryItems}
-        activeIndex={activeMediaIndex}
-        onSelect={(index) => setActiveMediaIndex(index)}
+      <PdpMediaViewer
+        isOpen={mediaViewer.isOpen}
+        initialIndex={mediaViewer.initialIndex}
+        officialItems={galleryItems}
+        ugcItems={ugcItems}
+        defaultMode={mediaViewer.mode}
+        officialSource="media_gallery"
+        ugcSource={ugcSnapshot.source || mediaViewer.source || 'unknown'}
+        onClose={() =>
+          setMediaViewer((prev) => ({
+            ...prev,
+            isOpen: false,
+          }))
+        }
+        onCloseWithState={(payload) => {
+          pdpTracking.track('pdp_gallery_close_viewer', {
+            mode: payload.mode,
+            source: payload.source,
+            index: payload.index,
+          });
+        }}
+        onOpenGrid={(payload) => {
+          pdpTracking.track('pdp_gallery_open_grid', {
+            mode: payload.mode,
+            source: payload.source,
+          });
+        }}
+        onSwipe={(payload) => {
+          pdpTracking.track('pdp_gallery_swipe', {
+            mode: payload.mode,
+            source: payload.source,
+            from_index: payload.fromIndex,
+            to_index: payload.toIndex,
+            direction: payload.direction,
+          });
+        }}
+        onIndexChange={({ mode: viewerMode, index }) => {
+          if (viewerMode === 'official') {
+            setActiveMediaIndex(index);
+          }
+        }}
       />
       {questionOpen ? (
         <div className="fixed inset-0 z-[2147483647] flex items-end justify-center bg-black/40 px-3 py-6">
