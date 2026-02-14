@@ -1077,18 +1077,20 @@ export function PdpContainer({
                 heroUrlOverride={heroUrl}
                 activeIndex={activeMediaIndex}
                 onSelect={(index) => {
-                  openViewer({
-                    mode: 'official',
+                  setActiveMediaIndex(index);
+                  pdpTracking.track('pdp_gallery_click_thumbnail', {
                     source: 'media_gallery',
                     index,
-                    trackThumbnail: true,
+                    mode: 'official',
                   });
                 }}
-                onOpenAll={() => {
-                  openViewer({
+                onHeroSwipe={({ fromIndex, toIndex, direction }) => {
+                  pdpTracking.track('pdp_gallery_swipe', {
                     mode: 'official',
                     source: 'media_gallery',
-                    index: activeMediaIndex,
+                    from_index: fromIndex,
+                    to_index: toIndex,
+                    direction,
                   });
                 }}
                 aspectClass={resolvedMode === 'generic' ? 'aspect-square' : 'aspect-[6/5]'}

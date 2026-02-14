@@ -108,7 +108,7 @@ describe('PdpContainer gallery viewer wiring', () => {
     vi.restoreAllMocks();
   });
 
-  it('opens full-screen viewer at clicked thumbnail index', () => {
+  it('switches official hero image on thumbnail click without opening viewer', () => {
     render(
       <PdpContainer
         payload={payload}
@@ -118,7 +118,9 @@ describe('PdpContainer gallery viewer wiring', () => {
       />,
     );
 
+    expect(screen.getByText('1/3')).toBeInTheDocument();
     fireEvent.click(screen.getByLabelText('View media 2'));
-    expect(screen.getByTestId('viewer-counter')).toHaveTextContent('2/3');
+    expect(screen.getByText('2/3')).toBeInTheDocument();
+    expect(screen.queryByTestId('viewer-counter')).toBeNull();
   });
 });
