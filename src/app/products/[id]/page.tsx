@@ -221,6 +221,11 @@ export default function ProductDetailPage({ params }: Props) {
   });
 
   const { addItem, open } = useCartStore();
+  const progressiveMerchantId = String(pdpPayload?.product?.merchant_id || '').trim();
+  const progressiveProductId = String(pdpPayload?.product?.product_id || id || '').trim();
+  const offersLoadState = pdpPayload?.x_offers_state;
+  const reviewsLoadState = pdpPayload?.x_reviews_state;
+  const similarLoadState = pdpPayload?.x_recommendations_state;
 
   useEffect(() => {
     let cancelled = false;
@@ -406,11 +411,10 @@ export default function ProductDetailPage({ params }: Props) {
 
     const run = async () => {
       if (!loadedViaPdpV2) return;
-      if (!pdpPayload) return;
-      if (pdpPayload.x_offers_state !== 'loading') return;
+      if (offersLoadState !== 'loading') return;
 
-      const merchantId = String(pdpPayload.product.merchant_id || '').trim();
-      const productId = String(pdpPayload.product.product_id || id || '').trim();
+      const merchantId = progressiveMerchantId;
+      const productId = progressiveProductId;
       if (!merchantId || !productId) {
         setPdpPayload((prev) => (prev ? { ...prev, x_offers_state: 'error' } : prev));
         return;
@@ -460,18 +464,22 @@ export default function ProductDetailPage({ params }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [id, loadedViaPdpV2, pdpPayload, pdpPayload?.x_offers_state]);
+  }, [
+    loadedViaPdpV2,
+    offersLoadState,
+    progressiveMerchantId,
+    progressiveProductId,
+  ]);
 
   useEffect(() => {
     let cancelled = false;
 
     const run = async () => {
       if (!loadedViaPdpV2) return;
-      if (!pdpPayload) return;
-      if (pdpPayload.x_reviews_state !== 'loading') return;
+      if (reviewsLoadState !== 'loading') return;
 
-      const merchantId = String(pdpPayload.product.merchant_id || '').trim();
-      const productId = String(pdpPayload.product.product_id || id || '').trim();
+      const merchantId = progressiveMerchantId;
+      const productId = progressiveProductId;
       if (!merchantId || !productId) {
         setPdpPayload((prev) => (prev ? { ...prev, x_reviews_state: 'error' } : prev));
         return;
@@ -530,18 +538,22 @@ export default function ProductDetailPage({ params }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [id, loadedViaPdpV2, pdpPayload, pdpPayload?.x_reviews_state]);
+  }, [
+    loadedViaPdpV2,
+    reviewsLoadState,
+    progressiveMerchantId,
+    progressiveProductId,
+  ]);
 
   useEffect(() => {
     let cancelled = false;
 
     const run = async () => {
       if (!loadedViaPdpV2) return;
-      if (!pdpPayload) return;
-      if (pdpPayload.x_recommendations_state !== 'loading') return;
+      if (similarLoadState !== 'loading') return;
 
-      const merchantId = String(pdpPayload.product.merchant_id || '').trim();
-      const productId = String(pdpPayload.product.product_id || id || '').trim();
+      const merchantId = progressiveMerchantId;
+      const productId = progressiveProductId;
       if (!merchantId || !productId) {
         setPdpPayload((prev) => (prev ? { ...prev, x_recommendations_state: 'error' } : prev));
         return;
@@ -606,7 +618,12 @@ export default function ProductDetailPage({ params }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [id, loadedViaPdpV2, pdpPayload, pdpPayload?.x_recommendations_state]);
+  }, [
+    loadedViaPdpV2,
+    similarLoadState,
+    progressiveMerchantId,
+    progressiveProductId,
+  ]);
 
   useEffect(() => {
     let cancelled = false;
