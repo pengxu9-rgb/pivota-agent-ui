@@ -306,9 +306,9 @@ export default function ProductDetailPage({ params }: Props) {
         const v2 = await getPdpV2({
           product_id: id,
           ...(explicitMerchantId ? { merchant_id: explicitMerchantId } : {}),
-          // Fetch reviews + similar in the initial call to avoid re-fetching canonical payload later.
-          // If the backend can’t serve these modules, the progressive loaders below will still kick in.
-          include: ['reviews_preview', 'similar'],
+          // Keep first paint fast: fetch only core PDP data first.
+          // Reviews/similar are backfilled by progressive loaders below.
+          include: ['offers'],
           timeout_ms: v2TimeoutMs,
         });
         if (cancelled) return;
@@ -403,7 +403,7 @@ export default function ProductDetailPage({ params }: Props) {
             allowBroadScan: false,
             timeout_ms: fallbackTimeoutMs,
             throwOnError: true,
-            includeReviewSummary: true,
+            includeReviewSummary: false,
           });
 
           if (cancelled) return;
