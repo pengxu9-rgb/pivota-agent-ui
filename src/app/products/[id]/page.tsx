@@ -8,7 +8,6 @@ import { useAuthStore } from '@/store/authStore';
 import {
   getPdpV2,
   getPdpV2Personalization,
-  findSimilarProducts,
   getProductDetail,
   resolveProductGroup,
   type ProductResponse,
@@ -147,66 +146,6 @@ function getExternalRedirectUrlFromOffer(offer: unknown): string | null {
     );
   }
   return null;
-}
-
-function normalizeRecommendationItem(input: unknown) {
-  if (!input || typeof input !== 'object') return null;
-  const typed = input as any;
-  const product_id = String(typed.product_id || typed.id || typed.variant_id || '').trim();
-  const title = String(typed.title || typed.name || '').trim();
-  if (!product_id || !title) return null;
-
-  const merchant_id = typed.merchant_id ? String(typed.merchant_id).trim() : undefined;
-
-  const image_url =
-    typeof typed.image_url === 'string'
-      ? typed.image_url
-      : typeof typed.image === 'string'
-        ? typed.image
-        : typeof typed.imageUrl === 'string'
-          ? typed.imageUrl
-          : undefined;
-
-  const currencyCandidate =
-    (typeof typed.currency === 'string' && typed.currency) ||
-    (typeof typed.price?.currency === 'string' && typed.price.currency) ||
-    (typeof typed.price?.current?.currency === 'string' && typed.price.current.currency) ||
-    'USD';
-
-  let price: { amount: number; currency: string } | undefined;
-  const rawPrice = typed.price;
-  if (typeof rawPrice === 'number' && Number.isFinite(rawPrice)) {
-    price = { amount: rawPrice, currency: String(currencyCandidate) };
-  } else if (rawPrice && typeof rawPrice === 'object') {
-    const amt =
-      (typeof (rawPrice as any).amount === 'number' && (rawPrice as any).amount) ||
-      (typeof (rawPrice as any).current?.amount === 'number' && (rawPrice as any).current.amount) ||
-      null;
-    if (typeof amt === 'number' && Number.isFinite(amt)) {
-      price = {
-        amount: amt,
-        currency: String((rawPrice as any).currency || (rawPrice as any).current?.currency || currencyCandidate),
-      };
-    }
-  }
-
-  const rating = typeof typed.rating === 'number' ? typed.rating : undefined;
-  const review_count =
-    typeof typed.review_count === 'number'
-      ? typed.review_count
-      : typeof typed.reviews_count === 'number'
-        ? typed.reviews_count
-        : undefined;
-
-  return {
-    product_id,
-    title,
-    ...(image_url ? { image_url } : {}),
-    ...(price ? { price } : {}),
-    ...(typeof rating === 'number' ? { rating } : {}),
-    ...(typeof review_count === 'number' ? { review_count } : {}),
-    ...(merchant_id ? { merchant_id } : {}),
-  };
 }
 
 function hasModule(response: PDPPayload | null, type: 'reviews_preview' | 'recommendations'): boolean {
@@ -547,7 +486,7 @@ export default function ProductDetailPage({ params }: Props) {
           product_id: productId,
           merchant_id: merchantId,
           include: ['reviews_preview'],
-          timeout_ms: 12000,
+          timeout_ms: 4500,
         });
         if (cancelled) return;
 
@@ -613,29 +552,23 @@ export default function ProductDetailPage({ params }: Props) {
       similarFetchKeyRef.current = key;
 
       try {
-        const similar = await findSimilarProducts({
+        const v2 = await getPdpV2({
           product_id: productId,
           merchant_id: merchantId,
-          limit: 6,
-          timeout_ms: 8000,
+          include: ['similar'],
+          timeout_ms: 3500,
         });
         if (cancelled) return;
 
-        const products = Array.isArray((similar as any)?.products) ? (similar as any).products : [];
-        const items = products.map(normalizeRecommendationItem).filter(Boolean) as any[];
-        const hasItems = items.length > 0;
-        const recModule = hasItems
-          ? {
-              module_id: 'recommendations',
-              type: 'recommendations' as const,
-              priority: 90,
-              title: 'Similar',
-              data: {
-                strategy: (similar as any)?.strategy || 'related_products',
-                items,
-              },
-            }
-          : null;
+        const assembled = mapPdpV2ToPdpPayload(v2);
+        const recModule =
+          assembled && Array.isArray(assembled.modules)
+            ? (assembled.modules.find((m) => m?.type === 'recommendations') as Module | undefined) || null
+            : null;
+        const similarReady = Boolean(assembled && assembled.x_recommendations_state === 'ready');
+        const itemsCount = Array.isArray((recModule as any)?.data?.items)
+          ? ((recModule as any).data.items as unknown[]).length
+          : 0;
 
         setPdpPayload((prev) => {
           if (!prev) return prev;
@@ -649,7 +582,8 @@ export default function ProductDetailPage({ params }: Props) {
           return {
             ...prev,
             modules: merged.modules,
-            x_recommendations_state: 'ready',
+            x_recommendations_state:
+              recModule || merged.locked || similarReady ? 'ready' : 'error',
             x_source_locks: {
               ...(prev.x_source_locks || {}),
               similar: merged.locked,
@@ -658,8 +592,8 @@ export default function ProductDetailPage({ params }: Props) {
         });
         pdpTracking.track('pdp_module_ready', {
           module: 'similar',
-          source: 'find_similar_products',
-          count: items.length,
+          source: 'get_pdp_v2_backfill',
+          count: itemsCount,
           frozen: moduleSourceLocksRef.current.similar,
         });
       } catch {

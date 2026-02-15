@@ -3,6 +3,9 @@ import Image from 'next/image';
 import { Star, ChevronRight } from 'lucide-react';
 import type { RecommendationsData } from '@/features/pdp/types';
 
+const IMAGE_PROXY_PATH = '/api/image-proxy';
+const ABSOLUTE_URL_RE = /^[a-zA-Z][a-zA-Z\d+.-]*:/;
+
 function formatPrice(amount: number, currency: string) {
   const n = Number.isFinite(amount) ? amount : 0;
   const c = currency || 'USD';
@@ -10,6 +13,78 @@ function formatPrice(amount: number, currency: string) {
     return new Intl.NumberFormat('en-US', { style: 'currency', currency: c }).format(n);
   } catch {
     return `$${n.toFixed(2)}`;
+  }
+}
+
+function isAbsoluteUrl(url: string): boolean {
+  return ABSOLUTE_URL_RE.test(url);
+}
+
+function toRelativePathWithQuery(url: URL): string {
+  const query = url.searchParams.toString();
+  return `${url.pathname}${query ? `?${query}` : ''}${url.hash || ''}`;
+}
+
+function unwrapNestedProxy(url: URL): void {
+  const inner = url.searchParams.get('url');
+  if (!inner) return;
+  try {
+    const innerParsed = new URL(inner, 'http://localhost');
+    if (innerParsed.pathname !== IMAGE_PROXY_PATH) return;
+    const nested = innerParsed.searchParams.get('url');
+    if (nested) {
+      url.searchParams.set('url', nested);
+    }
+  } catch {
+    // Ignore malformed nested URL.
+  }
+}
+
+function applyKnownHostWidthHint(rawUrl: string, width: number): string {
+  try {
+    const parsed = new URL(rawUrl);
+    const host = parsed.hostname.toLowerCase();
+    if (host.includes('cdn.shopify.com') || host.includes('shopifycdn.com')) {
+      if (!parsed.searchParams.has('width')) {
+        parsed.searchParams.set('width', String(width));
+      }
+      return parsed.toString();
+    }
+    if (host.includes('wixstatic.com') || host.includes('images.unsplash.com')) {
+      if (!parsed.searchParams.has('w')) {
+        parsed.searchParams.set('w', String(width));
+      }
+      return parsed.toString();
+    }
+    return rawUrl;
+  } catch {
+    return rawUrl;
+  }
+}
+
+export function optimizeRecommendationImageUrl(rawUrl: string, width = 480): string {
+  if (!rawUrl) return rawUrl;
+  try {
+    const parsed = new URL(rawUrl, 'http://localhost');
+    const absolute = isAbsoluteUrl(rawUrl);
+
+    if (parsed.pathname === IMAGE_PROXY_PATH) {
+      unwrapNestedProxy(parsed);
+      const innerUrl = parsed.searchParams.get('url');
+      if (innerUrl) {
+        parsed.searchParams.set('url', applyKnownHostWidthHint(innerUrl, width));
+      }
+      parsed.searchParams.delete('width');
+      if (!parsed.searchParams.has('w')) {
+        parsed.searchParams.set('w', String(width));
+      }
+      return absolute ? parsed.toString() : toRelativePathWithQuery(parsed);
+    }
+
+    if (!absolute) return rawUrl;
+    return applyKnownHostWidthHint(parsed.toString(), width);
+  } catch {
+    return rawUrl;
   }
 }
 
@@ -46,12 +121,14 @@ export function RecommendationsGrid({
             <div className="relative aspect-square bg-muted">
               {p.image_url ? (
                 <Image
-                  src={p.image_url}
+                  src={optimizeRecommendationImageUrl(p.image_url)}
                   alt={p.title}
                   fill
                   className="object-cover"
-                  sizes="(max-width: 768px) 50vw, 220px"
-                  loading="lazy"
+                  sizes="(max-width: 640px) 45vw, (max-width: 1024px) 30vw, 220px"
+                  loading={idx < 2 ? 'eager' : 'lazy'}
+                  fetchPriority={idx < 2 ? 'high' : 'auto'}
+                  quality={idx < 2 ? 72 : 65}
                 />
               ) : (
                 <div className="absolute inset-0 flex items-center justify-center text-xs text-muted-foreground">

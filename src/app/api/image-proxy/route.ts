@@ -18,9 +18,51 @@ function isPrivateNetworkHost(hostname: string): boolean {
   return false;
 }
 
+function parseWidthHint(input: string | null): number | null {
+  if (!input) return null;
+  const n = Number(input);
+  if (!Number.isFinite(n)) return null;
+  const width = Math.floor(n);
+  if (width < 64) return null;
+  return Math.min(width, 2048);
+}
+
+function applyWidthHint(url: URL, width: number | null): URL {
+  if (!width) return url;
+  const out = new URL(url.toString());
+  const host = out.hostname.toLowerCase();
+
+  if (host.includes('cdn.shopify.com') || host.includes('shopifycdn.com')) {
+    if (!out.searchParams.has('width')) {
+      out.searchParams.set('width', String(width));
+    }
+    return out;
+  }
+
+  if (host.includes('wixstatic.com')) {
+    if (!out.searchParams.has('w')) {
+      out.searchParams.set('w', String(width));
+    }
+    return out;
+  }
+
+  if (host.includes('images.unsplash.com')) {
+    if (!out.searchParams.has('w')) {
+      out.searchParams.set('w', String(width));
+    }
+    if (!out.searchParams.has('auto')) {
+      out.searchParams.set('auto', 'format');
+    }
+    return out;
+  }
+
+  return out;
+}
+
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
   const imageUrl = searchParams.get('url');
+  const widthHint = parseWidthHint(searchParams.get('w') || searchParams.get('width'));
 
   if (!imageUrl) {
     return NextResponse.json({ error: 'Missing url parameter' }, { status: 400 });
@@ -43,8 +85,9 @@ export async function GET(request: NextRequest) {
   }
 
   try {
+    const fetchUrl = applyWidthHint(parsed, widthHint).toString();
     // Fetch the image with proper headers to avoid CORS issues
-    const response = await fetch(parsed.toString(), {
+    const response = await fetch(fetchUrl, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
         'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
@@ -65,6 +108,7 @@ export async function GET(request: NextRequest) {
       headers: {
         'Content-Type': contentType,
         'Cache-Control': 'public, max-age=31536000, immutable',
+        ...(widthHint ? { 'X-Image-Proxy-Width-Hint': String(widthHint) } : {}),
       },
     });
   } catch (error) {

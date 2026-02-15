@@ -449,6 +449,7 @@ export function PdpContainer({
 
   const moduleStates = pdpViewModel.moduleStates;
   const hasReviews = moduleStates.reviews_preview !== 'ABSENT';
+  const hasRecommendationItems = Array.isArray(recommendations?.items) && recommendations.items.length > 0;
   const showRecommendationsSection = moduleStates.similar !== 'ABSENT';
 
   useEffect(() => {
@@ -1568,6 +1569,10 @@ export function PdpContainer({
                     openQuestionThread(questionId);
                   }}
                 />
+              ) : moduleStates.reviews_preview === 'ERROR' ? (
+                <div className="px-4 py-4 text-sm text-muted-foreground">
+                  Reviews are temporarily unavailable.
+                </div>
               ) : null}
             </ModuleShell>
           </div>
@@ -1700,7 +1705,7 @@ export function PdpContainer({
               className="px-3 py-3"
               skeleton={<RecommendationsSkeleton />}
             >
-              {recommendations?.items?.length ? (
+              {hasRecommendationItems ? (
                 <RecommendationsGrid
                   data={recommendations}
                   onOpenAll={() => {
@@ -1717,6 +1722,14 @@ export function PdpContainer({
                     });
                   }}
                 />
+              ) : moduleStates.similar === 'ERROR' ? (
+                <div className="rounded-xl border border-border bg-white/90 px-4 py-4 text-sm text-muted-foreground">
+                  Similar products are temporarily unavailable.
+                </div>
+              ) : moduleStates.similar === 'EMPTY' ? (
+                <div className="rounded-xl border border-border bg-white/90 px-4 py-4 text-sm text-muted-foreground">
+                  No similar products yet.
+                </div>
               ) : null}
             </ModuleShell>
           </div>
