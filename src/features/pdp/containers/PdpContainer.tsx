@@ -781,6 +781,7 @@ export function PdpContainer({
           productId,
           ...(groupId ? { productGroupId: groupId } : {}),
           limit: 10,
+          timeout_ms: 1800,
         });
         if (cancelled) return;
         setUgcQuestions(res?.items || []);

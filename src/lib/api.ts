@@ -866,20 +866,47 @@ export type ReviewEligibilityResponse = {
 async function callAccountsBase(
   base: string,
   path: string,
-  options: RequestInit & { skipJson?: boolean } = {},
+  options: RequestInit & {
+    skipJson?: boolean;
+    timeout_ms?: number;
+    timeoutMs?: number;
+  } = {},
 ) {
   const url = `${base}${path}`;
-  const { skipJson, headers, method, body, ...rest } = options as any;
-  const res = await fetch(url, {
-    ...rest,
-    method: method || 'GET',
-    credentials: 'include', // rely on HttpOnly cookies
-    headers: {
-      'Content-Type': 'application/json',
-      ...(headers || {}),
-    },
-    body,
-  });
+  const { skipJson, headers, method, body, timeout_ms, timeoutMs, ...rest } = options as any;
+  const timeoutValue = Number(timeout_ms ?? timeoutMs);
+  const hasTimeout = Number.isFinite(timeoutValue) && timeoutValue > 0;
+  const controller = hasTimeout ? new AbortController() : null;
+  const timer = hasTimeout
+    ? setTimeout(() => {
+        controller?.abort();
+      }, timeoutValue)
+    : null;
+
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      ...rest,
+      method: method || 'GET',
+      credentials: 'include', // rely on HttpOnly cookies
+      headers: {
+        'Content-Type': 'application/json',
+        ...(headers || {}),
+      },
+      ...(controller ? { signal: controller.signal } : {}),
+      body,
+    });
+  } catch (err) {
+    if ((err as any)?.name === 'AbortError') {
+      const timeoutErr = new Error('The request timed out. Please retry.') as ApiError;
+      timeoutErr.code = 'UPSTREAM_TIMEOUT';
+      timeoutErr.status = 504;
+      throw timeoutErr;
+    }
+    throw err;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 
   if (skipJson) {
     return res;
@@ -1025,6 +1052,7 @@ export async function listQuestions(args: {
   productId: string;
   productGroupId?: string | null;
   limit?: number;
+  timeout_ms?: number;
 }): Promise<{ count: number; items: QuestionListItem[] } | null> {
   const productId = String(args.productId || '').trim();
   if (!productId) return null;
@@ -1040,6 +1068,7 @@ export async function listQuestions(args: {
 
   const res = (await callAccountsRoot(`/questions?${params.toString()}`, {
     cache: 'no-store',
+    timeout_ms: args.timeout_ms,
   })) as any;
 
   const itemsRaw = Array.isArray(res?.items) ? res.items : [];
