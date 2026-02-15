@@ -933,11 +933,17 @@ async function callAccountsBase(
   return data;
 }
 
-async function callAccounts(path: string, options: RequestInit & { skipJson?: boolean } = {}) {
+type AccountsCallOptions = RequestInit & {
+  skipJson?: boolean;
+  timeout_ms?: number;
+  timeoutMs?: number;
+};
+
+async function callAccounts(path: string, options: AccountsCallOptions = {}) {
   return callAccountsBase(ACCOUNTS_API_BASE, path, options);
 }
 
-async function callAccountsRoot(path: string, options: RequestInit & { skipJson?: boolean } = {}) {
+async function callAccountsRoot(path: string, options: AccountsCallOptions = {}) {
   return callAccountsBase(ACCOUNTS_ROOT_API_BASE, path, options);
 }
 
