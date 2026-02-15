@@ -159,6 +159,8 @@ export function PdpContainer({
   const [questionText, setQuestionText] = useState('');
   const [questionSubmitting, setQuestionSubmitting] = useState(false);
   const [ugcQuestions, setUgcQuestions] = useState<QuestionListItem[]>([]);
+  const questionsFetchedProductIdRef = useRef<string>('');
+  const latestProductGroupIdRef = useRef<string | null>(null);
 
   const variants = useMemo(() => payload.product.variants ?? [], [payload.product.variants]);
 
@@ -762,30 +764,42 @@ export function PdpContainer({
   const productId = String(payload.product.product_id || '').trim();
   const productGroupId = String(payload.product_group_id || selectedOffer?.product_group_id || '').trim() || null;
   const merchantId = String(payload.product.merchant_id || '').trim() || null;
+  latestProductGroupIdRef.current = productGroupId;
 
   useEffect(() => {
     let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    if (!productId) return () => {};
+    if (questionsFetchedProductIdRef.current === productId) return () => {};
 
     async function run() {
-      if (!productId) return;
       try {
+        questionsFetchedProductIdRef.current = productId;
+        const groupId = latestProductGroupIdRef.current;
         const res = await listQuestions({
           productId,
-          ...(productGroupId ? { productGroupId } : {}),
+          ...(groupId ? { productGroupId: groupId } : {}),
           limit: 10,
         });
         if (cancelled) return;
         setUgcQuestions(res?.items || []);
       } catch {
-        // ignore
+        if (!cancelled && questionsFetchedProductIdRef.current === productId) {
+          questionsFetchedProductIdRef.current = '';
+        }
       }
     }
 
-    run();
+    timer = setTimeout(() => {
+      void run();
+    }, 220);
+
     return () => {
       cancelled = true;
+      if (timer) clearTimeout(timer);
     };
-  }, [productGroupId, productId]);
+  }, [productId]);
 
   const openQuestionsHub = () => {
     if (!productId) return;

@@ -206,8 +206,7 @@ export default function ProductDetailPage({ params }: Props) {
   const [loadedViaPdpV2, setLoadedViaPdpV2] = useState(false);
   const offerProductDetailCacheRef = useRef<Map<string, ProductResponse>>(new Map());
   const offersFetchKeyRef = useRef<string | null>(null);
-  const reviewsFetchKeyRef = useRef<string | null>(null);
-  const similarFetchKeyRef = useRef<string | null>(null);
+  const reviewsSimilarFetchKeyRef = useRef<string | null>(null);
   const moduleSourceLocksRef = useRef({ ...DEFAULT_MODULE_SOURCE_LOCKS });
   const [ugcCapabilities, setUgcCapabilities] = useState<UgcCapabilities | null>({
     canUploadMedia: false,
@@ -241,8 +240,7 @@ export default function ProductDetailPage({ params }: Props) {
       setPdpPayload(null);
       setLoadedViaPdpV2(false);
       offersFetchKeyRef.current = null;
-      reviewsFetchKeyRef.current = null;
-      similarFetchKeyRef.current = null;
+      reviewsSimilarFetchKeyRef.current = null;
       moduleSourceLocksRef.current = { ...DEFAULT_MODULE_SOURCE_LOCKS };
 
       try {
@@ -476,24 +474,37 @@ export default function ProductDetailPage({ params }: Props) {
 
     const run = async () => {
       if (!loadedViaPdpV2) return;
-      if (reviewsLoadState !== 'loading') return;
+      const needReviews = reviewsLoadState === 'loading';
+      const needSimilar = similarLoadState === 'loading';
+      if (!needReviews && !needSimilar) return;
 
       const merchantId = progressiveMerchantId;
       const productId = progressiveProductId;
       if (!merchantId || !productId) {
-        setPdpPayload((prev) => (prev ? { ...prev, x_reviews_state: 'error' } : prev));
+        setPdpPayload((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            ...(needReviews ? { x_reviews_state: 'error' } : {}),
+            ...(needSimilar ? { x_recommendations_state: 'error' } : {}),
+          };
+        });
         return;
       }
 
-      const key = `${merchantId}:${productId}`;
-      if (reviewsFetchKeyRef.current === key) return;
-      reviewsFetchKeyRef.current = key;
+      const include: string[] = [];
+      if (needReviews) include.push('reviews_preview');
+      if (needSimilar) include.push('similar');
+
+      const key = `${merchantId}:${productId}:${include.join(',')}`;
+      if (reviewsSimilarFetchKeyRef.current === key) return;
+      reviewsSimilarFetchKeyRef.current = key;
 
       try {
         const v2 = await getPdpV2({
           product_id: productId,
           merchant_id: merchantId,
-          include: ['reviews_preview'],
+          include,
           timeout_ms: 4500,
         });
         if (cancelled) return;
@@ -503,76 +514,6 @@ export default function ProductDetailPage({ params }: Props) {
           assembled && Array.isArray(assembled.modules)
             ? assembled.modules.find((m) => m?.type === 'reviews_preview') || null
             : null;
-
-        setPdpPayload((prev) => {
-          if (!prev) return prev;
-          const merged = upsertLockedModule({
-            currentModules: prev.modules,
-            type: 'reviews_preview',
-            nextModule: reviewsModule as Module | null,
-            locked: moduleSourceLocksRef.current.reviews,
-          });
-          moduleSourceLocksRef.current.reviews = merged.locked;
-          return {
-            ...prev,
-            modules: merged.modules,
-            x_reviews_state: reviewsModule || merged.locked ? 'ready' : 'error',
-            x_source_locks: {
-              ...(prev.x_source_locks || {}),
-              reviews: merged.locked,
-            },
-          };
-        });
-        pdpTracking.track('pdp_module_ready', {
-          module: 'reviews_preview',
-          source: 'get_pdp_v2_backfill',
-          frozen: moduleSourceLocksRef.current.reviews,
-        });
-      } catch {
-        if (cancelled) return;
-        setPdpPayload((prev) => (prev ? { ...prev, x_reviews_state: 'error' } : prev));
-      }
-    };
-
-    void run();
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    loadedViaPdpV2,
-    reviewsLoadState,
-    progressiveMerchantId,
-    progressiveProductId,
-  ]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const run = async () => {
-      if (!loadedViaPdpV2) return;
-      if (similarLoadState !== 'loading') return;
-
-      const merchantId = progressiveMerchantId;
-      const productId = progressiveProductId;
-      if (!merchantId || !productId) {
-        setPdpPayload((prev) => (prev ? { ...prev, x_recommendations_state: 'error' } : prev));
-        return;
-      }
-
-      const key = `${merchantId}:${productId}`;
-      if (similarFetchKeyRef.current === key) return;
-      similarFetchKeyRef.current = key;
-
-      try {
-        const v2 = await getPdpV2({
-          product_id: productId,
-          merchant_id: merchantId,
-          include: ['similar'],
-          timeout_ms: 3500,
-        });
-        if (cancelled) return;
-
-        const assembled = mapPdpV2ToPdpPayload(v2);
         const recModule =
           assembled && Array.isArray(assembled.modules)
             ? (assembled.modules.find((m) => m?.type === 'recommendations') as Module | undefined) || null
@@ -584,33 +525,72 @@ export default function ProductDetailPage({ params }: Props) {
 
         setPdpPayload((prev) => {
           if (!prev) return prev;
-          const merged = upsertLockedModule({
-            currentModules: prev.modules,
-            type: 'recommendations',
-            nextModule: recModule as Module | null,
-            locked: moduleSourceLocksRef.current.similar,
+          let next = { ...prev };
+          if (needReviews) {
+            const mergedReviews = upsertLockedModule({
+              currentModules: next.modules,
+              type: 'reviews_preview',
+              nextModule: reviewsModule as Module | null,
+              locked: moduleSourceLocksRef.current.reviews,
+            });
+            moduleSourceLocksRef.current.reviews = mergedReviews.locked;
+            next = {
+              ...next,
+              modules: mergedReviews.modules,
+              x_reviews_state: reviewsModule || mergedReviews.locked ? 'ready' : 'error',
+              x_source_locks: {
+                ...(next.x_source_locks || {}),
+                reviews: mergedReviews.locked,
+              },
+            };
+          }
+          if (needSimilar) {
+            const mergedSimilar = upsertLockedModule({
+              currentModules: next.modules,
+              type: 'recommendations',
+              nextModule: recModule as Module | null,
+              locked: moduleSourceLocksRef.current.similar,
+            });
+            moduleSourceLocksRef.current.similar = mergedSimilar.locked;
+            next = {
+              ...next,
+              modules: mergedSimilar.modules,
+              x_recommendations_state:
+                recModule || mergedSimilar.locked || similarReady ? 'ready' : 'error',
+              x_source_locks: {
+                ...(next.x_source_locks || {}),
+                similar: mergedSimilar.locked,
+              },
+            };
+          }
+          return next;
+        });
+
+        if (needReviews) {
+          pdpTracking.track('pdp_module_ready', {
+            module: 'reviews_preview',
+            source: 'get_pdp_v2_backfill',
+            frozen: moduleSourceLocksRef.current.reviews,
           });
-          moduleSourceLocksRef.current.similar = merged.locked;
-          return {
-            ...prev,
-            modules: merged.modules,
-            x_recommendations_state:
-              recModule || merged.locked || similarReady ? 'ready' : 'error',
-            x_source_locks: {
-              ...(prev.x_source_locks || {}),
-              similar: merged.locked,
-            },
-          };
-        });
-        pdpTracking.track('pdp_module_ready', {
-          module: 'similar',
-          source: 'get_pdp_v2_backfill',
-          count: itemsCount,
-          frozen: moduleSourceLocksRef.current.similar,
-        });
+        }
+        if (needSimilar) {
+          pdpTracking.track('pdp_module_ready', {
+            module: 'similar',
+            source: 'get_pdp_v2_backfill',
+            count: itemsCount,
+            frozen: moduleSourceLocksRef.current.similar,
+          });
+        }
       } catch {
         if (cancelled) return;
-        setPdpPayload((prev) => (prev ? { ...prev, x_recommendations_state: 'error' } : prev));
+        setPdpPayload((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            ...(needReviews ? { x_reviews_state: 'error' } : {}),
+            ...(needSimilar ? { x_recommendations_state: 'error' } : {}),
+          };
+        });
       }
     };
 
@@ -620,6 +600,7 @@ export default function ProductDetailPage({ params }: Props) {
     };
   }, [
     loadedViaPdpV2,
+    reviewsLoadState,
     similarLoadState,
     progressiveMerchantId,
     progressiveProductId,
