@@ -509,13 +509,17 @@ export default function ProductDetailPage({ params }: Props) {
             timeout_ms: timeoutMs,
           });
 
-        const fetchBackfillWithRetry = async (modules: string[]) => {
+        const fetchBackfillWithRetry = async (
+          modules: string[],
+          firstTimeoutMs: number,
+          retryTimeoutMs: number,
+        ) => {
           try {
-            return await fetchBackfill(modules, 3000);
+            return await fetchBackfill(modules, firstTimeoutMs);
           } catch {
             if (cancelled) return null;
             try {
-              return await fetchBackfill(modules, 8000);
+              return await fetchBackfill(modules, retryTimeoutMs);
             } catch {
               return null;
             }
@@ -535,7 +539,7 @@ export default function ProductDetailPage({ params }: Props) {
           return { reviews, recommendations, recommendationsReady };
         };
 
-        const primaryV2 = await fetchBackfillWithRetry(include);
+        const primaryV2 = await fetchBackfillWithRetry(include, 1800, 3200);
         if (cancelled) return;
 
         const assembled = primaryV2 ? mapPdpV2ToPdpPayload(primaryV2) : null;
@@ -546,20 +550,24 @@ export default function ProductDetailPage({ params }: Props) {
         let reviewsRequestSucceeded = needReviews ? Boolean(primaryV2) : false;
         let similarRequestSucceeded = needSimilar ? Boolean(primaryV2) : false;
 
-        if (!primaryV2 && needReviews) {
-          const reviewOnlyV2 = await fetchBackfillWithRetry(['reviews_preview']);
+        if (!primaryV2 && (needReviews || needSimilar)) {
+          const [reviewOnlyV2, similarOnlyV2] = await Promise.all([
+            needReviews
+              ? fetchBackfillWithRetry(['reviews_preview'], 1400, 2800)
+              : Promise.resolve(null),
+            needSimilar
+              ? fetchBackfillWithRetry(['similar'], 1200, 2200)
+              : Promise.resolve(null),
+          ]);
           if (cancelled) return;
+
           if (reviewOnlyV2) {
             reviewsRequestSucceeded = true;
             const reviewOnlyPayload = mapPdpV2ToPdpPayload(reviewOnlyV2);
             const extractedReviewOnly = extractModules(reviewOnlyPayload);
             reviewsModule = extractedReviewOnly.reviews || reviewsModule;
           }
-        }
 
-        if (!primaryV2 && needSimilar) {
-          const similarOnlyV2 = await fetchBackfillWithRetry(['similar']);
-          if (cancelled) return;
           if (similarOnlyV2) {
             similarRequestSucceeded = true;
             const similarOnlyPayload = mapPdpV2ToPdpPayload(similarOnlyV2);
