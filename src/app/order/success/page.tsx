@@ -7,6 +7,16 @@ import { safeReturnUrl, withReturnParams } from '@/lib/returnUrl'
 import { isAuroraEmbedMode, postRequestCloseToParent } from '@/lib/auroraEmbed'
 import { getCheckoutTokenFromBrowser } from '@/lib/checkoutToken'
 
+type BuyerVaultSnapshot = {
+  email: string | null
+  hasAddress: boolean
+}
+
+const EMPTY_BUYER_VAULT_SNAPSHOT: BuyerVaultSnapshot = {
+  email: null,
+  hasAddress: false,
+}
+
 function decodeCheckoutTokenPayload(token: string | null): any | null {
   const raw = String(token || '').trim()
   if (!raw) return null
@@ -60,11 +70,41 @@ function SuccessContent() {
   )
   const [saveLoginUrl, setSaveLoginUrl] = useState<string | null>(null)
   const [saveError, setSaveError] = useState<string | null>(null)
-  const canSave = Boolean(checkoutToken || orderId || saveTokenFromUrl)
+  const [buyerVaultSnapshot, setBuyerVaultSnapshot] = useState<BuyerVaultSnapshot>(EMPTY_BUYER_VAULT_SNAPSHOT)
+  const hasBuyerVaultPrefill = Boolean(buyerVaultSnapshot.email || buyerVaultSnapshot.hasAddress)
+  const canSave = Boolean(checkoutToken || orderId || saveTokenFromUrl || hasBuyerVaultPrefill)
 
   useEffect(() => {
     setCheckoutToken(getCheckoutTokenFromBrowser())
   }, [searchParams])
+
+  const loadBuyerVaultSnapshot = useCallback(async (): Promise<BuyerVaultSnapshot> => {
+    try {
+      const res = await fetch('/api/buyer/me', { cache: 'no-store' })
+      if (!res.ok) {
+        setBuyerVaultSnapshot(EMPTY_BUYER_VAULT_SNAPSHOT)
+        return EMPTY_BUYER_VAULT_SNAPSHOT
+      }
+      const json = await res.json().catch(() => null)
+      const email = String(json?.buyer?.primary_email || '').trim() || null
+      const addr = json?.default_address
+      const hasAddress = Boolean(
+        addr &&
+          typeof addr === 'object' &&
+          (addr.line1 || addr.recipient_name || addr.postal_code || addr.country || addr.city),
+      )
+      const snapshot: BuyerVaultSnapshot = { email, hasAddress }
+      setBuyerVaultSnapshot(snapshot)
+      return snapshot
+    } catch {
+      setBuyerVaultSnapshot(EMPTY_BUYER_VAULT_SNAPSHOT)
+      return EMPTY_BUYER_VAULT_SNAPSHOT
+    }
+  }, [])
+
+  useEffect(() => {
+    void loadBuyerVaultSnapshot()
+  }, [loadBuyerVaultSnapshot])
 
   const intentId = useMemo(() => {
     const payload = decodeCheckoutTokenPayload(checkoutToken)
@@ -78,6 +118,17 @@ function SuccessContent() {
       setSaveError(null)
       setSaveLoginUrl(null)
       try {
+        // Buyer Vault first: when available, treat it as canonical defaults.
+        // Still proceed with save_from_checkout when checkout context exists,
+        // so order/intent linkage and audit trails remain intact.
+        const vault = await loadBuyerVaultSnapshot()
+        const hasVaultPrefill = Boolean(vault.email || vault.hasAddress)
+        const hasCheckoutContext = Boolean(checkoutToken || args.save_token || args.intent_id || args.order_id)
+        if (!hasCheckoutContext && hasVaultPrefill) {
+          setSaveStatus('saved')
+          return
+        }
+
         const res = await fetch('/api/buyer/save_from_checkout', {
           method: 'POST',
           headers: {
@@ -104,6 +155,13 @@ function SuccessContent() {
           setSaveLoginUrl(String(json?.login_url || json?.detail?.login_url || '').trim() || null)
           return
         }
+        // If checkout context is unavailable but Buyer Vault already has defaults,
+        // allow a graceful success state.
+        const message = String(json?.error?.message || json?.detail?.error?.message || '').trim().toLowerCase()
+        if (!hasCheckoutContext && hasVaultPrefill && message.includes('checkout')) {
+          setSaveStatus('saved')
+          return
+        }
         setSaveStatus('error')
         setSaveError(String(json?.error?.message || json?.detail?.error?.message || 'Failed to save').trim())
       } catch (err: any) {
@@ -111,7 +169,7 @@ function SuccessContent() {
         setSaveError(err?.message || String(err))
       }
     },
-    [checkoutToken],
+    [checkoutToken, loadBuyerVaultSnapshot],
   )
 
   useEffect(() => {
@@ -212,6 +270,11 @@ function SuccessContent() {
               </button>
             )}
             {saveStatus === 'error' && saveError ? <p className="text-xs text-red-700 mt-2">{saveError}</p> : null}
+            {saveStatus === 'idle' && hasBuyerVaultPrefill ? (
+              <p className="text-xs text-gray-600 mt-2">
+                Buyer Vault defaults detected. Future checkout will prioritize your saved email and address.
+              </p>
+            ) : null}
             {!canSave ? (
               <p className="text-xs text-gray-600 mt-2">
                 Missing checkout session. Please return to the app and retry checkout.
