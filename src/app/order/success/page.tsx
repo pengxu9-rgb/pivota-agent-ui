@@ -1,10 +1,11 @@
 'use client'
 
-import { Suspense, useEffect, useMemo, useState } from 'react'
+import { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Check, Package, ArrowRight } from 'lucide-react'
 import { safeReturnUrl, withReturnParams } from '@/lib/returnUrl'
 import { isAuroraEmbedMode, postRequestCloseToParent } from '@/lib/auroraEmbed'
+import { getCheckoutTokenFromBrowser } from '@/lib/checkoutToken'
 
 function decodeCheckoutTokenPayload(token: string | null): any | null {
   const raw = String(token || '').trim()
@@ -61,21 +62,8 @@ function SuccessContent() {
   const [saveError, setSaveError] = useState<string | null>(null)
 
   useEffect(() => {
-    try {
-      const params = new URLSearchParams(window.location.search)
-      const tokenFromUrl = (params.get('checkout_token') || params.get('checkoutToken') || '').trim()
-      if (tokenFromUrl) {
-        window.sessionStorage.setItem('pivota_checkout_token', tokenFromUrl)
-        setCheckoutToken(tokenFromUrl)
-        return
-      }
-
-      const token = window.sessionStorage.getItem('pivota_checkout_token')
-      setCheckoutToken(token ? String(token).trim() : null)
-    } catch {
-      setCheckoutToken(null)
-    }
-  }, [])
+    setCheckoutToken(getCheckoutTokenFromBrowser())
+  }, [searchParams])
 
   const intentId = useMemo(() => {
     const payload = decodeCheckoutTokenPayload(checkoutToken)
@@ -83,51 +71,54 @@ function SuccessContent() {
     return id || null
   }, [checkoutToken])
 
-  const attemptSave = async (args: { save_token?: string; intent_id?: string; order_id?: string }) => {
-    setSaveStatus('saving')
-    setSaveError(null)
-    setSaveLoginUrl(null)
-    try {
-      const res = await fetch('/api/buyer/save_from_checkout', {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          ...(checkoutToken ? { 'X-Checkout-Token': checkoutToken } : {}),
-        },
-        body: JSON.stringify({
-          ...(args.save_token ? { save_token: args.save_token } : {}),
-          ...(args.intent_id ? { intent_id: args.intent_id } : {}),
-          ...(args.order_id ? { order_id: args.order_id } : {}),
-          save_email: true,
-          save_address: true,
-        }),
-        cache: 'no-store',
-      })
-      const json = await res.json().catch(() => null)
-      if (res.ok) {
-        setSaveStatus('saved')
-        return
+  const attemptSave = useCallback(
+    async (args: { save_token?: string; intent_id?: string; order_id?: string }) => {
+      setSaveStatus('saving')
+      setSaveError(null)
+      setSaveLoginUrl(null)
+      try {
+        const res = await fetch('/api/buyer/save_from_checkout', {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            ...(checkoutToken ? { 'X-Checkout-Token': checkoutToken } : {}),
+          },
+          body: JSON.stringify({
+            ...(args.save_token ? { save_token: args.save_token } : {}),
+            ...(args.intent_id ? { intent_id: args.intent_id } : {}),
+            ...(args.order_id ? { order_id: args.order_id } : {}),
+            save_email: true,
+            save_address: true,
+          }),
+          cache: 'no-store',
+        })
+        const json = await res.json().catch(() => null)
+        if (res.ok) {
+          setSaveStatus('saved')
+          return
+        }
+        const code = json?.error?.code || json?.detail?.error?.code
+        if (code === 'STEP_UP_REQUIRED') {
+          setSaveStatus('step_up')
+          setSaveLoginUrl(String(json?.login_url || json?.detail?.login_url || '').trim() || null)
+          return
+        }
+        setSaveStatus('error')
+        setSaveError(String(json?.error?.message || json?.detail?.error?.message || 'Failed to save').trim())
+      } catch (err: any) {
+        setSaveStatus('error')
+        setSaveError(err?.message || String(err))
       }
-      const code = json?.error?.code || json?.detail?.error?.code
-      if (code === 'STEP_UP_REQUIRED') {
-        setSaveStatus('step_up')
-        setSaveLoginUrl(String(json?.login_url || json?.detail?.login_url || '').trim() || null)
-        return
-      }
-      setSaveStatus('error')
-      setSaveError(String(json?.error?.message || json?.detail?.error?.message || 'Failed to save').trim())
-    } catch (err: any) {
-      setSaveStatus('error')
-      setSaveError(err?.message || String(err))
-    }
-  }
+    },
+    [checkoutToken],
+  )
 
   useEffect(() => {
     if (!saveTokenFromUrl) return
+    if (!checkoutToken) return
     if (saveStatus !== 'idle') return
     void attemptSave({ save_token: saveTokenFromUrl })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [saveTokenFromUrl])
+  }, [saveTokenFromUrl, checkoutToken, saveStatus, attemptSave])
 
   const continueShopping = () => {
     if (isEmbedMode || (typeof window !== 'undefined' && window.parent !== window)) {

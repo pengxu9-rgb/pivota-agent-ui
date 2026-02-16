@@ -1,5 +1,6 @@
 // Centralized API helpers for calling the Pivota Agent Gateway and Accounts API
 // All UI components should import functions from here instead of using fetch directly.
+import { getCheckoutTokenFromBrowser } from '@/lib/checkoutToken'
 
 // Point to the public Agent Gateway by default; override via NEXT_PUBLIC_API_URL if needed.
 const API_BASE =
@@ -602,27 +603,7 @@ function rememberRecentQuery(query: string) {
 }
 
 function getCheckoutToken(): string | null {
-  if (typeof window === 'undefined') return null;
-
-  try {
-    const params = new URLSearchParams(window.location.search);
-    const token =
-      params.get('checkout_token') ||
-      params.get('checkoutToken') ||
-      null;
-    if (token) {
-      window.sessionStorage.setItem('pivota_checkout_token', token);
-      return token;
-    }
-  } catch {
-    // ignore
-  }
-
-  try {
-    return window.sessionStorage.getItem('pivota_checkout_token');
-  } catch {
-    return null;
-  }
+  return getCheckoutTokenFromBrowser()
 }
 
 type GatewayCallOptions = {

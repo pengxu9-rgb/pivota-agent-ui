@@ -7,6 +7,7 @@ import OrderFlow from '@/components/order/OrderFlow'
 import { ArrowLeft } from 'lucide-react'
 import { safeReturnUrl, withReturnParams } from '@/lib/returnUrl'
 import { setMerchantId } from '@/lib/api'
+import { getCheckoutTokenFromBrowser, persistCheckoutToken } from '@/lib/checkoutToken'
 
 interface OrderItem {
   product_id: string
@@ -54,9 +55,10 @@ function OrderContent() {
   )
   const source =
     (searchParams.get('source') || searchParams.get('src') || '').trim().toLowerCase()
-  const hasCheckoutToken = Boolean(
-    (searchParams.get('checkout_token') || searchParams.get('checkoutToken') || '').trim(),
-  )
+  const checkoutTokenFromQuery =
+    (searchParams.get('checkout_token') || searchParams.get('checkoutToken') || '').trim() || null
+  const [checkoutToken, setCheckoutToken] = useState<string | null>(checkoutTokenFromQuery)
+  const hasCheckoutToken = Boolean(checkoutToken)
   const skipEmailVerification =
     hasCheckoutToken || source === 'look_replicator' || source === 'lookreplicator'
   const buyerRef =
@@ -68,9 +70,6 @@ function OrderContent() {
   const market =
     (searchParams.get('market') || '').trim().toUpperCase() || null
   const locale = (searchParams.get('locale') || '').trim().toLowerCase() || null
-  const checkoutToken =
-    (searchParams.get('checkout_token') || searchParams.get('checkoutToken') || '').trim() ||
-    null
   const checkoutDebug =
     (searchParams.get('checkout_debug') || searchParams.get('debug') || '').trim() || null
 
@@ -101,13 +100,13 @@ function OrderContent() {
   }
 
   useEffect(() => {
-    if (!checkoutToken) return
-    try {
-      window.sessionStorage.setItem('pivota_checkout_token', checkoutToken)
-    } catch {
-      // ignore storage errors
+    if (checkoutTokenFromQuery) {
+      persistCheckoutToken(checkoutTokenFromQuery)
+      setCheckoutToken(checkoutTokenFromQuery)
+      return
     }
-  }, [checkoutToken])
+    setCheckoutToken(getCheckoutTokenFromBrowser())
+  }, [checkoutTokenFromQuery])
 
   useEffect(() => {
     // In a real app, this would come from cart state or API
