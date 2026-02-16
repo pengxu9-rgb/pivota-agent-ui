@@ -60,6 +60,7 @@ function SuccessContent() {
   )
   const [saveLoginUrl, setSaveLoginUrl] = useState<string | null>(null)
   const [saveError, setSaveError] = useState<string | null>(null)
+  const canSave = Boolean(checkoutToken || orderId || saveTokenFromUrl)
 
   useEffect(() => {
     setCheckoutToken(getCheckoutTokenFromBrowser())
@@ -115,10 +116,13 @@ function SuccessContent() {
 
   useEffect(() => {
     if (!saveTokenFromUrl) return
-    if (!checkoutToken) return
     if (saveStatus !== 'idle') return
-    void attemptSave({ save_token: saveTokenFromUrl })
-  }, [saveTokenFromUrl, checkoutToken, saveStatus, attemptSave])
+    if (!checkoutToken && !orderId) return
+    void attemptSave({
+      save_token: saveTokenFromUrl,
+      ...(orderId ? { order_id: orderId } : {}),
+    })
+  }, [saveTokenFromUrl, checkoutToken, orderId, saveStatus, attemptSave])
 
   const continueShopping = () => {
     if (isEmbedMode || (typeof window !== 'undefined' && window.parent !== window)) {
@@ -201,14 +205,14 @@ function SuccessContent() {
               <button
                 type="button"
                 onClick={() => void attemptSave({ intent_id: intentId || undefined, order_id: orderId || undefined })}
-                disabled={!checkoutToken || saveStatus === 'saving'}
+                disabled={!canSave || saveStatus === 'saving'}
                 className="w-full px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-60"
               >
                 {saveStatus === 'saving' ? 'Saving…' : 'Save'}
               </button>
             )}
             {saveStatus === 'error' && saveError ? <p className="text-xs text-red-700 mt-2">{saveError}</p> : null}
-            {!checkoutToken ? (
+            {!canSave ? (
               <p className="text-xs text-gray-600 mt-2">
                 Missing checkout session. Please return to the app and retry checkout.
               </p>

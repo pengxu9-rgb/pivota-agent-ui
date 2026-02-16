@@ -24,16 +24,17 @@ function sha256Hex(input: string): string {
   return crypto.createHash('sha256').update(String(input)).digest('hex')
 }
 
-function mintCheckoutUiAuth(args: { aud: string; checkoutToken: string; ttlSeconds?: number }): string {
+function mintCheckoutUiAuth(args: { aud: string; checkoutToken?: string; ttlSeconds?: number }): string {
   const ttlSeconds = Math.max(10, Number(args.ttlSeconds || 120))
   const now = Math.floor(Date.now() / 1000)
+  const checkoutToken = String(args.checkoutToken || '').trim()
   const payload = {
     v: 1,
     typ: 'checkout_ui_auth',
     aud: args.aud,
     iat: now,
     exp: now + ttlSeconds,
-    cth: sha256Hex(args.checkoutToken),
+    ...(checkoutToken ? { cth: sha256Hex(checkoutToken) } : {}),
   }
   const payloadB64 = base64url(JSON.stringify(payload))
   const sig = base64url(crypto.createHmac('sha256', CHECKOUT_UI_KEY).update(payloadB64).digest())
@@ -71,8 +72,11 @@ async function proxy(req: NextRequest, args: { upstreamBase: string; path: strin
   const firstSeg = String(args.path?.[0] || '').trim()
   if (firstSeg === 'save_from_checkout') {
     const checkoutToken = String(headers['x-checkout-token'] || '').trim()
-    if (checkoutToken && CHECKOUT_UI_KEY) {
-      headers['X-Checkout-UI-Auth'] = mintCheckoutUiAuth({ aud: 'buyer_save', checkoutToken })
+    if (CHECKOUT_UI_KEY) {
+      headers['X-Checkout-UI-Auth'] = mintCheckoutUiAuth({
+        aud: 'buyer_save',
+        ...(checkoutToken ? { checkoutToken } : {}),
+      })
     }
   }
 
