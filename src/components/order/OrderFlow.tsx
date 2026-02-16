@@ -471,79 +471,93 @@ function OrderFlowInner({
     return map
   }, [quote?.line_items])
 
-  // Prefill shipping details from a server-stored checkout intent (PII is never put into URL params).
+  // Prefill shipping details:
+  // 1) Prefer Buyer Vault defaults (/api/buyer/me) when available.
+  // 2) Then merge checkout-intent prefill (/api/checkout/prefill) if token exists.
+  // User-entered values always win (we only fill empty fields).
   useEffect(() => {
     if (step !== 'shipping') return
     const token = String(checkoutToken || '').trim() || null
 
     let cancelled = false
+
+    const applyShippingPrefill = (args: {
+      email?: string | null
+      name?: string | null
+      phone?: string | null
+      addressLine1?: string | null
+      addressLine2?: string | null
+      city?: string | null
+      state?: string | null
+      postalCode?: string | null
+      country?: string | null
+    }) => {
+      const email = String(args.email || '').trim() || null
+      const country = normalizeCountryCode(args.country) || null
+
+      setShipping((prev) => ({
+        ...prev,
+        ...(email && !prev.email ? { email } : {}),
+        ...(args.name && !prev.name ? { name: String(args.name) } : {}),
+        ...(args.phone && !prev.phone ? { phone: String(args.phone) } : {}),
+        ...(args.addressLine1 && !prev.address_line1 ? { address_line1: String(args.addressLine1) } : {}),
+        ...(args.addressLine2 && !prev.address_line2 ? { address_line2: String(args.addressLine2) } : {}),
+        ...(args.city && !prev.city ? { city: String(args.city) } : {}),
+        ...(args.state && !prev.state ? { state: String(args.state) } : {}),
+        ...(args.postalCode && !prev.postal_code ? { postal_code: String(args.postalCode) } : {}),
+        ...(country && (!prev.country || prev.country === 'US') ? { country } : {}),
+      }))
+    }
+
     ;(async () => {
       try {
-        if (token) {
-          const res = await fetch('/api/checkout/prefill', {
-            headers: { 'X-Checkout-Token': token },
-            cache: 'no-store',
-          })
-          const json = await res.json().catch(() => null)
-          const prefill = json?.prefill || null
-          const addr = prefill?.shipping_address || null
-          const email = String(prefill?.customer_email || '').trim() || null
+        // Prefer Buyer Vault defaults first.
+        const meRes = await fetch('/api/buyer/me', { cache: 'no-store' })
+        if (meRes.ok) {
+          const meJson = await meRes.json().catch(() => null)
+          const addr = meJson?.default_address || null
+          const email = String(meJson?.buyer?.primary_email || '').trim() || null
 
-          if (cancelled) return
-          if (!addr && !email) return
-
-          const prefCountry = normalizeCountryCode((addr as any)?.country) || null
-
-          setShipping((prev) => ({
-            ...prev,
-            ...(email && !prev.email ? { email } : {}),
-            ...(addr && typeof addr === 'object'
-              ? {
-                  ...(addr.name && !prev.name ? { name: String(addr.name) } : {}),
-                  ...(addr.phone && !prev.phone ? { phone: String(addr.phone) } : {}),
-                  ...(addr.address_line1 && !prev.address_line1 ? { address_line1: String(addr.address_line1) } : {}),
-                  ...(addr.address_line2 && !prev.address_line2 ? { address_line2: String(addr.address_line2) } : {}),
-                  ...(addr.city && !prev.city ? { city: String(addr.city) } : {}),
-                  ...(addr.state && !prev.state ? { state: String(addr.state) } : {}),
-                  ...(addr.postal_code && !prev.postal_code ? { postal_code: String(addr.postal_code) } : {}),
-                  ...(prefCountry && (!prev.country || prev.country === 'US') ? { country: prefCountry } : {}),
-                }
-              : {}),
-          }))
-          return
+          if (!cancelled && (addr || email)) {
+            applyShippingPrefill({
+              email,
+              name: addr?.recipient_name,
+              phone: addr?.phone,
+              addressLine1: addr?.line1,
+              addressLine2: addr?.line2,
+              city: addr?.city,
+              state: addr?.region,
+              postalCode: addr?.postal_code,
+              country: addr?.country,
+            })
+          }
         }
 
-        // Fallback for legacy PDP/cart entries without checkout_token:
-        // if buyer is logged in, prefill from Buyer Vault default address.
-        const meRes = await fetch('/api/buyer/me', { cache: 'no-store' })
-        if (!meRes.ok) return
+        // Then merge checkout intent prefill if token exists.
+        if (!token || cancelled) return
 
-        const meJson = await meRes.json().catch(() => null)
-        const addr = meJson?.default_address || null
-        const email = String(meJson?.buyer?.primary_email || '').trim() || null
+        const res = await fetch('/api/checkout/prefill', {
+          headers: { 'X-Checkout-Token': token },
+          cache: 'no-store',
+        })
+        const json = await res.json().catch(() => null)
+        const prefill = json?.prefill || null
+        const addr = prefill?.shipping_address || null
+        const email = String(prefill?.customer_email || '').trim() || null
 
-        if (cancelled) return
-        if (!addr && !email) return
+        if (cancelled || (!addr && !email)) return
 
-        const prefCountry =
-          normalizeCountryCode((addr as any)?.country) || null
-
-        setShipping((prev) => ({
-          ...prev,
-          ...(email && !prev.email ? { email } : {}),
-          ...(addr && typeof addr === 'object'
-            ? {
-                ...(addr.recipient_name && !prev.name ? { name: String(addr.recipient_name) } : {}),
-                ...(addr.phone && !prev.phone ? { phone: String(addr.phone) } : {}),
-                ...(addr.line1 && !prev.address_line1 ? { address_line1: String(addr.line1) } : {}),
-                ...(addr.line2 && !prev.address_line2 ? { address_line2: String(addr.line2) } : {}),
-                ...(addr.city && !prev.city ? { city: String(addr.city) } : {}),
-                ...(addr.region && !prev.state ? { state: String(addr.region) } : {}),
-                ...(addr.postal_code && !prev.postal_code ? { postal_code: String(addr.postal_code) } : {}),
-                ...(prefCountry && (!prev.country || prev.country === 'US') ? { country: prefCountry } : {}),
-              }
-            : {}),
-        }))
+        applyShippingPrefill({
+          email,
+          name: addr?.name,
+          phone: addr?.phone,
+          addressLine1: addr?.address_line1,
+          addressLine2: addr?.address_line2,
+          city: addr?.city,
+          state: addr?.state,
+          postalCode: addr?.postal_code,
+          country: addr?.country,
+        })
       } catch (err) {
         // Best-effort: ignore prefill errors.
       }

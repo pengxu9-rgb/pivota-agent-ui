@@ -478,16 +478,50 @@ export default function ProductDetailPage({ params }: Props) {
       const needSimilar = similarLoadState === 'loading';
       if (!needReviews && !needSimilar) return;
 
+      const buildEmptyReviewsModule = (): Module => ({
+        module_id: 'reviews_preview',
+        type: 'reviews_preview',
+        priority: 50,
+        title: 'Reviews',
+        data: {
+          scale: 5,
+          rating: 0,
+          review_count: 0,
+          preview_items: [],
+        },
+      });
+
       const merchantId = progressiveMerchantId;
       const productId = progressiveProductId;
       if (!merchantId || !productId) {
         setPdpPayload((prev) => {
           if (!prev) return prev;
-          return {
-            ...prev,
-            ...(needReviews ? { x_reviews_state: 'error' } : {}),
-            ...(needSimilar ? { x_recommendations_state: 'error' } : {}),
-          };
+          let next = { ...prev };
+          if (needReviews) {
+            const mergedReviews = upsertLockedModule({
+              currentModules: next.modules,
+              type: 'reviews_preview',
+              nextModule: buildEmptyReviewsModule(),
+              locked: moduleSourceLocksRef.current.reviews,
+            });
+            moduleSourceLocksRef.current.reviews = mergedReviews.locked;
+            next = {
+              ...next,
+              modules: mergedReviews.modules,
+              x_reviews_state: 'ready',
+              x_source_locks: {
+                ...(next.x_source_locks || {}),
+                reviews: mergedReviews.locked,
+              },
+            };
+          }
+          if (needSimilar) {
+            next = {
+              ...next,
+              x_recommendations_state: 'ready',
+            };
+          }
+          return next;
         });
         return;
       }
@@ -501,28 +535,31 @@ export default function ProductDetailPage({ params }: Props) {
       reviewsSimilarFetchKeyRef.current = key;
 
       try {
-        const fetchBackfill = async (modules: string[], timeoutMs: number) =>
-          getPdpV2({
-            product_id: productId,
-            merchant_id: merchantId,
-            include: modules,
-            timeout_ms: timeoutMs,
-          });
+        const backfillStartedAt = Date.now();
+        const backfillBudgetMs = 2400;
+        const reviewsInitialTimeoutMs = 2200;
+        const reviewsRetryTimeoutMs = 1400;
+        const similarInitialTimeoutMs = 1500;
+        const similarRetryTimeoutMs = 900;
+        const deadlineAt = Date.now() + backfillBudgetMs;
+        const remainingMs = () => deadlineAt - Date.now();
 
-        const fetchBackfillWithRetry = async (
+        const fetchModuleWithBudget = async (
           modules: string[],
-          firstTimeoutMs: number,
-          retryTimeoutMs: number,
+          timeoutCapMs: number,
         ) => {
+          const remaining = remainingMs();
+          if (cancelled || remaining <= 120) return null;
+          const timeoutMs = Math.max(350, Math.min(timeoutCapMs, remaining));
           try {
-            return await fetchBackfill(modules, firstTimeoutMs);
+            return await getPdpV2({
+              product_id: productId,
+              merchant_id: merchantId,
+              include: modules,
+              timeout_ms: timeoutMs,
+            });
           } catch {
-            if (cancelled) return null;
-            try {
-              return await fetchBackfill(modules, retryTimeoutMs);
-            } catch {
-              return null;
-            }
+            return null;
           }
         };
 
@@ -535,62 +572,59 @@ export default function ProductDetailPage({ params }: Props) {
             payload && Array.isArray(payload.modules)
               ? (payload.modules.find((m) => m?.type === 'recommendations') as Module | undefined) || null
               : null;
-          const recommendationsReady = Boolean(payload && payload.x_recommendations_state === 'ready');
-          return { reviews, recommendations, recommendationsReady };
+          return { reviews, recommendations };
         };
 
-        const primaryV2 = await fetchBackfillWithRetry(include, 1800, 3200);
-        if (cancelled) return;
+        let [reviewOnlyV2, similarOnlyV2] = await Promise.all([
+          needReviews
+            ? fetchModuleWithBudget(['reviews_preview'], reviewsInitialTimeoutMs)
+            : Promise.resolve(null),
+          needSimilar
+            ? fetchModuleWithBudget(['similar'], similarInitialTimeoutMs)
+            : Promise.resolve(null),
+        ]);
 
-        const assembled = primaryV2 ? mapPdpV2ToPdpPayload(primaryV2) : null;
-        const extractedPrimary = extractModules(assembled);
-        let reviewsModule = extractedPrimary.reviews;
-        let recModule = extractedPrimary.recommendations;
-        let similarReady = extractedPrimary.recommendationsReady;
-        let reviewsRequestSucceeded = needReviews ? Boolean(primaryV2) : false;
-        let similarRequestSucceeded = needSimilar ? Boolean(primaryV2) : false;
-
-        if (!primaryV2 && (needReviews || needSimilar)) {
-          const [reviewOnlyV2, similarOnlyV2] = await Promise.all([
-            needReviews
-              ? fetchBackfillWithRetry(['reviews_preview'], 1400, 2800)
+        if (
+          !cancelled &&
+          remainingMs() > 220 &&
+          ((needReviews && !reviewOnlyV2) || (needSimilar && !similarOnlyV2))
+        ) {
+          const [reviewRetryV2, similarRetryV2] = await Promise.all([
+            needReviews && !reviewOnlyV2
+              ? fetchModuleWithBudget(['reviews_preview'], reviewsRetryTimeoutMs)
               : Promise.resolve(null),
-            needSimilar
-              ? fetchBackfillWithRetry(['similar'], 1200, 2200)
+            needSimilar && !similarOnlyV2
+              ? fetchModuleWithBudget(['similar'], similarRetryTimeoutMs)
               : Promise.resolve(null),
           ]);
-          if (cancelled) return;
+          reviewOnlyV2 = reviewOnlyV2 || reviewRetryV2;
+          similarOnlyV2 = similarOnlyV2 || similarRetryV2;
+        }
 
-          if (reviewOnlyV2) {
-            reviewsRequestSucceeded = true;
-            const reviewOnlyPayload = mapPdpV2ToPdpPayload(reviewOnlyV2);
-            const extractedReviewOnly = extractModules(reviewOnlyPayload);
-            reviewsModule = extractedReviewOnly.reviews || reviewsModule;
-          }
+        if (cancelled) return;
 
-          if (similarOnlyV2) {
-            similarRequestSucceeded = true;
-            const similarOnlyPayload = mapPdpV2ToPdpPayload(similarOnlyV2);
-            const extractedSimilarOnly = extractModules(similarOnlyPayload);
-            recModule = extractedSimilarOnly.recommendations || recModule;
-            similarReady = similarReady || extractedSimilarOnly.recommendationsReady;
-          }
+        let reviewsModule: Module | null = null;
+        let recModule: Module | null = null;
+        let reviewsRequestSucceeded = false;
+        let similarRequestSucceeded = false;
+
+        if (reviewOnlyV2) {
+          reviewsRequestSucceeded = true;
+          const reviewOnlyPayload = mapPdpV2ToPdpPayload(reviewOnlyV2);
+          const extractedReviewOnly = extractModules(reviewOnlyPayload);
+          reviewsModule = extractedReviewOnly.reviews || null;
+        }
+
+        if (similarOnlyV2) {
+          similarRequestSucceeded = true;
+          const similarOnlyPayload = mapPdpV2ToPdpPayload(similarOnlyV2);
+          const extractedSimilarOnly = extractModules(similarOnlyPayload);
+          recModule = extractedSimilarOnly.recommendations || null;
         }
 
         const normalizedReviewsModule =
-          needReviews && !reviewsModule && reviewsRequestSucceeded
-            ? ({
-                module_id: 'reviews_preview',
-                type: 'reviews_preview',
-                priority: 50,
-                title: 'Reviews',
-                data: {
-                  scale: 5,
-                  rating: 0,
-                  review_count: 0,
-                  preview_items: [],
-                },
-              } as Module)
+          needReviews && !reviewsModule
+            ? buildEmptyReviewsModule()
             : reviewsModule;
 
         const itemsCount = Array.isArray((recModule as any)?.data?.items)
@@ -614,7 +648,7 @@ export default function ProductDetailPage({ params }: Props) {
               x_reviews_state:
                 normalizedReviewsModule || mergedReviews.locked || reviewsRequestSucceeded
                   ? 'ready'
-                  : 'error',
+                  : 'loading',
               x_source_locks: {
                 ...(next.x_source_locks || {}),
                 reviews: mergedReviews.locked,
@@ -632,10 +666,7 @@ export default function ProductDetailPage({ params }: Props) {
             next = {
               ...next,
               modules: mergedSimilar.modules,
-              x_recommendations_state:
-                recModule || mergedSimilar.locked || similarReady || similarRequestSucceeded
-                  ? 'ready'
-                  : 'error',
+              x_recommendations_state: 'ready',
               x_source_locks: {
                 ...(next.x_source_locks || {}),
                 similar: mergedSimilar.locked,
@@ -648,27 +679,51 @@ export default function ProductDetailPage({ params }: Props) {
         if (needReviews) {
           pdpTracking.track('pdp_module_ready', {
             module: 'reviews_preview',
-            source: 'get_pdp_v2_backfill',
+            source: 'get_pdp_v2_backfill_parallel',
             frozen: moduleSourceLocksRef.current.reviews,
           });
         }
         if (needSimilar) {
           pdpTracking.track('pdp_module_ready', {
             module: 'similar',
-            source: 'get_pdp_v2_backfill',
+            source: 'get_pdp_v2_backfill_parallel',
             count: itemsCount,
             frozen: moduleSourceLocksRef.current.similar,
+            similar_request_succeeded: similarRequestSucceeded,
+            backfill_phase_ms: Date.now() - backfillStartedAt,
+            backfill_budget_ms: backfillBudgetMs,
           });
         }
       } catch {
         if (cancelled) return;
         setPdpPayload((prev) => {
           if (!prev) return prev;
-          return {
-            ...prev,
-            ...(needReviews ? { x_reviews_state: 'error' } : {}),
-            ...(needSimilar ? { x_recommendations_state: 'error' } : {}),
-          };
+          let next = { ...prev };
+          if (needReviews) {
+            const mergedReviews = upsertLockedModule({
+              currentModules: next.modules,
+              type: 'reviews_preview',
+              nextModule: buildEmptyReviewsModule(),
+              locked: moduleSourceLocksRef.current.reviews,
+            });
+            moduleSourceLocksRef.current.reviews = mergedReviews.locked;
+            next = {
+              ...next,
+              modules: mergedReviews.modules,
+              x_reviews_state: 'ready',
+              x_source_locks: {
+                ...(next.x_source_locks || {}),
+                reviews: mergedReviews.locked,
+              },
+            };
+          }
+          if (needSimilar) {
+            next = {
+              ...next,
+              x_recommendations_state: 'ready',
+            };
+          }
+          return next;
         });
       }
     };
