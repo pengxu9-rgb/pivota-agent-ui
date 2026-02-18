@@ -3,6 +3,7 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { useState } from 'react';
 import { GlassCard } from '@/components/ui/glass-card';
 import { Button } from '@/components/ui/button';
 import { useCartStore } from '@/store/cartStore';
@@ -40,6 +41,7 @@ export default function ProductCard({
   onAddToCart,
 }: ProductCardProps) {
   const router = useRouter();
+  const [isNavigating, setIsNavigating] = useState(false);
   const { addItem } = useCartStore();
   const isExternal = Boolean(external_redirect_url);
 
@@ -91,8 +93,11 @@ export default function ProductCard({
   return (
     <Link
       href={href}
+      onClick={() => {
+        setIsNavigating(true);
+      }}
     >
-      <GlassCard className="p-0 overflow-hidden group hover:shadow-glass-hover transition-all duration-300 hover:scale-[1.02]">
+      <GlassCard className="relative p-0 overflow-hidden group hover:shadow-glass-hover transition-all duration-300 hover:scale-[1.02]">
         <div className="relative aspect-[3/4] overflow-hidden bg-muted/30">
           <Image
             src={image}
@@ -154,6 +159,13 @@ export default function ProductCard({
             )}
           </div>
         </div>
+        {isNavigating ? (
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-background/70 backdrop-blur-[1px]">
+            <span className="rounded-full bg-background/90 px-3 py-1 text-xs font-medium text-foreground shadow-sm">
+              Loading product...
+            </span>
+          </div>
+        ) : null}
       </GlassCard>
     </Link>
   );
