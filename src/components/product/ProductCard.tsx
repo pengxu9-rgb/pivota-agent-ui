@@ -90,12 +90,27 @@ export default function ProductCard({
     }
   };
 
+  const handleCardNavigate = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    if (isNavigating) {
+      e.preventDefault();
+      return;
+    }
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+    e.preventDefault();
+    setIsNavigating(true);
+    if (typeof window === 'undefined') {
+      router.push(href);
+      return;
+    }
+    window.requestAnimationFrame(() => {
+      router.push(href);
+    });
+  };
+
   return (
     <Link
       href={href}
-      onClick={() => {
-        setIsNavigating(true);
-      }}
+      onClick={handleCardNavigate}
     >
       <GlassCard className="relative p-0 overflow-hidden group hover:shadow-glass-hover transition-all duration-300 hover:scale-[1.02]">
         <div className="relative aspect-[3/4] overflow-hidden bg-muted/30">

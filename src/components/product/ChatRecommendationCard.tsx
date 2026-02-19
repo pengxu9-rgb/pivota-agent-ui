@@ -34,7 +34,13 @@ export function ChatRecommendationCard({ product, onAddToCart }: Props) {
   const handleCardClick = () => {
     if (isNavigating) return;
     setIsNavigating(true);
-    router.push(href);
+    if (typeof window === 'undefined') {
+      router.push(href);
+      return;
+    }
+    window.requestAnimationFrame(() => {
+      router.push(href);
+    });
   };
 
   const handleCardTouchStart: React.TouchEventHandler<HTMLDivElement> = (e) => {
@@ -86,7 +92,7 @@ export function ChatRecommendationCard({ product, onAddToCart }: Props) {
             src={product.image_url}
             alt={product.title}
             fill
-            sizes="220px"
+            sizes="(max-width: 768px) 250px, 280px"
             className="object-cover transition-transform duration-300 group-hover:scale-105"
             unoptimized
           />
