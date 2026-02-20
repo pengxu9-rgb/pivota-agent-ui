@@ -184,6 +184,18 @@ function isNonRetryablePdpError(err: unknown): boolean {
   ]).has(code);
 }
 
+function isUnavailableModuleErrorCode(code: string): boolean {
+  if (!code) return false;
+  return new Set([
+    'UNSUPPORTED_INCLUDE',
+    'UNSUPPORTED_MODULE',
+    'MODULE_UNAVAILABLE',
+    'MODULE_NOT_AVAILABLE',
+    'FEATURE_DISABLED',
+    'NOT_IMPLEMENTED',
+  ]).has(code);
+}
+
 function toNumberOrNull(value: unknown): number | null {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
   if (typeof value === 'string') {
@@ -317,8 +329,9 @@ export default function ProductDetailPage({ params }: Props) {
   const similarLoadState = pdpPayload?.x_recommendations_state;
 
   useEffect(() => {
+    if (loading && !error && !pdpPayload) return;
     hideProductRouteLoading();
-  }, []);
+  }, [loading, error, pdpPayload]);
 
   useEffect(() => {
     let cancelled = false;
@@ -726,9 +739,9 @@ export default function ProductDetailPage({ params }: Props) {
 
       try {
         const backfillStartedAt = Date.now();
-        const backfillBudgetMs = 2400;
-        const reviewsInitialTimeoutMs = 2200;
-        const similarInitialTimeoutMs = 1500;
+        const backfillBudgetMs = 5200;
+        const reviewsInitialTimeoutMs = 4200;
+        const similarInitialTimeoutMs = 2800;
         const deadlineAt = Date.now() + backfillBudgetMs;
         const remainingMs = () => deadlineAt - Date.now();
 
@@ -807,9 +820,13 @@ export default function ProductDetailPage({ params }: Props) {
           recModule = extractedSimilarOnly.recommendations || null;
         }
 
+        const reviewModuleUnavailable =
+          reviewOnlyV2.nonRetryable || isUnavailableModuleErrorCode(reviewOnlyV2.code);
+
         if (
           needReviews &&
           !reviewsModule &&
+          !reviewModuleUnavailable &&
           !cancelled &&
           remainingMs() > 220
         ) {
@@ -838,51 +855,6 @@ export default function ProductDetailPage({ params }: Props) {
             }
           } catch {
             // keep empty reviews fallback below
-          }
-        }
-
-        if (needSimilar && !recModule && !cancelled && remainingMs() > 120) {
-          try {
-            const similarFallback = await findSimilarProducts({
-              product_id: productId,
-              merchant_id: merchantId,
-              limit: 10,
-              timeout_ms: Math.max(500, Math.min(1800, remainingMs())),
-            });
-            if (!cancelled) {
-              const normalizedSimilar = Array.isArray(similarFallback?.products)
-                ? (similarFallback.products
-                    .map((item: any) => normalizeSimilarProduct(item))
-                    .filter(Boolean) as ProductResponse[])
-                : [];
-              if (normalizedSimilar.length) {
-                recModule = {
-                  module_id: 'recommendations',
-                  type: 'recommendations',
-                  priority: 90,
-                  title: 'Similar',
-                  data: {
-                    strategy:
-                      typeof similarFallback?.strategy === 'string'
-                        ? similarFallback.strategy
-                        : 'related_products',
-                    items: normalizedSimilar.slice(0, 10).map((item) => ({
-                      product_id: item.product_id,
-                      merchant_id: item.merchant_id,
-                      title: item.title,
-                      image_url: item.image_url,
-                      price: {
-                        amount: Number(item.price || 0) || 0,
-                        currency: String(item.currency || 'USD'),
-                      },
-                    })),
-                  },
-                };
-                similarRequestSucceeded = true;
-              }
-            }
-          } catch {
-            // keep empty similar state below
           }
         }
 
