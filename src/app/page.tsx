@@ -167,18 +167,20 @@ function HomePageApp() {
         // ignore
       }
 
-      const products = await sendMessage(
+      const searchResult = await sendMessage(
         input,
         undefined,
         evalMetadata ? { metadata: evalMetadata } : undefined,
       );
+      const products = Array.isArray(searchResult?.products) ? searchResult.products : [];
+      const fallbackReply = searchResult?.reply;
       
       const assistantMessage = {
         id: (Date.now() + 1).toString(),
         role: 'assistant' as const,
         content: products.length > 0 
           ? `I found ${products.length} product(s) for you!`
-          : "I couldn't find any products matching your search. Try something else!",
+          : fallbackReply || "I couldn't find any products matching your search. Try something else!",
         products: products.slice(0, 10),
       };
 

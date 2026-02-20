@@ -51,8 +51,11 @@ export default function ProductsPage() {
 
     setLoading(true);
     try {
-      const results = await sendMessage(query);
-      setProducts(results);
+      const result = await sendMessage(query);
+      setProducts(Array.isArray(result?.products) ? result.products : []);
+      if (result?.strict_empty && result?.reply) {
+        toast.info(result.reply);
+      }
     } catch (error) {
       console.error('Search error:', error);
       toast.error('Failed to search products');

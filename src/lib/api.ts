@@ -1145,12 +1145,19 @@ export async function postQuestionReply(args: {
 
 // -------- Product search helpers --------
 
-// Chat entrypoint: search products by free text query with graceful fallback
+export type SendMessageResult = {
+  products: ProductResponse[];
+  reply: string | null;
+  metadata: Record<string, any>;
+  strict_empty: boolean;
+};
+
+// Chat entrypoint: search products by free text query.
 export async function sendMessage(
   message: string,
   merchantIdOverride?: string,
   options?: { metadata?: Record<string, any> },
-): Promise<ProductResponse[]> {
+): Promise<SendMessageResult> {
   const query = message.trim();
   const recentQueries = getEvalVariant() === 'A' ? [] : readRecentQueries();
 
@@ -1172,45 +1179,25 @@ export async function sendMessage(
     ...(isPlainObject(options?.metadata) ? { metadata: options?.metadata } : {}),
   });
 
-  let products = ((data as any).products || []).map(
+  const products = ((data as any).products || []).map(
     (p: RealAPIProduct | ProductResponse) => normalizeProduct(p),
   );
-
-  // Fallback: if gateway search returns no products for a non-empty query,
-  // run a broader local filter over the general catalog so common queries
-  // like "tee" can still surface relevant items.
-  if (!products.length && query) {
-    try {
-      const all = await getAllProducts(50);
-      const term = query.toLowerCase();
-      const fallback = all.filter((p) => {
-        const title = (p.title || '').toLowerCase();
-        const desc = (p.description || '').toLowerCase();
-        const category = (p.category || '').toLowerCase();
-        return (
-          title.includes(term) ||
-          desc.includes(term) ||
-          category.includes(term)
-        );
-      });
-      if (fallback.length) {
-        products = fallback;
-      } else if (all.length) {
-        // As a last resort, if we still don't have any matches but the catalog
-        // itself has products, return a generic set of recommendations instead
-        // of an empty list so the user always sees something useful.
-        products = all;
-      }
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.error('Fallback product search error:', err);
-    }
-  }
+  const metadata =
+    data && typeof data === 'object' && data.metadata && typeof (data as any).metadata === 'object'
+      ? ((data as any).metadata as Record<string, any>)
+      : {};
+  const replyRaw = typeof (data as any)?.reply === 'string' ? String((data as any).reply).trim() : '';
+  const strictEmpty = Boolean(metadata?.strict_empty) || (query.length > 0 && products.length === 0);
 
   // Update the local recent query list after using the previous context.
   rememberRecentQuery(query);
 
-  return products;
+  return {
+    products,
+    reply: replyRaw || null,
+    metadata,
+    strict_empty: strictEmpty,
+  };
 }
 
 // Generic product list (Hot Deals, history, etc.)
