@@ -1,7 +1,6 @@
 'use client';
 
 import { useRef } from 'react';
-import { useState } from 'react';
 import { ShoppingCart } from 'lucide-react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
@@ -25,22 +24,16 @@ export function ChatRecommendationCard({ product, onAddToCart }: Props) {
   const lastTouchTsRef = useRef(0);
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
   const touchMovedRef = useRef(false);
-  const [isNavigating, setIsNavigating] = useState(false);
+  const isNavigatingRef = useRef(false);
 
   const href = product.merchant_id
     ? `/products/${encodeURIComponent(product.product_id)}?merchant_id=${encodeURIComponent(product.merchant_id)}`
     : `/products/${encodeURIComponent(product.product_id)}`;
 
   const handleCardClick = () => {
-    if (isNavigating) return;
-    setIsNavigating(true);
-    if (typeof window === 'undefined') {
-      router.push(href);
-      return;
-    }
-    window.requestAnimationFrame(() => {
-      router.push(href);
-    });
+    if (isNavigatingRef.current) return;
+    isNavigatingRef.current = true;
+    router.push(href);
   };
 
   const handleCardTouchStart: React.TouchEventHandler<HTMLDivElement> = (e) => {
@@ -125,13 +118,6 @@ export function ChatRecommendationCard({ product, onAddToCart }: Props) {
           {formatPrice(product)}
         </div>
       </div>
-      {isNavigating ? (
-        <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-background/70 backdrop-blur-[1px]">
-          <span className="rounded-full bg-background/90 px-3 py-1 text-xs font-medium text-foreground shadow-sm">
-            Loading product...
-          </span>
-        </div>
-      ) : null}
     </div>
   );
 }

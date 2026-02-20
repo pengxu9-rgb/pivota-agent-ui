@@ -6,10 +6,12 @@ import { toast } from 'sonner';
 import { useCartStore } from '@/store/cartStore';
 import { useAuthStore } from '@/store/authStore';
 import {
+  findSimilarProducts,
   getPdpV2,
   getPdpV2Personalization,
   getProductDetail,
   resolveProductGroup,
+  type GetPdpV2Response,
   type ProductResponse,
   type UgcCapabilities,
 } from '@/lib/api';
@@ -162,6 +164,92 @@ function hasRecommendationsItems(response: PDPPayload | null): boolean {
   });
 }
 
+function readApiErrorCode(err: unknown): string {
+  if (!err || typeof err !== 'object') return '';
+  const code = (err as any)?.code;
+  return typeof code === 'string' ? code.trim().toUpperCase() : '';
+}
+
+function isNonRetryablePdpError(err: unknown): boolean {
+  const code = readApiErrorCode(err);
+  if (!code) return false;
+  return new Set([
+    'PRODUCT_NOT_FOUND',
+    'NOT_FOUND',
+    'VALIDATION_ERROR',
+    'INVALID_ARGUMENT',
+    'BAD_REQUEST',
+    'UNSUPPORTED_INCLUDE',
+  ]).has(code);
+}
+
+function toNumberOrNull(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function toCurrencyOrDefault(value: unknown, fallback = 'USD'): string {
+  const text = typeof value === 'string' ? value.trim() : '';
+  return text || fallback;
+}
+
+function normalizeSimilarProduct(item: any): ProductResponse | null {
+  if (!item || typeof item !== 'object') return null;
+
+  const productId = String(
+    item.product_id || item.id || item.productRef?.product_id || item.product_ref?.product_id || '',
+  ).trim();
+  const merchantId = String(
+    item.merchant_id || item.merchantId || item.merchant?.id || item.productRef?.merchant_id || item.product_ref?.merchant_id || '',
+  ).trim();
+
+  if (!productId) return null;
+
+  const priceAmount =
+    toNumberOrNull(item.price?.amount) ??
+    toNumberOrNull(item.price_amount) ??
+    toNumberOrNull(item.price) ??
+    0;
+  const priceCurrency = toCurrencyOrDefault(item.price?.currency || item.currency, 'USD');
+
+  return {
+    product_id: productId,
+    merchant_id: merchantId || undefined,
+    merchant_name: typeof item.merchant_name === 'string' ? item.merchant_name : undefined,
+    title: String(item.title || item.name || 'Untitled product'),
+    description: typeof item.description === 'string' ? item.description : '',
+    price: priceAmount,
+    currency: priceCurrency,
+    image_url: typeof item.image_url === 'string' ? item.image_url : undefined,
+    category:
+      typeof item.category === 'string'
+        ? item.category
+        : typeof item.product_type === 'string'
+          ? item.product_type
+          : 'General',
+    in_stock:
+      typeof item.in_stock === 'boolean'
+        ? item.in_stock
+        : (toNumberOrNull(item.inventory_quantity) ?? 0) > 0,
+    product_type: typeof item.product_type === 'string' ? item.product_type : undefined,
+    platform:
+      typeof item.platform === 'string'
+        ? item.platform
+        : typeof item.productRef?.platform === 'string'
+          ? item.productRef.platform
+          : undefined,
+    platform_product_id:
+      typeof item.platform_product_id === 'string'
+        ? item.platform_product_id
+        : productId,
+    raw_detail: item,
+  };
+}
+
 function ProductDetailLoading({ label }: { label: string }) {
   return (
     <div className="min-h-screen bg-background">
@@ -207,6 +295,7 @@ export default function ProductDetailPage({ params }: Props) {
   const offerProductDetailCacheRef = useRef<Map<string, ProductResponse>>(new Map());
   const offersFetchKeyRef = useRef<string | null>(null);
   const reviewsSimilarFetchKeyRef = useRef<string | null>(null);
+  const legacySimilarFetchKeyRef = useRef<string | null>(null);
   const moduleSourceLocksRef = useRef({ ...DEFAULT_MODULE_SOURCE_LOCKS });
   const [ugcCapabilities, setUgcCapabilities] = useState<UgcCapabilities | null>({
     canUploadMedia: false,
@@ -241,6 +330,7 @@ export default function ProductDetailPage({ params }: Props) {
       setLoadedViaPdpV2(false);
       offersFetchKeyRef.current = null;
       reviewsSimilarFetchKeyRef.current = null;
+      legacySimilarFetchKeyRef.current = null;
       moduleSourceLocksRef.current = { ...DEFAULT_MODULE_SOURCE_LOCKS };
 
       try {
@@ -345,7 +435,7 @@ export default function ProductDetailPage({ params }: Props) {
             allowBroadScan: false,
             timeout_ms: fallbackTimeoutMs,
             throwOnError: true,
-            includeReviewSummary: false,
+            includeReviewSummary: true,
           });
 
           if (cancelled) return;
@@ -356,7 +446,7 @@ export default function ProductDetailPage({ params }: Props) {
             product: detail,
             rawDetail: detail.raw_detail,
             relatedProducts: [],
-            recommendationsLoading: false,
+            recommendationsLoading: true,
             entryPoint: 'product_detail',
           });
           setPdpPayload({
@@ -473,6 +563,101 @@ export default function ProductDetailPage({ params }: Props) {
     let cancelled = false;
 
     const run = async () => {
+      if (loadedViaPdpV2) return;
+      if (similarLoadState !== 'loading') return;
+
+      const merchantId = progressiveMerchantId;
+      const productId = progressiveProductId;
+      if (!productId) return;
+
+      const key = `${merchantId || 'unknown'}:${productId}`;
+      if (legacySimilarFetchKeyRef.current === key) return;
+      legacySimilarFetchKeyRef.current = key;
+
+      try {
+        const similarResponse = await findSimilarProducts({
+          product_id: productId,
+          ...(merchantId ? { merchant_id: merchantId } : {}),
+          limit: 10,
+          timeout_ms: 3500,
+        });
+        if (cancelled) return;
+
+        const normalizedSimilar = Array.isArray(similarResponse?.products)
+          ? (similarResponse.products
+              .map((item: any) => normalizeSimilarProduct(item))
+              .filter(Boolean) as ProductResponse[])
+          : [];
+
+        const recommendationsModule: Module | null = normalizedSimilar.length
+          ? {
+              module_id: 'm_recs',
+              type: 'recommendations',
+              priority: 20,
+              data: {
+                strategy:
+                  typeof similarResponse?.strategy === 'string'
+                    ? similarResponse.strategy
+                    : 'related_products',
+                items: normalizedSimilar.slice(0, 10).map((item) => ({
+                  product_id: item.product_id,
+                  merchant_id: item.merchant_id,
+                  title: item.title,
+                  image_url: item.image_url,
+                  price: {
+                    amount: Number(item.price || 0) || 0,
+                    currency: String(item.currency || 'USD'),
+                  },
+                })),
+              },
+            }
+          : null;
+
+        setPdpPayload((prev) => {
+          if (!prev) return prev;
+          const baseModules = Array.isArray(prev.modules)
+            ? prev.modules.filter((module) => module?.type !== 'recommendations')
+            : [];
+          return {
+            ...prev,
+            modules: recommendationsModule
+              ? [...baseModules, recommendationsModule]
+              : baseModules,
+            x_recommendations_state: 'ready',
+            x_source_locks: {
+              ...(prev.x_source_locks || {}),
+              similar: false,
+            },
+          };
+        });
+      } catch {
+        if (cancelled) return;
+        setPdpPayload((prev) =>
+          prev
+            ? {
+                ...prev,
+                x_recommendations_state: 'ready',
+              }
+            : prev,
+        );
+      }
+    };
+
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    loadedViaPdpV2,
+    similarLoadState,
+    progressiveMerchantId,
+    progressiveProductId,
+  ]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const run = async () => {
       if (!loadedViaPdpV2) return;
       const needReviews = reviewsLoadState === 'loading';
       const needSimilar = similarLoadState === 'loading';
@@ -544,22 +729,36 @@ export default function ProductDetailPage({ params }: Props) {
         const deadlineAt = Date.now() + backfillBudgetMs;
         const remainingMs = () => deadlineAt - Date.now();
 
+        type ModuleFetchResult = {
+          response: GetPdpV2Response | null;
+          nonRetryable: boolean;
+          code: string;
+        };
+
         const fetchModuleWithBudget = async (
           modules: string[],
           timeoutCapMs: number,
-        ) => {
+        ): Promise<ModuleFetchResult> => {
           const remaining = remainingMs();
-          if (cancelled || remaining <= 120) return null;
+          if (cancelled || remaining <= 120) {
+            return { response: null, nonRetryable: false, code: '' };
+          }
           const timeoutMs = Math.max(350, Math.min(timeoutCapMs, remaining));
           try {
-            return await getPdpV2({
+            const response = await getPdpV2({
               product_id: productId,
               merchant_id: merchantId,
               include: modules,
               timeout_ms: timeoutMs,
             });
-          } catch {
-            return null;
+            return { response, nonRetryable: false, code: '' };
+          } catch (err) {
+            const code = readApiErrorCode(err);
+            return {
+              response: null,
+              nonRetryable: isNonRetryablePdpError(err),
+              code,
+            };
           }
         };
 
@@ -578,27 +777,28 @@ export default function ProductDetailPage({ params }: Props) {
         let [reviewOnlyV2, similarOnlyV2] = await Promise.all([
           needReviews
             ? fetchModuleWithBudget(['reviews_preview'], reviewsInitialTimeoutMs)
-            : Promise.resolve(null),
+            : Promise.resolve({ response: null, nonRetryable: false, code: '' }),
           needSimilar
             ? fetchModuleWithBudget(['similar'], similarInitialTimeoutMs)
-            : Promise.resolve(null),
+            : Promise.resolve({ response: null, nonRetryable: false, code: '' }),
         ]);
 
         if (
           !cancelled &&
           remainingMs() > 220 &&
-          ((needReviews && !reviewOnlyV2) || (needSimilar && !similarOnlyV2))
+          ((needReviews && !reviewOnlyV2.response && !reviewOnlyV2.nonRetryable) ||
+            (needSimilar && !similarOnlyV2.response && !similarOnlyV2.nonRetryable))
         ) {
           const [reviewRetryV2, similarRetryV2] = await Promise.all([
-            needReviews && !reviewOnlyV2
+            needReviews && !reviewOnlyV2.response && !reviewOnlyV2.nonRetryable
               ? fetchModuleWithBudget(['reviews_preview'], reviewsRetryTimeoutMs)
-              : Promise.resolve(null),
-            needSimilar && !similarOnlyV2
+              : Promise.resolve({ response: null, nonRetryable: false, code: '' }),
+            needSimilar && !similarOnlyV2.response && !similarOnlyV2.nonRetryable
               ? fetchModuleWithBudget(['similar'], similarRetryTimeoutMs)
-              : Promise.resolve(null),
+              : Promise.resolve({ response: null, nonRetryable: false, code: '' }),
           ]);
-          reviewOnlyV2 = reviewOnlyV2 || reviewRetryV2;
-          similarOnlyV2 = similarOnlyV2 || similarRetryV2;
+          if (!reviewOnlyV2.response) reviewOnlyV2 = reviewRetryV2;
+          if (!similarOnlyV2.response) similarOnlyV2 = similarRetryV2;
         }
 
         if (cancelled) return;
@@ -608,18 +808,97 @@ export default function ProductDetailPage({ params }: Props) {
         let reviewsRequestSucceeded = false;
         let similarRequestSucceeded = false;
 
-        if (reviewOnlyV2) {
+        if (reviewOnlyV2.response) {
           reviewsRequestSucceeded = true;
-          const reviewOnlyPayload = mapPdpV2ToPdpPayload(reviewOnlyV2);
+          const reviewOnlyPayload = mapPdpV2ToPdpPayload(reviewOnlyV2.response);
           const extractedReviewOnly = extractModules(reviewOnlyPayload);
           reviewsModule = extractedReviewOnly.reviews || null;
         }
 
-        if (similarOnlyV2) {
+        if (similarOnlyV2.response) {
           similarRequestSucceeded = true;
-          const similarOnlyPayload = mapPdpV2ToPdpPayload(similarOnlyV2);
+          const similarOnlyPayload = mapPdpV2ToPdpPayload(similarOnlyV2.response);
           const extractedSimilarOnly = extractModules(similarOnlyPayload);
           recModule = extractedSimilarOnly.recommendations || null;
+        }
+
+        if (
+          needReviews &&
+          !reviewsModule &&
+          !cancelled &&
+          remainingMs() > 220
+        ) {
+          try {
+            const reviewFallbackDetail = await getProductDetail(productId, merchantId, {
+              useConfiguredMerchantId: false,
+              allowBroadScan: false,
+              timeout_ms: Math.max(600, Math.min(2000, remainingMs())),
+              throwOnError: false,
+              includeReviewSummary: true,
+            });
+            if (reviewFallbackDetail && !cancelled) {
+              const reviewFallbackPayload = mapToPdpPayload({
+                product: reviewFallbackDetail,
+                rawDetail: reviewFallbackDetail.raw_detail,
+                relatedProducts: [],
+                recommendationsLoading: false,
+                entryPoint: 'product_detail',
+              });
+              reviewsModule =
+                (reviewFallbackPayload.modules.find((m) => m?.type === 'reviews_preview') as Module | undefined) ||
+                reviewsModule;
+              if (reviewsModule) {
+                reviewsRequestSucceeded = true;
+              }
+            }
+          } catch {
+            // keep empty reviews fallback below
+          }
+        }
+
+        if (needSimilar && !recModule && !cancelled && remainingMs() > 120) {
+          try {
+            const similarFallback = await findSimilarProducts({
+              product_id: productId,
+              merchant_id: merchantId,
+              limit: 10,
+              timeout_ms: Math.max(500, Math.min(1800, remainingMs())),
+            });
+            if (!cancelled) {
+              const normalizedSimilar = Array.isArray(similarFallback?.products)
+                ? (similarFallback.products
+                    .map((item: any) => normalizeSimilarProduct(item))
+                    .filter(Boolean) as ProductResponse[])
+                : [];
+              if (normalizedSimilar.length) {
+                recModule = {
+                  module_id: 'recommendations',
+                  type: 'recommendations',
+                  priority: 90,
+                  title: 'Similar',
+                  data: {
+                    strategy:
+                      typeof similarFallback?.strategy === 'string'
+                        ? similarFallback.strategy
+                        : 'related_products',
+                    items: normalizedSimilar.slice(0, 10).map((item) => ({
+                      product_id: item.product_id,
+                      merchant_id: item.merchant_id,
+                      title: item.title,
+                      image_url: item.image_url,
+                      price: {
+                        amount: Number(item.price || 0) || 0,
+                        currency: String(item.currency || 'USD'),
+                      },
+                    })),
+                  },
+                };
+                similarRequestSucceeded = true;
+              }
+            }
+          } catch {
+            // keep empty similar state below
+          }
         }
 
         const normalizedReviewsModule =
