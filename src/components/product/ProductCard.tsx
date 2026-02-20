@@ -111,6 +111,8 @@ export default function ProductCard({
     <Link
       href={href}
       onClick={handleCardNavigate}
+      className={isNavigating ? 'pointer-events-none' : ''}
+      aria-disabled={isNavigating}
     >
       <GlassCard className="relative p-0 overflow-hidden group hover:shadow-glass-hover transition-all duration-300 hover:scale-[1.02]">
         <div className="relative aspect-[3/4] overflow-hidden bg-muted/30">
@@ -174,13 +176,6 @@ export default function ProductCard({
             )}
           </div>
         </div>
-        {isNavigating ? (
-          <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-background/70 backdrop-blur-[1px]">
-            <span className="rounded-full bg-background/90 px-3 py-1 text-xs font-medium text-foreground shadow-sm">
-              Loading product...
-            </span>
-          </div>
-        ) : null}
       </GlassCard>
     </Link>
   );

@@ -329,7 +329,7 @@ function HomePageApp() {
                   <div
                     className={`space-y-2 ${
                       message.role === 'assistant' && Array.isArray(message.products) && message.products.length > 0
-                        ? 'max-w-[96%] md:max-w-[94%]'
+                        ? 'max-w-[99%] md:max-w-[97%]'
                         : 'max-w-[80%]'
                     }`}
                   >
@@ -352,7 +352,7 @@ function HomePageApp() {
                           {message.products.slice(0, 10).map((product) => (
                             <div
                               key={product.product_id}
-                              className="w-[250px] md:w-[280px] flex-shrink-0 snap-start"
+                              className="w-[280px] md:w-[320px] flex-shrink-0 snap-start"
                             >
                               <ChatRecommendationCard
                                 product={product}

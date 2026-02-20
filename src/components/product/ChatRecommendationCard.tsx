@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { ShoppingCart } from 'lucide-react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
@@ -21,6 +21,7 @@ function formatPrice(product: ProductResponse): string {
 
 export function ChatRecommendationCard({ product, onAddToCart }: Props) {
   const router = useRouter();
+  const [isNavigating, setIsNavigating] = useState(false);
   const lastTouchTsRef = useRef(0);
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
   const touchMovedRef = useRef(false);
@@ -33,6 +34,13 @@ export function ChatRecommendationCard({ product, onAddToCart }: Props) {
   const handleCardClick = () => {
     if (isNavigatingRef.current) return;
     isNavigatingRef.current = true;
+    setIsNavigating(true);
+    if (typeof window !== 'undefined') {
+      window.setTimeout(() => {
+        isNavigatingRef.current = false;
+        setIsNavigating(false);
+      }, 3000);
+    }
     router.push(href);
   };
 
@@ -65,9 +73,12 @@ export function ChatRecommendationCard({ product, onAddToCart }: Props) {
 
   return (
     <div
-      className="group relative flex cursor-pointer flex-col overflow-hidden rounded-2xl border border-border bg-card/50 backdrop-blur-xl shadow-glass transition-all duration-300 hover:-translate-y-1 hover:shadow-glass-hover"
+      className={`group relative flex flex-col overflow-hidden rounded-2xl border border-border bg-card/50 backdrop-blur-xl shadow-glass transition-all duration-300 ${
+        isNavigating ? 'pointer-events-none opacity-80' : 'cursor-pointer hover:-translate-y-1 hover:shadow-glass-hover'
+      }`}
       role="button"
       tabIndex={0}
+      aria-disabled={isNavigating}
       onClick={handleCardClickSafe}
       onTouchStart={handleCardTouchStart}
       onTouchMove={handleCardTouchMove}
