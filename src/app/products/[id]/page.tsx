@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 import { useCartStore } from '@/store/cartStore';
 import { useAuthStore } from '@/store/authStore';
+import { hideProductRouteLoading } from '@/lib/productRouteLoading';
 import {
   findSimilarProducts,
   getPdpV2,
@@ -314,6 +315,10 @@ export default function ProductDetailPage({ params }: Props) {
   const offersLoadState = pdpPayload?.x_offers_state;
   const reviewsLoadState = pdpPayload?.x_reviews_state;
   const similarLoadState = pdpPayload?.x_recommendations_state;
+
+  useEffect(() => {
+    hideProductRouteLoading();
+  }, []);
 
   useEffect(() => {
     let cancelled = false;

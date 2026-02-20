@@ -7,6 +7,7 @@ import { useState } from 'react';
 import { GlassCard } from '@/components/ui/glass-card';
 import { Button } from '@/components/ui/button';
 import { useCartStore } from '@/store/cartStore';
+import { hideProductRouteLoading, showProductRouteLoading } from '@/lib/productRouteLoading';
 import { toast } from 'sonner';
 
 interface ProductCardProps {
@@ -98,6 +99,13 @@ export default function ProductCard({
     if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
     e.preventDefault();
     setIsNavigating(true);
+    showProductRouteLoading();
+    if (typeof window !== 'undefined') {
+      window.setTimeout(() => {
+        hideProductRouteLoading();
+        setIsNavigating(false);
+      }, 5000);
+    }
     if (typeof window === 'undefined') {
       router.push(href);
       return;

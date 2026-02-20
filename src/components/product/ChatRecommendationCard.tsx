@@ -4,6 +4,7 @@ import { useRef, useState } from 'react';
 import { ShoppingCart } from 'lucide-react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
+import { hideProductRouteLoading, showProductRouteLoading } from '@/lib/productRouteLoading';
 
 import type { ProductResponse } from '@/lib/api';
 
@@ -35,10 +36,12 @@ export function ChatRecommendationCard({ product, onAddToCart }: Props) {
     if (isNavigatingRef.current) return;
     isNavigatingRef.current = true;
     setIsNavigating(true);
+    showProductRouteLoading();
     if (typeof window !== 'undefined') {
       window.setTimeout(() => {
         isNavigatingRef.current = false;
         setIsNavigating(false);
+        hideProductRouteLoading();
       }, 3000);
     }
     router.push(href);
