@@ -322,8 +322,8 @@ export default function ProductDetailPage({ params }: Props) {
 
   useEffect(() => {
     let cancelled = false;
-    const v2TimeoutMs = 20000;
-    const fallbackTimeoutMs = 20000;
+    const v2TimeoutMs = 9000;
+    const fallbackTimeoutMs = 9000;
 
     const loadProduct = async () => {
       const explicitMerchantId = merchantIdParam ? String(merchantIdParam).trim() : null;
@@ -728,9 +728,7 @@ export default function ProductDetailPage({ params }: Props) {
         const backfillStartedAt = Date.now();
         const backfillBudgetMs = 2400;
         const reviewsInitialTimeoutMs = 2200;
-        const reviewsRetryTimeoutMs = 1400;
         const similarInitialTimeoutMs = 1500;
-        const similarRetryTimeoutMs = 900;
         const deadlineAt = Date.now() + backfillBudgetMs;
         const remainingMs = () => deadlineAt - Date.now();
 
@@ -787,24 +785,6 @@ export default function ProductDetailPage({ params }: Props) {
             ? fetchModuleWithBudget(['similar'], similarInitialTimeoutMs)
             : Promise.resolve({ response: null, nonRetryable: false, code: '' }),
         ]);
-
-        if (
-          !cancelled &&
-          remainingMs() > 220 &&
-          ((needReviews && !reviewOnlyV2.response && !reviewOnlyV2.nonRetryable) ||
-            (needSimilar && !similarOnlyV2.response && !similarOnlyV2.nonRetryable))
-        ) {
-          const [reviewRetryV2, similarRetryV2] = await Promise.all([
-            needReviews && !reviewOnlyV2.response && !reviewOnlyV2.nonRetryable
-              ? fetchModuleWithBudget(['reviews_preview'], reviewsRetryTimeoutMs)
-              : Promise.resolve({ response: null, nonRetryable: false, code: '' }),
-            needSimilar && !similarOnlyV2.response && !similarOnlyV2.nonRetryable
-              ? fetchModuleWithBudget(['similar'], similarRetryTimeoutMs)
-              : Promise.resolve({ response: null, nonRetryable: false, code: '' }),
-          ]);
-          if (!reviewOnlyV2.response) reviewOnlyV2 = reviewRetryV2;
-          if (!similarOnlyV2.response) similarOnlyV2 = similarRetryV2;
-        }
 
         if (cancelled) return;
 

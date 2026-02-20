@@ -3,7 +3,7 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { GlassCard } from '@/components/ui/glass-card';
 import { Button } from '@/components/ui/button';
 import { useCartStore } from '@/store/cartStore';
@@ -43,6 +43,8 @@ export default function ProductCard({
 }: ProductCardProps) {
   const router = useRouter();
   const [isNavigating, setIsNavigating] = useState(false);
+  const isNavigatingRef = useRef(false);
+  const resetTimerRef = useRef<number | null>(null);
   const { addItem } = useCartStore();
   const isExternal = Boolean(external_redirect_url);
 
@@ -92,19 +94,22 @@ export default function ProductCard({
   };
 
   const handleCardNavigate = (e: React.MouseEvent<HTMLAnchorElement>) => {
-    if (isNavigating) {
+    if (isNavigatingRef.current || isNavigating) {
       e.preventDefault();
       return;
     }
     if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
     e.preventDefault();
+    isNavigatingRef.current = true;
     setIsNavigating(true);
     showProductRouteLoading();
     if (typeof window !== 'undefined') {
-      window.setTimeout(() => {
+      if (resetTimerRef.current) window.clearTimeout(resetTimerRef.current);
+      resetTimerRef.current = window.setTimeout(() => {
+        isNavigatingRef.current = false;
         hideProductRouteLoading();
         setIsNavigating(false);
-      }, 5000);
+      }, 20000);
     }
     if (typeof window === 'undefined') {
       router.push(href);
@@ -115,9 +120,18 @@ export default function ProductCard({
     });
   };
 
+  useEffect(() => {
+    return () => {
+      if (typeof window !== 'undefined' && resetTimerRef.current) {
+        window.clearTimeout(resetTimerRef.current);
+      }
+    };
+  }, []);
+
   return (
     <Link
       href={href}
+      prefetch={false}
       onClick={handleCardNavigate}
       className={isNavigating ? 'pointer-events-none' : ''}
       aria-disabled={isNavigating}

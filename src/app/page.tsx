@@ -410,6 +410,7 @@ function HomePageApp() {
                       <Link
                         key={product.product_id}
                         href={cardHref}
+                        prefetch={false}
                         className="flex-shrink-0 w-24 group"
                       >
                         <div className="relative aspect-square rounded-2xl overflow-hidden mb-2 ring-1 ring-border group-hover:ring-primary transition-all">

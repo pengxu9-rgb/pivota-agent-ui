@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ShoppingCart } from 'lucide-react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
@@ -27,6 +27,7 @@ export function ChatRecommendationCard({ product, onAddToCart }: Props) {
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
   const touchMovedRef = useRef(false);
   const isNavigatingRef = useRef(false);
+  const resetTimerRef = useRef<number | null>(null);
 
   const href = product.merchant_id
     ? `/products/${encodeURIComponent(product.product_id)}?merchant_id=${encodeURIComponent(product.merchant_id)}`
@@ -38,14 +39,31 @@ export function ChatRecommendationCard({ product, onAddToCart }: Props) {
     setIsNavigating(true);
     showProductRouteLoading();
     if (typeof window !== 'undefined') {
-      window.setTimeout(() => {
+      if (resetTimerRef.current) {
+        window.clearTimeout(resetTimerRef.current);
+      }
+      resetTimerRef.current = window.setTimeout(() => {
         isNavigatingRef.current = false;
         setIsNavigating(false);
         hideProductRouteLoading();
-      }, 3000);
+      }, 20000);
     }
-    router.push(href);
+    if (typeof window === 'undefined') {
+      router.push(href);
+      return;
+    }
+    window.requestAnimationFrame(() => {
+      router.push(href);
+    });
   };
+
+  useEffect(() => {
+    return () => {
+      if (typeof window !== 'undefined' && resetTimerRef.current) {
+        window.clearTimeout(resetTimerRef.current);
+      }
+    };
+  }, []);
 
   const handleCardTouchStart: React.TouchEventHandler<HTMLDivElement> = (e) => {
     const t = e.touches?.[0];

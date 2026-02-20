@@ -115,6 +115,7 @@ export function RecommendationsGrid({
           <Link
             key={p.product_id}
             href={`/products/${encodeURIComponent(p.product_id)}${p.merchant_id ? `?merchant_id=${encodeURIComponent(p.merchant_id)}` : ''}`}
+            prefetch={false}
             className="rounded-xl bg-card border border-border overflow-hidden hover:shadow-md transition-shadow"
             onClick={() => onItemClick?.(p, idx)}
           >
