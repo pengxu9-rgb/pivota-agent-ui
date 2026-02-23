@@ -1,62 +1,86 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Package, Clock, CheckCircle, XCircle, Loader2, ArrowRight, ArrowLeft } from 'lucide-react'
-import { motion } from 'framer-motion'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import { ArrowLeft, ArrowRight, Loader2, Package, ShoppingCart, XCircle } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
-import { listMyOrders } from '@/lib/api'
+import { cancelAccountOrder, listMyOrders } from '@/lib/api'
+import { normalizeOrderListItem, type NormalizedOrderListItem } from '@/lib/orders/normalize'
+import {
+  canShowCancel,
+  canShowContinuePayment,
+  getOrderDisplayStatus,
+  getOrderTone,
+} from '@/lib/orders/status'
 import { useAuthStore } from '@/store/authStore'
 import { toast } from 'sonner'
 
-interface OrderListItem {
-  order_id: string
-  currency: string
-  total_amount_minor: number
-  status: string
-  payment_status: string
-  fulfillment_status: string
-  delivery_status: string
-  created_at: string
-  shipping_city?: string | null
-  shipping_country?: string | null
-  items_summary?: string
-  permissions?: {
-    can_pay: boolean
-    can_cancel: boolean
-    can_reorder: boolean
+const toneClasses: Record<'success' | 'warning' | 'danger' | 'neutral', string> = {
+  success: 'border border-emerald-200 bg-emerald-50 text-emerald-700',
+  warning: 'border border-amber-200 bg-amber-50 text-amber-700',
+  danger: 'border border-rose-200 bg-rose-50 text-rose-700',
+  neutral: 'border border-slate-200 bg-slate-100 text-slate-700',
+}
+
+const formatMoney = (minor: number, currency: string): string => {
+  const value = (minor || 0) / 100
+  try {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: currency || 'USD',
+    }).format(value)
+  } catch {
+    return `${value.toFixed(2)} ${currency || 'USD'}`
   }
+}
+
+const formatDate = (raw: string): string => {
+  const date = new Date(raw)
+  if (Number.isNaN(date.getTime())) return 'Unknown date'
+  return date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
 }
 
 export default function OrdersPage() {
   const router = useRouter()
   const { user, setSession, clear } = useAuthStore()
-  const [orders, setOrders] = useState<OrderListItem[]>([])
+  const [orders, setOrders] = useState<NormalizedOrderListItem[]>([])
   const [cursor, setCursor] = useState<string | null>(null)
   const [hasMore, setHasMore] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [cancellingOrderId, setCancellingOrderId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const loadOrders = async (next?: string | null) => {
+    const isLoadMore = Boolean(next)
+    if (isLoadMore) setLoadingMore(true)
+    else setLoading(true)
+
     try {
       const data = await listMyOrders(next || undefined)
-      setOrders((prev) => (next ? [...prev, ...(data as any).orders] : (data as any).orders || []))
-      setCursor((data as any).next_cursor || null)
-      setHasMore(Boolean((data as any).has_more))
-      // If /auth/me info is present in response (optional), sync user state
-      if ((data as any).user) {
+      const rawOrders: unknown[] = Array.isArray((data as any)?.orders) ? (data as any).orders : []
+      const nextOrders = rawOrders
+        .map((raw) => normalizeOrderListItem(raw))
+        .filter((order: NormalizedOrderListItem) => Boolean(order.id))
+
+      setOrders((prev) => (isLoadMore ? [...prev, ...nextOrders] : nextOrders))
+      setCursor((data as any)?.next_cursor || null)
+      setHasMore(Boolean((data as any)?.has_more))
+
+      if ((data as any)?.user) {
         setSession({
           user: (data as any).user,
           memberships: (data as any).memberships || [],
           active_merchant_id: (data as any).active_merchant_id,
         })
       }
+
       setError(null)
     } catch (err: any) {
       if (err?.status === 401 || err?.code === 'UNAUTHENTICATED') {
         clear()
-        router.replace(`/login?redirect=/my-orders`)
+        router.replace('/login?redirect=/my-orders')
         return
       }
       if (err?.status === 403) {
@@ -65,189 +89,230 @@ export default function OrdersPage() {
         setError(err?.message || 'Failed to load orders')
       }
     } finally {
-      setLoading(false)
+      if (isLoadMore) setLoadingMore(false)
+      else setLoading(false)
     }
   }
 
   useEffect(() => {
-    loadOrders(null)
+    void loadOrders(null)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'completed':
-      case 'paid':
-      case 'shipped':
-        return <CheckCircle className="h-5 w-5 text-success" />
-      case 'processing':
-      case 'pending':
-        return <Clock className="h-5 w-5 text-warning" />
-      case 'cancelled':
-      case 'refunded':
-        return <XCircle className="h-5 w-5 text-destructive" />
-      default:
-        return <Package className="h-5 w-5 text-muted-foreground" />
+  const onContinuePayment = (order: NormalizedOrderListItem) => {
+    router.push(
+      `/checkout?orderId=${encodeURIComponent(order.id)}&amount_minor=${order.totalAmountMinor}&currency=${encodeURIComponent(order.currency)}`,
+    )
+  }
+
+  const onCancelOrder = async (order: NormalizedOrderListItem) => {
+    if (!canShowCancel(order.permissions, order.status, order.paymentStatus)) return
+    const confirmed = window.confirm(`Cancel order ${order.id}?`)
+    if (!confirmed) return
+
+    const reason = window.prompt('Optional: tell us why you are cancelling this order (leave empty to skip).', '')
+    setCancellingOrderId(order.id)
+    try {
+      const result = (await cancelAccountOrder(order.id, reason || undefined)) as any
+      toast.success('Order cancelled')
+      setOrders((prev) =>
+        prev.map((item) =>
+          item.id === order.id
+            ? {
+                ...item,
+                status: String(result?.status || 'cancelled'),
+                paymentStatus: String(result?.payment_status || item.paymentStatus),
+                fulfillmentStatus: String(result?.fulfillment_status || item.fulfillmentStatus),
+                deliveryStatus: String(result?.delivery_status || item.deliveryStatus),
+              }
+            : item,
+        ),
+      )
+    } catch (err: any) {
+      if (err?.code === 'INVALID_STATE') {
+        toast.error('Order cannot be cancelled in its current state.')
+        void loadOrders(null)
+      } else if (err?.code === 'NOT_FOUND') {
+        toast.error('Order not found or no permission.')
+      } else {
+        toast.error(err?.message || 'Failed to cancel order')
+      }
+    } finally {
+      setCancellingOrderId(null)
     }
   }
 
-  const getStatusBadge = (status: string) => {
-    const variants: Record<string, 'default' | 'secondary' | 'destructive'> = {
-      completed: 'default',
-      paid: 'default',
-      shipped: 'default',
-      processing: 'secondary',
-      pending: 'secondary',
-      cancelled: 'destructive',
-      refunded: 'destructive',
-    }
-    return variants[status] || 'secondary'
-  }
-
-  const formatMoney = (minor: number, currency: string) => {
-    const value = (minor || 0) / 100
-    return new Intl.NumberFormat('en-US', { style: 'currency', currency: currency || 'USD' }).format(value)
-  }
-
-  const loadMore = () => {
-    if (cursor) {
-      loadOrders(cursor)
-    }
-  }
-
-  const onAction = (type: 'pay' | 'cancel' | 'reorder', orderId: string) => {
-    if (type === 'reorder') {
-      toast.info('Reorder is coming soon. Please add items from the catalog for now.', {
-        description: `Order ${orderId}`,
-      })
-      return
-    }
-    toast.message(`${type === 'pay' ? 'Continue payment' : 'Cancel'} not implemented`, {
-      description: `Order ${orderId}`,
+  const onReorder = (order: NormalizedOrderListItem) => {
+    toast.info('Reorder is coming soon. Please add items from the catalog for now.', {
+      description: `Order ${order.id}`,
     })
-  }
-
-  const subtitle = (order: OrderListItem) => {
-    if (order.shipping_city || order.shipping_country) {
-      return `${order.shipping_city || ''}${order.shipping_city && order.shipping_country ? ', ' : ''}${order.shipping_country || ''}`
-    }
-    return new Date(order.created_at).toLocaleDateString()
   }
 
   const isEmpty = useMemo(() => !loading && orders.length === 0, [loading, orders.length])
 
   return (
     <div className="min-h-screen bg-gradient-mesh">
-      <div className="max-w-4xl mx-auto px-4 py-8">
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h1 className="text-3xl font-bold mb-2">My Orders</h1>
-              <p className="text-muted-foreground">Track and manage your orders</p>
-            </div>
+      <div className="mx-auto max-w-5xl px-4 py-8">
+        <div className="mb-6 flex items-center justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-bold">My Orders</h1>
+            <p className="text-sm text-muted-foreground">Track and manage your purchases</p>
+          </div>
+          <div className="flex items-center gap-3">
             {user?.email && <Badge variant="secondary">{user.email}</Badge>}
             <Link href="/" className="inline-flex items-center gap-2 text-sm text-indigo-600 hover:underline">
-              <ArrowLeft className="h-4 w-4" /> Back to Home
+              <ArrowLeft className="h-4 w-4" />
+              Back to Home
             </Link>
           </div>
+        </div>
 
-          {loading && (
-            <div className="flex items-center gap-2 text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Loading orders...</div>
-          )}
-          {error && (
-            <div className="text-red-600 text-sm mb-4">{error}</div>
-          )}
+        {loading && (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Loading orders...
+          </div>
+        )}
+        {error && <div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</div>}
 
-          {isEmpty ? (
-            <div className="text-center py-16 bg-card/50 backdrop-blur-xl rounded-3xl border border-border">
-              <Package className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
-              <h3 className="text-xl font-semibold mb-2">No orders yet</h3>
-              <p className="text-muted-foreground mb-4">Start shopping to see your orders here</p>
-              <Link href="/products">
-                <button className="px-6 py-3 bg-gradient-to-r from-indigo-500 to-purple-500 text-white rounded-xl hover:shadow-lg transition-all">
-                  Browse Products
-                </button>
-              </Link>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {orders.map((order, index) => (
-                <motion.div
-                  key={order.order_id}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: index * 0.05 }}
-                  className="bg-card/50 backdrop-blur-xl rounded-2xl border border-border p-6 hover:shadow-glass-hover transition-all"
+        {isEmpty ? (
+          <div className="rounded-3xl border border-border bg-card/60 p-12 text-center">
+            <Package className="mx-auto mb-4 h-14 w-14 text-muted-foreground" />
+            <h2 className="text-xl font-semibold">No orders yet</h2>
+            <p className="mt-2 text-muted-foreground">Start shopping to see your order history here.</p>
+            <Link href="/products">
+              <button className="mt-5 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-500 px-6 py-3 text-sm font-medium text-white shadow transition hover:shadow-lg">
+                Browse Products
+              </button>
+            </Link>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {orders.map((order) => {
+              const displayStatus = getOrderDisplayStatus({
+                status: order.status,
+                paymentStatus: order.paymentStatus,
+                fulfillmentStatus: order.fulfillmentStatus,
+                deliveryStatus: order.deliveryStatus,
+              })
+              const statusTone = getOrderTone({
+                status: order.status,
+                paymentStatus: order.paymentStatus,
+                fulfillmentStatus: order.fulfillmentStatus,
+                deliveryStatus: order.deliveryStatus,
+              })
+              const canPay = canShowContinuePayment(order.permissions, order.status)
+              const canCancel = canShowCancel(order.permissions, order.status, order.paymentStatus)
+
+              const locationText =
+                order.shippingCity || order.shippingCountry
+                  ? `${order.shippingCity || ''}${order.shippingCity && order.shippingCountry ? ', ' : ''}${order.shippingCountry || ''}`
+                  : null
+
+              return (
+                <div
+                  key={order.id}
+                  className="rounded-2xl border border-border bg-card/60 p-4 transition hover:shadow-glass-hover sm:p-5"
                 >
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="flex items-center gap-3">
-                      {getStatusIcon(order.status)}
-                      <div>
-                        <h3 className="font-semibold">Order #{order.order_id}</h3>
-                        <p className="text-sm text-muted-foreground">{subtitle(order)}</p>
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="flex min-w-0 gap-3">
+                      <div className="h-14 w-14 shrink-0 overflow-hidden rounded-xl border border-border bg-muted">
+                        {order.firstItemImageUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={order.firstItemImageUrl}
+                            alt={order.itemsSummary || 'Order preview'}
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          <div className="flex h-full w-full items-center justify-center text-muted-foreground">
+                            <ShoppingCart className="h-5 w-5" />
+                          </div>
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h3 className="text-sm font-semibold text-foreground sm:text-base">Order #{order.id}</h3>
+                          <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${toneClasses[statusTone]}`}>
+                            {displayStatus}
+                          </span>
+                        </div>
+                        <p className="mt-1 text-xs text-muted-foreground">{formatDate(order.createdAt)}</p>
+                        <p className="mt-1 truncate text-sm text-muted-foreground">
+                          {order.itemsSummary || 'Order from shopping agent'}
+                        </p>
+                        {order.creatorName && (
+                          <p className="mt-1 text-xs text-muted-foreground">Creator: {order.creatorName}</p>
+                        )}
+                        {locationText && <p className="mt-1 text-xs text-muted-foreground">{locationText}</p>}
                       </div>
                     </div>
-                    <Badge variant={getStatusBadge(order.status)}>{order.status}</Badge>
-                  </div>
 
-                  <div className="flex items-center justify-between">
-                    <div className="text-sm text-muted-foreground">
-                      {order.items_summary || 'Items'}
+                    <div className="flex shrink-0 flex-col items-start gap-2 sm:items-end">
+                      <div className="text-lg font-semibold text-foreground">{formatMoney(order.totalAmountMinor, order.currency)}</div>
+                      <div className="flex flex-wrap gap-2 sm:justify-end">
+                        <Link href={`/orders/${encodeURIComponent(order.id)}`}>
+                          <button className="inline-flex items-center gap-1 rounded-lg border border-border px-3 py-2 text-xs font-medium hover:bg-muted">
+                            View details
+                            <ArrowRight className="h-3.5 w-3.5" />
+                          </button>
+                        </Link>
+                        {canPay && (
+                          <button
+                            onClick={() => onContinuePayment(order)}
+                            className="rounded-lg bg-gradient-to-r from-indigo-500 to-purple-500 px-3 py-2 text-xs font-medium text-white shadow hover:shadow-lg"
+                          >
+                            Continue payment
+                          </button>
+                        )}
+                        {canCancel && (
+                          <button
+                            onClick={() => onCancelOrder(order)}
+                            className="inline-flex items-center gap-1 rounded-lg border border-border px-3 py-2 text-xs font-medium hover:bg-muted disabled:opacity-60"
+                            disabled={cancellingOrderId === order.id}
+                          >
+                            {cancellingOrderId === order.id ? (
+                              <>
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                Cancelling...
+                              </>
+                            ) : (
+                              <>
+                                <XCircle className="h-3.5 w-3.5" />
+                                Cancel order
+                              </>
+                            )}
+                          </button>
+                        )}
+                        {order.permissions.canReorder && (
+                          <button
+                            onClick={() => onReorder(order)}
+                            disabled
+                            className="rounded-lg border border-border px-3 py-2 text-xs font-medium hover:bg-muted disabled:opacity-60"
+                          >
+                            Reorder (coming soon)
+                          </button>
+                        )}
+                      </div>
                     </div>
-                    <div className="text-lg font-bold text-primary">
-                      {formatMoney(order.total_amount_minor, order.currency)}
-                    </div>
                   </div>
-
-                  <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <Link href={`/orders/${order.order_id}`} className="col-span-1">
-                      <button className="w-full py-2 bg-secondary hover:bg-secondary/80 rounded-lg text-sm font-medium transition-colors inline-flex items-center justify-center gap-2">
-                        View details
-                        <ArrowRight className="h-4 w-4" />
-                      </button>
-                    </Link>
-                    {order.permissions?.can_pay && (
-                      <button
-                        onClick={() => onAction('pay', order.order_id)}
-                        className="w-full py-2 bg-gradient-to-r from-indigo-500 to-purple-500 text-white rounded-lg text-sm font-medium shadow hover:shadow-lg"
-                      >
-                        Continue payment
-                      </button>
-                    )}
-                    {order.permissions?.can_cancel && (
-                      <button
-                        onClick={() => onAction('cancel', order.order_id)}
-                        className="w-full py-2 border border-border rounded-lg text-sm font-medium hover:bg-muted"
-                      >
-                        Cancel order
-                      </button>
-                    )}
-                    {order.permissions?.can_reorder && (
-                      <button
-                        onClick={() => onAction('reorder', order.order_id)}
-                        className="w-full py-2 border border-border rounded-lg text-sm font-medium hover:bg-muted disabled:opacity-60"
-                        disabled
-                      >
-                        Reorder (coming soon)
-                      </button>
-                    )}
-                  </div>
-                </motion.div>
-              ))}
-
-              {hasMore && (
-                <div className="flex justify-center">
-                  <button
-                    onClick={loadMore}
-                    className="px-4 py-2 border border-border rounded-lg text-sm font-medium hover:bg-muted"
-                  >
-                    Load more
-                  </button>
                 </div>
-              )}
-            </div>
-          )}
-        </motion.div>
+              )
+            })}
+
+            {hasMore && (
+              <div className="flex justify-center">
+                <button
+                  onClick={() => void loadOrders(cursor)}
+                  disabled={loadingMore}
+                  className="rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-muted disabled:opacity-60"
+                >
+                  {loadingMore ? 'Loading...' : 'Load more'}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   )

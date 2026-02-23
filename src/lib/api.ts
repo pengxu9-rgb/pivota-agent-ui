@@ -1828,13 +1828,41 @@ export async function listMyOrders(cursor?: string | null, limit = 20) {
 }
 
 export async function getAccountOrder(orderId: string) {
-  return callAccounts(`/orders/${orderId}`);
+  return callAccounts(`/orders/${encodeURIComponent(orderId)}`);
 }
 
 export async function cancelAccountOrder(orderId: string, reason?: string) {
-  return callAccounts(`/orders/${orderId}/cancel`, {
+  return callAccounts(`/orders/${encodeURIComponent(orderId)}/cancel`, {
     method: "POST",
     body: reason ? JSON.stringify({ reason }) : undefined,
+  });
+}
+
+export async function getAccountOrderTracking(orderId: string) {
+  return callAccounts(`/orders/${encodeURIComponent(orderId)}/tracking`);
+}
+
+export type AccountOrderRefundItemInput = {
+  item_id?: string;
+  quantity?: number;
+  amount_minor?: number;
+};
+
+export type AccountOrderRefundInput = {
+  amount_minor?: number;
+  amount?: number;
+  currency?: string;
+  reason?: string;
+  items?: AccountOrderRefundItemInput[];
+};
+
+export async function requestAccountOrderRefund(
+  orderId: string,
+  payload: AccountOrderRefundInput,
+) {
+  return callAccounts(`/orders/${encodeURIComponent(orderId)}/refund`, {
+    method: "POST",
+    body: JSON.stringify(payload || {}),
   });
 }
 
