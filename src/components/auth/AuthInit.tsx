@@ -1,12 +1,15 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { usePathname } from 'next/navigation'
 import { accountsMe } from '@/lib/api'
+import { ensureAuroraOrdersSession, shouldUseAuroraOrdersAutoExchange } from '@/lib/auroraOrdersAuth'
 import { useAuthStore } from '@/store/authStore'
 
 export default function AuthInit() {
   const { setSession, clear, user } = useAuthStore()
   const [checked, setChecked] = useState(false)
+  const pathname = usePathname()
 
   useEffect(() => {
     // Avoid refetch if already have user
@@ -22,6 +25,9 @@ export default function AuthInit() {
 
     ;(async () => {
       try {
+        if (shouldUseAuroraOrdersAutoExchange(pathname)) {
+          await ensureAuroraOrdersSession(pathname)
+        }
         const data = await accountsMe()
         if (cancelled) return
         // If the buyer logged in while /auth/me was in-flight, do not overwrite
@@ -49,7 +55,7 @@ export default function AuthInit() {
     return () => {
       cancelled = true
     }
-  }, [user, setSession, clear])
+  }, [pathname, user, setSession, clear])
 
   // No UI; could return null or a minimal marker if needed
   if (!checked) return null

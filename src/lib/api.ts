@@ -1,6 +1,7 @@
 // Centralized API helpers for calling the Pivota Agent Gateway and Accounts API
 // All UI components should import functions from here instead of using fetch directly.
 import { getCheckoutTokenFromBrowser } from '@/lib/checkoutToken'
+import { ensureAuroraOrdersSession, shouldUseAuroraOrdersAutoExchange } from '@/lib/auroraOrdersAuth'
 
 // Point to the public Agent Gateway by default; override via NEXT_PUBLIC_API_URL if needed.
 const API_BASE =
@@ -844,6 +845,51 @@ export type ReviewEligibilityResponse = {
   reason?: 'NOT_PURCHASER' | 'ALREADY_REVIEWED';
 };
 
+const isOrdersAccountsPath = (path: string): boolean => {
+  const normalized = String(path || '').trim()
+  if (!normalized) return false
+  return normalized.startsWith('/orders') || normalized.startsWith('/my-orders')
+}
+
+const extractAccountsErrorCode = (data: any): string | undefined =>
+  (data as any)?.detail?.error?.code ||
+  (typeof (data as any)?.detail === 'string' ? (data as any).detail : undefined) ||
+  (data as any)?.error?.code ||
+  undefined
+
+const extractAccountsErrorMessage = (data: any, fallback: string): string =>
+  (data as any)?.detail?.error?.message ||
+  (typeof (data as any)?.detail === 'string' ? (data as any).detail : undefined) ||
+  (data as any)?.error?.message ||
+  fallback
+
+const canAttemptAuroraOrdersRecovery = (args: {
+  path: string;
+  status: number;
+  code?: string;
+}): boolean => {
+  if (!isOrdersAccountsPath(args.path)) return false
+  if (args.status !== 401) return false
+  if (!shouldUseAuroraOrdersAutoExchange()) return false
+  const normalizedCode = String(args.code || '').trim().toUpperCase()
+  if (!normalizedCode) return true
+  return normalizedCode === 'UNAUTHENTICATED' || normalizedCode === 'NOT_AUTHENTICATED'
+}
+
+const buildAccountsApiError = (args: {
+  data: any;
+  status: number;
+  fallback: string;
+}): ApiError => {
+  const code = extractAccountsErrorCode(args.data)
+  const message = extractAccountsErrorMessage(args.data, args.fallback)
+  const err = new Error(message) as ApiError
+  err.code = code
+  err.status = args.status
+  err.detail = args.data
+  return err
+}
+
 async function callAccountsBase(
   base: string,
   path: string,
@@ -856,62 +902,78 @@ async function callAccountsBase(
   const url = `${base}${path}`;
   const { skipJson, headers, method, body, timeout_ms, timeoutMs, ...rest } = options as any;
   const timeoutValue = Number(timeout_ms ?? timeoutMs);
-  const hasTimeout = Number.isFinite(timeoutValue) && timeoutValue > 0;
-  const controller = hasTimeout ? new AbortController() : null;
-  const timer = hasTimeout
-    ? setTimeout(() => {
-        controller?.abort();
-      }, timeoutValue)
-    : null;
 
-  let res: Response;
-  try {
-    res = await fetch(url, {
-      ...rest,
-      method: method || 'GET',
-      credentials: 'include', // rely on HttpOnly cookies
-      headers: {
-        'Content-Type': 'application/json',
-        ...(headers || {}),
-      },
-      ...(controller ? { signal: controller.signal } : {}),
-      body,
-    });
-  } catch (err) {
-    if ((err as any)?.name === 'AbortError') {
-      const timeoutErr = new Error('The request timed out. Please retry.') as ApiError;
-      timeoutErr.code = 'UPSTREAM_TIMEOUT';
-      timeoutErr.status = 504;
-      throw timeoutErr;
+  const requestOnce = async (): Promise<{ res: Response; data: any }> => {
+    const hasTimeout = Number.isFinite(timeoutValue) && timeoutValue > 0;
+    const controller = hasTimeout ? new AbortController() : null;
+    const timer = hasTimeout
+      ? setTimeout(() => {
+          controller?.abort();
+        }, timeoutValue)
+      : null;
+
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        ...rest,
+        method: method || 'GET',
+        credentials: 'include', // rely on HttpOnly cookies
+        headers: {
+          'Content-Type': 'application/json',
+          ...(headers || {}),
+        },
+        ...(controller ? { signal: controller.signal } : {}),
+        body,
+      });
+    } catch (err) {
+      if ((err as any)?.name === 'AbortError') {
+        const timeoutErr = new Error('The request timed out. Please retry.') as ApiError;
+        timeoutErr.code = 'UPSTREAM_TIMEOUT';
+        timeoutErr.status = 504;
+        throw timeoutErr;
+      }
+      throw err;
+    } finally {
+      if (timer) clearTimeout(timer);
     }
-    throw err;
-  } finally {
-    if (timer) clearTimeout(timer);
+
+    if (skipJson) return { res, data: null };
+    const data = await res.json().catch(() => ({}));
+    return { res, data };
+  };
+
+  let first = await requestOnce();
+  if (skipJson) return first.res;
+  if (first.res.ok) return first.data;
+
+  const firstCode = extractAccountsErrorCode(first.data);
+  if (
+    canAttemptAuroraOrdersRecovery({
+      path,
+      status: first.res.status,
+      code: firstCode,
+    })
+  ) {
+    const recovered = await ensureAuroraOrdersSession(
+      typeof window !== 'undefined' ? window.location.pathname : undefined,
+    );
+    if (recovered.ok) {
+      const retried = await requestOnce();
+      if (skipJson) return retried.res;
+      if (retried.res.ok) return retried.data;
+      throw buildAccountsApiError({
+        data: retried.data,
+        status: retried.res.status,
+        fallback: retried.res.statusText,
+      });
+    }
   }
 
-  if (skipJson) {
-    return res;
-  }
-
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    const code =
-      (data as any)?.detail?.error?.code ||
-      (typeof (data as any)?.detail === 'string' ? (data as any).detail : undefined) ||
-      (data as any)?.error?.code ||
-      undefined;
-    const message =
-      (data as any)?.detail?.error?.message ||
-      (typeof (data as any)?.detail === 'string' ? (data as any).detail : undefined) ||
-      (data as any)?.error?.message ||
-      res.statusText;
-    const err = new Error(message) as ApiError;
-    err.code = code;
-    err.status = res.status;
-    err.detail = data;
-    throw err;
-  }
-  return data;
+  throw buildAccountsApiError({
+    data: first.data,
+    status: first.res.status,
+    fallback: first.res.statusText,
+  });
 }
 
 type AccountsCallOptions = RequestInit & {
