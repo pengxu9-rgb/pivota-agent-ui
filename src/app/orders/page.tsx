@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { ArrowLeft, ArrowRight, Loader2, Package, ShoppingCart, XCircle } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { cancelAccountOrder, listMyOrders } from '@/lib/api'
+import { isAuroraEmbedMode } from '@/lib/auroraEmbed'
 import { normalizeOrderListItem, type NormalizedOrderListItem } from '@/lib/orders/normalize'
 import {
   canShowCancel,
@@ -148,24 +149,27 @@ export default function OrdersPage() {
     })
   }
 
+  const isEmbed = useMemo(() => isAuroraEmbedMode(), [])
   const isEmpty = useMemo(() => !loading && orders.length === 0, [loading, orders.length])
 
   return (
     <div className="min-h-screen bg-gradient-mesh">
       <div className="mx-auto max-w-5xl px-4 py-8">
-        <div className="mb-6 flex items-center justify-between gap-4">
-          <div>
-            <h1 className="text-3xl font-bold">My Orders</h1>
-            <p className="text-sm text-muted-foreground">Track and manage your purchases</p>
+        {!isEmbed && (
+          <div className="mb-6 flex items-center justify-between gap-4">
+            <div>
+              <h1 className="text-3xl font-bold">My Orders</h1>
+              <p className="text-sm text-muted-foreground">Track and manage your purchases</p>
+            </div>
+            <div className="flex items-center gap-3">
+              {user?.email && <Badge variant="secondary">{user.email}</Badge>}
+              <Link href="/" className="inline-flex items-center gap-2 text-sm text-indigo-600 hover:underline">
+                <ArrowLeft className="h-4 w-4" />
+                Back to Home
+              </Link>
+            </div>
           </div>
-          <div className="flex items-center gap-3">
-            {user?.email && <Badge variant="secondary">{user.email}</Badge>}
-            <Link href="/" className="inline-flex items-center gap-2 text-sm text-indigo-600 hover:underline">
-              <ArrowLeft className="h-4 w-4" />
-              Back to Home
-            </Link>
-          </div>
-        </div>
+        )}
 
         {loading && (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -180,11 +184,13 @@ export default function OrdersPage() {
             <Package className="mx-auto mb-4 h-14 w-14 text-muted-foreground" />
             <h2 className="text-xl font-semibold">No orders yet</h2>
             <p className="mt-2 text-muted-foreground">Start shopping to see your order history here.</p>
-            <Link href="/products">
-              <button className="mt-5 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-500 px-6 py-3 text-sm font-medium text-white shadow transition hover:shadow-lg">
-                Browse Products
-              </button>
-            </Link>
+            {!isEmbed && (
+              <Link href="/products">
+                <button className="mt-5 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-500 px-6 py-3 text-sm font-medium text-white shadow transition hover:shadow-lg">
+                  Browse Products
+                </button>
+              </Link>
+            )}
           </div>
         ) : (
           <div className="space-y-4">

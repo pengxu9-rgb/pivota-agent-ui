@@ -22,6 +22,7 @@ import {
   getAccountOrderTracking,
   requestAccountOrderRefund,
 } from '@/lib/api'
+import { isAuroraEmbedMode } from '@/lib/auroraEmbed'
 import { normalizeOrderDetail, type NormalizedOrderDetail } from '@/lib/orders/normalize'
 import {
   canShowCancel,
@@ -202,6 +203,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     () => (order ? order.items.reduce((sum, item) => sum + item.subtotalMinor, 0) : 0),
     [order],
   )
+  const isEmbed = useMemo(() => isAuroraEmbedMode(), [])
 
   const onContinuePayment = () => {
     if (!order) return
@@ -809,12 +811,14 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
             </section>
 
             <div className="flex gap-2">
-              <Link href="/" className="inline-flex flex-1">
-                <button className="w-full rounded-lg border border-border px-3 py-2 text-xs font-medium hover:bg-muted">
-                  Continue shopping
-                </button>
-              </Link>
-              <Link href="/my-orders" className="inline-flex flex-1">
+              {!isEmbed && (
+                <Link href="/" className="inline-flex flex-1">
+                  <button className="w-full rounded-lg border border-border px-3 py-2 text-xs font-medium hover:bg-muted">
+                    Continue shopping
+                  </button>
+                </Link>
+              )}
+              <Link href="/my-orders" className={`inline-flex ${isEmbed ? 'w-full' : 'flex-1'}`}>
                 <button className="w-full rounded-lg bg-secondary px-3 py-2 text-xs font-medium hover:bg-secondary/80">
                   Back to orders
                 </button>
