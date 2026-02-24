@@ -1,8 +1,158 @@
 import type { GetPdpV2Response } from '@/lib/api';
 import type { Module, PDPPayload, RecommendationsData, ReviewsPreviewData } from '@/features/pdp/types';
 
+const IMAGE_PROXY_PATH = '/api/image-proxy';
+const ABSOLUTE_HTTP_URL_RE = /^https?:\/\//i;
+
 function isRecord(value: unknown): value is Record<string, any> {
   return Boolean(value && typeof value === 'object' && !Array.isArray(value));
+}
+
+function normalizePdpImageUrl(url: unknown): string | null {
+  if (typeof url !== 'string') return null;
+  const trimmed = url.trim();
+  if (!trimmed) return null;
+
+  if (!ABSOLUTE_HTTP_URL_RE.test(trimmed)) {
+    return trimmed;
+  }
+
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.pathname === IMAGE_PROXY_PATH) return trimmed;
+  } catch {
+    return trimmed;
+  }
+
+  return `${IMAGE_PROXY_PATH}?url=${encodeURIComponent(trimmed)}`;
+}
+
+function normalizeMediaGalleryModule(module: Module): Module {
+  if (module?.type !== 'media_gallery' || !isRecord(module.data)) return module;
+  const items = Array.isArray(module.data.items) ? module.data.items : [];
+  if (!items.length) return module;
+
+  const normalizedItems = items.map((item) => {
+    if (!isRecord(item)) return item;
+    if (String(item.type || '').trim().toLowerCase() === 'video') return item;
+    const normalizedUrl = normalizePdpImageUrl(item.url);
+    if (!normalizedUrl || normalizedUrl === item.url) return item;
+    return {
+      ...item,
+      url: normalizedUrl,
+    };
+  });
+
+  return {
+    ...module,
+    data: {
+      ...module.data,
+      items: normalizedItems,
+    },
+  };
+}
+
+function normalizeRecommendationsModule(module: Module): Module {
+  if (module?.type !== 'recommendations' || !isRecord(module.data)) return module;
+  const items = Array.isArray(module.data.items) ? module.data.items : [];
+  if (!items.length) return module;
+
+  const normalizedItems = items.map((item) => {
+    if (!isRecord(item)) return item;
+    const normalizedImage = normalizePdpImageUrl(item.image_url);
+    if (!normalizedImage || normalizedImage === item.image_url) return item;
+    return {
+      ...item,
+      image_url: normalizedImage,
+    };
+  });
+
+  return {
+    ...module,
+    data: {
+      ...module.data,
+      items: normalizedItems,
+    },
+  };
+}
+
+function normalizeReviewsModule(module: Module): Module {
+  if (module?.type !== 'reviews_preview' || !isRecord(module.data)) return module;
+  const previewItems = Array.isArray(module.data.preview_items) ? module.data.preview_items : [];
+  if (!previewItems.length) return module;
+
+  const normalizedPreviewItems = previewItems.map((review) => {
+    if (!isRecord(review)) return review;
+    const mediaItems = Array.isArray(review.media) ? review.media : [];
+    if (!mediaItems.length) return review;
+    const normalizedMediaItems = mediaItems.map((media) => {
+      if (!isRecord(media)) return media;
+      const normalizedUrl = normalizePdpImageUrl(media.url);
+      if (!normalizedUrl || normalizedUrl === media.url) return media;
+      return {
+        ...media,
+        url: normalizedUrl,
+      };
+    });
+    return {
+      ...review,
+      media: normalizedMediaItems,
+    };
+  });
+
+  return {
+    ...module,
+    data: {
+      ...module.data,
+      preview_items: normalizedPreviewItems,
+    },
+  };
+}
+
+function normalizePdpPayloadImages(payload: PDPPayload): PDPPayload {
+  const product = isRecord(payload.product) ? (payload.product as Record<string, any>) : null;
+  const normalizedProduct = product
+    ? {
+        ...product,
+        ...(normalizePdpImageUrl(product.image_url)
+          ? { image_url: normalizePdpImageUrl(product.image_url) }
+          : {}),
+        ...(Array.isArray(product.images)
+          ? {
+              images: product.images.map((image) => {
+                const normalizedImage = normalizePdpImageUrl(image);
+                return normalizedImage || image;
+              }),
+            }
+          : {}),
+        ...(Array.isArray(product.variants)
+          ? {
+              variants: product.variants.map((variant) => {
+                if (!isRecord(variant)) return variant;
+                const normalizedVariantImage = normalizePdpImageUrl(variant.image_url);
+                const normalizedVariantLabel = normalizePdpImageUrl(variant.label_image_url);
+                return {
+                  ...variant,
+                  ...(normalizedVariantImage ? { image_url: normalizedVariantImage } : {}),
+                  ...(normalizedVariantLabel ? { label_image_url: normalizedVariantLabel } : {}),
+                };
+              }),
+            }
+          : {}),
+      }
+    : payload.product;
+
+  const modules = Array.isArray(payload.modules)
+    ? payload.modules.map((module) =>
+        normalizeReviewsModule(normalizeRecommendationsModule(normalizeMediaGalleryModule(module))),
+      )
+    : payload.modules;
+
+  return {
+    ...payload,
+    product: normalizedProduct as PDPPayload['product'],
+    modules: modules as PDPPayload['modules'],
+  };
 }
 
 function getModule(response: GetPdpV2Response, type: string): any | null {
@@ -28,12 +178,12 @@ export function mapPdpV2ToPdpPayload(response: GetPdpV2Response): PDPPayload | n
   if (!isRecord(pdpPayloadRaw)) return null;
 
   const base = pdpPayloadRaw as unknown as PDPPayload;
-  let next: PDPPayload = {
+  let next: PDPPayload = normalizePdpPayloadImages({
     ...base,
     product: { ...(base.product as any) },
     modules: Array.isArray(base.modules) ? [...base.modules] : [],
     actions: Array.isArray(base.actions) ? [...base.actions] : [],
-  };
+  });
 
   const subject = isRecord(response.subject) ? response.subject : null;
   const subjectGroupId =
