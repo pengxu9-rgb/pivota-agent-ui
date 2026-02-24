@@ -59,6 +59,7 @@ import { DEFAULT_UGC_SNAPSHOT, lockFirstUgcSource } from '@/features/pdp/state/f
 import { getStableGalleryItems, resolveHeroMediaUrl } from '@/features/pdp/state/heroMedia';
 import { buildPdpViewModel } from '@/features/pdp/state/viewModel';
 import { cn } from '@/lib/utils';
+import { resolveReviewGate, reviewGateMessage, reviewGateResultToReason } from '@/lib/reviewGate';
 
 function nonEmptyText(value: unknown, fallback: string): string {
   const text = String(value ?? '').trim();
@@ -909,14 +910,23 @@ export function PdpContainer({
   };
 
   const handleWriteReview = () => {
+    const reviewGate = resolveReviewGate({
+      isAuthenticated: reviewReason !== 'NOT_AUTHENTICATED',
+      canWriteReview,
+      reason: reviewReason || null,
+    });
+    const reviewGateReason = reviewGateResultToReason(reviewGate);
     pdpTracking.track('pdp_action_click', {
       action_type: 'open_embed',
       target: 'write_review',
       entry_point: 'station',
+      entry_surface: 'pdp',
       user_state: ugcUserState,
       reason: reviewReason || null,
+      review_gate_reason: reviewGateReason,
+      metric: 'pdp_review_gate_total',
     });
-    if (canWriteReview) {
+    if (reviewGate === 'ALLOW_WRITE') {
       if (onWriteReview) {
         onWriteReview();
       } else {
@@ -927,15 +937,12 @@ export function PdpContainer({
       }
       return;
     }
-    if (reviewReason === 'NOT_AUTHENTICATED') {
+    if (reviewGate === 'REQUIRE_LOGIN') {
       requireLogin('review');
       return;
     }
-    if (reviewReason === 'ALREADY_REVIEWED') {
-      toast.message('You already reviewed this product.');
-      return;
-    }
-    toast.message('Only purchasers can write a review.');
+    const message = reviewGateMessage(reviewGate);
+    if (message) toast.message(message);
   };
 
   const handleAskQuestion = () => {

@@ -1,7 +1,7 @@
 // Centralized API helpers for calling the Pivota Agent Gateway and Accounts API
 // All UI components should import functions from here instead of using fetch directly.
 import { getCheckoutTokenFromBrowser } from '@/lib/checkoutToken'
-import { ensureAuroraOrdersSession, shouldUseAuroraOrdersAutoExchange } from '@/lib/auroraOrdersAuth'
+import { ensureAuroraSession, shouldUseAuroraAutoExchange } from '@/lib/auroraOrdersAuth'
 
 // Point to the public Agent Gateway by default; override via NEXT_PUBLIC_API_URL if needed.
 const API_BASE =
@@ -845,10 +845,16 @@ export type ReviewEligibilityResponse = {
   reason?: 'NOT_PURCHASER' | 'ALREADY_REVIEWED';
 };
 
-const isOrdersAccountsPath = (path: string): boolean => {
+const isAuroraRecoverableAccountsPath = (path: string): boolean => {
   const normalized = String(path || '').trim()
   if (!normalized) return false
-  return normalized.startsWith('/orders') || normalized.startsWith('/my-orders')
+  return (
+    normalized.startsWith('/orders') ||
+    normalized.startsWith('/my-orders') ||
+    normalized.startsWith('/auth/me') ||
+    normalized.startsWith('/pdp/v2/personalization') ||
+    normalized.startsWith('/reviews/eligibility')
+  )
 }
 
 const extractAccountsErrorCode = (data: any): string | undefined =>
@@ -863,14 +869,14 @@ const extractAccountsErrorMessage = (data: any, fallback: string): string =>
   (data as any)?.error?.message ||
   fallback
 
-const canAttemptAuroraOrdersRecovery = (args: {
+const canAttemptAuroraAutoExchangeRecovery = (args: {
   path: string;
   status: number;
   code?: string;
 }): boolean => {
-  if (!isOrdersAccountsPath(args.path)) return false
+  if (!isAuroraRecoverableAccountsPath(args.path)) return false
   if (args.status !== 401) return false
-  if (!shouldUseAuroraOrdersAutoExchange()) return false
+  if (!shouldUseAuroraAutoExchange()) return false
   const normalizedCode = String(args.code || '').trim().toUpperCase()
   if (!normalizedCode) return true
   return normalizedCode === 'UNAUTHENTICATED' || normalizedCode === 'NOT_AUTHENTICATED'
@@ -948,13 +954,13 @@ async function callAccountsBase(
 
   const firstCode = extractAccountsErrorCode(first.data);
   if (
-    canAttemptAuroraOrdersRecovery({
+    canAttemptAuroraAutoExchangeRecovery({
       path,
       status: first.res.status,
       code: firstCode,
     })
   ) {
-    const recovered = await ensureAuroraOrdersSession(
+    const recovered = await ensureAuroraSession(
       typeof window !== 'undefined' ? window.location.pathname : undefined,
     );
     if (recovered.ok) {

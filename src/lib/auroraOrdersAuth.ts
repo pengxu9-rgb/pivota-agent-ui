@@ -40,6 +40,9 @@ type AuroraAuthBootstrapResponseMessage = {
 type AuroraOrdersSessionResult = { ok: true } | { ok: false; reason: string };
 
 let inflightExchange: Promise<AuroraOrdersSessionResult> | null = null;
+const PDP_AUTO_EXCHANGE_ENABLED = String(
+  process.env.NEXT_PUBLIC_AURORA_AUTO_EXCHANGE_PDP_ENABLED || '1',
+).trim() !== '0';
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -63,12 +66,43 @@ export const isOrdersPath = (pathname: string | null | undefined): boolean => {
   return p === '/orders' || p.startsWith('/orders/') || p === '/my-orders';
 };
 
-export const shouldUseAuroraOrdersAutoExchange = (pathname?: string | null): boolean => {
+const isPdpUgcPath = (pathname: string | null | undefined): boolean => {
+  const p = String(pathname || '').trim();
+  if (!p) return false;
+  return p === '/products' || p.startsWith('/products/') || p === '/reviews/write';
+};
+
+const resolveEntrySurface = (pathname: string | null | undefined): string => {
+  const p = String(pathname || '').trim();
+  if (!p) return 'unknown';
+  if (isOrdersPath(p)) return 'orders';
+  if (p.startsWith('/products/')) return 'pdp';
+  if (p === '/reviews/write') return 'write_review_page';
+  return 'unknown';
+};
+
+const trackAuroraExchange = (payload: Record<string, unknown>) => {
+  // eslint-disable-next-line no-console
+  console.log('[TRACK]', 'aurora_exchange_attempt_total', {
+    ...payload,
+    ts: new Date().toISOString(),
+  });
+};
+
+export const isAuroraAutoExchangePath = (pathname: string | null | undefined): boolean => {
+  if (isOrdersPath(pathname)) return true;
+  if (!PDP_AUTO_EXCHANGE_ENABLED) return false;
+  return isPdpUgcPath(pathname);
+};
+
+export const shouldUseAuroraAutoExchange = (pathname?: string | null): boolean => {
   if (typeof window === 'undefined') return false;
   if (!isAuroraEmbedMode()) return false;
   const currentPath = String(pathname || window.location.pathname || '').trim();
-  return isOrdersPath(currentPath);
+  return isAuroraAutoExchangePath(currentPath);
 };
+
+export const shouldUseAuroraOrdersAutoExchange = shouldUseAuroraAutoExchange;
 
 const isAuthBootstrapResponseMessage = (input: unknown): input is AuroraAuthBootstrapResponseMessage => {
   if (!isObject(input)) return false;
@@ -196,26 +230,54 @@ const exchangeAuroraSession = async (
   return { ok: false, reason: `HTTP_${res.status}` };
 };
 
-export async function ensureAuroraOrdersSession(pathname?: string | null): Promise<AuroraOrdersSessionResult> {
-  if (!shouldUseAuroraOrdersAutoExchange(pathname)) {
+export async function ensureAuroraSession(pathname?: string | null): Promise<AuroraOrdersSessionResult> {
+  const currentPath =
+    String(pathname || (typeof window !== 'undefined' ? window.location.pathname : '') || '').trim() || null;
+  if (!shouldUseAuroraAutoExchange(currentPath)) {
     return { ok: false, reason: 'NOT_APPLICABLE' };
   }
   if (inflightExchange) return inflightExchange;
 
   inflightExchange = (async () => {
+    trackAuroraExchange({
+      result: 'attempt',
+      reason: null,
+      entry_surface: resolveEntrySurface(currentPath),
+      path: currentPath,
+    });
     let bootstrap: AuthBootstrapResponsePayload;
     try {
       bootstrap = await requestBootstrapFromParent();
     } catch (err) {
       const reason = err instanceof Error && err.message ? err.message : 'BOOTSTRAP_FAILED';
+      trackAuroraExchange({
+        result: 'failed',
+        reason,
+        entry_surface: resolveEntrySurface(currentPath),
+        path: currentPath,
+      });
       return { ok: false, reason };
     }
 
     if (!bootstrap.ok) {
-      return { ok: false, reason: String(bootstrap.error_code || 'NO_AURORA_SESSION') };
+      const reason = String(bootstrap.error_code || 'NO_AURORA_SESSION');
+      trackAuroraExchange({
+        result: 'failed',
+        reason,
+        entry_surface: resolveEntrySurface(currentPath),
+        path: currentPath,
+      });
+      return { ok: false, reason };
     }
 
-    return await exchangeAuroraSession(bootstrap);
+    const exchangeResult = await exchangeAuroraSession(bootstrap);
+    trackAuroraExchange({
+      result: exchangeResult.ok ? 'ok' : 'failed',
+      reason: exchangeResult.ok ? null : exchangeResult.reason,
+      entry_surface: resolveEntrySurface(currentPath),
+      path: currentPath,
+    });
+    return exchangeResult;
   })();
 
   try {
@@ -225,3 +287,6 @@ export async function ensureAuroraOrdersSession(pathname?: string | null): Promi
   }
 }
 
+export async function ensureAuroraOrdersSession(pathname?: string | null): Promise<AuroraOrdersSessionResult> {
+  return ensureAuroraSession(pathname);
+}

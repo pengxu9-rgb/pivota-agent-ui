@@ -21,6 +21,7 @@ import {
 import { mapPdpV2ToPdpPayload } from '@/features/pdp/adapter/mapPdpV2ToPdpPayload';
 import type { PDPPayload } from '@/features/pdp/types';
 import { cn } from '@/lib/utils';
+import { resolveReviewGate, reviewGateMessage, reviewGateResultToReason, type ReviewGateResult } from '@/lib/reviewGate';
 
 type TokenSubject = {
   merchant_id: string;
@@ -100,6 +101,14 @@ function StarRating({
   );
 }
 
+const trackReviewEvent = (event: string, payload: Record<string, unknown>) => {
+  // eslint-disable-next-line no-console
+  console.log('[TRACK]', event, {
+    ...payload,
+    ts: new Date().toISOString(),
+  });
+};
+
 export default function WriteReviewPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -132,6 +141,23 @@ export default function WriteReviewPage() {
     if (productIdParam) return 'in_app';
     return 'missing';
   }, [invitationToken, productIdParam]);
+
+  const requireLoginForReview = () => {
+    const redirect = `${window.location.pathname}${window.location.search}`;
+    toast.message('Please log in to write a review.');
+    router.push(`/login?redirect=${encodeURIComponent(redirect)}`);
+  };
+
+  const handleBlockedReviewGate = (gate: ReviewGateResult): boolean => {
+    if (gate === 'ALLOW_WRITE') return false;
+    if (gate === 'REQUIRE_LOGIN') {
+      requireLoginForReview();
+      return true;
+    }
+    const message = reviewGateMessage(gate);
+    if (message) toast.message(message);
+    return true;
+  };
 
   useEffect(() => {
     const fromHash = parseInvitationTokenFromHash(window.location.hash);
@@ -332,20 +358,16 @@ export default function WriteReviewPage() {
     if (mode === 'invitation') {
       if (!activeSubject) return;
 
-      if (!user) {
-        const redirect = `${window.location.pathname}${window.location.search}`;
-        toast.message('Please log in to write a review.');
-        router.push(`/login?redirect=${encodeURIComponent(redirect)}`);
-        return;
-      }
-
-      if (invitationEligibility && !invitationEligibility.eligible) {
-        const reason = String(invitationEligibility.reason || '').toUpperCase();
-        if (reason === 'ALREADY_REVIEWED') {
-          toast.message('You already reviewed this product.');
-        } else {
-          toast.message('Only purchasers can write a review.');
-        }
+      const invitationGate = resolveReviewGate({
+        isAuthenticated: Boolean(user),
+        eligibility: invitationEligibility || null,
+      });
+      trackReviewEvent('pdp_review_gate_total', {
+        entry_surface: 'write_review_page',
+        mode: 'invitation',
+        review_gate_reason: reviewGateResultToReason(invitationGate),
+      });
+      if (handleBlockedReviewGate(invitationGate)) {
         return;
       }
 
@@ -373,11 +395,14 @@ export default function WriteReviewPage() {
         const rid = Number((data as any)?.review_id);
         if (Number.isFinite(rid)) setReviewId(rid);
         toast.success('Review submitted');
+        trackReviewEvent('review_submit_total', {
+          entry_surface: 'write_review_page',
+          mode: 'invitation',
+          result: 'success',
+        });
       } catch (err: any) {
         if (err?.code === 'NOT_AUTHENTICATED' || err?.status === 401) {
-          const redirect = `${window.location.pathname}${window.location.search}`;
-          toast.message('Please log in to write a review.');
-          router.push(`/login?redirect=${encodeURIComponent(redirect)}`);
+          requireLoginForReview();
         } else if (err?.code === 'NOT_PURCHASER' || err?.status === 403) {
           toast.error('Only purchasers can write a review.');
         } else if (err?.code === 'ALREADY_REVIEWED' || err?.status === 409) {
@@ -385,6 +410,13 @@ export default function WriteReviewPage() {
         } else {
           toast.error(err?.message || 'Submit failed');
         }
+        trackReviewEvent('review_submit_total', {
+          entry_surface: 'write_review_page',
+          mode: 'invitation',
+          result: 'failed',
+          error_code: err?.code || null,
+          error_status: err?.status || null,
+        });
       } finally {
         setSubmitting(false);
       }
@@ -393,20 +425,16 @@ export default function WriteReviewPage() {
 
     if (mode !== 'in_app' || !productIdParam || !inAppPdp?.payload) return;
 
-    if (!user) {
-      const redirect = `${window.location.pathname}${window.location.search}`;
-      toast.message('Please log in to write a review.');
-      router.push(`/login?redirect=${encodeURIComponent(redirect)}`);
-      return;
-    }
-
-    if (inAppEligibility && !inAppEligibility.eligible) {
-      const reason = String(inAppEligibility.reason || '').toUpperCase();
-      if (reason === 'ALREADY_REVIEWED') {
-        toast.message('You already reviewed this product.');
-      } else {
-        toast.message('Only purchasers can write a review.');
-      }
+    const inAppGate = resolveReviewGate({
+      isAuthenticated: Boolean(user),
+      eligibility: inAppEligibility || null,
+    });
+    trackReviewEvent('pdp_review_gate_total', {
+      entry_surface: 'write_review_page',
+      mode: 'in_app',
+      review_gate_reason: reviewGateResultToReason(inAppGate),
+    });
+    if (handleBlockedReviewGate(inAppGate)) {
       return;
     }
 
@@ -438,11 +466,14 @@ export default function WriteReviewPage() {
       const rid = Number((data as any)?.review_id);
       if (Number.isFinite(rid)) setReviewId(rid);
       toast.success('Review submitted');
+      trackReviewEvent('review_submit_total', {
+        entry_surface: 'write_review_page',
+        mode: 'in_app',
+        result: 'success',
+      });
     } catch (err: any) {
       if (err?.code === 'NOT_AUTHENTICATED' || err?.status === 401) {
-        const redirect = `${window.location.pathname}${window.location.search}`;
-        toast.message('Please log in to write a review.');
-        router.push(`/login?redirect=${encodeURIComponent(redirect)}`);
+        requireLoginForReview();
       } else if (err?.code === 'NOT_PURCHASER' || err?.status === 403) {
         toast.error('Only purchasers can write a review.');
       } else if (err?.code === 'ALREADY_REVIEWED' || err?.status === 409) {
@@ -450,6 +481,13 @@ export default function WriteReviewPage() {
       } else {
         toast.error(err?.message || 'Submit failed');
       }
+      trackReviewEvent('review_submit_total', {
+        entry_surface: 'write_review_page',
+        mode: 'in_app',
+        result: 'failed',
+        error_code: err?.code || null,
+        error_status: err?.status || null,
+      });
     } finally {
       setSubmitting(false);
     }

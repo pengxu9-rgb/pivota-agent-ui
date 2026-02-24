@@ -10,6 +10,14 @@ import { safeReturnUrl } from '@/lib/returnUrl'
 
 type LoginMethod = 'otp' | 'password'
 
+const trackAuthSession = (payload: Record<string, unknown>) => {
+  // eslint-disable-next-line no-console
+  console.log('[TRACK]', 'aurora_session_source', {
+    ...payload,
+    ts: new Date().toISOString(),
+  })
+}
+
 function LoginContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -41,6 +49,11 @@ function LoginContent() {
         user: (data as any).user,
         memberships: (data as any).memberships || [],
         active_merchant_id: (data as any).active_merchant_id,
+      })
+      trackAuthSession({
+        session_source: 'login',
+        method: 'password',
+        user_id: (data as any)?.user?.id || null,
       })
       toast.success('Login successful')
       router.replace(redirect)
@@ -97,6 +110,11 @@ function LoginContent() {
         user: (data as any).user,
         memberships: (data as any).memberships || [],
         active_merchant_id: (data as any).active_merchant_id,
+      })
+      trackAuthSession({
+        session_source: 'login',
+        method: 'otp',
+        user_id: (data as any)?.user?.id || null,
       })
       const hasPassword = Boolean((data as any)?.user?.has_password)
       if (!hasPassword) {
