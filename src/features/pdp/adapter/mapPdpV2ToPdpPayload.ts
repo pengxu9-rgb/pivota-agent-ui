@@ -3,6 +3,7 @@ import type { Module, PDPPayload, RecommendationsData, ReviewsPreviewData } from
 
 const IMAGE_PROXY_PATH = '/api/image-proxy';
 const ABSOLUTE_HTTP_URL_RE = /^https?:\/\//i;
+const KNOWN_SKU_DUPLICATE_HOSTS = new Set(['sdcdn.io']);
 const IMAGE_DEDUPE_IGNORED_QUERY_KEYS = new Set([
   'w',
   'width',
@@ -16,6 +17,8 @@ const IMAGE_DEDUPE_IGNORED_QUERY_KEYS = new Set([
   'fm',
   'fit',
 ]);
+const SKU_FILENAME_NORMALIZE_RE =
+  /^(.+?sku_)[a-z0-9]+_(\d{3,4}x\d{3,4}_[0-9]+(?:\.[a-z0-9]+))$/i;
 
 function isRecord(value: unknown): value is Record<string, any> {
   return Boolean(value && typeof value === 'object' && !Array.isArray(value));
@@ -76,13 +79,53 @@ function buildImageDedupeKey(url: unknown): string | null {
   try {
     const parsed = absoluteHttp ? new URL(unwrapped) : new URL(unwrapped, 'http://localhost');
     const normalizedSearch = normalizeSearchParamsForDedupe(parsed);
+    const normalizedPath = normalizeImagePathForDedupe({
+      pathname: parsed.pathname,
+      hostname: absoluteHttp ? parsed.hostname : '',
+      isAbsoluteHttp: absoluteHttp,
+    });
     if (absoluteHttp) {
-      return `${parsed.protocol}//${parsed.host}${parsed.pathname}${normalizedSearch ? `?${normalizedSearch}` : ''}`;
+      return `${parsed.protocol}//${parsed.host}${normalizedPath}${normalizedSearch ? `?${normalizedSearch}` : ''}`;
     }
-    return `${parsed.pathname}${normalizedSearch ? `?${normalizedSearch}` : ''}`;
+    return `${normalizedPath}${normalizedSearch ? `?${normalizedSearch}` : ''}`;
   } catch {
     return unwrapped;
   }
+}
+
+function isKnownSkuDuplicateHost(hostname: string): boolean {
+  const normalizedHost = String(hostname || '').trim().toLowerCase();
+  if (!normalizedHost) return false;
+  if (KNOWN_SKU_DUPLICATE_HOSTS.has(normalizedHost)) return true;
+  for (const host of KNOWN_SKU_DUPLICATE_HOSTS) {
+    if (normalizedHost.endsWith(`.${host}`)) return true;
+  }
+  return false;
+}
+
+function normalizeKnownSkuFilename(filename: string): string {
+  if (!filename) return filename;
+  const matched = filename.match(SKU_FILENAME_NORMALIZE_RE);
+  if (!matched) return filename;
+  return `${matched[1]}${matched[2]}`;
+}
+
+function normalizeImagePathForDedupe(args: {
+  pathname: string;
+  hostname: string;
+  isAbsoluteHttp: boolean;
+}): string {
+  const pathname = String(args.pathname || '');
+  if (!pathname) return pathname;
+  if (!args.isAbsoluteHttp || !isKnownSkuDuplicateHost(args.hostname)) return pathname;
+
+  const segments = pathname.split('/');
+  if (!segments.length) return pathname;
+  const lastIndex = segments.length - 1;
+  const normalizedFilename = normalizeKnownSkuFilename(segments[lastIndex] || '');
+  if (!normalizedFilename || normalizedFilename === segments[lastIndex]) return pathname;
+  segments[lastIndex] = normalizedFilename;
+  return segments.join('/');
 }
 
 function normalizeMediaGalleryModule(module: Module): Module {
