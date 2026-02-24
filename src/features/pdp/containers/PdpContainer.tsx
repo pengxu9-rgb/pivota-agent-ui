@@ -24,7 +24,13 @@ import type {
   ReviewsPreviewData,
   Variant,
 } from '@/features/pdp/types';
-import { listQuestions, postQuestion, type QuestionListItem, type UgcCapabilities } from '@/lib/api';
+import {
+  findSimilarProducts,
+  listQuestions,
+  postQuestion,
+  type QuestionListItem,
+  type UgcCapabilities,
+} from '@/lib/api';
 import { isBeautyProduct } from '@/features/pdp/utils/isBeautyProduct';
 import {
   collectColorOptions,
@@ -41,6 +47,7 @@ import { PdpMediaViewer } from '@/features/pdp/components/PdpMediaViewer';
 import { VariantSelector } from '@/features/pdp/sections/VariantSelector';
 import { DetailsAccordion } from '@/features/pdp/sections/DetailsAccordion';
 import { RecommendationsGrid, RecommendationsSkeleton } from '@/features/pdp/sections/RecommendationsGrid';
+import { SimilarProductsSheet } from '@/features/pdp/sections/SimilarProductsSheet';
 import { BeautyReviewsSection } from '@/features/pdp/sections/BeautyReviewsSection';
 import { BeautyUgcGallery } from '@/features/pdp/sections/BeautyUgcGallery';
 import { BeautyRecentPurchases } from '@/features/pdp/sections/BeautyRecentPurchases';
@@ -93,6 +100,97 @@ function StarRating({ value }: { value: number }) {
       ))}
     </div>
   );
+}
+
+const SIMILAR_PAGE_SIZE = 6;
+const SIMILAR_VIEW_ALL_MIN = 12;
+const SIMILAR_MAX = 30;
+
+function toFiniteNumber(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
+}
+
+function normalizeRecommendationItems(
+  items: unknown[],
+  fallbackCurrency: string,
+): RecommendationsData['items'] {
+  return items
+    .map((item) => {
+      if (!item || typeof item !== 'object') return null;
+      const source = item as Record<string, unknown>;
+      const productId = String(
+        source.product_id ||
+          source.id ||
+          (source.productRef as any)?.product_id ||
+          (source.product_ref as any)?.product_id ||
+          '',
+      ).trim();
+      if (!productId) return null;
+
+      const merchantId = String(
+        source.merchant_id ||
+          source.merchantId ||
+          (source.merchant as any)?.id ||
+          (source.productRef as any)?.merchant_id ||
+          (source.product_ref as any)?.merchant_id ||
+          '',
+      ).trim();
+
+      const priceAmount =
+        toFiniteNumber((source.price as any)?.amount) ??
+        toFiniteNumber(source.price_amount) ??
+        toFiniteNumber(source.price) ??
+        0;
+      const priceCurrency =
+        String((source.price as any)?.currency || source.currency || '').trim() || fallbackCurrency;
+
+      const rating = toFiniteNumber(source.rating);
+      const reviewCount =
+        toFiniteNumber(source.review_count) ?? toFiniteNumber(source.reviewCount);
+
+      return {
+        product_id: productId,
+        title: String(source.title || source.name || 'Untitled product'),
+        ...(merchantId ? { merchant_id: merchantId } : {}),
+        ...(typeof source.image_url === 'string' ? { image_url: source.image_url } : {}),
+        ...(priceAmount > 0
+          ? {
+              price: {
+                amount: priceAmount,
+                currency: priceCurrency,
+              },
+            }
+          : {}),
+        ...(rating != null ? { rating } : {}),
+        ...(reviewCount != null ? { review_count: Math.max(0, Math.round(reviewCount)) } : {}),
+      } satisfies RecommendationsData['items'][number];
+    })
+    .filter(Boolean) as RecommendationsData['items'];
+}
+
+function mergeRecommendationItems(
+  current: RecommendationsData['items'],
+  incoming: RecommendationsData['items'],
+): { items: RecommendationsData['items']; added: number } {
+  const seen = new Set<string>();
+  const merged: RecommendationsData['items'] = [];
+
+  const append = (item: RecommendationsData['items'][number]) => {
+    const key = `${String(item.merchant_id || '').trim()}:${String(item.product_id || '').trim()}`;
+    if (!item.product_id || seen.has(key)) return;
+    seen.add(key);
+    merged.push(item);
+  };
+
+  current.forEach(append);
+  const before = merged.length;
+  incoming.forEach(append);
+  return { items: merged, added: merged.length - before };
 }
 
 export function PdpContainer({
@@ -162,6 +260,13 @@ export function PdpContainer({
   const [ugcQuestions, setUgcQuestions] = useState<QuestionListItem[]>([]);
   const questionsFetchedProductIdRef = useRef<string>('');
   const latestProductGroupIdRef = useRef<string | null>(null);
+  const [similarItems, setSimilarItems] = useState<RecommendationsData['items']>([]);
+  const [similarVisibleCount, setSimilarVisibleCount] = useState(SIMILAR_PAGE_SIZE);
+  const [similarHasMore, setSimilarHasMore] = useState(true);
+  const [similarLoadingMore, setSimilarLoadingMore] = useState(false);
+  const [similarSheetOpen, setSimilarSheetOpen] = useState(false);
+  const [similarStrategy, setSimilarStrategy] = useState('related_products');
+  const similarResetProductIdRef = useRef<string>('');
 
   const variants = useMemo(() => payload.product.variants ?? [], [payload.product.variants]);
 
@@ -202,7 +307,9 @@ export function PdpContainer({
   const pricePromo = getModuleData<PricePromoData>(payload, 'price_promo');
   const details = getModuleData<ProductDetailsData>(payload, 'product_details');
   const reviews = getModuleData<ReviewsPreviewData>(payload, 'reviews_preview');
-  const recommendations = getModuleData<RecommendationsData>(payload, 'recommendations');
+  const payloadRecommendations = getModuleData<RecommendationsData>(payload, 'recommendations');
+  const recommendationCurrencyFallback =
+    payload.product.price?.current.currency || payload.product.price?.compare_at?.currency || 'USD';
 
   const offers = useMemo(() => payload.offers ?? [], [payload.offers]);
   const [selectedOfferId, setSelectedOfferId] = useState<string | null>(() => {
@@ -316,6 +423,61 @@ export function PdpContainer({
     ugcTracked.current = false;
     similarTracked.current = false;
   }, [payload.product.product_id]);
+
+  useEffect(() => {
+    if (similarResetProductIdRef.current === payload.product.product_id) return;
+    similarResetProductIdRef.current = payload.product.product_id;
+
+    const initialItems = normalizeRecommendationItems(
+      payloadRecommendations?.items || [],
+      recommendationCurrencyFallback,
+    );
+    const initialStrategy =
+      typeof payloadRecommendations?.strategy === 'string' && payloadRecommendations.strategy.trim()
+        ? payloadRecommendations.strategy
+        : 'related_products';
+    setSimilarItems(initialItems);
+    setSimilarStrategy(initialStrategy);
+    setSimilarVisibleCount(SIMILAR_PAGE_SIZE);
+    setSimilarHasMore(initialItems.length < SIMILAR_MAX);
+    setSimilarLoadingMore(false);
+    setSimilarSheetOpen(false);
+  }, [
+    payload.product.product_id,
+    payloadRecommendations?.items,
+    payloadRecommendations?.strategy,
+    recommendationCurrencyFallback,
+  ]);
+
+  useEffect(() => {
+    const incomingItems = normalizeRecommendationItems(
+      payloadRecommendations?.items || [],
+      recommendationCurrencyFallback,
+    );
+    if (!incomingItems.length) return;
+    setSimilarItems((prev) => mergeRecommendationItems(prev, incomingItems).items);
+    if (incomingItems.length >= SIMILAR_MAX) {
+      setSimilarHasMore(false);
+    }
+    if (
+      typeof payloadRecommendations?.strategy === 'string' &&
+      payloadRecommendations.strategy.trim()
+    ) {
+      setSimilarStrategy(payloadRecommendations.strategy);
+    }
+  }, [
+    payloadRecommendations?.items,
+    payloadRecommendations?.strategy,
+    recommendationCurrencyFallback,
+  ]);
+
+  const recommendations = useMemo<RecommendationsData>(
+    () => ({
+      strategy: similarStrategy || payloadRecommendations?.strategy || 'related_products',
+      items: similarItems,
+    }),
+    [payloadRecommendations?.strategy, similarItems, similarStrategy],
+  );
 
   useEffect(() => {
     if (!isInStock) {
@@ -766,6 +928,141 @@ export function PdpContainer({
   const productGroupId = String(payload.product_group_id || selectedOffer?.product_group_id || '').trim() || null;
   const merchantId = String(payload.product.merchant_id || '').trim() || null;
   latestProductGroupIdRef.current = productGroupId;
+
+  const loadMoreSimilarWithTarget = useCallback(
+    async (targetVisibleCount: number) => {
+      const safeTarget = Math.max(
+        SIMILAR_PAGE_SIZE,
+        Math.min(Math.floor(targetVisibleCount), SIMILAR_MAX),
+      );
+
+      if (safeTarget <= similarItems.length) {
+        setSimilarVisibleCount((prev) => Math.max(prev, safeTarget));
+        return true;
+      }
+      if (similarLoadingMore) return false;
+      if (!productId) return false;
+
+      setSimilarLoadingMore(true);
+      try {
+        const response = await findSimilarProducts({
+          product_id: productId,
+          ...(merchantId ? { merchant_id: merchantId } : {}),
+          limit: safeTarget,
+          timeout_ms: 3500,
+        });
+
+        const incomingItems = normalizeRecommendationItems(
+          response?.products || [],
+          recommendationCurrencyFallback,
+        );
+
+        let mergedCount = similarItems.length;
+        let addedCount = 0;
+        setSimilarItems((prev) => {
+          const merged = mergeRecommendationItems(prev, incomingItems);
+          mergedCount = merged.items.length;
+          addedCount = merged.added;
+          return merged.items;
+        });
+
+        if (typeof response?.strategy === 'string' && response.strategy.trim()) {
+          setSimilarStrategy(response.strategy);
+        }
+
+        setSimilarVisibleCount((prev) => Math.min(Math.max(prev, safeTarget), SIMILAR_MAX));
+
+        const totalRaw = toFiniteNumber(response?.total);
+        setSimilarHasMore(() => {
+          if (mergedCount >= SIMILAR_MAX) return false;
+          if (totalRaw != null) {
+            return mergedCount < Math.min(Math.max(0, Math.floor(totalRaw)), SIMILAR_MAX);
+          }
+          if (addedCount === 0) return false;
+          return true;
+        });
+
+        return true;
+      } catch {
+        toast.error('Unable to load more recommendations. Please try again.');
+        return false;
+      } finally {
+        setSimilarLoadingMore(false);
+      }
+    },
+    [
+      merchantId,
+      productId,
+      recommendationCurrencyFallback,
+      similarItems.length,
+      similarLoadingMore,
+    ],
+  );
+
+  const handleOpenSimilarAll = useCallback(async () => {
+    setSimilarSheetOpen(true);
+    pdpTracking.track('similar_open_all', {
+      loaded_count: similarItems.length,
+      visible_count: Math.min(similarVisibleCount, similarItems.length),
+      source: pdpViewModel.sourceLocks.similar ? 'locked' : 'live',
+    });
+
+    const target = Math.min(
+      Math.max(SIMILAR_VIEW_ALL_MIN, similarVisibleCount),
+      SIMILAR_MAX,
+    );
+    if (target > similarItems.length && similarHasMore) {
+      await loadMoreSimilarWithTarget(target);
+    }
+  }, [
+    loadMoreSimilarWithTarget,
+    pdpViewModel.sourceLocks.similar,
+    similarHasMore,
+    similarItems.length,
+    similarVisibleCount,
+  ]);
+
+  const handleSimilarLoadMore = useCallback(async () => {
+    const target = Math.min(similarVisibleCount + SIMILAR_PAGE_SIZE, SIMILAR_MAX);
+    pdpTracking.track('similar_load_more', {
+      loaded_count: similarItems.length,
+      visible_count: Math.min(similarVisibleCount, similarItems.length),
+      target_visible_count: target,
+      source: pdpViewModel.sourceLocks.similar ? 'locked' : 'live',
+    });
+    if (target <= similarItems.length) {
+      setSimilarVisibleCount(target);
+      return;
+    }
+    if (!similarHasMore) return;
+    await loadMoreSimilarWithTarget(target);
+  }, [
+    loadMoreSimilarWithTarget,
+    pdpViewModel.sourceLocks.similar,
+    similarHasMore,
+    similarItems.length,
+    similarVisibleCount,
+  ]);
+
+  const handleSimilarSheetLoadMore = useCallback(async () => {
+    const target = Math.min(similarItems.length + SIMILAR_PAGE_SIZE, SIMILAR_MAX);
+    pdpTracking.track('similar_load_more', {
+      loaded_count: similarItems.length,
+      visible_count: Math.min(similarVisibleCount, similarItems.length),
+      target_visible_count: target,
+      source: pdpViewModel.sourceLocks.similar ? 'locked' : 'live',
+      entry_surface: 'similar_sheet',
+    });
+    if (target <= similarItems.length) return;
+    if (!similarHasMore) return;
+    await loadMoreSimilarWithTarget(target);
+  }, [
+    loadMoreSimilarWithTarget,
+    pdpViewModel.sourceLocks.similar,
+    similarHasMore,
+    similarItems.length,
+    similarVisibleCount,
+  ]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1730,10 +2027,17 @@ export function PdpContainer({
               {hasRecommendationItems ? (
                 <RecommendationsGrid
                   data={recommendations}
+                  visibleCount={similarVisibleCount}
+                  canLoadMore={similarHasMore || similarVisibleCount < similarItems.length}
+                  isLoadingMore={similarLoadingMore}
+                  onLoadMore={() => {
+                    void handleSimilarLoadMore();
+                  }}
                   onOpenAll={() => {
                     pdpTracking.track('pdp_action_click', {
                       action_type: 'open_similar_all',
                     });
+                    void handleOpenSimilarAll();
                   }}
                   onItemClick={(item, index) => {
                     pdpTracking.track('similar_click', {
@@ -1932,6 +2236,25 @@ export function PdpContainer({
             action_type: 'select_variant',
             option_name: 'color',
             option_value: value,
+          });
+        }}
+      />
+      <SimilarProductsSheet
+        open={similarSheetOpen}
+        onClose={() => setSimilarSheetOpen(false)}
+        items={similarItems}
+        canLoadMore={similarHasMore}
+        isLoadingMore={similarLoadingMore}
+        onLoadMore={() => {
+          void handleSimilarSheetLoadMore();
+        }}
+        onItemClick={(item, index) => {
+          pdpTracking.track('similar_click', {
+            index,
+            product_id: item.product_id,
+            merchant_id: item.merchant_id || null,
+            source: pdpViewModel.sourceLocks.similar ? 'locked' : 'live',
+            entry_surface: 'similar_sheet',
           });
         }}
       />

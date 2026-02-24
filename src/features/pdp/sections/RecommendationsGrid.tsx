@@ -90,30 +90,45 @@ export function optimizeRecommendationImageUrl(rawUrl: string, width = 480): str
 
 export function RecommendationsGrid({
   data,
+  visibleCount,
+  canLoadMore = false,
+  isLoadingMore = false,
+  onLoadMore,
   onItemClick,
   onOpenAll,
 }: {
   data: RecommendationsData;
+  visibleCount?: number;
+  canLoadMore?: boolean;
+  isLoadingMore?: boolean;
+  onLoadMore?: () => void;
   onItemClick?: (item: RecommendationsData['items'][number], index: number) => void;
   onOpenAll?: () => void;
 }) {
   if (!data.items.length) return null;
+  const resolvedVisibleCount = Number.isFinite(visibleCount as number)
+    ? Math.max(0, Math.floor(visibleCount as number))
+    : data.items.length;
+  const visibleItems = data.items.slice(0, resolvedVisibleCount);
+  const showLoadMore = Boolean(onLoadMore) && (canLoadMore || isLoadingMore);
   return (
     <div className="py-6">
       <div className="px-4 flex items-center justify-between mb-3">
         <h3 className="text-sm font-semibold">You May Also Like</h3>
-        <button
-          type="button"
-          onClick={onOpenAll}
-          className="text-xs text-muted-foreground flex items-center gap-1 hover:text-foreground"
-        >
-          View all <ChevronRight className="h-4 w-4" />
-        </button>
+        {onOpenAll ? (
+          <button
+            type="button"
+            onClick={onOpenAll}
+            className="text-xs text-muted-foreground flex items-center gap-1 hover:text-foreground"
+          >
+            View all <ChevronRight className="h-4 w-4" />
+          </button>
+        ) : null}
       </div>
       <div className="px-4 grid grid-cols-2 gap-3">
-        {data.items.slice(0, 6).map((p, idx) => (
+        {visibleItems.map((p, idx) => (
           <Link
-            key={p.product_id}
+            key={`${p.merchant_id || 'unknown'}:${p.product_id}:${idx}`}
             href={`/products/${encodeURIComponent(p.product_id)}${p.merchant_id ? `?merchant_id=${encodeURIComponent(p.merchant_id)}` : ''}`}
             prefetch={false}
             className="rounded-xl bg-card border border-border overflow-hidden hover:shadow-md transition-shadow"
@@ -157,9 +172,16 @@ export function RecommendationsGrid({
           </Link>
         ))}
       </div>
-      <button className="w-full mt-4 py-3 text-sm text-muted-foreground hover:text-foreground">
-        Load more recommendations
-      </button>
+      {showLoadMore ? (
+        <button
+          type="button"
+          onClick={onLoadMore}
+          disabled={isLoadingMore}
+          className="w-full mt-4 py-3 text-sm text-muted-foreground hover:text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
+        >
+          {isLoadingMore ? 'Loading more…' : 'Load more recommendations'}
+        </button>
+      ) : null}
     </div>
   );
 }

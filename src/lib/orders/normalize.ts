@@ -27,6 +27,8 @@ export type NormalizedOrderListItem = {
 
 export type NormalizedOrderItem = {
   id: string | null
+  productId: string | null
+  merchantId: string | null
   title: string
   quantity: number
   unitPriceMinor: number
@@ -188,6 +190,12 @@ const normalizeItemOptionsText = (raw: unknown): string | null => {
 
 const normalizeOrderItem = (raw: unknown): NormalizedOrderItem => {
   const source = isRecord(raw) ? raw : {}
+  const productSource = isRecord(source.product) ? source.product : null
+  const productRefSource = isRecord(source.product_ref)
+    ? source.product_ref
+    : isRecord(source.productRef)
+      ? source.productRef
+      : null
   const quantityValue = asNumber(source.quantity ?? source.qty ?? 1)
   const quantity = quantityValue && quantityValue > 0 ? Math.round(quantityValue) : 1
 
@@ -203,9 +211,19 @@ const normalizeOrderItem = (raw: unknown): NormalizedOrderItem => {
   )
 
   const fallbackSubtotal = unitPriceMinor > 0 ? unitPriceMinor * quantity : 0
+  const productId =
+    pickString(source, ['product_id']) ||
+    (productSource ? pickString(productSource, ['product_id']) : null) ||
+    (productRefSource ? pickString(productRefSource, ['product_id']) : null)
+  const merchantId =
+    pickString(source, ['merchant_id']) ||
+    (productSource ? pickString(productSource, ['merchant_id']) : null) ||
+    (productRefSource ? pickString(productRefSource, ['merchant_id']) : null)
 
   return {
     id: pickString(source, ['item_id', 'line_item_id', 'id', 'product_id']),
+    productId,
+    merchantId,
     title: pickString(source, ['title', 'product_title', 'name']) || 'Item',
     quantity,
     unitPriceMinor,
@@ -376,7 +394,16 @@ export const normalizeOrderDetail = (raw: unknown): NormalizedOrderDetail | null
       : Array.isArray(orderSource.line_items)
         ? orderSource.line_items
         : []
-  const items = itemsRaw.map(normalizeOrderItem)
+  const orderMerchantId = pickString(orderSource, ['merchant_id'])
+  const items = itemsRaw.map(normalizeOrderItem).map((item) => {
+    if (item.productId && !item.merchantId && orderMerchantId) {
+      return {
+        ...item,
+        merchantId: orderMerchantId,
+      }
+    }
+    return item
+  })
 
   const paymentRecordsRaw =
     isRecord(raw.payment) && Array.isArray(raw.payment.records)

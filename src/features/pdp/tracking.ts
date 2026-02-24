@@ -19,6 +19,8 @@ export type PdpTrackingEvent =
   | 'ugc_click_item'
   | 'similar_impression'
   | 'similar_click'
+  | 'similar_open_all'
+  | 'similar_load_more'
   | 'reviews_shell_open'
   | 'reviews_shell_close';
 

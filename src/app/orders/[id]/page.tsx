@@ -678,7 +678,18 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                       )}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm font-medium">{item.title}</div>
+                      {item.productId ? (
+                        <Link
+                          href={`/products/${encodeURIComponent(item.productId)}${
+                            item.merchantId ? `?merchant_id=${encodeURIComponent(item.merchantId)}` : ''
+                          }`}
+                          className="truncate text-sm font-medium text-foreground hover:underline"
+                        >
+                          {item.title}
+                        </Link>
+                      ) : (
+                        <div className="truncate text-sm font-medium">{item.title}</div>
+                      )}
                       <div className="text-xs text-muted-foreground">
                         Qty {item.quantity}
                         {item.unitPriceMinor > 0 ? ` · ${formatMoney(item.unitPriceMinor, order.currency)}` : ''}
