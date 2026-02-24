@@ -18,7 +18,7 @@ const IMAGE_DEDUPE_IGNORED_QUERY_KEYS = new Set([
   'fit',
 ]);
 const SKU_FILENAME_NORMALIZE_RE =
-  /^(.+?sku_)[a-z0-9]+_(\d{3,4}x\d{3,4}_[0-9]+(?:\.[a-z0-9]+))$/i;
+  /^(.+?sku_)[a-z0-9_-]+_(\d{3,4}x\d{3,4}_[0-9]+)(?:\.[a-z0-9]+)$/i;
 
 function isRecord(value: unknown): value is Record<string, any> {
   return Boolean(value && typeof value === 'object' && !Array.isArray(value));

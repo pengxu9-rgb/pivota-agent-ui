@@ -188,7 +188,7 @@ describe('mapPdpV2ToPdpPayload image normalization', () => {
     ]);
   });
 
-  it('deduplicates known external-seed SKU filename duplicates', () => {
+  it('deduplicates known external-seed SKU slot duplicates across sku codes and extensions', () => {
     const response = buildMinimalResponse();
     response.modules[0].data.pdp_payload.modules[0].data.items = [
       {
@@ -197,7 +197,7 @@ describe('mapPdpV2ToPdpPayload image normalization', () => {
       },
       {
         type: 'image',
-        url: 'https://sdcdn.io/tf/tf_sku_T14S01_3000x3000_0.png?width=650px&height=750px',
+        url: 'https://sdcdn.io/tf/tf_sku_T14S01_3000x3000_0.jpg?width=650px&height=750px',
       },
       {
         type: 'image',
@@ -209,11 +209,19 @@ describe('mapPdpV2ToPdpPayload image normalization', () => {
       },
       {
         type: 'image',
-        url: 'https://sdcdn.io/tf/tf_sku_T13S01_2000x2000_1.jpg?width=650px&height=750px',
+        url: 'https://sdcdn.io/tf/tf_sku_T13S01_2000x2000_1.png?width=650px&height=750px',
       },
       {
         type: 'image',
-        url: 'https://sdcdn.io/tf/tf_sku_T2TL01_2000x2000_1.png?width=650px&height=750px',
+        url: 'https://sdcdn.io/tf/tf_sku_T2TL01_2000x2000_0.png?width=650px&height=750px',
+      },
+      {
+        type: 'image',
+        url: 'https://sdcdn.io/tf/tf_sku_T4DB01_US_3000x3000_0.png?width=650px&height=750px',
+      },
+      {
+        type: 'image',
+        url: 'https://sdcdn.io/tf/tf_sku_T14Z01_2000x2000_2.jpg?width=650px&height=750px',
       },
     ];
 
@@ -222,13 +230,14 @@ describe('mapPdpV2ToPdpPayload image normalization', () => {
     const items = Array.isArray(mediaGallery?.data?.items) ? mediaGallery.data.items : [];
     const imageItems = items.filter((item: any) => item?.type === 'image');
 
-    expect(imageItems).toHaveLength(3);
+    expect(imageItems).toHaveLength(4);
     expect(
       imageItems.map((item: any) => unwrapProxyTarget(String(item?.url || ''))),
     ).toEqual([
       'https://sdcdn.io/tf/tf_sku_T14Q01_3000x3000_0.png',
       'https://sdcdn.io/tf/tf_sku_T14Q01_2000x2000_1.jpg',
-      'https://sdcdn.io/tf/tf_sku_T2TL01_2000x2000_1.png?width=650px&height=750px',
+      'https://sdcdn.io/tf/tf_sku_T2TL01_2000x2000_0.png?width=650px&height=750px',
+      'https://sdcdn.io/tf/tf_sku_T14Z01_2000x2000_2.jpg?width=650px&height=750px',
     ]);
   });
 });
