@@ -80,6 +80,16 @@ function buildMinimalResponse() {
   } as any;
 }
 
+function unwrapProxyTarget(url: string): string {
+  try {
+    const parsed = new URL(url, 'http://localhost');
+    if (parsed.pathname !== '/api/image-proxy') return url;
+    return parsed.searchParams.get('url') || url;
+  } catch {
+    return url;
+  }
+}
+
 describe('mapPdpV2ToPdpPayload image normalization', () => {
   it('proxies external image URLs in canonical payload and modules', () => {
     const payload = mapPdpV2ToPdpPayload(buildMinimalResponse());
@@ -127,5 +137,54 @@ describe('mapPdpV2ToPdpPayload image normalization', () => {
     expect(mediaGallery?.data?.items?.[0]?.url).toBe(
       '/api/image-proxy?url=https%3A%2F%2Fsdcdn.io%2Ftf%2Falready-media.png',
     );
+  });
+
+  it('deduplicates official media image URLs while keeping videos', () => {
+    const response = buildMinimalResponse();
+    response.modules[0].data.pdp_payload.modules[0].data.items = [
+      {
+        type: 'image',
+        url: 'https://sdcdn.io/tf/hero.png?width=1200&height=1200',
+      },
+      {
+        type: 'image',
+        url: 'https://sdcdn.io/tf/hero.png?w=640&h=640',
+      },
+      {
+        type: 'image',
+        url: '/api/image-proxy?url=https%3A%2F%2Fsdcdn.io%2Ftf%2Fhero.png%3Fquality%3D80',
+      },
+      {
+        type: 'image',
+        url: 'https://sdcdn.io/tf/detail.png?width=640',
+      },
+      {
+        type: 'video',
+        url: 'https://cdn.example.com/video.mp4',
+      },
+      {
+        type: 'video',
+        url: 'https://cdn.example.com/video.mp4',
+      },
+    ];
+
+    const payload = mapPdpV2ToPdpPayload(response);
+    const mediaGallery = payload?.modules.find((m) => m.type === 'media_gallery') as any;
+    const items = Array.isArray(mediaGallery?.data?.items) ? mediaGallery.data.items : [];
+    const imageItems = items.filter((item: any) => item?.type === 'image');
+    const videoItems = items.filter((item: any) => item?.type === 'video');
+
+    expect(imageItems).toHaveLength(2);
+    expect(
+      imageItems.map((item: any) => unwrapProxyTarget(String(item?.url || ''))),
+    ).toEqual([
+      'https://sdcdn.io/tf/hero.png?width=1200&height=1200',
+      'https://sdcdn.io/tf/detail.png?width=640',
+    ]);
+    expect(videoItems).toHaveLength(2);
+    expect(videoItems.map((item: any) => item.url)).toEqual([
+      'https://cdn.example.com/video.mp4',
+      'https://cdn.example.com/video.mp4',
+    ]);
   });
 });

@@ -3,6 +3,19 @@ import type { Module, PDPPayload, RecommendationsData, ReviewsPreviewData } from
 
 const IMAGE_PROXY_PATH = '/api/image-proxy';
 const ABSOLUTE_HTTP_URL_RE = /^https?:\/\//i;
+const IMAGE_DEDUPE_IGNORED_QUERY_KEYS = new Set([
+  'w',
+  'width',
+  'h',
+  'height',
+  'q',
+  'quality',
+  'dpr',
+  'auto',
+  'format',
+  'fm',
+  'fit',
+]);
 
 function isRecord(value: unknown): value is Record<string, any> {
   return Boolean(value && typeof value === 'object' && !Array.isArray(value));
@@ -27,21 +40,84 @@ function normalizePdpImageUrl(url: unknown): string | null {
   return `${IMAGE_PROXY_PATH}?url=${encodeURIComponent(trimmed)}`;
 }
 
+function extractProxyTarget(url: string): string {
+  if (!url) return url;
+  try {
+    const parsed = new URL(url, 'http://localhost');
+    if (parsed.pathname !== IMAGE_PROXY_PATH) return url;
+    const target = parsed.searchParams.get('url');
+    return target ? target : url;
+  } catch {
+    return url;
+  }
+}
+
+function normalizeSearchParamsForDedupe(url: URL): string {
+  const next = new URLSearchParams();
+  const sortedEntries = Array.from(url.searchParams.entries()).sort(([aKey, aValue], [bKey, bValue]) => {
+    if (aKey === bKey) return aValue.localeCompare(bValue);
+    return aKey.localeCompare(bKey);
+  });
+  for (const [key, value] of sortedEntries) {
+    if (IMAGE_DEDUPE_IGNORED_QUERY_KEYS.has(String(key || '').toLowerCase())) continue;
+    next.append(key, value);
+  }
+  return next.toString();
+}
+
+function buildImageDedupeKey(url: unknown): string | null {
+  if (typeof url !== 'string') return null;
+  const trimmed = url.trim();
+  if (!trimmed) return null;
+
+  const unwrapped = extractProxyTarget(trimmed);
+  const absoluteHttp = ABSOLUTE_HTTP_URL_RE.test(unwrapped);
+
+  try {
+    const parsed = absoluteHttp ? new URL(unwrapped) : new URL(unwrapped, 'http://localhost');
+    const normalizedSearch = normalizeSearchParamsForDedupe(parsed);
+    if (absoluteHttp) {
+      return `${parsed.protocol}//${parsed.host}${parsed.pathname}${normalizedSearch ? `?${normalizedSearch}` : ''}`;
+    }
+    return `${parsed.pathname}${normalizedSearch ? `?${normalizedSearch}` : ''}`;
+  } catch {
+    return unwrapped;
+  }
+}
+
 function normalizeMediaGalleryModule(module: Module): Module {
   if (module?.type !== 'media_gallery' || !isRecord(module.data)) return module;
   const items = Array.isArray(module.data.items) ? module.data.items : [];
   if (!items.length) return module;
 
-  const normalizedItems = items.map((item) => {
-    if (!isRecord(item)) return item;
-    if (String(item.type || '').trim().toLowerCase() === 'video') return item;
+  const seenImageKeys = new Set<string>();
+  const normalizedItems: unknown[] = [];
+  for (const item of items) {
+    if (!isRecord(item)) {
+      normalizedItems.push(item);
+      continue;
+    }
+    if (String(item.type || '').trim().toLowerCase() === 'video') {
+      normalizedItems.push(item);
+      continue;
+    }
+    const dedupeKey = buildImageDedupeKey(item.url);
+    if (dedupeKey && seenImageKeys.has(dedupeKey)) {
+      continue;
+    }
+    if (dedupeKey) {
+      seenImageKeys.add(dedupeKey);
+    }
     const normalizedUrl = normalizePdpImageUrl(item.url);
-    if (!normalizedUrl || normalizedUrl === item.url) return item;
-    return {
+    if (!normalizedUrl || normalizedUrl === item.url) {
+      normalizedItems.push(item);
+      continue;
+    }
+    normalizedItems.push({
       ...item,
       url: normalizedUrl,
-    };
-  });
+    });
+  }
 
   return {
     ...module,
