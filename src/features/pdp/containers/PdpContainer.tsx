@@ -28,6 +28,7 @@ import {
   findSimilarProducts,
   listQuestions,
   postQuestion,
+  type FindSimilarProductsResponse,
   type QuestionListItem,
   type UgcCapabilities,
 } from '@/lib/api';
@@ -193,6 +194,43 @@ function mergeRecommendationItems(
   return { items: merged, added: merged.length - before };
 }
 
+function normalizeSimilarMetadata(
+  metadata:
+    | FindSimilarProductsResponse['metadata']
+    | RecommendationsData['metadata']
+    | null
+    | undefined,
+): RecommendationsData['metadata'] | null {
+  if (!metadata || typeof metadata !== 'object') return null;
+  const similarConfidence = String((metadata as any).similar_confidence || '').trim();
+  const lowConfidence = Boolean((metadata as any).low_confidence);
+  const reasonCodesRaw = (metadata as any).low_confidence_reason_codes;
+  const reasonCodes = Array.isArray(reasonCodesRaw)
+    ? reasonCodesRaw.map((item) => String(item || '').trim()).filter(Boolean)
+    : [];
+  const retrievalMix = (metadata as any).retrieval_mix;
+  const normalizedMix =
+    retrievalMix && typeof retrievalMix === 'object'
+      ? {
+          ...(Number.isFinite(Number((retrievalMix as any).internal))
+            ? { internal: Number((retrievalMix as any).internal) }
+            : {}),
+          ...(Number.isFinite(Number((retrievalMix as any).external))
+            ? { external: Number((retrievalMix as any).external) }
+            : {}),
+        }
+      : undefined;
+
+  return {
+    ...(similarConfidence ? { similar_confidence: similarConfidence } : {}),
+    ...(lowConfidence ? { low_confidence: true } : {}),
+    ...(reasonCodes.length ? { low_confidence_reason_codes: reasonCodes } : {}),
+    ...(normalizedMix && (normalizedMix.internal != null || normalizedMix.external != null)
+      ? { retrieval_mix: normalizedMix }
+      : {}),
+  };
+}
+
 export function PdpContainer({
   payload,
   initialQuantity = 1,
@@ -267,6 +305,7 @@ export function PdpContainer({
   const [similarLoadingMore, setSimilarLoadingMore] = useState(false);
   const [similarSheetOpen, setSimilarSheetOpen] = useState(false);
   const [similarStrategy, setSimilarStrategy] = useState('related_products');
+  const [similarMetadata, setSimilarMetadata] = useState<RecommendationsData['metadata'] | null>(null);
   const similarResetProductIdRef = useRef<string>('');
 
   const variants = useMemo(() => payload.product.variants ?? [], [payload.product.variants]);
@@ -447,8 +486,10 @@ export function PdpContainer({
       typeof payloadRecommendations?.strategy === 'string' && payloadRecommendations.strategy.trim()
         ? payloadRecommendations.strategy
         : 'related_products';
+    const initialMetadata = normalizeSimilarMetadata(payloadRecommendations?.metadata);
     setSimilarItems(initialItems);
     setSimilarStrategy(initialStrategy);
+    setSimilarMetadata(initialMetadata);
     setSimilarVisibleCount(SIMILAR_PAGE_SIZE);
     setSimilarHasMore(initialItems.length < SIMILAR_MAX);
     setSimilarLoadingMore(false);
@@ -456,6 +497,7 @@ export function PdpContainer({
   }, [
     payload.product.product_id,
     payloadRecommendations?.items,
+    payloadRecommendations?.metadata,
     payloadRecommendations?.strategy,
     recommendationCurrencyFallback,
   ]);
@@ -476,8 +518,11 @@ export function PdpContainer({
     ) {
       setSimilarStrategy(payloadRecommendations.strategy);
     }
+    const incomingMetadata = normalizeSimilarMetadata(payloadRecommendations?.metadata);
+    if (incomingMetadata) setSimilarMetadata(incomingMetadata);
   }, [
     payloadRecommendations?.items,
+    payloadRecommendations?.metadata,
     payloadRecommendations?.strategy,
     recommendationCurrencyFallback,
   ]);
@@ -485,9 +530,10 @@ export function PdpContainer({
   const recommendations = useMemo<RecommendationsData>(
     () => ({
       strategy: similarStrategy || payloadRecommendations?.strategy || 'related_products',
+      ...(similarMetadata ? { metadata: similarMetadata } : {}),
       items: similarItems,
     }),
-    [payloadRecommendations?.strategy, similarItems, similarStrategy],
+    [payloadRecommendations?.strategy, similarItems, similarMetadata, similarStrategy],
   );
 
   useEffect(() => {
@@ -971,6 +1017,7 @@ export function PdpContainer({
           response?.products || [],
           recommendationCurrencyFallback,
         );
+        const responseMetadata = normalizeSimilarMetadata(response?.metadata);
 
         let mergedCount = similarItems.length;
         let addedCount = 0;
@@ -984,6 +1031,9 @@ export function PdpContainer({
         if (typeof response?.strategy === 'string' && response.strategy.trim()) {
           setSimilarStrategy(response.strategy);
         }
+        if (responseMetadata) {
+          setSimilarMetadata(responseMetadata);
+        }
 
         setSimilarVisibleCount((prev) => Math.min(Math.max(prev, safeTarget), SIMILAR_MAX));
 
@@ -992,6 +1042,9 @@ export function PdpContainer({
           if (mergedCount >= SIMILAR_MAX) return false;
           if (totalRaw != null) {
             return mergedCount < Math.min(Math.max(0, Math.floor(totalRaw)), SIMILAR_MAX);
+          }
+          if (responseMetadata?.low_confidence === true) {
+            return false;
           }
           if (addedCount === 0) return false;
           return true;
@@ -2049,6 +2102,11 @@ export function PdpContainer({
                   visibleCount={similarVisibleCount}
                   canLoadMore={similarHasMore || similarVisibleCount < similarItems.length}
                   isLoadingMore={similarLoadingMore}
+                  lowConfidenceHint={
+                    recommendations.metadata?.low_confidence
+                      ? 'Showing the best matches available for now.'
+                      : null
+                  }
                   onLoadMore={() => {
                     pdpTracking.track('pdp_action_click', {
                       action_type: 'load_more_similar',

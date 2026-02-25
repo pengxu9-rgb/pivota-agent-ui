@@ -93,6 +93,7 @@ export function RecommendationsGrid({
   visibleCount,
   canLoadMore = false,
   isLoadingMore = false,
+  lowConfidenceHint,
   onLoadMore,
   onItemClick,
   onOpenAll,
@@ -101,6 +102,7 @@ export function RecommendationsGrid({
   visibleCount?: number;
   canLoadMore?: boolean;
   isLoadingMore?: boolean;
+  lowConfidenceHint?: string | null;
   onLoadMore?: () => void;
   onItemClick?: (item: RecommendationsData['items'][number], index: number) => void;
   onOpenAll?: () => void;
@@ -172,6 +174,11 @@ export function RecommendationsGrid({
           </Link>
         ))}
       </div>
+      {lowConfidenceHint ? (
+        <div className="px-4 mt-3 text-xs text-muted-foreground">
+          {lowConfidenceHint}
+        </div>
+      ) : null}
       {showLoadMore ? (
         <button
           type="button"

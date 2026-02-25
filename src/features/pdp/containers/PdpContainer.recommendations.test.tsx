@@ -178,4 +178,39 @@ describe('PdpContainer recommendations interactions', () => {
       expect(screen.getAllByText('Product 12').length).toBeGreaterThan(0);
     });
   });
+
+  it('shows low-confidence hint and stops misleading load-more when backend underfills', async () => {
+    findSimilarProductsMock.mockResolvedValue({
+      strategy: 'related_products',
+      products: buildSimilar(6),
+      metadata: {
+        low_confidence: true,
+        similar_confidence: 'low',
+        low_confidence_reason_codes: ['UNDERFILL_FOR_QUALITY'],
+      },
+    });
+
+    render(
+      <PdpContainer
+        payload={payload}
+        mode="generic"
+        onAddToCart={() => {}}
+        onBuyNow={() => {}}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /load more recommendations/i }));
+
+    await waitFor(() => {
+      expect(findSimilarProductsMock).toHaveBeenCalled();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('Showing the best matches available for now.')).toBeInTheDocument();
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: /load more recommendations/i })).not.toBeInTheDocument();
+    });
+  });
 });

@@ -231,6 +231,15 @@ export interface ReviewsPreviewData {
 
 export interface RecommendationsData {
   strategy?: string;
+  metadata?: {
+    similar_confidence?: 'high' | 'medium' | 'low' | string;
+    low_confidence?: boolean;
+    low_confidence_reason_codes?: string[];
+    retrieval_mix?: {
+      internal?: number;
+      external?: number;
+    };
+  };
   items: Array<{
     product_id: string;
     title: string;

@@ -238,6 +238,21 @@ export type FindSimilarProductsResponse = {
   total?: number;
   page?: number;
   page_size?: number;
+  metadata?: {
+    similar_confidence?: 'high' | 'medium' | 'low' | string;
+    low_confidence?: boolean;
+    low_confidence_reason_codes?: string[];
+    retrieval_mix?: {
+      internal?: number;
+      external?: number;
+    };
+    base_semantic?: {
+      brand?: string | null;
+      vertical?: string | null;
+      inferred?: boolean;
+      signal_strength?: number;
+    };
+  };
   debug?: any;
   cache?: {
     hit?: boolean;
