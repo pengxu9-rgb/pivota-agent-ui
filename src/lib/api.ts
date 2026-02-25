@@ -822,18 +822,26 @@ export async function listGroupReviews(args: {
 export type UgcCapabilityReason =
   | 'NOT_AUTHENTICATED'
   | 'NOT_PURCHASER'
+  | 'NOT_VERIFIED_FOR_RATING'
   | 'ALREADY_REVIEWED'
   | 'RATE_LIMITED';
 
 export type UgcCapabilities = {
   canUploadMedia: boolean;
   canWriteReview: boolean;
+  canRateReview?: boolean;
   canAskQuestion: boolean;
   reasons?: {
     upload?: UgcCapabilityReason;
     review?: UgcCapabilityReason;
+    rating?: UgcCapabilityReason;
     question?: UgcCapabilityReason;
   };
+  review?: {
+    review_id?: number;
+    verification?: string;
+    has_rating?: boolean;
+  } | null;
 };
 
 export type GetPdpV2PersonalizationResponse = {
@@ -918,16 +926,18 @@ async function callAccountsBase(
         }, timeoutValue)
       : null;
 
+    const requestHeaders = new Headers(headers as HeadersInit);
+    if (!(body instanceof FormData) && !requestHeaders.has('Content-Type')) {
+      requestHeaders.set('Content-Type', 'application/json');
+    }
+
     let res: Response;
     try {
       res = await fetch(url, {
         ...rest,
         method: method || 'GET',
         credentials: 'include', // rely on HttpOnly cookies
-        headers: {
-          'Content-Type': 'application/json',
-          ...(headers || {}),
-        },
+        headers: requestHeaders,
         ...(controller ? { signal: controller.signal } : {}),
         body,
       });
@@ -1074,6 +1084,21 @@ export async function createReviewFromUser(args: {
       title: args.title == null ? null : String(args.title),
       body: args.body == null ? null : String(args.body),
     }),
+  })) as any;
+}
+
+export async function attachReviewMediaFromUser(
+  reviewId: number,
+  file: File,
+): Promise<{ status?: string; review_id?: number; media?: { id?: number; public_id?: string; type?: string } } | null> {
+  const rid = Number(reviewId);
+  if (!Number.isFinite(rid) || rid <= 0) return null;
+  const form = new FormData();
+  form.append('file', file);
+  return (await callAccountsRoot(`/buyer/reviews/v1/reviews/${Math.trunc(rid)}/media/from_user`, {
+    method: 'POST',
+    cache: 'no-store',
+    body: form,
   })) as any;
 }
 
