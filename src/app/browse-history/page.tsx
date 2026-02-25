@@ -7,6 +7,7 @@ import Link from 'next/link';
 import ProductCard from '@/components/product/ProductCard';
 import { Button } from '@/components/ui/button';
 import { useCartStore } from '@/store/cartStore';
+import { clearBrowseHistory as clearAccountBrowseHistory, getBrowseHistory } from '@/lib/api';
 
 interface HistoryItem {
   product_id: string;
@@ -18,29 +19,106 @@ interface HistoryItem {
   timestamp: number;
 }
 
+const LOCAL_HISTORY_KEY = 'browse_history';
+
+function readLocalHistory(): HistoryItem[] {
+  if (typeof window === 'undefined') return [];
+  const savedHistory = localStorage.getItem(LOCAL_HISTORY_KEY);
+  if (!savedHistory) return [];
+  try {
+    const parsed = JSON.parse(savedHistory);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map((item: any) => ({
+        product_id: String(item?.product_id || '').trim(),
+        merchant_id:
+          item?.merchant_id == null ? undefined : String(item.merchant_id).trim() || undefined,
+        title: String(item?.title || 'Untitled product').trim() || 'Untitled product',
+        price: Number(item?.price) || 0,
+        image: String(item?.image || item?.image_url || '/placeholder.svg').trim() || '/placeholder.svg',
+        description:
+          item?.description == null ? undefined : String(item.description).trim() || undefined,
+        timestamp: Number(item?.timestamp) || Date.now(),
+      }))
+      .filter((item: HistoryItem) => Boolean(item.product_id))
+      .sort((a: HistoryItem, b: HistoryItem) => b.timestamp - a.timestamp);
+  } catch (error) {
+    console.error('Failed to load local browse history:', error);
+    return [];
+  }
+}
+
+function writeLocalHistory(items: HistoryItem[]) {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(LOCAL_HISTORY_KEY, JSON.stringify(items));
+  } catch {
+    // ignore storage errors
+  }
+}
+
+function mapRemoteHistory(items: any[]): HistoryItem[] {
+  return items
+    .map((item: any) => ({
+      product_id: String(item?.product_id || '').trim(),
+      merchant_id:
+        item?.merchant_id == null ? undefined : String(item.merchant_id).trim() || undefined,
+      title: String(item?.title || 'Untitled product').trim() || 'Untitled product',
+      price: Number(item?.price) || 0,
+      image: String(item?.image_url || '/placeholder.svg').trim() || '/placeholder.svg',
+      description:
+        item?.description == null ? undefined : String(item.description).trim() || undefined,
+      timestamp:
+        Number(item?.timestamp) ||
+        (item?.viewed_at ? new Date(item.viewed_at).getTime() : Date.now()) ||
+        Date.now(),
+    }))
+    .filter((item: HistoryItem) => Boolean(item.product_id))
+    .sort((a: HistoryItem, b: HistoryItem) => b.timestamp - a.timestamp);
+}
+
 export default function BrowseHistoryPage() {
   const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [loading, setLoading] = useState(true);
   const { items, open } = useCartStore();
   const itemCount = items.reduce((acc, item) => acc + item.quantity, 0);
 
   useEffect(() => {
-    // Load browse history from localStorage
-    const savedHistory = localStorage.getItem('browse_history');
-    if (savedHistory) {
+    let cancelled = false;
+    const load = async () => {
+      const localItems = readLocalHistory();
       try {
-        const parsed = JSON.parse(savedHistory);
-        // Sort by timestamp descending (most recent first)
-        const sorted = parsed.sort((a: HistoryItem, b: HistoryItem) => b.timestamp - a.timestamp);
-        setHistory(sorted);
+        const remote = await getBrowseHistory(100);
+        if (cancelled) return;
+        const remoteItems = mapRemoteHistory(remote?.items || []);
+        if (remoteItems.length > 0) {
+          setHistory(remoteItems);
+          writeLocalHistory(remoteItems);
+        } else {
+          setHistory(localItems);
+        }
       } catch (error) {
-        console.error('Failed to load history:', error);
+        if (cancelled) return;
+        console.error('Failed to load account browse history:', error);
+        setHistory(localItems);
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-    }
+    };
+    void load();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  const clearHistory = () => {
-    localStorage.removeItem('browse_history');
+  const clearHistory = async () => {
+    localStorage.removeItem(LOCAL_HISTORY_KEY);
     setHistory([]);
+    try {
+      await clearAccountBrowseHistory();
+    } catch {
+      // ignore accounts clear failure; local clear already applied
+    }
   };
 
   return (
@@ -107,7 +185,15 @@ export default function BrowseHistoryPage() {
         </motion.div>
 
         {/* History Grid */}
-        {history.length === 0 ? (
+        {loading ? (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="text-center py-16 text-muted-foreground"
+          >
+            Loading browse history...
+          </motion.div>
+        ) : history.length === 0 ? (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}

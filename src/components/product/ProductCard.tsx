@@ -42,6 +42,7 @@ export default function ProductCard({
   onAddToCart,
 }: ProductCardProps) {
   const router = useRouter();
+  const [imageSrc, setImageSrc] = useState(image || '/placeholder.svg');
   const [isNavigating, setIsNavigating] = useState(false);
   const isNavigatingRef = useRef(false);
   const resetTimerRef = useRef<number | null>(null);
@@ -121,6 +122,10 @@ export default function ProductCard({
   };
 
   useEffect(() => {
+    setImageSrc(image || '/placeholder.svg');
+  }, [image]);
+
+  useEffect(() => {
     return () => {
       if (typeof window !== 'undefined' && resetTimerRef.current) {
         window.clearTimeout(resetTimerRef.current);
@@ -139,11 +144,14 @@ export default function ProductCard({
       <GlassCard className="relative p-0 overflow-hidden group hover:shadow-glass-hover transition-all duration-300 hover:scale-[1.02]">
         <div className="relative aspect-[3/4] overflow-hidden bg-muted/30">
           <Image
-            src={image}
+            src={imageSrc}
             alt={title}
             fill
             className="object-cover group-hover:scale-105 transition-transform duration-300"
             unoptimized
+            onError={() => {
+              if (imageSrc !== '/placeholder.svg') setImageSrc('/placeholder.svg');
+            }}
           />
         </div>
 

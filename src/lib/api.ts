@@ -1264,28 +1264,31 @@ export type SendMessageResult = {
 export async function sendMessage(
   message: string,
   merchantIdOverride?: string,
-  options?: { metadata?: Record<string, any> },
+  options?: { metadata?: Record<string, any>; signal?: AbortSignal },
 ): Promise<SendMessageResult> {
   const query = message.trim();
   const recentQueries = getEvalVariant() === 'A' ? [] : readRecentQueries();
 
-  const data = await callGateway({
-    operation: 'find_products_multi',
-    payload: {
-      search: {
-        // Cross-merchant search; backend will route across merchants
-        in_stock_only: false, // allow showing results even if inventory is zero for demo
-        query,
-        limit: 10,
+  const data = await callGateway(
+    {
+      operation: 'find_products_multi',
+      payload: {
+        search: {
+          // Cross-merchant search; backend will route across merchants
+          in_stock_only: false, // allow showing results even if inventory is zero for demo
+          query,
+          limit: 10,
+        },
+        user: {
+          // Provide lightweight context to stabilize intent/constraint extraction
+          // across follow-up queries (aligned with creator-agent contract).
+          recent_queries: recentQueries,
+        },
       },
-      user: {
-        // Provide lightweight context to stabilize intent/constraint extraction
-        // across follow-up queries (aligned with creator-agent contract).
-        recent_queries: recentQueries,
-      },
+      ...(isPlainObject(options?.metadata) ? { metadata: options?.metadata } : {}),
     },
-    ...(isPlainObject(options?.metadata) ? { metadata: options?.metadata } : {}),
-  });
+    { signal: options?.signal },
+  );
 
   const products = ((data as any).products || []).map(
     (p: RealAPIProduct | ProductResponse) => normalizeProduct(p),
@@ -1920,4 +1923,84 @@ export async function publicOrderLookup(orderId: string, email: string) {
 export async function publicOrderTrack(orderId: string, email: string) {
   const params = new URLSearchParams({ order_id: orderId, email });
   return callAccounts(`/public/track?${params.toString()}`);
+}
+
+export type BrowseHistoryEventInput = {
+  product_id: string;
+  merchant_id?: string | null;
+  title?: string | null;
+  price?: number | null;
+  currency?: string | null;
+  image_url?: string | null;
+  description?: string | null;
+  viewed_at?: string | null;
+};
+
+export type BrowseHistoryItem = {
+  product_id: string;
+  merchant_id?: string | null;
+  title: string;
+  price: number;
+  currency: string;
+  image_url: string;
+  description?: string | null;
+  timestamp: number;
+  viewed_at: string;
+};
+
+export type BrowseHistoryListResult = {
+  items: BrowseHistoryItem[];
+  total: number;
+};
+
+export async function recordBrowseHistoryEvent(
+  payload: BrowseHistoryEventInput,
+): Promise<BrowseHistoryItem | null> {
+  const productId = String(payload.product_id || '').trim();
+  if (!productId) return null;
+  const res = (await callAccounts('/browse-history/events', {
+    method: 'POST',
+    cache: 'no-store',
+    body: JSON.stringify({
+      product_id: productId,
+      merchant_id: payload.merchant_id == null ? null : String(payload.merchant_id).trim() || null,
+      title: payload.title == null ? null : String(payload.title),
+      price:
+        typeof payload.price === 'number' && Number.isFinite(payload.price)
+          ? payload.price
+          : null,
+      currency: payload.currency == null ? null : String(payload.currency),
+      image_url: payload.image_url == null ? null : String(payload.image_url),
+      description: payload.description == null ? null : String(payload.description),
+      viewed_at: payload.viewed_at == null ? null : String(payload.viewed_at),
+    }),
+  })) as any;
+  return (res?.item as BrowseHistoryItem) || null;
+}
+
+export async function getBrowseHistory(limit = 50): Promise<BrowseHistoryListResult> {
+  const normalizedLimit = Math.max(1, Math.min(Number(limit) || 50, 100));
+  const params = new URLSearchParams({ limit: String(normalizedLimit) });
+  const res = (await callAccounts(`/browse-history?${params.toString()}`, {
+    cache: 'no-store',
+  })) as any;
+  return {
+    items: Array.isArray(res?.items) ? (res.items as BrowseHistoryItem[]) : [],
+    total: Number.isFinite(Number(res?.total))
+      ? Number(res.total)
+      : Array.isArray(res?.items)
+        ? res.items.length
+        : 0,
+  };
+}
+
+export async function clearBrowseHistory(): Promise<{ status?: string; deleted?: number }> {
+  const res = (await callAccounts('/browse-history', {
+    method: 'DELETE',
+    cache: 'no-store',
+  })) as any;
+  return {
+    status: typeof res?.status === 'string' ? res.status : undefined,
+    deleted: Number.isFinite(Number(res?.deleted)) ? Number(res.deleted) : undefined,
+  };
 }
