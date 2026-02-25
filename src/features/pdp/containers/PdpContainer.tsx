@@ -2050,6 +2050,9 @@ export function PdpContainer({
                   canLoadMore={similarHasMore || similarVisibleCount < similarItems.length}
                   isLoadingMore={similarLoadingMore}
                   onLoadMore={() => {
+                    pdpTracking.track('pdp_action_click', {
+                      action_type: 'load_more_similar',
+                    });
                     void handleSimilarLoadMore();
                   }}
                   onOpenAll={() => {
@@ -2057,11 +2060,6 @@ export function PdpContainer({
                       action_type: 'open_similar_all',
                     });
                     void handleOpenSimilarAll();
-                  }}
-                  onLoadMore={() => {
-                    pdpTracking.track('pdp_action_click', {
-                      action_type: 'load_more_similar',
-                    });
                   }}
                   onItemClick={(item, index) => {
                     pdpTracking.track('similar_click', {
