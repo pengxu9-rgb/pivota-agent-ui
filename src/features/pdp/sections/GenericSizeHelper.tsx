@@ -10,7 +10,9 @@ export function GenericSizeHelper() {
           <Ruler className="h-4 w-4" />
           Size Helper
         </h3>
-        <button className="text-xs text-primary">AI Fit</button>
+        <span className="text-xs text-muted-foreground cursor-default select-none" aria-disabled="true">
+          AI Fit
+        </span>
       </div>
       <p className="mt-1.5 text-xs text-muted-foreground">
         Add your height & weight for personalized size recommendations.

@@ -251,6 +251,7 @@ export function PdpContainer({
   const [navVisible, setNavVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [mounted, setMounted] = useState(false);
+  const [promoDismissed, setPromoDismissed] = useState(false);
   const [ugcSnapshot, setUgcSnapshot] = useState(DEFAULT_UGC_SNAPSHOT);
   const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const router = useRouter();
@@ -310,6 +311,10 @@ export function PdpContainer({
   const payloadRecommendations = getModuleData<RecommendationsData>(payload, 'recommendations');
   const recommendationCurrencyFallback =
     payload.product.price?.current.currency || payload.product.price?.compare_at?.currency || 'USD';
+  const promoDismissStorageKey = useMemo(
+    () => `pdp_promo_dismissed:${payload.product.product_id}`,
+    [payload.product.product_id],
+  );
 
   const offers = useMemo(() => payload.offers ?? [], [payload.offers]);
   const [selectedOfferId, setSelectedOfferId] = useState<string | null>(() => {
@@ -364,6 +369,12 @@ export function PdpContainer({
     selectedOffer?.merchant_id,
     selectedOffer?.product_group_id,
   ]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const raw = window.sessionStorage.getItem(promoDismissStorageKey);
+    setPromoDismissed(raw === '1');
+  }, [promoDismissStorageKey]);
 
   const colorOptions = useMemo(() => collectColorOptions(variants), [variants]);
   const colorSheetOptions = useMemo<GenericColorOption[]>(() => {
@@ -493,6 +504,10 @@ export function PdpContainer({
       product_id: payload.product.product_id,
     });
     pdpTracking.track('pdp_view', { pdp_mode: resolvedMode });
+    pdpTracking.track('placeholder_cta_click_removed', {
+      pdp_mode: resolvedMode,
+      removed_ctas: ['take_quiz', 'view_shade_guide', 'ai_fit'],
+    });
   }, [payload, resolvedMode]);
 
   useEffect(() => {
@@ -1196,7 +1211,11 @@ export function PdpContainer({
       reason: uploadReason || null,
     });
     if (canUploadMedia) {
-      toast.message('Uploads are coming soon.');
+      const params = new URLSearchParams();
+      params.set('product_id', productId);
+      if (payload.product.merchant_id) params.set('merchant_id', payload.product.merchant_id);
+      params.set('entry', 'ugc_upload');
+      router.push(`/reviews/write?${params.toString()}`);
       return;
     }
     if (uploadReason === 'NOT_AUTHENTICATED') {
@@ -2031,6 +2050,9 @@ export function PdpContainer({
                   canLoadMore={similarHasMore || similarVisibleCount < similarItems.length}
                   isLoadingMore={similarLoadingMore}
                   onLoadMore={() => {
+                    pdpTracking.track('pdp_action_click', {
+                      action_type: 'load_more_similar',
+                    });
                     void handleSimilarLoadMore();
                   }}
                   onOpenAll={() => {
@@ -2070,13 +2092,26 @@ export function PdpContainer({
                 style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
               >
                 <div className="rounded-2xl border border-border bg-white shadow-[0_-10px_24px_rgba(0,0,0,0.12)] overflow-hidden mb-2">
-                  {pricePromo?.promotions?.length ? (
+                  {pricePromo?.promotions?.length && !promoDismissed ? (
                     <div className="flex items-center justify-between px-4 py-2 bg-primary/5 text-xs">
                       <span className="flex items-center gap-2">
                         <span className="text-primary">🎁</span>
                         <span>{pricePromo.promotions[0].label}</span>
                       </span>
-                      <button className="text-muted-foreground" aria-label="Dismiss promotion">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPromoDismissed(true);
+                          if (typeof window !== 'undefined') {
+                            window.sessionStorage.setItem(promoDismissStorageKey, '1');
+                          }
+                          pdpTracking.track('pdp_action_click', {
+                            action_type: 'dismiss_promotion',
+                          });
+                        }}
+                        className="text-muted-foreground"
+                        aria-label="Dismiss promotion"
+                      >
                         ×
                       </button>
                     </div>

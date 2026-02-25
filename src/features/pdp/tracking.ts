@@ -22,7 +22,11 @@ export type PdpTrackingEvent =
   | 'similar_open_all'
   | 'similar_load_more'
   | 'reviews_shell_open'
-  | 'reviews_shell_close';
+  | 'reviews_shell_close'
+  | 'ugc_upload_start'
+  | 'ugc_upload_success'
+  | 'ugc_upload_partial_fail'
+  | 'placeholder_cta_click_removed';
 
 export type PdpTrackingPayload = Record<string, unknown>;
 
