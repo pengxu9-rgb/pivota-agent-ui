@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Search, ShoppingCart, Sparkles, Package } from 'lucide-react';
 import Link from 'next/link';
@@ -23,59 +23,113 @@ export default function ProductsPage() {
   const [products, setProducts] = useState<ProductResponse[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(false);
+  const searchAbortRef = useRef<AbortController | null>(null);
+  const searchDebounceRef = useRef<number | null>(null);
+  const searchRequestSeqRef = useRef(0);
   const { items, open } = useCartStore();
 
   const itemCount = items.reduce((acc, item) => acc + item.quantity, 0);
 
-  const loadAllProducts = useCallback(async () => {
+  const loadAllProducts = useCallback(async (requestSeq?: number) => {
     setLoading(true);
     try {
       const data = await getAllProducts(48);
+      if (typeof requestSeq === 'number' && requestSeq !== searchRequestSeqRef.current) return;
       setProducts(data);
     } catch (error) {
+      if (typeof requestSeq === 'number' && requestSeq !== searchRequestSeqRef.current) return;
       console.error('Failed to load products:', error);
       toast.error('Unable to load products. Please try again.');
       setProducts([]);
     } finally {
+      if (typeof requestSeq === 'number' && requestSeq !== searchRequestSeqRef.current) return;
       setLoading(false);
     }
   }, []);
 
-  const handleSearch = useCallback(async (query: string) => {
-    setSearchQuery(query);
-
-    if (!query.trim()) {
-      loadAllProducts();
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const result = await sendMessage(query);
-      setProducts(Array.isArray(result?.products) ? result.products : []);
-      if (result?.strict_empty && result?.reply) {
-        toast.info(result.reply);
+  const executeSearch = useCallback(
+    async (query: string) => {
+      const requestSeq = ++searchRequestSeqRef.current;
+      const trimmed = query.trim();
+      if (searchAbortRef.current) {
+        searchAbortRef.current.abort();
+        searchAbortRef.current = null;
       }
-    } catch (error) {
-      console.error('Search error:', error);
-      toast.error('Failed to search products');
-    } finally {
-      setLoading(false);
-    }
-  }, [loadAllProducts]);
+
+      if (!trimmed) {
+        await loadAllProducts(requestSeq);
+        return;
+      }
+
+      const controller = new AbortController();
+      searchAbortRef.current = controller;
+      setLoading(true);
+      try {
+        const result = await sendMessage(trimmed, undefined, {
+          signal: controller.signal,
+        });
+        if (requestSeq !== searchRequestSeqRef.current) return;
+        setProducts(Array.isArray(result?.products) ? result.products : []);
+        if (result?.strict_empty && result?.reply) {
+          toast.info(result.reply);
+        }
+      } catch (error: any) {
+        if (requestSeq !== searchRequestSeqRef.current) return;
+        if (error?.name === 'AbortError') return;
+        console.error('Search error:', error);
+        toast.error('Failed to search products');
+      } finally {
+        if (requestSeq !== searchRequestSeqRef.current) return;
+        setLoading(false);
+      }
+    },
+    [loadAllProducts],
+  );
+
+  const handleSearch = useCallback(
+    (query: string, options?: { immediate?: boolean }) => {
+      setSearchQuery(query);
+      if (searchDebounceRef.current) {
+        window.clearTimeout(searchDebounceRef.current);
+        searchDebounceRef.current = null;
+      }
+      if (options?.immediate) {
+        void executeSearch(query);
+        return;
+      }
+      searchDebounceRef.current = window.setTimeout(() => {
+        searchDebounceRef.current = null;
+        void executeSearch(query);
+      }, 300);
+    },
+    [executeSearch],
+  );
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const q = new URLSearchParams(window.location.search).get('q')?.trim() || '';
     if (q) {
-      handleSearch(q);
+      handleSearch(q, { immediate: true });
       return;
     }
-    loadAllProducts();
+    void loadAllProducts(++searchRequestSeqRef.current);
   }, [handleSearch, loadAllProducts]);
 
+  useEffect(() => {
+    return () => {
+      if (searchDebounceRef.current) {
+        window.clearTimeout(searchDebounceRef.current);
+        searchDebounceRef.current = null;
+      }
+      if (searchAbortRef.current) {
+        searchAbortRef.current.abort();
+        searchAbortRef.current = null;
+      }
+    };
+  }, []);
+
   const handleTrendingClick = (trend: string) => {
-    handleSearch(trend);
+    handleSearch(trend, { immediate: true });
   };
 
   return (

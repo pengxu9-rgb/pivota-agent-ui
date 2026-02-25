@@ -11,6 +11,7 @@ import {
   getPdpV2,
   getPdpV2Personalization,
   getProductDetail,
+  recordBrowseHistoryEvent,
   resolveProductGroup,
   type GetPdpV2Response,
   type ProductResponse,
@@ -263,10 +264,82 @@ function normalizeSimilarProduct(item: any): ProductResponse | null {
   };
 }
 
+const BROWSE_HISTORY_STORAGE_KEY = 'browse_history';
+const BROWSE_HISTORY_MAX_ITEMS = 100;
+
+type LocalBrowseHistoryItem = {
+  product_id: string;
+  merchant_id?: string;
+  title: string;
+  price: number;
+  image: string;
+  description?: string;
+  timestamp: number;
+};
+
+function normalizeHistoryImageCandidate(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (/^https?:\/\//i.test(trimmed) || trimmed.startsWith('/')) return trimmed;
+  return null;
+}
+
+function pickHistoryImage(product: any): string {
+  const direct =
+    normalizeHistoryImageCandidate(product?.image_url) ||
+    normalizeHistoryImageCandidate(product?.imageUrl) ||
+    normalizeHistoryImageCandidate(product?.image);
+  if (direct) return direct;
+
+  const images = Array.isArray(product?.images) ? product.images : [];
+  for (const img of images) {
+    if (typeof img === 'string') {
+      const candidate = normalizeHistoryImageCandidate(img);
+      if (candidate) return candidate;
+      continue;
+    }
+    if (img && typeof img === 'object') {
+      const candidate =
+        normalizeHistoryImageCandidate((img as any).url) ||
+        normalizeHistoryImageCandidate((img as any).image_url) ||
+        normalizeHistoryImageCandidate((img as any).src);
+      if (candidate) return candidate;
+    }
+  }
+  return '/placeholder.svg';
+}
+
+function upsertLocalBrowseHistory(item: LocalBrowseHistoryItem) {
+  if (typeof window === 'undefined') return;
+  try {
+    const raw = window.localStorage.getItem(BROWSE_HISTORY_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    const list = Array.isArray(parsed) ? parsed : [];
+    const key = `${item.product_id}::${item.merchant_id || ''}`;
+    const deduped = list.filter((entry: any) => {
+      const productId = String(entry?.product_id || '').trim();
+      const merchantId = String(entry?.merchant_id || '').trim();
+      return `${productId}::${merchantId}` !== key;
+    });
+    const next = [item, ...deduped].slice(0, BROWSE_HISTORY_MAX_ITEMS);
+    window.localStorage.setItem(BROWSE_HISTORY_STORAGE_KEY, JSON.stringify(next));
+  } catch {
+    // ignore storage errors
+  }
+}
+
 function ProductDetailLoading({ label }: { label: string }) {
   return (
     <div className="min-h-screen bg-background">
       <div className="mx-auto max-w-md px-4 pt-6">
+        <div className="rounded-2xl border border-border/60 bg-card/60 px-4 py-3">
+          <div className="flex items-center justify-center gap-2 text-sm font-medium text-foreground/90">
+            <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary/30 border-t-primary" />
+            <span>{label}</span>
+          </div>
+        </div>
+
         <div className="flex items-center gap-3">
           <div className="h-10 w-10 rounded-full bg-muted/25 animate-pulse" />
           <div className="h-10 flex-1 rounded-full bg-muted/20 animate-pulse" />
@@ -282,9 +355,7 @@ function ProductDetailLoading({ label }: { label: string }) {
           <div className="h-4 w-1/2 rounded bg-muted/20 animate-pulse" />
         </div>
 
-        <div className="mt-6 text-center text-sm text-muted-foreground">
-          {label}
-        </div>
+        <div className="mt-6 text-center text-sm text-muted-foreground">{label}</div>
       </div>
     </div>
   );
@@ -309,6 +380,7 @@ export default function ProductDetailPage({ params }: Props) {
   const offersFetchKeyRef = useRef<string | null>(null);
   const reviewsSimilarFetchKeyRef = useRef<string | null>(null);
   const legacySimilarFetchKeyRef = useRef<string | null>(null);
+  const browseHistoryRecordedRef = useRef<string | null>(null);
   const moduleSourceLocksRef = useRef({ ...DEFAULT_MODULE_SOURCE_LOCKS });
   const [ugcCapabilities, setUgcCapabilities] = useState<UgcCapabilities | null>({
     canUploadMedia: false,
@@ -332,6 +404,55 @@ export default function ProductDetailPage({ params }: Props) {
     if (loading && !error && !pdpPayload) return;
     hideProductRouteLoading();
   }, [loading, error, pdpPayload]);
+
+  useEffect(() => {
+    const product = (pdpPayload as any)?.product;
+    if (!product) return;
+
+    const productId = String(product?.product_id || id || '').trim();
+    if (!productId) return;
+    const merchantId = String(product?.merchant_id || merchantIdParam || '').trim() || undefined;
+    const recordKey = `${productId}::${merchantId || ''}`;
+    if (browseHistoryRecordedRef.current === recordKey) return;
+    browseHistoryRecordedRef.current = recordKey;
+
+    const nowMs = Date.now();
+    const rawPrice = product?.price;
+    const normalizedPrice =
+      typeof rawPrice === 'number'
+        ? rawPrice
+        : typeof rawPrice === 'string'
+          ? Number(rawPrice) || 0
+          : Number(rawPrice?.amount) || 0;
+    const currency =
+      String(product?.currency || rawPrice?.currency || 'USD').trim() || 'USD';
+    const title = String(product?.title || 'Untitled product').trim() || 'Untitled product';
+    const description = String(product?.description || '').trim() || undefined;
+    const imageUrl = pickHistoryImage(product);
+
+    upsertLocalBrowseHistory({
+      product_id: productId,
+      merchant_id: merchantId,
+      title,
+      price: normalizedPrice,
+      image: imageUrl,
+      description,
+      timestamp: nowMs,
+    });
+
+    void recordBrowseHistoryEvent({
+      product_id: productId,
+      merchant_id: merchantId,
+      title,
+      price: normalizedPrice,
+      currency,
+      image_url: imageUrl,
+      description,
+      viewed_at: new Date(nowMs).toISOString(),
+    }).catch(() => {
+      // keep local history as fallback even when account history API is unavailable
+    });
+  }, [pdpPayload, id, merchantIdParam]);
 
   useEffect(() => {
     let cancelled = false;
