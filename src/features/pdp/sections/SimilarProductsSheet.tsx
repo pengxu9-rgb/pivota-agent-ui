@@ -2,10 +2,13 @@
 
 import Link from 'next/link';
 import Image from 'next/image';
+import { useRouter } from 'next/navigation';
+import type { MouseEvent } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { ChevronRight, Star, X } from 'lucide-react';
 import type { RecommendationsData } from '@/features/pdp/types';
 import { optimizeRecommendationImageUrl } from '@/features/pdp/sections/RecommendationsGrid';
+import { appendCurrentPathAsReturn } from '@/lib/returnUrl';
 
 function formatPrice(amount: number, currency: string) {
   const n = Number.isFinite(amount) ? amount : 0;
@@ -34,6 +37,7 @@ export function SimilarProductsSheet({
   onLoadMore?: () => void;
   onItemClick?: (item: RecommendationsData['items'][number], index: number) => void;
 }) {
+  const router = useRouter();
   return (
     <AnimatePresence>
       {open ? (
@@ -66,51 +70,61 @@ export function SimilarProductsSheet({
             <div className="flex-1 overflow-y-auto overscroll-contain px-4 py-4 [-webkit-overflow-scrolling:touch]">
               {items.length ? (
                 <div className="grid grid-cols-2 gap-3">
-                  {items.map((p, idx) => (
-                    <Link
-                      key={`${p.merchant_id || 'unknown'}:${p.product_id}:${idx}`}
-                      href={`/products/${encodeURIComponent(p.product_id)}${p.merchant_id ? `?merchant_id=${encodeURIComponent(p.merchant_id)}` : ''}`}
-                      prefetch={false}
-                      className="rounded-xl bg-card border border-border overflow-hidden hover:shadow-md transition-shadow"
-                      onClick={() => onItemClick?.(p, idx)}
-                    >
-                      <div className="relative aspect-square bg-muted">
-                        {p.image_url ? (
-                          <Image
-                            src={optimizeRecommendationImageUrl(p.image_url)}
-                            alt={p.title}
-                            fill
-                            className="object-cover"
-                            sizes="(max-width: 640px) 45vw, 220px"
-                            loading={idx < 2 ? 'eager' : 'lazy'}
-                            fetchPriority={idx < 2 ? 'high' : 'auto'}
-                            quality={idx < 2 ? 72 : 65}
-                          />
-                        ) : (
-                          <div className="absolute inset-0 flex items-center justify-center text-xs text-muted-foreground">
-                            No image
-                          </div>
-                        )}
-                      </div>
-                      <div className="p-3">
-                        <div className="text-sm font-medium line-clamp-2 min-h-[2.5rem]">{p.title}</div>
-                        {p.rating ? (
-                          <div className="flex items-center gap-1 mt-2">
-                            <Star className="h-3 w-3 fill-gold text-gold" />
-                            <span className="text-xs">{p.rating.toFixed(1)}</span>
-                            {p.review_count ? (
-                              <span className="text-xs text-muted-foreground">({p.review_count})</span>
-                            ) : null}
-                          </div>
-                        ) : null}
-                        {p.price ? (
-                          <div className="mt-2 text-sm font-bold">
-                            {formatPrice(p.price.amount, p.price.currency)}
-                          </div>
-                        ) : null}
-                      </div>
-                    </Link>
-                  ))}
+                  {items.map((p, idx) => {
+                    const baseHref = `/products/${encodeURIComponent(p.product_id)}${p.merchant_id ? `?merchant_id=${encodeURIComponent(p.merchant_id)}` : ''}`;
+                    const handleClick = (event: MouseEvent<HTMLAnchorElement>) => {
+                      onItemClick?.(p, idx);
+                      if (event.defaultPrevented) return;
+                      if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
+                      event.preventDefault();
+                      router.push(appendCurrentPathAsReturn(baseHref));
+                    };
+                    return (
+                      <Link
+                        key={`${p.merchant_id || 'unknown'}:${p.product_id}:${idx}`}
+                        href={baseHref}
+                        prefetch={false}
+                        className="rounded-xl bg-card border border-border overflow-hidden hover:shadow-md transition-shadow"
+                        onClick={handleClick}
+                      >
+                        <div className="relative aspect-square bg-muted">
+                          {p.image_url ? (
+                            <Image
+                              src={optimizeRecommendationImageUrl(p.image_url)}
+                              alt={p.title}
+                              fill
+                              className="object-cover"
+                              sizes="(max-width: 640px) 45vw, 220px"
+                              loading={idx < 2 ? 'eager' : 'lazy'}
+                              fetchPriority={idx < 2 ? 'high' : 'auto'}
+                              quality={idx < 2 ? 72 : 65}
+                            />
+                          ) : (
+                            <div className="absolute inset-0 flex items-center justify-center text-xs text-muted-foreground">
+                              No image
+                            </div>
+                          )}
+                        </div>
+                        <div className="p-3">
+                          <div className="text-sm font-medium line-clamp-2 min-h-[2.5rem]">{p.title}</div>
+                          {p.rating ? (
+                            <div className="flex items-center gap-1 mt-2">
+                              <Star className="h-3 w-3 fill-gold text-gold" />
+                              <span className="text-xs">{p.rating.toFixed(1)}</span>
+                              {p.review_count ? (
+                                <span className="text-xs text-muted-foreground">({p.review_count})</span>
+                              ) : null}
+                            </div>
+                          ) : null}
+                          {p.price ? (
+                            <div className="mt-2 text-sm font-bold">
+                              {formatPrice(p.price.amount, p.price.currency)}
+                            </div>
+                          ) : null}
+                        </div>
+                      </Link>
+                    );
+                  })}
                 </div>
               ) : (
                 <div className="rounded-xl border border-border bg-background/60 px-4 py-6 text-sm text-muted-foreground">

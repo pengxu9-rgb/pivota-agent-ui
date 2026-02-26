@@ -182,4 +182,54 @@ describe('PdpContainer review navigation context', () => {
     const sp = new URLSearchParams(query);
     expect(sp.get('return')).toBe('/products/P001?merchant_id=merch_test');
   });
+
+  it('back button prefers safe return query target', () => {
+    window.history.replaceState(
+      null,
+      '',
+      '/products/P001?merchant_id=merch_test&return=%2Fproducts%3Fq%3Dlipstick',
+    );
+
+    render(
+      <PdpContainer
+        payload={payload}
+        mode="generic"
+        onAddToCart={() => {}}
+        onBuyNow={() => {}}
+        ugcCapabilities={{
+          canUploadMedia: true,
+          canWriteReview: true,
+          canAskQuestion: true,
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /go back/i }));
+    expect(pushMock).toHaveBeenCalledWith('/products?q=lipstick');
+  });
+
+  it('back button falls back to /products when return query is unsafe', () => {
+    window.history.replaceState(
+      null,
+      '',
+      '/products/P001?merchant_id=merch_test&return=https%3A%2F%2Fevil.example.com',
+    );
+
+    render(
+      <PdpContainer
+        payload={payload}
+        mode="generic"
+        onAddToCart={() => {}}
+        onBuyNow={() => {}}
+        ugcCapabilities={{
+          canUploadMedia: true,
+          canWriteReview: true,
+          canAskQuestion: true,
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /go back/i }));
+    expect(pushMock).toHaveBeenCalledWith('/products');
+  });
 });

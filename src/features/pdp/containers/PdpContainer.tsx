@@ -68,6 +68,7 @@ import { getStableGalleryItems, resolveHeroMediaUrl } from '@/features/pdp/state
 import { buildPdpViewModel } from '@/features/pdp/state/viewModel';
 import { cn } from '@/lib/utils';
 import { resolveReviewGate, reviewGateMessage, reviewGateResultToReason } from '@/lib/reviewGate';
+import { safeReturnUrl } from '@/lib/returnUrl';
 
 function nonEmptyText(value: unknown, fallback: string): string {
   const text = String(value ?? '').trim();
@@ -932,9 +933,22 @@ export function PdpContainer({
   };
 
   const handleBack = () => {
-    if (typeof window !== 'undefined') {
-      window.history.back();
+    if (typeof window === 'undefined') {
+      router.push('/products');
+      return;
     }
+    const current = new URLSearchParams(window.location.search);
+    const rawReturn =
+      current.get('return') ||
+      current.get('return_url') ||
+      current.get('returnUrl') ||
+      '';
+    const safeReturn = safeReturnUrl(rawReturn || null);
+    if (safeReturn) {
+      router.push(safeReturn);
+      return;
+    }
+    router.push('/products');
   };
 
   const handleShare = () => {

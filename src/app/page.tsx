@@ -5,6 +5,7 @@ import { Menu, ShoppingCart, Send, Package, User } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
 import Image from 'next/image';
+import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import ChatSidebar from '@/components/chat/ChatSidebar';
@@ -14,6 +15,7 @@ import { useAuthStore } from '@/store/authStore';
 import { useChatStore } from '@/store/chatStore';
 import { getAllowedParentOrigin, isAuroraEmbedMode, postRequestCloseToParent } from '@/lib/auroraEmbed';
 import { sendMessage, getAllProducts, type ProductResponse } from '@/lib/api';
+import { appendCurrentPathAsReturn } from '@/lib/returnUrl';
 import { toast } from 'sonner';
 
 const CHAT_RAIL_INITIAL_PAGE_SIZE = 12;
@@ -97,6 +99,7 @@ export default function HomePage() {
 }
 
 function HomePageApp() {
+  const router = useRouter();
   const [input, setInput] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(false); // Mobile: closed by default, Desktop: always visible
   const [loading, setLoading] = useState(false);
@@ -538,6 +541,12 @@ function HomePageApp() {
                         href={cardHref}
                         prefetch={false}
                         className="flex-shrink-0 w-24 group"
+                        onClick={(event) => {
+                          if (event.defaultPrevented) return;
+                          if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
+                          event.preventDefault();
+                          router.push(appendCurrentPathAsReturn(cardHref));
+                        }}
                       >
                         <div className="relative aspect-square rounded-2xl overflow-hidden mb-2 ring-1 ring-border group-hover:ring-primary transition-all">
                           <Image

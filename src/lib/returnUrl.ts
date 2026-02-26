@@ -40,3 +40,24 @@ export function withReturnParams(returnUrl: string, params: Record<string, strin
     return returnUrl
   }
 }
+
+export function appendCurrentPathAsReturn(targetUrl: string): string {
+  if (!targetUrl) return targetUrl
+  if (typeof window === 'undefined') return targetUrl
+
+  try {
+    const base = window.location.origin
+    const target = new URL(targetUrl, base)
+    const hasReturn =
+      Boolean(target.searchParams.get('return')) ||
+      Boolean(target.searchParams.get('return_url')) ||
+      Boolean(target.searchParams.get('returnUrl'))
+    if (hasReturn) return `${target.pathname}${target.search}${target.hash}`
+
+    const current = `${window.location.pathname}${window.location.search}`
+    if (current) target.searchParams.set('return', current)
+    return `${target.pathname}${target.search}${target.hash}`
+  } catch {
+    return targetUrl
+  }
+}

@@ -5,6 +5,7 @@ import { ShoppingCart } from 'lucide-react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { hideProductRouteLoading, showProductRouteLoading } from '@/lib/productRouteLoading';
+import { appendCurrentPathAsReturn } from '@/lib/returnUrl';
 
 import type { ProductResponse } from '@/lib/api';
 
@@ -54,7 +55,7 @@ export function ChatRecommendationCard({ product, onAddToCart }: Props) {
       return;
     }
     window.requestAnimationFrame(() => {
-      router.push(href);
+      router.push(appendCurrentPathAsReturn(href));
     });
   };
 
