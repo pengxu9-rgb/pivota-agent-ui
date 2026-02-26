@@ -61,3 +61,32 @@ export function appendCurrentPathAsReturn(targetUrl: string): string {
     return targetUrl
   }
 }
+
+export function isExternalAgentEntry(entry: string | null | undefined): boolean {
+  const normalized = String(entry || '').trim().toLowerCase()
+  if (!normalized) return false
+  return normalized.includes('aurora') || normalized.includes('creator')
+}
+
+export function resolveExternalAgentHomeUrl(entry: string | null | undefined): string | null {
+  const normalized = String(entry || '').trim().toLowerCase()
+  if (!normalized) return null
+
+  if (normalized.includes('creator')) {
+    return (
+      safeReturnUrl(
+        String(process.env.NEXT_PUBLIC_CREATOR_AGENT_HOME_URL || 'https://creator.pivota.cc').trim(),
+      ) || null
+    )
+  }
+
+  if (normalized.includes('aurora')) {
+    return (
+      safeReturnUrl(
+        String(process.env.NEXT_PUBLIC_AURORA_AGENT_HOME_URL || 'https://aurora.pivota.cc').trim(),
+      ) || null
+    )
+  }
+
+  return null
+}

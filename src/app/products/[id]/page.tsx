@@ -24,6 +24,7 @@ import { BeautyPDPContainer } from '@/features/pdp/containers/BeautyPDPContainer
 import { GenericPDPContainer } from '@/features/pdp/containers/GenericPDPContainer';
 import type { Module, PDPPayload, Variant } from '@/features/pdp/types';
 import { pdpTracking } from '@/features/pdp/tracking';
+import { isExternalAgentEntry } from '@/lib/returnUrl';
 import {
   DEFAULT_MODULE_SOURCE_LOCKS,
   upsertLockedModule,
@@ -1494,8 +1495,8 @@ export default function ProductDetailPage({ params }: Props) {
       searchParams.get('returnUrl') ||
       '';
     const embedFromQuery = String(searchParams.get('embed') || '').trim() === '1';
-    const entryFromQuery = String(searchParams.get('entry') || '').trim();
-    const isEmbed = embedFromQuery || entryFromQuery === 'aurora_chatbox';
+    const entryFromQuery = String(searchParams.get('entry') || '').trim().toLowerCase();
+    const isEmbed = embedFromQuery || isExternalAgentEntry(entryFromQuery);
     if (explicitReturn.trim()) {
       params.set('return', explicitReturn.trim());
     } else if (!isEmbed && typeof window !== 'undefined') {

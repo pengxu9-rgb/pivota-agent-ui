@@ -7,6 +7,7 @@ import { PdpContainer } from './PdpContainer';
 import type { PDPPayload } from '@/features/pdp/types';
 
 const pushMock = vi.fn();
+const closeToParentMock = vi.fn((_args?: { reason?: string }) => false);
 
 vi.mock('next/image', () => ({
   default: (
@@ -33,6 +34,10 @@ vi.mock('next/navigation', () => ({
   useRouter: () => ({
     push: pushMock,
   }),
+}));
+
+vi.mock('@/lib/auroraEmbed', () => ({
+  postRequestCloseToParent: (args: { reason?: string }) => closeToParentMock(args),
 }));
 
 vi.mock('@/lib/api', () => ({
@@ -114,6 +119,8 @@ const payload: PDPPayload = {
 describe('PdpContainer review navigation context', () => {
   beforeEach(() => {
     pushMock.mockReset();
+    closeToParentMock.mockReset();
+    closeToParentMock.mockReturnValue(false);
   });
 
   afterEach(() => {
@@ -231,5 +238,58 @@ describe('PdpContainer review navigation context', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /go back/i }));
     expect(pushMock).toHaveBeenCalledWith('/products');
+  });
+
+  it('back button posts close to parent in embed mode before fallback navigation', () => {
+    closeToParentMock.mockReturnValueOnce(true);
+    window.history.replaceState(
+      null,
+      '',
+      '/products/P001?embed=1&entry=aurora_chatbox&parent_origin=https%3A%2F%2Faurora.pivota.cc',
+    );
+
+    render(
+      <PdpContainer
+        payload={payload}
+        mode="generic"
+        onAddToCart={() => {}}
+        onBuyNow={() => {}}
+        ugcCapabilities={{
+          canUploadMedia: true,
+          canWriteReview: true,
+          canAskQuestion: true,
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /go back/i }));
+    expect(closeToParentMock).toHaveBeenCalledWith({ reason: 'pdp_back' });
+    expect(pushMock).not.toHaveBeenCalled();
+  });
+
+  it('back button falls back to creator agent homepage for creator entry', () => {
+    window.history.replaceState(
+      null,
+      '',
+      '/products/P001?entry=creator_agent',
+    );
+
+    render(
+      <PdpContainer
+        payload={payload}
+        mode="generic"
+        onAddToCart={() => {}}
+        onBuyNow={() => {}}
+        ugcCapabilities={{
+          canUploadMedia: true,
+          canWriteReview: true,
+          canAskQuestion: true,
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /go back/i }));
+    expect(closeToParentMock).toHaveBeenCalledWith({ reason: 'pdp_back' });
+    expect(pushMock).not.toHaveBeenCalled();
   });
 });

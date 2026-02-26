@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { appendCurrentPathAsReturn, safeReturnUrl } from './returnUrl';
+import {
+  appendCurrentPathAsReturn,
+  isExternalAgentEntry,
+  resolveExternalAgentHomeUrl,
+  safeReturnUrl,
+} from './returnUrl';
 
 describe('safeReturnUrl', () => {
   it('accepts relative paths', () => {
@@ -27,5 +32,18 @@ describe('appendCurrentPathAsReturn', () => {
     const href = appendCurrentPathAsReturn('/products/9859804856648?return=%2Fproducts%3Fq%3Dmask');
     const parsed = new URL(href, 'https://agent.pivota.cc');
     expect(parsed.searchParams.get('return')).toBe('/products?q=mask');
+  });
+});
+
+describe('external agent helpers', () => {
+  it('detects external agent entry names', () => {
+    expect(isExternalAgentEntry('creator_agent')).toBe(true);
+    expect(isExternalAgentEntry('aurora_beauty')).toBe(true);
+    expect(isExternalAgentEntry('ugc_upload')).toBe(false);
+  });
+
+  it('resolves external home urls by entry', () => {
+    expect(resolveExternalAgentHomeUrl('creator_agent')).toBe('https://creator.pivota.cc/');
+    expect(resolveExternalAgentHomeUrl('aurora_chatbox')).toBe('https://aurora.pivota.cc/');
   });
 });

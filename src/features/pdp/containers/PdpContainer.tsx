@@ -68,7 +68,8 @@ import { getStableGalleryItems, resolveHeroMediaUrl } from '@/features/pdp/state
 import { buildPdpViewModel } from '@/features/pdp/state/viewModel';
 import { cn } from '@/lib/utils';
 import { resolveReviewGate, reviewGateMessage, reviewGateResultToReason } from '@/lib/reviewGate';
-import { safeReturnUrl } from '@/lib/returnUrl';
+import { postRequestCloseToParent } from '@/lib/auroraEmbed';
+import { isExternalAgentEntry, resolveExternalAgentHomeUrl, safeReturnUrl } from '@/lib/returnUrl';
 
 function nonEmptyText(value: unknown, fallback: string): string {
   const text = String(value ?? '').trim();
@@ -945,7 +946,35 @@ export function PdpContainer({
       '';
     const safeReturn = safeReturnUrl(rawReturn || null);
     if (safeReturn) {
-      router.push(safeReturn);
+      if (safeReturn.startsWith('/')) {
+        router.push(safeReturn);
+      } else {
+        window.location.assign(safeReturn);
+      }
+      return;
+    }
+
+    const entryFromQuery = String(current.get('entry') || '').trim().toLowerCase();
+    const embedFromQuery = String(current.get('embed') || '').trim() === '1';
+    const parentOriginHint =
+      String(current.get('parent_origin') || '').trim() ||
+      String(current.get('parentOrigin') || '').trim();
+    const safeParentOrigin = safeReturnUrl(parentOriginHint || null);
+    const fromExternalAgent = embedFromQuery || Boolean(safeParentOrigin) || isExternalAgentEntry(entryFromQuery);
+    if (fromExternalAgent) {
+      const posted = postRequestCloseToParent({ reason: 'pdp_back' });
+      if (posted) return;
+
+      const externalFallback = safeParentOrigin || resolveExternalAgentHomeUrl(entryFromQuery);
+      if (externalFallback) {
+        if (externalFallback.startsWith('/')) {
+          router.push(externalFallback);
+        } else {
+          window.location.assign(externalFallback);
+        }
+        return;
+      }
+      router.push('/');
       return;
     }
     router.push('/products');
@@ -1331,8 +1360,8 @@ export function PdpContainer({
       current.get('returnUrl') ||
       '';
     const embedFromQuery = String(current.get('embed') || '').trim() === '1';
-    const entryFromQuery = String(current.get('entry') || '').trim();
-    const isEmbed = embedFromQuery || entryFromQuery === 'aurora_chatbox';
+    const entryFromQuery = String(current.get('entry') || '').trim().toLowerCase();
+    const isEmbed = embedFromQuery || isExternalAgentEntry(entryFromQuery);
 
     if (explicitReturn.trim()) {
       params.set('return', explicitReturn.trim());
