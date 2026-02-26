@@ -301,14 +301,36 @@ function normalizeProduct(
     rawPrice?.currency_code ||
     'USD';
 
+  const getImageCandidate = (value: unknown): string => {
+    if (!value) return '';
+    if (typeof value === 'string') return value.trim();
+    if (typeof value === 'object') {
+      const obj = value as Record<string, unknown>;
+      const fromObject =
+        obj.url || obj.image_url || obj.imageUrl || obj.src || '';
+      return typeof fromObject === 'string' ? fromObject.trim() : '';
+    }
+    return '';
+  };
+
+  const firstFromArray = (arr: unknown): string => {
+    if (!Array.isArray(arr)) return '';
+    for (const item of arr) {
+      const candidate = getImageCandidate(item);
+      if (candidate) return candidate;
+    }
+    return '';
+  };
+
   let normalizedImage =
-    anyP.image_url ||
-    anyP.image ||
-    (Array.isArray(anyP.images) ? anyP.images[0] : undefined) ||
-    (Array.isArray(anyP.variants) ? anyP.variants[0]?.image_url : undefined);
+    getImageCandidate(anyP.image_url) ||
+    getImageCandidate(anyP.imageUrl) ||
+    getImageCandidate(anyP.image) ||
+    firstFromArray(anyP.images) ||
+    firstFromArray(anyP.image_urls);
 
   // Use image proxy for external images to avoid CORS issues
-  if (normalizedImage && (normalizedImage.includes('amazon') || normalizedImage.includes('http'))) {
+  if (normalizedImage && /^https?:\/\//i.test(normalizedImage)) {
     normalizedImage = `/api/image-proxy?url=${encodeURIComponent(normalizedImage)}`;
   }
 
@@ -1258,16 +1280,28 @@ export type SendMessageResult = {
   reply: string | null;
   metadata: Record<string, any>;
   strict_empty: boolean;
+  page_info: {
+    page: number;
+    page_size: number;
+    total?: number;
+    has_more: boolean;
+  };
 };
 
 // Chat entrypoint: search products by free text query.
 export async function sendMessage(
   message: string,
   merchantIdOverride?: string,
-  options?: { metadata?: Record<string, any>; signal?: AbortSignal },
+  options?: {
+    metadata?: Record<string, any>;
+    signal?: AbortSignal;
+    pagination?: { page?: number; limit?: number };
+  },
 ): Promise<SendMessageResult> {
   const query = message.trim();
   const recentQueries = getEvalVariant() === 'A' ? [] : readRecentQueries();
+  const requestedPage = Math.max(1, Math.floor(Number(options?.pagination?.page || 1) || 1));
+  const requestedLimit = Math.max(1, Math.floor(Number(options?.pagination?.limit || 24) || 24));
 
   const data = await callGateway(
     {
@@ -1277,7 +1311,8 @@ export async function sendMessage(
           // Cross-merchant search; backend will route across merchants
           in_stock_only: false, // allow showing results even if inventory is zero for demo
           query,
-          limit: 10,
+          limit: requestedLimit,
+          page: requestedPage,
         },
         user: {
           // Provide lightweight context to stabilize intent/constraint extraction
@@ -1297,6 +1332,30 @@ export async function sendMessage(
     data && typeof data === 'object' && data.metadata && typeof (data as any).metadata === 'object'
       ? ((data as any).metadata as Record<string, any>)
       : {};
+  const responsePageRaw = Number((data as any)?.page);
+  const responsePageSizeRaw = Number((data as any)?.page_size ?? (data as any)?.pageSize);
+  const responseTotalRaw = Number((data as any)?.total);
+  const responseHasMore = (data as any)?.has_more;
+  const responseHasMoreAlt = (data as any)?.hasMore;
+
+  const page = Number.isFinite(responsePageRaw) && responsePageRaw > 0
+    ? Math.floor(responsePageRaw)
+    : requestedPage;
+  const pageSize = Number.isFinite(responsePageSizeRaw) && responsePageSizeRaw > 0
+    ? Math.floor(responsePageSizeRaw)
+    : requestedLimit;
+  const total =
+    Number.isFinite(responseTotalRaw) && responseTotalRaw >= 0
+      ? Math.floor(responseTotalRaw)
+      : undefined;
+  const hasMore =
+    typeof responseHasMore === 'boolean'
+      ? responseHasMore
+      : typeof responseHasMoreAlt === 'boolean'
+        ? responseHasMoreAlt
+        : typeof total === 'number'
+          ? page * pageSize < total
+          : products.length >= pageSize;
   const replyRaw = typeof (data as any)?.reply === 'string' ? String((data as any).reply).trim() : '';
   const strictEmpty = Boolean(metadata?.strict_empty) || (query.length > 0 && products.length === 0);
 
@@ -1308,6 +1367,12 @@ export async function sendMessage(
     reply: replyRaw || null,
     metadata,
     strict_empty: strictEmpty,
+    page_info: {
+      page,
+      page_size: pageSize,
+      ...(typeof total === 'number' ? { total } : {}),
+      has_more: hasMore,
+    },
   };
 }
 
@@ -1315,6 +1380,7 @@ export async function sendMessage(
 export async function getAllProducts(
   limit = 20,
   merchantIdOverride?: string,
+  options?: { page?: number },
 ): Promise<ProductResponse[]> {
   // If we have a merchant id, use single-merchant search; otherwise fallback to multi.
   let merchantId: string | undefined = merchantIdOverride;
@@ -1331,6 +1397,9 @@ export async function getAllProducts(
       in_stock_only: false,
       query: '',
       limit,
+      ...(Number.isFinite(Number(options?.page)) && Number(options?.page)! > 0
+        ? { page: Math.floor(Number(options?.page)) }
+        : {}),
       ...(merchantId ? { merchant_id: merchantId } : {}),
     },
   };
@@ -1470,7 +1539,7 @@ export async function findSimilarProducts(args: {
   const productId = String(args.product_id || '').trim();
   if (!productId) throw new Error('product_id is required');
   const merchantId = args.merchant_id ? String(args.merchant_id).trim() : '';
-  const limit = Math.max(1, Math.min(Number(args.limit || 6) || 6, 30));
+  const limit = Math.max(1, Math.floor(Number(args.limit || 6) || 6));
 
   const data = await callGatewayWithTimeout(
     {

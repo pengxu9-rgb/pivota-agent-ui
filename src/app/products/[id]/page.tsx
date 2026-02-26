@@ -717,7 +717,7 @@ export default function ProductDetailPage({ params }: Props) {
         const similarResponse = await findSimilarProducts({
           product_id: productId,
           ...(merchantId ? { merchant_id: merchantId } : {}),
-          limit: 10,
+          limit: 12,
           timeout_ms: 3500,
         });
         if (cancelled) return;
@@ -738,7 +738,7 @@ export default function ProductDetailPage({ params }: Props) {
                   typeof similarResponse?.strategy === 'string'
                     ? similarResponse.strategy
                     : 'related_products',
-                items: normalizedSimilar.slice(0, 10).map((item) => ({
+                items: normalizedSimilar.map((item) => ({
                   product_id: item.product_id,
                   merchant_id: item.merchant_id,
                   title: item.title,

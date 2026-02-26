@@ -19,71 +19,137 @@ const TRENDING_TAGS = [
   'Pet Toys',
 ] as const;
 
+const GRID_INITIAL_PAGE_SIZE = 24;
+const GRID_PAGE_STEP = 24;
+const NO_GROWTH_STOP_THRESHOLD = 2;
+
+function buildProductKey(product: ProductResponse): string {
+  return `${String(product?.merchant_id || '').trim()}::${String(product?.product_id || '').trim()}`;
+}
+
+function mergeUniqueProducts(current: ProductResponse[], incoming: ProductResponse[]) {
+  const map = new Map<string, ProductResponse>();
+  current.forEach((item) => map.set(buildProductKey(item), item));
+  const before = map.size;
+  incoming.forEach((item) => map.set(buildProductKey(item), item));
+  return {
+    merged: Array.from(map.values()),
+    added: map.size - before,
+  };
+}
+
 export default function ProductsPage() {
   const [products, setProducts] = useState<ProductResponse[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
   const searchAbortRef = useRef<AbortController | null>(null);
   const searchDebounceRef = useRef<number | null>(null);
   const searchRequestSeqRef = useRef(0);
+  const noGrowthCountRef = useRef(0);
+  const activeQueryRef = useRef('');
+  const loadMoreRef = useRef<HTMLDivElement | null>(null);
   const { items, open } = useCartStore();
 
   const itemCount = items.reduce((acc, item) => acc + item.quantity, 0);
 
-  const loadAllProducts = useCallback(async (requestSeq?: number) => {
-    setLoading(true);
-    try {
-      const data = await getAllProducts(48);
-      if (typeof requestSeq === 'number' && requestSeq !== searchRequestSeqRef.current) return;
-      setProducts(data);
-    } catch (error) {
-      if (typeof requestSeq === 'number' && requestSeq !== searchRequestSeqRef.current) return;
-      console.error('Failed to load products:', error);
-      toast.error('Unable to load products. Please try again.');
-      setProducts([]);
-    } finally {
-      if (typeof requestSeq === 'number' && requestSeq !== searchRequestSeqRef.current) return;
-      setLoading(false);
-    }
-  }, []);
-
-  const executeSearch = useCallback(
-    async (query: string) => {
+  const executeSearchPage = useCallback(
+    async (query: string, targetPage: number, options?: { append?: boolean }) => {
+      const append = Boolean(options?.append);
       const requestSeq = ++searchRequestSeqRef.current;
       const trimmed = query.trim();
+
       if (searchAbortRef.current) {
         searchAbortRef.current.abort();
         searchAbortRef.current = null;
       }
 
-      if (!trimmed) {
-        await loadAllProducts(requestSeq);
-        return;
-      }
-
       const controller = new AbortController();
       searchAbortRef.current = controller;
-      setLoading(true);
+      activeQueryRef.current = trimmed;
+
+      if (append) {
+        setIsLoadingMore(true);
+      } else {
+        setLoading(true);
+      }
+
       try {
-        const result = await sendMessage(trimmed, undefined, {
-          signal: controller.signal,
-        });
-        if (requestSeq !== searchRequestSeqRef.current) return;
-        setProducts(Array.isArray(result?.products) ? result.products : []);
-        if (result?.strict_empty && result?.reply) {
-          toast.info(result.reply);
+        let fetchedProducts: ProductResponse[] = [];
+        let hasMoreFromResponse: boolean | undefined;
+
+        if (!trimmed) {
+          fetchedProducts = await getAllProducts(GRID_INITIAL_PAGE_SIZE, undefined, {
+            page: targetPage,
+          });
+          hasMoreFromResponse = fetchedProducts.length >= GRID_INITIAL_PAGE_SIZE;
+        } else {
+          const result = await sendMessage(trimmed, undefined, {
+            signal: controller.signal,
+            pagination: {
+              page: targetPage,
+              limit: GRID_INITIAL_PAGE_SIZE,
+            },
+          });
+          fetchedProducts = Array.isArray(result?.products) ? result.products : [];
+          hasMoreFromResponse = Boolean(result?.page_info?.has_more);
+          if (!append && result?.strict_empty && result?.reply) {
+            toast.info(result.reply);
+          }
         }
+
+        if (requestSeq !== searchRequestSeqRef.current) return;
+
+        if (!append) {
+          const deduped = mergeUniqueProducts([], fetchedProducts).merged;
+          setProducts(deduped);
+          setPage(targetPage);
+          noGrowthCountRef.current = 0;
+          setHasMore(Boolean(hasMoreFromResponse) && deduped.length > 0);
+          return;
+        }
+
+        setProducts((prev) => {
+          const { merged, added } = mergeUniqueProducts(prev, fetchedProducts);
+          if (added === 0) {
+            noGrowthCountRef.current += 1;
+          } else {
+            noGrowthCountRef.current = 0;
+          }
+
+          const stopForNoGrowth = noGrowthCountRef.current >= NO_GROWTH_STOP_THRESHOLD;
+          const canContinue = Boolean(hasMoreFromResponse) && !stopForNoGrowth;
+          setHasMore(canContinue);
+          if (canContinue) setPage(targetPage);
+          return merged;
+        });
       } catch (error: any) {
         if (requestSeq !== searchRequestSeqRef.current) return;
         if (error?.name === 'AbortError') return;
         console.error('Search error:', error);
-        toast.error('Failed to search products');
+        toast.error(trimmed ? 'Failed to search products' : 'Unable to load products. Please try again.');
       } finally {
         if (requestSeq !== searchRequestSeqRef.current) return;
-        setLoading(false);
+        if (append) {
+          setIsLoadingMore(false);
+        } else {
+          setLoading(false);
+        }
       }
     },
-    [loadAllProducts],
+    [],
+  );
+
+  const executeSearch = useCallback(
+    async (query: string) => {
+      noGrowthCountRef.current = 0;
+      setPage(1);
+      setHasMore(true);
+      await executeSearchPage(query, 1, { append: false });
+    },
+    [executeSearchPage],
   );
 
   const handleSearch = useCallback(
@@ -112,8 +178,31 @@ export default function ProductsPage() {
       handleSearch(q, { immediate: true });
       return;
     }
-    void loadAllProducts(++searchRequestSeqRef.current);
-  }, [handleSearch, loadAllProducts]);
+    void executeSearch('');
+  }, [executeSearch, handleSearch]);
+
+  const loadMore = useCallback(() => {
+    if (loading || isLoadingMore || !hasMore) return;
+    const nextPage = page + 1;
+    void executeSearchPage(activeQueryRef.current, nextPage, { append: true });
+  }, [executeSearchPage, hasMore, isLoadingMore, loading, page]);
+
+  useEffect(() => {
+    const target = loadMoreRef.current;
+    if (!target) return;
+    if (!hasMore) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const [entry] = entries;
+        if (!entry?.isIntersecting) return;
+        loadMore();
+      },
+      { root: null, rootMargin: '280px 0px', threshold: 0.1 },
+    );
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [hasMore, loadMore]);
 
   useEffect(() => {
     return () => {
@@ -226,14 +315,15 @@ export default function ProductsPage() {
             </p>
           </div>
         ) : (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.2 }}
-            className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3"
-          >
-            <AnimatePresence>
-              {products.map((product, index) => {
+          <div>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.2 }}
+              className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3"
+            >
+              <AnimatePresence>
+                {products.map((product, index) => {
                 const defaultVariant =
                   Array.isArray(product.variants) && product.variants.length > 0
                     ? product.variants[0]
@@ -255,32 +345,37 @@ export default function ProductsPage() {
                       '',
                   ).trim() || undefined;
 
-                return (
-                  <motion.div
-                    key={product.product_id}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, scale: 0.9 }}
-                    transition={{ delay: index * 0.05 }}
-                  >
-                    <ProductCard
-                      product_id={product.product_id}
-                      merchant_id={product.merchant_id}
-                      merchant_name={product.merchant_name}
-                      variant_id={variantId}
-                      sku={sku}
-                      external_redirect_url={product.external_redirect_url}
-                      title={product.title}
-                      price={product.price}
-                      currency={product.currency}
-                      image={product.image_url || '/placeholder.svg'}
-                      description={product.description}
-                    />
-                  </motion.div>
-                );
-              })}
-            </AnimatePresence>
-          </motion.div>
+                  return (
+                    <motion.div
+                      key={buildProductKey(product)}
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, scale: 0.9 }}
+                      transition={{ delay: index * 0.05 }}
+                    >
+                      <ProductCard
+                        product_id={product.product_id}
+                        merchant_id={product.merchant_id}
+                        merchant_name={product.merchant_name}
+                        variant_id={variantId}
+                        sku={sku}
+                        external_redirect_url={product.external_redirect_url}
+                        title={product.title}
+                        price={product.price}
+                        currency={product.currency}
+                        image={product.image_url || '/placeholder.svg'}
+                        description={product.description}
+                      />
+                    </motion.div>
+                  );
+                })}
+              </AnimatePresence>
+            </motion.div>
+            <div ref={loadMoreRef} className="h-12" />
+            {isLoadingMore ? (
+              <div className="text-center py-4 text-sm text-muted-foreground">Loading more products…</div>
+            ) : null}
+          </div>
         )}
       </main>
     </div>

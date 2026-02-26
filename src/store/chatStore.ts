@@ -6,6 +6,14 @@ interface Message {
   role: 'user' | 'assistant'
   content: string
   products?: any[]
+  recommendation_paging?: {
+    query: string
+    page: number
+    limit: number
+    hasMore: boolean
+    isLoadingMore?: boolean
+    noGrowthCount?: number
+  }
   timestamp: Date
 }
 
@@ -23,6 +31,10 @@ interface ChatStore {
   messages: Message[]
   ownerEmail: string | null
   addMessage: (message: Omit<Message, 'timestamp'>) => void
+  updateMessage: (
+    id: string,
+    patch: Partial<Omit<Message, 'id' | 'role' | 'timestamp'>>,
+  ) => void
   createConversation: (firstMessage: string) => void
   switchConversation: (id: string) => void
   clearMessages: () => void
@@ -98,6 +110,43 @@ export const useChatStore = create<ChatStore>()(
           }
           
           return { messages: newMessages }
+        })
+      },
+
+      updateMessage: (id, patch) => {
+        set((state) => {
+          const applyPatch = (messages: Message[]) =>
+            messages.map((message) =>
+              message.id === id
+                ? {
+                    ...message,
+                    ...patch,
+                  }
+                : message,
+            )
+
+          const newMessages = applyPatch(state.messages)
+
+          if (!state.currentConversationId) {
+            return { messages: newMessages }
+          }
+
+          const updatedConversations = state.conversations.map((conversation) => {
+            if (conversation.id !== state.currentConversationId) return conversation
+            const nextMessages = applyPatch(conversation.messages)
+            const lastMessage = nextMessages[nextMessages.length - 1]?.content || conversation.lastMessage
+            return {
+              ...conversation,
+              messages: nextMessages,
+              lastMessage: String(lastMessage || '').substring(0, 50),
+              timestamp: new Date(),
+            }
+          })
+
+          return {
+            messages: newMessages,
+            conversations: updatedConversations,
+          }
         })
       },
 

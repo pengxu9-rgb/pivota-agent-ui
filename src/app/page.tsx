@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { Menu, ShoppingCart, Send, Package, User } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
@@ -15,6 +15,44 @@ import { useChatStore } from '@/store/chatStore';
 import { getAllowedParentOrigin, isAuroraEmbedMode, postRequestCloseToParent } from '@/lib/auroraEmbed';
 import { sendMessage, getAllProducts, type ProductResponse } from '@/lib/api';
 import { toast } from 'sonner';
+
+const CHAT_RAIL_INITIAL_PAGE_SIZE = 12;
+const CHAT_RAIL_PAGE_STEP = 12;
+const NO_GROWTH_STOP_THRESHOLD = 2;
+
+function buildProductKey(product: ProductResponse): string {
+  return `${String(product?.merchant_id || '').trim()}::${String(product?.product_id || '').trim()}`;
+}
+
+function mergeUniqueProducts(current: ProductResponse[], incoming: ProductResponse[]) {
+  const map = new Map<string, ProductResponse>();
+  current.forEach((item) => map.set(buildProductKey(item), item));
+  const before = map.size;
+  incoming.forEach((item) => map.set(buildProductKey(item), item));
+  return {
+    merged: Array.from(map.values()),
+    added: map.size - before,
+  };
+}
+
+function buildStrictEmptyHint(metadata: Record<string, any>): string | null {
+  const reason =
+    String(
+      metadata?.strict_empty_reason ||
+        metadata?.route_health?.fallback_reason ||
+        metadata?.proxy_search_fallback?.reason ||
+        '',
+    )
+      .trim()
+      .toLowerCase();
+  if (!reason) return null;
+  if (reason.includes('timeout')) return 'Search timed out; try a shorter query or add a brand keyword.';
+  if (reason.includes('cache') || reason.includes('no_candidates')) {
+    return 'No strong catalog match; add category + budget + brand for better recall.';
+  }
+  if (reason.includes('irrelevant')) return 'Results were filtered as off-topic; try a more specific shopping request.';
+  return `No reliable matches (${reason}).`;
+}
 
 function AuroraEmbedCartHost() {
   const canPost = useMemo(() => Boolean(getAllowedParentOrigin()), []);
@@ -65,7 +103,7 @@ function HomePageApp() {
   const [hotDeals, setHotDeals] = useState<ProductResponse[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
-  const { messages, addMessage, conversations, resetForGuest } = useChatStore();
+  const { messages, addMessage, updateMessage, conversations, resetForGuest } = useChatStore();
   const { items, addItem, open } = useCartStore();
   const { user } = useAuthStore();
   const { ownerEmail, setOwnerEmail } = useChatStore();
@@ -167,21 +205,42 @@ function HomePageApp() {
         // ignore
       }
 
+      const userQuery = input.trim();
       const searchResult = await sendMessage(
         input,
         undefined,
-        evalMetadata ? { metadata: evalMetadata } : undefined,
+        {
+          ...(evalMetadata ? { metadata: evalMetadata } : {}),
+          pagination: { page: 1, limit: CHAT_RAIL_INITIAL_PAGE_SIZE },
+        },
       );
       const products = Array.isArray(searchResult?.products) ? searchResult.products : [];
       const fallbackReply = searchResult?.reply;
+      const metadata =
+        searchResult?.metadata && typeof searchResult.metadata === 'object'
+          ? (searchResult.metadata as Record<string, any>)
+          : {};
+      const strictEmptyHint = searchResult?.strict_empty ? buildStrictEmptyHint(metadata) : null;
       
       const assistantMessage = {
         id: (Date.now() + 1).toString(),
         role: 'assistant' as const,
         content: products.length > 0 
           ? `I found ${products.length} product(s) for you!`
-          : fallbackReply || "I couldn't find any products matching your search. Try something else!",
-        products: products.slice(0, 10),
+          : [fallbackReply || "I couldn't find any products matching your search.", strictEmptyHint]
+              .filter(Boolean)
+              .join('\n'),
+        products,
+        recommendation_paging: products.length > 0
+          ? {
+              query: userQuery,
+              page: searchResult.page_info?.page || 1,
+              limit: CHAT_RAIL_INITIAL_PAGE_SIZE,
+              hasMore: Boolean(searchResult.page_info?.has_more),
+              isLoadingMore: false,
+              noGrowthCount: 0,
+            }
+          : undefined,
       };
 
       addMessage(assistantMessage);
@@ -196,6 +255,59 @@ function HomePageApp() {
       setLoading(false);
     }
   };
+
+  const handleLoadMoreMessageProducts = useCallback(
+    async (messageId: string) => {
+      const target = messages.find((message) => message.id === messageId && message.role === 'assistant');
+      if (!target) return;
+      const paging = target.recommendation_paging;
+      if (!paging || paging.isLoadingMore || !paging.hasMore || !paging.query) return;
+
+      updateMessage(messageId, {
+        recommendation_paging: {
+          ...paging,
+          isLoadingMore: true,
+        },
+      });
+
+      try {
+        const nextPage = paging.page + 1;
+        const result = await sendMessage(paging.query, undefined, {
+          pagination: {
+            page: nextPage,
+            limit: Math.max(CHAT_RAIL_PAGE_STEP, Number(paging.limit || CHAT_RAIL_INITIAL_PAGE_SIZE)),
+          },
+        });
+
+        const incoming = Array.isArray(result?.products) ? result.products : [];
+        const currentProducts = Array.isArray(target.products) ? target.products : [];
+        const { merged, added } = mergeUniqueProducts(currentProducts, incoming);
+        const noGrowthCount = added === 0 ? Number(paging.noGrowthCount || 0) + 1 : 0;
+        const hasMore = Boolean(result?.page_info?.has_more) && noGrowthCount < NO_GROWTH_STOP_THRESHOLD;
+
+        updateMessage(messageId, {
+          products: merged,
+          recommendation_paging: {
+            ...paging,
+            page: nextPage,
+            hasMore,
+            isLoadingMore: false,
+            noGrowthCount,
+          },
+        });
+      } catch (error) {
+        console.error('Load more recommendations error:', error);
+        toast.error('Failed to load more recommendations');
+        updateMessage(messageId, {
+          recommendation_paging: {
+            ...paging,
+            isLoadingMore: false,
+          },
+        });
+      }
+    },
+    [messages, updateMessage],
+  );
 
   const handleAddToCart = (product: any) => {
     const defaultVariant =
@@ -351,9 +463,9 @@ function HomePageApp() {
                           Recommended pieces based on this chat:
                         </p>
                         <div className="flex gap-3 overflow-x-auto pb-1 pr-1 snap-x snap-mandatory scroll-smooth">
-                          {message.products.slice(0, 10).map((product) => (
+                          {message.products.map((product) => (
                             <div
-                              key={product.product_id}
+                              key={buildProductKey(product)}
                               className="w-[280px] md:w-[320px] flex-shrink-0 snap-start"
                             >
                               <ChatRecommendationCard
@@ -363,6 +475,18 @@ function HomePageApp() {
                             </div>
                           ))}
                         </div>
+                        {message.recommendation_paging?.hasMore ? (
+                          <button
+                            type="button"
+                            className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2 disabled:opacity-60"
+                            disabled={Boolean(message.recommendation_paging?.isLoadingMore)}
+                            onClick={() => handleLoadMoreMessageProducts(message.id)}
+                          >
+                            {message.recommendation_paging?.isLoadingMore
+                              ? 'Loading...'
+                              : 'Load more recommendations'}
+                          </button>
+                        ) : null}
                       </div>
                     )}
                   </div>

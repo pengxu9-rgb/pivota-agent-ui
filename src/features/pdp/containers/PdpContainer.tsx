@@ -89,6 +89,55 @@ function formatPrice(amount: number, currency: string) {
   }
 }
 
+const SIMILAR_PAGE_STEP = 12;
+const SIMILAR_NO_GROWTH_STOP_THRESHOLD = 2;
+
+function buildRecommendationKey(item: { product_id?: string; merchant_id?: string }) {
+  return `${String(item?.merchant_id || '').trim()}::${String(item?.product_id || '').trim()}`;
+}
+
+function toRecommendationItem(raw: any): RecommendationsData['items'][number] | null {
+  const productId = String(raw?.product_id || '').trim();
+  if (!productId) return null;
+  const title = String(raw?.title || '').trim() || 'Untitled product';
+  const merchantId = String(raw?.merchant_id || '').trim() || undefined;
+  const imageUrl = String(raw?.image_url || raw?.image || '').trim() || undefined;
+  const amountRaw = Number(raw?.price?.amount ?? raw?.price ?? 0);
+  const hasPrice = Number.isFinite(amountRaw) && amountRaw > 0;
+  return {
+    product_id: productId,
+    merchant_id: merchantId,
+    title,
+    ...(imageUrl ? { image_url: imageUrl } : {}),
+    ...(hasPrice
+      ? {
+          price: {
+            amount: amountRaw,
+            currency: String(raw?.price?.currency || raw?.currency || 'USD'),
+          },
+        }
+      : {}),
+    ...(Number.isFinite(Number(raw?.rating)) ? { rating: Number(raw.rating) } : {}),
+    ...(Number.isFinite(Number(raw?.review_count))
+      ? { review_count: Number(raw.review_count) }
+      : {}),
+  };
+}
+
+function mergeUniqueRecommendations(
+  current: RecommendationsData['items'],
+  incoming: RecommendationsData['items'],
+) {
+  const map = new Map<string, RecommendationsData['items'][number]>();
+  current.forEach((item) => map.set(buildRecommendationKey(item), item));
+  const before = map.size;
+  incoming.forEach((item) => map.set(buildRecommendationKey(item), item));
+  return {
+    merged: Array.from(map.values()),
+    added: map.size - before,
+  };
+}
+
 function StarRating({ value }: { value: number }) {
   const rounded = Math.round(value);
   return (
@@ -675,7 +724,7 @@ export function PdpContainer({
 
   const moduleStates = pdpViewModel.moduleStates;
   const hasReviews = moduleStates.reviews_preview !== 'ABSENT';
-  const hasRecommendationItems = Array.isArray(recommendations?.items) && recommendations.items.length > 0;
+  const hasRecommendationItems = similarItems.length > 0;
   const showRecommendationsSection = moduleStates.similar !== 'ABSENT';
 
   useEffect(() => {
@@ -698,9 +747,7 @@ export function PdpContainer({
   }, [ugcItems, ugcSnapshot.locked, ugcSnapshot.source]);
 
   useEffect(() => {
-    const count = Array.isArray(recommendations?.items)
-      ? recommendations.items.length
-      : 0;
+    const count = similarItems.length;
     if (count <= 0 || similarTracked.current) return;
     similarTracked.current = true;
     pdpTracking.track('similar_impression', {
@@ -714,7 +761,7 @@ export function PdpContainer({
   }, [
     payload.x_recommendations_state,
     pdpViewModel.sourceLocks.similar,
-    recommendations?.items,
+    similarItems.length,
   ]);
 
   const showShades = resolvedMode === 'beauty' && variants.length > 1;
