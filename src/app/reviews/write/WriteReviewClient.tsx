@@ -26,6 +26,8 @@ import type { PDPPayload } from '@/features/pdp/types';
 import { pdpTracking } from '@/features/pdp/tracking';
 import { cn } from '@/lib/utils';
 import { resolveReviewGate, reviewGateMessage, reviewGateResultToReason, type ReviewGateResult } from '@/lib/reviewGate';
+import { safeReturnUrl, withReturnParams } from '@/lib/returnUrl';
+import { isAuroraEmbedMode, postRequestCloseToParent } from '@/lib/auroraEmbed';
 
 const MAX_MEDIA_FILES = 5;
 const MAX_MEDIA_BYTES = 10 * 1024 * 1024;
@@ -200,6 +202,13 @@ export default function WriteReviewPage() {
   const productIdParam = (searchParams.get('product_id') || searchParams.get('productId') || '').trim() || null;
   const merchantIdParam = (searchParams.get('merchant_id') || searchParams.get('merchantId') || '').trim() || null;
   const entryParam = (searchParams.get('entry') || '').trim().toLowerCase();
+  const rawReturnParam =
+    searchParams.get('return') ||
+    searchParams.get('return_url') ||
+    searchParams.get('returnUrl');
+  const returnUrl = safeReturnUrl(rawReturnParam);
+  const hasReturnHint = Boolean(rawReturnParam && !returnUrl);
+  const isEmbedMode = useMemo(() => isAuroraEmbedMode(), []);
 
   const [invitationToken, setInvitationToken] = useState<string | null>(null);
   const [submissionToken, setSubmissionToken] = useState<string | null>(null);
@@ -856,6 +865,50 @@ export default function WriteReviewPage() {
     Boolean(inAppEligibility && !inAppEligibility.eligible) &&
     !(String(inAppEligibility?.reason || '').toUpperCase() === 'ALREADY_REVIEWED' && inAppExistingReviewId != null);
 
+  const continueAfterSuccess = () => {
+    if (returnUrl) {
+      const params: Record<string, string> = {
+        review: 'submitted',
+      };
+      if (reviewId != null) params.review_id = String(reviewId);
+      const currentProductId = productIdParam || invitationProductIdForEligibility || '';
+      if (currentProductId) params.product_id = currentProductId;
+      const url = withReturnParams(returnUrl, params);
+      window.location.assign(url);
+      return;
+    }
+
+    if (hasReturnHint) {
+      const posted = postRequestCloseToParent({ reason: 'review_return_invalid' });
+      if (posted) return;
+      window.close();
+      return;
+    }
+
+    if (isEmbedMode || (typeof window !== 'undefined' && window.parent !== window)) {
+      const posted = postRequestCloseToParent({ reason: 'review_submit_success' });
+      if (posted) return;
+    }
+
+    if (typeof window !== 'undefined' && window.history.length > 1) {
+      router.back();
+      return;
+    }
+
+    const fallbackProductId =
+      productIdParam ||
+      invitationProductIdForEligibility ||
+      String(inAppPdp?.payload?.product?.product_id || '').trim();
+    if (fallbackProductId) {
+      const params = new URLSearchParams();
+      if (merchantIdParam) params.set('merchant_id', merchantIdParam);
+      const suffix = params.toString() ? `?${params.toString()}` : '';
+      router.push(`/products/${encodeURIComponent(fallbackProductId)}${suffix}`);
+      return;
+    }
+    router.push('/');
+  };
+
   return (
     <div className="min-h-screen bg-gradient-mesh flex items-center justify-center px-4 py-10">
       <div className="w-full max-w-2xl bg-white/80 backdrop-blur-md rounded-3xl shadow-lg p-6 md:p-8 space-y-6 border border-border">
@@ -934,7 +987,14 @@ export default function WriteReviewPage() {
                 <div className="text-muted-foreground mt-1">
                   Review received (ID: {reviewId}). It may appear after moderation.
                 </div>
-                <div className="mt-3">
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="gradient"
+                    onClick={continueAfterSuccess}
+                  >
+                    Return to previous page
+                  </Button>
                   <Button
                     type="button"
                     variant="outline"
@@ -1124,6 +1184,15 @@ export default function WriteReviewPage() {
                     <div className="font-semibold text-foreground">Thanks!</div>
                     <div className="text-muted-foreground mt-1">
                       Review received (ID: {reviewId}). It may appear after moderation.
+                    </div>
+                    <div className="mt-3">
+                      <Button
+                        type="button"
+                        variant="gradient"
+                        onClick={continueAfterSuccess}
+                      >
+                        Return to previous page
+                      </Button>
                     </div>
                   </div>
                 ) : (

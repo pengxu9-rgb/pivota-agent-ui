@@ -1487,6 +1487,28 @@ export default function ProductDetailPage({ params }: Props) {
     const params = new URLSearchParams();
     params.set('product_id', pdpPayload.product.product_id);
     if (pdpPayload.product.merchant_id) params.set('merchant_id', pdpPayload.product.merchant_id);
+
+    const explicitReturn =
+      searchParams.get('return') ||
+      searchParams.get('return_url') ||
+      searchParams.get('returnUrl') ||
+      '';
+    const embedFromQuery = String(searchParams.get('embed') || '').trim() === '1';
+    const entryFromQuery = String(searchParams.get('entry') || '').trim();
+    const isEmbed = embedFromQuery || entryFromQuery === 'aurora_chatbox';
+    if (explicitReturn.trim()) {
+      params.set('return', explicitReturn.trim());
+    } else if (!isEmbed && typeof window !== 'undefined') {
+      params.set('return', `${window.location.pathname}${window.location.search}`);
+    }
+
+    const passthroughKeys = ['embed', 'entry', 'parent_origin', 'parentOrigin'];
+    for (const key of passthroughKeys) {
+      const value = String(searchParams.get(key) || '').trim();
+      if (!value) continue;
+      if (!params.has(key)) params.set(key, value);
+    }
+
     router.push(`/reviews/write?${params.toString()}`);
   };
 

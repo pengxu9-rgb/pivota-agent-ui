@@ -208,30 +208,6 @@ function SuccessContent() {
           Thank you for shopping with Pivota. Your order has been confirmed.
         </p>
 
-        {(sellerName || sellerDomain) && (
-          <div className="bg-blue-50 border border-blue-100 rounded-lg p-4 mb-6 text-left">
-            <p className="text-sm text-gray-700">
-              <span className="font-medium">Sold by:</span>{' '}
-              {sellerName || 'Merchant'}
-              {sellerDomain ? (
-                <>
-                  {' '}
-                  (<span className="font-mono">{sellerDomain}</span>)
-                </>
-              ) : null}
-            </p>
-            {billingDescriptor ? (
-              <p className="text-sm text-gray-700 mt-2">
-                <span className="font-medium">Billing descriptor (expected):</span>{' '}
-                <span className="font-mono">{billingDescriptor}</span>
-              </p>
-            ) : null}
-            <p className="text-xs text-gray-600 mt-2">
-              Pivota provides the checkout experience but is not the seller of record.
-            </p>
-          </div>
-        )}
-        
         {orderId && (
           <div className="bg-gray-50 rounded-lg p-4 mb-6">
             <p className="text-sm text-gray-600 mb-1">Order Number</p>
@@ -239,62 +215,7 @@ function SuccessContent() {
           </div>
         )}
 
-        <div className="bg-indigo-50 border border-indigo-100 rounded-lg p-4 mb-6 text-left">
-          <p className="text-sm text-gray-800 font-medium">Save for next time</p>
-          <p className="text-xs text-gray-600 mt-1">
-            Save your email and shipping address to your Pivota Buyer account so future checkouts can be auto-filled.
-          </p>
-          <div className="mt-3">
-            {saveStatus === 'saved' ? (
-              <p className="text-sm text-green-700">Saved. Next time checkout will auto-fill.</p>
-            ) : saveStatus === 'step_up' ? (
-              <div className="space-y-2">
-                <p className="text-sm text-gray-700">Login required to save.</p>
-                {saveLoginUrl ? (
-                  <button
-                    onClick={() => window.location.assign(saveLoginUrl)}
-                    className="w-full px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
-                  >
-                    Login to save
-                  </button>
-                ) : null}
-              </div>
-            ) : (
-              <button
-                type="button"
-                onClick={() => void attemptSave({ intent_id: intentId || undefined, order_id: orderId || undefined })}
-                disabled={!canSave || saveStatus === 'saving'}
-                className="w-full px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-60"
-              >
-                {saveStatus === 'saving' ? 'Saving…' : 'Save'}
-              </button>
-            )}
-            {saveStatus === 'error' && saveError ? <p className="text-xs text-red-700 mt-2">{saveError}</p> : null}
-            {saveStatus === 'idle' && hasBuyerVaultPrefill ? (
-              <p className="text-xs text-gray-600 mt-2">
-                Buyer Vault defaults detected. Future checkout will prioritize your saved email and address.
-              </p>
-            ) : null}
-            {!canSave ? (
-              <p className="text-xs text-gray-600 mt-2">
-                Missing checkout session. Please return to the app and retry checkout.
-              </p>
-            ) : null}
-          </div>
-        </div>
-        
-        <div className="space-y-4">
-          <div className="flex items-center justify-center gap-3 text-gray-600">
-            <Package className="w-5 h-5" />
-            <span>Estimated delivery: 3-5 business days</span>
-          </div>
-          
-          <p className="text-sm text-gray-500">
-            You&apos;ll receive a confirmation email with tracking information.
-          </p>
-        </div>
-        
-        <div className="mt-8 space-y-3">
+        <div className="mb-6 space-y-3">
           {(returnUrl || hasReturnHint) && (
             <button
               onClick={() => {
@@ -339,6 +260,91 @@ function SuccessContent() {
             </>
           )}
         </div>
+
+        <details className="text-left bg-slate-50 border border-slate-200 rounded-lg">
+          <summary className="px-4 py-3 cursor-pointer text-sm font-medium text-slate-800">
+            Order details & settings
+          </summary>
+          <div className="px-4 pb-4 space-y-4">
+            {(sellerName || sellerDomain) && (
+              <div className="bg-blue-50 border border-blue-100 rounded-lg p-3">
+                <p className="text-sm text-gray-700">
+                  <span className="font-medium">Sold by:</span>{' '}
+                  {sellerName || 'Merchant'}
+                  {sellerDomain ? (
+                    <>
+                      {' '}
+                      (<span className="font-mono">{sellerDomain}</span>)
+                    </>
+                  ) : null}
+                </p>
+                {billingDescriptor ? (
+                  <p className="text-sm text-gray-700 mt-2">
+                    <span className="font-medium">Billing descriptor (expected):</span>{' '}
+                    <span className="font-mono">{billingDescriptor}</span>
+                  </p>
+                ) : null}
+                <p className="text-xs text-gray-600 mt-2">
+                  Pivota provides the checkout experience but is not the seller of record.
+                </p>
+              </div>
+            )}
+
+            <div className="bg-indigo-50 border border-indigo-100 rounded-lg p-3">
+              <p className="text-sm text-gray-800 font-medium">Save for next time</p>
+              <p className="text-xs text-gray-600 mt-1">
+                Save your email and shipping address to your Pivota Buyer account so future checkouts can be auto-filled.
+              </p>
+              <div className="mt-3">
+                {saveStatus === 'saved' ? (
+                  <p className="text-sm text-green-700">Saved. Next time checkout will auto-fill.</p>
+                ) : saveStatus === 'step_up' ? (
+                  <div className="space-y-2">
+                    <p className="text-sm text-gray-700">Login required to save.</p>
+                    {saveLoginUrl ? (
+                      <button
+                        onClick={() => window.location.assign(saveLoginUrl)}
+                        className="w-full px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+                      >
+                        Login to save
+                      </button>
+                    ) : null}
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => void attemptSave({ intent_id: intentId || undefined, order_id: orderId || undefined })}
+                    disabled={!canSave || saveStatus === 'saving'}
+                    className="w-full px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-60"
+                  >
+                    {saveStatus === 'saving' ? 'Saving…' : 'Save'}
+                  </button>
+                )}
+                {saveStatus === 'error' && saveError ? <p className="text-xs text-red-700 mt-2">{saveError}</p> : null}
+                {saveStatus === 'idle' && hasBuyerVaultPrefill ? (
+                  <p className="text-xs text-gray-600 mt-2">
+                    Buyer Vault defaults detected. Future checkout will prioritize your saved email and address.
+                  </p>
+                ) : null}
+                {!canSave ? (
+                  <p className="text-xs text-gray-600 mt-2">
+                    Missing checkout session. Please return to the app and retry checkout.
+                  </p>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-center gap-3 text-gray-600">
+                <Package className="w-5 h-5" />
+                <span>Estimated delivery: 3-5 business days</span>
+              </div>
+              <p className="text-sm text-gray-500 text-center">
+                You&apos;ll receive a confirmation email with tracking information.
+              </p>
+            </div>
+          </div>
+        </details>
       </div>
     </main>
   )

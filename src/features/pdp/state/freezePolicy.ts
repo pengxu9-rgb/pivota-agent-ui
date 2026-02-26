@@ -27,6 +27,8 @@ export const DEFAULT_UGC_SNAPSHOT: UgcSourceSnapshot = {
   items: [],
 };
 
+export const UGC_PREVIEW_PRIORITY_COUNT = 6;
+
 export function findModuleByType(
   modules: Module[] | undefined,
   type: LockableModuleType,
@@ -100,3 +102,57 @@ export function lockFirstUgcSource(args: {
   return args.current;
 }
 
+function mediaItemKey(item: MediaItem): string {
+  const type = String(item?.type || '').trim().toLowerCase();
+  const url = String(item?.url || '').trim();
+  return `${type}|${url}`;
+}
+
+function dedupeMediaItems(items: MediaItem[]): MediaItem[] {
+  const out: MediaItem[] = [];
+  const seen = new Set<string>();
+  for (const item of items) {
+    if (!item?.url) continue;
+    const key = mediaItemKey(item);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(item);
+  }
+  return out;
+}
+
+export function mergeUgcItems(args: {
+  reviewsItems: MediaItem[];
+  mediaItems: MediaItem[];
+  priorityCount?: number;
+}): MediaItem[] {
+  const reviews = dedupeMediaItems(Array.isArray(args.reviewsItems) ? args.reviewsItems : []);
+  const media = dedupeMediaItems(Array.isArray(args.mediaItems) ? args.mediaItems : []);
+  const priorityCount = Math.max(1, Math.floor(args.priorityCount ?? UGC_PREVIEW_PRIORITY_COUNT));
+
+  const head: MediaItem[] = [];
+  const used = new Set<string>();
+  const pushHead = (item: MediaItem) => {
+    if (head.length >= priorityCount) return;
+    const key = mediaItemKey(item);
+    if (!key || used.has(key)) return;
+    used.add(key);
+    head.push(item);
+  };
+
+  for (const item of reviews) pushHead(item);
+  if (head.length < priorityCount) {
+    for (const item of media) pushHead(item);
+  }
+
+  const tail: MediaItem[] = [];
+  const ordered = [...reviews, ...media];
+  for (const item of ordered) {
+    const key = mediaItemKey(item);
+    if (!key || used.has(key)) continue;
+    used.add(key);
+    tail.push(item);
+  }
+
+  return [...head, ...tail];
+}

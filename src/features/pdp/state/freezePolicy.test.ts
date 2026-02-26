@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_UGC_SNAPSHOT,
+  UGC_PREVIEW_PRIORITY_COUNT,
   lockFirstUgcSource,
+  mergeUgcItems,
   upsertLockedModule,
 } from './freezePolicy';
 import type { Module } from '../types';
@@ -75,5 +77,46 @@ describe('freezePolicy', () => {
 
     expect(second.source).toBe('reviews');
     expect(second.items[0]?.url).toBe('https://a.example/review.jpg');
+  });
+
+  it('merges ugc items with reviews prioritized in the first preview slots', () => {
+    const reviews = Array.from({ length: 4 }).map((_, idx) => ({
+      type: 'image' as const,
+      url: `https://reviews.example/${idx + 1}.jpg`,
+    }));
+    const media = Array.from({ length: 6 }).map((_, idx) => ({
+      type: 'image' as const,
+      url: `https://media.example/${idx + 1}.jpg`,
+    }));
+
+    const merged = mergeUgcItems({
+      reviewsItems: reviews,
+      mediaItems: media,
+      priorityCount: UGC_PREVIEW_PRIORITY_COUNT,
+    });
+
+    expect(merged.slice(0, 4).map((item) => item.url)).toEqual(reviews.map((item) => item.url));
+    expect(merged.slice(4, 6).map((item) => item.url)).toEqual([
+      'https://media.example/1.jpg',
+      'https://media.example/2.jpg',
+    ]);
+  });
+
+  it('dedupes repeated review/media urls while preserving priority', () => {
+    const merged = mergeUgcItems({
+      reviewsItems: [
+        { type: 'image', url: 'https://cdn.example/a.jpg' },
+        { type: 'image', url: 'https://cdn.example/a.jpg' },
+      ],
+      mediaItems: [
+        { type: 'image', url: 'https://cdn.example/a.jpg' },
+        { type: 'image', url: 'https://cdn.example/b.jpg' },
+      ],
+    });
+
+    expect(merged.map((item) => item.url)).toEqual([
+      'https://cdn.example/a.jpg',
+      'https://cdn.example/b.jpg',
+    ]);
   });
 });

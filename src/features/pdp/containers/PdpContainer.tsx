@@ -63,7 +63,7 @@ import { GenericSizeGuide } from '@/features/pdp/sections/GenericSizeGuide';
 import { GenericDetailsSection } from '@/features/pdp/sections/GenericDetailsSection';
 import { OfferSheet } from '@/features/pdp/offers/OfferSheet';
 import { ModuleShell } from '@/features/pdp/components/ModuleShell';
-import { DEFAULT_UGC_SNAPSHOT, lockFirstUgcSource } from '@/features/pdp/state/freezePolicy';
+import { DEFAULT_UGC_SNAPSHOT, lockFirstUgcSource, mergeUgcItems } from '@/features/pdp/state/freezePolicy';
 import { getStableGalleryItems, resolveHeroMediaUrl } from '@/features/pdp/state/heroMedia';
 import { buildPdpViewModel } from '@/features/pdp/state/viewModel';
 import { cn } from '@/lib/utils';
@@ -669,9 +669,14 @@ export function PdpContainer({
     );
   }, [normalizedMediaUgc, normalizedReviewUgc]);
 
-  const ugcItems = ugcSnapshot.locked
-    ? ugcSnapshot.items
-    : (normalizedReviewUgc.length ? normalizedReviewUgc : normalizedMediaUgc);
+  const ugcItems = useMemo(
+    () =>
+      mergeUgcItems({
+        reviewsItems: normalizedReviewUgc,
+        mediaItems: normalizedMediaUgc,
+      }),
+    [normalizedMediaUgc, normalizedReviewUgc],
+  );
   const ugcSectionTitle =
     ugcSnapshot.source === 'media' || (!ugcSnapshot.source && normalizedMediaUgc.length > 0)
       ? 'Gallery'
@@ -1303,6 +1308,32 @@ export function PdpContainer({
     router.push(`/login?redirect=${encodeURIComponent(redirect)}`);
   };
 
+  const appendReviewWriteContext = (params: URLSearchParams) => {
+    if (typeof window === 'undefined') return;
+    const current = new URLSearchParams(window.location.search);
+    const explicitReturn =
+      current.get('return') ||
+      current.get('return_url') ||
+      current.get('returnUrl') ||
+      '';
+    const embedFromQuery = String(current.get('embed') || '').trim() === '1';
+    const entryFromQuery = String(current.get('entry') || '').trim();
+    const isEmbed = embedFromQuery || entryFromQuery === 'aurora_chatbox';
+
+    if (explicitReturn.trim()) {
+      params.set('return', explicitReturn.trim());
+    } else if (!isEmbed) {
+      params.set('return', `${window.location.pathname}${window.location.search}`);
+    }
+
+    const passthroughKeys = ['embed', 'entry', 'parent_origin', 'parentOrigin'];
+    for (const key of passthroughKeys) {
+      const value = String(current.get(key) || '').trim();
+      if (!value) continue;
+      if (!params.has(key)) params.set(key, value);
+    }
+  };
+
   const handleUploadMedia = () => {
     pdpTracking.track('pdp_action_click', {
       action_type: 'ugc_upload',
@@ -1315,6 +1346,7 @@ export function PdpContainer({
       params.set('product_id', productId);
       if (payload.product.merchant_id) params.set('merchant_id', payload.product.merchant_id);
       params.set('entry', 'ugc_upload');
+      appendReviewWriteContext(params);
       router.push(`/reviews/write?${params.toString()}`);
       return;
     }
@@ -1349,6 +1381,7 @@ export function PdpContainer({
         const params = new URLSearchParams();
         params.set('product_id', productId);
         if (payload.product.merchant_id) params.set('merchant_id', payload.product.merchant_id);
+        appendReviewWriteContext(params);
         router.push(`/reviews/write?${params.toString()}`);
       }
       return;
