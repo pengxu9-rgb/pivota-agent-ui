@@ -56,7 +56,8 @@ export function ReviewsPreview({
                   <div className="text-xs text-foreground font-medium">
                     {r.author_label || 'Verified buyer'}
                   </div>
-                  <div className="mt-1 line-clamp-3">{r.text_snippet}</div>
+                  {r.title ? <div className="mt-1 text-sm text-foreground font-medium line-clamp-1">{r.title}</div> : null}
+                  <div className="mt-1 line-clamp-3">{r.text_snippet || 'No written details provided.'}</div>
                 </div>
               ))}
             </div>

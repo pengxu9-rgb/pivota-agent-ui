@@ -220,6 +220,7 @@ export interface ReviewsPreviewData {
     review_id: string;
     rating: number;
     author_label?: string;
+    title?: string;
     text_snippet: string;
     media?: MediaItem[];
   }>;

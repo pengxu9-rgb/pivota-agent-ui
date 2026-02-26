@@ -168,7 +168,12 @@ export function BeautyReviewsSection({
                 <div className="mt-1">
                   <StarRating value={(review.rating / data.scale) * 5} />
                 </div>
-                <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{review.text_snippet}</p>
+                {review.title ? (
+                  <p className="mt-2 text-sm leading-relaxed text-foreground font-medium line-clamp-1">{review.title}</p>
+                ) : null}
+                <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+                  {review.text_snippet || 'No written details provided.'}
+                </p>
               </div>
               {review.media?.length ? (
                 <div className="relative h-16 w-16 rounded-lg overflow-hidden flex-shrink-0">

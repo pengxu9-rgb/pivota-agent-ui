@@ -1171,7 +1171,12 @@ export async function createReviewFromUser(args: {
 export async function attachReviewMediaFromUser(
   reviewId: number,
   file: File,
-): Promise<{ status?: string; review_id?: number; media?: { id?: number; public_id?: string; type?: string } } | null> {
+): Promise<{
+  status?: string;
+  review_id?: number;
+  media?: { id?: number; public_id?: string; type?: string };
+  media_moderation_state?: string;
+} | null> {
   const rid = Number(reviewId);
   if (!Number.isFinite(rid) || rid <= 0) return null;
   const form = new FormData();
