@@ -306,8 +306,25 @@ function normalizeProduct(
     if (typeof value === 'string') return value.trim();
     if (typeof value === 'object') {
       const obj = value as Record<string, unknown>;
+      const nestedImage =
+        obj.image && typeof obj.image === 'object'
+          ? (obj.image as Record<string, unknown>)
+          : null;
       const fromObject =
-        obj.url || obj.image_url || obj.imageUrl || obj.src || '';
+        obj.url ||
+        obj.image_url ||
+        obj.imageUrl ||
+        obj.src ||
+        obj.main_image_url ||
+        obj.thumbnail_url ||
+        obj.thumbnailUrl ||
+        obj.preview_image_url ||
+        obj.previewImageUrl ||
+        nestedImage?.url ||
+        nestedImage?.image_url ||
+        nestedImage?.imageUrl ||
+        nestedImage?.src ||
+        '';
       return typeof fromObject === 'string' ? fromObject.trim() : '';
     }
     return '';
@@ -322,16 +339,43 @@ function normalizeProduct(
     return '';
   };
 
+  const firstFromSeedData = (seedData: unknown): string => {
+    if (!seedData || typeof seedData !== 'object') return '';
+    const seedObj = seedData as Record<string, unknown>;
+    const snapshot =
+      seedObj.snapshot && typeof seedObj.snapshot === 'object'
+        ? (seedObj.snapshot as Record<string, unknown>)
+        : null;
+    return (
+      getImageCandidate(seedObj.image_url) ||
+      getImageCandidate(seedObj.imageUrl) ||
+      getImageCandidate(seedObj.image) ||
+      firstFromArray(seedObj.images) ||
+      firstFromArray(seedObj.image_urls) ||
+      getImageCandidate(snapshot?.image_url) ||
+      getImageCandidate(snapshot?.imageUrl) ||
+      getImageCandidate(snapshot?.image) ||
+      firstFromArray(snapshot?.images) ||
+      firstFromArray(snapshot?.image_urls) ||
+      ''
+    );
+  };
+
   let normalizedImage =
     getImageCandidate(anyP.image_url) ||
     getImageCandidate(anyP.imageUrl) ||
     getImageCandidate(anyP.image) ||
     firstFromArray(anyP.images) ||
-    firstFromArray(anyP.image_urls);
+    firstFromArray(anyP.image_urls) ||
+    firstFromSeedData(anyP.seed_data) ||
+    firstFromArray(anyP.variants) ||
+    firstFromArray(anyP.media);
 
   // Use image proxy for external images to avoid CORS issues
   if (normalizedImage && /^https?:\/\//i.test(normalizedImage)) {
     normalizedImage = `/api/image-proxy?url=${encodeURIComponent(normalizedImage)}`;
+  } else if (!normalizedImage) {
+    normalizedImage = '/placeholder.svg';
   }
 
   const description =

@@ -23,6 +23,7 @@ function formatPrice(product: ProductResponse): string {
 export function ChatRecommendationCard({ product, onAddToCart }: Props) {
   const router = useRouter();
   const [isNavigating, setIsNavigating] = useState(false);
+  const [imageSrc, setImageSrc] = useState(product.image_url || '/placeholder.svg');
   const lastTouchTsRef = useRef(0);
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
   const touchMovedRef = useRef(false);
@@ -56,6 +57,10 @@ export function ChatRecommendationCard({ product, onAddToCart }: Props) {
       router.push(href);
     });
   };
+
+  useEffect(() => {
+    setImageSrc(product.image_url || '/placeholder.svg');
+  }, [product.image_url]);
 
   useEffect(() => {
     return () => {
@@ -112,16 +117,17 @@ export function ChatRecommendationCard({ product, onAddToCart }: Props) {
       }}
     >
       <div className="relative aspect-[4/5] w-full bg-muted/30">
-        {product.image_url ? (
-          <Image
-            src={product.image_url}
-            alt={product.title}
-            fill
-            sizes="(max-width: 768px) 250px, 280px"
-            className="object-cover transition-transform duration-300 group-hover:scale-105"
-            unoptimized
-          />
-        ) : null}
+        <Image
+          src={imageSrc}
+          alt={product.title}
+          fill
+          sizes="(max-width: 768px) 250px, 280px"
+          className="object-cover transition-transform duration-300 group-hover:scale-105"
+          unoptimized
+          onError={() => {
+            if (imageSrc !== '/placeholder.svg') setImageSrc('/placeholder.svg');
+          }}
+        />
 
         <button
           type="button"
