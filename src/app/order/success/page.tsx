@@ -197,25 +197,25 @@ function SuccessContent() {
   }
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-green-50 to-blue-100 flex items-center justify-center">
-      <div className="bg-white rounded-lg shadow-xl p-8 max-w-md w-full text-center">
-        <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
-          <Check className="w-10 h-10 text-green-600" />
+    <main className="min-h-screen bg-gradient-to-br from-green-50 to-blue-100 flex items-center justify-center px-4 py-6">
+      <div className="bg-white rounded-lg shadow-xl p-6 max-w-md w-full text-center">
+        <div className="w-14 h-14 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+          <Check className="w-7 h-7 text-green-600" />
         </div>
-        
-        <h1 className="text-3xl font-bold text-gray-800 mb-2">Order Successful!</h1>
-        <p className="text-gray-600 mb-6">
+
+        <h1 className="text-2xl font-bold text-gray-800 mb-2">Order Successful!</h1>
+        <p className="text-sm text-gray-600 mb-5">
           Thank you for shopping with Pivota. Your order has been confirmed.
         </p>
 
         {orderId && (
-          <div className="bg-gray-50 rounded-lg p-4 mb-6">
-            <p className="text-sm text-gray-600 mb-1">Order Number</p>
-            <p className="font-mono font-bold text-lg">{orderId}</p>
+          <div className="bg-gray-50 rounded-lg p-3 mb-5">
+            <p className="text-xs text-gray-600 mb-1">Order Number</p>
+            <p className="font-mono font-bold text-base">{orderId}</p>
           </div>
         )}
 
-        <div className="mb-6 space-y-3">
+        <div className="mb-5 space-y-2.5">
           {(returnUrl || hasReturnHint) && (
             <button
               onClick={() => {
@@ -236,7 +236,7 @@ function SuccessContent() {
                   : returnUrl
                 window.location.assign(url)
               }}
-              className="w-full px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+              className="w-full px-4 py-2.5 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
             >
               Return to previous page
             </button>
@@ -245,15 +245,15 @@ function SuccessContent() {
             <>
               <button
                 onClick={() => router.push(`/order/track?orderId=${orderId}`)}
-                className="w-full px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors flex items-center justify-center gap-2"
+                className="w-full px-4 py-2.5 text-sm bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors flex items-center justify-center gap-2"
               >
                 Track Your Order
-                <ArrowRight className="w-4 h-4" />
+                <ArrowRight className="w-3.5 h-3.5" />
               </button>
 
               <button
                 onClick={continueShopping}
-                className="w-full px-6 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                className="w-full px-4 py-2.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
               >
                 Continue Shopping
               </button>
@@ -261,14 +261,11 @@ function SuccessContent() {
           )}
         </div>
 
-        <details className="text-left bg-slate-50 border border-slate-200 rounded-lg">
-          <summary className="px-4 py-3 cursor-pointer text-sm font-medium text-slate-800">
-            Order details & settings
-          </summary>
-          <div className="px-4 pb-4 space-y-4">
+        <div className="text-left bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 space-y-3.5">
+          <div className="text-sm font-medium text-slate-800">Order details & settings</div>
             {(sellerName || sellerDomain) && (
               <div className="bg-blue-50 border border-blue-100 rounded-lg p-3">
-                <p className="text-sm text-gray-700">
+                <p className="text-xs text-gray-700">
                   <span className="font-medium">Sold by:</span>{' '}
                   {sellerName || 'Merchant'}
                   {sellerDomain ? (
@@ -279,32 +276,32 @@ function SuccessContent() {
                   ) : null}
                 </p>
                 {billingDescriptor ? (
-                  <p className="text-sm text-gray-700 mt-2">
+                  <p className="text-xs text-gray-700 mt-2">
                     <span className="font-medium">Billing descriptor (expected):</span>{' '}
                     <span className="font-mono">{billingDescriptor}</span>
                   </p>
                 ) : null}
-                <p className="text-xs text-gray-600 mt-2">
+                <p className="text-[11px] text-gray-600 mt-2">
                   Pivota provides the checkout experience but is not the seller of record.
                 </p>
               </div>
             )}
 
             <div className="bg-indigo-50 border border-indigo-100 rounded-lg p-3">
-              <p className="text-sm text-gray-800 font-medium">Save for next time</p>
-              <p className="text-xs text-gray-600 mt-1">
+              <p className="text-xs text-gray-800 font-medium">Save for next time</p>
+              <p className="text-[11px] text-gray-600 mt-1">
                 Save your email and shipping address to your Pivota Buyer account so future checkouts can be auto-filled.
               </p>
-              <div className="mt-3">
+              <div className="mt-2.5">
                 {saveStatus === 'saved' ? (
-                  <p className="text-sm text-green-700">Saved. Next time checkout will auto-fill.</p>
+                  <p className="text-xs text-green-700">Saved. Next time checkout will auto-fill.</p>
                 ) : saveStatus === 'step_up' ? (
                   <div className="space-y-2">
-                    <p className="text-sm text-gray-700">Login required to save.</p>
+                    <p className="text-xs text-gray-700">Login required to save.</p>
                     {saveLoginUrl ? (
                       <button
                         onClick={() => window.location.assign(saveLoginUrl)}
-                        className="w-full px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+                        className="w-full px-4 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
                       >
                         Login to save
                       </button>
@@ -315,36 +312,35 @@ function SuccessContent() {
                     type="button"
                     onClick={() => void attemptSave({ intent_id: intentId || undefined, order_id: orderId || undefined })}
                     disabled={!canSave || saveStatus === 'saving'}
-                    className="w-full px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-60"
+                    className="w-full px-4 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-60"
                   >
                     {saveStatus === 'saving' ? 'Saving…' : 'Save'}
                   </button>
                 )}
-                {saveStatus === 'error' && saveError ? <p className="text-xs text-red-700 mt-2">{saveError}</p> : null}
+                {saveStatus === 'error' && saveError ? <p className="text-[11px] text-red-700 mt-2">{saveError}</p> : null}
                 {saveStatus === 'idle' && hasBuyerVaultPrefill ? (
-                  <p className="text-xs text-gray-600 mt-2">
+                  <p className="text-[11px] text-gray-600 mt-2">
                     Buyer Vault defaults detected. Future checkout will prioritize your saved email and address.
                   </p>
                 ) : null}
                 {!canSave ? (
-                  <p className="text-xs text-gray-600 mt-2">
+                  <p className="text-[11px] text-gray-600 mt-2">
                     Missing checkout session. Please return to the app and retry checkout.
                   </p>
                 ) : null}
               </div>
             </div>
 
-            <div className="space-y-2">
-              <div className="flex items-center justify-center gap-3 text-gray-600">
-                <Package className="w-5 h-5" />
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-center gap-2 text-gray-600 text-xs">
+                <Package className="w-4 h-4" />
                 <span>Estimated delivery: 3-5 business days</span>
               </div>
-              <p className="text-sm text-gray-500 text-center">
+              <p className="text-xs text-gray-500 text-center">
                 You&apos;ll receive a confirmation email with tracking information.
               </p>
             </div>
-          </div>
-        </details>
+        </div>
       </div>
     </main>
   )

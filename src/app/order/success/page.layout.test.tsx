@@ -53,11 +53,14 @@ describe('Order success action layout', () => {
     const trackButton = await screen.findByRole('button', { name: /track your order/i });
     const continueButton = screen.getByRole('button', { name: /continue shopping/i });
     const detailsSummary = screen.getByText(/order details & settings/i);
+    const visibleDetailsBody = screen.getByText(/save for next time/i);
 
     expect(trackButton).toBeInTheDocument();
     expect(continueButton).toBeInTheDocument();
     expect(trackButton.compareDocumentPosition(detailsSummary) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(continueButton.compareDocumentPosition(detailsSummary) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(visibleDetailsBody).toBeInTheDocument();
+    expect(screen.queryByText(/order details & settings/i, { selector: 'summary' })).toBeNull();
   });
 
   it('keeps return button in the primary action area when return URL exists', async () => {
@@ -66,10 +69,13 @@ describe('Order success action layout', () => {
 
     const returnButton = await screen.findByRole('button', { name: /return to previous page/i });
     const detailsSummary = screen.getByText(/order details & settings/i);
+    const visibleDetailsBody = screen.getByText(/save for next time/i);
 
     await waitFor(() => {
       expect(screen.queryByRole('button', { name: /track your order/i })).toBeNull();
     });
     expect(returnButton.compareDocumentPosition(detailsSummary) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(visibleDetailsBody).toBeInTheDocument();
+    expect(screen.queryByText(/order details & settings/i, { selector: 'summary' })).toBeNull();
   });
 });
