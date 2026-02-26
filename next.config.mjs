@@ -10,6 +10,12 @@ const UCP_WEB_BASE_URL =
     /\/$/,
     '',
   )
+const REVIEWS_UPSTREAM_BASE_URL = (
+  process.env.NEXT_PUBLIC_REVIEWS_API_URL ||
+  process.env.NEXT_PUBLIC_REVIEWS_BACKEND_URL ||
+  process.env.REVIEWS_BACKEND_URL ||
+  'https://web-production-fedb.up.railway.app'
+).replace(/\/$/, '')
 
 const nextConfig = {
   reactStrictMode: true,
@@ -49,6 +55,10 @@ const nextConfig = {
   productionBrowserSourceMaps: false,
   async rewrites() {
     return [
+      {
+        source: '/agent/shop/v1/review-media/:path*',
+        destination: `${REVIEWS_UPSTREAM_BASE_URL}/agent/shop/v1/review-media/:path*`,
+      },
       {
         source: '/ucp/v1/:path*',
         destination: `${UCP_WEB_BASE_URL}/ucp/v1/:path*`,
