@@ -1352,11 +1352,16 @@ export async function sendMessage(
       operation: 'find_products_multi',
       payload: {
         search: {
-          // Cross-merchant search; backend will route across merchants
+          // Cross-merchant search by default; optional explicit merchant scope still supported.
           in_stock_only: false, // allow showing results even if inventory is zero for demo
           query,
           limit: requestedLimit,
           page: requestedPage,
+          allow_external_seed: true,
+          external_seed_strategy: 'unified_relevance',
+          ...(merchantIdOverride
+            ? { merchant_id: merchantIdOverride, search_all_merchants: false }
+            : { search_all_merchants: true }),
         },
         user: {
           // Provide lightweight context to stabilize intent/constraint extraction
@@ -1426,30 +1431,28 @@ export async function getAllProducts(
   merchantIdOverride?: string,
   options?: { page?: number },
 ): Promise<ProductResponse[]> {
-  // If we have a merchant id, use single-merchant search; otherwise fallback to multi.
-  let merchantId: string | undefined = merchantIdOverride;
-  if (!merchantId) {
-    try {
-      merchantId = getMerchantId();
-    } catch (e) {
-      merchantId = undefined;
-    }
-  }
+  const merchantId = String(merchantIdOverride || '').trim() || undefined;
+  const page =
+    Number.isFinite(Number(options?.page)) && Number(options?.page)! > 0
+      ? Math.floor(Number(options?.page))
+      : 1;
 
   const searchPayload = {
     search: {
       in_stock_only: false,
       query: '',
       limit,
-      ...(Number.isFinite(Number(options?.page)) && Number(options?.page)! > 0
-        ? { page: Math.floor(Number(options?.page)) }
-        : {}),
-      ...(merchantId ? { merchant_id: merchantId } : {}),
+      page,
+      allow_external_seed: true,
+      external_seed_strategy: 'unified_relevance',
+      ...(merchantId
+        ? { merchant_id: merchantId, search_all_merchants: false }
+        : { search_all_merchants: true }),
     },
   };
 
   const data = await callGateway({
-    operation: merchantId ? 'find_products' : 'find_products_multi',
+    operation: 'find_products_multi',
     payload: searchPayload as any,
   });
 
