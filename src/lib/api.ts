@@ -7,11 +7,21 @@ import { ensureAuroraSession, shouldUseAuroraAutoExchange } from '@/lib/auroraOr
 const API_BASE =
   process.env.NEXT_PUBLIC_API_URL ||
   '/api/gateway'; // default to same-origin proxy to avoid CORS
+const SEARCH_LIMIT_MAX = Math.max(
+  1,
+  Math.min(Number(process.env.NEXT_PUBLIC_SEARCH_LIMIT_MAX || 200) || 200, 200),
+);
 
 // Accounts API is proxied through same-origin routes so auth cookies remain first-party.
 // This avoids third-party cookie issues (e.g. in-app browsers / iOS Safari) and reduces CORS risk.
 const ACCOUNTS_API_BASE = '/api/accounts';
 const ACCOUNTS_ROOT_API_BASE = '/api/accounts-root';
+
+function clampSearchLimit(value: unknown, fallback: number): number {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return Math.max(1, Math.min(fallback, SEARCH_LIMIT_MAX));
+  return Math.max(1, Math.min(Math.floor(n), SEARCH_LIMIT_MAX));
+}
 
 type ApiError = Error & { code?: string; status?: number; detail?: any };
 type AmbiguousProductError = ApiError & {
@@ -1350,7 +1360,7 @@ export async function sendMessage(
   const query = message.trim();
   const recentQueries = getEvalVariant() === 'A' ? [] : readRecentQueries();
   const requestedPage = Math.max(1, Math.floor(Number(options?.pagination?.page || 1) || 1));
-  const requestedLimit = Math.max(1, Math.floor(Number(options?.pagination?.limit || 24) || 24));
+  const requestedLimit = clampSearchLimit(options?.pagination?.limit, 24);
 
   const data = await callGateway(
     {
@@ -1446,7 +1456,7 @@ export async function getAllProducts(
     search: {
       in_stock_only: false,
       query: '',
-      limit,
+      limit: clampSearchLimit(limit, 20),
       page,
       allow_external_seed: true,
       external_seed_strategy: 'unified_relevance',
@@ -1740,14 +1750,14 @@ export async function getProductDetail(
 
   try {
     // Fallback: cross-merchant search to locate the product and its merchant_id
-    const searchAndFind = async (query: string, limit = 500) => {
+    const searchAndFind = async (query: string, limit = SEARCH_LIMIT_MAX) => {
       const data = await callGatewayWithTimeout(
         {
           operation: 'find_products_multi',
           payload: {
             search: {
               query,
-              limit,
+              limit: clampSearchLimit(limit, SEARCH_LIMIT_MAX),
             },
           },
         },
@@ -1771,12 +1781,12 @@ export async function getProductDetail(
 
     // Prefer an ID-targeted search first.
     // This avoids slow "empty query" catalog scans when the upstream supports identifier search.
-    const first = await searchAndFind(productId, 100);
+    const first = await searchAndFind(productId, SEARCH_LIMIT_MAX);
     found = first.found;
     candidates = first.candidates;
 
     if (!found && candidates.length === 0 && allowBroadScan) {
-      const broad = await searchAndFind('', 100);
+      const broad = await searchAndFind('', SEARCH_LIMIT_MAX);
       found = broad.found;
       candidates = broad.candidates;
     }
