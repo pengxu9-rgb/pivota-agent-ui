@@ -926,6 +926,11 @@ function OrderFlowInner({
       const responseClientSecret =
         (paymentResponse as any)?.client_secret ||
         paymentObj?.client_secret
+      const responsePsp =
+        (paymentResponse as any)?.psp ||
+        paymentObj?.psp ||
+        pspUsed ||
+        null
       if (
         typeof responseIntentId === 'string' &&
         responseIntentId.startsWith('adyen_session') &&
@@ -937,6 +942,26 @@ function OrderFlowInner({
           client_secret: responseClientSecret,
           url: null,
           raw: null,
+        }
+      } else if (typeof responseClientSecret === 'string' && responseClientSecret) {
+        if (/^https?:\/\//i.test(responseClientSecret)) {
+          action = {
+            type: 'redirect_url',
+            url: responseClientSecret,
+            client_secret: null,
+            raw: null,
+          }
+        } else if (
+          responsePsp === 'stripe' ||
+          !responsePsp ||
+          responseClientSecret.includes('_secret_')
+        ) {
+          action = {
+            type: 'stripe_client_secret',
+            client_secret: responseClientSecret,
+            url: null,
+            raw: null,
+          }
         }
       }
     }
