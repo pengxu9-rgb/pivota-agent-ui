@@ -17,6 +17,52 @@ const REVIEWS_UPSTREAM_BASE_URL = (
   'https://web-production-fedb.up.railway.app'
 ).replace(/\/$/, '')
 
+function hostnameFromUrl(url) {
+  try {
+    return new URL(String(url || '')).hostname || '';
+  } catch {
+    return '';
+  }
+}
+
+const REVIEWS_UPSTREAM_HOSTNAME = hostnameFromUrl(REVIEWS_UPSTREAM_BASE_URL);
+
+const IMAGE_REMOTE_PATTERNS = [
+  {
+    protocol: 'https',
+    hostname: 'm.media-amazon.com',
+  },
+  {
+    protocol: 'https',
+    hostname: 'cdn.shopify.com',
+  },
+  {
+    protocol: 'https',
+    hostname: 'static.wixstatic.com',
+  },
+  {
+    protocol: 'https',
+    hostname: 'images.unsplash.com',
+  },
+  // Review media is signed and served by backend public host.
+  {
+    protocol: 'https',
+    hostname: 'web-production-fedb.up.railway.app',
+  },
+  {
+    protocol: 'https',
+    hostname: 'pivota-agent-production.up.railway.app',
+  },
+  ...(REVIEWS_UPSTREAM_HOSTNAME
+    ? [
+        {
+          protocol: 'https',
+          hostname: REVIEWS_UPSTREAM_HOSTNAME,
+        },
+      ]
+    : []),
+];
+
 const nextConfig = {
   reactStrictMode: true,
   // Avoid Next.js picking an incorrect monorepo root (can slow builds and break output tracing).
@@ -28,24 +74,7 @@ const nextConfig = {
     ignoreDuringBuilds: false,
   },
   images: {
-    remotePatterns: [
-      {
-        protocol: 'https',
-        hostname: 'm.media-amazon.com',
-      },
-      {
-        protocol: 'https',
-        hostname: 'cdn.shopify.com',
-      },
-      {
-        protocol: 'https',
-        hostname: 'static.wixstatic.com',
-      },
-      {
-        protocol: 'https',
-        hostname: 'images.unsplash.com',
-      },
-    ],
+    remotePatterns: IMAGE_REMOTE_PATTERNS,
     formats: ['image/avif', 'image/webp'],
   },
   // Enable compression
