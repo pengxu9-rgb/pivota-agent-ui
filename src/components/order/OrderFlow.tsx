@@ -374,6 +374,7 @@ function OrderFlowInner({
   const [debugEnabled, setDebugEnabled] = useState(false)
   const paymentInitPromiseRef = useRef<Promise<PrefetchedPaymentInit> | null>(null)
   const paymentInitKeyRef = useRef<string | null>(null)
+  const paymentInitRunIdRef = useRef(0)
   const [prefetchedPaymentRes, setPrefetchedPaymentRes] = useState<PrefetchedPaymentInit | null>(null)
   const [paymentInitLoading, setPaymentInitLoading] = useState(false)
   const [paymentInitError, setPaymentInitError] = useState<string | null>(null)
@@ -1059,6 +1060,7 @@ function OrderFlowInner({
 
   useEffect(() => {
     if (step === 'payment') return
+    paymentInitRunIdRef.current += 1
     paymentInitPromiseRef.current = null
     paymentInitKeyRef.current = null
     setPrefetchedPaymentRes(null)
@@ -1066,7 +1068,6 @@ function OrderFlowInner({
     setPaymentInitError(null)
   }, [step])
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (step !== 'payment') return
     if (!quote?.quote_id || !paymentInitKey) return
@@ -1077,7 +1078,8 @@ function OrderFlowInner({
       return
     }
 
-    let cancelled = false
+    const runId = paymentInitRunIdRef.current + 1
+    paymentInitRunIdRef.current = runId
     setPaymentInitLoading(true)
     setPaymentInitError(null)
     setPrefetchedPaymentRes(null)
@@ -1090,30 +1092,30 @@ function OrderFlowInner({
 
     initPromise
       .then((prefetched) => {
-        if (cancelled) return
+        if (paymentInitRunIdRef.current !== runId) return
         const action = extractPaymentAction(prefetched.paymentResponse, initialPaymentAction)
         setPrefetchedPaymentRes(prefetched)
         setPaymentActionType(action?.type || null)
         setPspUsed(detectPaymentPsp(prefetched.paymentResponse, action))
       })
       .catch((err: any) => {
-        if (cancelled) return
+        if (paymentInitRunIdRef.current !== runId) return
         const msg = String(err?.message || '').trim() || 'Failed to prepare payment'
         setPaymentInitError(msg)
       })
       .finally(() => {
-        if (!cancelled) setPaymentInitLoading(false)
+        if (paymentInitPromiseRef.current === initPromise) {
+          paymentInitPromiseRef.current = null
+        }
+        if (paymentInitRunIdRef.current === runId) {
+          setPaymentInitLoading(false)
+        }
       })
 
-    return () => {
-      cancelled = true
-    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
-    initialPaymentAction,
     paymentInitKey,
-    prefetchedPaymentRes,
-    quote,
+    quote?.quote_id,
     step,
   ])
 
@@ -1196,6 +1198,7 @@ function OrderFlowInner({
       setPaymentActionType(null)
       setPspUsed(null)
       setAdyenMounted(false)
+      paymentInitRunIdRef.current += 1
       paymentInitPromiseRef.current = null
       paymentInitKeyRef.current = null
       setPrefetchedPaymentRes(null)

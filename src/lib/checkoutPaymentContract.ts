@@ -18,6 +18,11 @@ const CLIENT_OWNED_PAYMENT_STATUSES = new Set([
   'requires_confirmation',
   'requires_action',
 ])
+const CLIENT_OWNED_PAYMENT_ACTION_TYPES = new Set([
+  'adyen_session',
+  'redirect_url',
+  'stripe_client_secret',
+])
 
 function readString(value: unknown): string | null {
   if (typeof value === 'string') {
@@ -102,7 +107,7 @@ export function resolveCheckoutPaymentContract(args: {
   }
 
   // Compatibility for legacy payloads without owner fields.
-  if (actionType === 'adyen_session' || actionType === 'redirect_url') {
+  if (CLIENT_OWNED_PAYMENT_ACTION_TYPES.has(actionType)) {
     return {
       paymentStatus,
       paymentStatusRaw,
@@ -126,15 +131,6 @@ export function resolveCheckoutPaymentContract(args: {
       requiresClientConfirmation: false,
     }
   }
-  if (actionType === 'stripe_client_secret') {
-    return {
-      paymentStatus,
-      paymentStatusRaw,
-      confirmationOwner: 'client',
-      requiresClientConfirmation: true,
-    }
-  }
-
   return {
     paymentStatus,
     paymentStatusRaw,
