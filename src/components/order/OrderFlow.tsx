@@ -13,6 +13,10 @@ import {
   previewQuote,
   confirmOrderPayment,
 } from '@/lib/api'
+import {
+  isBackendSettledPaymentStatus,
+  resolveCheckoutPaymentContract,
+} from '@/lib/checkoutPaymentContract'
 import { useCartStore } from '@/store/cartStore'
 import { toast } from 'sonner'
 import { useRouter } from 'next/navigation'
@@ -1366,8 +1370,42 @@ function OrderFlowInner({
           action?.client_secret ||
           paymentResponse.client_secret ||
           paymentResponse.payment?.client_secret
+        const paymentContract = resolveCheckoutPaymentContract({
+          paymentResponse,
+          action,
+        })
+        const completeCheckout = (paymentIdValue?: string) => {
+          void confirmOrderPayment(orderId).catch((err) => {
+            console.warn('confirmOrderPayment failed', err)
+          })
+          setPaymentId(paymentIdValue || '')
+          setStep('confirm')
+          toast.success('Payment completed successfully.')
+          clearCart()
+          if (onComplete) {
+            onComplete(orderId)
+            return
+          }
+          router.push(`/orders/${orderId}?paid=1`)
+        }
 
-        // New unified payment handling
+        if (!paymentContract.requiresClientConfirmation) {
+          if (isBackendSettledPaymentStatus(paymentContract.paymentStatus)) {
+            completeCheckout(
+              String(
+                (paymentResponse as any)?.payment_id ||
+                  (paymentResponse as any)?.payment?.payment_id ||
+                  '',
+              ),
+            )
+            return
+          }
+          throw new Error(
+            'Your order was created, but payment is still pending. Please check your orders page shortly.',
+          )
+        }
+
+        // Client-owned confirmation paths.
         if (action?.type === 'redirect_url') {
           if (redirectUrl) {
             window.location.href = redirectUrl
@@ -1382,8 +1420,11 @@ function OrderFlowInner({
           return
         }
 
-        // Default / Stripe flow
-        if (clientSecret && stripe && elements) {
+        const isStripePsp = !detectedPsp || detectedPsp === 'stripe'
+        if (clientSecret && isStripePsp) {
+          if (!stripe || !elements) {
+            throw new Error('Payment form is not ready. Please refresh and try again.')
+          }
           const cardElement = elements.getElement(CardElement)
           if (!cardElement) {
             throw new Error('Please enter your card details to pay.')
@@ -1402,39 +1443,22 @@ function OrderFlowInner({
 
           const status = result.paymentIntent?.status
           if (status === 'succeeded' || status === 'processing') {
-            void confirmOrderPayment(orderId).catch((err) => {
-              console.warn('confirmOrderPayment failed', err)
-            })
-            setPaymentId(result.paymentIntent?.id || '')
-            setStep('confirm')
-            toast.success('Payment completed successfully.')
-            clearCart()
-            if (onComplete) {
-              onComplete(orderId)
-              return
-            }
-            router.push(`/orders/${orderId}?paid=1`)
-          } else if (status === 'requires_action') {
+            completeCheckout(result.paymentIntent?.id || '')
+            return
+          }
+          if (status === 'requires_action') {
             // Stripe will handle 3DS in confirmCardPayment; keep user on page
             toast.message('Additional authentication required', {
               description: 'Please complete the 3D Secure flow in the popup window if prompted.',
             })
-          } else {
-            throw new Error('Payment could not be completed. Please try again or use a different card.')
-          }
-        } else if (redirectUrl) {
-          window.location.href = redirectUrl
-        } else {
-          setPaymentId(paymentResponse.payment_id || '')
-          setStep('confirm')
-          toast.success('Payment processed successfully!')
-          clearCart()
-          if (onComplete) {
-            onComplete(orderId)
             return
           }
-          router.push(`/orders/${orderId}?paid=1`)
+          throw new Error('Payment could not be completed. Please try again or use a different card.')
         }
+
+        throw new Error(
+          'Payment confirmation requires client action, but no supported action was provided.',
+        )
       }
 
       try {
