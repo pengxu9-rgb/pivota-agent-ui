@@ -3,7 +3,7 @@
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Check, Package, ArrowRight } from 'lucide-react'
-import { safeReturnUrl, withReturnParams } from '@/lib/returnUrl'
+import { resolveExternalAgentHomeUrl, safeReturnUrl, withReturnParams } from '@/lib/returnUrl'
 import { isAuroraEmbedMode, postRequestCloseToParent } from '@/lib/auroraEmbed'
 import { getCheckoutTokenFromBrowser } from '@/lib/checkoutToken'
 
@@ -61,6 +61,11 @@ function SuccessContent() {
     searchParams.get('returnUrl') ||
     searchParams.get('return_url')
   const returnUrl = safeReturnUrl(rawReturn)
+  const entryParam = (searchParams.get('entry') || '').trim() || null
+  const externalAgentHomeUrl = useMemo(
+    () => resolveExternalAgentHomeUrl(entryParam),
+    [entryParam],
+  )
   const hasReturnHint = Boolean(rawReturn && !returnUrl)
   const isEmbedMode = useMemo(() => isAuroraEmbedMode(), [])
 
@@ -192,6 +197,10 @@ function SuccessContent() {
       } catch {
         // ignore
       }
+    }
+    if (externalAgentHomeUrl) {
+      window.location.assign(externalAgentHomeUrl)
+      return
     }
     router.push('/')
   }

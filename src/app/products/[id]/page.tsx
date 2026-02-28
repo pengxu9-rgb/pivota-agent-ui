@@ -24,7 +24,11 @@ import { BeautyPDPContainer } from '@/features/pdp/containers/BeautyPDPContainer
 import { GenericPDPContainer } from '@/features/pdp/containers/GenericPDPContainer';
 import type { Module, PDPPayload, Variant } from '@/features/pdp/types';
 import { pdpTracking } from '@/features/pdp/tracking';
-import { isExternalAgentEntry } from '@/lib/returnUrl';
+import {
+  isExternalAgentEntry,
+  resolveExternalAgentHomeUrl,
+  safeReturnUrl,
+} from '@/lib/returnUrl';
 import {
   DEFAULT_MODULE_SOURCE_LOCKS,
   upsertLockedModule,
@@ -1478,8 +1482,42 @@ export default function ProductDetailPage({ params }: Props) {
           offer_id: offer_id ? String(offer_id) : undefined,
         },
       ];
-      const encoded = encodeURIComponent(JSON.stringify(checkoutItems));
-      router.push(`/order?items=${encoded}`);
+      const params = new URLSearchParams();
+      params.set('items', JSON.stringify(checkoutItems));
+
+      const explicitReturnRaw =
+        String(
+          searchParams.get('return') ||
+            searchParams.get('return_url') ||
+            searchParams.get('returnUrl') ||
+            '',
+        ).trim();
+      const explicitReturn = safeReturnUrl(explicitReturnRaw);
+      const entryFromQuery = String(searchParams.get('entry') || '').trim();
+
+      if (explicitReturn) {
+        params.set('return', explicitReturn);
+      } else if (isExternalAgentEntry(entryFromQuery)) {
+        const externalHome = resolveExternalAgentHomeUrl(entryFromQuery);
+        if (externalHome) params.set('return', externalHome);
+      }
+
+      const passthroughKeys = [
+        'embed',
+        'entry',
+        'parent_origin',
+        'parentOrigin',
+        'aurora_uid',
+        'lang',
+        'source',
+      ];
+      for (const key of passthroughKeys) {
+        const value = String(searchParams.get(key) || '').trim();
+        if (!value) continue;
+        if (!params.has(key)) params.set(key, value);
+      }
+
+      router.push(`/order?${params.toString()}`);
     })();
   };
 

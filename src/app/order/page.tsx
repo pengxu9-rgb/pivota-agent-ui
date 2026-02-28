@@ -55,6 +55,13 @@ function OrderContent() {
   )
   const source =
     (searchParams.get('source') || searchParams.get('src') || '').trim().toLowerCase()
+  const entryParam = (searchParams.get('entry') || '').trim() || null
+  const embedParam = (searchParams.get('embed') || '').trim() || null
+  const parentOriginParam =
+    (searchParams.get('parent_origin') || searchParams.get('parentOrigin') || '').trim() ||
+    null
+  const auroraUidParam = (searchParams.get('aurora_uid') || '').trim() || null
+  const langParam = (searchParams.get('lang') || '').trim() || null
   const checkoutTokenFromQuery =
     (searchParams.get('checkout_token') || searchParams.get('checkoutToken') || '').trim() || null
   const [checkoutToken, setCheckoutToken] = useState<string | null>(checkoutTokenFromQuery)
@@ -300,6 +307,12 @@ function OrderContent() {
     if (ucpCheckoutSessionId) sellerParams.set('ucp_checkout_session_id', ucpCheckoutSessionId)
     if (checkoutDebug) sellerParams.set('checkout_debug', checkoutDebug)
     if (checkoutToken) sellerParams.set('checkout_token', checkoutToken)
+    if (entryParam) sellerParams.set('entry', entryParam)
+    if (embedParam) sellerParams.set('embed', embedParam)
+    if (parentOriginParam) sellerParams.set('parent_origin', parentOriginParam)
+    if (auroraUidParam) sellerParams.set('aurora_uid', auroraUidParam)
+    if (langParam) sellerParams.set('lang', langParam)
+    if (source) sellerParams.set('source', source)
     const sellerSuffix = sellerParams.toString() ? `&${sellerParams.toString()}` : ''
 
     router.push(
