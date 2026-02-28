@@ -8,6 +8,7 @@ const pushMock = vi.fn();
 const postRequestCloseToParentMock = vi.fn();
 const getCheckoutTokenFromBrowserMock = vi.fn();
 const fetchMock = vi.fn();
+const assignMock = vi.fn();
 
 let searchParamsValue = 'orderId=ord_123';
 
@@ -40,6 +41,14 @@ describe('Order success action layout', () => {
       json: async () => ({}),
     });
     vi.stubGlobal('fetch', fetchMock);
+    assignMock.mockReset();
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: {
+        ...window.location,
+        assign: assignMock,
+      },
+    });
   });
 
   afterEach(() => {
@@ -77,5 +86,16 @@ describe('Order success action layout', () => {
     expect(returnButton.compareDocumentPosition(detailsSummary) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(visibleDetailsBody).toBeInTheDocument();
     expect(screen.queryByText(/order details & settings/i, { selector: 'summary' })).toBeNull();
+  });
+
+  it('routes continue shopping back to creator agent when source indicates creator entry', async () => {
+    searchParamsValue = 'orderId=ord_123&source=creator_agent';
+    render(<OrderSuccessPage />);
+
+    const continueButton = await screen.findByRole('button', { name: /continue shopping/i });
+    continueButton.click();
+
+    expect(assignMock).toHaveBeenCalledWith('https://creator.pivota.cc/');
+    expect(pushMock).not.toHaveBeenCalled();
   });
 });

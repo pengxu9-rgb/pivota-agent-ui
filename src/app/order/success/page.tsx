@@ -62,9 +62,11 @@ function SuccessContent() {
     searchParams.get('return_url')
   const returnUrl = safeReturnUrl(rawReturn)
   const entryParam = (searchParams.get('entry') || '').trim() || null
+  const sourceParam =
+    (searchParams.get('source') || searchParams.get('src') || '').trim() || null
   const externalAgentHomeUrl = useMemo(
-    () => resolveExternalAgentHomeUrl(entryParam),
-    [entryParam],
+    () => resolveExternalAgentHomeUrl(entryParam || sourceParam),
+    [entryParam, sourceParam],
   )
   const hasReturnHint = Boolean(rawReturn && !returnUrl)
   const isEmbedMode = useMemo(() => isAuroraEmbedMode(), [])
