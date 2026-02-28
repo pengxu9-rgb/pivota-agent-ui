@@ -1447,6 +1447,7 @@ export async function getAllProducts(
   options?: { page?: number },
 ): Promise<ProductResponse[]> {
   const merchantId = String(merchantIdOverride || '').trim() || undefined;
+  const clampedLimit = clampSearchLimit(limit, 20);
   const page =
     Number.isFinite(Number(options?.page)) && Number(options?.page)! > 0
       ? Math.floor(Number(options?.page))
@@ -1456,7 +1457,7 @@ export async function getAllProducts(
     search: {
       in_stock_only: false,
       query: '',
-      limit: clampSearchLimit(limit, 20),
+      limit: clampedLimit,
       page,
       allow_external_seed: true,
       external_seed_strategy: 'unified_relevance',
