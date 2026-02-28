@@ -30,7 +30,7 @@ const AGENT_API_KEY =
 
 export async function POST(req: NextRequest) {
   try {
-    const t0 = Date.now();
+    const startedAt = Date.now();
     const body = await req.json();
     const checkoutToken = String(req.headers.get('x-checkout-token') || '').trim() || null;
     const operation = String(body?.operation || '').trim();
@@ -44,6 +44,7 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    const upstreamStartedAt = Date.now();
     const upstreamRes = await fetch(`${upstreamBase}/agent/shop/v1/invoke`, {
       method: 'POST',
       headers: {
@@ -56,7 +57,16 @@ export async function POST(req: NextRequest) {
       },
       body: JSON.stringify(body),
     });
-    const upstreamMs = Math.max(0, Date.now() - t0);
+    const upstreamMs = Math.max(0, Date.now() - upstreamStartedAt);
+    const totalMs = Math.max(0, Date.now() - startedAt);
+    const proxyMs = Math.max(0, totalMs - upstreamMs);
+    const upstreamTiming = String(upstreamRes.headers.get('server-timing') || '').trim();
+    const upstreamRetries = String(upstreamRes.headers.get('x-gateway-retries') || '').trim();
+    const timingParts = [
+      ...(upstreamTiming ? [upstreamTiming] : [`upstream;dur=${upstreamMs}`]),
+      `proxy;dur=${proxyMs}`,
+      `gateway;dur=${totalMs}`,
+    ];
 
     const text = await upstreamRes.text();
     let json: any = null;
@@ -71,7 +81,8 @@ export async function POST(req: NextRequest) {
       status: upstreamRes.status,
       headers: {
         'Access-Control-Allow-Origin': '*',
-        'Server-Timing': `upstream;dur=${upstreamMs}`,
+        'Server-Timing': timingParts.join(', '),
+        ...(upstreamRetries ? { 'x-gateway-retries': upstreamRetries } : {}),
       },
     });
   } catch (error) {

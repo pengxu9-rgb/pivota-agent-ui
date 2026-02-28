@@ -88,6 +88,12 @@ type QuotePreview = {
   delivery_options?: any[]
 }
 
+type PrefetchedPaymentInit = {
+  orderId: string
+  quoteId: string
+  paymentResponse: any
+}
+
 const publishableKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || ''
 const stripePromise = publishableKey ? loadStripe(publishableKey) : Promise.resolve(null)
 const ADYEN_CLIENT_KEY =
@@ -362,6 +368,11 @@ function OrderFlowInner({
     order_lines?: any[] | null
   } | null>(null)
   const [debugEnabled, setDebugEnabled] = useState(false)
+  const paymentInitPromiseRef = useRef<Promise<PrefetchedPaymentInit> | null>(null)
+  const paymentInitKeyRef = useRef<string | null>(null)
+  const [prefetchedPaymentRes, setPrefetchedPaymentRes] = useState<PrefetchedPaymentInit | null>(null)
+  const [paymentInitLoading, setPaymentInitLoading] = useState(false)
+  const [paymentInitError, setPaymentInitError] = useState<string | null>(null)
 
   useEffect(() => {
     const normalized = normalizeCountryCode(shipping.country)
@@ -404,6 +415,14 @@ function OrderFlowInner({
   const shipping_cost = quote?.pricing?.shipping_fee ?? 0
   const tax = quote?.pricing?.tax ?? 0
   const total = quote?.pricing?.total ?? estimatedSubtotal
+  const paymentInitKey = useMemo(() => {
+    const quoteId = String(quote?.quote_id || '').trim()
+    if (!quoteId) return null
+    const cur = String(currency || 'USD').trim().toUpperCase()
+    const amountMinor = Number.isFinite(total) ? Math.round(Number(total) * 100) : null
+    if (!cur || amountMinor == null) return null
+    return `${quoteId}:${cur}:${amountMinor}`
+  }, [currency, quote?.quote_id, total])
 
   const formatAmount = (amount: number) => {
     const code = String(currency || 'USD').toUpperCase()
@@ -728,7 +747,7 @@ function OrderFlowInner({
   // Helper to create order once and hydrate PSP/payment_action state
   const createOrderIfNeeded = async (
     quoteForOrder: QuotePreview,
-    options: { forceNew?: boolean } = {},
+    options: { forceNew?: boolean; allowRedirect?: boolean } = {},
   ): Promise<string> => {
     let orderId = options.forceNew ? '' : createdOrderId
     if (orderId) return orderId
@@ -864,13 +883,262 @@ function OrderFlowInner({
       setPspUsed(orderPsp)
     }
 
-    if (orderPaymentAction?.type === 'redirect_url' && orderPaymentAction?.url) {
+    const allowRedirect = options.allowRedirect !== false
+    if (allowRedirect && orderPaymentAction?.type === 'redirect_url' && orderPaymentAction?.url) {
       window.location.href = orderPaymentAction.url
       return orderId
     }
 
     return orderId
   }
+
+  const buildPostPayReturnUrl = (orderId: string): string | undefined => {
+    if (typeof window === 'undefined') return undefined
+    const url = new URL('/order/success', window.location.origin)
+    url.searchParams.set('orderId', orderId)
+    if (returnUrl) url.searchParams.set('return', returnUrl)
+    const current = new URL(window.location.href)
+    const passthrough = ['entry', 'embed', 'lang', 'aurora_uid', 'parent_origin']
+    for (const key of passthrough) {
+      const value = (current.searchParams.get(key) || '').trim()
+      if (value) url.searchParams.set(key, value)
+    }
+    if (checkoutToken) url.searchParams.set('checkout_token', checkoutToken)
+    return url.toString()
+  }
+
+  const extractPaymentAction = (paymentResponse: any, fallbackAction: any = null) => {
+    const paymentObj = (paymentResponse as any)?.payment || {}
+    let action: any =
+      (paymentResponse as any)?.payment_action ||
+      paymentObj?.payment_action ||
+      fallbackAction ||
+      null
+    if (!action) {
+      const responseIntentId =
+        (paymentResponse as any)?.payment_intent_id ||
+        paymentObj?.payment_intent_id
+      const responseClientSecret =
+        (paymentResponse as any)?.client_secret ||
+        paymentObj?.client_secret
+      if (
+        typeof responseIntentId === 'string' &&
+        responseIntentId.startsWith('adyen_session') &&
+        typeof responseClientSecret === 'string' &&
+        responseClientSecret
+      ) {
+        action = {
+          type: 'adyen_session',
+          client_secret: responseClientSecret,
+          url: null,
+          raw: null,
+        }
+      }
+    }
+    return action
+  }
+
+  const detectPaymentPsp = (paymentResponse: any, action: any) => {
+    const paymentObj = (paymentResponse as any)?.payment || {}
+    let detectedPsp: string | null =
+      (paymentResponse as any)?.psp ||
+      paymentObj?.psp ||
+      action?.psp ||
+      pspUsed ||
+      null
+    if (!detectedPsp) {
+      const responseIntentId =
+        paymentObj?.payment_intent_id ||
+        (paymentResponse as any)?.payment_intent_id
+      if (
+        typeof responseIntentId === 'string' &&
+        responseIntentId.startsWith('adyen_session')
+      ) {
+        detectedPsp = 'adyen'
+      }
+    }
+    return detectedPsp
+  }
+
+  const mountAdyenDropIn = async (args: { orderId: string; action: any; paymentResponse: any }) => {
+    const { orderId, action, paymentResponse } = args
+    const sessionData = action?.client_secret
+    let sessionId =
+      action?.raw?.id ||
+      paymentResponse?.payment_intent_id ||
+      paymentResponse?.payment?.payment_intent_id ||
+      ''
+
+    if (sessionId && sessionId.startsWith('adyen_session_')) {
+      sessionId = sessionId.replace('adyen_session_', '')
+    }
+
+    const clientKey = action?.raw?.clientKey || ADYEN_CLIENT_KEY
+    if (!sessionData || !clientKey) {
+      throw new Error('Adyen session is missing required data. Please try again.')
+    }
+
+    if (adyenMounted && adyenContainerRef.current) {
+      return
+    }
+
+    const { default: AdyenCheckout } = await import('@adyen/adyen-web')
+    const checkout = await AdyenCheckout({
+      clientKey,
+      environment: 'test', // use 'live' in production with proper key
+      session: {
+        id: sessionId,
+        sessionData,
+      },
+      analytics: { enabled: false },
+      onPaymentCompleted: () => {
+        void confirmOrderPayment(orderId).catch((err) => {
+          console.warn('confirmOrderPayment failed', err)
+        })
+        setStep('confirm')
+        toast.success('Payment completed successfully.')
+        clearCart()
+        if (onComplete) {
+          onComplete(orderId)
+          return
+        }
+        router.push(`/orders/${orderId}?paid=1`)
+      },
+      onError: (err: any) => {
+        console.error('Adyen error:', err)
+        toast.error('Payment failed with Adyen. Please check your card details or try again.')
+        if (onFailure) onFailure({ reason: 'payment_failed', stage: 'payment' })
+      },
+    })
+
+    if (!adyenContainerRef.current) {
+      throw new Error('Payment form is not ready. Please refresh the page and try again.')
+    }
+    checkout.create('dropin').mount(adyenContainerRef.current)
+    setAdyenMounted(true)
+  }
+
+  const primePaymentForStep = async (quoteForPayment: QuotePreview): Promise<PrefetchedPaymentInit> => {
+    let workingQuote = quoteForPayment
+    let orderId = await createOrderIfNeeded(workingQuote, { allowRedirect: false })
+    const buildPayload = (quoteArg: QuotePreview, orderIdArg: string) => ({
+      order_id: orderIdArg,
+      total_amount: Number(quoteArg.pricing.total) || total,
+      currency: String(quoteArg.currency || currency || 'USD'),
+      payment_method: { type: 'card' },
+      return_url: buildPostPayReturnUrl(orderIdArg),
+    })
+
+    let paymentResponse: any
+    try {
+      paymentResponse = await processPayment(buildPayload(workingQuote, orderId))
+    } catch (err: any) {
+      if (isQuoteDrift(err)) {
+        setCreatedOrderId('')
+        setInitialPaymentAction(null)
+        setPaymentActionType(null)
+        setPspUsed(null)
+        workingQuote = await refreshQuoteWithRetry()
+        orderId = await createOrderIfNeeded(workingQuote, { forceNew: true, allowRedirect: false })
+        paymentResponse = await processPayment(buildPayload(workingQuote, orderId))
+      } else {
+        throw err
+      }
+    }
+
+    return {
+      orderId,
+      quoteId: String(workingQuote.quote_id),
+      paymentResponse,
+    }
+  }
+
+  useEffect(() => {
+    if (step === 'payment') return
+    paymentInitPromiseRef.current = null
+    paymentInitKeyRef.current = null
+    setPrefetchedPaymentRes(null)
+    setPaymentInitLoading(false)
+    setPaymentInitError(null)
+  }, [step])
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (step !== 'payment') return
+    if (!quote?.quote_id || !paymentInitKey) return
+    if (
+      paymentInitKeyRef.current === paymentInitKey &&
+      (paymentInitPromiseRef.current || prefetchedPaymentRes)
+    ) {
+      return
+    }
+
+    let cancelled = false
+    setPaymentInitLoading(true)
+    setPaymentInitError(null)
+    setPrefetchedPaymentRes(null)
+    // Pre-warm Adyen SDK to reduce first-render jitter.
+    void import('@adyen/adyen-web').catch(() => null)
+
+    const initPromise = primePaymentForStep(quote)
+    paymentInitKeyRef.current = paymentInitKey
+    paymentInitPromiseRef.current = initPromise
+
+    initPromise
+      .then((prefetched) => {
+        if (cancelled) return
+        const action = extractPaymentAction(prefetched.paymentResponse, initialPaymentAction)
+        setPrefetchedPaymentRes(prefetched)
+        setPaymentActionType(action?.type || null)
+        setPspUsed(detectPaymentPsp(prefetched.paymentResponse, action))
+      })
+      .catch((err: any) => {
+        if (cancelled) return
+        const msg = String(err?.message || '').trim() || 'Failed to prepare payment'
+        setPaymentInitError(msg)
+      })
+      .finally(() => {
+        if (!cancelled) setPaymentInitLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    initialPaymentAction,
+    paymentInitKey,
+    prefetchedPaymentRes,
+    quote,
+    step,
+  ])
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (step !== 'payment') return
+    if (paymentActionType !== 'adyen_session') return
+    if (adyenMounted) return
+    if (!prefetchedPaymentRes) return
+
+    const action = extractPaymentAction(prefetchedPaymentRes.paymentResponse, initialPaymentAction)
+    if (action?.type !== 'adyen_session') return
+
+    void mountAdyenDropIn({
+      orderId: prefetchedPaymentRes.orderId,
+      action,
+      paymentResponse: prefetchedPaymentRes.paymentResponse,
+    }).catch((err: any) => {
+      const msg = String(err?.message || '').trim() || 'Failed to initialize Adyen payment form.'
+      setPaymentInitError(msg)
+    })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    adyenMounted,
+    initialPaymentAction,
+    paymentActionType,
+    prefetchedPaymentRes,
+    step,
+  ])
 
   // If already logged in, prefill email and skip verification UI
   useEffect(() => {
@@ -923,6 +1191,12 @@ function OrderFlowInner({
       setInitialPaymentAction(null)
       setPaymentActionType(null)
       setPspUsed(null)
+      setAdyenMounted(false)
+      paymentInitPromiseRef.current = null
+      paymentInitKeyRef.current = null
+      setPrefetchedPaymentRes(null)
+      setPaymentInitLoading(false)
+      setPaymentInitError(null)
 
       try {
         await refreshQuoteWithRetry()
@@ -953,6 +1227,7 @@ function OrderFlowInner({
   const handlePayment = async () => {
     setIsProcessing(true)
     setCardError('')
+    setPaymentInitError(null)
     
     try {
       if (!skipEmailVerification && !user && verifiedEmail !== shipping.email.trim()) {
@@ -996,54 +1271,70 @@ function OrderFlowInner({
           }
         }
         
-        // Step 2: Create/confirm payment intent via gateway
-        const postPayReturnUrl =
-          typeof window !== 'undefined'
-            ? (() => {
-                const url = new URL('/order/success', window.location.origin)
-                url.searchParams.set('orderId', orderId)
-                if (returnUrl) url.searchParams.set('return', returnUrl)
-                const current = new URL(window.location.href)
-                const passthrough = ['entry', 'embed', 'lang', 'aurora_uid', 'parent_origin']
-                for (const key of passthrough) {
-                  const value = (current.searchParams.get(key) || '').trim()
-                  if (value) url.searchParams.set(key, value)
-                }
-                if (checkoutToken) url.searchParams.set('checkout_token', checkoutToken)
-                return url.toString()
-              })()
-            : undefined
+        // Step 2: Create/confirm payment intent via gateway (prefer prefetched result).
+        const quoteKeyForRun = (() => {
+          const qid = String(quoteForPayment?.quote_id || '').trim()
+          if (!qid) return null
+          const cur = String(quoteForPayment?.currency || currency || 'USD').trim().toUpperCase()
+          const amountMinor = Number.isFinite(Number(quoteForPayment?.pricing?.total))
+            ? Math.round(Number(quoteForPayment?.pricing?.total) * 100)
+            : null
+          if (!cur || amountMinor == null) return null
+          return `${qid}:${cur}:${amountMinor}`
+        })()
         let paymentResponse: any
-        try {
-          paymentResponse = await processPayment({
-            order_id: orderId,
-            total_amount: Number(quoteForPayment.pricing.total) || total,
-            currency: String(quoteForPayment.currency || currency || 'USD'),
-            payment_method: {
-              type: 'card',
-            },
-            return_url: postPayReturnUrl,
-          })
-        } catch (err: any) {
-          if (isInventoryUnavailable(err)) {
-            if (onFailure) onFailure({ reason: 'action_required', stage: 'payment' })
-            throw err
+        const canReusePrefetch =
+          quoteKeyForRun &&
+          paymentInitKeyRef.current === quoteKeyForRun
+        if (canReusePrefetch) {
+          if (prefetchedPaymentRes?.quoteId === quoteForPayment.quote_id) {
+            orderId = prefetchedPaymentRes.orderId || orderId
+            paymentResponse = prefetchedPaymentRes.paymentResponse
+          } else if (paymentInitPromiseRef.current) {
+            try {
+              const prefetched = await paymentInitPromiseRef.current
+              if (prefetched?.quoteId === quoteForPayment.quote_id) {
+                orderId = prefetched.orderId || orderId
+                paymentResponse = prefetched.paymentResponse
+                setPrefetchedPaymentRes(prefetched)
+              }
+            } catch {
+              paymentResponse = null
+            }
           }
-          if (isQuoteDrift(err) && !quoteDriftFixed) {
-            quoteDriftFixed = true
-            toast.message('Pricing updated. Refreshing totals…')
-            resetForRequote()
-            quoteForPayment = await refreshQuoteWithRetry()
-            orderId = await createOrderIfNeeded(quoteForPayment, { forceNew: true })
+        }
+        if (!paymentResponse) {
+          try {
             paymentResponse = await processPayment({
               order_id: orderId,
               total_amount: Number(quoteForPayment.pricing.total) || total,
               currency: String(quoteForPayment.currency || currency || 'USD'),
-              payment_method: { type: 'card' },
-              return_url: postPayReturnUrl,
+              payment_method: {
+                type: 'card',
+              },
+              return_url: buildPostPayReturnUrl(orderId),
             })
-          } else {
-            throw err
+          } catch (err: any) {
+            if (isInventoryUnavailable(err)) {
+              if (onFailure) onFailure({ reason: 'action_required', stage: 'payment' })
+              throw err
+            }
+            if (isQuoteDrift(err) && !quoteDriftFixed) {
+              quoteDriftFixed = true
+              toast.message('Pricing updated. Refreshing totals…')
+              resetForRequote()
+              quoteForPayment = await refreshQuoteWithRetry()
+              orderId = await createOrderIfNeeded(quoteForPayment, { forceNew: true })
+              paymentResponse = await processPayment({
+                order_id: orderId,
+                total_amount: Number(quoteForPayment.pricing.total) || total,
+                currency: String(quoteForPayment.currency || currency || 'USD'),
+                payment_method: { type: 'card' },
+                return_url: buildPostPayReturnUrl(orderId),
+              })
+            } else {
+              throw err
+            }
           }
         }
 
@@ -1060,59 +1351,9 @@ function OrderFlowInner({
             (paymentResponse as any)?.payment?.payment_action?.type ||
             null,
         })
-
-        const paymentObj = (paymentResponse as any)?.payment || {}
-        let action: any =
-          (paymentResponse as any)?.payment_action ||
-          paymentObj?.payment_action ||
-          initialPaymentAction ||
-          null
-
-        // Heuristic: synthesize Adyen payment_action when intent id indicates
-        // adyen_session but backend hasn't sent unified fields yet.
-        if (!action) {
-          const responseIntentId =
-            (paymentResponse as any)?.payment_intent_id ||
-            paymentObj?.payment_intent_id
-          const responseClientSecret =
-            (paymentResponse as any)?.client_secret ||
-            paymentObj?.client_secret
-
-          if (
-            typeof responseIntentId === 'string' &&
-            responseIntentId.startsWith('adyen_session') &&
-            typeof responseClientSecret === 'string' &&
-            responseClientSecret
-          ) {
-            action = {
-              type: 'adyen_session',
-              client_secret: responseClientSecret,
-              url: null,
-              raw: null,
-            }
-          }
-        }
-
+        const action = extractPaymentAction(paymentResponse, initialPaymentAction)
         setPaymentActionType(action?.type || null)
-
-        let detectedPsp: string | null =
-          (paymentResponse as any)?.psp ||
-          paymentObj?.psp ||
-          action?.psp ||
-          null
-
-        if (!detectedPsp) {
-          const responseIntentId =
-            paymentObj?.payment_intent_id ||
-            (paymentResponse as any)?.payment_intent_id
-          if (
-            typeof responseIntentId === 'string' &&
-            responseIntentId.startsWith('adyen_session')
-          ) {
-            detectedPsp = 'adyen'
-          }
-        }
-
+        const detectedPsp = detectPaymentPsp(paymentResponse, action)
         setPspUsed(detectedPsp || pspUsed || null)
 
         const redirectUrl =
@@ -1136,72 +1377,9 @@ function OrderFlowInner({
         }
 
         if (action?.type === 'adyen_session') {
-          const sessionData = action?.client_secret
-          // Normalize Adyen session id: prefer raw.id; otherwise strip "adyen_session_" prefix.
-          let sessionId =
-            action?.raw?.id ||
-            paymentResponse.payment_intent_id ||
-            paymentResponse.payment?.payment_intent_id ||
-            ''
-
-          if (sessionId && sessionId.startsWith('adyen_session_')) {
-            sessionId = sessionId.replace('adyen_session_', '')
-          }
-
-          const clientKey = action?.raw?.clientKey || ADYEN_CLIENT_KEY
-
-          if (!sessionData || !clientKey) {
-            throw new Error('Adyen session is missing required data. Please try again.')
-          }
-
-          if (adyenMounted && adyenContainerRef.current) {
-            // Already mounted; do nothing
-            setIsProcessing(false)
-            return
-          }
-
-          try {
-            const { default: AdyenCheckout } = await import('@adyen/adyen-web')
-            const checkout = await AdyenCheckout({
-              clientKey,
-              environment: 'test', // use 'live' in production with proper key
-              session: {
-                id: sessionId,
-                sessionData,
-              },
-              analytics: { enabled: false },
-              onPaymentCompleted: () => {
-                void confirmOrderPayment(orderId).catch((err) => {
-                  console.warn('confirmOrderPayment failed', err)
-                })
-                setStep('confirm')
-                toast.success('Payment completed successfully.')
-                clearCart()
-                if (onComplete) {
-                  onComplete(orderId)
-                  return
-                }
-                router.push(`/orders/${orderId}?paid=1`)
-              },
-              onError: (err: any) => {
-                console.error('Adyen error:', err)
-                toast.error('Payment failed with Adyen. Please check your card details or try again.')
-                if (onFailure) onFailure({ reason: 'payment_failed', stage: 'payment' })
-              },
-            })
-
-            if (adyenContainerRef.current) {
-              checkout.create('dropin').mount(adyenContainerRef.current)
-              setAdyenMounted(true)
-              setIsProcessing(false)
-              return
-            } else {
-              throw new Error('Payment form is not ready. Please refresh the page and try again.')
-            }
-          } catch (err: any) {
-            console.error('Adyen init failed:', err)
-            throw err
-          }
+          await mountAdyenDropIn({ orderId, action, paymentResponse })
+          setIsProcessing(false)
+          return
         }
 
         // Default / Stripe flow
@@ -1596,6 +1774,16 @@ function OrderFlowInner({
                 : 'Stripe (card payment)'}
             </span>
           </div>
+          {paymentInitLoading && (
+            <p className="mb-3 text-xs text-muted-foreground">
+              Preparing payment session…
+            </p>
+          )}
+          {paymentInitError && (
+            <p className="mb-3 text-xs text-red-600">
+              {paymentInitError}
+            </p>
+          )}
           {hasQuote && (
             <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
               <div className="flex gap-2">
@@ -1729,7 +1917,7 @@ function OrderFlowInner({
                 <div ref={adyenContainerRef} className="mt-2" />
                 {!adyenMounted && (
                   <p className="text-xs text-muted-foreground">
-                    The secure Adyen payment form will appear here after you click Pay.
+                    The secure Adyen payment form is initializing…
                   </p>
                 )}
               </div>
@@ -1818,10 +2006,14 @@ function OrderFlowInner({
               </button>
               <button
                 onClick={handlePayment}
-                disabled={isProcessing}
+                disabled={isProcessing || paymentInitLoading}
                 className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
               >
-                {isProcessing ? 'Processing...' : `Pay ${formatAmount(total)}`}
+                {isProcessing
+                  ? 'Processing...'
+                  : paymentInitLoading
+                    ? 'Preparing payment...'
+                    : `Pay ${formatAmount(total)}`}
               </button>
             </div>
           </div>

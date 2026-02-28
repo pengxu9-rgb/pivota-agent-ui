@@ -1,6 +1,6 @@
 // Centralized API helpers for calling the Pivota Agent Gateway and Accounts API
 // All UI components should import functions from here instead of using fetch directly.
-import { getCheckoutTokenFromBrowser } from '@/lib/checkoutToken'
+import { getCheckoutTokenFromBrowser, persistCheckoutToken } from '@/lib/checkoutToken'
 import { ensureAuroraSession, shouldUseAuroraAutoExchange } from '@/lib/auroraOrdersAuth'
 
 // Point to the public Agent Gateway by default; override via NEXT_PUBLIC_API_URL if needed.
@@ -16,6 +16,13 @@ const SEARCH_LIMIT_MAX = Math.max(
 // This avoids third-party cookie issues (e.g. in-app browsers / iOS Safari) and reduces CORS risk.
 const ACCOUNTS_API_BASE = '/api/accounts';
 const ACCOUNTS_ROOT_API_BASE = '/api/accounts-root';
+const DIRECT_CHECKOUT_ENABLED =
+  String(process.env.NEXT_PUBLIC_ENABLE_DIRECT_CHECKOUT_INVOKE || '').trim().toLowerCase() === 'true';
+const DIRECT_CHECKOUT_INVOKE_URL = String(
+  process.env.NEXT_PUBLIC_DIRECT_CHECKOUT_INVOKE_URL ||
+    'https://pivota-agent-production.up.railway.app/agent/shop/v1/invoke',
+).trim();
+const CHECKOUT_DIRECT_OPS = new Set(['preview_quote', 'create_order', 'submit_payment']);
 
 function clampSearchLimit(value: unknown, fallback: number): number {
   const n = Number(value);
@@ -698,6 +705,137 @@ function getCheckoutToken(): string | null {
   return getCheckoutTokenFromBrowser()
 }
 
+function isCheckoutDirectOperation(operation: unknown): boolean {
+  return CHECKOUT_DIRECT_OPS.has(String(operation || '').trim().toLowerCase());
+}
+
+function extractIntentItemsFromInvokeBody(body: InvokeBody): Array<Record<string, any>> {
+  const operation = String(body?.operation || '').trim().toLowerCase();
+  const payload = isPlainObject(body?.payload) ? (body.payload as Record<string, any>) : {};
+
+  if (operation === 'preview_quote') {
+    const quote = isPlainObject(payload.quote) ? (payload.quote as Record<string, any>) : payload;
+    const merchantId = String(quote.merchant_id || '').trim();
+    const items = Array.isArray(quote.items) ? quote.items : [];
+    return items
+      .map((item) => {
+        const entry = isPlainObject(item) ? item : {};
+        const productId = String(entry.product_id || '').trim();
+        const merchant = String(entry.merchant_id || merchantId).trim();
+        const variantId = String(entry.variant_id || '').trim();
+        const sku = String(entry.sku || '').trim();
+        const quantityRaw = Number(entry.quantity);
+        const quantity = Number.isFinite(quantityRaw) && quantityRaw > 0 ? Math.floor(quantityRaw) : 1;
+        if (!productId || !merchant) return null;
+        return {
+          product_id: productId,
+          merchant_id: merchant,
+          ...(variantId ? { variant_id: variantId } : {}),
+          ...(sku ? { sku } : {}),
+          quantity,
+        };
+      })
+      .filter(Boolean) as Array<Record<string, any>>;
+  }
+
+  if (operation === 'create_order') {
+    const order = isPlainObject(payload.order) ? (payload.order as Record<string, any>) : payload;
+    const merchantId = String(order.merchant_id || '').trim();
+    const items = Array.isArray(order.items) ? order.items : [];
+    return items
+      .map((item) => {
+        const entry = isPlainObject(item) ? item : {};
+        const productId = String(entry.product_id || '').trim();
+        const merchant = String(entry.merchant_id || merchantId).trim();
+        const variantId = String(entry.variant_id || '').trim();
+        const sku = String(entry.sku || '').trim();
+        const quantityRaw = Number(entry.quantity);
+        const quantity = Number.isFinite(quantityRaw) && quantityRaw > 0 ? Math.floor(quantityRaw) : 1;
+        if (!productId || !merchant) return null;
+        return {
+          product_id: productId,
+          merchant_id: merchant,
+          ...(variantId ? { variant_id: variantId } : {}),
+          ...(sku ? { sku } : {}),
+          quantity,
+        };
+      })
+      .filter(Boolean) as Array<Record<string, any>>;
+  }
+
+  return [];
+}
+
+async function mintCheckoutSessionToken(args: {
+  body: InvokeBody;
+  metadata: Record<string, any>;
+}): Promise<string | null> {
+  const intentItems = extractIntentItemsFromInvokeBody(args.body);
+  if (!intentItems.length) return null;
+  try {
+    const res = await fetch('/api/checkout/session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        items: intentItems,
+        source: args.metadata?.source || 'shopping-agent-ui',
+        market: args.metadata?.market || args.body?.payload?.market || undefined,
+        locale: args.metadata?.locale || args.body?.payload?.locale || undefined,
+      }),
+    });
+    if (!res.ok) return null;
+    const json = await res.json().catch(() => null);
+    const token = String(json?.checkout_token || '').trim();
+    if (!token) return null;
+    persistCheckoutToken(token);
+    return token;
+  } catch {
+    return null;
+  }
+}
+
+async function callDirectCheckoutInvoke(args: {
+  requestBody: InvokeBody;
+  checkoutToken: string;
+  signal?: AbortSignal;
+}): Promise<{ fallbackToProxy: boolean; data?: any; error?: ApiError }> {
+  if (!DIRECT_CHECKOUT_INVOKE_URL) return { fallbackToProxy: true };
+  try {
+    const res = await fetch(DIRECT_CHECKOUT_INVOKE_URL, {
+      method: 'POST',
+      mode: 'cors',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Checkout-Token': args.checkoutToken,
+      },
+      signal: args.signal,
+      body: JSON.stringify(args.requestBody),
+    });
+
+    if (!res.ok) {
+      if (res.status === 401 || res.status === 403) {
+        return { fallbackToProxy: true };
+      }
+      const errorData = await res.json().catch(() => ({}));
+      const err = new Error(
+        (errorData as any)?.message || `Gateway error: ${res.status} ${res.statusText}`,
+      ) as ApiError;
+      err.status = res.status;
+      err.detail = errorData;
+      err.code =
+        String((errorData as any)?.code || (errorData as any)?.error || '').trim() || undefined;
+      return { fallbackToProxy: false, error: err };
+    }
+
+    return {
+      fallbackToProxy: false,
+      data: await res.json(),
+    };
+  } catch {
+    return { fallbackToProxy: true };
+  }
+}
+
 type GatewayCallOptions = {
   signal?: AbortSignal;
 };
@@ -706,7 +844,7 @@ async function callGateway(body: InvokeBody, options: GatewayCallOptions = {}) {
   // If API_BASE is our same-origin proxy (/api/gateway), hit it directly; otherwise append the invoke path.
   const isProxy = API_BASE.startsWith('/api/gateway');
   const url = isProxy ? API_BASE : `${API_BASE}/agent/shop/v1/invoke`;
-  const checkoutToken = getCheckoutToken();
+  let checkoutToken = getCheckoutToken();
   // Lock the "shopping agent retrieval contract" for reproducible evaluation.
   // Even if the backend doesn't use these fields yet, we always send them.
   const gatewaySource = process.env.NEXT_PUBLIC_GATEWAY_SOURCE || 'shopping_agent';
@@ -743,6 +881,26 @@ async function callGateway(body: InvokeBody, options: GatewayCallOptions = {}) {
       source: gatewaySource,
     },
   };
+
+  const operation = String(requestBody?.operation || '').trim().toLowerCase();
+  const shouldTryDirectCheckout = DIRECT_CHECKOUT_ENABLED && isCheckoutDirectOperation(operation);
+  if (shouldTryDirectCheckout && !checkoutToken) {
+    checkoutToken = await mintCheckoutSessionToken({
+      body: requestBody,
+      metadata: requestBody.metadata || {},
+    });
+  }
+  if (shouldTryDirectCheckout && checkoutToken) {
+    const directResult = await callDirectCheckoutInvoke({
+      requestBody,
+      checkoutToken,
+      signal: options.signal,
+    });
+    if (!directResult.fallbackToProxy) {
+      if (directResult.error) throw directResult.error;
+      return directResult.data;
+    }
+  }
 
   const res = await fetch(url, {
     method: 'POST',
