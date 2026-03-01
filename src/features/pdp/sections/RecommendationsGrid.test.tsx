@@ -33,6 +33,12 @@ vi.mock('next/link', () => ({
   ),
 }));
 
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({
+    push: vi.fn(),
+  }),
+}));
+
 describe('optimizeRecommendationImageUrl', () => {
   it('adds width hint to proxied image URLs', () => {
     const out = optimizeRecommendationImageUrl(
