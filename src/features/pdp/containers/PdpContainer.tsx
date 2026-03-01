@@ -17,6 +17,7 @@ import { Button } from '@/components/ui/button';
 import type {
   MediaGalleryData,
   MediaItem,
+  Offer,
   PDPPayload,
   PricePromoData,
   ProductDetailsData,
@@ -138,6 +139,37 @@ function mergeUniqueRecommendations(
     merged: Array.from(map.values()),
     added: map.size - before,
   };
+}
+
+function isInternalCheckoutOffer(offer: Offer | null | undefined): boolean {
+  const offerId = String(offer?.offer_id || '').trim().toLowerCase();
+  if (offerId.startsWith('of:internal_checkout:')) return true;
+  const merchantId = String(offer?.merchant_id || '').trim().toLowerCase();
+  return merchantId !== 'external_seed';
+}
+
+function pickInternalFirstOfferId({
+  offers,
+  merchantId,
+  defaultOfferId,
+}: {
+  offers: Offer[];
+  merchantId?: string | null;
+  defaultOfferId?: string | null;
+}): string | null {
+  if (!Array.isArray(offers) || offers.length === 0) return null;
+  const merchant = String(merchantId || '').trim();
+  const merchantOffer = merchant ? offers.find((offer) => offer.merchant_id === merchant) || null : null;
+  const merchantInternalOffer =
+    merchant && offers.find((offer) => offer.merchant_id === merchant && isInternalCheckoutOffer(offer));
+  if (merchantInternalOffer?.offer_id) return merchantInternalOffer.offer_id;
+  const firstInternal = offers.find((offer) => isInternalCheckoutOffer(offer));
+  if (firstInternal?.offer_id) return firstInternal.offer_id;
+  if (merchantOffer?.offer_id) return merchantOffer.offer_id;
+  const explicitDefault =
+    defaultOfferId && offers.find((offer) => offer.offer_id === defaultOfferId)?.offer_id;
+  if (explicitDefault) return explicitDefault;
+  return offers[0]?.offer_id || null;
 }
 
 function StarRating({ value }: { value: number }) {
@@ -407,18 +439,34 @@ export function PdpContainer({
   );
 
   const offers = useMemo(() => payload.offers ?? [], [payload.offers]);
+  const internalFirstDefaultOfferId = useMemo(
+    () =>
+      pickInternalFirstOfferId({
+        offers,
+        merchantId: payload.product.merchant_id || null,
+        defaultOfferId: payload.default_offer_id || null,
+      }),
+    [offers, payload.default_offer_id, payload.product.merchant_id],
+  );
   const [selectedOfferId, setSelectedOfferId] = useState<string | null>(() => {
-    const merchantId = String(payload.product.merchant_id || '').trim();
-    const merchantOfferId = merchantId
-      ? offers.find((o) => o.merchant_id === merchantId)?.offer_id
-      : null;
-    return merchantOfferId || payload.default_offer_id || offers[0]?.offer_id || null;
+    return pickInternalFirstOfferId({
+      offers,
+      merchantId: payload.product.merchant_id || null,
+      defaultOfferId: payload.default_offer_id || null,
+    });
   });
   const selectedOffer = useMemo(() => {
     if (!offers.length) return null;
-    if (!selectedOfferId) return offers[0] || null;
-    return offers.find((o) => o.offer_id === selectedOfferId) || offers[0] || null;
-  }, [offers, selectedOfferId]);
+    if (!selectedOfferId) {
+      return offers.find((offer) => offer.offer_id === internalFirstDefaultOfferId) || offers[0] || null;
+    }
+    return (
+      offers.find((o) => o.offer_id === selectedOfferId) ||
+      offers.find((offer) => offer.offer_id === internalFirstDefaultOfferId) ||
+      offers[0] ||
+      null
+    );
+  }, [offers, selectedOfferId, internalFirstDefaultOfferId]);
   const offerDebugEnabled = useMemo(() => {
     if (typeof window === 'undefined') return false;
     const params = new URLSearchParams(window.location.search);
@@ -430,12 +478,8 @@ export function PdpContainer({
   }, []);
 
   useEffect(() => {
-    const merchantId = String(payload.product.merchant_id || '').trim();
-    const merchantOfferId = merchantId
-      ? offers.find((o) => o.merchant_id === merchantId)?.offer_id
-      : null;
-    setSelectedOfferId(merchantOfferId || payload.default_offer_id || offers[0]?.offer_id || null);
-  }, [payload.product.product_id, payload.product.merchant_id, payload.default_offer_id, offers]);
+    setSelectedOfferId(internalFirstDefaultOfferId);
+  }, [payload.product.product_id, internalFirstDefaultOfferId]);
 
   useEffect(() => {
     if (!offerDebugEnabled) return;

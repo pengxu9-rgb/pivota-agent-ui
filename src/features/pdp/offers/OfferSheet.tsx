@@ -21,6 +21,13 @@ function totalPrice(price: Price, shippingCost?: Price): number {
   return base + ship;
 }
 
+function isInternalCheckoutOffer(offer: Offer): boolean {
+  const offerId = String(offer?.offer_id || '').trim().toLowerCase();
+  if (offerId.startsWith('of:internal_checkout:')) return true;
+  const merchantId = String(offer?.merchant_id || '').trim().toLowerCase();
+  return merchantId !== 'external_seed';
+}
+
 export function OfferSheet({
   open,
   offers,
@@ -46,9 +53,13 @@ export function OfferSheet({
 
   const sortedOffers = useMemo(() => {
     return [...offers].sort((a, b) => {
+      const aPriority = isInternalCheckoutOffer(a) ? 0 : 1;
+      const bPriority = isInternalCheckoutOffer(b) ? 0 : 1;
+      if (aPriority !== bPriority) return aPriority - bPriority;
       const aTotal = totalPrice(a.price, a.shipping?.cost);
       const bTotal = totalPrice(b.price, b.shipping?.cost);
-      return aTotal - bTotal;
+      if (aTotal !== bTotal) return aTotal - bTotal;
+      return String(a.offer_id || '').localeCompare(String(b.offer_id || ''));
     });
   }, [offers]);
 
@@ -154,4 +165,3 @@ export function OfferSheet({
     document.body,
   );
 }
-
