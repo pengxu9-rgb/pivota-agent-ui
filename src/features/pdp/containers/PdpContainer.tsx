@@ -160,8 +160,9 @@ function pickInternalFirstOfferId({
   if (!Array.isArray(offers) || offers.length === 0) return null;
   const merchant = String(merchantId || '').trim();
   const merchantOffer = merchant ? offers.find((offer) => offer.merchant_id === merchant) || null : null;
-  const merchantInternalOffer =
-    merchant && offers.find((offer) => offer.merchant_id === merchant && isInternalCheckoutOffer(offer));
+  const merchantInternalOffer = merchant
+    ? offers.find((offer) => offer.merchant_id === merchant && isInternalCheckoutOffer(offer)) || null
+    : null;
   if (merchantInternalOffer?.offer_id) return merchantInternalOffer.offer_id;
   const firstInternal = offers.find((offer) => isInternalCheckoutOffer(offer));
   if (firstInternal?.offer_id) return firstInternal.offer_id;
