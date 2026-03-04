@@ -9,6 +9,8 @@ const postRequestCloseToParentMock = vi.fn();
 const getCheckoutTokenFromBrowserMock = vi.fn();
 const fetchMock = vi.fn();
 const assignMock = vi.fn();
+let embedModeValue = false;
+let historyBackSpy: ReturnType<typeof vi.spyOn> | null = null;
 
 let searchParamsValue = 'orderId=ord_123';
 
@@ -20,7 +22,7 @@ vi.mock('next/navigation', () => ({
 }));
 
 vi.mock('@/lib/auroraEmbed', () => ({
-  isAuroraEmbedMode: () => false,
+  isAuroraEmbedMode: () => embedModeValue,
   postRequestCloseToParent: (...args: unknown[]) => postRequestCloseToParentMock(...args),
 }));
 
@@ -31,6 +33,7 @@ vi.mock('@/lib/checkoutToken', () => ({
 describe('Order success action layout', () => {
   beforeEach(() => {
     searchParamsValue = 'orderId=ord_123';
+    embedModeValue = false;
     pushMock.mockReset();
     postRequestCloseToParentMock.mockReset();
     getCheckoutTokenFromBrowserMock.mockReset();
@@ -49,10 +52,13 @@ describe('Order success action layout', () => {
         assign: assignMock,
       },
     });
+    historyBackSpy = vi.spyOn(window.history, 'back').mockImplementation(() => undefined);
   });
 
   afterEach(() => {
     cleanup();
+    historyBackSpy?.mockRestore();
+    historyBackSpy = null;
     vi.unstubAllGlobals();
   });
 
@@ -96,6 +102,34 @@ describe('Order success action layout', () => {
     continueButton.click();
 
     expect(assignMock).toHaveBeenCalledWith('https://creator.pivota.cc/');
+    expect(pushMock).not.toHaveBeenCalled();
+  });
+
+  it('prioritizes parent_origin over source when both are present', async () => {
+    searchParamsValue =
+      'orderId=ord_123&source=creator_agent&parent_origin=https%3A%2F%2Faurora.pivota.cc';
+    render(<OrderSuccessPage />);
+
+    const continueButton = await screen.findByRole('button', { name: /continue shopping/i });
+    continueButton.click();
+
+    expect(assignMock).toHaveBeenCalledWith('https://aurora.pivota.cc/');
+    expect(pushMock).not.toHaveBeenCalled();
+    expect(postRequestCloseToParentMock).not.toHaveBeenCalled();
+  });
+
+  it('keeps embed fallback when no external source is available', async () => {
+    searchParamsValue = 'orderId=ord_123&embed=1';
+    embedModeValue = true;
+    postRequestCloseToParentMock.mockReturnValue(false);
+    render(<OrderSuccessPage />);
+
+    const continueButton = await screen.findByRole('button', { name: /continue shopping/i });
+    continueButton.click();
+
+    expect(postRequestCloseToParentMock).toHaveBeenCalledWith({ reason: 'order_success_continue' });
+    expect(historyBackSpy).toHaveBeenCalledTimes(1);
+    expect(assignMock).not.toHaveBeenCalled();
     expect(pushMock).not.toHaveBeenCalled();
   });
 });
