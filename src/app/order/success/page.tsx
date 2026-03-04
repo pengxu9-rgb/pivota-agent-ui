@@ -64,9 +64,13 @@ function SuccessContent() {
   const entryParam = (searchParams.get('entry') || '').trim() || null
   const sourceParam =
     (searchParams.get('source') || searchParams.get('src') || '').trim() || null
-  const externalAgentHomeUrl = useMemo(
-    () => resolveExternalAgentHomeUrl(entryParam || sourceParam),
-    [entryParam, sourceParam],
+  const parentOriginParam =
+    (searchParams.get('parent_origin') || searchParams.get('parentOrigin') || '').trim() || null
+  const externalContinueUrl = useMemo(
+    () =>
+      safeReturnUrl(parentOriginParam) ||
+      resolveExternalAgentHomeUrl(entryParam || sourceParam),
+    [entryParam, sourceParam, parentOriginParam],
   )
   const hasReturnHint = Boolean(rawReturn && !returnUrl)
   const isEmbedMode = useMemo(() => isAuroraEmbedMode(), [])
@@ -190,6 +194,10 @@ function SuccessContent() {
   }, [saveTokenFromUrl, checkoutToken, orderId, saveStatus, attemptSave])
 
   const continueShopping = () => {
+    if (externalContinueUrl) {
+      window.location.assign(externalContinueUrl)
+      return
+    }
     if (isEmbedMode || (typeof window !== 'undefined' && window.parent !== window)) {
       const posted = postRequestCloseToParent({ reason: 'order_success_continue' })
       if (posted) return
@@ -199,10 +207,6 @@ function SuccessContent() {
       } catch {
         // ignore
       }
-    }
-    if (externalAgentHomeUrl) {
-      window.location.assign(externalAgentHomeUrl)
-      return
     }
     router.push('/')
   }
