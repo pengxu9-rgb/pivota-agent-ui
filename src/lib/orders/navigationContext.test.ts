@@ -25,11 +25,22 @@ describe('resolveAuroraOrderScope', () => {
     expect(resolveAuroraOrderScope(searchParams, 'merchant_active')).toBe('merchant_env')
   })
 
-  it('query merchant_id overrides env merchant', () => {
+  it('aurora env merchant overrides query merchant_id', () => {
     process.env.NEXT_PUBLIC_AURORA_ORDERS_MERCHANT_ID = 'merchant_env'
     const searchParams = new URLSearchParams('entry=aurora_chatbox&merchant_id=merchant_query')
 
-    expect(resolveAuroraOrderScope(searchParams, 'merchant_active')).toBe('merchant_query')
+    expect(resolveAuroraOrderScope(searchParams, 'merchant_active')).toBe('merchant_env')
+  })
+
+  it('uses env merchant when aurora markers exist without explicit entry', () => {
+    process.env.NEXT_PUBLIC_AURORA_ORDERS_MERCHANT_ID = 'merchant_env'
+    const bySource = new URLSearchParams('embed=1&source=aurora_orders')
+    const byParentOrigin = new URLSearchParams(
+      'embed=1&parent_origin=https%3A%2F%2Faurora.pivota.cc',
+    )
+
+    expect(resolveAuroraOrderScope(bySource, 'merchant_active')).toBe('merchant_env')
+    expect(resolveAuroraOrderScope(byParentOrigin, 'merchant_active')).toBe('merchant_env')
   })
 
   it('does not inject merchant filtering for non-aurora entry', () => {

@@ -65,7 +65,7 @@ function OrdersPageContent() {
   )
   const scopedSearchParams = useMemo(() => {
     const next = new URLSearchParams(searchParamsString)
-    if (resolvedScopeMerchantId && !next.get('merchant_id')) {
+    if (resolvedScopeMerchantId) {
       next.set('merchant_id', resolvedScopeMerchantId)
     }
     return next

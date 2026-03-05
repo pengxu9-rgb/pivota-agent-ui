@@ -173,7 +173,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   )
   const scopedSearchParams = useMemo(() => {
     const next = new URLSearchParams(searchParamsString)
-    if (scopeMerchantId && !next.get('merchant_id')) {
+    if (scopeMerchantId) {
       next.set('merchant_id', scopeMerchantId)
     }
     return next

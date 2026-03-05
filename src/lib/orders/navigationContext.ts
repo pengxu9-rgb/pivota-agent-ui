@@ -5,6 +5,7 @@ type SearchParamsLike = {
 }
 
 const AURORA_ENTRY = 'aurora_chatbox'
+const AURORA_PARENT_ORIGIN = 'https://aurora.pivota.cc'
 const PASSTHROUGH_KEYS = [
   'embed',
   'entry',
@@ -24,6 +25,39 @@ const readParam = (
 const isAuroraOrdersEntry = (
   searchParams: SearchParamsLike | null | undefined,
 ): boolean => readParam(searchParams, 'entry').toLowerCase() === AURORA_ENTRY
+
+const hasAuroraSourceMarker = (
+  searchParams: SearchParamsLike | null | undefined,
+): boolean => readParam(searchParams, 'source').toLowerCase().startsWith('aurora')
+
+const hasAuroraParentOriginMarker = (
+  searchParams: SearchParamsLike | null | undefined,
+): boolean => {
+  const rawOrigin =
+    readParam(searchParams, 'parent_origin') || readParam(searchParams, 'parentOrigin')
+  if (!rawOrigin) return false
+  try {
+    return new URL(rawOrigin).origin === AURORA_PARENT_ORIGIN
+  } catch {
+    return false
+  }
+}
+
+const hasAuroraEmbedUidMarker = (
+  searchParams: SearchParamsLike | null | undefined,
+): boolean => {
+  const embed = readParam(searchParams, 'embed')
+  const auroraUid = readParam(searchParams, 'aurora_uid')
+  return embed === '1' && Boolean(auroraUid)
+}
+
+const isAuroraOrdersContext = (
+  searchParams: SearchParamsLike | null | undefined,
+): boolean =>
+  isAuroraOrdersEntry(searchParams) ||
+  hasAuroraSourceMarker(searchParams) ||
+  hasAuroraParentOriginMarker(searchParams) ||
+  hasAuroraEmbedUidMarker(searchParams)
 
 const maybeAddScopeMerchant = (
   params: URLSearchParams,
@@ -50,12 +84,14 @@ export function resolveAuroraOrderScope(
   activeMerchantId?: string | null,
 ): string | null {
   const queryMerchantId = readParam(searchParams, 'merchant_id')
-  if (queryMerchantId) return queryMerchantId
-
-  if (!isAuroraOrdersEntry(searchParams)) return null
+  if (!isAuroraOrdersContext(searchParams)) {
+    return queryMerchantId || null
+  }
 
   const envMerchantId = String(process.env.NEXT_PUBLIC_AURORA_ORDERS_MERCHANT_ID || '').trim()
   if (envMerchantId) return envMerchantId
+
+  if (queryMerchantId) return queryMerchantId
 
   const activeMerchant = String(activeMerchantId || '').trim()
   return activeMerchant || null
