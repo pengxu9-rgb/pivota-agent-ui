@@ -74,8 +74,6 @@ NEXT_PUBLIC_AURORA_ORDERS_MERCHANT_ID=merchant_aurora_default
   Timeout (ms) for Aurora bootstrap (`postMessage` auth bootstrap) during orders recovery. Default: `1800`.
 - `NEXT_PUBLIC_ORDERS_SCOPE_RESOLVE_TIMEOUT_MS`  
   Max wait (ms) to resolve Aurora merchant scope from embed bootstrap before first orders request. Default: `700`.
-- `NEXT_PUBLIC_ORDERS_SCOPE_ACCOUNTS_ME_TIMEOUT_MS`  
-  Fallback timeout (ms) for `/auth/me` scope resolution when bootstrap payload has no merchant id. Default: `1200`.
 
 ## Tech Stack
 

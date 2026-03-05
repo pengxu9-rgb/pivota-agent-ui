@@ -64,17 +64,12 @@ type EnsureAuroraSessionOptions = {
 };
 type ResolveAuroraOrdersScopeOptions = {
   timeoutMs?: number;
-  accountsMeTimeoutMs?: number;
 };
 
 const BOOTSTRAP_SCOPE_CACHE_KEY = 'aurora_orders_bootstrap_scope_v1';
 const BOOTSTRAP_SCOPE_TTL_MS = Math.max(
   60_000,
   Number(process.env.NEXT_PUBLIC_AURORA_SCOPE_CACHE_TTL_MS || 6 * 60 * 60 * 1000) || 6 * 60 * 60 * 1000,
-);
-const DEFAULT_SCOPE_ACCOUNTS_ME_TIMEOUT_MS = Math.max(
-  400,
-  Number(process.env.NEXT_PUBLIC_ORDERS_SCOPE_ACCOUNTS_ME_TIMEOUT_MS || 1200) || 1200,
 );
 
 let inflightExchange: Promise<AuroraOrdersSessionResult> | null = null;
@@ -142,12 +137,6 @@ const writeBootstrapScopeCache = (merchantId: string | null | undefined) => {
 };
 
 const extractBootstrapMerchantId = (bootstrap: AuthBootstrapResponsePayload): string | null => {
-  const session = isObject((bootstrap as any)?.session) ? ((bootstrap as any).session as Record<string, unknown>) : null;
-  const user = isObject((bootstrap as any)?.user) ? ((bootstrap as any).user as Record<string, unknown>) : null;
-  const memberships = Array.isArray((bootstrap as any)?.memberships)
-    ? ((bootstrap as any).memberships as unknown[])
-    : [];
-  const firstMembership = memberships.find((item) => isObject(item)) as Record<string, unknown> | undefined;
   const candidates: unknown[] = [
     bootstrap.merchant_id,
     bootstrap.merchantId,
@@ -160,66 +149,12 @@ const extractBootstrapMerchantId = (bootstrap: AuthBootstrapResponsePayload): st
     bootstrap.context?.activeMerchantId,
     bootstrap.merchant?.merchant_id,
     bootstrap.merchant?.id,
-    session?.merchant_id,
-    session?.merchantId,
-    session?.active_merchant_id,
-    session?.activeMerchantId,
-    user?.merchant_id,
-    user?.merchantId,
-    user?.active_merchant_id,
-    user?.activeMerchantId,
-    firstMembership?.merchant_id,
-    firstMembership?.merchantId,
   ];
   for (const candidate of candidates) {
     const merchantId = normalizeMerchantId(candidate);
     if (merchantId) return merchantId;
   }
   return null;
-};
-
-const extractAccountsMeMerchantId = (payload: unknown): string | null => {
-  if (!isObject(payload)) return null;
-  const user = isObject(payload.user) ? (payload.user as Record<string, unknown>) : null;
-  const memberships = Array.isArray(payload.memberships) ? payload.memberships : [];
-  const firstMembership = memberships.find((item) => isObject(item)) as Record<string, unknown> | undefined;
-  const candidates: unknown[] = [
-    payload.active_merchant_id,
-    payload.activeMerchantId,
-    user?.active_merchant_id,
-    user?.activeMerchantId,
-    user?.merchant_id,
-    user?.merchantId,
-    firstMembership?.merchant_id,
-    firstMembership?.merchantId,
-  ];
-  for (const candidate of candidates) {
-    const merchantId = normalizeMerchantId(candidate);
-    if (merchantId) return merchantId;
-  }
-  return null;
-};
-
-const resolveScopeFromAccountsMe = async (timeoutMs: number): Promise<string | null> => {
-  const controller = new AbortController();
-  const timer = window.setTimeout(() => controller.abort(), Math.max(250, timeoutMs));
-  try {
-    const res = await fetch('/api/accounts/auth/me', {
-      method: 'GET',
-      credentials: 'include',
-      headers: { Accept: 'application/json' },
-      signal: controller.signal,
-    });
-    if (!res.ok) return null;
-    const payload = await res.json().catch(() => null);
-    const merchantId = extractAccountsMeMerchantId(payload);
-    if (merchantId) writeBootstrapScopeCache(merchantId);
-    return merchantId;
-  } catch {
-    return null;
-  } finally {
-    window.clearTimeout(timer);
-  }
 };
 
 const persistBootstrapScope = (bootstrap: AuthBootstrapResponsePayload): string | null => {
@@ -501,26 +436,11 @@ export async function resolveAuroraOrdersScopeFromBootstrap(
 
   inflightScopeResolve = (async () => {
     const timeoutMs = Number(options?.timeoutMs);
-    const accountsMeTimeoutMs = Number(options?.accountsMeTimeoutMs);
-    const normalizedAccountsMeTimeoutMs =
-      Number.isFinite(accountsMeTimeoutMs) && accountsMeTimeoutMs > 0
-        ? Math.max(250, Math.round(accountsMeTimeoutMs))
-        : DEFAULT_SCOPE_ACCOUNTS_ME_TIMEOUT_MS;
     try {
       const bootstrap = await requestBootstrapFromParent(
         Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : DEFAULT_BOOTSTRAP_TIMEOUT_MS,
       );
-      const scopeFromBootstrap = persistBootstrapScope(bootstrap);
-      if (scopeFromBootstrap) return scopeFromBootstrap;
-      if (!bootstrap.ok) return null;
-
-      // If bootstrap payload does not include merchant scope, try to establish
-      // accounts session first and then resolve active merchant from /auth/me.
-      const exchangeResult = await exchangeAuroraSession(bootstrap);
-      if (!exchangeResult.ok && exchangeResult.reason !== 'MISSING_BOOTSTRAP_TOKEN') {
-        return null;
-      }
-      return await resolveScopeFromAccountsMe(normalizedAccountsMeTimeoutMs);
+      return persistBootstrapScope(bootstrap);
     } catch {
       return null;
     }
