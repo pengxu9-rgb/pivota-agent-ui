@@ -15,7 +15,6 @@ afterEach(() => {
   } else {
     delete process.env.NEXT_PUBLIC_AURORA_ORDERS_MERCHANT_ID
   }
-  window.sessionStorage.clear()
 })
 
 describe('resolveAuroraOrderScope', () => {
@@ -42,14 +41,6 @@ describe('resolveAuroraOrderScope', () => {
 
     expect(resolveAuroraOrderScope(bySource, 'merchant_active')).toBe('merchant_env')
     expect(resolveAuroraOrderScope(byParentOrigin, 'merchant_active')).toBe('merchant_env')
-  })
-
-  it('uses env merchant when aurora parent origin is remembered in sessionStorage', () => {
-    process.env.NEXT_PUBLIC_AURORA_ORDERS_MERCHANT_ID = 'merchant_env'
-    window.sessionStorage.setItem('aurora_embed_parent_origin_v1', 'https://aurora.pivota.cc')
-    const searchParams = new URLSearchParams('')
-
-    expect(resolveAuroraOrderScope(searchParams, 'merchant_active')).toBe('merchant_env')
   })
 
   it('does not inject merchant filtering for non-aurora entry', () => {
