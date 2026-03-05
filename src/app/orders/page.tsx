@@ -2,11 +2,15 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { ArrowLeft, ArrowRight, Loader2, Package, ShoppingCart, XCircle } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { cancelAccountOrder, listMyOrders } from '@/lib/api'
 import { isAuroraEmbedMode } from '@/lib/auroraEmbed'
+import {
+  buildOrderDetailHref,
+  resolveAuroraOrderScope,
+} from '@/lib/orders/navigationContext'
 import { normalizeOrderListItem, type NormalizedOrderListItem } from '@/lib/orders/normalize'
 import {
   canShowCancel,
@@ -44,7 +48,9 @@ const formatDate = (raw: string): string => {
 
 export default function OrdersPage() {
   const router = useRouter()
-  const { user, setSession, clear } = useAuthStore()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const { user, setSession, clear, activeMerchantId } = useAuthStore()
   const [orders, setOrders] = useState<NormalizedOrderListItem[]>([])
   const [cursor, setCursor] = useState<string | null>(null)
   const [hasMore, setHasMore] = useState(false)
@@ -52,6 +58,23 @@ export default function OrdersPage() {
   const [loadingMore, setLoadingMore] = useState(false)
   const [cancellingOrderId, setCancellingOrderId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const searchParamsString = searchParams.toString()
+  const resolvedScopeMerchantId = useMemo(
+    () => resolveAuroraOrderScope(searchParams, activeMerchantId),
+    [activeMerchantId, searchParamsString, searchParams],
+  )
+  const scopedSearchParams = useMemo(() => {
+    const next = new URLSearchParams(searchParamsString)
+    if (resolvedScopeMerchantId && !next.get('merchant_id')) {
+      next.set('merchant_id', resolvedScopeMerchantId)
+    }
+    return next
+  }, [resolvedScopeMerchantId, searchParamsString])
+  const scopedSearchParamsString = scopedSearchParams.toString()
+  const currentListUrl = useMemo(() => {
+    const path = pathname || '/my-orders'
+    return scopedSearchParamsString ? `${path}?${scopedSearchParamsString}` : path
+  }, [pathname, scopedSearchParamsString])
 
   const loadOrders = async (next?: string | null) => {
     const isLoadMore = Boolean(next)
@@ -59,7 +82,11 @@ export default function OrdersPage() {
     else setLoading(true)
 
     try {
-      const data = await listMyOrders(next || undefined)
+      const data = await listMyOrders(
+        next || undefined,
+        20,
+        resolvedScopeMerchantId ? { merchant_id: resolvedScopeMerchantId } : undefined,
+      )
       const rawOrders: unknown[] = Array.isArray((data as any)?.orders) ? (data as any).orders : []
       const nextOrders = rawOrders
         .map((raw) => normalizeOrderListItem(raw))
@@ -81,7 +108,7 @@ export default function OrdersPage() {
     } catch (err: any) {
       if (err?.status === 401 || err?.code === 'UNAUTHENTICATED') {
         clear()
-        router.replace('/login?redirect=/my-orders')
+        router.replace(`/login?redirect=${encodeURIComponent(currentListUrl)}`)
         return
       }
       if (err?.status === 403) {
@@ -98,7 +125,7 @@ export default function OrdersPage() {
   useEffect(() => {
     void loadOrders(null)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [resolvedScopeMerchantId])
 
   const onContinuePayment = (order: NormalizedOrderListItem) => {
     router.push(
@@ -257,7 +284,7 @@ export default function OrdersPage() {
                     <div className="flex shrink-0 flex-col items-start gap-2 sm:items-end">
                       <div className="text-lg font-semibold text-foreground">{formatMoney(order.totalAmountMinor, order.currency)}</div>
                       <div className="flex flex-wrap gap-2 sm:justify-end">
-                        <Link href={`/orders/${encodeURIComponent(order.id)}`}>
+                        <Link href={buildOrderDetailHref(order.id, scopedSearchParams, currentListUrl)}>
                           <button className="inline-flex items-center gap-1 rounded-lg border border-border px-3 py-2 text-xs font-medium hover:bg-muted">
                             View details
                             <ArrowRight className="h-3.5 w-3.5" />

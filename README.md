@@ -52,6 +52,18 @@ This app is deployed on Vercel at [https://agent.pivota.cc](https://agent.pivota
 - `NEXT_PUBLIC_DIRECT_CHECKOUT_INVOKE_URL`  
   Direct invoke URL (default: `https://pivota-agent-production.up.railway.app/agent/shop/v1/invoke`).
 
+## Aurora orders merchant scope (embed only)
+
+- `NEXT_PUBLIC_AURORA_ORDERS_MERCHANT_ID`  
+  Fallback merchant scope for orders list filtering when `entry=aurora_chatbox` and URL does not include `merchant_id`.
+- This variable is only used in Aurora embed flow; non-Aurora orders pages keep existing behavior.
+
+Example:
+
+```bash
+NEXT_PUBLIC_AURORA_ORDERS_MERCHANT_ID=merchant_aurora_default
+```
+
 ## Tech Stack
 
 - Next.js 15

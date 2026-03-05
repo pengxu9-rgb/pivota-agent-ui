@@ -2,7 +2,7 @@
 
 import { use, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import {
   AlertCircle,
   CheckCircle2,
@@ -25,11 +25,17 @@ import {
 import { isAuroraEmbedMode } from '@/lib/auroraEmbed'
 import { normalizeOrderDetail, type NormalizedOrderDetail } from '@/lib/orders/normalize'
 import {
+  buildOrderItemPdpHref,
+  buildOrderListHref,
+  resolveAuroraOrderScope,
+} from '@/lib/orders/navigationContext'
+import {
   canShowCancel,
   canShowContinuePayment,
   getOrderDisplayStatus,
   getOrderTone,
 } from '@/lib/orders/status'
+import { safeReturnUrl } from '@/lib/returnUrl'
 import { useAuthStore } from '@/store/authStore'
 import { toast } from 'sonner'
 
@@ -148,7 +154,8 @@ const buildProgressSteps = (order: NormalizedOrderDetail): ProgressStep[] => {
 export default function OrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
   const router = useRouter()
-  const { clear } = useAuthStore()
+  const searchParams = useSearchParams()
+  const { clear, activeMerchantId } = useAuthStore()
   const [order, setOrder] = useState<NormalizedOrderDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -159,6 +166,41 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const [refundAmountInput, setRefundAmountInput] = useState('')
   const [refundReasonInput, setRefundReasonInput] = useState('')
   const [refundValidationError, setRefundValidationError] = useState<string | null>(null)
+  const searchParamsString = searchParams.toString()
+  const scopeMerchantId = useMemo(
+    () => resolveAuroraOrderScope(searchParams, activeMerchantId),
+    [activeMerchantId, searchParams, searchParamsString],
+  )
+  const scopedSearchParams = useMemo(() => {
+    const next = new URLSearchParams(searchParamsString)
+    if (scopeMerchantId && !next.get('merchant_id')) {
+      next.set('merchant_id', scopeMerchantId)
+    }
+    return next
+  }, [scopeMerchantId, searchParamsString])
+  const scopedSearchParamsString = scopedSearchParams.toString()
+  const currentDetailUrl = useMemo(() => {
+    const path = `/orders/${encodeURIComponent(id)}`
+    return scopedSearchParamsString ? `${path}?${scopedSearchParamsString}` : path
+  }, [id, scopedSearchParamsString])
+  const backToOrdersHref = useMemo(() => {
+    const explicitReturnRaw = String(
+      searchParams.get('return') ||
+        searchParams.get('return_url') ||
+        searchParams.get('returnUrl') ||
+        '',
+    ).trim()
+    const safeReturn = safeReturnUrl(explicitReturnRaw)
+    if (safeReturn) return safeReturn
+    return buildOrderListHref(scopedSearchParams)
+  }, [scopedSearchParams, searchParams, searchParamsString])
+  const onBackToOrders = () => {
+    if (/^https?:\/\//i.test(backToOrdersHref)) {
+      window.location.assign(backToOrdersHref)
+      return
+    }
+    router.push(backToOrdersHref)
+  }
 
   useEffect(() => {
     const load = async () => {
@@ -176,7 +218,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
       } catch (err: any) {
         if (err?.status === 401 || err?.code === 'UNAUTHENTICATED') {
           clear()
-          router.replace(`/login?redirect=/orders/${id}`)
+          router.replace(`/login?redirect=${encodeURIComponent(currentDetailUrl)}`)
           return
         }
         setError(err?.message || 'Failed to load order')
@@ -185,7 +227,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
       }
     }
     void load()
-  }, [id, clear, router])
+  }, [id, clear, currentDetailUrl, router])
 
   useEffect(() => {
     if (!refundDialogOpen) return undefined
@@ -425,9 +467,13 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
           <AlertCircle className="mx-auto h-9 w-9 text-rose-500" />
           <h2 className="mt-3 text-lg font-semibold">Unable to load order</h2>
           <p className="mt-2 text-sm text-muted-foreground">{error || 'Order not found'}</p>
-          <Link href="/my-orders" className="mt-4 inline-block text-sm text-indigo-600 hover:underline">
+          <button
+            type="button"
+            onClick={onBackToOrders}
+            className="mt-4 inline-block text-sm text-indigo-600 hover:underline"
+          >
             Back to orders
-          </Link>
+          </button>
         </div>
       </div>
     )
@@ -462,6 +508,11 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   ]
     .filter(Boolean)
     .join(' · ')
+  const showScopeMismatch = Boolean(
+    scopeMerchantId &&
+      order.merchantId &&
+      scopeMerchantId.trim() !== String(order.merchantId || '').trim(),
+  )
 
   return (
     <main className="min-h-screen bg-gradient-mesh">
@@ -473,7 +524,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
           </div>
           <button
             type="button"
-            onClick={() => router.push('/my-orders')}
+            onClick={onBackToOrders}
             className="inline-flex items-center gap-1 rounded-full border border-border bg-white px-3 py-1.5 text-xs text-muted-foreground hover:bg-muted"
           >
             <ChevronLeft className="h-4 w-4" />
@@ -492,6 +543,12 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
             </span>
           </div>
         </div>
+        {showScopeMismatch && (
+          <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+            Scope merchant <span className="font-medium">{scopeMerchantId}</span> does not match this order&apos;s
+            merchant <span className="font-medium">{order.merchantId}</span>. You can continue viewing this order.
+          </div>
+        )}
 
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
           <div className="space-y-4 lg:col-span-8">
@@ -680,9 +737,12 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                     <div className="min-w-0 flex-1">
                       {item.productId ? (
                         <Link
-                          href={`/products/${encodeURIComponent(item.productId)}${
-                            item.merchantId ? `?merchant_id=${encodeURIComponent(item.merchantId)}` : ''
-                          }`}
+                          href={buildOrderItemPdpHref(
+                            item.productId,
+                            item.merchantId,
+                            scopedSearchParams,
+                            currentDetailUrl,
+                          )}
                           className="truncate text-sm font-medium text-foreground hover:underline"
                         >
                           {item.title}
@@ -829,11 +889,13 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                   </button>
                 </Link>
               )}
-              <Link href="/my-orders" className={`inline-flex ${isEmbed ? 'w-full' : 'flex-1'}`}>
-                <button className="w-full rounded-lg bg-secondary px-3 py-2 text-xs font-medium hover:bg-secondary/80">
-                  Back to orders
-                </button>
-              </Link>
+              <button
+                type="button"
+                onClick={onBackToOrders}
+                className={`${isEmbed ? 'w-full' : 'flex-1'} rounded-lg bg-secondary px-3 py-2 text-xs font-medium hover:bg-secondary/80`}
+              >
+                Back to orders
+              </button>
             </div>
           </aside>
         </div>

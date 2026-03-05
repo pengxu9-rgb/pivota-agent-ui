@@ -2159,10 +2159,16 @@ export async function accountsLogout() {
   return callAccounts('/auth/logout', { method: 'POST' });
 }
 
-export async function listMyOrders(cursor?: string | null, limit = 20) {
+export async function listMyOrders(
+  cursor?: string | null,
+  limit = 20,
+  filters?: { merchant_id?: string | null },
+) {
   const params = new URLSearchParams();
   params.set('limit', String(limit));
   if (cursor) params.set('cursor', cursor);
+  const merchantId = String(filters?.merchant_id || '').trim();
+  if (merchantId) params.set('merchant_id', merchantId);
   return callAccounts(`/orders/list?${params.toString()}`);
 }
 
