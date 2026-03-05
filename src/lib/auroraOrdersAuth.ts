@@ -6,6 +6,10 @@ const SCHEMA_VERSION = '0.1' as const;
 const SHOP_KIND = 'pivota_shop_bridge' as const;
 const AURORA_KIND = 'aurora_shop_bridge' as const;
 const DEFAULT_BOOTSTRAP_TIMEOUT_MS = 3500;
+const RECENT_EXCHANGE_FAILURE_COOLDOWN_MS = Math.max(
+  1000,
+  Number(process.env.NEXT_PUBLIC_AURORA_EXCHANGE_FAILURE_COOLDOWN_MS || 15000) || 15000,
+);
 
 type AuthBootstrapRequestPayload = {
   request_id: string;
@@ -40,6 +44,8 @@ type AuroraAuthBootstrapResponseMessage = {
 type AuroraOrdersSessionResult = { ok: true } | { ok: false; reason: string };
 
 let inflightExchange: Promise<AuroraOrdersSessionResult> | null = null;
+let lastExchangeFailureAt = 0;
+let lastExchangeFailureReason = '';
 const PDP_AUTO_EXCHANGE_ENABLED = String(
   process.env.NEXT_PUBLIC_AURORA_AUTO_EXCHANGE_PDP_ENABLED || '1',
 ).trim() !== '0';
@@ -236,9 +242,24 @@ export async function ensureAuroraSession(pathname?: string | null): Promise<Aur
   if (!shouldUseAuroraAutoExchange(currentPath)) {
     return { ok: false, reason: 'NOT_APPLICABLE' };
   }
+  const elapsedSinceFailure = Date.now() - lastExchangeFailureAt;
+  if (lastExchangeFailureAt > 0 && elapsedSinceFailure < RECENT_EXCHANGE_FAILURE_COOLDOWN_MS) {
+    return { ok: false, reason: lastExchangeFailureReason || 'RECENT_EXCHANGE_FAILURE' };
+  }
   if (inflightExchange) return inflightExchange;
 
   inflightExchange = (async () => {
+    const commitResult = (result: AuroraOrdersSessionResult): AuroraOrdersSessionResult => {
+      if (result.ok) {
+        lastExchangeFailureAt = 0;
+        lastExchangeFailureReason = '';
+      } else {
+        lastExchangeFailureAt = Date.now();
+        lastExchangeFailureReason = String(result.reason || 'EXCHANGE_FAILED');
+      }
+      return result;
+    };
+
     trackAuroraExchange({
       result: 'attempt',
       reason: null,
@@ -256,7 +277,7 @@ export async function ensureAuroraSession(pathname?: string | null): Promise<Aur
         entry_surface: resolveEntrySurface(currentPath),
         path: currentPath,
       });
-      return { ok: false, reason };
+      return commitResult({ ok: false, reason });
     }
 
     if (!bootstrap.ok) {
@@ -267,7 +288,7 @@ export async function ensureAuroraSession(pathname?: string | null): Promise<Aur
         entry_surface: resolveEntrySurface(currentPath),
         path: currentPath,
       });
-      return { ok: false, reason };
+      return commitResult({ ok: false, reason });
     }
 
     const exchangeResult = await exchangeAuroraSession(bootstrap);
@@ -277,7 +298,7 @@ export async function ensureAuroraSession(pathname?: string | null): Promise<Aur
       entry_surface: resolveEntrySurface(currentPath),
       path: currentPath,
     });
-    return exchangeResult;
+    return commitResult(exchangeResult);
   })();
 
   try {
