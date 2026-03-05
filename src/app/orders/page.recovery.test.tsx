@@ -13,6 +13,7 @@ const cancelAccountOrderMock = vi.fn();
 const ensureAuroraSessionMock = vi.fn();
 const shouldUseAuroraAutoExchangeMock = vi.fn();
 const isAuroraEmbedModeMock = vi.fn();
+const SCOPE_HINT_STORAGE_KEY = 'aurora_orders_scope_hint_v1';
 
 let pathnameValue = '/orders';
 let searchParamsValue = 'entry=aurora_chatbox&embed=1';
@@ -40,11 +41,11 @@ vi.mock('@/lib/auroraEmbed', () => ({
   isAuroraEmbedMode: () => isAuroraEmbedModeMock(),
 }));
 
-const makeOrderListPayload = (orderId: string) => ({
+const makeOrderListPayload = (orderId: string, merchantId = 'merchant_test') => ({
   orders: [
     {
       order_id: orderId,
-      merchant_id: 'merchant_test',
+      merchant_id: merchantId,
       currency: 'USD',
       total_amount_minor: 1299,
       status: 'paid',
@@ -80,6 +81,7 @@ describe('Orders page recovery flow', () => {
     ensureAuroraSessionMock.mockResolvedValue({ ok: true });
     isAuroraEmbedModeMock.mockReturnValue(true);
     window.sessionStorage.clear();
+    window.localStorage.clear();
     useAuthStore.setState({
       user: null,
       memberships: [],
@@ -183,5 +185,59 @@ describe('Orders page recovery flow', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     await screen.findByText('Order #ORD_AFTER_RETRY');
     expect(listMyOrdersMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('refines scope once when response provides active merchant id', async () => {
+    listMyOrdersMock
+      .mockResolvedValueOnce({
+        orders: [
+          {
+            order_id: 'ORD_OTHER_SCOPE',
+            merchant_id: 'merchant_other',
+            currency: 'USD',
+            total_amount_minor: 1299,
+            status: 'paid',
+            payment_status: 'paid',
+            fulfillment_status: 'fulfilled',
+            delivery_status: 'delivered',
+            created_at: '2026-03-05T12:00:00.000Z',
+            items_summary: 'Other scope item',
+            permissions: { can_pay: false, can_cancel: false, can_reorder: false },
+          },
+        ],
+        next_cursor: null,
+        has_more: false,
+        active_merchant_id: 'merchant_scope',
+      })
+      .mockResolvedValueOnce({
+        ...makeOrderListPayload('ORD_SCOPE_REFINED', 'merchant_scope'),
+        active_merchant_id: 'merchant_scope',
+      });
+
+    render(<OrdersPage />);
+
+    await screen.findByText('Order #ORD_SCOPE_REFINED');
+    expect(listMyOrdersMock).toHaveBeenCalledTimes(2);
+    expect(listMyOrdersMock.mock.calls[0][1]).toBe(6);
+    expect(listMyOrdersMock.mock.calls[0][2]).toBeUndefined();
+    expect(listMyOrdersMock.mock.calls[1][2]).toEqual({ merchant_id: 'merchant_scope' });
+  });
+
+  it('uses persisted scope hint on initial request', async () => {
+    window.localStorage.setItem(
+      SCOPE_HINT_STORAGE_KEY,
+      JSON.stringify({
+        merchantId: 'merchant_hint',
+        savedAt: Date.now(),
+      }),
+    );
+    listMyOrdersMock.mockResolvedValue(makeOrderListPayload('ORD_SCOPE_HINT', 'merchant_hint'));
+
+    render(<OrdersPage />);
+
+    await screen.findByText('Order #ORD_SCOPE_HINT');
+    expect(listMyOrdersMock).toHaveBeenCalledTimes(1);
+    expect(listMyOrdersMock.mock.calls[0][1]).toBe(20);
+    expect(listMyOrdersMock.mock.calls[0][2]).toEqual({ merchant_id: 'merchant_hint' });
   });
 });

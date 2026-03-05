@@ -70,6 +70,10 @@ NEXT_PUBLIC_AURORA_ORDERS_MERCHANT_ID=merchant_aurora_default
   Timeout (ms) for the initial `/orders/list` request on orders page. Default: `3500`.
 - `NEXT_PUBLIC_ORDERS_RECOVERY_RETRY_TIMEOUT_MS`  
   Timeout (ms) for the single retry after Aurora session recovery. Default: `3500`.
+- `NEXT_PUBLIC_ORDERS_RECOVERY_BOOTSTRAP_TIMEOUT_MS`  
+  Timeout (ms) for Aurora bootstrap (`postMessage` auth bootstrap) during orders recovery. Default: `1800`.
+- `NEXT_PUBLIC_ORDERS_UNSCOPED_PRIME_LIMIT`  
+  Temporary list size used only when Aurora scope is missing, to quickly resolve scope before a scoped refresh. Default: `6`.
 
 ## Tech Stack
 

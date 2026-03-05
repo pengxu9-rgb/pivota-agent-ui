@@ -42,6 +42,9 @@ type AuroraAuthBootstrapResponseMessage = {
 };
 
 type AuroraOrdersSessionResult = { ok: true } | { ok: false; reason: string };
+type EnsureAuroraSessionOptions = {
+  bootstrapTimeoutMs?: number;
+};
 
 let inflightExchange: Promise<AuroraOrdersSessionResult> | null = null;
 let lastExchangeFailureAt = 0;
@@ -236,7 +239,10 @@ const exchangeAuroraSession = async (
   return { ok: false, reason: `HTTP_${res.status}` };
 };
 
-export async function ensureAuroraSession(pathname?: string | null): Promise<AuroraOrdersSessionResult> {
+export async function ensureAuroraSession(
+  pathname?: string | null,
+  options?: EnsureAuroraSessionOptions,
+): Promise<AuroraOrdersSessionResult> {
   const currentPath =
     String(pathname || (typeof window !== 'undefined' ? window.location.pathname : '') || '').trim() || null;
   if (!shouldUseAuroraAutoExchange(currentPath)) {
@@ -268,7 +274,12 @@ export async function ensureAuroraSession(pathname?: string | null): Promise<Aur
     });
     let bootstrap: AuthBootstrapResponsePayload;
     try {
-      bootstrap = await requestBootstrapFromParent();
+      const bootstrapTimeoutMs = Number(options?.bootstrapTimeoutMs);
+      bootstrap = await requestBootstrapFromParent(
+        Number.isFinite(bootstrapTimeoutMs) && bootstrapTimeoutMs > 0
+          ? bootstrapTimeoutMs
+          : DEFAULT_BOOTSTRAP_TIMEOUT_MS,
+      );
     } catch (err) {
       const reason = err instanceof Error && err.message ? err.message : 'BOOTSTRAP_FAILED';
       trackAuroraExchange({

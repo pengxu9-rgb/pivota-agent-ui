@@ -12,6 +12,10 @@ import {
   buildOrderDetailHref,
   resolveAuroraOrderScope,
 } from '@/lib/orders/navigationContext'
+import {
+  readAuroraOrdersScopeHint,
+  writeAuroraOrdersScopeHint,
+} from '@/lib/orders/scopeHint'
 import { normalizeOrderListItem, type NormalizedOrderListItem } from '@/lib/orders/normalize'
 import {
   canShowCancel,
@@ -65,10 +69,24 @@ const parseTimeoutMs = (value: string | undefined, fallback: number): number => 
   return Math.max(250, Math.round(parsed))
 }
 
+const parsePositiveInt = (value: string | undefined, fallback: number): number => {
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback
+  return Math.max(1, Math.round(parsed))
+}
+
 const ORDERS_LIST_TIMEOUT_MS = parseTimeoutMs(process.env.NEXT_PUBLIC_ORDERS_LIST_TIMEOUT_MS, 3500)
 const ORDERS_RECOVERY_RETRY_TIMEOUT_MS = parseTimeoutMs(
   process.env.NEXT_PUBLIC_ORDERS_RECOVERY_RETRY_TIMEOUT_MS,
   3500,
+)
+const ORDERS_RECOVERY_BOOTSTRAP_TIMEOUT_MS = parseTimeoutMs(
+  process.env.NEXT_PUBLIC_ORDERS_RECOVERY_BOOTSTRAP_TIMEOUT_MS,
+  1800,
+)
+const ORDERS_UNSCOPED_PRIME_LIMIT = parsePositiveInt(
+  process.env.NEXT_PUBLIC_ORDERS_UNSCOPED_PRIME_LIMIT,
+  6,
 )
 
 const buildOrdersCacheKey = (pathname: string, scopeMerchantId: string | null): string =>
@@ -126,6 +144,7 @@ function OrdersPageContent() {
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const { user, setSession, clear, activeMerchantId } = useAuthStore()
+  const isEmbed = useMemo(() => isAuroraEmbedMode(), [])
   const [orders, setOrders] = useState<NormalizedOrderListItem[]>([])
   const [cursor, setCursor] = useState<string | null>(null)
   const [hasMore, setHasMore] = useState(false)
@@ -133,8 +152,10 @@ function OrdersPageContent() {
   const [loadingMore, setLoadingMore] = useState(false)
   const [cancellingOrderId, setCancellingOrderId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [scopeHint, setScopeHint] = useState<string | null>(() => readAuroraOrdersScopeHint())
   const requestCountRef = useRef(0)
   const loadRunIdRef = useRef(0)
+  const scopeRefineAttemptedRef = useRef(false)
   const searchParamsString = searchParams.toString()
   const baseLoadKey = useMemo(
     () => `${pathname || '/my-orders'}?${searchParamsString}`,
@@ -148,13 +169,24 @@ function OrdersPageContent() {
     () => shouldUseAuroraAutoExchange(pathname),
     [pathname],
   )
+  const scopeMerchantId = useMemo(
+    () => resolvedScopeMerchantId || scopeHint,
+    [resolvedScopeMerchantId, scopeHint],
+  )
+  useEffect(() => {
+    if (!canAttemptAuroraRecovery) return
+    if (!resolvedScopeMerchantId) return
+    if (scopeHint === resolvedScopeMerchantId) return
+    setScopeHint(resolvedScopeMerchantId)
+    writeAuroraOrdersScopeHint(resolvedScopeMerchantId)
+  }, [canAttemptAuroraRecovery, resolvedScopeMerchantId, scopeHint])
   const scopedSearchParams = useMemo(() => {
     const next = new URLSearchParams(searchParamsString)
-    if (resolvedScopeMerchantId) {
-      next.set('merchant_id', resolvedScopeMerchantId)
+    if (scopeMerchantId) {
+      next.set('merchant_id', scopeMerchantId)
     }
     return next
-  }, [resolvedScopeMerchantId, searchParamsString])
+  }, [scopeMerchantId, searchParamsString])
   const scopedSearchParamsString = scopedSearchParams.toString()
   const currentListUrl = useMemo(() => {
     const path = pathname || '/my-orders'
@@ -176,13 +208,15 @@ function OrdersPageContent() {
   const loadOrders = async (options?: {
     next?: string | null
     allowRecovery?: boolean
-    trigger?: 'initial' | 'manual_retry' | 'recovery_retry' | 'load_more'
+    trigger?: 'initial' | 'manual_retry' | 'recovery_retry' | 'load_more' | 'scope_refine'
+    scopeMerchantId?: string | null
   }) => {
     const nextCursor = options?.next || null
     const allowRecovery = options?.allowRecovery !== false
     const trigger =
       options?.trigger || (nextCursor ? 'load_more' : 'initial')
     const isLoadMore = Boolean(nextCursor)
+    const requestedScopeMerchantId = String(options?.scopeMerchantId || scopeMerchantId || '').trim() || null
     const runId = ++loadRunIdRef.current
     requestCountRef.current += 1
     const requestCount = requestCountRef.current
@@ -191,8 +225,13 @@ function OrdersPageContent() {
       trigger === 'recovery_retry'
         ? ORDERS_RECOVERY_RETRY_TIMEOUT_MS
         : ORDERS_LIST_TIMEOUT_MS
-    const cacheKey = buildOrdersCacheKey(pathname || '/my-orders', resolvedScopeMerchantId)
-
+    const requestLimit = isLoadMore
+      ? 20
+      : requestedScopeMerchantId
+        ? 20
+        : canAttemptAuroraRecovery
+          ? ORDERS_UNSCOPED_PRIME_LIMIT
+          : 20
     if (isLoadMore) {
       setLoadingMore(true)
     } else {
@@ -204,15 +243,16 @@ function OrdersPageContent() {
       trigger,
       is_load_more: isLoadMore,
       request_count: requestCount,
-      scope_merchant_id: resolvedScopeMerchantId || null,
+      scope_merchant_id: requestedScopeMerchantId,
       timeout_ms: timeoutMs,
+      request_limit: requestLimit,
     })
 
     try {
       const data = await listMyOrders(
         nextCursor || undefined,
-        20,
-        resolvedScopeMerchantId ? { merchant_id: resolvedScopeMerchantId } : undefined,
+        requestLimit,
+        requestedScopeMerchantId ? { merchant_id: requestedScopeMerchantId } : undefined,
         {
           timeout_ms: timeoutMs,
           aurora_recovery: 'off',
@@ -224,13 +264,23 @@ function OrdersPageContent() {
       const normalizedOrders = rawOrders
         .map((raw) => normalizeOrderListItem(raw))
         .filter((order: NormalizedOrderListItem) => Boolean(order.id))
-      const nextOrders = resolvedScopeMerchantId
-        ? normalizedOrders.filter((order) => order.merchantId === resolvedScopeMerchantId)
+      const responseActiveMerchantId = String((data as any)?.active_merchant_id || '').trim() || null
+      if (canAttemptAuroraRecovery && responseActiveMerchantId) {
+        if (scopeHint !== responseActiveMerchantId) {
+          setScopeHint(responseActiveMerchantId)
+        }
+        writeAuroraOrdersScopeHint(responseActiveMerchantId)
+      }
+      const effectiveScopeMerchantId =
+        requestedScopeMerchantId || (canAttemptAuroraRecovery ? responseActiveMerchantId : null)
+      const nextOrders = effectiveScopeMerchantId
+        ? normalizedOrders.filter((order) => order.merchantId === effectiveScopeMerchantId)
         : normalizedOrders
+      const scopedCacheKey = buildOrdersCacheKey(pathname || '/my-orders', effectiveScopeMerchantId)
 
       setOrders((prev) => {
         const merged = isLoadMore ? [...prev, ...nextOrders] : nextOrders
-        writeOrdersCache(cacheKey, {
+        writeOrdersCache(scopedCacheKey, {
           orders: merged,
           cursor: (data as any)?.next_cursor || null,
           hasMore: Boolean((data as any)?.has_more),
@@ -258,7 +308,24 @@ function OrdersPageContent() {
         latency_ms: Math.round(performance.now() - startedAt),
         request_count: requestCount,
         loaded_count: nextOrders.length,
+        scope_merchant_id: effectiveScopeMerchantId,
+        request_limit: requestLimit,
       })
+      const shouldRefineScope =
+        trigger === 'initial' &&
+        !isLoadMore &&
+        !requestedScopeMerchantId &&
+        Boolean(responseActiveMerchantId) &&
+        !scopeRefineAttemptedRef.current
+      if (shouldRefineScope) {
+        scopeRefineAttemptedRef.current = true
+        void loadOrders({
+          next: null,
+          allowRecovery: false,
+          trigger: 'scope_refine',
+          scopeMerchantId: responseActiveMerchantId,
+        })
+      }
     } catch (err: any) {
       if (runId !== loadRunIdRef.current) return
       const isUnauthenticated =
@@ -284,7 +351,9 @@ function OrdersPageContent() {
           path: pathname || null,
         })
 
-        const recovered = await ensureAuroraSession(pathname)
+        const recovered = await ensureAuroraSession(pathname, {
+          bootstrapTimeoutMs: ORDERS_RECOVERY_BOOTSTRAP_TIMEOUT_MS,
+        })
         if (runId !== loadRunIdRef.current) return
 
         trackOrders('orders_recovery_result', {
@@ -299,6 +368,7 @@ function OrdersPageContent() {
             next: null,
             allowRecovery: false,
             trigger: 'recovery_retry',
+            scopeMerchantId: requestedScopeMerchantId,
           })
           return
         }
@@ -327,7 +397,8 @@ function OrdersPageContent() {
 
   useEffect(() => {
     requestCountRef.current = 0
-    const cacheKey = buildOrdersCacheKey(pathname || '/my-orders', resolvedScopeMerchantId)
+    scopeRefineAttemptedRef.current = false
+    const cacheKey = buildOrdersCacheKey(pathname || '/my-orders', scopeMerchantId)
     const cached = readOrdersCache(cacheKey)
     if (cached) {
       setOrders(cached.orders)
@@ -343,6 +414,7 @@ function OrdersPageContent() {
         latency_ms: 0,
         request_count: 0,
         loaded_count: cached.orders.length,
+        scope_merchant_id: scopeMerchantId,
       })
     } else {
       setOrders([])
@@ -355,6 +427,7 @@ function OrdersPageContent() {
       next: null,
       allowRecovery: true,
       trigger: 'initial',
+      scopeMerchantId,
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [baseLoadKey])
@@ -418,7 +491,6 @@ function OrdersPageContent() {
     })
   }
 
-  const isEmbed = useMemo(() => isAuroraEmbedMode(), [])
   const isLoading = loadState === 'loading'
   const isRecovering = loadState === 'recovering'
   const isBusy = isLoading || isRecovering
@@ -527,6 +599,8 @@ function OrdersPageContent() {
                           <img
                             src={order.firstItemImageUrl}
                             alt={order.itemsSummary || 'Order preview'}
+                            loading="lazy"
+                            decoding="async"
                             className="h-full w-full object-cover"
                           />
                         ) : (
