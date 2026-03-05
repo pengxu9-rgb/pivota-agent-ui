@@ -169,7 +169,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const searchParamsString = searchParams.toString()
   const scopeMerchantId = useMemo(
     () => resolveAuroraOrderScope(searchParams, activeMerchantId),
-    [activeMerchantId, searchParams, searchParamsString],
+    [activeMerchantId, searchParams],
   )
   const scopedSearchParams = useMemo(() => {
     const next = new URLSearchParams(searchParamsString)
@@ -193,7 +193,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     const safeReturn = safeReturnUrl(explicitReturnRaw)
     if (safeReturn) return safeReturn
     return buildOrderListHref(scopedSearchParams)
-  }, [scopedSearchParams, searchParams, searchParamsString])
+  }, [scopedSearchParams, searchParams])
   const onBackToOrders = () => {
     if (/^https?:\/\//i.test(backToOrdersHref)) {
       window.location.assign(backToOrdersHref)

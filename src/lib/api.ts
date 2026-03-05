@@ -2103,6 +2103,7 @@ type OrdersPermissions = {
 
 type OrdersListItem = {
   order_id: string;
+  merchant_id?: string | null;
   currency: string;
   total_amount_minor: number;
   status: string;

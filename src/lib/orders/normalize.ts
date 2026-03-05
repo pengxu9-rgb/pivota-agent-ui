@@ -8,6 +8,7 @@ export type NormalizedOrderPermissions = {
 
 export type NormalizedOrderListItem = {
   id: string
+  merchantId: string | null
   currency: string
   totalAmountMinor: number
   status: string
@@ -356,6 +357,7 @@ export const normalizeOrderListItem = (raw: unknown): NormalizedOrderListItem =>
   const id = pickString(source, ['order_id', 'id']) || ''
   return {
     id,
+    merchantId: pickString(source, ['merchant_id', 'merchantId']),
     currency: pickString(source, ['currency']) || 'USD',
     totalAmountMinor: pickAmountMinor(
       source,

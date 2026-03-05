@@ -61,7 +61,7 @@ function OrdersPageContent() {
   const searchParamsString = searchParams.toString()
   const resolvedScopeMerchantId = useMemo(
     () => resolveAuroraOrderScope(searchParams, activeMerchantId),
-    [activeMerchantId, searchParamsString, searchParams],
+    [activeMerchantId, searchParams],
   )
   const scopedSearchParams = useMemo(() => {
     const next = new URLSearchParams(searchParamsString)
@@ -88,9 +88,12 @@ function OrdersPageContent() {
         resolvedScopeMerchantId ? { merchant_id: resolvedScopeMerchantId } : undefined,
       )
       const rawOrders: unknown[] = Array.isArray((data as any)?.orders) ? (data as any).orders : []
-      const nextOrders = rawOrders
+      const normalizedOrders = rawOrders
         .map((raw) => normalizeOrderListItem(raw))
         .filter((order: NormalizedOrderListItem) => Boolean(order.id))
+      const nextOrders = resolvedScopeMerchantId
+        ? normalizedOrders.filter((order) => order.merchantId === resolvedScopeMerchantId)
+        : normalizedOrders
 
       setOrders((prev) => (isLoadMore ? [...prev, ...nextOrders] : nextOrders))
       setCursor((data as any)?.next_cursor || null)

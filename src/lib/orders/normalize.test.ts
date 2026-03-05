@@ -1,5 +1,41 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeOrderDetail } from '@/lib/orders/normalize';
+import { normalizeOrderDetail, normalizeOrderListItem } from '@/lib/orders/normalize';
+
+describe('normalizeOrderListItem scope fields', () => {
+  it('reads merchant_id from list payload', () => {
+    const normalized = normalizeOrderListItem({
+      order_id: 'o_list_1',
+      merchant_id: 'merchant_scope',
+      currency: 'USD',
+      total_amount_minor: 1200,
+      status: 'paid',
+      payment_status: 'paid',
+      fulfillment_status: 'not_fulfilled',
+      delivery_status: 'not_shipped',
+      created_at: '2026-02-24T10:00:00.000Z',
+    });
+
+    expect(normalized.id).toBe('o_list_1');
+    expect(normalized.merchantId).toBe('merchant_scope');
+  });
+
+  it('accepts camelCase merchantId fallback', () => {
+    const normalized = normalizeOrderListItem({
+      order_id: 'o_list_2',
+      merchantId: 'merchant_scope_2',
+      currency: 'USD',
+      total_amount_minor: 1200,
+      status: 'paid',
+      payment_status: 'paid',
+      fulfillment_status: 'not_fulfilled',
+      delivery_status: 'not_shipped',
+      created_at: '2026-02-24T10:00:00.000Z',
+    });
+
+    expect(normalized.id).toBe('o_list_2');
+    expect(normalized.merchantId).toBe('merchant_scope_2');
+  });
+});
 
 describe('normalizeOrderDetail item product refs', () => {
   it('keeps explicit product_id and merchant_id from line item', () => {
