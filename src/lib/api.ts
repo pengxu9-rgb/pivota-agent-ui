@@ -1130,9 +1130,11 @@ const canAttemptAuroraAutoExchangeRecovery = (args: {
   path: string;
   status: number;
   code?: string;
+  mode?: 'auto' | 'off';
 }): boolean => {
   if (!isAuroraRecoverableAccountsPath(args.path)) return false
   if (args.status !== 401) return false
+  if (args.mode === 'off') return false
   if (!shouldUseAuroraAutoExchange()) return false
   const normalizedCode = String(args.code || '').trim().toUpperCase()
   if (!normalizedCode) return true
@@ -1160,11 +1162,14 @@ async function callAccountsBase(
     skipJson?: boolean;
     timeout_ms?: number;
     timeoutMs?: number;
+    aurora_recovery?: 'auto' | 'off';
   } = {},
 ) {
   const url = `${base}${path}`;
-  const { skipJson, headers, method, body, timeout_ms, timeoutMs, ...rest } = options as any;
+  const { skipJson, headers, method, body, timeout_ms, timeoutMs, aurora_recovery, ...rest } =
+    options as any;
   const timeoutValue = Number(timeout_ms ?? timeoutMs);
+  const auroraRecoveryMode: 'auto' | 'off' = aurora_recovery === 'off' ? 'off' : 'auto';
 
   const requestOnce = async (): Promise<{ res: Response; data: any }> => {
     const hasTimeout = Number.isFinite(timeoutValue) && timeoutValue > 0;
@@ -1217,6 +1222,7 @@ async function callAccountsBase(
       path,
       status: first.res.status,
       code: firstCode,
+      mode: auroraRecoveryMode,
     })
   ) {
     const recovered = await ensureAuroraSession(
@@ -1245,6 +1251,7 @@ type AccountsCallOptions = RequestInit & {
   skipJson?: boolean;
   timeout_ms?: number;
   timeoutMs?: number;
+  aurora_recovery?: 'auto' | 'off';
 };
 
 async function callAccounts(path: string, options: AccountsCallOptions = {}) {
@@ -2164,13 +2171,17 @@ export async function listMyOrders(
   cursor?: string | null,
   limit = 20,
   filters?: { merchant_id?: string | null },
+  request?: { timeout_ms?: number; aurora_recovery?: 'auto' | 'off' },
 ) {
   const params = new URLSearchParams();
   params.set('limit', String(limit));
   if (cursor) params.set('cursor', cursor);
   const merchantId = String(filters?.merchant_id || '').trim();
   if (merchantId) params.set('merchant_id', merchantId);
-  return callAccounts(`/orders/list?${params.toString()}`);
+  return callAccounts(`/orders/list?${params.toString()}`, {
+    timeout_ms: request?.timeout_ms,
+    aurora_recovery: request?.aurora_recovery,
+  });
 }
 
 export async function getAccountOrder(orderId: string) {

@@ -64,6 +64,13 @@ Example:
 NEXT_PUBLIC_AURORA_ORDERS_MERCHANT_ID=merchant_aurora_default
 ```
 
+## Orders page performance (optional)
+
+- `NEXT_PUBLIC_ORDERS_LIST_TIMEOUT_MS`  
+  Timeout (ms) for the initial `/orders/list` request on orders page. Default: `3500`.
+- `NEXT_PUBLIC_ORDERS_RECOVERY_RETRY_TIMEOUT_MS`  
+  Timeout (ms) for the single retry after Aurora session recovery. Default: `3500`.
+
 ## Tech Stack
 
 - Next.js 15

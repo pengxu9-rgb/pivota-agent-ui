@@ -1,11 +1,12 @@
 'use client'
 
-import { Suspense, useEffect, useMemo, useState } from 'react'
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { ArrowLeft, ArrowRight, Loader2, Package, ShoppingCart, XCircle } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { cancelAccountOrder, listMyOrders } from '@/lib/api'
+import { ensureAuroraSession, shouldUseAuroraAutoExchange } from '@/lib/auroraOrdersAuth'
 import { isAuroraEmbedMode } from '@/lib/auroraEmbed'
 import {
   buildOrderDetailHref,
@@ -46,6 +47,80 @@ const formatDate = (raw: string): string => {
   return date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
 }
 
+type OrdersLoadState = 'idle' | 'loading' | 'recovering' | 'ready' | 'failed'
+
+type OrdersCachePayload = {
+  savedAt: number
+  orders: NormalizedOrderListItem[]
+  cursor: string | null
+  hasMore: boolean
+}
+
+const ORDERS_CACHE_KEY_PREFIX = 'orders_list_cache_v1'
+const ORDERS_CACHE_TTL_MS = 60_000
+
+const parseTimeoutMs = (value: string | undefined, fallback: number): number => {
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback
+  return Math.max(250, Math.round(parsed))
+}
+
+const ORDERS_LIST_TIMEOUT_MS = parseTimeoutMs(process.env.NEXT_PUBLIC_ORDERS_LIST_TIMEOUT_MS, 3500)
+const ORDERS_RECOVERY_RETRY_TIMEOUT_MS = parseTimeoutMs(
+  process.env.NEXT_PUBLIC_ORDERS_RECOVERY_RETRY_TIMEOUT_MS,
+  3500,
+)
+
+const buildOrdersCacheKey = (pathname: string, scopeMerchantId: string | null): string =>
+  `${ORDERS_CACHE_KEY_PREFIX}:${pathname || '/orders'}:${scopeMerchantId || '__none__'}`
+
+const readOrdersCache = (cacheKey: string): OrdersCachePayload | null => {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = window.sessionStorage.getItem(cacheKey)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as OrdersCachePayload
+    if (!parsed || typeof parsed.savedAt !== 'number') return null
+    if (!Array.isArray(parsed.orders)) return null
+    const ageMs = Date.now() - parsed.savedAt
+    if (ageMs < 0 || ageMs > ORDERS_CACHE_TTL_MS) return null
+    return {
+      savedAt: parsed.savedAt,
+      orders: parsed.orders.filter((item) => Boolean(item?.id)),
+      cursor: parsed.cursor ? String(parsed.cursor) : null,
+      hasMore: Boolean(parsed.hasMore),
+    }
+  } catch {
+    return null
+  }
+}
+
+const writeOrdersCache = (
+  cacheKey: string,
+  payload: Omit<OrdersCachePayload, 'savedAt'>,
+) => {
+  if (typeof window === 'undefined') return
+  try {
+    const nextPayload: OrdersCachePayload = {
+      savedAt: Date.now(),
+      orders: payload.orders,
+      cursor: payload.cursor,
+      hasMore: payload.hasMore,
+    }
+    window.sessionStorage.setItem(cacheKey, JSON.stringify(nextPayload))
+  } catch {
+    // ignore cache write failures
+  }
+}
+
+const trackOrders = (event: string, payload: Record<string, unknown>) => {
+  // eslint-disable-next-line no-console
+  console.log('[TRACK]', event, {
+    ...payload,
+    ts: new Date().toISOString(),
+  })
+}
+
 function OrdersPageContent() {
   const router = useRouter()
   const pathname = usePathname()
@@ -54,14 +129,24 @@ function OrdersPageContent() {
   const [orders, setOrders] = useState<NormalizedOrderListItem[]>([])
   const [cursor, setCursor] = useState<string | null>(null)
   const [hasMore, setHasMore] = useState(false)
-  const [loading, setLoading] = useState(true)
+  const [loadState, setLoadState] = useState<OrdersLoadState>('idle')
   const [loadingMore, setLoadingMore] = useState(false)
   const [cancellingOrderId, setCancellingOrderId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const requestCountRef = useRef(0)
+  const loadRunIdRef = useRef(0)
   const searchParamsString = searchParams.toString()
+  const baseLoadKey = useMemo(
+    () => `${pathname || '/my-orders'}?${searchParamsString}`,
+    [pathname, searchParamsString],
+  )
   const resolvedScopeMerchantId = useMemo(
     () => resolveAuroraOrderScope(searchParams, activeMerchantId),
     [activeMerchantId, searchParams],
+  )
+  const canAttemptAuroraRecovery = useMemo(
+    () => shouldUseAuroraAutoExchange(pathname),
+    [pathname],
   )
   const scopedSearchParams = useMemo(() => {
     const next = new URLSearchParams(searchParamsString)
@@ -76,17 +161,65 @@ function OrdersPageContent() {
     return scopedSearchParamsString ? `${path}?${scopedSearchParamsString}` : path
   }, [pathname, scopedSearchParamsString])
 
-  const loadOrders = async (next?: string | null) => {
-    const isLoadMore = Boolean(next)
-    if (isLoadMore) setLoadingMore(true)
-    else setLoading(true)
+  const setTrackedLoadState = (nextState: OrdersLoadState) => {
+    setLoadState((prevState) => {
+      if (prevState !== nextState) {
+        trackOrders('orders_ui_state_change', {
+          from: prevState,
+          to: nextState,
+        })
+      }
+      return nextState
+    })
+  }
+
+  const loadOrders = async (options?: {
+    next?: string | null
+    allowRecovery?: boolean
+    trigger?: 'initial' | 'manual_retry' | 'recovery_retry' | 'load_more'
+  }) => {
+    const nextCursor = options?.next || null
+    const allowRecovery = options?.allowRecovery !== false
+    const trigger =
+      options?.trigger || (nextCursor ? 'load_more' : 'initial')
+    const isLoadMore = Boolean(nextCursor)
+    const runId = ++loadRunIdRef.current
+    requestCountRef.current += 1
+    const requestCount = requestCountRef.current
+    const startedAt = performance.now()
+    const timeoutMs =
+      trigger === 'recovery_retry'
+        ? ORDERS_RECOVERY_RETRY_TIMEOUT_MS
+        : ORDERS_LIST_TIMEOUT_MS
+    const cacheKey = buildOrdersCacheKey(pathname || '/my-orders', resolvedScopeMerchantId)
+
+    if (isLoadMore) {
+      setLoadingMore(true)
+    } else {
+      setTrackedLoadState(trigger === 'recovery_retry' ? 'recovering' : 'loading')
+      setError(null)
+    }
+
+    trackOrders('orders_load_start', {
+      trigger,
+      is_load_more: isLoadMore,
+      request_count: requestCount,
+      scope_merchant_id: resolvedScopeMerchantId || null,
+      timeout_ms: timeoutMs,
+    })
 
     try {
       const data = await listMyOrders(
-        next || undefined,
+        nextCursor || undefined,
         20,
         resolvedScopeMerchantId ? { merchant_id: resolvedScopeMerchantId } : undefined,
+        {
+          timeout_ms: timeoutMs,
+          aurora_recovery: 'off',
+        },
       )
+      if (runId !== loadRunIdRef.current) return
+
       const rawOrders: unknown[] = Array.isArray((data as any)?.orders) ? (data as any).orders : []
       const normalizedOrders = rawOrders
         .map((raw) => normalizeOrderListItem(raw))
@@ -95,7 +228,15 @@ function OrdersPageContent() {
         ? normalizedOrders.filter((order) => order.merchantId === resolvedScopeMerchantId)
         : normalizedOrders
 
-      setOrders((prev) => (isLoadMore ? [...prev, ...nextOrders] : nextOrders))
+      setOrders((prev) => {
+        const merged = isLoadMore ? [...prev, ...nextOrders] : nextOrders
+        writeOrdersCache(cacheKey, {
+          orders: merged,
+          cursor: (data as any)?.next_cursor || null,
+          hasMore: Boolean((data as any)?.has_more),
+        })
+        return merged
+      })
       setCursor((data as any)?.next_cursor || null)
       setHasMore(Boolean((data as any)?.has_more))
 
@@ -108,8 +249,66 @@ function OrdersPageContent() {
       }
 
       setError(null)
+      setTrackedLoadState('ready')
+      trackOrders('orders_load_result', {
+        result: 'ok',
+        source: 'network',
+        trigger,
+        is_load_more: isLoadMore,
+        latency_ms: Math.round(performance.now() - startedAt),
+        request_count: requestCount,
+        loaded_count: nextOrders.length,
+      })
     } catch (err: any) {
-      if (err?.status === 401 || err?.code === 'UNAUTHENTICATED') {
+      if (runId !== loadRunIdRef.current) return
+      const isUnauthenticated =
+        err?.status === 401 ||
+        err?.code === 'UNAUTHENTICATED' ||
+        err?.code === 'NOT_AUTHENTICATED'
+
+      trackOrders('orders_load_result', {
+        result: 'failed',
+        source: 'network',
+        trigger,
+        is_load_more: isLoadMore,
+        latency_ms: Math.round(performance.now() - startedAt),
+        request_count: requestCount,
+        reason: String(err?.code || err?.status || err?.message || 'UNKNOWN'),
+      })
+
+      if (isUnauthenticated && canAttemptAuroraRecovery && allowRecovery && !isLoadMore) {
+        setTrackedLoadState('recovering')
+        const recoveryStartedAt = performance.now()
+        trackOrders('orders_recovery_start', {
+          request_count: requestCount,
+          path: pathname || null,
+        })
+
+        const recovered = await ensureAuroraSession(pathname)
+        if (runId !== loadRunIdRef.current) return
+
+        trackOrders('orders_recovery_result', {
+          ok: recovered.ok,
+          reason: recovered.ok ? null : recovered.reason,
+          latency_ms: Math.round(performance.now() - recoveryStartedAt),
+          request_count: requestCount,
+        })
+
+        if (recovered.ok) {
+          await loadOrders({
+            next: null,
+            allowRecovery: false,
+            trigger: 'recovery_retry',
+          })
+          return
+        }
+
+        setError('Session recovery failed. Please retry or log in again.')
+        setTrackedLoadState('failed')
+        return
+      }
+
+      if (isUnauthenticated) {
         clear()
         router.replace(`/login?redirect=${encodeURIComponent(currentListUrl)}`)
         return
@@ -119,16 +318,52 @@ function OrdersPageContent() {
       } else {
         setError(err?.message || 'Failed to load orders')
       }
+      setTrackedLoadState('failed')
     } finally {
+      if (runId !== loadRunIdRef.current) return
       if (isLoadMore) setLoadingMore(false)
-      else setLoading(false)
     }
   }
 
   useEffect(() => {
-    void loadOrders(null)
+    requestCountRef.current = 0
+    const cacheKey = buildOrdersCacheKey(pathname || '/my-orders', resolvedScopeMerchantId)
+    const cached = readOrdersCache(cacheKey)
+    if (cached) {
+      setOrders(cached.orders)
+      setCursor(cached.cursor)
+      setHasMore(cached.hasMore)
+      setError(null)
+      setTrackedLoadState('ready')
+      trackOrders('orders_load_result', {
+        result: 'ok',
+        source: 'cache',
+        trigger: 'initial',
+        is_load_more: false,
+        latency_ms: 0,
+        request_count: 0,
+        loaded_count: cached.orders.length,
+      })
+    } else {
+      setOrders([])
+      setCursor(null)
+      setHasMore(false)
+      setTrackedLoadState('idle')
+    }
+
+    void loadOrders({
+      next: null,
+      allowRecovery: true,
+      trigger: 'initial',
+    })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [resolvedScopeMerchantId])
+  }, [baseLoadKey])
+
+  useEffect(() => {
+    return () => {
+      loadRunIdRef.current += 1
+    }
+  }, [])
 
   const onContinuePayment = (order: NormalizedOrderListItem) => {
     router.push(
@@ -162,7 +397,11 @@ function OrdersPageContent() {
     } catch (err: any) {
       if (err?.code === 'INVALID_STATE') {
         toast.error('Order cannot be cancelled in its current state.')
-        void loadOrders(null)
+        void loadOrders({
+          next: null,
+          allowRecovery: true,
+          trigger: 'manual_retry',
+        })
       } else if (err?.code === 'NOT_FOUND') {
         toast.error('Order not found or no permission.')
       } else {
@@ -180,7 +419,13 @@ function OrdersPageContent() {
   }
 
   const isEmbed = useMemo(() => isAuroraEmbedMode(), [])
-  const isEmpty = useMemo(() => !loading && orders.length === 0, [loading, orders.length])
+  const isLoading = loadState === 'loading'
+  const isRecovering = loadState === 'recovering'
+  const isBusy = isLoading || isRecovering
+  const isEmpty = useMemo(
+    () => loadState === 'ready' && orders.length === 0,
+    [loadState, orders.length],
+  )
 
   return (
     <div className="min-h-screen bg-gradient-mesh">
@@ -201,13 +446,37 @@ function OrdersPageContent() {
           </div>
         )}
 
-        {loading && (
+        {isBusy && (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" />
-            Loading orders...
+            {isRecovering ? 'Recovering session...' : 'Loading orders...'}
           </div>
         )}
         {error && <div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</div>}
+        {loadState === 'failed' && (
+          <div className="mb-4 flex flex-wrap gap-2">
+            <button
+              onClick={() =>
+                void loadOrders({
+                  next: null,
+                  allowRecovery: true,
+                  trigger: 'manual_retry',
+                })
+              }
+              className="rounded-lg border border-border px-3 py-2 text-xs font-medium hover:bg-muted"
+            >
+              Retry
+            </button>
+            <button
+              onClick={() =>
+                router.replace(`/login?redirect=${encodeURIComponent(currentListUrl)}`)
+              }
+              className="rounded-lg border border-border px-3 py-2 text-xs font-medium hover:bg-muted"
+            >
+              Log in again
+            </button>
+          </div>
+        )}
 
         {isEmpty ? (
           <div className="rounded-3xl border border-border bg-card/60 p-12 text-center">
@@ -339,8 +608,14 @@ function OrdersPageContent() {
             {hasMore && (
               <div className="flex justify-center">
                 <button
-                  onClick={() => void loadOrders(cursor)}
-                  disabled={loadingMore}
+                  onClick={() =>
+                    void loadOrders({
+                      next: cursor,
+                      allowRecovery: false,
+                      trigger: 'load_more',
+                    })
+                  }
+                  disabled={loadingMore || isRecovering}
                   className="rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-muted disabled:opacity-60"
                 >
                   {loadingMore ? 'Loading...' : 'Load more'}
