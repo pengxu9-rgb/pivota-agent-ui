@@ -25,23 +25,6 @@ type AuthBootstrapResponsePayload = {
   email?: string;
   expires_at?: string | null;
   error_code?: string;
-  merchant_id?: string | null;
-  merchantId?: string | null;
-  active_merchant_id?: string | null;
-  scope?: {
-    merchant_id?: string | null;
-    merchantId?: string | null;
-  } | null;
-  context?: {
-    merchant_id?: string | null;
-    merchantId?: string | null;
-    active_merchant_id?: string | null;
-    activeMerchantId?: string | null;
-  } | null;
-  merchant?: {
-    id?: string | null;
-    merchant_id?: string | null;
-  } | null;
 };
 
 type ShopAuthBootstrapRequestMessage = {
@@ -62,18 +45,8 @@ type AuroraOrdersSessionResult = { ok: true } | { ok: false; reason: string };
 type EnsureAuroraSessionOptions = {
   bootstrapTimeoutMs?: number;
 };
-type ResolveAuroraOrdersScopeOptions = {
-  timeoutMs?: number;
-};
-
-const BOOTSTRAP_SCOPE_CACHE_KEY = 'aurora_orders_bootstrap_scope_v1';
-const BOOTSTRAP_SCOPE_TTL_MS = Math.max(
-  60_000,
-  Number(process.env.NEXT_PUBLIC_AURORA_SCOPE_CACHE_TTL_MS || 6 * 60 * 60 * 1000) || 6 * 60 * 60 * 1000,
-);
 
 let inflightExchange: Promise<AuroraOrdersSessionResult> | null = null;
-let inflightScopeResolve: Promise<string | null> | null = null;
 let lastExchangeFailureAt = 0;
 let lastExchangeFailureReason = '';
 const PDP_AUTO_EXCHANGE_ENABLED = String(
@@ -94,75 +67,6 @@ const randomId = () => {
     // ignore
   }
   return `aurora_auth_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-};
-
-const normalizeMerchantId = (value: unknown): string | null => {
-  const normalized = String(value || '').trim();
-  return normalized ? normalized : null;
-};
-
-const readBootstrapScopeCache = (): string | null => {
-  if (typeof window === 'undefined') return null;
-  try {
-    const raw = window.sessionStorage.getItem(BOOTSTRAP_SCOPE_CACHE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as { merchantId?: string; savedAt?: number };
-    const merchantId = normalizeMerchantId(parsed?.merchantId);
-    if (!merchantId) return null;
-    const savedAt = Number(parsed?.savedAt);
-    if (!Number.isFinite(savedAt) || savedAt <= 0) return null;
-    const ageMs = Date.now() - savedAt;
-    if (ageMs < 0 || ageMs > BOOTSTRAP_SCOPE_TTL_MS) return null;
-    return merchantId;
-  } catch {
-    return null;
-  }
-};
-
-const writeBootstrapScopeCache = (merchantId: string | null | undefined) => {
-  if (typeof window === 'undefined') return;
-  const normalized = normalizeMerchantId(merchantId);
-  if (!normalized) return;
-  try {
-    window.sessionStorage.setItem(
-      BOOTSTRAP_SCOPE_CACHE_KEY,
-      JSON.stringify({
-        merchantId: normalized,
-        savedAt: Date.now(),
-      }),
-    );
-  } catch {
-    // ignore storage failures
-  }
-};
-
-const extractBootstrapMerchantId = (bootstrap: AuthBootstrapResponsePayload): string | null => {
-  const candidates: unknown[] = [
-    bootstrap.merchant_id,
-    bootstrap.merchantId,
-    bootstrap.active_merchant_id,
-    bootstrap.scope?.merchant_id,
-    bootstrap.scope?.merchantId,
-    bootstrap.context?.merchant_id,
-    bootstrap.context?.merchantId,
-    bootstrap.context?.active_merchant_id,
-    bootstrap.context?.activeMerchantId,
-    bootstrap.merchant?.merchant_id,
-    bootstrap.merchant?.id,
-  ];
-  for (const candidate of candidates) {
-    const merchantId = normalizeMerchantId(candidate);
-    if (merchantId) return merchantId;
-  }
-  return null;
-};
-
-const persistBootstrapScope = (bootstrap: AuthBootstrapResponsePayload): string | null => {
-  const merchantId = extractBootstrapMerchantId(bootstrap);
-  if (merchantId) {
-    writeBootstrapScopeCache(merchantId);
-  }
-  return merchantId;
 };
 
 export const isOrdersPath = (pathname: string | null | undefined): boolean => {
@@ -277,7 +181,7 @@ const requestBootstrapFromParent = async (
     };
 
     window.addEventListener('message', onMessage);
-    const timer = window.setTimeout(() => finishReject('BOOTSTRAP_TIMEOUT'), Math.max(250, timeoutMs));
+    const timer = window.setTimeout(() => finishReject('BOOTSTRAP_TIMEOUT'), Math.max(1000, timeoutMs));
 
     try {
       window.parent.postMessage(req, parentOrigin);
@@ -376,7 +280,6 @@ export async function ensureAuroraSession(
           ? bootstrapTimeoutMs
           : DEFAULT_BOOTSTRAP_TIMEOUT_MS,
       );
-      persistBootstrapScope(bootstrap);
     } catch (err) {
       const reason = err instanceof Error && err.message ? err.message : 'BOOTSTRAP_FAILED';
       trackAuroraExchange({
@@ -418,37 +321,4 @@ export async function ensureAuroraSession(
 
 export async function ensureAuroraOrdersSession(pathname?: string | null): Promise<AuroraOrdersSessionResult> {
   return ensureAuroraSession(pathname);
-}
-
-export async function resolveAuroraOrdersScopeFromBootstrap(
-  pathname?: string | null,
-  options?: ResolveAuroraOrdersScopeOptions,
-): Promise<string | null> {
-  const currentPath =
-    String(pathname || (typeof window !== 'undefined' ? window.location.pathname : '') || '').trim() || null;
-  if (!shouldUseAuroraAutoExchange(currentPath)) {
-    return null;
-  }
-
-  const cached = readBootstrapScopeCache();
-  if (cached) return cached;
-  if (inflightScopeResolve) return inflightScopeResolve;
-
-  inflightScopeResolve = (async () => {
-    const timeoutMs = Number(options?.timeoutMs);
-    try {
-      const bootstrap = await requestBootstrapFromParent(
-        Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : DEFAULT_BOOTSTRAP_TIMEOUT_MS,
-      );
-      return persistBootstrapScope(bootstrap);
-    } catch {
-      return null;
-    }
-  })();
-
-  try {
-    return await inflightScopeResolve;
-  } finally {
-    inflightScopeResolve = null;
-  }
 }

@@ -6,11 +6,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { ArrowLeft, ArrowRight, Loader2, Package, ShoppingCart, XCircle } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { cancelAccountOrder, listMyOrders } from '@/lib/api'
-import {
-  ensureAuroraSession,
-  resolveAuroraOrdersScopeFromBootstrap,
-  shouldUseAuroraAutoExchange,
-} from '@/lib/auroraOrdersAuth'
+import { ensureAuroraSession, shouldUseAuroraAutoExchange } from '@/lib/auroraOrdersAuth'
 import { isAuroraEmbedMode } from '@/lib/auroraEmbed'
 import {
   buildOrderDetailHref,
@@ -73,6 +69,12 @@ const parseTimeoutMs = (value: string | undefined, fallback: number): number => 
   return Math.max(250, Math.round(parsed))
 }
 
+const parsePositiveInt = (value: string | undefined, fallback: number): number => {
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback
+  return Math.max(1, Math.round(parsed))
+}
+
 const ORDERS_LIST_TIMEOUT_MS = parseTimeoutMs(process.env.NEXT_PUBLIC_ORDERS_LIST_TIMEOUT_MS, 3500)
 const ORDERS_RECOVERY_RETRY_TIMEOUT_MS = parseTimeoutMs(
   process.env.NEXT_PUBLIC_ORDERS_RECOVERY_RETRY_TIMEOUT_MS,
@@ -82,9 +84,9 @@ const ORDERS_RECOVERY_BOOTSTRAP_TIMEOUT_MS = parseTimeoutMs(
   process.env.NEXT_PUBLIC_ORDERS_RECOVERY_BOOTSTRAP_TIMEOUT_MS,
   1800,
 )
-const ORDERS_SCOPE_RESOLVE_TIMEOUT_MS = parseTimeoutMs(
-  process.env.NEXT_PUBLIC_ORDERS_SCOPE_RESOLVE_TIMEOUT_MS,
-  700,
+const ORDERS_UNSCOPED_PRIME_LIMIT = parsePositiveInt(
+  process.env.NEXT_PUBLIC_ORDERS_UNSCOPED_PRIME_LIMIT,
+  6,
 )
 
 const buildOrdersCacheKey = (pathname: string, scopeMerchantId: string | null): string =>
@@ -214,7 +216,7 @@ function OrdersPageContent() {
     const trigger =
       options?.trigger || (nextCursor ? 'load_more' : 'initial')
     const isLoadMore = Boolean(nextCursor)
-    let requestedScopeMerchantId = String(options?.scopeMerchantId || scopeMerchantId || '').trim() || null
+    const requestedScopeMerchantId = String(options?.scopeMerchantId || scopeMerchantId || '').trim() || null
     const runId = ++loadRunIdRef.current
     requestCountRef.current += 1
     const requestCount = requestCountRef.current
@@ -223,42 +225,19 @@ function OrdersPageContent() {
       trigger === 'recovery_retry'
         ? ORDERS_RECOVERY_RETRY_TIMEOUT_MS
         : ORDERS_LIST_TIMEOUT_MS
+    const requestLimit = isLoadMore
+      ? 20
+      : requestedScopeMerchantId
+        ? 20
+        : canAttemptAuroraRecovery
+          ? ORDERS_UNSCOPED_PRIME_LIMIT
+          : 20
     if (isLoadMore) {
       setLoadingMore(true)
     } else {
       setTrackedLoadState(trigger === 'recovery_retry' ? 'recovering' : 'loading')
       setError(null)
     }
-
-    if (!requestedScopeMerchantId && canAttemptAuroraRecovery && !isLoadMore) {
-      const scopeResolveStartedAt = performance.now()
-      trackOrders('orders_scope_resolve_start', {
-        trigger,
-        timeout_ms: ORDERS_SCOPE_RESOLVE_TIMEOUT_MS,
-      })
-      const resolvedFromBootstrap = await resolveAuroraOrdersScopeFromBootstrap(pathname, {
-        timeoutMs: ORDERS_SCOPE_RESOLVE_TIMEOUT_MS,
-      })
-      if (runId !== loadRunIdRef.current) return
-      trackOrders('orders_scope_resolve_result', {
-        trigger,
-        ok: Boolean(resolvedFromBootstrap),
-        merchant_id: resolvedFromBootstrap,
-        latency_ms: Math.round(performance.now() - scopeResolveStartedAt),
-      })
-      if (resolvedFromBootstrap) {
-        requestedScopeMerchantId = resolvedFromBootstrap
-        if (scopeHint !== resolvedFromBootstrap) {
-          setScopeHint(resolvedFromBootstrap)
-        }
-        writeAuroraOrdersScopeHint(resolvedFromBootstrap)
-      } else {
-        setError('Unable to determine Aurora order scope. Please reopen Orders from Aurora Beauty.')
-        setTrackedLoadState('failed')
-        return
-      }
-    }
-    const requestLimit = 20
 
     trackOrders('orders_load_start', {
       trigger,
@@ -419,9 +398,8 @@ function OrdersPageContent() {
   useEffect(() => {
     requestCountRef.current = 0
     scopeRefineAttemptedRef.current = false
-    const shouldSkipUnscopedCache = canAttemptAuroraRecovery && !scopeMerchantId
     const cacheKey = buildOrdersCacheKey(pathname || '/my-orders', scopeMerchantId)
-    const cached = shouldSkipUnscopedCache ? null : readOrdersCache(cacheKey)
+    const cached = readOrdersCache(cacheKey)
     if (cached) {
       setOrders(cached.orders)
       setCursor(cached.cursor)

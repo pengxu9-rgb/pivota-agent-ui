@@ -11,7 +11,6 @@ const pushMock = vi.fn();
 const listMyOrdersMock = vi.fn();
 const cancelAccountOrderMock = vi.fn();
 const ensureAuroraSessionMock = vi.fn();
-const resolveAuroraOrdersScopeFromBootstrapMock = vi.fn();
 const shouldUseAuroraAutoExchangeMock = vi.fn();
 const isAuroraEmbedModeMock = vi.fn();
 const SCOPE_HINT_STORAGE_KEY = 'aurora_orders_scope_hint_v1';
@@ -35,8 +34,6 @@ vi.mock('@/lib/api', () => ({
 
 vi.mock('@/lib/auroraOrdersAuth', () => ({
   ensureAuroraSession: (...args: unknown[]) => ensureAuroraSessionMock(...args),
-  resolveAuroraOrdersScopeFromBootstrap: (...args: unknown[]) =>
-    resolveAuroraOrdersScopeFromBootstrapMock(...args),
   shouldUseAuroraAutoExchange: (...args: unknown[]) => shouldUseAuroraAutoExchangeMock(...args),
 }));
 
@@ -77,13 +74,11 @@ describe('Orders page recovery flow', () => {
     listMyOrdersMock.mockReset();
     cancelAccountOrderMock.mockReset();
     ensureAuroraSessionMock.mockReset();
-    resolveAuroraOrdersScopeFromBootstrapMock.mockReset();
     shouldUseAuroraAutoExchangeMock.mockReset();
     isAuroraEmbedModeMock.mockReset();
 
     shouldUseAuroraAutoExchangeMock.mockReturnValue(true);
     ensureAuroraSessionMock.mockResolvedValue({ ok: true });
-    resolveAuroraOrdersScopeFromBootstrapMock.mockResolvedValue('merchant_test');
     isAuroraEmbedModeMock.mockReturnValue(true);
     window.sessionStorage.clear();
     window.localStorage.clear();
@@ -124,14 +119,7 @@ describe('Orders page recovery flow', () => {
   });
 
   it('hydrates cached list immediately before network refresh returns', async () => {
-    window.localStorage.setItem(
-      SCOPE_HINT_STORAGE_KEY,
-      JSON.stringify({
-        merchantId: 'merchant_test',
-        savedAt: Date.now(),
-      }),
-    );
-    const cacheKey = 'orders_list_cache_v1:/orders:merchant_test';
+    const cacheKey = 'orders_list_cache_v1:/orders:__none__';
     window.sessionStorage.setItem(
       cacheKey,
       JSON.stringify({
@@ -139,7 +127,7 @@ describe('Orders page recovery flow', () => {
         orders: [
           {
             id: 'ORD_CACHE_1',
-            merchantId: 'merchant_test',
+            merchantId: null,
             currency: 'USD',
             totalAmountMinor: 2000,
             status: 'paid',
@@ -199,25 +187,40 @@ describe('Orders page recovery flow', () => {
     expect(listMyOrdersMock).toHaveBeenCalledTimes(2);
   });
 
-  it('resolves scope from bootstrap before initial list request', async () => {
-    resolveAuroraOrdersScopeFromBootstrapMock.mockResolvedValue('merchant_scope');
-    listMyOrdersMock.mockResolvedValue(makeOrderListPayload('ORD_SCOPE_BOOTSTRAP', 'merchant_scope'));
+  it('refines scope once when response provides active merchant id', async () => {
+    listMyOrdersMock
+      .mockResolvedValueOnce({
+        orders: [
+          {
+            order_id: 'ORD_OTHER_SCOPE',
+            merchant_id: 'merchant_other',
+            currency: 'USD',
+            total_amount_minor: 1299,
+            status: 'paid',
+            payment_status: 'paid',
+            fulfillment_status: 'fulfilled',
+            delivery_status: 'delivered',
+            created_at: '2026-03-05T12:00:00.000Z',
+            items_summary: 'Other scope item',
+            permissions: { can_pay: false, can_cancel: false, can_reorder: false },
+          },
+        ],
+        next_cursor: null,
+        has_more: false,
+        active_merchant_id: 'merchant_scope',
+      })
+      .mockResolvedValueOnce({
+        ...makeOrderListPayload('ORD_SCOPE_REFINED', 'merchant_scope'),
+        active_merchant_id: 'merchant_scope',
+      });
 
     render(<OrdersPage />);
 
-    await screen.findByText('Order #ORD_SCOPE_BOOTSTRAP');
-    expect(resolveAuroraOrdersScopeFromBootstrapMock).toHaveBeenCalledTimes(1);
-    expect(listMyOrdersMock).toHaveBeenCalledTimes(1);
-    expect(listMyOrdersMock.mock.calls[0][2]).toEqual({ merchant_id: 'merchant_scope' });
-  });
-
-  it('fails fast when aurora scope cannot be resolved', async () => {
-    resolveAuroraOrdersScopeFromBootstrapMock.mockResolvedValue(null);
-
-    render(<OrdersPage />);
-
-    await screen.findByText('Unable to determine Aurora order scope. Please reopen Orders from Aurora Beauty.');
-    expect(listMyOrdersMock).not.toHaveBeenCalled();
+    await screen.findByText('Order #ORD_SCOPE_REFINED');
+    expect(listMyOrdersMock).toHaveBeenCalledTimes(2);
+    expect(listMyOrdersMock.mock.calls[0][1]).toBe(6);
+    expect(listMyOrdersMock.mock.calls[0][2]).toBeUndefined();
+    expect(listMyOrdersMock.mock.calls[1][2]).toEqual({ merchant_id: 'merchant_scope' });
   });
 
   it('uses persisted scope hint on initial request', async () => {
@@ -233,7 +236,6 @@ describe('Orders page recovery flow', () => {
     render(<OrdersPage />);
 
     await screen.findByText('Order #ORD_SCOPE_HINT');
-    expect(resolveAuroraOrdersScopeFromBootstrapMock).not.toHaveBeenCalled();
     expect(listMyOrdersMock).toHaveBeenCalledTimes(1);
     expect(listMyOrdersMock.mock.calls[0][1]).toBe(20);
     expect(listMyOrdersMock.mock.calls[0][2]).toEqual({ merchant_id: 'merchant_hint' });
