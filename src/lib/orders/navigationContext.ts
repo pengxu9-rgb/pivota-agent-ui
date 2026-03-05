@@ -6,6 +6,7 @@ type SearchParamsLike = {
 
 const AURORA_ENTRY = 'aurora_chatbox'
 const AURORA_PARENT_ORIGIN = 'https://aurora.pivota.cc'
+const AURORA_PARENT_ORIGIN_STORAGE_KEY = 'aurora_embed_parent_origin_v1'
 const PASSTHROUGH_KEYS = [
   'embed',
   'entry',
@@ -51,13 +52,37 @@ const hasAuroraEmbedUidMarker = (
   return embed === '1' && Boolean(auroraUid)
 }
 
-const isAuroraOrdersContext = (
+const hasAuroraRuntimeReferrerMarker = (): boolean => {
+  if (typeof document === 'undefined') return false
+  const referrer = String(document.referrer || '').trim()
+  if (!referrer) return false
+  try {
+    return new URL(referrer).origin === AURORA_PARENT_ORIGIN
+  } catch {
+    return false
+  }
+}
+
+const hasAuroraRuntimeStorageMarker = (): boolean => {
+  if (typeof window === 'undefined') return false
+  try {
+    const stored = String(window.sessionStorage.getItem(AURORA_PARENT_ORIGIN_STORAGE_KEY) || '').trim()
+    if (!stored) return false
+    return new URL(stored).origin === AURORA_PARENT_ORIGIN
+  } catch {
+    return false
+  }
+}
+
+export const isAuroraOrdersContext = (
   searchParams: SearchParamsLike | null | undefined,
 ): boolean =>
   isAuroraOrdersEntry(searchParams) ||
   hasAuroraSourceMarker(searchParams) ||
   hasAuroraParentOriginMarker(searchParams) ||
-  hasAuroraEmbedUidMarker(searchParams)
+  hasAuroraEmbedUidMarker(searchParams) ||
+  hasAuroraRuntimeReferrerMarker() ||
+  hasAuroraRuntimeStorageMarker()
 
 const maybeAddScopeMerchant = (
   params: URLSearchParams,

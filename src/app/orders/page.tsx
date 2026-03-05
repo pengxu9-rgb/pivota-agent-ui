@@ -9,6 +9,7 @@ import { cancelAccountOrder, listMyOrders } from '@/lib/api'
 import { isAuroraEmbedMode } from '@/lib/auroraEmbed'
 import {
   buildOrderDetailHref,
+  isAuroraOrdersContext,
   resolveAuroraOrderScope,
 } from '@/lib/orders/navigationContext'
 import { normalizeOrderListItem, type NormalizedOrderListItem } from '@/lib/orders/normalize'
@@ -63,6 +64,7 @@ function OrdersPageContent() {
     () => resolveAuroraOrderScope(searchParams, activeMerchantId),
     [activeMerchantId, searchParams],
   )
+  const isAuroraScopedContext = useMemo(() => isAuroraOrdersContext(searchParams), [searchParams])
   const scopedSearchParams = useMemo(() => {
     const next = new URLSearchParams(searchParamsString)
     if (resolvedScopeMerchantId) {
@@ -82,6 +84,14 @@ function OrdersPageContent() {
     else setLoading(true)
 
     try {
+      if (isAuroraScopedContext && !resolvedScopeMerchantId) {
+        setOrders([])
+        setCursor(null)
+        setHasMore(false)
+        setError('Unable to determine Aurora order scope. Please reopen Orders from Aurora Beauty.')
+        return
+      }
+
       const data = await listMyOrders(
         next || undefined,
         20,
@@ -128,7 +138,7 @@ function OrdersPageContent() {
   useEffect(() => {
     void loadOrders(null)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [resolvedScopeMerchantId])
+  }, [isAuroraScopedContext, resolvedScopeMerchantId])
 
   const onContinuePayment = (order: NormalizedOrderListItem) => {
     router.push(
