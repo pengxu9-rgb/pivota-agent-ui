@@ -1,6 +1,6 @@
 /* eslint-disable @next/next/no-img-element */
 import React from 'react';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PdpContainer } from './PdpContainer';
 import type { PDPPayload } from '@/features/pdp/types';
@@ -177,6 +177,32 @@ describe('PdpContainer recommendations interactions', () => {
     await waitFor(() => {
       expect(screen.getAllByText('Product 12').length).toBeGreaterThan(0);
     });
+  });
+
+  it('keeps the sheet load-more CTA pinned outside the scroll body', async () => {
+    findSimilarProductsMock.mockResolvedValue({
+      strategy: 'related_products',
+      products: buildSimilar(12),
+      total: 12,
+    });
+
+    render(
+      <PdpContainer
+        payload={payload}
+        mode="generic"
+        onAddToCart={() => {}}
+        onBuyNow={() => {}}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /view all/i }));
+
+    const footer = await screen.findByTestId('responsive-sheet-footer');
+    const body = screen.getByTestId('responsive-sheet-body');
+    const loadMoreButton = within(footer).getByRole('button');
+
+    expect(footer).toContainElement(loadMoreButton);
+    expect(body).not.toContainElement(loadMoreButton);
   });
 
   it('shows low-confidence hint and stops misleading load-more when backend underfills', async () => {

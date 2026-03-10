@@ -133,7 +133,7 @@ export function RecommendationsGrid({
           </button>
         ) : null}
       </div>
-      <div className="px-4 grid grid-cols-2 gap-3">
+      <div className="px-4 grid grid-cols-2 lg:grid-cols-4 gap-3">
         {visibleItems.map((p, idx) => {
           const baseHref = `/products/${encodeURIComponent(p.product_id)}${p.merchant_id ? `?merchant_id=${encodeURIComponent(p.merchant_id)}` : ''}`;
           const handleClick = (event: MouseEvent<HTMLAnchorElement>) => {
@@ -158,7 +158,7 @@ export function RecommendationsGrid({
                     alt={p.title}
                     fill
                     className="object-cover"
-                    sizes="(max-width: 640px) 45vw, (max-width: 1024px) 30vw, 220px"
+                    sizes="(max-width: 640px) 45vw, (max-width: 1024px) 30vw, 250px"
                     loading={idx < 2 ? 'eager' : 'lazy'}
                     fetchPriority={idx < 2 ? 'high' : 'auto'}
                     quality={idx < 2 ? 72 : 65}
@@ -216,7 +216,7 @@ export function RecommendationsSkeleton() {
         <div className="h-4 w-32 rounded bg-muted/30 animate-pulse" />
         <div className="h-3 w-12 rounded bg-muted/20 animate-pulse" />
       </div>
-      <div className="px-4 grid grid-cols-2 gap-3">
+      <div className="px-4 grid grid-cols-2 lg:grid-cols-4 gap-3">
         {Array.from({ length: 4 }).map((_, idx) => (
           <div
             key={idx}

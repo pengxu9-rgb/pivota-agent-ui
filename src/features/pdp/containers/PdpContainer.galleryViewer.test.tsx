@@ -1,6 +1,6 @@
 /* eslint-disable @next/next/no-img-element */
 import React from 'react';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PdpContainer } from './PdpContainer';
 import type { PDPPayload } from '@/features/pdp/types';
@@ -44,6 +44,26 @@ vi.mock('sonner', () => ({
     error: vi.fn(),
   },
 }));
+
+function mockMatchMedia(matches: boolean) {
+  const matchMedia = vi.fn().mockImplementation((query: string) => ({
+    matches,
+    media: query,
+    onchange: null,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+  }));
+
+  vi.stubGlobal('matchMedia', matchMedia);
+  Object.defineProperty(window, 'matchMedia', {
+    configurable: true,
+    writable: true,
+    value: matchMedia,
+  });
+}
 
 const payload: PDPPayload = {
   schema_version: '1.0.0',
@@ -120,6 +140,12 @@ describe('PdpContainer gallery viewer wiring', () => {
   afterEach(() => {
     cleanup();
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+    Object.defineProperty(window, 'matchMedia', {
+      configurable: true,
+      writable: true,
+      value: undefined,
+    });
   });
 
   it('switches official hero image on thumbnail click without opening viewer', () => {
@@ -136,5 +162,25 @@ describe('PdpContainer gallery viewer wiring', () => {
     fireEvent.click(screen.getByLabelText('View media 2'));
     expect(screen.getByText('2/3')).toBeInTheDocument();
     expect(screen.queryByTestId('viewer-counter')).toBeNull();
+  });
+
+  it('removes the mobile CTA padding when the desktop media query matches', async () => {
+    mockMatchMedia(true);
+
+    render(
+      <PdpContainer
+        payload={payload}
+        mode="generic"
+        onAddToCart={() => {}}
+        onBuyNow={() => {}}
+      />,
+    );
+
+    await waitFor(() => {
+      const root = document.querySelector('.lovable-pdp') as HTMLElement | null;
+      expect(root).not.toBeNull();
+      expect(root?.className).toContain('pb-0');
+      expect(root?.className).not.toContain('pb-[calc(120px+env(safe-area-inset-bottom,0px))]');
+    });
   });
 });

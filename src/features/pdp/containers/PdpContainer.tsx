@@ -71,6 +71,7 @@ import { cn } from '@/lib/utils';
 import { resolveReviewGate, reviewGateMessage, reviewGateResultToReason } from '@/lib/reviewGate';
 import { postRequestCloseToParent } from '@/lib/auroraEmbed';
 import { isExternalAgentEntry, resolveExternalAgentHomeUrl, safeReturnUrl } from '@/lib/returnUrl';
+import { useIsDesktop } from '@/features/pdp/hooks/useIsDesktop';
 
 function nonEmptyText(value: unknown, fallback: string): string {
   const text = String(value ?? '').trim();
@@ -377,6 +378,7 @@ export function PdpContainer({
   const [ugcSnapshot, setUgcSnapshot] = useState(DEFAULT_UGC_SNAPSHOT);
   const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const router = useRouter();
+  const isDesktop = useIsDesktop();
   const [questionOpen, setQuestionOpen] = useState(false);
   const [questionText, setQuestionText] = useState('');
   const [questionSubmitting, setQuestionSubmitting] = useState(false);
@@ -1553,7 +1555,12 @@ export function PdpContainer({
   };
 
   return (
-    <div className="relative min-h-screen bg-background pb-[calc(120px+env(safe-area-inset-bottom,0px))] lovable-pdp">
+    <div
+      className={cn(
+        'relative min-h-screen bg-background lovable-pdp',
+        isDesktop ? 'pb-0' : 'pb-[calc(120px+env(safe-area-inset-bottom,0px))] lg:pb-0',
+      )}
+    >
       <div
         className={cn(
           'fixed left-0 right-0 z-50 transition-colors',
@@ -1561,7 +1568,7 @@ export function PdpContainer({
         )}
         style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
       >
-        <div className="mx-auto max-w-md flex items-center gap-2 h-11 px-3">
+        <div className="mx-auto max-w-md lg:max-w-6xl flex items-center gap-2 h-11 px-3">
           <button
             type="button"
             onClick={handleBack}
@@ -1599,7 +1606,7 @@ export function PdpContainer({
         </div>
         {navVisible ? (
           <div className="bg-white border-b border-border/60">
-            <div className="max-w-md mx-auto flex">
+            <div className="max-w-md lg:max-w-6xl mx-auto flex">
               {tabs.map((tab) => (
                 <button
                   key={tab.id}
@@ -1621,14 +1628,15 @@ export function PdpContainer({
         ) : null}
       </div>
 
-        <div className="mx-auto w-full max-w-md">
+        <div className="mx-auto w-full max-w-md lg:max-w-6xl">
         <div
           ref={(el) => {
             sectionRefs.current.product = el;
           }}
           style={{ scrollMarginTop }}
         >
-          <div className="pb-2">
+          <div className="pb-2 lg:grid lg:grid-cols-[1fr_420px] lg:gap-10">
+            <div className="lg:sticky lg:top-20 lg:self-start">
             <div className="relative">
               <MediaGallery
                 data={galleryData}
@@ -1719,10 +1727,12 @@ export function PdpContainer({
                 </div>
               </div>
             ) : null}
+            </div>
 
-            <div className="px-3 py-1">
+            <div>
+            <div className="px-3 py-1 lg:px-0">
               <div className="flex items-baseline gap-2 flex-wrap">
-                <span className="text-[26px] font-semibold text-foreground leading-none">{formatPrice(displayPriceAmount, displayCurrency)}</span>
+                <span className="text-[26px] font-semibold text-foreground leading-none lg:text-[30px]">{formatPrice(displayPriceAmount, displayCurrency)}</span>
                 {!isInStock ? (
                   <span className="rounded-full border border-red-200 bg-red-50 px-2 py-0.5 text-[10px] font-medium text-red-700">
                     Out of stock
@@ -1905,10 +1915,9 @@ export function PdpContainer({
                 </div>
               ) : null}
             </div>
-          </div>
 
           {showTrustBadges ? (
-            <div className="mx-3 mt-1.5 flex items-center gap-2 rounded-lg bg-muted/50 px-3 py-1.5 text-[10px]">
+            <div className="mx-3 lg:mx-0 mt-1.5 flex items-center gap-2 rounded-lg bg-muted/50 px-3 py-1.5 text-[10px]">
               {trustBadges.map((badge, idx) => (
                 <div key={`${badge}-${idx}`} className="flex items-center gap-2">
                   <span>{badge}</span>
@@ -1917,7 +1926,7 @@ export function PdpContainer({
               ))}
             </div>
           ) : (effectiveShippingEta?.length || effectiveReturns?.return_window_days) ? (
-            <div className="mx-3 rounded-lg bg-card border border-border px-3 py-1.5 text-xs text-muted-foreground flex flex-wrap gap-x-3 gap-y-1">
+            <div className="mx-3 lg:mx-0 rounded-lg bg-card border border-border px-3 py-1.5 text-xs text-muted-foreground flex flex-wrap gap-x-3 gap-y-1">
               {effectiveShippingEta?.length ? (
                 <span>
                   Shipping {effectiveShippingEta[0]}–{effectiveShippingEta[1]} days
@@ -1933,7 +1942,7 @@ export function PdpContainer({
 
           {moduleStates.offers === 'LOADING' ? (
             <div
-              className="mx-3 mt-2 rounded-lg border border-border bg-card px-3 py-3 space-y-2"
+              className="mx-3 lg:mx-0 mt-2 rounded-lg border border-border bg-card px-3 py-3 space-y-2"
               style={{ minHeight: pdpViewModel.heightSpec.offers }}
               data-module-state="loading"
             >
@@ -1941,6 +1950,76 @@ export function PdpContainer({
               <div className="h-3 w-full rounded bg-muted/20 animate-pulse" />
             </div>
           ) : null}
+
+          <div className="hidden lg:block mt-6">
+            <div className="rounded-2xl border border-border bg-white shadow-sm overflow-hidden">
+              {pricePromo?.promotions?.length && !promoDismissed ? (
+                <div className="flex items-center justify-between px-4 py-2 bg-primary/5 text-xs">
+                  <span className="flex items-center gap-2">
+                    <span className="text-primary">🎁</span>
+                    <span>{pricePromo.promotions[0].label}</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPromoDismissed(true);
+                      if (typeof window !== 'undefined') {
+                        window.sessionStorage.setItem(promoDismissStorageKey, '1');
+                      }
+                      pdpTracking.track('pdp_action_click', {
+                        action_type: 'dismiss_promotion',
+                      });
+                    }}
+                    className="text-muted-foreground"
+                    aria-label="Dismiss promotion"
+                  >
+                    ×
+                  </button>
+                </div>
+              ) : null}
+              <div className="flex items-center gap-3 px-4 py-3">
+                <div className="flex flex-1 gap-3">
+                  <Button
+                    variant="outline"
+                    className="flex-1 h-11 rounded-full font-semibold text-sm"
+                    disabled={!isInStock}
+                    onClick={() => {
+                      pdpTracking.track('pdp_action_click', { action_type: 'add_to_cart', variant_id: selectedVariant.variant_id });
+                      dispatchPdpAction('add_to_cart', {
+                        variant: selectedVariant,
+                        quantity: resolvedQuantity,
+                        merchant_id: effectiveMerchantId,
+                        product_id: effectiveProductId || undefined,
+                        offer_id: selectedOffer?.offer_id || undefined,
+                        onAddToCart,
+                      });
+                    }}
+                  >
+                    {actionsByType.add_to_cart || 'Add to Cart'}
+                  </Button>
+                  <Button
+                    className="flex-[1.5] h-11 rounded-full bg-primary hover:bg-primary/90 font-semibold text-sm"
+                    disabled={!isInStock}
+                    onClick={() => {
+                      pdpTracking.track('pdp_action_click', { action_type: 'buy_now', variant_id: selectedVariant.variant_id });
+                      dispatchPdpAction('buy_now', {
+                        variant: selectedVariant,
+                        quantity: resolvedQuantity,
+                        merchant_id: effectiveMerchantId,
+                        product_id: effectiveProductId || undefined,
+                        offer_id: selectedOffer?.offer_id || undefined,
+                        onBuyNow,
+                      });
+                    }}
+                  >
+                    {actionsByType.buy_now || 'Buy Now'}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+          </div>
+          </div>
 
           {resolvedMode === 'beauty' ? (
             <>
@@ -2310,7 +2389,7 @@ export function PdpContainer({
         ) : null}
       </div>
 
-      {mounted
+      {mounted && !isDesktop
         ? createPortal(
             <div className="fixed inset-x-0 bottom-0 z-[2147483646]">
               <div
@@ -2431,8 +2510,8 @@ export function PdpContainer({
         }}
       />
       {questionOpen ? (
-        <div className="fixed inset-0 z-[2147483647] flex items-end justify-center bg-black/40 px-3 py-6">
-          <div className="w-full max-w-md rounded-2xl bg-white p-4 shadow-xl">
+        <div className="fixed inset-0 z-[2147483647] flex items-end lg:items-center justify-center bg-black/40 px-3 py-6">
+          <div className="w-full max-w-md lg:max-w-lg rounded-2xl bg-white p-4 shadow-xl">
             <div className="flex items-center justify-between">
               <h3 className="text-base font-semibold">Ask a question</h3>
               <button
@@ -2538,7 +2617,7 @@ export function PdpContainer({
         }}
       />
       {offerDebugEnabled ? (
-        <details className="mx-auto max-w-md px-3 pb-2 text-xs text-muted-foreground">
+        <details className="mx-auto max-w-md lg:max-w-6xl px-3 pb-2 text-xs text-muted-foreground">
           <summary className="cursor-pointer select-none">Offer debug</summary>
           <div className="mt-2 rounded-xl border border-border bg-card/60 p-3 font-mono text-[11px] leading-relaxed">
             <div>selected_offer_id: {selectedOfferId || 'null'}</div>
