@@ -1951,7 +1951,7 @@ export function PdpContainer({
             </div>
           ) : null}
 
-          <div className="hidden lg:block mt-6 lg:mt-auto lg:pt-6">
+          <div className="hidden lg:block mt-6 lg:mt-auto lg:pt-3">
             <div className="rounded-2xl border border-border bg-white shadow-sm overflow-hidden">
               {pricePromo?.promotions?.length && !promoDismissed ? (
                 <div className="flex items-center justify-between px-4 py-2 bg-primary/5 text-xs">
