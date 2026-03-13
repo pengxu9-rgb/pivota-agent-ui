@@ -1729,7 +1729,7 @@ export function PdpContainer({
             ) : null}
             </div>
 
-            <div className="lg:pt-3">
+            <div className="lg:flex lg:min-h-[calc(100vh-8rem)] lg:flex-col lg:pt-3">
             <div className="px-3 py-1 lg:px-0">
               <div className="flex items-baseline gap-2 flex-wrap">
                 <span className="text-[26px] font-semibold text-foreground leading-none lg:text-[30px]">{formatPrice(displayPriceAmount, displayCurrency)}</span>
@@ -1951,7 +1951,7 @@ export function PdpContainer({
             </div>
           ) : null}
 
-          <div className="hidden lg:block mt-6">
+          <div className="hidden lg:block mt-6 lg:mt-auto lg:pt-6">
             <div className="rounded-2xl border border-border bg-white shadow-sm overflow-hidden">
               {pricePromo?.promotions?.length && !promoDismissed ? (
                 <div className="flex items-center justify-between px-4 py-2 bg-primary/5 text-xs">
