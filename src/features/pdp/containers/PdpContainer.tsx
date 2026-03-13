@@ -1729,7 +1729,7 @@ export function PdpContainer({
             ) : null}
             </div>
 
-            <div className="lg:flex lg:min-h-[calc(100vh-8rem)] lg:flex-col lg:pt-3">
+            <div className="lg:flex lg:min-h-[calc(100vh-10rem)] lg:flex-col lg:pt-3">
             <div className="px-3 py-1 lg:px-0">
               <div className="flex items-baseline gap-2 flex-wrap">
                 <span className="text-[26px] font-semibold text-foreground leading-none lg:text-[30px]">{formatPrice(displayPriceAmount, displayCurrency)}</span>
