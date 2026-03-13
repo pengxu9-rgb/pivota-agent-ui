@@ -1126,6 +1126,20 @@ export function PdpContainer({
     );
   }
   const showTrustBadges = resolvedMode === 'beauty' && trustBadges.length > 0;
+  const hasRightColumnSelectorSection =
+    resolvedMode === 'generic' &&
+    (
+      colorOptions.length > 0 ||
+      sizeOptions.length > 0 ||
+      (!sizeOptions.length && !colorOptions.length && variants.length > 1)
+    );
+  const hasRightColumnSupportInfo =
+    showTrustBadges || Boolean(effectiveShippingEta?.length || effectiveReturns?.return_window_days);
+  const isDesktopInfoSparse =
+    !hasRightColumnSelectorSection &&
+    !hasRightColumnSupportInfo &&
+    moduleStates.offers !== 'LOADING' &&
+    offers.length <= 1;
 
   const productId = String(payload.product.product_id || '').trim();
   const productGroupId = String(payload.product_group_id || selectedOffer?.product_group_id || '').trim() || null;
@@ -1729,7 +1743,7 @@ export function PdpContainer({
             ) : null}
             </div>
 
-            <div className="lg:flex lg:min-h-[calc(100vh-10rem)] lg:flex-col lg:pt-3">
+            <div className="lg:pt-3">
             <div className="px-3 py-1 lg:px-0">
               <div className="flex items-baseline gap-2 flex-wrap">
                 <span className="text-[26px] font-semibold text-foreground leading-none lg:text-[30px]">{formatPrice(displayPriceAmount, displayCurrency)}</span>
@@ -1951,7 +1965,10 @@ export function PdpContainer({
             </div>
           ) : null}
 
-          <div className="hidden lg:block mt-6 lg:mt-auto lg:pt-3">
+          <div
+            className="hidden lg:block mt-6"
+            style={isDesktopInfoSparse ? { marginTop: 'max(10rem, calc(58vh - 14rem))' } : undefined}
+          >
             <div className="rounded-2xl border border-border bg-white shadow-sm overflow-hidden">
               {pricePromo?.promotions?.length && !promoDismissed ? (
                 <div className="flex items-center justify-between px-4 py-2 bg-primary/5 text-xs">
