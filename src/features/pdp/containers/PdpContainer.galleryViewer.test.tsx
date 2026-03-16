@@ -183,4 +183,55 @@ describe('PdpContainer gallery viewer wiring', () => {
       expect(root?.className).not.toContain('pb-[calc(120px+env(safe-area-inset-bottom,0px))]');
     });
   });
+
+  it('shows a default-selected single option summary for external-seed products', () => {
+    const externalSeedPayload: PDPPayload = {
+      ...payload,
+      product: {
+        ...payload.product,
+        merchant_id: 'external_seed',
+        variants: [
+          {
+            ...payload.product.variants[0],
+            title: 'Black Mesh',
+          },
+        ],
+      },
+    };
+
+    render(
+      <PdpContainer
+        payload={externalSeedPayload}
+        mode="generic"
+        onAddToCart={() => {}}
+        onBuyNow={() => {}}
+      />,
+    );
+
+    expect(screen.getByText('Option')).toBeInTheDocument();
+    expect(screen.getByText('Selected by default')).toBeInTheDocument();
+    expect(screen.getByText('Black Mesh')).toBeInTheDocument();
+  });
+
+  it('keeps placeholder single-variant titles hidden for external-seed products', () => {
+    const externalSeedPayload: PDPPayload = {
+      ...payload,
+      product: {
+        ...payload.product,
+        merchant_id: 'external_seed',
+      },
+    };
+
+    render(
+      <PdpContainer
+        payload={externalSeedPayload}
+        mode="generic"
+        onAddToCart={() => {}}
+        onBuyNow={() => {}}
+      />,
+    );
+
+    expect(screen.queryByText('Selected by default')).not.toBeInTheDocument();
+    expect(screen.queryByText('Option')).not.toBeInTheDocument();
+  });
 });

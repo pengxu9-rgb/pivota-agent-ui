@@ -95,6 +95,20 @@ function formatPrice(amount: number, currency: string) {
 
 const SIMILAR_PAGE_STEP = 12;
 const SIMILAR_NO_GROWTH_STOP_THRESHOLD = 2;
+const SINGLE_VARIANT_PLACEHOLDER_TITLE = /^(default(?: title)?|variant \d+)$/i;
+
+function getMeaningfulSingleVariantLabel(
+  variant: Variant | undefined,
+  productTitle: string,
+): string | null {
+  const title = String(variant?.title || '').trim();
+  if (!title || SINGLE_VARIANT_PLACEHOLDER_TITLE.test(title)) return null;
+
+  const normalizedProductTitle = String(productTitle || '').trim().toLowerCase();
+  if (normalizedProductTitle && title.toLowerCase() === normalizedProductTitle) return null;
+
+  return title;
+}
 
 function buildRecommendationKey(item: { product_id?: string; merchant_id?: string }) {
   return `${String(item?.merchant_id || '').trim()}::${String(item?.product_id || '').trim()}`;
@@ -1096,6 +1110,20 @@ export function PdpContainer({
 
   const attributeOptions = extractAttributeOptions(selectedVariant);
   const beautyAttributes = extractBeautyAttributes(selectedVariant);
+  const isExternalSeedProduct =
+    String(payload.product.merchant_id || '').trim().toLowerCase() === 'external_seed';
+  const singleVariantSummaryLabel = useMemo(
+    () => getMeaningfulSingleVariantLabel(selectedVariant, payload.product.title),
+    [payload.product.title, selectedVariant],
+  );
+  const showExternalSeedSingleVariantSummary =
+    resolvedMode === 'generic' &&
+    isExternalSeedProduct &&
+    variants.length === 1 &&
+    !colorOptions.length &&
+    !sizeOptions.length &&
+    !attributeOptions.length &&
+    Boolean(singleVariantSummaryLabel);
   const compareAmount =
     pricePromo?.compare_at?.amount ??
     selectedVariant.price?.compare_at?.amount ??
@@ -1796,6 +1824,19 @@ export function PdpContainer({
               {variants.length > 1 ? (
                 <div className="mt-0.5 text-xs text-muted-foreground">
                   Selected: <span className="text-foreground">{selectedVariant?.title}</span>
+                </div>
+              ) : null}
+              {showExternalSeedSingleVariantSummary ? (
+                <div className="mt-2">
+                  <div className="flex items-center justify-between">
+                    <div className="text-xs font-semibold">Option</div>
+                    <div className="text-[11px] text-muted-foreground">Selected by default</div>
+                  </div>
+                  <div className="mt-1.5 flex flex-wrap gap-1.5">
+                    <span className="inline-flex min-h-10 items-center rounded-full border border-[color:var(--accent-600)] bg-[var(--accent-50)] px-3 text-xs font-semibold text-[color:var(--accent-800)]">
+                      {singleVariantSummaryLabel}
+                    </span>
+                  </div>
                 </div>
               ) : null}
 
