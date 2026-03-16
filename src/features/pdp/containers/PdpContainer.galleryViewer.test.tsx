@@ -213,7 +213,7 @@ describe('PdpContainer gallery viewer wiring', () => {
     expect(screen.getByText('Black Mesh')).toBeInTheDocument();
   });
 
-  it('keeps placeholder single-variant titles hidden for external-seed products', () => {
+  it('shows a fallback single option summary for placeholder external-seed variants', () => {
     const externalSeedPayload: PDPPayload = {
       ...payload,
       product: {
@@ -231,7 +231,38 @@ describe('PdpContainer gallery viewer wiring', () => {
       />,
     );
 
-    expect(screen.queryByText('Selected by default')).not.toBeInTheDocument();
-    expect(screen.queryByText('Option')).not.toBeInTheDocument();
+    expect(screen.getByText('Selected by default')).toBeInTheDocument();
+    expect(screen.getByText('Option')).toBeInTheDocument();
+    expect(screen.getByText('Default option')).toBeInTheDocument();
+  });
+
+  it('shows the single option summary for beauty-mode external-seed products too', () => {
+    const externalSeedPayload: PDPPayload = {
+      ...payload,
+      product: {
+        ...payload.product,
+        merchant_id: 'external_seed',
+        title: 'PIXI BEAUTY Rose Ceramide Cream',
+        variants: [
+          {
+            ...payload.product.variants[0],
+            title: 'PIXI BEAUTY Rose Ceramide Cream',
+          },
+        ],
+      },
+    };
+
+    render(
+      <PdpContainer
+        payload={externalSeedPayload}
+        mode="beauty"
+        onAddToCart={() => {}}
+        onBuyNow={() => {}}
+      />,
+    );
+
+    expect(screen.getByText('Selected by default')).toBeInTheDocument();
+    expect(screen.getByText('Option')).toBeInTheDocument();
+    expect(screen.getAllByText('PIXI BEAUTY Rose Ceramide Cream').length).toBeGreaterThan(1);
   });
 });

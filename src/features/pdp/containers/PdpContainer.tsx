@@ -96,17 +96,13 @@ function formatPrice(amount: number, currency: string) {
 const SIMILAR_PAGE_STEP = 12;
 const SIMILAR_NO_GROWTH_STOP_THRESHOLD = 2;
 const SINGLE_VARIANT_PLACEHOLDER_TITLE = /^(default(?: title)?|variant \d+)$/i;
+const SINGLE_VARIANT_FALLBACK_LABEL = 'Default option';
 
 function getMeaningfulSingleVariantLabel(
   variant: Variant | undefined,
-  productTitle: string,
-): string | null {
+): string {
   const title = String(variant?.title || '').trim();
-  if (!title || SINGLE_VARIANT_PLACEHOLDER_TITLE.test(title)) return null;
-
-  const normalizedProductTitle = String(productTitle || '').trim().toLowerCase();
-  if (normalizedProductTitle && title.toLowerCase() === normalizedProductTitle) return null;
-
+  if (!title || SINGLE_VARIANT_PLACEHOLDER_TITLE.test(title)) return SINGLE_VARIANT_FALLBACK_LABEL;
   return title;
 }
 
@@ -1113,17 +1109,16 @@ export function PdpContainer({
   const isExternalSeedProduct =
     String(payload.product.merchant_id || '').trim().toLowerCase() === 'external_seed';
   const singleVariantSummaryLabel = useMemo(
-    () => getMeaningfulSingleVariantLabel(selectedVariant, payload.product.title),
-    [payload.product.title, selectedVariant],
+    () => getMeaningfulSingleVariantLabel(selectedVariant),
+    [selectedVariant],
   );
   const showExternalSeedSingleVariantSummary =
-    resolvedMode === 'generic' &&
     isExternalSeedProduct &&
     variants.length === 1 &&
     !colorOptions.length &&
     !sizeOptions.length &&
     !attributeOptions.length &&
-    Boolean(singleVariantSummaryLabel);
+    !beautyAttributes.length;
   const compareAmount =
     pricePromo?.compare_at?.amount ??
     selectedVariant.price?.compare_at?.amount ??
