@@ -1,7 +1,17 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ShoppingCart, CreditCard, Check, ChevronRight, Info } from 'lucide-react'
+import {
+  ShoppingCart,
+  CreditCard,
+  Check,
+  ChevronRight,
+  ChevronDown,
+  Info,
+  Search,
+  MapPin,
+  Lock,
+} from 'lucide-react'
 import Image from 'next/image'
 import {
   createOrder,
@@ -98,6 +108,8 @@ type PrefetchedPaymentInit = {
   paymentResponse: any
 }
 
+type CheckoutStep = 'shipping' | 'payment' | 'confirm'
+
 const publishableKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || ''
 const stripePromise = publishableKey ? loadStripe(publishableKey) : Promise.resolve(null)
 const ADYEN_CLIENT_KEY =
@@ -181,6 +193,8 @@ const SHIPPING_COUNTRY_CODE_SET = new Set(
   SHIPPING_COUNTRY_GROUPS.flatMap((g) => g.countries.map((c) => String(c.code).toUpperCase())),
 )
 
+const SHIPPING_COUNTRIES = SHIPPING_COUNTRY_GROUPS.flatMap((group) => group.countries)
+
 const SHIPPING_COUNTRY_NAME_TO_CODE = new Map<string, string>(
   SHIPPING_COUNTRY_GROUPS.flatMap((g) =>
     g.countries.flatMap((c) => {
@@ -219,6 +233,8 @@ const COUNTRY_ALIASES: Record<string, string> = {
   UAE: 'AE',
 }
 
+const REGION_UPPERCASE_COUNTRIES = new Set(['US', 'CA', 'AU'])
+
 function normalizeCountryCode(value: unknown): string | null {
   const raw = String(value ?? '').trim()
   if (!raw) return null
@@ -241,6 +257,88 @@ function normalizeCountryCode(value: unknown): string | null {
 
   return null
 }
+
+function getCountryName(value: unknown): string {
+  const normalized = normalizeCountryCode(value)
+  if (!normalized) return 'United States'
+  return SHIPPING_COUNTRIES.find((country) => country.code === normalized)?.name || normalized
+}
+
+function getCountryFlagEmoji(value: unknown): string {
+  const normalized = normalizeCountryCode(value)
+  if (!normalized || normalized.length !== 2) return '🌍'
+  return Array.from(normalized)
+    .map((char) => String.fromCodePoint(char.charCodeAt(0) + 127397))
+    .join('')
+}
+
+function collapseWhitespace(value: unknown): string {
+  return String(value ?? '')
+    .trim()
+    .replace(/\s+/g, ' ')
+}
+
+function titleCaseWord(word: string): string {
+  if (!word) return word
+  if (!/[a-z]/i.test(word)) return word
+  if (word === word.toUpperCase() && word.length <= 3) return word
+  return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
+}
+
+function titleCasePreservingSeparators(value: unknown): string {
+  return collapseWhitespace(value)
+    .split(/([ '-])/)
+    .map((part) => (part === ' ' || part === '-' || part === "'" ? part : titleCaseWord(part)))
+    .join('')
+}
+
+function normalizeAddressLine(value: unknown): string {
+  const collapsed = collapseWhitespace(value)
+    .replace(/(\d)([A-Za-z])/g, '$1 $2')
+    .replace(/([A-Za-z])(\d)/g, '$1 $2')
+
+  return titleCasePreservingSeparators(collapsed)
+}
+
+function normalizeRegionValue(value: unknown, country: unknown): string {
+  const collapsed = collapseWhitespace(value)
+  if (!collapsed) return ''
+  const normalizedCountry = normalizeCountryCode(country)
+  if (normalizedCountry && REGION_UPPERCASE_COUNTRIES.has(normalizedCountry) && collapsed.length <= 3) {
+    return collapsed.toUpperCase()
+  }
+  return titleCasePreservingSeparators(collapsed)
+}
+
+function normalizePostalCodeValue(value: unknown): string {
+  return collapseWhitespace(value).toUpperCase()
+}
+
+function buildAddressSuggestion(shipping: ShippingInfo) {
+  const addressLine1 = normalizeAddressLine(shipping.address_line1)
+  if (!addressLine1) return null
+
+  const city = titleCasePreservingSeparators(shipping.city)
+  const state = normalizeRegionValue(shipping.state, shipping.country)
+  const postalCode = normalizePostalCodeValue(shipping.postal_code)
+  const location = [city, [state, postalCode].filter(Boolean).join(' ')].filter(Boolean).join(', ')
+
+  return {
+    addressLine1,
+    city,
+    state,
+    postalCode,
+    country: normalizeCountryCode(shipping.country) || shipping.country,
+    title: addressLine1,
+    detail: location,
+  }
+}
+
+const CHECKOUT_STEPS: Array<{ id: CheckoutStep; label: string }> = [
+  { id: 'shipping', label: 'Shipping' },
+  { id: 'payment', label: 'Payment' },
+  { id: 'confirm', label: 'Review' },
+]
 
 function getVariantIdForItem(item: {
   product_id: string
@@ -338,7 +436,7 @@ function OrderFlowInner({
   const elements = useElements()
   const { user, setSession } = useAuthStore()
   const clearCart = useCartStore(state => state.clearCart)
-  const [step, setStep] = useState<'shipping' | 'payment' | 'confirm'>('shipping')
+  const [step, setStep] = useState<CheckoutStep>('shipping')
   const [shipping, setShipping] = useState<ShippingInfo>({
     name: '',
     email: '',
@@ -378,6 +476,8 @@ function OrderFlowInner({
   const [prefetchedPaymentRes, setPrefetchedPaymentRes] = useState<PrefetchedPaymentInit | null>(null)
   const [paymentInitLoading, setPaymentInitLoading] = useState(false)
   const [paymentInitError, setPaymentInitError] = useState<string | null>(null)
+  const [isAddressSuggestionOpen, setIsAddressSuggestionOpen] = useState(false)
+  const addressSuggestionCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     const normalized = normalizeCountryCode(shipping.country)
@@ -1179,6 +1279,55 @@ function OrderFlowInner({
     }
   }, [user])
 
+  useEffect(() => {
+    return () => {
+      if (addressSuggestionCloseTimerRef.current) {
+        clearTimeout(addressSuggestionCloseTimerRef.current)
+      }
+    }
+  }, [])
+
+  const cardClassName =
+    'rounded-[28px] border border-white/80 bg-white/95 px-5 py-6 shadow-[0_20px_55px_rgba(56,88,162,0.12)] backdrop-blur md:px-8 md:py-8 lg:rounded-[36px] lg:px-4 lg:py-4'
+  const fieldClassName =
+    'w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-[15px] text-slate-900 shadow-[inset_0_1px_2px_rgba(15,23,42,0.04)] transition placeholder:text-slate-400 focus:border-blue-400 focus:outline-none focus:ring-4 focus:ring-blue-100 lg:text-base'
+  const helperTextClassName = 'text-sm leading-6 text-slate-500'
+  const stepIndex = CHECKOUT_STEPS.findIndex((item) => item.id === step)
+  const addressSuggestion = useMemo(() => buildAddressSuggestion(shipping), [shipping])
+  const showAddressSuggestion = Boolean(
+    isAddressSuggestionOpen && addressSuggestion && shipping.address_line1.trim(),
+  )
+
+  const closeAddressSuggestionSoon = () => {
+    if (addressSuggestionCloseTimerRef.current) {
+      clearTimeout(addressSuggestionCloseTimerRef.current)
+    }
+    addressSuggestionCloseTimerRef.current = setTimeout(() => {
+      setIsAddressSuggestionOpen(false)
+    }, 120)
+  }
+
+  const openAddressSuggestion = () => {
+    if (addressSuggestionCloseTimerRef.current) {
+      clearTimeout(addressSuggestionCloseTimerRef.current)
+      addressSuggestionCloseTimerRef.current = null
+    }
+    setIsAddressSuggestionOpen(true)
+  }
+
+  const applyAddressSuggestion = () => {
+    if (!addressSuggestion) return
+    setShipping((prev) => ({
+      ...prev,
+      address_line1: addressSuggestion.addressLine1,
+      city: addressSuggestion.city || prev.city,
+      state: addressSuggestion.state || prev.state,
+      postal_code: addressSuggestion.postalCode || prev.postal_code,
+      country: String(addressSuggestion.country || prev.country),
+    }))
+    setIsAddressSuggestionOpen(false)
+  }
+
   const hasSellerSelection = Boolean(merchantIdForOrder || offerIdForOrder)
   if (items.length > 0 && !hasSellerSelection) {
     return (
@@ -1532,291 +1681,442 @@ function OrderFlowInner({
   }
 
   return (
-    <div className="max-w-4xl mx-auto px-4 pb-4">
-      {/* Progress Bar */}
-      <div className="mb-2">
-        <div className="flex items-center justify-between text-xs">
-          <div className={`flex items-center ${step === 'shipping' ? 'text-blue-600' : 'text-gray-400'}`}>
-            <CreditCard className="w-4 h-4" />
-            <span className="ml-2 font-medium">Shipping</span>
-          </div>
-          <ChevronRight className="w-3 h-3 text-gray-400" />
-          <div className={`flex items-center ${step === 'payment' ? 'text-blue-600' : 'text-gray-400'}`}>
-            <CreditCard className="w-4 h-4" />
-            <span className="ml-2 font-medium">Payment</span>
-          </div>
-          <ChevronRight className="w-3 h-3 text-gray-400" />
-          <div className={`flex items-center ${step === 'confirm' ? 'text-blue-600' : 'text-gray-400'}`}>
-            <Check className="w-4 h-4" />
-            <span className="ml-2 font-medium">Confirm</span>
-          </div>
+    <div className="mx-auto max-w-4xl px-4 pb-4 lg:max-w-6xl">
+      <div className="mb-6 border-b border-slate-200/80">
+        <div className="flex items-end gap-3 overflow-x-auto pb-0.5 lg:gap-5">
+          {CHECKOUT_STEPS.map((item, index) => {
+            const isActive = item.id === step
+            const isComplete = index < stepIndex
+
+            return (
+              <div key={item.id} className="flex min-w-fit items-center gap-3">
+                <div
+                  className={`relative pb-4 text-lg font-semibold transition-colors md:text-[2rem] md:leading-none ${
+                    isActive
+                      ? 'text-slate-900'
+                      : isComplete
+                        ? 'text-blue-600'
+                        : 'text-slate-400'
+                  }`}
+                >
+                  <span>{item.label}</span>
+                  {isActive ? (
+                    <span className="absolute inset-x-0 -bottom-px h-1 rounded-full bg-blue-500" />
+                  ) : null}
+                </div>
+                {index < CHECKOUT_STEPS.length - 1 ? (
+                  <ChevronRight className="mb-4 h-5 w-5 flex-none text-slate-300" />
+                ) : null}
+              </div>
+            )
+          })}
         </div>
       </div>
 
       {/* Step Content */}
       {step === 'shipping' && (
-        <div className="bg-white rounded-lg shadow-md p-6">
-          <h2 className="text-2xl font-bold mb-6">Shipping Information</h2>
-          
-          <form onSubmit={handleShippingSubmit} className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium mb-1">Full Name</label>
-                <input
-                  type="text"
-                  required
-                  value={shipping.name}
-                  onChange={(e) => setShipping({...shipping, name: e.target.value})}
-                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                />
+        <div className={cardClassName}>
+          <form onSubmit={handleShippingSubmit} className="space-y-8 lg:space-y-0">
+            <div className="lg:grid lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:gap-7 xl:gap-8">
+              <div className="space-y-8 lg:space-y-6 lg:self-start lg:rounded-[28px] lg:border lg:border-slate-200 lg:bg-[linear-gradient(180deg,rgba(246,250,255,0.96),rgba(255,255,255,0.92))] lg:p-7 lg:shadow-[0_18px_40px_rgba(15,23,42,0.06)]">
+                <section className="space-y-5">
+                  <div className="space-y-2">
+                    <h2 className="text-2xl font-semibold tracking-tight text-slate-900 md:text-[2.1rem]">
+                      Contact
+                    </h2>
+                    <p className={helperTextClassName}>
+                      For order confirmation and shipping updates.
+                    </p>
+                  </div>
+
+                  <div className="space-y-3">
+                    <label className="block text-sm font-semibold text-slate-900">Email</label>
+                    <input
+                      type="email"
+                      required
+                      autoComplete="email"
+                      value={shipping.email}
+                      onChange={(e) => setShipping({ ...shipping, email: e.target.value })}
+                      className={fieldClassName}
+                    />
+                    <p className={helperTextClassName}>
+                      We only use this for your receipt, shipping updates, and secure sign-in.
+                    </p>
+                  </div>
+
+                  {!user && !skipEmailVerification && (
+                    <div className="rounded-[24px] border border-slate-200 bg-slate-50/80 p-4">
+                      <div className="flex flex-wrap gap-2 text-xs">
+                        <button
+                          type="button"
+                          disabled={otpLoading}
+                          onClick={() => setAuthMethod('password')}
+                          className={`rounded-full border px-3 py-1.5 font-medium transition ${
+                            authMethod === 'password'
+                              ? 'border-blue-600 bg-blue-600 text-white'
+                              : 'border-slate-200 bg-white text-slate-700'
+                          } disabled:opacity-60`}
+                        >
+                          Password
+                        </button>
+                        <button
+                          type="button"
+                          disabled={otpLoading}
+                          onClick={() => setAuthMethod('otp')}
+                          className={`rounded-full border px-3 py-1.5 font-medium transition ${
+                            authMethod === 'otp'
+                              ? 'border-blue-600 bg-blue-600 text-white'
+                              : 'border-slate-200 bg-white text-slate-700'
+                          } disabled:opacity-60`}
+                        >
+                          Email code
+                        </button>
+                      </div>
+
+                      <div className="mt-3 space-y-3">
+                        {authMethod === 'password' ? (
+                          <div className="flex flex-col gap-2 sm:flex-row lg:flex-col xl:flex-row">
+                            <input
+                              type="password"
+                              placeholder="Password"
+                              value={loginPassword}
+                              onChange={(e) => setLoginPassword(e.target.value)}
+                              className={`${fieldClassName} text-sm`}
+                            />
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                setOtpLoading(true)
+                                try {
+                                  const data = await accountsLoginWithPassword(
+                                    shipping.email.trim(),
+                                    loginPassword,
+                                  )
+                                  setSession({
+                                    user: (data as any).user,
+                                    memberships: (data as any).memberships || [],
+                                    active_merchant_id: (data as any).active_merchant_id,
+                                  })
+                                  setVerifiedEmail(shipping.email.trim())
+                                  setLoginPassword('')
+                                  toast.success('Signed in')
+                                } catch (err: any) {
+                                  const code = err?.code
+                                  if (code === 'NO_PASSWORD') {
+                                    toast.error('No password is set. Use email code once, then set a password.')
+                                    setAuthMethod('otp')
+                                  } else if (code === 'INVALID_CREDENTIALS') {
+                                    toast.error('Email or password is incorrect')
+                                  } else {
+                                    toast.error(err?.message || 'Sign in failed')
+                                  }
+                                } finally {
+                                  setOtpLoading(false)
+                                }
+                              }}
+                              className="rounded-2xl bg-blue-600 px-4 py-3 text-sm font-medium text-white transition hover:bg-blue-700 disabled:opacity-60"
+                              disabled={otpLoading || !loginPassword || !shipping.email}
+                            >
+                              {otpLoading ? 'Signing in...' : 'Sign in'}
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex flex-col gap-2 sm:flex-row lg:flex-col xl:flex-row">
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                setOtpLoading(true)
+                                try {
+                                  await accountsLogin(shipping.email.trim())
+                                  setOtpSent(true)
+                                  toast.success('Code sent to your email')
+                                } catch (err: any) {
+                                  const code = err?.code
+                                  if (code === 'INVALID_INPUT') toast.error('Please enter a valid email')
+                                  else if (code === 'RATE_LIMITED') {
+                                    toast.error('Too many requests, please retry later')
+                                  } else {
+                                    toast.error(err?.message || 'Failed to send code')
+                                  }
+                                } finally {
+                                  setOtpLoading(false)
+                                }
+                              }}
+                              className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-100 disabled:opacity-60"
+                              disabled={otpLoading || !shipping.email}
+                            >
+                              {otpLoading ? 'Sending...' : otpSent ? 'Resend code' : 'Send code'}
+                            </button>
+                            <input
+                              placeholder="6-digit code"
+                              value={otp}
+                              onChange={(e) => setOtp(e.target.value)}
+                              className={`${fieldClassName} text-sm`}
+                            />
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                setOtpLoading(true)
+                                try {
+                                  const data = await accountsVerify(shipping.email.trim(), otp.trim())
+                                  setSession({
+                                    user: (data as any).user,
+                                    memberships: (data as any).memberships || [],
+                                    active_merchant_id: (data as any).active_merchant_id,
+                                  })
+                                  setVerifiedEmail(shipping.email.trim())
+                                  toast.success('Email verified and logged in')
+                                } catch (err: any) {
+                                  const code = err?.code
+                                  if (code === 'INVALID_OTP') toast.error('Code invalid or expired')
+                                  else if (code === 'RATE_LIMITED') {
+                                    toast.error('Too many attempts, please retry later')
+                                  } else {
+                                    toast.error(err?.message || 'Verification failed')
+                                  }
+                                } finally {
+                                  setOtpLoading(false)
+                                }
+                              }}
+                              className="rounded-2xl bg-blue-600 px-4 py-3 text-sm font-medium text-white transition hover:bg-blue-700 disabled:opacity-60"
+                              disabled={otpLoading || !otp || !shipping.email}
+                            >
+                              Verify
+                            </button>
+                          </div>
+                        )}
+                        {verifiedEmail === shipping.email.trim() ? (
+                          <p className="text-sm text-green-600">Email verified.</p>
+                        ) : null}
+                      </div>
+                    </div>
+                  )}
+                </section>
+
+                <div className="hidden lg:block rounded-[24px] border border-blue-100/80 bg-gradient-to-br from-blue-50 via-white to-sky-50 p-5">
+                  <div className="flex items-start gap-3">
+                    <MapPin className="mt-0.5 h-5 w-5 flex-none text-blue-500" />
+                    <div className="space-y-1.5">
+                      <p className="text-sm font-semibold text-slate-900">Desktop checkout keeps inputs lighter</p>
+                      <p className="text-sm leading-6 text-slate-600">
+                        Contact details stay grouped on the left, while the full shipping form and address suggestion stay in the main column.
+                      </p>
+                    </div>
+                  </div>
+                </div>
               </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Email</label>
-                <input
-                  type="email"
-                  required
-                  value={shipping.email}
-                  onChange={(e) => setShipping({...shipping, email: e.target.value})}
-                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                />
-                {!user && !skipEmailVerification && (
-                  <div className="mt-3 space-y-2">
-                    <div className="flex gap-2 text-xs">
-                      <button
-                        type="button"
-                        disabled={otpLoading}
-                        onClick={() => setAuthMethod('password')}
-                        className={`px-3 py-1.5 rounded-lg border ${
-                          authMethod === 'password'
-                            ? 'bg-blue-600 text-white border-blue-600'
-                            : 'bg-white text-gray-700 border-gray-200'
-                        } disabled:opacity-60`}
-                      >
-                        Password
-                      </button>
-                      <button
-                        type="button"
-                        disabled={otpLoading}
-                        onClick={() => setAuthMethod('otp')}
-                        className={`px-3 py-1.5 rounded-lg border ${
-                          authMethod === 'otp'
-                            ? 'bg-blue-600 text-white border-blue-600'
-                            : 'bg-white text-gray-700 border-gray-200'
-                        } disabled:opacity-60`}
-                      >
-                        Email code
-                      </button>
+
+              <div className="mt-8 space-y-8 lg:mt-0 lg:space-y-6 lg:rounded-[28px] lg:border lg:border-slate-200 lg:bg-white/92 lg:p-7 lg:shadow-[0_18px_40px_rgba(15,23,42,0.06)]">
+                <section className="space-y-5 border-t border-slate-200 pt-8 lg:border-t-0 lg:pt-0">
+                  <div className="space-y-2">
+                    <h3 className="text-2xl font-semibold tracking-tight text-slate-900 md:text-[2.1rem]">
+                      Shipping address
+                    </h3>
+                    <p className={helperTextClassName}>
+                      Start with your street address and apply the suggested format as you fill it in.
+                    </p>
+                  </div>
+
+                  <div className="grid gap-4 lg:grid-cols-2">
+                    <div>
+                      <label className="mb-2 block text-sm font-semibold text-slate-900">Full name</label>
+                      <input
+                        type="text"
+                        required
+                        autoComplete="name"
+                        value={shipping.name}
+                        onChange={(e) => setShipping({ ...shipping, name: e.target.value })}
+                        onBlur={() =>
+                          setShipping((prev) => ({ ...prev, name: titleCasePreservingSeparators(prev.name) }))
+                        }
+                        className={fieldClassName}
+                      />
                     </div>
 
-                    {authMethod === 'password' ? (
-                      <div className="flex flex-col sm:flex-row gap-2">
-                        <input
-                          type="password"
-                          placeholder="Password"
-                          value={loginPassword}
-                          onChange={(e) => setLoginPassword(e.target.value)}
-                          className="flex-1 rounded-lg border border-gray-200 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                        />
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            setOtpLoading(true)
-                            try {
-                              const data = await accountsLoginWithPassword(
-                                shipping.email.trim(),
-                                loginPassword,
-                              )
-                              setSession({
-                                user: (data as any).user,
-                                memberships: (data as any).memberships || [],
-                                active_merchant_id: (data as any).active_merchant_id,
-                              })
-                              setVerifiedEmail(shipping.email.trim())
-                              setLoginPassword('')
-                              toast.success('Signed in')
-                            } catch (err: any) {
-                              const code = err?.code
-                              if (code === 'NO_PASSWORD') {
-                                toast.error('No password is set. Use email code once, then set a password.')
-                                setAuthMethod('otp')
-                              } else if (code === 'INVALID_CREDENTIALS') {
-                                toast.error('Email or password is incorrect')
-                              } else {
-                                toast.error(err?.message || 'Sign in failed')
-                              }
-                            } finally {
-                              setOtpLoading(false)
-                            }
-                          }}
-                          className="px-3 py-2 rounded-lg bg-blue-600 text-white text-sm disabled:opacity-60"
-                          disabled={otpLoading || !loginPassword || !shipping.email}
+                    <div>
+                      <label className="mb-2 block text-sm font-semibold text-slate-900">Country / Region</label>
+                      <div className="relative">
+                        <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-xl">
+                          {getCountryFlagEmoji(shipping.country)}
+                        </span>
+                        <select
+                          value={shipping.country}
+                          autoComplete="country"
+                          onChange={(e) => setShipping({ ...shipping, country: e.target.value })}
+                          className={`${fieldClassName} appearance-none pl-14 pr-12`}
                         >
-                          {otpLoading ? 'Signing in...' : 'Sign in'}
-                        </button>
+                          {SHIPPING_COUNTRY_GROUPS.map((group) => (
+                            <optgroup key={group.label} label={group.label}>
+                              {group.countries.map((country) => (
+                                <option key={country.code} value={country.code}>
+                                  {country.name}
+                                </option>
+                              ))}
+                            </optgroup>
+                          ))}
+                        </select>
+                        <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
                       </div>
-                    ) : (
-                      <div className="flex flex-col sm:flex-row gap-2">
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            setOtpLoading(true)
-                            try {
-                              await accountsLogin(shipping.email.trim())
-                              setOtpSent(true)
-                              toast.success('Code sent to your email')
-                            } catch (err: any) {
-                              const code = err?.code
-                              if (code === 'INVALID_INPUT') toast.error('Please enter a valid email')
-                              else if (code === 'RATE_LIMITED')
-                                toast.error('Too many requests, please retry later')
-                              else toast.error(err?.message || 'Failed to send code')
-                            } finally {
-                              setOtpLoading(false)
-                            }
-                          }}
-                          className="px-3 py-2 rounded-lg bg-secondary hover:bg-secondary/80 text-sm"
-                          disabled={otpLoading || !shipping.email}
-                        >
-                          {otpLoading ? 'Sending...' : otpSent ? 'Resend code' : 'Send code'}
-                        </button>
+                    </div>
+
+                    <div className="relative lg:col-span-2">
+                      <label className="mb-2 block text-sm font-semibold text-slate-900">Address</label>
+                      <div className="relative">
+                        <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
                         <input
-                          placeholder="6-digit code"
-                          value={otp}
-                          onChange={(e) => setOtp(e.target.value)}
-                          className="flex-1 rounded-lg border border-gray-200 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                        />
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            setOtpLoading(true)
-                            try {
-                              const data = await accountsVerify(shipping.email.trim(), otp.trim())
-                              setSession({
-                                user: (data as any).user,
-                                memberships: (data as any).memberships || [],
-                                active_merchant_id: (data as any).active_merchant_id,
-                              })
-                              setVerifiedEmail(shipping.email.trim())
-                              toast.success('Email verified and logged in')
-                            } catch (err: any) {
-                              const code = err?.code
-                              if (code === 'INVALID_OTP') toast.error('Code invalid or expired')
-                              else if (code === 'RATE_LIMITED')
-                                toast.error('Too many attempts, please retry later')
-                              else toast.error(err?.message || 'Verification failed')
-                            } finally {
-                              setOtpLoading(false)
-                            }
+                          type="search"
+                          required
+                          autoComplete="address-line1"
+                          placeholder="Start typing your street address"
+                          value={shipping.address_line1}
+                          onFocus={openAddressSuggestion}
+                          onBlur={() => {
+                            closeAddressSuggestionSoon()
+                            setShipping((prev) => ({
+                              ...prev,
+                              address_line1: normalizeAddressLine(prev.address_line1),
+                            }))
                           }}
-                          className="px-3 py-2 rounded-lg bg-blue-600 text-white text-sm disabled:opacity-60"
-                          disabled={otpLoading || !otp || !shipping.email}
-                        >
-                          Verify
-                        </button>
+                          onChange={(e) => {
+                            if (!isAddressSuggestionOpen) {
+                              openAddressSuggestion()
+                            }
+                            setShipping({ ...shipping, address_line1: e.target.value })
+                          }}
+                          className={`${fieldClassName} pl-12 pr-4`}
+                        />
                       </div>
-                    )}
-                    {verifiedEmail === shipping.email.trim() && (
-                      <p className="text-xs text-green-600">Email verified</p>
-                    )}
+
+                      {showAddressSuggestion && addressSuggestion ? (
+                        <div className="absolute z-20 mt-2 w-full overflow-hidden rounded-[22px] border border-slate-200 bg-white shadow-[0_18px_45px_rgba(15,23,42,0.12)] lg:mt-3 lg:max-w-[44rem]">
+                          <button
+                            type="button"
+                            onMouseDown={(e) => {
+                              e.preventDefault()
+                              applyAddressSuggestion()
+                            }}
+                            className="flex w-full items-start gap-3 px-4 py-3 text-left transition hover:bg-slate-50 lg:px-5 lg:py-4"
+                          >
+                            <MapPin className="mt-1 h-5 w-5 flex-none text-blue-500" />
+                            <div className="min-w-0">
+                              <p className="text-base font-medium text-slate-900">{addressSuggestion.title}</p>
+                              <p className="text-sm text-slate-500">
+                                {[addressSuggestion.detail, getCountryName(shipping.country)]
+                                  .filter(Boolean)
+                                  .join(' · ')}
+                              </p>
+                            </div>
+                          </button>
+                        </div>
+                      ) : null}
+                    </div>
+
+                    <div className="lg:col-span-2">
+                      <label className="mb-2 block text-sm font-semibold text-slate-900">
+                        Apt, suite, etc. <span className="font-normal text-slate-400">(optional)</span>
+                      </label>
+                      <input
+                        type="text"
+                        autoComplete="address-line2"
+                        value={shipping.address_line2 || ''}
+                        onChange={(e) => setShipping({ ...shipping, address_line2: e.target.value })}
+                        onBlur={() =>
+                          setShipping((prev) => ({
+                            ...prev,
+                            address_line2: titleCasePreservingSeparators(prev.address_line2),
+                          }))
+                        }
+                        className={fieldClassName}
+                      />
+                    </div>
+
+                    <div className="grid gap-4 md:grid-cols-[1.25fr_0.75fr_0.8fr] lg:col-span-2">
+                      <div>
+                        <label className="mb-2 block text-sm font-semibold text-slate-900">City</label>
+                        <input
+                          type="text"
+                          required
+                          autoComplete="address-level2"
+                          value={shipping.city}
+                          onChange={(e) => setShipping({ ...shipping, city: e.target.value })}
+                          onBlur={() =>
+                            setShipping((prev) => ({ ...prev, city: titleCasePreservingSeparators(prev.city) }))
+                          }
+                          className={fieldClassName}
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-2 block text-sm font-semibold text-slate-900">State</label>
+                        <input
+                          type="text"
+                          autoComplete="address-level1"
+                          value={shipping.state || ''}
+                          onChange={(e) => setShipping({ ...shipping, state: e.target.value })}
+                          onBlur={() =>
+                            setShipping((prev) => ({
+                              ...prev,
+                              state: normalizeRegionValue(prev.state, prev.country),
+                            }))
+                          }
+                          className={fieldClassName}
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-2 block text-sm font-semibold text-slate-900">Postal code</label>
+                        <input
+                          type="text"
+                          required
+                          autoComplete="postal-code"
+                          value={shipping.postal_code}
+                          onChange={(e) => setShipping({ ...shipping, postal_code: e.target.value })}
+                          onBlur={() =>
+                            setShipping((prev) => ({
+                              ...prev,
+                              postal_code: normalizePostalCodeValue(prev.postal_code),
+                            }))
+                          }
+                          className={fieldClassName}
+                        />
+                      </div>
+                    </div>
                   </div>
-                )}
+                </section>
+
+                <section className="space-y-4 pt-2 lg:pt-4">
+                  <button
+                    type="submit"
+                    className="w-full rounded-[24px] bg-gradient-to-r from-blue-500 to-blue-600 px-6 py-4 text-lg font-semibold text-white shadow-[0_18px_35px_rgba(59,130,246,0.3)] transition hover:from-blue-600 hover:to-blue-700 disabled:cursor-not-allowed disabled:from-slate-300 disabled:to-slate-300"
+                    disabled={isProcessing}
+                  >
+                    {isProcessing ? 'Processing...' : 'Continue to payment'}
+                  </button>
+
+                  <div className="flex items-center gap-4">
+                    <div className="h-px flex-1 bg-slate-200" />
+                    <button
+                      type="button"
+                      onClick={() => onCancel?.()}
+                      className="text-sm font-medium text-slate-500 transition hover:text-slate-700 disabled:opacity-60"
+                      disabled={isProcessing}
+                    >
+                      Back
+                    </button>
+                    <div className="h-px flex-1 bg-slate-200" />
+                  </div>
+
+                  <div className="flex items-center justify-center gap-2 text-sm text-slate-500">
+                    <Lock className="h-4 w-4" />
+                    <span>Secure checkout</span>
+                  </div>
+                </section>
               </div>
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium mb-1">Address Line 1</label>
-              <input
-                type="text"
-                required
-                value={shipping.address_line1}
-                onChange={(e) => setShipping({...shipping, address_line1: e.target.value})}
-                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium mb-1">Address Line 2 (Optional)</label>
-              <input
-                type="text"
-                value={shipping.address_line2}
-                onChange={(e) => setShipping({...shipping, address_line2: e.target.value})}
-                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-            
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div>
-                <label className="block text-sm font-medium mb-1">City</label>
-                <input
-                  type="text"
-                  required
-                  value={shipping.city}
-                  onChange={(e) => setShipping({...shipping, city: e.target.value})}
-                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">State</label>
-                <input
-                  type="text"
-                  value={shipping.state || ''}
-                  onChange={(e) => setShipping({...shipping, state: e.target.value})}
-                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Postal Code</label>
-                <input
-                  type="text"
-                  required
-                  value={shipping.postal_code}
-                  onChange={(e) => setShipping({...shipping, postal_code: e.target.value})}
-                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Country</label>
-                <select
-                  value={shipping.country}
-                  onChange={(e) => setShipping({...shipping, country: e.target.value})}
-                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                >
-                  {SHIPPING_COUNTRY_GROUPS.map((group) => (
-                    <optgroup key={group.label} label={group.label}>
-                      {group.countries.map((country) => (
-                        <option key={country.code} value={country.code}>
-                          {country.name}
-                        </option>
-                      ))}
-                    </optgroup>
-                  ))}
-                </select>
-              </div>
-            </div>
-            
-            <div className="flex justify-between mt-6">
-              <button
-                type="button"
-                onClick={() => onCancel?.()}
-                className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-60"
-                disabled={isProcessing}
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed"
-                disabled={isProcessing}
-              >
-                {isProcessing ? 'Processing...' : 'Continue to Payment'}
-              </button>
             </div>
           </form>
         </div>
       )}
 
       {step === 'payment' && (
-        <div className="bg-white rounded-lg shadow-md p-6">
+        <div className={cardClassName}>
           <h2 className="text-2xl font-bold mb-6">Payment Method</h2>
           <div className="mb-3 text-sm text-muted-foreground">
             <span>Payment provider: </span>
@@ -2073,7 +2373,7 @@ function OrderFlowInner({
       )}
 
       {step === 'confirm' && (
-        <div className="bg-white rounded-lg shadow-md p-6 text-center">
+        <div className={`${cardClassName} text-center`}>
           <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
             <Check className="w-8 h-8 text-green-600" />
           </div>
