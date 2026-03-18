@@ -1214,10 +1214,10 @@ function OrderFlowInner({
   }, [user])
 
   const cardClassName =
-    'rounded-[28px] border border-white/80 bg-white/95 px-5 py-6 shadow-[0_20px_55px_rgba(56,88,162,0.12)] backdrop-blur md:px-8 md:py-8 lg:rounded-[36px] lg:px-4 lg:py-4'
+    'rounded-[24px] border border-white/80 bg-white/95 px-4 py-4 shadow-[0_16px_40px_rgba(56,88,162,0.1)] backdrop-blur sm:px-5 sm:py-5 md:px-6 md:py-6 lg:rounded-[28px]'
   const fieldClassName =
-    'w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-[15px] text-slate-900 shadow-[inset_0_1px_2px_rgba(15,23,42,0.04)] transition placeholder:text-slate-400 focus:border-blue-400 focus:outline-none focus:ring-4 focus:ring-blue-100 lg:text-base'
-  const helperTextClassName = 'text-sm leading-6 text-slate-500'
+    'w-full rounded-[18px] border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 shadow-[inset_0_1px_2px_rgba(15,23,42,0.04)] transition placeholder:text-slate-400 focus:border-blue-400 focus:outline-none focus:ring-4 focus:ring-blue-100'
+  const helperTextClassName = 'text-[13px] leading-5 text-slate-500'
   const stepIndex = CHECKOUT_STEPS.findIndex((item) => item.id === step)
 
   const hasSellerSelection = Boolean(merchantIdForOrder || offerIdForOrder)
@@ -1573,17 +1573,17 @@ function OrderFlowInner({
   }
 
   return (
-    <div className="mx-auto max-w-4xl px-4 pb-4 lg:max-w-6xl">
-      <div className="mb-6 border-b border-slate-200/80">
-        <div className="flex items-end gap-3 overflow-x-auto pb-0.5 lg:gap-5">
+    <div className="mx-auto max-w-4xl px-3 pb-3 sm:px-4 lg:max-w-6xl lg:px-5">
+      <div className="mb-4 border-b border-slate-200/80">
+        <div className="flex items-end gap-2 overflow-x-auto pb-0.5 lg:gap-4">
           {CHECKOUT_STEPS.map((item, index) => {
             const isActive = item.id === step
             const isComplete = index < stepIndex
 
             return (
-              <div key={item.id} className="flex min-w-fit items-center gap-3">
+              <div key={item.id} className="flex min-w-fit items-center gap-2 lg:gap-3">
                 <div
-                  className={`relative pb-4 text-base font-semibold transition-colors md:text-[1.65rem] md:leading-none ${
+                  className={`relative pb-3 text-[0.95rem] font-semibold transition-colors md:text-[1.35rem] md:leading-none ${
                     isActive
                       ? 'text-slate-900'
                       : isComplete
@@ -1593,11 +1593,11 @@ function OrderFlowInner({
                 >
                   <span>{item.label}</span>
                   {isActive ? (
-                    <span className="absolute inset-x-0 -bottom-px h-1 rounded-full bg-blue-500" />
+                    <span className="absolute inset-x-0 -bottom-px h-0.5 rounded-full bg-blue-500" />
                   ) : null}
                 </div>
                 {index < CHECKOUT_STEPS.length - 1 ? (
-                  <ChevronRight className="mb-4 h-5 w-5 flex-none text-slate-300" />
+                  <ChevronRight className="mb-3 h-4 w-4 flex-none text-slate-300" />
                 ) : null}
               </div>
             )
@@ -1608,12 +1608,12 @@ function OrderFlowInner({
       {/* Step Content */}
       {step === 'shipping' && (
         <div className={cardClassName}>
-          <form onSubmit={handleShippingSubmit} className="space-y-8 lg:space-y-0">
-            <div className="lg:grid lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:gap-7 xl:gap-8">
-              <div className="space-y-8 lg:space-y-6 lg:self-start lg:rounded-[28px] lg:border lg:border-slate-200 lg:bg-[linear-gradient(180deg,rgba(246,250,255,0.96),rgba(255,255,255,0.92))] lg:p-7 lg:shadow-[0_18px_40px_rgba(15,23,42,0.06)]">
-                <section className="space-y-5">
+          <form onSubmit={handleShippingSubmit} className="space-y-6 lg:space-y-0">
+            <div className="lg:grid lg:grid-cols-[minmax(0,0.88fr)_minmax(0,1.12fr)] lg:gap-5">
+              <div className="space-y-5 lg:self-start lg:rounded-[24px] lg:border lg:border-slate-200 lg:bg-[linear-gradient(180deg,rgba(246,250,255,0.96),rgba(255,255,255,0.92))] lg:p-5 lg:shadow-[0_14px_30px_rgba(15,23,42,0.05)]">
+                <section className="space-y-4">
                   <div className="space-y-2">
-                    <h2 className="text-[1.75rem] font-semibold tracking-tight text-slate-900 md:text-[1.9rem]">
+                    <h2 className="text-[1.45rem] font-semibold tracking-tight text-slate-900 md:text-[1.6rem]">
                       Contact
                     </h2>
                     <p className={helperTextClassName}>
@@ -1621,8 +1621,8 @@ function OrderFlowInner({
                     </p>
                   </div>
 
-                  <div className="space-y-3">
-                    <label className="block text-sm font-semibold text-slate-900">Email</label>
+                  <div className="space-y-2">
+                    <label className="block text-[13px] font-semibold text-slate-900 sm:text-sm">Email</label>
                     <input
                       type="email"
                       required
@@ -1631,19 +1631,19 @@ function OrderFlowInner({
                       onChange={(e) => setShipping({ ...shipping, email: e.target.value })}
                       className={fieldClassName}
                     />
-                    <p className={helperTextClassName}>
+                    <p className={`${helperTextClassName} hidden sm:block`}>
                       We only use this for your receipt, shipping updates, and secure sign-in.
                     </p>
                   </div>
 
                   {!user && !skipEmailVerification && (
-                    <div className="rounded-[24px] border border-slate-200 bg-slate-50/80 p-4">
-                      <div className="flex flex-wrap gap-2 text-xs">
+                    <div className="rounded-[20px] border border-slate-200 bg-slate-50/80 p-3.5">
+                      <div className="flex flex-wrap gap-1.5 text-[11px] sm:text-xs">
                         <button
                           type="button"
                           disabled={otpLoading}
                           onClick={() => setAuthMethod('password')}
-                          className={`rounded-full border px-3 py-1.5 font-medium transition ${
+                          className={`rounded-full border px-2.5 py-1 font-medium transition ${
                             authMethod === 'password'
                               ? 'border-blue-600 bg-blue-600 text-white'
                               : 'border-slate-200 bg-white text-slate-700'
@@ -1665,9 +1665,9 @@ function OrderFlowInner({
                         </button>
                       </div>
 
-                      <div className="mt-3 space-y-3">
+                      <div className="mt-2.5 space-y-2.5">
                         {authMethod === 'password' ? (
-                          <div className="flex flex-col gap-2 sm:flex-row lg:flex-col xl:flex-row">
+                          <div className="flex flex-col gap-2 sm:flex-row">
                             <input
                               type="password"
                               placeholder="Password"
@@ -1706,91 +1706,103 @@ function OrderFlowInner({
                                   setOtpLoading(false)
                                 }
                               }}
-                              className="rounded-2xl bg-blue-600 px-4 py-3 text-sm font-medium text-white transition hover:bg-blue-700 disabled:opacity-60"
+                              className="rounded-[18px] bg-blue-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-blue-700 disabled:opacity-60"
                               disabled={otpLoading || !loginPassword || !shipping.email}
                             >
                               {otpLoading ? 'Signing in...' : 'Sign in'}
                             </button>
                           </div>
                         ) : (
-                          <div className="flex flex-col gap-2 sm:flex-row lg:flex-col xl:flex-row">
-                            <button
-                              type="button"
-                              onClick={async () => {
-                                setOtpLoading(true)
-                                try {
-                                  await accountsLogin(shipping.email.trim())
-                                  setOtpSent(true)
-                                  toast.success('Code sent to your email')
-                                } catch (err: any) {
-                                  const code = err?.code
-                                  if (code === 'INVALID_INPUT') toast.error('Please enter a valid email')
-                                  else if (code === 'RATE_LIMITED') {
-                                    toast.error('Too many requests, please retry later')
-                                  } else {
-                                    toast.error(err?.message || 'Failed to send code')
+                          <div className="space-y-2">
+                            <div className="flex flex-col gap-2 sm:flex-row">
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  setOtpLoading(true)
+                                  try {
+                                    await accountsLogin(shipping.email.trim())
+                                    setOtpSent(true)
+                                    toast.success('Code sent to your email')
+                                  } catch (err: any) {
+                                    const code = err?.code
+                                    if (code === 'INVALID_INPUT') toast.error('Please enter a valid email')
+                                    else if (code === 'RATE_LIMITED') {
+                                      toast.error('Too many requests, please retry later')
+                                    } else {
+                                      toast.error(err?.message || 'Failed to send code')
+                                    }
+                                  } finally {
+                                    setOtpLoading(false)
                                   }
-                                } finally {
-                                  setOtpLoading(false)
-                                }
-                              }}
-                              className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-100 disabled:opacity-60"
-                              disabled={otpLoading || !shipping.email}
-                            >
-                              {otpLoading ? 'Sending...' : otpSent ? 'Resend code' : 'Send code'}
-                            </button>
-                            <input
-                              placeholder="6-digit code"
-                              value={otp}
-                              onChange={(e) => setOtp(e.target.value)}
-                              className={`${fieldClassName} text-sm`}
-                            />
-                            <button
-                              type="button"
-                              onClick={async () => {
-                                setOtpLoading(true)
-                                try {
-                                  const data = await accountsVerify(shipping.email.trim(), otp.trim())
-                                  setSession({
-                                    user: (data as any).user,
-                                    memberships: (data as any).memberships || [],
-                                    active_merchant_id: (data as any).active_merchant_id,
-                                  })
-                                  setVerifiedEmail(shipping.email.trim())
-                                  toast.success('Email verified and logged in')
-                                } catch (err: any) {
-                                  const code = err?.code
-                                  if (code === 'INVALID_OTP') toast.error('Code invalid or expired')
-                                  else if (code === 'RATE_LIMITED') {
-                                    toast.error('Too many attempts, please retry later')
-                                  } else {
-                                    toast.error(err?.message || 'Verification failed')
-                                  }
-                                } finally {
-                                  setOtpLoading(false)
-                                }
-                              }}
-                              className="rounded-2xl bg-blue-600 px-4 py-3 text-sm font-medium text-white transition hover:bg-blue-700 disabled:opacity-60"
-                              disabled={otpLoading || !otp || !shipping.email}
-                            >
-                              Verify
-                            </button>
+                                }}
+                                className="rounded-[18px] border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-100 disabled:opacity-60"
+                                disabled={otpLoading || !shipping.email}
+                              >
+                                {otpLoading ? 'Sending...' : otpSent ? 'Resend code' : 'Send code'}
+                              </button>
+                              {!otpSent ? (
+                                <p className="flex items-center text-xs text-slate-500">
+                                  Send a 6-digit code to verify this email.
+                                </p>
+                              ) : null}
+                            </div>
+
+                            {otpSent ? (
+                              <div className="flex flex-col gap-2 sm:flex-row">
+                                <input
+                                  placeholder="6-digit code"
+                                  value={otp}
+                                  onChange={(e) => setOtp(e.target.value)}
+                                  className={`${fieldClassName} text-sm`}
+                                />
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    setOtpLoading(true)
+                                    try {
+                                      const data = await accountsVerify(shipping.email.trim(), otp.trim())
+                                      setSession({
+                                        user: (data as any).user,
+                                        memberships: (data as any).memberships || [],
+                                        active_merchant_id: (data as any).active_merchant_id,
+                                      })
+                                      setVerifiedEmail(shipping.email.trim())
+                                      toast.success('Email verified and logged in')
+                                    } catch (err: any) {
+                                      const code = err?.code
+                                      if (code === 'INVALID_OTP') toast.error('Code invalid or expired')
+                                      else if (code === 'RATE_LIMITED') {
+                                        toast.error('Too many attempts, please retry later')
+                                      } else {
+                                        toast.error(err?.message || 'Verification failed')
+                                      }
+                                    } finally {
+                                      setOtpLoading(false)
+                                    }
+                                  }}
+                                  className="rounded-[18px] bg-blue-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-blue-700 disabled:opacity-60"
+                                  disabled={otpLoading || !otp || !shipping.email}
+                                >
+                                  Verify
+                                </button>
+                              </div>
+                            ) : null}
                           </div>
                         )}
                         {verifiedEmail === shipping.email.trim() ? (
-                          <p className="text-sm text-green-600">Email verified.</p>
+                          <p className="text-xs text-green-600">Email verified.</p>
                         ) : null}
                       </div>
                     </div>
                   )}
                 </section>
 
-                <div className="hidden lg:block rounded-[24px] border border-blue-100/80 bg-gradient-to-br from-blue-50 via-white to-sky-50 p-5">
+                <div className="hidden lg:block rounded-[20px] border border-blue-100/80 bg-gradient-to-br from-blue-50 via-white to-sky-50 p-4">
                   <div className="flex items-start gap-3">
-                    <Info className="mt-0.5 h-5 w-5 flex-none text-blue-500" />
+                    <Info className="mt-0.5 h-4 w-4 flex-none text-blue-500" />
                     <div className="space-y-1.5">
-                      <p className="text-sm font-semibold text-slate-900">Quotes use region fields, not street validation</p>
-                      <p className="text-sm leading-6 text-slate-600">
+                      <p className="text-[13px] font-semibold text-slate-900">Quotes use region fields, not street validation</p>
+                      <p className="text-[13px] leading-5 text-slate-600">
                         Country, state or region, city, and postal code drive the estimate. Street address stays fully manual for delivery details.
                       </p>
                     </div>
@@ -1798,20 +1810,23 @@ function OrderFlowInner({
                 </div>
               </div>
 
-              <div className="mt-8 space-y-8 lg:mt-0 lg:space-y-6 lg:rounded-[28px] lg:border lg:border-slate-200 lg:bg-white/92 lg:p-7 lg:shadow-[0_18px_40px_rgba(15,23,42,0.06)]">
-                <section className="space-y-5 border-t border-slate-200 pt-8 lg:border-t-0 lg:pt-0">
+              <div className="mt-6 space-y-5 lg:mt-0 lg:space-y-4 lg:rounded-[24px] lg:border lg:border-slate-200 lg:bg-white/92 lg:p-5 lg:shadow-[0_14px_30px_rgba(15,23,42,0.05)]">
+                <section className="space-y-4 border-t border-slate-200 pt-6 lg:border-t-0 lg:pt-0">
                   <div className="space-y-2">
-                    <h3 className="text-[1.75rem] font-semibold tracking-tight text-slate-900 md:text-[1.9rem]">
+                    <h3 className="text-[1.45rem] font-semibold tracking-tight text-slate-900 md:text-[1.6rem]">
                       Shipping address
                     </h3>
                     <p className={helperTextClassName}>
-                      Shipping and tax estimates rely on country, region, city, and postal code. Street address is collected for delivery.
+                      <span className="sm:hidden">Quote uses country, region, city, and postal code.</span>
+                      <span className="hidden sm:inline">
+                        Shipping and tax estimates rely on country, region, city, and postal code. Street address is collected for delivery.
+                      </span>
                     </p>
                   </div>
 
-                  <div className="grid gap-4 lg:grid-cols-2">
+                  <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="mb-2 block text-sm font-semibold text-slate-900">Full name</label>
+                      <label className="mb-1.5 block text-[13px] font-semibold text-slate-900 sm:text-sm">Full name</label>
                       <input
                         type="text"
                         required
@@ -1824,16 +1839,19 @@ function OrderFlowInner({
                     </div>
 
                     <div>
-                      <label className="mb-2 block text-sm font-semibold text-slate-900">Country / Region</label>
+                      <label className="mb-1.5 block text-[13px] font-semibold text-slate-900 sm:text-sm">
+                        <span className="sm:hidden">Country</span>
+                        <span className="hidden sm:inline">Country / Region</span>
+                      </label>
                       <div className="relative">
-                        <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-xl">
+                        <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-lg">
                           {getCountryFlagEmoji(shipping.country)}
                         </span>
                         <select
                           value={shipping.country}
                           autoComplete="country"
                           onChange={(e) => setShipping({ ...shipping, country: e.target.value })}
-                          className={`${fieldClassName} appearance-none pl-14 pr-12`}
+                          className={`${fieldClassName} appearance-none pl-12 pr-10`}
                         >
                           {SHIPPING_COUNTRY_GROUPS.map((group) => (
                             <optgroup key={group.label} label={group.label}>
@@ -1845,12 +1863,12 @@ function OrderFlowInner({
                             </optgroup>
                           ))}
                         </select>
-                        <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+                        <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                       </div>
                     </div>
 
-                    <div className="relative lg:col-span-2">
-                      <label className="mb-2 block text-sm font-semibold text-slate-900">Street address</label>
+                    <div className="relative col-span-2">
+                      <label className="mb-1.5 block text-[13px] font-semibold text-slate-900 sm:text-sm">Street address</label>
                       <div>
                         <input
                           type="text"
@@ -1870,8 +1888,8 @@ function OrderFlowInner({
                       </div>
                     </div>
 
-                    <div className="lg:col-span-2">
-                      <label className="mb-2 block text-sm font-semibold text-slate-900">
+                    <div className="col-span-2">
+                      <label className="mb-1.5 block text-[13px] font-semibold text-slate-900 sm:text-sm">
                         Apt, suite, etc. <span className="font-normal text-slate-400">(optional)</span>
                       </label>
                       <input
@@ -1889,9 +1907,9 @@ function OrderFlowInner({
                       />
                     </div>
 
-                    <div className="grid gap-4 md:grid-cols-[1.25fr_0.75fr_0.8fr] lg:col-span-2">
+                    <div className="col-span-2 grid grid-cols-[minmax(0,1.15fr)_minmax(0,0.7fr)_minmax(0,0.9fr)] gap-3">
                       <div>
-                        <label className="mb-2 block text-sm font-semibold text-slate-900">City</label>
+                        <label className="mb-1.5 block text-[13px] font-semibold text-slate-900 sm:text-sm">City</label>
                         <input
                           type="text"
                           required
@@ -1903,7 +1921,7 @@ function OrderFlowInner({
                         />
                       </div>
                       <div>
-                        <label className="mb-2 block text-sm font-semibold text-slate-900">State</label>
+                        <label className="mb-1.5 block text-[13px] font-semibold text-slate-900 sm:text-sm">State</label>
                         <input
                           type="text"
                           autoComplete="address-level1"
@@ -1919,7 +1937,10 @@ function OrderFlowInner({
                         />
                       </div>
                       <div>
-                        <label className="mb-2 block text-sm font-semibold text-slate-900">Postal code</label>
+                        <label className="mb-1.5 block text-[13px] font-semibold text-slate-900 sm:text-sm">
+                          <span className="sm:hidden">Postal</span>
+                          <span className="hidden sm:inline">Postal code</span>
+                        </label>
                         <input
                           type="text"
                           required
@@ -1939,31 +1960,28 @@ function OrderFlowInner({
                   </div>
                 </section>
 
-                <section className="space-y-4 pt-2 lg:pt-4">
+                <section className="space-y-3 pt-1 lg:pt-2">
                   <button
                     type="submit"
-                    className="w-full rounded-[24px] bg-gradient-to-r from-blue-500 to-blue-600 px-6 py-4 text-lg font-semibold text-white shadow-[0_18px_35px_rgba(59,130,246,0.3)] transition hover:from-blue-600 hover:to-blue-700 disabled:cursor-not-allowed disabled:from-slate-300 disabled:to-slate-300"
+                    className="w-full rounded-[20px] bg-gradient-to-r from-blue-500 to-blue-600 px-5 py-3 text-base font-semibold text-white shadow-[0_12px_24px_rgba(59,130,246,0.24)] transition hover:from-blue-600 hover:to-blue-700 disabled:cursor-not-allowed disabled:from-slate-300 disabled:to-slate-300"
                     disabled={isProcessing}
                   >
                     {isProcessing ? 'Processing...' : 'Continue to payment'}
                   </button>
 
-                  <div className="flex items-center gap-4">
-                    <div className="h-px flex-1 bg-slate-200" />
+                  <div className="flex items-center justify-between gap-3 text-[13px] text-slate-500">
                     <button
                       type="button"
                       onClick={() => onCancel?.()}
-                      className="text-sm font-medium text-slate-500 transition hover:text-slate-700 disabled:opacity-60"
+                      className="font-medium text-slate-500 transition hover:text-slate-700 disabled:opacity-60"
                       disabled={isProcessing}
                     >
                       Back
                     </button>
-                    <div className="h-px flex-1 bg-slate-200" />
-                  </div>
-
-                  <div className="flex items-center justify-center gap-2 text-sm text-slate-500">
-                    <Lock className="h-4 w-4" />
-                    <span>Secure checkout</span>
+                    <div className="flex items-center gap-1.5">
+                      <Lock className="h-3.5 w-3.5" />
+                      <span>Secure checkout</span>
+                    </div>
                   </div>
                 </section>
               </div>
@@ -1974,190 +1992,206 @@ function OrderFlowInner({
 
       {step === 'payment' && (
         <div className={cardClassName}>
-          <h2 className="text-2xl font-bold mb-6">Payment Method</h2>
-          <div className="mb-3 text-sm text-muted-foreground">
-            <span>Payment provider: </span>
-            <span className="font-medium text-foreground">
-              {pspUsed === 'adyen'
-                ? 'Adyen (hosted card form)'
-                : 'Stripe (card payment)'}
-            </span>
-          </div>
-          {paymentInitLoading && (
-            <p className="mb-3 text-xs text-muted-foreground">
-              Preparing payment session…
-            </p>
-          )}
-          {paymentInitError && (
-            <p className="mb-3 text-xs text-red-600">
-              {paymentInitError}
-            </p>
-          )}
-          {hasQuote && (
-            <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
-              <div className="flex gap-2">
-                <Info className="mt-0.5 h-4 w-4 flex-none text-blue-700" />
-                <div className="space-y-1">
-                  <p>
-                    Prices shown and charged in{' '}
-                    <span className="font-medium">{String(currency).toUpperCase()}</span>.
-                  </p>
-                  <details className="text-xs text-blue-900/90">
-                    <summary className="cursor-pointer select-none">
-                      {itemCurrencies.length === 1 && itemCurrencies[0] !== String(currency).toUpperCase()
-                        ? 'Currency & conversion details'
-                        : 'Currency details'}
-                    </summary>
-                    <div className="mt-1 space-y-1">
-                      <p>Amounts are based on the merchant&apos;s store quote for your shipping address.</p>
-                      {itemCurrencies.length === 1 &&
-                        itemCurrencies[0] !== String(currency).toUpperCase() && (
-                          <p>
-                            This merchant lists items in{' '}
-                            <span className="font-medium">{itemCurrencies[0]}</span>; amounts are converted
-                            for checkout.
-                          </p>
-                        )}
-                      <p>
-                        Your bank may apply additional FX fees if your card/account uses a different currency.
-                      </p>
-                    </div>
-                  </details>
+          <div className="space-y-4 lg:grid lg:grid-cols-[minmax(0,1.1fr)_minmax(300px,360px)] lg:items-start lg:gap-5 lg:space-y-0">
+            <div className="space-y-3">
+              <div className="space-y-1.5">
+                <h2 className="text-[1.45rem] font-semibold tracking-tight text-slate-900 md:text-[1.6rem]">
+                  Payment Method
+                </h2>
+                <div className="text-[13px] text-slate-500">
+                  <span>Payment provider: </span>
+                  <span className="font-medium text-slate-900">
+                    {pspUsed === 'adyen' ? 'Adyen (hosted card form)' : 'Stripe (card payment)'}
+                  </span>
                 </div>
-              </div>
-            </div>
-          )}
-          
-          <div className="space-y-4">
-            <div className="border rounded-lg p-4">
-              <div className="flex items-center gap-2 mb-3">
-                <ShoppingCart className="w-5 h-5" />
-                <p className="font-medium">Items</p>
-              </div>
-              <div className="space-y-3">
-                {items.map((item, index) => (
-                  <div key={index} className="flex items-center justify-between">
-                    <div className="flex items-center">
-                      {item.image_url && (
-                        <Image
-                          src={item.image_url}
-                          alt={item.title}
-                          width={48}
-                          height={48}
-                          className="w-12 h-12 object-cover rounded mr-3"
-                        />
-                      )}
-                      <div>
-                        <p className="font-medium text-sm">{item.title}</p>
-                        <p className="text-xs text-gray-600">Qty: {item.quantity}</p>
-                      </div>
-                    </div>
-                    <p className="text-sm font-medium">
-                      {(() => {
-                        const variantId = getVariantIdForItem(item)
-                        const li = variantId ? quoteLineItemByVariantId.get(variantId) : null
-                        const unitPriceEffective = Number((li as any)?.unit_price_effective)
-                        const qty = Number((li as any)?.quantity ?? item.quantity)
-                        if (hasQuote && Number.isFinite(unitPriceEffective)) {
-                          return formatAmount(unitPriceEffective * (Number.isFinite(qty) ? qty : item.quantity))
-                        }
-                        // Fallback: best-effort estimate (legacy flows / quote failures).
-                        return formatAmount(item.unit_price * item.quantity)
-                      })()}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </div>
-            {deliveryOptions.length > 1 ? (
-              <div className="border rounded-lg p-4">
-                <label className="block text-sm font-medium mb-2">Shipping method</label>
-                <select
-                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                  disabled={quotePending || isProcessing}
-                  value={Math.max(0, deliveryOptions.findIndex((o) => JSON.stringify(o) === JSON.stringify(selectedDeliveryOption)))}
-                  onChange={async (e) => {
-                    const idx = Number(e.target.value) || 0
-                    const opt = deliveryOptions[idx]
-                    if (!opt) return
-                    try {
-                      await refreshQuoteWithRetry(opt)
-                    } catch (err: any) {
-                      console.error('refreshQuote failed', err)
-                      if (isInventoryUnavailable(err)) {
-                        if (onFailure) onFailure({ reason: 'action_required', stage: 'payment' })
-                        return
-                      }
-                      toast.error(err?.message || 'Failed to update shipping option')
-                    }
-                  }}
-                >
-                  {deliveryOptions.map((opt, idx) => {
-                    const label =
-                      opt?.title ||
-                      opt?.name ||
-                      opt?.label ||
-                      opt?.code ||
-                      opt?.id ||
-                      `Option ${idx + 1}`
-                    const price =
-                      opt?.price ??
-                      opt?.amount ??
-                      opt?.cost ??
-                      opt?.shipping_fee ??
-                      null
-                    const priceNum = price != null ? Number(price) : NaN
-                    const suffix = Number.isFinite(priceNum) ? ` (${formatAmount(priceNum)})` : ''
-                    return (
-                      <option key={String(opt?.id || idx)} value={idx}>
-                        {String(label)}{suffix}
-                      </option>
-                    )
-                  })}
-                </select>
-                {quotePending && (
-                  <p className="text-xs text-muted-foreground mt-2">Updating totals…</p>
+                {paymentInitLoading && (
+                  <p className="text-xs text-slate-500">
+                    Preparing payment session…
+                  </p>
                 )}
-              </div>
-            ) : null}
-            {paymentActionType === 'adyen_session' ? (
-              <div className="border rounded-lg p-4">
-                <p className="font-medium mb-2">Adyen payment</p>
-                <div ref={adyenContainerRef} className="mt-2" />
-                {!adyenMounted && (
-                  <p className="text-xs text-muted-foreground">
-                    The secure Adyen payment form is initializing…
+                {paymentInitError && (
+                  <p className="text-xs text-red-600">
+                    {paymentInitError}
                   </p>
                 )}
               </div>
-            ) : (
-              <>
-                <div className="border rounded-lg p-4 cursor-pointer hover:border-blue-500 transition-colors">
-                  <div className="flex items-center">
-                    <input type="radio" name="payment" defaultChecked className="mr-3" />
-                    <CreditCard className="w-6 h-6 mr-3" />
-                    <div>
-                      <p className="font-medium">Credit/Debit Card</p>
-                      <p className="text-sm text-gray-600">Secure payment</p>
+
+              {hasQuote && (
+                <div className="rounded-[18px] border border-blue-200 bg-blue-50 p-3 text-[13px] text-blue-900">
+                  <div className="flex gap-2">
+                    <Info className="mt-0.5 h-4 w-4 flex-none text-blue-700" />
+                    <div className="space-y-1">
+                      <p>
+                        Prices shown and charged in{' '}
+                        <span className="font-medium">{String(currency).toUpperCase()}</span>.
+                      </p>
+                      <details className="text-xs text-blue-900/90">
+                        <summary className="cursor-pointer select-none">
+                          {itemCurrencies.length === 1 && itemCurrencies[0] !== String(currency).toUpperCase()
+                            ? 'Currency & conversion details'
+                            : 'Currency details'}
+                        </summary>
+                        <div className="mt-1 space-y-1">
+                          <p>Amounts are based on the merchant&apos;s store quote for your shipping address.</p>
+                          {itemCurrencies.length === 1 &&
+                            itemCurrencies[0] !== String(currency).toUpperCase() && (
+                              <p>
+                                This merchant lists items in{' '}
+                                <span className="font-medium">{itemCurrencies[0]}</span>; amounts are converted
+                                for checkout.
+                              </p>
+                            )}
+                          <p>
+                            Your bank may apply additional FX fees if your card/account uses a different currency.
+                          </p>
+                        </div>
+                      </details>
                     </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-3">
+                <div className="rounded-[20px] border border-slate-200 bg-white p-3 sm:p-4">
+                  <div className="mb-2.5 flex items-center gap-2">
+                    <ShoppingCart className="h-4 w-4 sm:h-5 sm:w-5" />
+                    <p className="text-sm font-medium sm:text-base">Items</p>
+                  </div>
+                  <div className="space-y-2.5">
+                    {items.map((item, index) => (
+                      <div key={index} className="flex items-center justify-between gap-3">
+                        <div className="flex min-w-0 items-center">
+                          {item.image_url && (
+                            <Image
+                              src={item.image_url}
+                              alt={item.title}
+                              width={40}
+                              height={40}
+                              className="mr-3 h-10 w-10 rounded object-cover"
+                            />
+                          )}
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-medium">{item.title}</p>
+                            <p className="text-xs text-slate-500">Qty: {item.quantity}</p>
+                          </div>
+                        </div>
+                        <p className="shrink-0 text-sm font-medium">
+                          {(() => {
+                            const variantId = getVariantIdForItem(item)
+                            const li = variantId ? quoteLineItemByVariantId.get(variantId) : null
+                            const unitPriceEffective = Number((li as any)?.unit_price_effective)
+                            const qty = Number((li as any)?.quantity ?? item.quantity)
+                            if (hasQuote && Number.isFinite(unitPriceEffective)) {
+                              return formatAmount(unitPriceEffective * (Number.isFinite(qty) ? qty : item.quantity))
+                            }
+                            return formatAmount(item.unit_price * item.quantity)
+                          })()}
+                        </p>
+                      </div>
+                    ))}
                   </div>
                 </div>
 
-                {publishableKey && (
-                  <div className="border rounded-lg p-4">
-                    <label className="text-sm font-medium text-gray-700">Card Details</label>
-                    <div className="mt-2 p-3 border rounded bg-gray-50">
-                      <CardElement options={{ hidePostalCode: true }} />
-                    </div>
-                    {cardError && <p className="text-sm text-red-600 mt-2">{cardError}</p>}
+                {deliveryOptions.length > 1 ? (
+                  <div className="rounded-[20px] border border-slate-200 bg-white p-3 sm:p-4">
+                    <label className="mb-1.5 block text-[13px] font-medium text-slate-900 sm:text-sm">
+                      Shipping method
+                    </label>
+                    <select
+                      className="w-full rounded-[16px] border border-slate-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-4 focus:ring-blue-100"
+                      disabled={quotePending || isProcessing}
+                      value={Math.max(
+                        0,
+                        deliveryOptions.findIndex(
+                          (o) => JSON.stringify(o) === JSON.stringify(selectedDeliveryOption),
+                        ),
+                      )}
+                      onChange={async (e) => {
+                        const idx = Number(e.target.value) || 0
+                        const opt = deliveryOptions[idx]
+                        if (!opt) return
+                        try {
+                          await refreshQuoteWithRetry(opt)
+                        } catch (err: any) {
+                          console.error('refreshQuote failed', err)
+                          if (isInventoryUnavailable(err)) {
+                            if (onFailure) onFailure({ reason: 'action_required', stage: 'payment' })
+                            return
+                          }
+                          toast.error(err?.message || 'Failed to update shipping option')
+                        }
+                      }}
+                    >
+                      {deliveryOptions.map((opt, idx) => {
+                        const label =
+                          opt?.title ||
+                          opt?.name ||
+                          opt?.label ||
+                          opt?.code ||
+                          opt?.id ||
+                          `Option ${idx + 1}`
+                        const price =
+                          opt?.price ??
+                          opt?.amount ??
+                          opt?.cost ??
+                          opt?.shipping_fee ??
+                          null
+                        const priceNum = price != null ? Number(price) : NaN
+                        const suffix = Number.isFinite(priceNum) ? ` (${formatAmount(priceNum)})` : ''
+                        return (
+                          <option key={String(opt?.id || idx)} value={idx}>
+                            {String(label)}
+                            {suffix}
+                          </option>
+                        )
+                      })}
+                    </select>
+                    {quotePending && (
+                      <p className="mt-2 text-xs text-slate-500">Updating totals…</p>
+                    )}
                   </div>
+                ) : null}
+
+                {paymentActionType === 'adyen_session' ? (
+                  <div className="rounded-[20px] border border-slate-200 bg-white p-3 sm:p-4">
+                    <p className="mb-2 text-sm font-medium sm:text-base">Adyen payment</p>
+                    <div ref={adyenContainerRef} className="mt-2" />
+                    {!adyenMounted && (
+                      <p className="text-xs text-slate-500">
+                        The secure Adyen payment form is initializing…
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <>
+                    <div className="cursor-pointer rounded-[20px] border border-slate-200 bg-white p-3 transition-colors hover:border-blue-500 sm:p-4">
+                      <div className="flex items-center">
+                        <input type="radio" name="payment" defaultChecked className="mr-3" />
+                        <CreditCard className="mr-3 h-5 w-5 sm:h-6 sm:w-6" />
+                        <div>
+                          <p className="text-sm font-medium sm:text-base">Credit/Debit Card</p>
+                          <p className="text-xs text-slate-500 sm:text-sm">Secure payment</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {publishableKey && (
+                      <div className="rounded-[20px] border border-slate-200 bg-white p-3 sm:p-4">
+                        <label className="text-[13px] font-medium text-slate-700 sm:text-sm">Card Details</label>
+                        <div className="mt-2 rounded-[16px] border border-slate-200 bg-slate-50 p-3">
+                          <CardElement options={{ hidePostalCode: true }} />
+                        </div>
+                        {cardError && <p className="mt-2 text-sm text-red-600">{cardError}</p>}
+                      </div>
+                    )}
+                  </>
                 )}
-              </>
-            )}
-            
-            <div className="mt-6">
-              <h3 className="font-medium mb-4">Order Summary</h3>
-              <div className="bg-gray-50 rounded-lg p-4">
+              </div>
+            </div>
+
+            <div className="space-y-3 lg:sticky lg:top-4">
+              <div className="rounded-[20px] border border-slate-200 bg-slate-50/90 p-4">
+                <h3 className="mb-3 text-sm font-medium text-slate-900 sm:text-base">Order Summary</h3>
                 <div className="space-y-1 text-sm">
                   <div className="flex justify-between">
                     <span>Subtotal</span>
@@ -2177,13 +2211,13 @@ function OrderFlowInner({
                     <span>Tax</span>
                     <span>{formatAmount(tax)}</span>
                   </div>
-                  <div className="flex justify-between font-semibold text-base pt-1">
+                  <div className="flex justify-between pt-1 text-base font-semibold">
                     <span>Total</span>
                     <span>{formatAmount(total)}</span>
                   </div>
                 </div>
                 {discount_total > 0 && (quote?.promotion_lines?.length || 0) > 0 ? (
-                  <div className="mt-2 text-xs text-gray-600">
+                  <div className="mt-2 text-xs text-slate-600">
                     {(quote?.promotion_lines || [])
                       .map((p) => String(p?.label || '').trim())
                       .filter(Boolean)
@@ -2195,7 +2229,7 @@ function OrderFlowInner({
                       ))}
                   </div>
                 ) : null}
-                <div className="text-sm text-gray-600">
+                <div className="mt-3 text-[13px] leading-5 text-slate-500">
                   <p>Ship to: {shipping.name}</p>
                   <p>
                     {shipping.address_line1}, {shipping.city}
@@ -2203,27 +2237,27 @@ function OrderFlowInner({
                   </p>
                 </div>
               </div>
-            </div>
-            
-            <div className="flex justify-between mt-6">
-              <button
-                onClick={() => setStep('shipping')}
-                className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
-                disabled={isProcessing}
-              >
-                Back
-              </button>
-              <button
-                onClick={handlePayment}
-                disabled={isProcessing || paymentInitLoading}
-                className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
-              >
-                {isProcessing
-                  ? 'Processing...'
-                  : paymentInitLoading
-                    ? 'Preparing payment...'
-                    : `Pay ${formatAmount(total)}`}
-              </button>
+
+              <div className="flex items-center justify-between gap-3 lg:flex-col lg:items-stretch">
+                <button
+                  onClick={() => setStep('shipping')}
+                  className="rounded-[18px] border border-slate-300 px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                  disabled={isProcessing}
+                >
+                  Back
+                </button>
+                <button
+                  onClick={handlePayment}
+                  disabled={isProcessing || paymentInitLoading}
+                  className="rounded-[18px] bg-green-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:bg-slate-300 lg:w-full"
+                >
+                  {isProcessing
+                    ? 'Processing...'
+                    : paymentInitLoading
+                      ? 'Preparing payment...'
+                      : `Pay ${formatAmount(total)}`}
+                </button>
+              </div>
             </div>
           </div>
         </div>

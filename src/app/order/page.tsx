@@ -344,8 +344,8 @@ function OrderContent() {
   return (
     <main className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
       <header className="bg-white shadow-sm border-b sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-4 py-2 flex items-center justify-between">
-          <div className="flex items-center gap-4">
+        <div className="max-w-7xl mx-auto px-3 py-1.5 sm:px-4 sm:py-2 flex items-center justify-between">
+          <div className="flex items-center gap-3">
             <button
               onClick={() => {
                 if (returnUrl) {
@@ -358,26 +358,26 @@ function OrderContent() {
                 }
                 router.push('/')
               }}
-              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
               aria-label="Back"
             >
-              <ArrowLeft className="w-5 h-5" />
+              <ArrowLeft className="h-[18px] w-[18px] sm:h-5 sm:w-5" />
 		            </button>
 	            <div className="flex items-center gap-2">
 	              <Image
 	                src="/pivota-logo-pink.png"
 	                alt="Pivota"
-	                width={36}
-	                height={36}
-	                className="w-9 h-9 rounded-lg"
+	                width={32}
+	                height={32}
+	                className="w-8 h-8 rounded-lg sm:w-9 sm:h-9"
 	              />
-	              <h1 className="text-xl md:text-2xl font-bold text-gray-800">Pivota Checkout</h1>
+	              <h1 className="text-lg md:text-xl font-bold text-gray-800">Pivota Checkout</h1>
 	            </div>
 	          </div>
 	        </div>
 	      </header>
 
-      <div className="py-4 md:py-6">
+      <div className="py-3 md:py-4">
         {ucpFailure && (returnUrl || ucpCheckoutSessionId) && (
           <div className="max-w-4xl mx-auto px-4 mb-4">
             <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-gray-800">
