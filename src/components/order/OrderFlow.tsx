@@ -8,8 +8,6 @@ import {
   ChevronRight,
   ChevronDown,
   Info,
-  Search,
-  MapPin,
   Lock,
 } from 'lucide-react'
 import Image from 'next/image'
@@ -193,8 +191,6 @@ const SHIPPING_COUNTRY_CODE_SET = new Set(
   SHIPPING_COUNTRY_GROUPS.flatMap((g) => g.countries.map((c) => String(c.code).toUpperCase())),
 )
 
-const SHIPPING_COUNTRIES = SHIPPING_COUNTRY_GROUPS.flatMap((group) => group.countries)
-
 const SHIPPING_COUNTRY_NAME_TO_CODE = new Map<string, string>(
   SHIPPING_COUNTRY_GROUPS.flatMap((g) =>
     g.countries.flatMap((c) => {
@@ -233,8 +229,6 @@ const COUNTRY_ALIASES: Record<string, string> = {
   UAE: 'AE',
 }
 
-const REGION_UPPERCASE_COUNTRIES = new Set(['US', 'CA', 'AU'])
-
 function normalizeCountryCode(value: unknown): string | null {
   const raw = String(value ?? '').trim()
   if (!raw) return null
@@ -258,12 +252,6 @@ function normalizeCountryCode(value: unknown): string | null {
   return null
 }
 
-function getCountryName(value: unknown): string {
-  const normalized = normalizeCountryCode(value)
-  if (!normalized) return 'United States'
-  return SHIPPING_COUNTRIES.find((country) => country.code === normalized)?.name || normalized
-}
-
 function getCountryFlagEmoji(value: unknown): string {
   const normalized = normalizeCountryCode(value)
   if (!normalized || normalized.length !== 2) return '🌍'
@@ -278,60 +266,8 @@ function collapseWhitespace(value: unknown): string {
     .replace(/\s+/g, ' ')
 }
 
-function titleCaseWord(word: string): string {
-  if (!word) return word
-  if (!/[a-z]/i.test(word)) return word
-  if (word === word.toUpperCase() && word.length <= 3) return word
-  return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
-}
-
-function titleCasePreservingSeparators(value: unknown): string {
-  return collapseWhitespace(value)
-    .split(/([ '-])/)
-    .map((part) => (part === ' ' || part === '-' || part === "'" ? part : titleCaseWord(part)))
-    .join('')
-}
-
-function normalizeAddressLine(value: unknown): string {
-  const collapsed = collapseWhitespace(value)
-    .replace(/(\d)([A-Za-z])/g, '$1 $2')
-    .replace(/([A-Za-z])(\d)/g, '$1 $2')
-
-  return titleCasePreservingSeparators(collapsed)
-}
-
-function normalizeRegionValue(value: unknown, country: unknown): string {
-  const collapsed = collapseWhitespace(value)
-  if (!collapsed) return ''
-  const normalizedCountry = normalizeCountryCode(country)
-  if (normalizedCountry && REGION_UPPERCASE_COUNTRIES.has(normalizedCountry) && collapsed.length <= 3) {
-    return collapsed.toUpperCase()
-  }
-  return titleCasePreservingSeparators(collapsed)
-}
-
 function normalizePostalCodeValue(value: unknown): string {
   return collapseWhitespace(value).toUpperCase()
-}
-
-function buildAddressSuggestion(shipping: ShippingInfo) {
-  const addressLine1 = normalizeAddressLine(shipping.address_line1)
-  if (!addressLine1) return null
-
-  const city = titleCasePreservingSeparators(shipping.city)
-  const state = normalizeRegionValue(shipping.state, shipping.country)
-  const postalCode = normalizePostalCodeValue(shipping.postal_code)
-  const location = [city, [state, postalCode].filter(Boolean).join(' ')].filter(Boolean).join(', ')
-
-  return {
-    addressLine1,
-    city,
-    state,
-    postalCode,
-    country: normalizeCountryCode(shipping.country) || shipping.country,
-    title: addressLine1,
-    detail: location,
-  }
 }
 
 const CHECKOUT_STEPS: Array<{ id: CheckoutStep; label: string }> = [
@@ -476,8 +412,6 @@ function OrderFlowInner({
   const [prefetchedPaymentRes, setPrefetchedPaymentRes] = useState<PrefetchedPaymentInit | null>(null)
   const [paymentInitLoading, setPaymentInitLoading] = useState(false)
   const [paymentInitError, setPaymentInitError] = useState<string | null>(null)
-  const [isAddressSuggestionOpen, setIsAddressSuggestionOpen] = useState(false)
-  const addressSuggestionCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     const normalized = normalizeCountryCode(shipping.country)
@@ -1279,54 +1213,12 @@ function OrderFlowInner({
     }
   }, [user])
 
-  useEffect(() => {
-    return () => {
-      if (addressSuggestionCloseTimerRef.current) {
-        clearTimeout(addressSuggestionCloseTimerRef.current)
-      }
-    }
-  }, [])
-
   const cardClassName =
     'rounded-[28px] border border-white/80 bg-white/95 px-5 py-6 shadow-[0_20px_55px_rgba(56,88,162,0.12)] backdrop-blur md:px-8 md:py-8 lg:rounded-[36px] lg:px-4 lg:py-4'
   const fieldClassName =
     'w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-[15px] text-slate-900 shadow-[inset_0_1px_2px_rgba(15,23,42,0.04)] transition placeholder:text-slate-400 focus:border-blue-400 focus:outline-none focus:ring-4 focus:ring-blue-100 lg:text-base'
   const helperTextClassName = 'text-sm leading-6 text-slate-500'
   const stepIndex = CHECKOUT_STEPS.findIndex((item) => item.id === step)
-  const addressSuggestion = useMemo(() => buildAddressSuggestion(shipping), [shipping])
-  const showAddressSuggestion = Boolean(
-    isAddressSuggestionOpen && addressSuggestion && shipping.address_line1.trim(),
-  )
-
-  const closeAddressSuggestionSoon = () => {
-    if (addressSuggestionCloseTimerRef.current) {
-      clearTimeout(addressSuggestionCloseTimerRef.current)
-    }
-    addressSuggestionCloseTimerRef.current = setTimeout(() => {
-      setIsAddressSuggestionOpen(false)
-    }, 120)
-  }
-
-  const openAddressSuggestion = () => {
-    if (addressSuggestionCloseTimerRef.current) {
-      clearTimeout(addressSuggestionCloseTimerRef.current)
-      addressSuggestionCloseTimerRef.current = null
-    }
-    setIsAddressSuggestionOpen(true)
-  }
-
-  const applyAddressSuggestion = () => {
-    if (!addressSuggestion) return
-    setShipping((prev) => ({
-      ...prev,
-      address_line1: addressSuggestion.addressLine1,
-      city: addressSuggestion.city || prev.city,
-      state: addressSuggestion.state || prev.state,
-      postal_code: addressSuggestion.postalCode || prev.postal_code,
-      country: String(addressSuggestion.country || prev.country),
-    }))
-    setIsAddressSuggestionOpen(false)
-  }
 
   const hasSellerSelection = Boolean(merchantIdForOrder || offerIdForOrder)
   if (items.length > 0 && !hasSellerSelection) {
@@ -1691,7 +1583,7 @@ function OrderFlowInner({
             return (
               <div key={item.id} className="flex min-w-fit items-center gap-3">
                 <div
-                  className={`relative pb-4 text-lg font-semibold transition-colors md:text-[2rem] md:leading-none ${
+                  className={`relative pb-4 text-base font-semibold transition-colors md:text-[1.65rem] md:leading-none ${
                     isActive
                       ? 'text-slate-900'
                       : isComplete
@@ -1721,7 +1613,7 @@ function OrderFlowInner({
               <div className="space-y-8 lg:space-y-6 lg:self-start lg:rounded-[28px] lg:border lg:border-slate-200 lg:bg-[linear-gradient(180deg,rgba(246,250,255,0.96),rgba(255,255,255,0.92))] lg:p-7 lg:shadow-[0_18px_40px_rgba(15,23,42,0.06)]">
                 <section className="space-y-5">
                   <div className="space-y-2">
-                    <h2 className="text-2xl font-semibold tracking-tight text-slate-900 md:text-[2.1rem]">
+                    <h2 className="text-[1.75rem] font-semibold tracking-tight text-slate-900 md:text-[1.9rem]">
                       Contact
                     </h2>
                     <p className={helperTextClassName}>
@@ -1895,11 +1787,11 @@ function OrderFlowInner({
 
                 <div className="hidden lg:block rounded-[24px] border border-blue-100/80 bg-gradient-to-br from-blue-50 via-white to-sky-50 p-5">
                   <div className="flex items-start gap-3">
-                    <MapPin className="mt-0.5 h-5 w-5 flex-none text-blue-500" />
+                    <Info className="mt-0.5 h-5 w-5 flex-none text-blue-500" />
                     <div className="space-y-1.5">
-                      <p className="text-sm font-semibold text-slate-900">Desktop checkout keeps inputs lighter</p>
+                      <p className="text-sm font-semibold text-slate-900">Quotes use region fields, not street validation</p>
                       <p className="text-sm leading-6 text-slate-600">
-                        Contact details stay grouped on the left, while the full shipping form and address suggestion stay in the main column.
+                        Country, state or region, city, and postal code drive the estimate. Street address stays fully manual for delivery details.
                       </p>
                     </div>
                   </div>
@@ -1909,11 +1801,11 @@ function OrderFlowInner({
               <div className="mt-8 space-y-8 lg:mt-0 lg:space-y-6 lg:rounded-[28px] lg:border lg:border-slate-200 lg:bg-white/92 lg:p-7 lg:shadow-[0_18px_40px_rgba(15,23,42,0.06)]">
                 <section className="space-y-5 border-t border-slate-200 pt-8 lg:border-t-0 lg:pt-0">
                   <div className="space-y-2">
-                    <h3 className="text-2xl font-semibold tracking-tight text-slate-900 md:text-[2.1rem]">
+                    <h3 className="text-[1.75rem] font-semibold tracking-tight text-slate-900 md:text-[1.9rem]">
                       Shipping address
                     </h3>
                     <p className={helperTextClassName}>
-                      Start with your street address and apply the suggested format as you fill it in.
+                      Shipping and tax estimates rely on country, region, city, and postal code. Street address is collected for delivery.
                     </p>
                   </div>
 
@@ -1926,9 +1818,7 @@ function OrderFlowInner({
                         autoComplete="name"
                         value={shipping.name}
                         onChange={(e) => setShipping({ ...shipping, name: e.target.value })}
-                        onBlur={() =>
-                          setShipping((prev) => ({ ...prev, name: titleCasePreservingSeparators(prev.name) }))
-                        }
+                        onBlur={() => setShipping((prev) => ({ ...prev, name: collapseWhitespace(prev.name) }))}
                         className={fieldClassName}
                       />
                     </div>
@@ -1960,55 +1850,24 @@ function OrderFlowInner({
                     </div>
 
                     <div className="relative lg:col-span-2">
-                      <label className="mb-2 block text-sm font-semibold text-slate-900">Address</label>
-                      <div className="relative">
-                        <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+                      <label className="mb-2 block text-sm font-semibold text-slate-900">Street address</label>
+                      <div>
                         <input
-                          type="search"
+                          type="text"
                           required
                           autoComplete="address-line1"
-                          placeholder="Start typing your street address"
+                          placeholder="Street address"
                           value={shipping.address_line1}
-                          onFocus={openAddressSuggestion}
-                          onBlur={() => {
-                            closeAddressSuggestionSoon()
+                          onChange={(e) => setShipping({ ...shipping, address_line1: e.target.value })}
+                          onBlur={() =>
                             setShipping((prev) => ({
                               ...prev,
-                              address_line1: normalizeAddressLine(prev.address_line1),
+                              address_line1: collapseWhitespace(prev.address_line1),
                             }))
-                          }}
-                          onChange={(e) => {
-                            if (!isAddressSuggestionOpen) {
-                              openAddressSuggestion()
-                            }
-                            setShipping({ ...shipping, address_line1: e.target.value })
-                          }}
-                          className={`${fieldClassName} pl-12 pr-4`}
+                          }
+                          className={fieldClassName}
                         />
                       </div>
-
-                      {showAddressSuggestion && addressSuggestion ? (
-                        <div className="absolute z-20 mt-2 w-full overflow-hidden rounded-[22px] border border-slate-200 bg-white shadow-[0_18px_45px_rgba(15,23,42,0.12)] lg:mt-3 lg:max-w-[44rem]">
-                          <button
-                            type="button"
-                            onMouseDown={(e) => {
-                              e.preventDefault()
-                              applyAddressSuggestion()
-                            }}
-                            className="flex w-full items-start gap-3 px-4 py-3 text-left transition hover:bg-slate-50 lg:px-5 lg:py-4"
-                          >
-                            <MapPin className="mt-1 h-5 w-5 flex-none text-blue-500" />
-                            <div className="min-w-0">
-                              <p className="text-base font-medium text-slate-900">{addressSuggestion.title}</p>
-                              <p className="text-sm text-slate-500">
-                                {[addressSuggestion.detail, getCountryName(shipping.country)]
-                                  .filter(Boolean)
-                                  .join(' · ')}
-                              </p>
-                            </div>
-                          </button>
-                        </div>
-                      ) : null}
                     </div>
 
                     <div className="lg:col-span-2">
@@ -2023,7 +1882,7 @@ function OrderFlowInner({
                         onBlur={() =>
                           setShipping((prev) => ({
                             ...prev,
-                            address_line2: titleCasePreservingSeparators(prev.address_line2),
+                            address_line2: collapseWhitespace(prev.address_line2),
                           }))
                         }
                         className={fieldClassName}
@@ -2039,9 +1898,7 @@ function OrderFlowInner({
                           autoComplete="address-level2"
                           value={shipping.city}
                           onChange={(e) => setShipping({ ...shipping, city: e.target.value })}
-                          onBlur={() =>
-                            setShipping((prev) => ({ ...prev, city: titleCasePreservingSeparators(prev.city) }))
-                          }
+                          onBlur={() => setShipping((prev) => ({ ...prev, city: collapseWhitespace(prev.city) }))}
                           className={fieldClassName}
                         />
                       </div>
@@ -2055,7 +1912,7 @@ function OrderFlowInner({
                           onBlur={() =>
                             setShipping((prev) => ({
                               ...prev,
-                              state: normalizeRegionValue(prev.state, prev.country),
+                              state: collapseWhitespace(prev.state),
                             }))
                           }
                           className={fieldClassName}
