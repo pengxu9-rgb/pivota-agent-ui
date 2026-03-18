@@ -387,6 +387,7 @@ function OrderFlowInner({
   const [cardError, setCardError] = useState<string>('')
   const [otp, setOtp] = useState('')
   const [otpSent, setOtpSent] = useState(false)
+  const [showAddressLine2Mobile, setShowAddressLine2Mobile] = useState(false)
   const [otpLoading, setOtpLoading] = useState(false)
   const [verifiedEmail, setVerifiedEmail] = useState<string | null>(null)
   const [authMethod, setAuthMethod] = useState<'otp' | 'password'>('otp')
@@ -1213,6 +1214,79 @@ function OrderFlowInner({
     }
   }, [user])
 
+  const handlePasswordSignIn = async () => {
+    setOtpLoading(true)
+    try {
+      const data = await accountsLoginWithPassword(
+        shipping.email.trim(),
+        loginPassword,
+      )
+      setSession({
+        user: (data as any).user,
+        memberships: (data as any).memberships || [],
+        active_merchant_id: (data as any).active_merchant_id,
+      })
+      setVerifiedEmail(shipping.email.trim())
+      setLoginPassword('')
+      toast.success('Signed in')
+    } catch (err: any) {
+      const code = err?.code
+      if (code === 'NO_PASSWORD') {
+        toast.error('No password is set. Use email code once, then set a password.')
+        setAuthMethod('otp')
+      } else if (code === 'INVALID_CREDENTIALS') {
+        toast.error('Email or password is incorrect')
+      } else {
+        toast.error(err?.message || 'Sign in failed')
+      }
+    } finally {
+      setOtpLoading(false)
+    }
+  }
+
+  const handleSendOtp = async () => {
+    setOtpLoading(true)
+    try {
+      await accountsLogin(shipping.email.trim())
+      setOtpSent(true)
+      toast.success('Code sent to your email')
+    } catch (err: any) {
+      const code = err?.code
+      if (code === 'INVALID_INPUT') toast.error('Please enter a valid email')
+      else if (code === 'RATE_LIMITED') {
+        toast.error('Too many requests, please retry later')
+      } else {
+        toast.error(err?.message || 'Failed to send code')
+      }
+    } finally {
+      setOtpLoading(false)
+    }
+  }
+
+  const handleVerifyOtp = async () => {
+    setOtpLoading(true)
+    try {
+      const data = await accountsVerify(shipping.email.trim(), otp.trim())
+      setSession({
+        user: (data as any).user,
+        memberships: (data as any).memberships || [],
+        active_merchant_id: (data as any).active_merchant_id,
+      })
+      setVerifiedEmail(shipping.email.trim())
+      toast.success('Email verified and logged in')
+    } catch (err: any) {
+      const code = err?.code
+      if (code === 'INVALID_OTP') toast.error('Code invalid or expired')
+      else if (code === 'RATE_LIMITED') {
+        toast.error('Too many attempts, please retry later')
+      } else {
+        toast.error(err?.message || 'Verification failed')
+      }
+    } finally {
+      setOtpLoading(false)
+    }
+  }
+
   const cardClassName =
     'rounded-[24px] border border-white/80 bg-white/95 px-4 py-4 shadow-[0_16px_40px_rgba(56,88,162,0.1)] backdrop-blur sm:px-5 sm:py-5 md:px-6 md:py-6 lg:rounded-[28px]'
   const fieldClassName =
@@ -1610,13 +1684,13 @@ function OrderFlowInner({
         <div className={cardClassName}>
           <form onSubmit={handleShippingSubmit} className="space-y-6 lg:space-y-0">
             <div className="lg:grid lg:grid-cols-[minmax(0,0.88fr)_minmax(0,1.12fr)] lg:gap-5">
-              <div className="space-y-5 lg:self-start lg:rounded-[24px] lg:border lg:border-slate-200 lg:bg-[linear-gradient(180deg,rgba(246,250,255,0.96),rgba(255,255,255,0.92))] lg:p-5 lg:shadow-[0_14px_30px_rgba(15,23,42,0.05)]">
-                <section className="space-y-4">
+              <div className="space-y-4 lg:self-start lg:rounded-[24px] lg:border lg:border-slate-200 lg:bg-[linear-gradient(180deg,rgba(246,250,255,0.96),rgba(255,255,255,0.92))] lg:p-5 lg:shadow-[0_14px_30px_rgba(15,23,42,0.05)]">
+                <section className="space-y-3 sm:space-y-4">
                   <div className="space-y-2">
                     <h2 className="text-[1.45rem] font-semibold tracking-tight text-slate-900 md:text-[1.6rem]">
                       Contact
                     </h2>
-                    <p className={helperTextClassName}>
+                    <p className={`${helperTextClassName} hidden sm:block`}>
                       For order confirmation and shipping updates.
                     </p>
                   </div>
@@ -1637,163 +1711,191 @@ function OrderFlowInner({
                   </div>
 
                   {!user && !skipEmailVerification && (
-                    <div className="rounded-[20px] border border-slate-200 bg-slate-50/80 p-3.5">
-                      <div className="flex flex-wrap gap-1.5 text-[11px] sm:text-xs">
-                        <button
-                          type="button"
-                          disabled={otpLoading}
-                          onClick={() => setAuthMethod('password')}
-                          className={`rounded-full border px-2.5 py-1 font-medium transition ${
-                            authMethod === 'password'
-                              ? 'border-blue-600 bg-blue-600 text-white'
-                              : 'border-slate-200 bg-white text-slate-700'
-                          } disabled:opacity-60`}
-                        >
-                          Password
-                        </button>
-                        <button
-                          type="button"
-                          disabled={otpLoading}
-                          onClick={() => setAuthMethod('otp')}
-                          className={`rounded-full border px-3 py-1.5 font-medium transition ${
-                            authMethod === 'otp'
-                              ? 'border-blue-600 bg-blue-600 text-white'
-                              : 'border-slate-200 bg-white text-slate-700'
-                          } disabled:opacity-60`}
-                        >
-                          Email code
-                        </button>
-                      </div>
-
-                      <div className="mt-2.5 space-y-2.5">
+                    <>
+                      <div className="space-y-2 rounded-[18px] border border-slate-200 bg-slate-50/80 p-3 sm:hidden">
                         {authMethod === 'password' ? (
-                          <div className="flex flex-col gap-2 sm:flex-row">
-                            <input
-                              type="password"
-                              placeholder="Password"
-                              value={loginPassword}
-                              onChange={(e) => setLoginPassword(e.target.value)}
-                              className={`${fieldClassName} text-sm`}
-                            />
-                            <button
-                              type="button"
-                              onClick={async () => {
-                                setOtpLoading(true)
-                                try {
-                                  const data = await accountsLoginWithPassword(
-                                    shipping.email.trim(),
-                                    loginPassword,
-                                  )
-                                  setSession({
-                                    user: (data as any).user,
-                                    memberships: (data as any).memberships || [],
-                                    active_merchant_id: (data as any).active_merchant_id,
-                                  })
-                                  setVerifiedEmail(shipping.email.trim())
-                                  setLoginPassword('')
-                                  toast.success('Signed in')
-                                } catch (err: any) {
-                                  const code = err?.code
-                                  if (code === 'NO_PASSWORD') {
-                                    toast.error('No password is set. Use email code once, then set a password.')
-                                    setAuthMethod('otp')
-                                  } else if (code === 'INVALID_CREDENTIALS') {
-                                    toast.error('Email or password is incorrect')
-                                  } else {
-                                    toast.error(err?.message || 'Sign in failed')
-                                  }
-                                } finally {
-                                  setOtpLoading(false)
-                                }
-                              }}
-                              className="rounded-[18px] bg-blue-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-blue-700 disabled:opacity-60"
-                              disabled={otpLoading || !loginPassword || !shipping.email}
-                            >
-                              {otpLoading ? 'Signing in...' : 'Sign in'}
-                            </button>
-                          </div>
-                        ) : (
-                          <div className="space-y-2">
-                            <div className="flex flex-col gap-2 sm:flex-row">
+                          <>
+                            <div className="flex items-center justify-between gap-2">
+                              <p className="text-xs font-medium text-slate-700">Sign in to continue</p>
                               <button
                                 type="button"
-                                onClick={async () => {
-                                  setOtpLoading(true)
-                                  try {
-                                    await accountsLogin(shipping.email.trim())
-                                    setOtpSent(true)
-                                    toast.success('Code sent to your email')
-                                  } catch (err: any) {
-                                    const code = err?.code
-                                    if (code === 'INVALID_INPUT') toast.error('Please enter a valid email')
-                                    else if (code === 'RATE_LIMITED') {
-                                      toast.error('Too many requests, please retry later')
-                                    } else {
-                                      toast.error(err?.message || 'Failed to send code')
-                                    }
-                                  } finally {
-                                    setOtpLoading(false)
-                                  }
-                                }}
-                                className="rounded-[18px] border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-100 disabled:opacity-60"
-                                disabled={otpLoading || !shipping.email}
+                                disabled={otpLoading}
+                                onClick={() => setAuthMethod('otp')}
+                                className="text-xs font-medium text-blue-600 disabled:opacity-60"
                               >
-                                {otpLoading ? 'Sending...' : otpSent ? 'Resend code' : 'Send code'}
+                                Use email code
                               </button>
-                              {!otpSent ? (
-                                <p className="flex items-center text-xs text-slate-500">
-                                  Send a 6-digit code to verify this email.
-                                </p>
-                              ) : null}
                             </div>
-
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="password"
+                                placeholder="Password"
+                                value={loginPassword}
+                                onChange={(e) => setLoginPassword(e.target.value)}
+                                className={`${fieldClassName} min-w-0 text-sm`}
+                              />
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  void handlePasswordSignIn()
+                                }}
+                                className="shrink-0 rounded-[16px] bg-blue-600 px-3.5 py-2.5 text-sm font-medium text-white transition hover:bg-blue-700 disabled:opacity-60"
+                                disabled={otpLoading || !loginPassword || !shipping.email}
+                              >
+                                {otpLoading ? '...' : 'Sign in'}
+                              </button>
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <div className="flex items-center justify-between gap-2">
+                              <p className="text-xs font-medium text-slate-700">
+                                {otpSent ? 'Enter the 6-digit code' : 'Verify email to continue'}
+                              </p>
+                              <button
+                                type="button"
+                                disabled={otpLoading}
+                                onClick={() => setAuthMethod('password')}
+                                className="text-xs font-medium text-slate-500 disabled:opacity-60"
+                              >
+                                Password
+                              </button>
+                            </div>
                             {otpSent ? (
-                              <div className="flex flex-col gap-2 sm:flex-row">
+                              <div className="flex items-center gap-2">
                                 <input
                                   placeholder="6-digit code"
                                   value={otp}
                                   onChange={(e) => setOtp(e.target.value)}
-                                  className={`${fieldClassName} text-sm`}
+                                  className={`${fieldClassName} min-w-0 text-sm`}
                                 />
                                 <button
                                   type="button"
-                                  onClick={async () => {
-                                    setOtpLoading(true)
-                                    try {
-                                      const data = await accountsVerify(shipping.email.trim(), otp.trim())
-                                      setSession({
-                                        user: (data as any).user,
-                                        memberships: (data as any).memberships || [],
-                                        active_merchant_id: (data as any).active_merchant_id,
-                                      })
-                                      setVerifiedEmail(shipping.email.trim())
-                                      toast.success('Email verified and logged in')
-                                    } catch (err: any) {
-                                      const code = err?.code
-                                      if (code === 'INVALID_OTP') toast.error('Code invalid or expired')
-                                      else if (code === 'RATE_LIMITED') {
-                                        toast.error('Too many attempts, please retry later')
-                                      } else {
-                                        toast.error(err?.message || 'Verification failed')
-                                      }
-                                    } finally {
-                                      setOtpLoading(false)
-                                    }
+                                  onClick={() => {
+                                    void handleVerifyOtp()
                                   }}
-                                  className="rounded-[18px] bg-blue-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-blue-700 disabled:opacity-60"
+                                  className="shrink-0 rounded-[16px] bg-blue-600 px-3.5 py-2.5 text-sm font-medium text-white transition hover:bg-blue-700 disabled:opacity-60"
                                   disabled={otpLoading || !otp || !shipping.email}
                                 >
                                   Verify
                                 </button>
                               </div>
-                            ) : null}
-                          </div>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  void handleSendOtp()
+                                }}
+                                className="w-full rounded-[16px] border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-100 disabled:opacity-60"
+                                disabled={otpLoading || !shipping.email}
+                              >
+                                {otpLoading ? 'Sending...' : 'Send code'}
+                              </button>
+                            )}
+                          </>
                         )}
                         {verifiedEmail === shipping.email.trim() ? (
                           <p className="text-xs text-green-600">Email verified.</p>
                         ) : null}
                       </div>
-                    </div>
+
+                      <div className="hidden rounded-[20px] border border-slate-200 bg-slate-50/80 p-3.5 sm:block">
+                        <div className="flex flex-wrap gap-1.5 text-[11px] sm:text-xs">
+                          <button
+                            type="button"
+                            disabled={otpLoading}
+                            onClick={() => setAuthMethod('password')}
+                            className={`rounded-full border px-2.5 py-1 font-medium transition ${
+                              authMethod === 'password'
+                                ? 'border-blue-600 bg-blue-600 text-white'
+                                : 'border-slate-200 bg-white text-slate-700'
+                            } disabled:opacity-60`}
+                          >
+                            Password
+                          </button>
+                          <button
+                            type="button"
+                            disabled={otpLoading}
+                            onClick={() => setAuthMethod('otp')}
+                            className={`rounded-full border px-3 py-1.5 font-medium transition ${
+                              authMethod === 'otp'
+                                ? 'border-blue-600 bg-blue-600 text-white'
+                                : 'border-slate-200 bg-white text-slate-700'
+                            } disabled:opacity-60`}
+                          >
+                            Email code
+                          </button>
+                        </div>
+
+                        <div className="mt-2.5 space-y-2.5">
+                          {authMethod === 'password' ? (
+                            <div className="flex flex-col gap-2 sm:flex-row">
+                              <input
+                                type="password"
+                                placeholder="Password"
+                                value={loginPassword}
+                                onChange={(e) => setLoginPassword(e.target.value)}
+                                className={`${fieldClassName} text-sm`}
+                              />
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  void handlePasswordSignIn()
+                                }}
+                                className="rounded-[18px] bg-blue-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-blue-700 disabled:opacity-60"
+                                disabled={otpLoading || !loginPassword || !shipping.email}
+                              >
+                                {otpLoading ? 'Signing in...' : 'Sign in'}
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="space-y-2">
+                              <div className="flex flex-col gap-2 sm:flex-row">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    void handleSendOtp()
+                                  }}
+                                  className="rounded-[18px] border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-100 disabled:opacity-60"
+                                  disabled={otpLoading || !shipping.email}
+                                >
+                                  {otpLoading ? 'Sending...' : otpSent ? 'Resend code' : 'Send code'}
+                                </button>
+                                {!otpSent ? (
+                                  <p className="flex items-center text-xs text-slate-500">
+                                    Send a 6-digit code to verify this email.
+                                  </p>
+                                ) : null}
+                              </div>
+
+                              {otpSent ? (
+                                <div className="flex flex-col gap-2 sm:flex-row">
+                                  <input
+                                    placeholder="6-digit code"
+                                    value={otp}
+                                    onChange={(e) => setOtp(e.target.value)}
+                                    className={`${fieldClassName} text-sm`}
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      void handleVerifyOtp()
+                                    }}
+                                    className="rounded-[18px] bg-blue-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-blue-700 disabled:opacity-60"
+                                    disabled={otpLoading || !otp || !shipping.email}
+                                  >
+                                    Verify
+                                  </button>
+                                </div>
+                              ) : null}
+                            </div>
+                          )}
+                          {verifiedEmail === shipping.email.trim() ? (
+                            <p className="text-xs text-green-600">Email verified.</p>
+                          ) : null}
+                        </div>
+                      </div>
+                    </>
                   )}
                 </section>
 
@@ -1810,8 +1912,8 @@ function OrderFlowInner({
                 </div>
               </div>
 
-              <div className="mt-6 space-y-5 lg:mt-0 lg:space-y-4 lg:rounded-[24px] lg:border lg:border-slate-200 lg:bg-white/92 lg:p-5 lg:shadow-[0_14px_30px_rgba(15,23,42,0.05)]">
-                <section className="space-y-4 border-t border-slate-200 pt-6 lg:border-t-0 lg:pt-0">
+              <div className="mt-4 space-y-4 lg:mt-0 lg:space-y-4 lg:rounded-[24px] lg:border lg:border-slate-200 lg:bg-white/92 lg:p-5 lg:shadow-[0_14px_30px_rgba(15,23,42,0.05)]">
+                <section className="space-y-3 sm:space-y-4 border-t border-slate-200 pt-4 sm:pt-5 lg:border-t-0 lg:pt-0">
                   <div className="space-y-2">
                     <h3 className="text-[1.45rem] font-semibold tracking-tight text-slate-900 md:text-[1.6rem]">
                       Shipping address
@@ -1888,24 +1990,56 @@ function OrderFlowInner({
                       </div>
                     </div>
 
-                    <div className="col-span-2">
-                      <label className="mb-1.5 block text-[13px] font-semibold text-slate-900 sm:text-sm">
-                        Apt, suite, etc. <span className="font-normal text-slate-400">(optional)</span>
-                      </label>
-                      <input
-                        type="text"
-                        autoComplete="address-line2"
-                        value={shipping.address_line2 || ''}
-                        onChange={(e) => setShipping({ ...shipping, address_line2: e.target.value })}
-                        onBlur={() =>
-                          setShipping((prev) => ({
-                            ...prev,
-                            address_line2: collapseWhitespace(prev.address_line2),
-                          }))
-                        }
-                        className={fieldClassName}
-                      />
-                    </div>
+                    {showAddressLine2Mobile || shipping.address_line2 ? (
+                      <div className="col-span-2">
+                        <label className="mb-1.5 block text-[13px] font-semibold text-slate-900 sm:text-sm">
+                          Apt, suite, etc. <span className="font-normal text-slate-400">(optional)</span>
+                        </label>
+                        <input
+                          type="text"
+                          autoComplete="address-line2"
+                          value={shipping.address_line2 || ''}
+                          onChange={(e) => setShipping({ ...shipping, address_line2: e.target.value })}
+                          onBlur={() =>
+                            setShipping((prev) => ({
+                              ...prev,
+                              address_line2: collapseWhitespace(prev.address_line2),
+                            }))
+                          }
+                          className={fieldClassName}
+                        />
+                      </div>
+                    ) : (
+                      <>
+                        <div className="col-span-2 sm:hidden">
+                          <button
+                            type="button"
+                            onClick={() => setShowAddressLine2Mobile(true)}
+                            className="text-[13px] font-medium text-slate-500 transition hover:text-slate-700"
+                          >
+                            + Add apt, suite, etc. (optional)
+                          </button>
+                        </div>
+                        <div className="col-span-2 hidden sm:block">
+                          <label className="mb-1.5 block text-[13px] font-semibold text-slate-900 sm:text-sm">
+                            Apt, suite, etc. <span className="font-normal text-slate-400">(optional)</span>
+                          </label>
+                          <input
+                            type="text"
+                            autoComplete="address-line2"
+                            value={shipping.address_line2 || ''}
+                            onChange={(e) => setShipping({ ...shipping, address_line2: e.target.value })}
+                            onBlur={() =>
+                              setShipping((prev) => ({
+                                ...prev,
+                                address_line2: collapseWhitespace(prev.address_line2),
+                              }))
+                            }
+                            className={fieldClassName}
+                          />
+                        </div>
+                      </>
+                    )}
 
                     <div className="col-span-2 grid grid-cols-[minmax(0,1.15fr)_minmax(0,0.7fr)_minmax(0,0.9fr)] gap-3">
                       <div>
