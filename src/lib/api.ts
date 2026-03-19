@@ -2078,7 +2078,7 @@ export async function getOrderStatus(orderId: string) {
   const data = await callGateway({
     operation: 'get_order_status',
     payload: {
-      order: { order_id: orderId },
+      status: { order_id: orderId },
     },
   });
 
