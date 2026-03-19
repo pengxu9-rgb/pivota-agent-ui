@@ -292,7 +292,7 @@ function OrderContent() {
     }
   }
 
-  const handleComplete = (orderId: string) => {
+  const handleComplete = (orderId: string, options?: { finalizing?: boolean }) => {
     // In production, this would save order to backend
     console.log('Order completed:', orderId)
 
@@ -313,6 +313,7 @@ function OrderContent() {
     if (auroraUidParam) sellerParams.set('aurora_uid', auroraUidParam)
     if (langParam) sellerParams.set('lang', langParam)
     if (source) sellerParams.set('source', source)
+    if (options?.finalizing) sellerParams.set('finalizing', '1')
     const sellerSuffix = sellerParams.toString() ? `&${sellerParams.toString()}` : ''
 
     router.push(

@@ -7,6 +7,10 @@ import OrderSuccessPage from './page';
 const pushMock = vi.fn();
 const postRequestCloseToParentMock = vi.fn();
 const getCheckoutTokenFromBrowserMock = vi.fn();
+const confirmOrderPaymentMock = vi.fn();
+const getOrderStatusMock = vi.fn();
+const confirmPaymentWithRetryMock = vi.fn();
+const pollOrderStatusUntilSettledMock = vi.fn();
 const fetchMock = vi.fn();
 const assignMock = vi.fn();
 let embedModeValue = false;
@@ -28,6 +32,17 @@ vi.mock('@/lib/auroraEmbed', () => ({
 
 vi.mock('@/lib/checkoutToken', () => ({
   getCheckoutTokenFromBrowser: () => getCheckoutTokenFromBrowserMock(),
+  persistCheckoutToken: vi.fn(),
+}));
+
+vi.mock('@/lib/api', () => ({
+  confirmOrderPayment: (...args: unknown[]) => confirmOrderPaymentMock(...args),
+  getOrderStatus: (...args: unknown[]) => getOrderStatusMock(...args),
+}));
+
+vi.mock('@/lib/checkoutFinalization', () => ({
+  confirmPaymentWithRetry: (...args: unknown[]) => confirmPaymentWithRetryMock(...args),
+  pollOrderStatusUntilSettled: (...args: unknown[]) => pollOrderStatusUntilSettledMock(...args),
 }));
 
 describe('Order success action layout', () => {
@@ -37,8 +52,24 @@ describe('Order success action layout', () => {
     pushMock.mockReset();
     postRequestCloseToParentMock.mockReset();
     getCheckoutTokenFromBrowserMock.mockReset();
+    confirmOrderPaymentMock.mockReset();
+    getOrderStatusMock.mockReset();
+    confirmPaymentWithRetryMock.mockReset();
+    pollOrderStatusUntilSettledMock.mockReset();
     fetchMock.mockReset();
     getCheckoutTokenFromBrowserMock.mockReturnValue(null);
+    confirmPaymentWithRetryMock.mockResolvedValue({
+      status: 'confirmed',
+      attempts: 1,
+      paymentStatus: 'paid',
+      lastError: null,
+    });
+    pollOrderStatusUntilSettledMock.mockResolvedValue({
+      status: 'confirmed',
+      polls: 1,
+      paymentStatus: 'paid',
+      lastError: null,
+    });
     fetchMock.mockResolvedValue({
       ok: false,
       json: async () => ({}),
@@ -131,5 +162,75 @@ describe('Order success action layout', () => {
     expect(historyBackSpy).toHaveBeenCalledTimes(1);
     expect(assignMock).not.toHaveBeenCalled();
     expect(pushMock).not.toHaveBeenCalled();
+  });
+
+  it('runs finalization recovery on success page when finalizing=1 is present', async () => {
+    searchParamsValue = 'orderId=ord_123&finalizing=1';
+    let resolvePoll: ((value: {
+      status: 'confirmed' | 'pending';
+      polls: number;
+      paymentStatus: string | null;
+      lastError: unknown | null;
+    }) => void) | null = null;
+    confirmPaymentWithRetryMock.mockResolvedValueOnce({
+      status: 'pending',
+      attempts: 1,
+      paymentStatus: null,
+      lastError: new Error('temporary'),
+    });
+    pollOrderStatusUntilSettledMock.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolvePoll = resolve;
+      }),
+    );
+
+    render(<OrderSuccessPage />);
+
+    expect(await screen.findByRole('heading', { name: /confirming payment/i })).toBeInTheDocument();
+    expect(
+      await screen.findByText(/syncing the final payment confirmation with the payment provider/i),
+    ).toBeInTheDocument();
+    await waitFor(() => {
+      expect(confirmPaymentWithRetryMock).toHaveBeenCalledTimes(1);
+      expect(pollOrderStatusUntilSettledMock).toHaveBeenCalledTimes(1);
+    });
+    resolvePoll?.({
+      status: 'confirmed',
+      polls: 2,
+      paymentStatus: 'paid',
+      lastError: null,
+    });
+    await waitFor(() => {
+      expect(screen.queryByRole('heading', { name: /confirming payment/i })).toBeNull();
+      expect(screen.getByRole('heading', { name: /order successful/i })).toBeInTheDocument();
+      expect(
+        screen.queryByText(/syncing the final payment confirmation with the payment provider/i),
+      ).toBeNull();
+    });
+  });
+
+  it('shows a non-blocking note when finalization stays pending', async () => {
+    searchParamsValue = 'orderId=ord_123&finalizing=1';
+    confirmPaymentWithRetryMock.mockResolvedValueOnce({
+      status: 'pending',
+      attempts: 1,
+      paymentStatus: null,
+      lastError: new Error('temporary'),
+    });
+    pollOrderStatusUntilSettledMock.mockResolvedValueOnce({
+      status: 'pending',
+      polls: 3,
+      paymentStatus: 'pending',
+      lastError: null,
+    });
+
+    render(<OrderSuccessPage />);
+
+    expect(
+      await screen.findByText(/waiting for the final paid confirmation/i),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /confirming payment/i })).toBeInTheDocument();
+    expect(confirmPaymentWithRetryMock).toHaveBeenCalledTimes(1);
+    expect(pollOrderStatusUntilSettledMock).toHaveBeenCalledTimes(1);
   });
 });

@@ -8,7 +8,6 @@ export type CheckoutPaymentContract = {
 }
 
 const BACKEND_OWNED_PAYMENT_STATUSES = new Set([
-  'processing',
   'paid',
   'completed',
   'succeeded',

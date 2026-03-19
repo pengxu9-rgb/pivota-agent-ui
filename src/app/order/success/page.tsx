@@ -2,10 +2,15 @@
 
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { Check, Package, ArrowRight } from 'lucide-react'
+import { Check, Package, ArrowRight, LoaderCircle } from 'lucide-react'
+import { confirmOrderPayment, getOrderStatus } from '@/lib/api'
 import { resolveExternalAgentHomeUrl, safeReturnUrl, withReturnParams } from '@/lib/returnUrl'
 import { isAuroraEmbedMode, postRequestCloseToParent } from '@/lib/auroraEmbed'
-import { getCheckoutTokenFromBrowser } from '@/lib/checkoutToken'
+import { getCheckoutTokenFromBrowser, persistCheckoutToken } from '@/lib/checkoutToken'
+import {
+  confirmPaymentWithRetry,
+  pollOrderStatusUntilSettled,
+} from '@/lib/checkoutFinalization'
 
 type BuyerVaultSnapshot = {
   email: string | null
@@ -60,6 +65,11 @@ function SuccessContent() {
     searchParams.get('return') ||
     searchParams.get('returnUrl') ||
     searchParams.get('return_url')
+  const checkoutTokenFromQuery =
+    (searchParams.get('checkout_token') || searchParams.get('checkoutToken') || '').trim() || null
+  const shouldFinalizeOnLoad = ['1', 'true', 'yes', 'on'].includes(
+    String(searchParams.get('finalizing') || '').trim().toLowerCase(),
+  )
   const returnUrl = safeReturnUrl(rawReturn)
   const entryParam = (searchParams.get('entry') || '').trim() || null
   const sourceParam =
@@ -76,6 +86,9 @@ function SuccessContent() {
   const isEmbedMode = useMemo(() => isAuroraEmbedMode(), [])
 
   const [checkoutToken, setCheckoutToken] = useState<string | null>(null)
+  const [finalizationState, setFinalizationState] = useState<'idle' | 'running' | 'delayed'>(
+    shouldFinalizeOnLoad ? 'running' : 'idle',
+  )
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'step_up' | 'error'>(
     'idle',
   )
@@ -84,10 +97,16 @@ function SuccessContent() {
   const [buyerVaultSnapshot, setBuyerVaultSnapshot] = useState<BuyerVaultSnapshot>(EMPTY_BUYER_VAULT_SNAPSHOT)
   const hasBuyerVaultPrefill = Boolean(buyerVaultSnapshot.email || buyerVaultSnapshot.hasAddress)
   const canSave = Boolean(checkoutToken || orderId || saveTokenFromUrl || hasBuyerVaultPrefill)
+  const isAwaitingConfirmedPayment = shouldFinalizeOnLoad && finalizationState !== 'idle'
 
   useEffect(() => {
+    if (checkoutTokenFromQuery) {
+      persistCheckoutToken(checkoutTokenFromQuery)
+      setCheckoutToken(checkoutTokenFromQuery)
+      return
+    }
     setCheckoutToken(getCheckoutTokenFromBrowser())
-  }, [searchParams])
+  }, [checkoutTokenFromQuery, searchParams])
 
   const loadBuyerVaultSnapshot = useCallback(async (): Promise<BuyerVaultSnapshot> => {
     try {
@@ -193,6 +212,44 @@ function SuccessContent() {
     })
   }, [saveTokenFromUrl, checkoutToken, orderId, saveStatus, attemptSave])
 
+  useEffect(() => {
+    if (!shouldFinalizeOnLoad || !orderId) return
+
+    let active = true
+    setFinalizationState('running')
+
+    const run = async () => {
+      const confirmation = await confirmPaymentWithRetry({
+        orderId,
+        confirmPayment: confirmOrderPayment,
+        maxAttempts: 1,
+        retryDelayMs: 220,
+      })
+
+      if (!active) return
+      if (confirmation.status === 'confirmed') {
+        setFinalizationState('idle')
+        return
+      }
+
+      const pollResult = await pollOrderStatusUntilSettled({
+        orderId,
+        getOrderStatus,
+        timeoutMs: 4000,
+        intervalMs: 500,
+      })
+
+      if (!active) return
+      setFinalizationState(pollResult.status === 'confirmed' ? 'idle' : 'delayed')
+    }
+
+    void run()
+
+    return () => {
+      active = false
+    }
+  }, [orderId, shouldFinalizeOnLoad])
+
   const continueShopping = () => {
     if (externalContinueUrl) {
       window.location.assign(externalContinueUrl)
@@ -214,14 +271,47 @@ function SuccessContent() {
   return (
     <main className="min-h-screen bg-gradient-to-br from-green-50 to-blue-100 flex items-center justify-center px-4 py-6">
       <div className="bg-white rounded-lg shadow-xl p-6 max-w-md w-full text-center">
-        <div className="w-14 h-14 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-          <Check className="w-7 h-7 text-green-600" />
+        <div
+          className={`w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4 ${
+            isAwaitingConfirmedPayment ? 'bg-blue-100' : 'bg-green-100'
+          }`}
+        >
+          {isAwaitingConfirmedPayment ? (
+            <LoaderCircle className="w-7 h-7 text-blue-600 animate-spin" />
+          ) : (
+            <Check className="w-7 h-7 text-green-600" />
+          )}
         </div>
 
-        <h1 className="text-2xl font-bold text-gray-800 mb-2">Order Successful!</h1>
+        <h1 className="text-2xl font-bold text-gray-800 mb-2">
+          {isAwaitingConfirmedPayment ? 'Confirming payment' : 'Order Successful!'}
+        </h1>
         <p className="text-sm text-gray-600 mb-5">
-          Thank you for shopping with Pivota. Your order has been confirmed.
+          {finalizationState === 'running'
+            ? 'We received your payment response and are confirming the final paid status now.'
+            : finalizationState === 'delayed'
+              ? 'We are still waiting for the final paid confirmation from the payment provider.'
+              : 'Thank you for shopping with Pivota. Your order has been confirmed.'}
         </p>
+
+        {finalizationState !== 'idle' ? (
+          <div
+            className={`mb-5 rounded-lg border px-4 py-3 text-left ${
+              finalizationState === 'delayed'
+                ? 'border-amber-200 bg-amber-50 text-amber-800'
+                : 'border-blue-200 bg-blue-50 text-blue-800'
+            }`}
+          >
+            <p className="text-sm font-medium">
+              {finalizationState === 'delayed' ? 'Payment confirmation pending' : 'Confirming paid status'}
+            </p>
+            <p className="mt-1 text-xs">
+              {finalizationState === 'delayed'
+                ? 'We will move you into the confirmed order state as soon as the provider returns a paid result.'
+                : 'We are syncing the final payment confirmation with the payment provider now.'}
+            </p>
+          </div>
+        ) : null}
 
         {orderId && (
           <div className="bg-gray-50 rounded-lg p-3 mb-5">

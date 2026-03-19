@@ -25,6 +25,7 @@ import {
   isBackendSettledPaymentStatus,
   resolveCheckoutPaymentContract,
 } from '@/lib/checkoutPaymentContract'
+import { confirmPaymentWithRetry } from '@/lib/checkoutFinalization'
 import { useCartStore } from '@/store/cartStore'
 import { toast } from 'sonner'
 import { useRouter } from 'next/navigation'
@@ -59,9 +60,13 @@ interface ShippingInfo {
   phone?: string
 }
 
+type OrderCompletionOptions = {
+  finalizing?: boolean
+}
+
 interface OrderFlowProps {
   items: OrderItem[]
-  onComplete?: (orderId: string) => void
+  onComplete?: (orderId: string, options?: OrderCompletionOptions) => void
   onCancel?: () => void
   onFailure?: (args: { reason: 'payment_failed' | 'system_error' | 'action_required'; stage: 'payment' | 'shipping' }) => void
   skipEmailVerification?: boolean
@@ -932,10 +937,14 @@ function OrderFlowInner({
     return orderId
   }
 
-  const buildPostPayReturnUrl = (orderId: string): string | undefined => {
+  const buildOrderSuccessPath = (
+    orderId: string,
+    options: OrderCompletionOptions = {},
+  ): string | undefined => {
     if (typeof window === 'undefined') return undefined
     const url = new URL('/order/success', window.location.origin)
     url.searchParams.set('orderId', orderId)
+    if (options.finalizing) url.searchParams.set('finalizing', '1')
     if (returnUrl) url.searchParams.set('return', returnUrl)
     const current = new URL(window.location.href)
     const passthrough = ['entry', 'embed', 'lang', 'aurora_uid', 'parent_origin']
@@ -944,7 +953,25 @@ function OrderFlowInner({
       if (value) url.searchParams.set(key, value)
     }
     if (checkoutToken) url.searchParams.set('checkout_token', checkoutToken)
-    return url.toString()
+    return `${url.pathname}${url.search}`
+  }
+
+  const buildPostPayReturnUrl = (orderId: string): string | undefined => {
+    const successPath = buildOrderSuccessPath(orderId, { finalizing: true })
+    if (!successPath || typeof window === 'undefined') return undefined
+    return new URL(successPath, window.location.origin).toString()
+  }
+
+  const finalizeOrderAfterPayment = async (orderId: string): Promise<OrderCompletionOptions> => {
+    const confirmation = await confirmPaymentWithRetry({
+      orderId,
+      confirmPayment: confirmOrderPayment,
+      maxAttempts: 3,
+      retryDelayMs: 220,
+    })
+    return {
+      finalizing: confirmation.status !== 'confirmed',
+    }
   }
 
   const extractPaymentAction = (paymentResponse: any, fallbackAction: any = null) => {
@@ -1057,17 +1084,18 @@ function OrderFlowInner({
       },
       analytics: { enabled: false },
       onPaymentCompleted: () => {
-        void confirmOrderPayment(orderId).catch((err) => {
-          console.warn('confirmOrderPayment failed', err)
-        })
-        setStep('confirm')
-        toast.success('Payment completed successfully.')
-        clearCart()
-        if (onComplete) {
-          onComplete(orderId)
-          return
-        }
-        router.push(`/orders/${orderId}?paid=1`)
+        void (async () => {
+          setStep('confirm')
+          toast.success('Payment completed successfully.')
+          clearCart()
+          const completionOptions = await finalizeOrderAfterPayment(orderId)
+          if (onComplete) {
+            onComplete(orderId, completionOptions)
+            return
+          }
+          const successPath = buildOrderSuccessPath(orderId, completionOptions)
+          router.push(successPath || `/orders/${orderId}?paid=1`)
+        })()
       },
       onError: (err: any) => {
         console.error('Adyen error:', err)
@@ -1517,24 +1545,23 @@ function OrderFlowInner({
           paymentResponse,
           action,
         })
-        const completeCheckout = (paymentIdValue?: string) => {
-          void confirmOrderPayment(orderId).catch((err) => {
-            console.warn('confirmOrderPayment failed', err)
-          })
+        const completeCheckout = async (paymentIdValue?: string) => {
           setPaymentId(paymentIdValue || '')
           setStep('confirm')
           toast.success('Payment completed successfully.')
           clearCart()
+          const completionOptions = await finalizeOrderAfterPayment(orderId)
           if (onComplete) {
-            onComplete(orderId)
+            onComplete(orderId, completionOptions)
             return
           }
-          router.push(`/orders/${orderId}?paid=1`)
+          const successPath = buildOrderSuccessPath(orderId, completionOptions)
+          router.push(successPath || `/orders/${orderId}?paid=1`)
         }
 
         if (!paymentContract.requiresClientConfirmation) {
           if (isBackendSettledPaymentStatus(paymentContract.paymentStatus)) {
-            completeCheckout(
+            await completeCheckout(
               String(
                 (paymentResponse as any)?.payment_id ||
                   (paymentResponse as any)?.payment?.payment_id ||
@@ -1585,8 +1612,8 @@ function OrderFlowInner({
           }
 
           const status = result.paymentIntent?.status
-          if (status === 'succeeded' || status === 'processing') {
-            completeCheckout(result.paymentIntent?.id || '')
+          if (status === 'succeeded') {
+            await completeCheckout(result.paymentIntent?.id || '')
             return
           }
           if (status === 'requires_action') {
