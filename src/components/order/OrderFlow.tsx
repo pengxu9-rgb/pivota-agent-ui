@@ -1559,20 +1559,39 @@ function OrderFlowInner({
           router.push(successPath || `/orders/${orderId}?paid=1`)
         }
 
-        if (!paymentContract.requiresClientConfirmation) {
-          if (isBackendSettledPaymentStatus(paymentContract.paymentStatus)) {
-            await completeCheckout(
-              String(
-                (paymentResponse as any)?.payment_id ||
-                  (paymentResponse as any)?.payment?.payment_id ||
-                  '',
-              ),
-            )
+        const continuePendingPaymentConfirmation = async (paymentIdValue?: string) => {
+          setPaymentId(paymentIdValue || '')
+          setStep('confirm')
+          const completionOptions = await finalizeOrderAfterPayment(orderId)
+          if (completionOptions.finalizing) {
+            toast.message('Confirming payment status…', {
+              description:
+                'Your order was created. We are waiting for the final paid confirmation.',
+            })
+          } else {
+            toast.success('Payment completed successfully.')
+          }
+          clearCart()
+          if (onComplete) {
+            onComplete(orderId, completionOptions)
             return
           }
-          throw new Error(
-            'Your order was created, but payment is still pending. Please check your orders page shortly.',
+          const successPath = buildOrderSuccessPath(orderId, completionOptions)
+          router.push(successPath || `/orders/${orderId}?paid=1`)
+        }
+
+        if (!paymentContract.requiresClientConfirmation) {
+          const paymentIdValue = String(
+            (paymentResponse as any)?.payment_id ||
+              (paymentResponse as any)?.payment?.payment_id ||
+              '',
           )
+          if (isBackendSettledPaymentStatus(paymentContract.paymentStatus)) {
+            await completeCheckout(paymentIdValue)
+            return
+          }
+          await continuePendingPaymentConfirmation(paymentIdValue)
+          return
         }
 
         // Client-owned confirmation paths.
