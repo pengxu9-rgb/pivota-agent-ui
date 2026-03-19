@@ -23,6 +23,17 @@ function normalizeStatus(value: unknown): string | null {
   return trimmed || null
 }
 
+const PAYMENT_STATUS_HINTS = new Set([
+  'pending',
+  'processing',
+  'paid',
+  'completed',
+  'succeeded',
+  'requires_payment_method',
+  'requires_confirmation',
+  'requires_action',
+])
+
 function defaultSleep(ms: number): Promise<void> {
   return new Promise((resolve) => {
     window.setTimeout(resolve, ms)
@@ -41,8 +52,16 @@ export function extractPaymentStatusFromPayload(payload: unknown): string | null
   const result = isRecord(root.result) ? root.result : {}
   const detail = isRecord(root.detail) ? root.detail : {}
   const detailOrder = isRecord(detail.order) ? detail.order : {}
+  const tracking = isRecord(root.tracking) ? root.tracking : {}
   const payments = Array.isArray(root.payments) ? root.payments : []
   const firstPayment = isRecord(payments[0]) ? payments[0] : {}
+  const trackingTimeline = Array.isArray(tracking.timeline) ? tracking.timeline : []
+
+  const normalizePaymentHint = (value: unknown): string | null => {
+    const normalized = normalizeStatus(value)
+    if (!normalized) return null
+    return PAYMENT_STATUS_HINTS.has(normalized) ? normalized : null
+  }
 
   const candidates = [
     root.payment_status,
@@ -55,13 +74,34 @@ export function extractPaymentStatusFromPayload(payload: unknown): string | null
     payment.status,
     firstPayment.payment_status,
     firstPayment.status,
-    root.status,
-    order.status,
-    result.status,
   ]
 
   for (const candidate of candidates) {
-    const normalized = normalizeStatus(candidate)
+    const normalized = normalizePaymentHint(candidate)
+    if (normalized) return normalized
+  }
+
+  for (const event of trackingTimeline) {
+    if (!isRecord(event) || event.completed !== true) continue
+    const normalized = normalizeStatus(event.status)
+    if (normalized === 'paid' || normalized === 'completed' || normalized === 'succeeded') {
+      return normalized
+    }
+    if (normalized === 'shipped' || normalized === 'delivered') {
+      return 'paid'
+    }
+  }
+
+  const trailingCandidates = [
+    tracking.payment_status,
+    tracking.status,
+    order.status,
+    result.status,
+    root.status,
+  ]
+
+  for (const candidate of trailingCandidates) {
+    const normalized = normalizePaymentHint(candidate)
     if (normalized) return normalized
   }
 

@@ -126,4 +126,26 @@ describe('checkout finalization helpers', () => {
       }),
     ).toBe('completed')
   })
+
+  it('extracts paid status from completed tracking timeline events', () => {
+    expect(
+      extractPaymentStatusFromPayload({
+        status: 'success',
+        tracking: {
+          timeline: [
+            { status: 'ordered', completed: true },
+            { status: 'paid', completed: true },
+          ],
+        },
+      }),
+    ).toBe('paid')
+  })
+
+  it('does not treat transport success as a payment status', () => {
+    expect(
+      extractPaymentStatusFromPayload({
+        status: 'success',
+      }),
+    ).toBeNull()
+  })
 })

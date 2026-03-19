@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { confirmOrderPayment, getOrderStatus } from '@/lib/api';
+import { confirmOrderPayment, getOrderStatus, previewQuote } from '@/lib/api';
 
 const jsonResponse = (payload: unknown, status = 200) =>
   new Response(JSON.stringify(payload), {
@@ -58,5 +58,28 @@ describe('checkout gateway payloads', () => {
       },
     });
     expect(body?.payload?.order).toBeUndefined();
+  });
+
+  it('maps upstream unavailable errors to a friendly retry message', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      jsonResponse(
+        {
+          error: 'UPSTREAM_UNAVAILABLE',
+          message: 'UPSTREAM_UNAVAILABLE',
+          operation: 'preview_quote',
+        },
+        502,
+      ),
+    );
+
+    await expect(
+      previewQuote({
+        merchant_id: 'merchant_123',
+        items: [{ product_id: 'prod_123', variant_id: 'var_123', quantity: 1 }],
+      }),
+    ).rejects.toMatchObject({
+      code: 'UPSTREAM_UNAVAILABLE',
+      message: 'The upstream service is temporarily unavailable (preview_quote). Please retry.',
+    });
   });
 });

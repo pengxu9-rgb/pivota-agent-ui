@@ -302,9 +302,13 @@ function extractMerchantIdFromOfferId(offerId: unknown): string | null {
 
 function isTemporaryUnavailable(err: any): boolean {
   const code = String(err?.code || '').trim().toUpperCase()
-  if (code === 'TEMPORARY_UNAVAILABLE') return true
+  if (code === 'TEMPORARY_UNAVAILABLE' || code === 'UPSTREAM_UNAVAILABLE') return true
   const message = String(err?.message || '').toUpperCase()
-  return message.includes('TEMPORARY_UNAVAILABLE') || message.includes('DATABASE BUSY')
+  return (
+    message.includes('TEMPORARY_UNAVAILABLE') ||
+    message.includes('UPSTREAM_UNAVAILABLE') ||
+    message.includes('DATABASE BUSY')
+  )
 }
 
 function isRetryableQuoteError(err: any): boolean {
@@ -1562,15 +1566,11 @@ function OrderFlowInner({
         const continuePendingPaymentConfirmation = async (paymentIdValue?: string) => {
           setPaymentId(paymentIdValue || '')
           setStep('confirm')
-          const completionOptions = await finalizeOrderAfterPayment(orderId)
-          if (completionOptions.finalizing) {
-            toast.message('Confirming payment status…', {
-              description:
-                'Your order was created. We are waiting for the final paid confirmation.',
-            })
-          } else {
-            toast.success('Payment completed successfully.')
-          }
+          const completionOptions = { finalizing: true }
+          toast.message('Confirming payment status…', {
+            description:
+              'Your order was created. We are waiting for the final paid confirmation.',
+          })
           clearCart()
           if (onComplete) {
             onComplete(orderId, completionOptions)

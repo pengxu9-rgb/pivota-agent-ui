@@ -62,6 +62,9 @@ function friendlyMessageForCode(args: {
   if (code === 'UPSTREAM_TIMEOUT') {
     return `The request timed out${opSuffix}. Please retry.`;
   }
+  if (code === 'UPSTREAM_UNAVAILABLE') {
+    return `The upstream service is temporarily unavailable${opSuffix}. Please retry.`;
+  }
   if (code === 'QUOTE_EXPIRED') {
     return `Your quote expired${opSuffix}. Please retry to refresh totals.`;
   }
