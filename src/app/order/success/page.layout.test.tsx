@@ -4,6 +4,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import OrderSuccessPage from './page';
 
+async function flushAsyncWork() {
+  await Promise.resolve();
+  await Promise.resolve();
+}
+
 const pushMock = vi.fn();
 const postRequestCloseToParentMock = vi.fn();
 const getCheckoutTokenFromBrowserMock = vi.fn();
@@ -47,6 +52,7 @@ vi.mock('@/lib/checkoutFinalization', () => ({
 
 describe('Order success action layout', () => {
   beforeEach(() => {
+    vi.useRealTimers();
     searchParamsValue = 'orderId=ord_123';
     embedModeValue = false;
     pushMock.mockReset();
@@ -187,9 +193,7 @@ describe('Order success action layout', () => {
     render(<OrderSuccessPage />);
 
     expect(await screen.findByRole('heading', { name: /confirming payment/i })).toBeInTheDocument();
-    expect(
-      await screen.findByText(/syncing the final payment confirmation with the payment provider/i),
-    ).toBeInTheDocument();
+    expect(await screen.findByText(/payment received\. confirming your order now/i)).toBeInTheDocument();
     await waitFor(() => {
       expect(confirmPaymentWithRetryMock).toHaveBeenCalledTimes(1);
       expect(pollOrderStatusUntilSettledMock).toHaveBeenCalledTimes(1);
@@ -203,9 +207,7 @@ describe('Order success action layout', () => {
     await waitFor(() => {
       expect(screen.queryByRole('heading', { name: /confirming payment/i })).toBeNull();
       expect(screen.getByRole('heading', { name: /order successful/i })).toBeInTheDocument();
-      expect(
-        screen.queryByText(/syncing the final payment confirmation with the payment provider/i),
-      ).toBeNull();
+      expect(screen.queryByText(/payment received\. confirming your order now/i)).toBeNull();
     });
   });
 
@@ -226,11 +228,48 @@ describe('Order success action layout', () => {
 
     render(<OrderSuccessPage />);
 
-    expect(
-      await screen.findByText(/waiting for the final paid confirmation/i),
-    ).toBeInTheDocument();
+    expect(await screen.findByText(/final confirmation is taking a little longer than usual/i)).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: /confirming payment/i })).toBeInTheDocument();
+    expect(await screen.findByText(/we'll update this page automatically/i)).toBeInTheDocument();
     expect(confirmPaymentWithRetryMock).toHaveBeenCalledTimes(1);
     expect(pollOrderStatusUntilSettledMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps polling after delayed finalization and exits confirming once status settles', async () => {
+    vi.useFakeTimers();
+    searchParamsValue = 'orderId=ord_123&finalizing=1';
+    confirmPaymentWithRetryMock.mockResolvedValueOnce({
+      status: 'pending',
+      attempts: 1,
+      paymentStatus: null,
+      lastError: new Error('temporary'),
+    });
+    pollOrderStatusUntilSettledMock
+      .mockResolvedValueOnce({
+        status: 'pending',
+        polls: 3,
+        paymentStatus: 'pending',
+        lastError: null,
+      })
+      .mockResolvedValueOnce({
+        status: 'confirmed',
+        polls: 1,
+        paymentStatus: 'paid',
+        lastError: null,
+      });
+
+    render(<OrderSuccessPage />);
+
+    await flushAsyncWork();
+
+    expect(screen.getByRole('heading', { name: /confirming payment/i })).toBeInTheDocument();
+    expect(screen.getByText(/final confirmation is taking a little longer than usual/i)).toBeInTheDocument();
+    expect(pollOrderStatusUntilSettledMock).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(1200);
+    await flushAsyncWork();
+
+    expect(pollOrderStatusUntilSettledMock).toHaveBeenCalledTimes(2);
+    expect(screen.getByRole('heading', { name: /order successful/i })).toBeInTheDocument();
   });
 });

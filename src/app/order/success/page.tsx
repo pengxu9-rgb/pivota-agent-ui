@@ -250,6 +250,40 @@ function SuccessContent() {
     }
   }, [orderId, shouldFinalizeOnLoad])
 
+  useEffect(() => {
+    if (!shouldFinalizeOnLoad || !orderId || finalizationState !== 'delayed') return
+
+    let active = true
+
+    const runFollowUpPolling = async () => {
+      for (let attempt = 0; attempt < 8; attempt += 1) {
+        await new Promise<void>((resolve) => {
+          window.setTimeout(resolve, 1200)
+        })
+        if (!active) return
+
+        const pollResult = await pollOrderStatusUntilSettled({
+          orderId,
+          getOrderStatus,
+          timeoutMs: 2500,
+          intervalMs: 500,
+        })
+
+        if (!active) return
+        if (pollResult.status === 'confirmed') {
+          setFinalizationState('idle')
+          return
+        }
+      }
+    }
+
+    void runFollowUpPolling()
+
+    return () => {
+      active = false
+    }
+  }, [finalizationState, orderId, shouldFinalizeOnLoad])
+
   const continueShopping = () => {
     if (externalContinueUrl) {
       window.location.assign(externalContinueUrl)
@@ -288,28 +322,18 @@ function SuccessContent() {
         </h1>
         <p className="text-sm text-gray-600 mb-5">
           {finalizationState === 'running'
-            ? 'We received your payment response and are confirming the final paid status now.'
+            ? 'Payment received. Confirming your order now.'
             : finalizationState === 'delayed'
-              ? 'We are still waiting for the final paid confirmation from the payment provider.'
+              ? 'Payment received. Final confirmation is taking a little longer than usual.'
               : 'Thank you for shopping with Pivota. Your order has been confirmed.'}
         </p>
 
-        {finalizationState !== 'idle' ? (
+        {finalizationState === 'delayed' ? (
           <div
-            className={`mb-5 rounded-lg border px-4 py-3 text-left ${
-              finalizationState === 'delayed'
-                ? 'border-amber-200 bg-amber-50 text-amber-800'
-                : 'border-blue-200 bg-blue-50 text-blue-800'
-            }`}
+            className="mb-5 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-left text-amber-800"
           >
-            <p className="text-sm font-medium">
-              {finalizationState === 'delayed' ? 'Payment confirmation pending' : 'Confirming paid status'}
-            </p>
-            <p className="mt-1 text-xs">
-              {finalizationState === 'delayed'
-                ? 'We will move you into the confirmed order state as soon as the provider returns a paid result.'
-                : 'We are syncing the final payment confirmation with the payment provider now.'}
-            </p>
+            <p className="text-sm font-medium">Still syncing payment status</p>
+            <p className="mt-1 text-xs">You can stay here. We&apos;ll update this page automatically.</p>
           </div>
         ) : null}
 
