@@ -417,9 +417,8 @@ function SuccessContent() {
             )}
 
             <div className="bg-indigo-50 border border-indigo-100 rounded-lg p-3">
-              <p className="text-xs text-gray-800 font-medium">Save for next time</p>
-              <p className="text-[11px] text-gray-600 mt-1">
-                Save your email and shipping address to your Pivota Buyer account so future checkouts can be auto-filled.
+              <p className="text-xs text-gray-800 font-medium">
+                Save address for next time so future checkouts can be auto-filled
               </p>
               <div className="mt-2.5">
                 {saveStatus === 'saved' ? (
