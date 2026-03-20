@@ -33,6 +33,7 @@ import {
   DEFAULT_MODULE_SOURCE_LOCKS,
   upsertLockedModule,
 } from '@/features/pdp/state/freezePolicy';
+import { shouldAllowLegacyProductDetailBroadScan } from '@/lib/productDetailFallback';
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -370,6 +371,10 @@ export default function ProductDetailPage({ params }: Props) {
   const { id } = use(params);
   const searchParams = useSearchParams();
   const merchantIdParam = searchParams.get('merchant_id') || undefined;
+  const entryPointParam =
+    searchParams.get('entry_point') ||
+    searchParams.get('entryPoint') ||
+    undefined;
   const pdpOverride = (searchParams.get('pdp') || '').toLowerCase();
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
@@ -399,6 +404,11 @@ export default function ProductDetailPage({ params }: Props) {
   });
 
   const { addItem, open } = useCartStore();
+  const allowLegacyBroadScan = shouldAllowLegacyProductDetailBroadScan({
+    productId: id,
+    merchantId: merchantIdParam,
+    entryPoint: entryPointParam,
+  });
   const progressiveMerchantId = String(pdpPayload?.product?.merchant_id || '').trim();
   const progressiveProductId = String(pdpPayload?.product?.product_id || id || '').trim();
   const offersLoadState = pdpPayload?.x_offers_state;
@@ -576,7 +586,7 @@ export default function ProductDetailPage({ params }: Props) {
 
           const detail = await getProductDetail(targetProductId, targetMerchantId, {
             useConfiguredMerchantId: false,
-            allowBroadScan: false,
+            allowBroadScan: allowLegacyBroadScan,
             timeout_ms: fallbackTimeoutMs,
             throwOnError: true,
             includeReviewSummary: true,
@@ -636,7 +646,7 @@ export default function ProductDetailPage({ params }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [id, merchantIdParam, reloadKey]);
+  }, [allowLegacyBroadScan, id, merchantIdParam, reloadKey]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1286,7 +1296,7 @@ export default function ProductDetailPage({ params }: Props) {
 
         const detail = await getProductDetail(resolvedProductId, resolvedMerchantId, {
           useConfiguredMerchantId: false,
-          allowBroadScan: false,
+          allowBroadScan: allowLegacyBroadScan,
           throwOnError: false,
           timeout_ms: 8000,
         });
@@ -1413,7 +1423,7 @@ export default function ProductDetailPage({ params }: Props) {
 
         const detail = await getProductDetail(resolvedProductId, resolvedMerchantId, {
           useConfiguredMerchantId: false,
-          allowBroadScan: false,
+          allowBroadScan: allowLegacyBroadScan,
           throwOnError: false,
           timeout_ms: 8000,
         });
