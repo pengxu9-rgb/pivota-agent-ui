@@ -71,6 +71,25 @@ function buildMinimalResponse() {
                   ],
                 },
               },
+              {
+                module_id: 'm_actives',
+                type: 'active_ingredients',
+                data: {
+                  title: 'Active ingredients',
+                  items: ['Niacinamide', 'Ceramide NP'],
+                  source_origin: 'retail_pdp',
+                  source_quality_status: 'captured',
+                },
+              },
+              {
+                module_id: 'm_how_to_use',
+                type: 'how_to_use',
+                data: {
+                  title: 'How to use',
+                  raw_text: 'Apply after cleansing.',
+                  steps: ['Apply after cleansing.'],
+                },
+              },
             ],
             actions: [],
           },
@@ -137,6 +156,16 @@ describe('mapPdpV2ToPdpPayload image normalization', () => {
     expect(mediaGallery?.data?.items?.[0]?.url).toBe(
       '/api/image-proxy?url=https%3A%2F%2Fsdcdn.io%2Ftf%2Falready-media.png',
     );
+  });
+
+  it('preserves additive structured PDP modules from canonical payload', () => {
+    const payload = mapPdpV2ToPdpPayload(buildMinimalResponse());
+    const activeIngredients = payload?.modules.find((module) => module.type === 'active_ingredients') as any;
+    const howToUse = payload?.modules.find((module) => module.type === 'how_to_use') as any;
+
+    expect(activeIngredients?.data?.items).toEqual(['Niacinamide', 'Ceramide NP']);
+    expect(activeIngredients?.data?.source_origin).toBe('retail_pdp');
+    expect(howToUse?.data?.steps).toEqual(['Apply after cleansing.']);
   });
 
   it('deduplicates official media image URLs while keeping videos', () => {

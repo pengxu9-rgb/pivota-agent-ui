@@ -139,6 +139,10 @@ export type ModuleType =
   | 'media_gallery'
   | 'price_promo'
   | 'trust_badges'
+  | 'ingredients_inci'
+  | 'active_ingredients'
+  | 'how_to_use'
+  | 'product_facts'
   | 'product_details'
   | 'reviews_preview'
   | 'recommendations'
@@ -180,6 +184,33 @@ export interface PricePromoData {
 
 export interface ProductDetailsData {
   sections: DetailSection[];
+}
+
+export interface ProductFactsData {
+  sections: DetailSection[];
+}
+
+export interface IngredientsInciData {
+  title: string;
+  raw_text?: string;
+  items: string[];
+  source_origin?: string;
+  source_quality_status?: string;
+}
+
+export interface ActiveIngredientsData {
+  title: string;
+  items: string[];
+  raw_text?: string;
+  source_origin?: string;
+  source_quality_status?: string;
+}
+
+export interface HowToUseData {
+  title: string;
+  raw_text?: string;
+  steps: string[];
+  source_origin?: string;
 }
 
 export interface DetailSection {

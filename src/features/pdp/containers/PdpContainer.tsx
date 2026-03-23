@@ -15,12 +15,16 @@ import { ChevronLeft, Share2, Star } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import type {
+  ActiveIngredientsData,
+  HowToUseData,
+  IngredientsInciData,
   MediaGalleryData,
   MediaItem,
   Offer,
   PDPPayload,
   PricePromoData,
   ProductDetailsData,
+  ProductFactsData,
   RecommendationsData,
   ReviewsPreviewData,
   Variant,
@@ -441,7 +445,12 @@ export function PdpContainer({
 
   const media = getModuleData<MediaGalleryData>(payload, 'media_gallery');
   const pricePromo = getModuleData<PricePromoData>(payload, 'price_promo');
-  const details = getModuleData<ProductDetailsData>(payload, 'product_details');
+  const productFacts = getModuleData<ProductFactsData>(payload, 'product_facts');
+  const legacyDetails = getModuleData<ProductDetailsData>(payload, 'product_details');
+  const details = productFacts || legacyDetails;
+  const ingredientsInci = getModuleData<IngredientsInciData>(payload, 'ingredients_inci');
+  const activeIngredients = getModuleData<ActiveIngredientsData>(payload, 'active_ingredients');
+  const howToUse = getModuleData<HowToUseData>(payload, 'how_to_use');
   const reviews = getModuleData<ReviewsPreviewData>(payload, 'reviews_preview');
   const payloadRecommendations = getModuleData<RecommendationsData>(payload, 'recommendations');
   const recommendationCurrencyFallback =
@@ -2370,7 +2379,14 @@ export function PdpContainer({
             style={{ scrollMarginTop }}
           >
             {resolvedMode === 'beauty' ? (
-              <BeautyDetailsSection data={details} product={payload.product} media={media} />
+              <BeautyDetailsSection
+                data={details}
+                product={payload.product}
+                media={media}
+                activeIngredients={activeIngredients}
+                ingredientsInci={ingredientsInci}
+                howToUse={howToUse}
+              />
             ) : resolvedMode === 'generic' ? (
               <GenericDetailsSection data={details} product={payload.product} media={media} />
             ) : (
