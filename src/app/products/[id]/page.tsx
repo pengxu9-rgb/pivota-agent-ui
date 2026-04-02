@@ -12,6 +12,7 @@ import {
   getPdpV2Personalization,
   getProductDetail,
   recordBrowseHistoryEvent,
+  resolveProductCandidates,
   resolveProductGroup,
   type GetPdpV2Response,
   type ProductResponse,
@@ -34,6 +35,11 @@ import {
   upsertLockedModule,
 } from '@/features/pdp/state/freezePolicy';
 import { shouldAllowLegacyProductDetailBroadScan } from '@/lib/productDetailFallback';
+import {
+  buildRawDetailWithResolvedOffers,
+  getCanonicalRefFromResolvedOffers,
+  mapResolvedOffersToSellerCandidates,
+} from '@/lib/pdpResolvedOffers';
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -471,11 +477,20 @@ export default function ProductDetailPage({ params }: Props) {
 
   useEffect(() => {
     let cancelled = false;
-    const v2TimeoutMs = 9000;
+    const candidateTimeoutMs = 4500;
+    const v2TimeoutMs = merchantIdParam ? 9000 : 5000;
     const fallbackTimeoutMs = 9000;
 
     const loadProduct = async () => {
       const explicitMerchantId = merchantIdParam ? String(merchantIdParam).trim() : null;
+      const candidateResolutionPromise = explicitMerchantId
+        ? Promise.resolve(null)
+        : resolveProductCandidates({
+            product_id: id,
+            limit: 12,
+            include_offers: true,
+            timeout_ms: candidateTimeoutMs,
+          }).catch(() => null);
 
       setLoading(true);
       setError(null);
@@ -558,6 +573,60 @@ export default function ProductDetailPage({ params }: Props) {
       } catch (v2Err) {
         // Fall back to legacy per-merchant product detail so PDP can still render.
         try {
+          const candidateResolution = await candidateResolutionPromise;
+          if (cancelled) return;
+
+          const candidateCanonicalRef = getCanonicalRefFromResolvedOffers(candidateResolution);
+          const candidateSellerOptions = mapResolvedOffersToSellerCandidates(candidateResolution);
+
+          if (candidateCanonicalRef?.merchant_id && candidateCanonicalRef?.product_id) {
+            const candidateDetail = await getProductDetail(
+              candidateCanonicalRef.product_id,
+              candidateCanonicalRef.merchant_id,
+              {
+                useConfiguredMerchantId: false,
+                allowBroadScan: false,
+                timeout_ms: fallbackTimeoutMs,
+                throwOnError: false,
+                includeReviewSummary: true,
+              },
+            );
+
+            if (cancelled) return;
+
+            if (candidateDetail) {
+              const candidatePayload = mapToPdpPayload({
+                product: candidateDetail,
+                rawDetail: buildRawDetailWithResolvedOffers(
+                  candidateDetail.raw_detail,
+                  candidateResolution,
+                ),
+                relatedProducts: [],
+                recommendationsLoading: true,
+                entryPoint: 'product_detail',
+              });
+              setPdpPayload({
+                ...candidatePayload,
+                x_source_locks: {
+                  reviews: false,
+                  similar: false,
+                  ugc: false,
+                },
+              });
+              pdpTracking.track('pdp_fallback_used', {
+                source: 'resolve_product_candidates',
+                reason: 'get_pdp_v2_failed',
+              });
+              pdpTracking.track('pdp_core_ready', {
+                source: 'resolve_product_candidates',
+                offers_count: candidatePayload.offers_count || 0,
+              });
+              setLoadedViaPdpV2(false);
+              setLoading(false);
+              return;
+            }
+          }
+
           const resolvedGroup =
             explicitMerchantId
               ? await resolveProductGroup({
@@ -623,6 +692,15 @@ export default function ProductDetailPage({ params }: Props) {
           return;
         } catch (fallbackErr) {
           if (cancelled) return;
+
+          const candidateResolution = explicitMerchantId ? null : await candidateResolutionPromise;
+          const candidateSellerOptions = mapResolvedOffersToSellerCandidates(candidateResolution);
+          if (!explicitMerchantId && candidateSellerOptions.length > 1) {
+            setSellerCandidates(candidateSellerOptions);
+            setLoading(false);
+            return;
+          }
+
           if (
             (fallbackErr as any)?.code === 'AMBIGUOUS_PRODUCT_ID' &&
             Array.isArray((fallbackErr as any)?.candidates)
