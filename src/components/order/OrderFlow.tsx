@@ -142,13 +142,32 @@ type StripeCardSectionHandle = {
   confirm: (clientSecret: string) => Promise<StripeConfirmationResult>
 }
 
-function getStripePromiseForKey(publishableKey: string): Promise<Stripe | null> {
+function readStripeAccount(value: unknown): string | null {
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    return trimmed || null
+  }
+  return null
+}
+
+function getStripePromiseForKey(
+  publishableKey: string,
+  stripeAccount: string | null = null,
+): Promise<Stripe | null> {
   const normalized = String(publishableKey || '').trim()
   if (!normalized) return Promise.resolve(null)
-  if (!stripePromiseCache.has(normalized)) {
-    stripePromiseCache.set(normalized, loadStripe(normalized))
+  const normalizedStripeAccount = readStripeAccount(stripeAccount)
+  const cacheKey = normalizedStripeAccount ? `${normalized}::${normalizedStripeAccount}` : normalized
+  if (!stripePromiseCache.has(cacheKey)) {
+    stripePromiseCache.set(
+      cacheKey,
+      loadStripe(
+        normalized,
+        normalizedStripeAccount ? { stripeAccount: normalizedStripeAccount } : undefined,
+      ),
+    )
   }
-  return stripePromiseCache.get(normalized) || Promise.resolve(null)
+  return stripePromiseCache.get(cacheKey) || Promise.resolve(null)
 }
 
 function readPublicKey(value: unknown): string | null {
@@ -177,6 +196,32 @@ export function resolveStripePublishableKey(paymentResponse: any, fallbackAction
   }
 
   return DEFAULT_STRIPE_PUBLISHABLE_KEY || null
+}
+
+export function resolveStripeAccount(paymentResponse: any, fallbackAction: any = null): string | null {
+  const candidates = [
+    fallbackAction?.stripe_account,
+    fallbackAction?.raw?.stripe_account,
+    fallbackAction?.raw?.stripeAccount,
+    fallbackAction?.raw?.account_id,
+    paymentResponse?.payment_action?.stripe_account,
+    paymentResponse?.payment_action?.raw?.stripe_account,
+    paymentResponse?.payment_action?.raw?.stripeAccount,
+    paymentResponse?.payment_action?.raw?.account_id,
+    paymentResponse?.payment?.payment_action?.stripe_account,
+    paymentResponse?.payment?.payment_action?.raw?.stripe_account,
+    paymentResponse?.payment?.payment_action?.raw?.stripeAccount,
+    paymentResponse?.payment?.payment_action?.raw?.account_id,
+    paymentResponse?.stripe_account,
+    paymentResponse?.payment?.stripe_account,
+  ]
+
+  for (const candidate of candidates) {
+    const resolved = readStripeAccount(candidate)
+    if (resolved) return resolved
+  }
+
+  return null
 }
 
 function normalizePaymentPspToken(value: unknown): string | null {
@@ -302,15 +347,16 @@ const StripeCardSectionInner = forwardRef<
 
 const StripeCardSection = forwardRef<
   StripeCardSectionHandle,
-  { publishableKey: string; onCardError: (message: string) => void }
->(function StripeCardSection({ publishableKey, onCardError }, ref) {
+  { publishableKey: string; stripeAccount?: string | null; onCardError: (message: string) => void }
+>(function StripeCardSection({ publishableKey, stripeAccount = null, onCardError }, ref) {
   const stripePromise = useMemo(
-    () => getStripePromiseForKey(publishableKey),
-    [publishableKey],
+    () => getStripePromiseForKey(publishableKey, stripeAccount),
+    [publishableKey, stripeAccount],
   )
+  const sectionKey = stripeAccount ? `${publishableKey}::${stripeAccount}` : publishableKey
 
   return (
-    <Elements key={publishableKey} stripe={stripePromise}>
+    <Elements key={sectionKey} stripe={stripePromise}>
       <StripeCardSectionInner ref={ref} onCardError={onCardError} />
     </Elements>
   )
@@ -627,6 +673,7 @@ function OrderFlowInner({
   const [stripePublishableKey, setStripePublishableKey] = useState<string>(
     DEFAULT_STRIPE_PUBLISHABLE_KEY,
   )
+  const [stripeAccount, setStripeAccount] = useState<string | null>(null)
   const stripeCardSectionRef = useRef<StripeCardSectionHandle | null>(null)
 
   useEffect(() => {
@@ -708,6 +755,7 @@ function OrderFlowInner({
       return
     }
     setStripePublishableKey(resolveStripePublishableKey(paymentResponse, action) || '')
+    setStripeAccount(resolveStripeAccount(paymentResponse, action))
   }
 
   const formatAmount = (amount: number) => {
@@ -2750,6 +2798,7 @@ function OrderFlowInner({
                       <StripeCardSection
                         ref={stripeCardSectionRef}
                         publishableKey={stripePublishableKey}
+                        stripeAccount={stripeAccount}
                         onCardError={setCardError}
                       />
                     ) : paymentActionType === 'stripe_client_secret' || pspUsed === 'stripe' ? (
