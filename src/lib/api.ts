@@ -1,6 +1,10 @@
 // Centralized API helpers for calling the Pivota Agent Gateway and Accounts API
 // All UI components should import functions from here instead of using fetch directly.
-import { getCheckoutTokenFromBrowser, persistCheckoutToken } from '@/lib/checkoutToken'
+import {
+  getCheckoutContextFromBrowser,
+  normalizeCheckoutSource,
+  persistCheckoutContext,
+} from '@/lib/checkoutToken'
 import { ensureAuroraSession, shouldUseAuroraAutoExchange } from '@/lib/auroraOrdersAuth'
 
 // Point to the public Agent Gateway by default; override via NEXT_PUBLIC_API_URL if needed.
@@ -23,6 +27,14 @@ const DIRECT_CHECKOUT_INVOKE_URL = String(
     'https://pivota-agent-production.up.railway.app/agent/shop/v1/invoke',
 ).trim();
 const CHECKOUT_DIRECT_OPS = new Set(['preview_quote', 'create_order', 'submit_payment']);
+const CHECKOUT_CONTEXTUAL_OPS = new Set([
+  'preview_quote',
+  'create_order',
+  'submit_payment',
+  'confirm_payment',
+  'get_order_status',
+]);
+type CanonicalCheckoutSource = 'creator_agent' | 'shopping_agent';
 
 function clampSearchLimit(value: unknown, fallback: number): number {
   const n = Number(value);
@@ -704,12 +716,110 @@ function rememberRecentQuery(query: string) {
   writeRecentQueries(next);
 }
 
-function getCheckoutToken(): string | null {
-  return getCheckoutTokenFromBrowser()
+function getCheckoutContext() {
+  return getCheckoutContextFromBrowser()
 }
 
 function isCheckoutDirectOperation(operation: unknown): boolean {
   return CHECKOUT_DIRECT_OPS.has(String(operation || '').trim().toLowerCase());
+}
+
+function isCheckoutContextualOperation(operation: unknown): boolean {
+  return CHECKOUT_CONTEXTUAL_OPS.has(String(operation || '').trim().toLowerCase())
+}
+
+function getCanonicalCheckoutSource(raw: unknown): CanonicalCheckoutSource | null {
+  const normalized = normalizeCheckoutSource(raw)
+  if (normalized === 'creator_agent' || normalized === 'shopping_agent') {
+    return normalized
+  }
+  return null
+}
+
+function getDefaultGatewaySource(): string {
+  return getCanonicalCheckoutSource(process.env.NEXT_PUBLIC_GATEWAY_SOURCE || 'shopping_agent') || 'shopping_agent'
+}
+
+function resolveGatewaySource(args: {
+  operation: unknown
+  requestMetadata: Record<string, any>
+  checkoutContext: { token: string | null; source: string | null }
+}): string {
+  const explicitSource = getCanonicalCheckoutSource(args.requestMetadata?.source)
+  if (explicitSource) return explicitSource
+
+  if (isCheckoutContextualOperation(args.operation)) {
+    const checkoutSource = getCanonicalCheckoutSource(args.checkoutContext?.source)
+    if (checkoutSource) return checkoutSource
+  }
+
+  return getDefaultGatewaySource()
+}
+
+function buildCheckoutOrderMetadata(args: {
+  metadata?: Record<string, any>
+  resolvedSource: string
+}): Record<string, any> {
+  const metadata = isPlainObject(args.metadata) ? { ...args.metadata } : {}
+  const rawSource = String(metadata.source || '').trim()
+  const canonicalSource = getCanonicalCheckoutSource(rawSource)
+  const rawUiSource = String(metadata.ui_source || '').trim()
+  const uiSource = rawUiSource || (!canonicalSource && rawSource ? rawSource : '') || 'checkout_ui'
+
+  return {
+    ...metadata,
+    source: canonicalSource || args.resolvedSource,
+    ui_source: uiSource,
+  }
+}
+
+function isCheckoutRestartRequiredError(args: {
+  code?: string | null
+  details?: any
+  message?: string | null
+}): boolean {
+  const normalizedCode = String(args.code || '').trim().toUpperCase()
+  if (
+    normalizedCode === 'CHECKOUT_RESTART_REQUIRED' ||
+    normalizedCode === 'CHECKOUT_CONTEXT_MISMATCH' ||
+    normalizedCode === 'CHECKOUT_TOKEN_INVALID' ||
+    normalizedCode === 'CHECKOUT_TOKEN_EXPIRED' ||
+    normalizedCode === 'INVALID_CHECKOUT_TOKEN' ||
+    normalizedCode === 'TOKEN_AGENT_MISMATCH' ||
+    normalizedCode === 'TOKEN_SOURCE_MISMATCH'
+  ) {
+    return true
+  }
+
+  const detailText = (() => {
+    if (!args.details) return ''
+    if (typeof args.details === 'string') return args.details
+    try {
+      return JSON.stringify(args.details)
+    } catch {
+      return String(args.details)
+    }
+  })()
+  const combined = `${String(args.message || '')} ${detailText}`.toLowerCase()
+
+  return (
+    combined.includes('checkout token') &&
+    (combined.includes('mismatch') ||
+      combined.includes('invalid') ||
+      combined.includes('expired') ||
+      combined.includes('stale'))
+  ) || (
+    combined.includes('creator_agent') &&
+    combined.includes('shopping_agent') &&
+    combined.includes('mismatch')
+  )
+}
+
+function getCheckoutRestartMessage(source: string): string {
+  if (source === 'creator_agent') {
+    return 'This checkout link is invalid or expired. Please restart from the creator entrypoint to continue.'
+  }
+  return 'This checkout link is invalid or expired. Please restart checkout to continue.'
 }
 
 function extractIntentItemsFromInvokeBody(body: InvokeBody): Array<Record<string, any>> {
@@ -775,13 +885,14 @@ async function mintCheckoutSessionToken(args: {
 }): Promise<string | null> {
   const intentItems = extractIntentItemsFromInvokeBody(args.body);
   if (!intentItems.length) return null;
+  const source = normalizeCheckoutSource(args.metadata?.source) || getDefaultGatewaySource()
   try {
     const res = await fetch('/api/checkout/session', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         items: intentItems,
-        source: args.metadata?.source || 'shopping-agent-ui',
+        source,
         market: args.metadata?.market || args.body?.payload?.market || undefined,
         locale: args.metadata?.locale || args.body?.payload?.locale || undefined,
       }),
@@ -790,7 +901,7 @@ async function mintCheckoutSessionToken(args: {
     const json = await res.json().catch(() => null);
     const token = String(json?.checkout_token || '').trim();
     if (!token) return null;
-    persistCheckoutToken(token);
+    persistCheckoutContext({ token, source });
     return token;
   } catch {
     return null;
@@ -847,10 +958,8 @@ async function callGateway(body: InvokeBody, options: GatewayCallOptions = {}) {
   // If API_BASE is our same-origin proxy (/api/gateway), hit it directly; otherwise append the invoke path.
   const isProxy = API_BASE.startsWith('/api/gateway');
   const url = isProxy ? API_BASE : `${API_BASE}/agent/shop/v1/invoke`;
-  let checkoutToken = getCheckoutToken();
-  // Lock the "shopping agent retrieval contract" for reproducible evaluation.
-  // Even if the backend doesn't use these fields yet, we always send them.
-  const gatewaySource = process.env.NEXT_PUBLIC_GATEWAY_SOURCE || 'shopping_agent';
+  const checkoutContext = getCheckoutContext()
+  let checkoutToken = checkoutContext.token
   const defaultScope = getDefaultShoppingScope();
   const requestMetadata = isPlainObject(body.metadata) ? body.metadata : {};
   const scopeOverride = isPlainObject(requestMetadata.scope) ? requestMetadata.scope : {};
@@ -868,6 +977,11 @@ async function callGateway(body: InvokeBody, options: GatewayCallOptions = {}) {
     evalFromRuntime || evalFromCaller
       ? ({ ...(evalFromRuntime || {}), ...(evalFromCaller || {}) } as ShoppingEvalMeta)
       : null;
+  const resolvedSource = resolveGatewaySource({
+    operation: body?.operation,
+    requestMetadata,
+    checkoutContext,
+  })
 
   const requestBody: InvokeBody = {
     ...body,
@@ -880,8 +994,8 @@ async function callGateway(body: InvokeBody, options: GatewayCallOptions = {}) {
       },
       entry: entryOverride || inferredEntry,
       ...(evalMerged ? { eval: evalMerged } : {}),
-      // Never allow callers to override the source in this UI.
-      source: gatewaySource,
+      ui_source: requestMetadata.ui_source || 'shopping-agent-ui',
+      source: resolvedSource,
     },
   };
 
@@ -975,6 +1089,21 @@ async function callGateway(body: InvokeBody, options: GatewayCallOptions = {}) {
     });
     if (friendly) {
       err.message = friendly;
+    }
+
+    if (
+      isCheckoutRestartRequiredError({
+        code: err.code,
+        details,
+        message: messageCandidate,
+      })
+    ) {
+      err.code = 'CHECKOUT_RESTART_REQUIRED'
+      err.message = getCheckoutRestartMessage(resolvedSource)
+      persistCheckoutContext({
+        token: null,
+        source: normalizeCheckoutSource(checkoutContext.source) || resolvedSource,
+      })
     }
     throw err;
   }
@@ -2011,10 +2140,22 @@ export async function createOrder(orderData: {
   selected_delivery_option?: any;
   metadata?: Record<string, any>;
 }) {
+  const checkoutContext = getCheckoutContext()
+  const resolvedSource = resolveGatewaySource({
+    operation: 'create_order',
+    requestMetadata: {},
+    checkoutContext,
+  })
   const data = await callGateway({
     operation: 'create_order',
     payload: {
-      order: orderData,
+      order: {
+        ...orderData,
+        metadata: buildCheckoutOrderMetadata({
+          metadata: orderData.metadata,
+          resolvedSource,
+        }),
+      },
     },
   });
 

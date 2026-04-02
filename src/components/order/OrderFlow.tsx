@@ -333,6 +333,11 @@ function isInventoryUnavailable(err: any): boolean {
   return code === 'OUT_OF_STOCK' || code === 'INSUFFICIENT_INVENTORY'
 }
 
+function isCheckoutRestartRequired(err: any): boolean {
+  const code = String(err?.code || '').trim().toUpperCase()
+  return code === 'CHECKOUT_RESTART_REQUIRED'
+}
+
 function extractInventoryIssue(err: any): {
   variant_id?: string
   requested_quantity?: number
@@ -409,6 +414,7 @@ function OrderFlowInner({
   const [quote, setQuote] = useState<QuotePreview | null>(null)
   const [selectedDeliveryOption, setSelectedDeliveryOption] = useState<any>(null)
   const [quotePending, setQuotePending] = useState(false)
+  const [checkoutFailure, setCheckoutFailure] = useState<{ message: string } | null>(null)
   const [orderDebug, setOrderDebug] = useState<{
     order_id?: string | null
     resolved_offer_id?: string | null
@@ -836,7 +842,7 @@ function OrderFlowInner({
         ...(jobId ? { job_id: jobId } : {}),
         ...(market ? { market } : {}),
         ...(locale ? { locale } : {}),
-        source: 'checkout_ui',
+        ui_source: 'checkout_ui',
       },
       items: items.map((item) => {
         const variantId = getVariantIdForItem(item)
@@ -1192,6 +1198,15 @@ function OrderFlowInner({
       })
       .catch((err: any) => {
         if (paymentInitRunIdRef.current !== runId) return
+        if (isCheckoutRestartRequired(err)) {
+          setCheckoutFailure({
+            message:
+              String(err?.message || '').trim() ||
+              'This checkout link is invalid or expired. Please restart checkout to continue.',
+          })
+          setPaymentInitError(null)
+          return
+        }
         const msg = String(err?.message || '').trim() || 'Failed to prepare payment'
         setPaymentInitError(msg)
       })
@@ -1363,6 +1378,7 @@ function OrderFlowInner({
       return
     }
     try {
+      setCheckoutFailure(null)
       setIsProcessing(true)
       // Reset any existing order if shipping changes.
       setCreatedOrderId('')
@@ -1389,6 +1405,14 @@ function OrderFlowInner({
       setStep('payment')
     } catch (err: any) {
       console.error('Create order error:', err)
+      if (isCheckoutRestartRequired(err)) {
+        const message =
+          String(err?.message || '').trim() ||
+          'This checkout link is invalid or expired. Please restart checkout to continue.'
+        setCheckoutFailure({ message })
+        toast.error(message)
+        return
+      }
       const code = String(err?.code || '').trim().toUpperCase()
       const fallback =
         code === 'TEMPORARY_UNAVAILABLE'
@@ -1407,6 +1431,7 @@ function OrderFlowInner({
     setIsProcessing(true)
     setCardError('')
     setPaymentInitError(null)
+    setCheckoutFailure(null)
     
     try {
       if (!skipEmailVerification && !user && verifiedEmail !== shipping.email.trim()) {
@@ -1663,6 +1688,14 @@ function OrderFlowInner({
       }
     } catch (error: any) {
       console.error('Payment error:', error)
+      if (isCheckoutRestartRequired(error)) {
+        const message =
+          String(error?.message || '').trim() ||
+          'This checkout link is invalid or expired. Please restart checkout to continue.'
+        setCheckoutFailure({ message })
+        toast.error(message)
+        return
+      }
       const code = String(error?.code || '').trim().toUpperCase()
       const isActionRequired = isInventoryUnavailable(error)
       const isSystem =
@@ -1724,6 +1757,39 @@ function OrderFlowInner({
           })}
         </div>
       </div>
+
+      {checkoutFailure ? (
+        <div className="mb-4 rounded-[22px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+          <p className="font-semibold text-amber-900">Checkout needs to be restarted</p>
+          <p className="mt-1 text-amber-800">{checkoutFailure.message}</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                if (onCancel) {
+                  onCancel()
+                  return
+                }
+                if (typeof window !== 'undefined' && window.history.length > 1) {
+                  router.back()
+                  return
+                }
+                router.push('/')
+              }}
+              className="rounded-[16px] bg-amber-700 px-4 py-2 text-sm font-medium text-white transition hover:bg-amber-800"
+            >
+              Restart checkout
+            </button>
+            <button
+              type="button"
+              onClick={() => setCheckoutFailure(null)}
+              className="rounded-[16px] border border-amber-300 bg-white px-4 py-2 text-sm font-medium text-amber-900 transition hover:bg-amber-100"
+            >
+              Stay here
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       {/* Step Content */}
       {step === 'shipping' && (

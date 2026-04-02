@@ -1,5 +1,11 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { getCheckoutTokenFromBrowser, persistCheckoutToken } from './checkoutToken'
+import {
+  getCheckoutContextFromBrowser,
+  getCheckoutSourceFromBrowser,
+  getCheckoutTokenFromBrowser,
+  persistCheckoutContext,
+  persistCheckoutToken,
+} from './checkoutToken'
 
 describe('checkoutToken helpers', () => {
   beforeEach(() => {
@@ -7,23 +13,35 @@ describe('checkoutToken helpers', () => {
     window.localStorage.clear()
   })
 
-  it('uses query token and persists to both storages', () => {
+  it('uses query token/source and persists both to both storages', () => {
     const token = 'v1.query.payload'
-    const got = getCheckoutTokenFromBrowser(`?checkout_token=${encodeURIComponent(token)}`)
+    const got = getCheckoutContextFromBrowser(
+      `?checkout_token=${encodeURIComponent(token)}&source=creator_agent`,
+    )
 
-    expect(got).toBe(token)
+    expect(got).toEqual({
+      token,
+      source: 'creator_agent',
+    })
     expect(window.sessionStorage.getItem('pivota_checkout_token')).toBe(token)
     expect(window.localStorage.getItem('pivota_checkout_token')).toBe(token)
+    expect(window.sessionStorage.getItem('pivota_checkout_source')).toBe('creator_agent')
+    expect(window.localStorage.getItem('pivota_checkout_source')).toBe('creator_agent')
   })
 
-  it('falls back to localStorage and backfills sessionStorage', () => {
+  it('falls back to localStorage and backfills sessionStorage for token and source', () => {
     const token = 'v1.local.payload'
     window.localStorage.setItem('pivota_checkout_token', token)
+    window.localStorage.setItem('pivota_checkout_source', 'creator_agent')
 
-    const got = getCheckoutTokenFromBrowser('')
+    const got = getCheckoutContextFromBrowser('')
 
-    expect(got).toBe(token)
+    expect(got).toEqual({
+      token,
+      source: 'creator_agent',
+    })
     expect(window.sessionStorage.getItem('pivota_checkout_token')).toBe(token)
+    expect(window.sessionStorage.getItem('pivota_checkout_source')).toBe('creator_agent')
   })
 
   it('ignores empty tokens', () => {
@@ -32,5 +50,29 @@ describe('checkoutToken helpers', () => {
     expect(got).toBeNull()
     expect(window.sessionStorage.getItem('pivota_checkout_token')).toBeNull()
     expect(window.localStorage.getItem('pivota_checkout_token')).toBeNull()
+  })
+
+  it('clears stale source when a new query token arrives without creator context', () => {
+    persistCheckoutContext({
+      token: 'v1.old.payload',
+      source: 'creator_agent',
+    })
+
+    const got = getCheckoutContextFromBrowser('?checkout_token=v1.new.payload')
+
+    expect(got).toEqual({
+      token: 'v1.new.payload',
+      source: null,
+    })
+    expect(getCheckoutSourceFromBrowser('')).toBeNull()
+  })
+
+  it('keeps creator source after navigation once it has been persisted', () => {
+    getCheckoutContextFromBrowser('?checkout_token=v1.creator.payload&source=creator_agent')
+
+    window.history.replaceState({}, '', '/order')
+
+    expect(getCheckoutTokenFromBrowser('')).toBe('v1.creator.payload')
+    expect(getCheckoutSourceFromBrowser('')).toBe('creator_agent')
   })
 })

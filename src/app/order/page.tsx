@@ -7,7 +7,10 @@ import OrderFlow from '@/components/order/OrderFlow'
 import { ArrowLeft } from 'lucide-react'
 import { safeReturnUrl, withReturnParams } from '@/lib/returnUrl'
 import { setMerchantId } from '@/lib/api'
-import { getCheckoutTokenFromBrowser, persistCheckoutToken } from '@/lib/checkoutToken'
+import {
+  getCheckoutContextFromBrowser,
+  normalizeCheckoutSource,
+} from '@/lib/checkoutToken'
 
 interface OrderItem {
   product_id: string
@@ -53,8 +56,12 @@ function OrderContent() {
       searchParams.get('returnUrl') ||
       searchParams.get('return_url'),
   )
-  const source =
-    (searchParams.get('source') || searchParams.get('src') || '').trim().toLowerCase()
+  const [checkoutSource, setCheckoutSource] = useState<string | null>(
+    normalizeCheckoutSource(
+      searchParams.get('source') || searchParams.get('src') || searchParams.get('entry'),
+    ),
+  )
+  const source = checkoutSource || ''
   const entryParam = (searchParams.get('entry') || '').trim() || null
   const embedParam = (searchParams.get('embed') || '').trim() || null
   const parentOriginParam =
@@ -107,13 +114,11 @@ function OrderContent() {
   }
 
   useEffect(() => {
-    if (checkoutTokenFromQuery) {
-      persistCheckoutToken(checkoutTokenFromQuery)
-      setCheckoutToken(checkoutTokenFromQuery)
-      return
-    }
-    setCheckoutToken(getCheckoutTokenFromBrowser())
-  }, [checkoutTokenFromQuery])
+    const rawSearch = searchParams.toString()
+    const context = getCheckoutContextFromBrowser(rawSearch ? `?${rawSearch}` : '')
+    setCheckoutToken(context.token)
+    setCheckoutSource(context.source)
+  }, [checkoutTokenFromQuery, searchParams])
 
   useEffect(() => {
     // In a real app, this would come from cart state or API

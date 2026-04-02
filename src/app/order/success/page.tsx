@@ -6,7 +6,7 @@ import { Check, Package, ArrowRight, LoaderCircle } from 'lucide-react'
 import { confirmOrderPayment, getOrderStatus } from '@/lib/api'
 import { resolveExternalAgentHomeUrl, safeReturnUrl, withReturnParams } from '@/lib/returnUrl'
 import { isAuroraEmbedMode, postRequestCloseToParent } from '@/lib/auroraEmbed'
-import { getCheckoutTokenFromBrowser, persistCheckoutToken } from '@/lib/checkoutToken'
+import { getCheckoutContextFromBrowser } from '@/lib/checkoutToken'
 import {
   confirmPaymentWithRetry,
   pollOrderStatusUntilSettled,
@@ -100,12 +100,9 @@ function SuccessContent() {
   const isAwaitingConfirmedPayment = shouldFinalizeOnLoad && finalizationState !== 'idle'
 
   useEffect(() => {
-    if (checkoutTokenFromQuery) {
-      persistCheckoutToken(checkoutTokenFromQuery)
-      setCheckoutToken(checkoutTokenFromQuery)
-      return
-    }
-    setCheckoutToken(getCheckoutTokenFromBrowser())
+    const rawSearch = searchParams.toString()
+    const context = getCheckoutContextFromBrowser(rawSearch ? `?${rawSearch}` : '')
+    setCheckoutToken(context.token)
   }, [checkoutTokenFromQuery, searchParams])
 
   const loadBuyerVaultSnapshot = useCallback(async (): Promise<BuyerVaultSnapshot> => {

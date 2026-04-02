@@ -11,7 +11,7 @@ async function flushAsyncWork() {
 
 const pushMock = vi.fn();
 const postRequestCloseToParentMock = vi.fn();
-const getCheckoutTokenFromBrowserMock = vi.fn();
+const getCheckoutContextFromBrowserMock = vi.fn();
 const confirmOrderPaymentMock = vi.fn();
 const getOrderStatusMock = vi.fn();
 const confirmPaymentWithRetryMock = vi.fn();
@@ -36,8 +36,7 @@ vi.mock('@/lib/auroraEmbed', () => ({
 }));
 
 vi.mock('@/lib/checkoutToken', () => ({
-  getCheckoutTokenFromBrowser: () => getCheckoutTokenFromBrowserMock(),
-  persistCheckoutToken: vi.fn(),
+  getCheckoutContextFromBrowser: () => getCheckoutContextFromBrowserMock(),
 }));
 
 vi.mock('@/lib/api', () => ({
@@ -57,13 +56,13 @@ describe('Order success action layout', () => {
     embedModeValue = false;
     pushMock.mockReset();
     postRequestCloseToParentMock.mockReset();
-    getCheckoutTokenFromBrowserMock.mockReset();
+    getCheckoutContextFromBrowserMock.mockReset();
     confirmOrderPaymentMock.mockReset();
     getOrderStatusMock.mockReset();
     confirmPaymentWithRetryMock.mockReset();
     pollOrderStatusUntilSettledMock.mockReset();
     fetchMock.mockReset();
-    getCheckoutTokenFromBrowserMock.mockReturnValue(null);
+    getCheckoutContextFromBrowserMock.mockReturnValue({ token: null, source: null });
     confirmPaymentWithRetryMock.mockResolvedValue({
       status: 'confirmed',
       attempts: 1,
@@ -105,7 +104,7 @@ describe('Order success action layout', () => {
     const trackButton = await screen.findByRole('button', { name: /track your order/i });
     const continueButton = screen.getByRole('button', { name: /continue shopping/i });
     const detailsSummary = screen.getByText(/order details & settings/i);
-    const visibleDetailsBody = screen.getByText(/save for next time/i);
+    const visibleDetailsBody = screen.getByText(/save address for next time/i);
 
     expect(trackButton).toBeInTheDocument();
     expect(continueButton).toBeInTheDocument();
@@ -121,7 +120,7 @@ describe('Order success action layout', () => {
 
     const returnButton = await screen.findByRole('button', { name: /return to previous page/i });
     const detailsSummary = screen.getByText(/order details & settings/i);
-    const visibleDetailsBody = screen.getByText(/save for next time/i);
+    const visibleDetailsBody = screen.getByText(/save address for next time/i);
 
     await waitFor(() => {
       expect(screen.queryByRole('button', { name: /track your order/i })).toBeNull();
