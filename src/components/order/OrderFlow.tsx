@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import {
   ShoppingCart,
   CreditCard,
@@ -29,7 +29,7 @@ import { confirmPaymentWithRetry } from '@/lib/checkoutFinalization'
 import { useCartStore } from '@/store/cartStore'
 import { toast } from 'sonner'
 import { useRouter } from 'next/navigation'
-import { loadStripe } from '@stripe/stripe-js'
+import { loadStripe, type Stripe } from '@stripe/stripe-js'
 import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js'
 import { useAuthStore } from '@/store/authStore'
 import '@adyen/adyen-web/dist/adyen.css'
@@ -113,12 +113,141 @@ type PrefetchedPaymentInit = {
 
 type CheckoutStep = 'shipping' | 'payment' | 'confirm'
 
-const publishableKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || ''
-const stripePromise = publishableKey ? loadStripe(publishableKey) : Promise.resolve(null)
+const DEFAULT_STRIPE_PUBLISHABLE_KEY =
+  process.env.NODE_ENV === 'production'
+    ? ''
+    : process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || ''
 const ADYEN_CLIENT_KEY =
   process.env.NEXT_PUBLIC_ADYEN_CLIENT_KEY ||
   'test_RMFUADZPQBBYJIWI56KVOQSNUUT657ML' // public test key; replace in env for prod
 const FORCE_PSP = process.env.NEXT_PUBLIC_FORCE_PSP
+const stripePromiseCache = new Map<string, Promise<Stripe | null>>()
+
+type StripeConfirmationResult = {
+  error?: string
+  status?: string
+  paymentIntentId?: string
+}
+
+type StripeCardSectionHandle = {
+  confirm: (clientSecret: string) => Promise<StripeConfirmationResult>
+}
+
+function getStripePromiseForKey(publishableKey: string): Promise<Stripe | null> {
+  const normalized = String(publishableKey || '').trim()
+  if (!normalized) return Promise.resolve(null)
+  if (!stripePromiseCache.has(normalized)) {
+    stripePromiseCache.set(normalized, loadStripe(normalized))
+  }
+  return stripePromiseCache.get(normalized) || Promise.resolve(null)
+}
+
+function readPublicKey(value: unknown): string | null {
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    return trimmed || null
+  }
+  return null
+}
+
+export function resolveStripePublishableKey(paymentResponse: any, fallbackAction: any = null): string | null {
+  const candidates = [
+    fallbackAction?.public_key,
+    fallbackAction?.raw?.public_key,
+    paymentResponse?.payment_action?.public_key,
+    paymentResponse?.payment_action?.raw?.public_key,
+    paymentResponse?.payment?.payment_action?.public_key,
+    paymentResponse?.payment?.payment_action?.raw?.public_key,
+    paymentResponse?.public_key,
+    paymentResponse?.payment?.public_key,
+  ]
+
+  for (const candidate of candidates) {
+    const resolved = readPublicKey(candidate)
+    if (resolved) return resolved
+  }
+
+  return DEFAULT_STRIPE_PUBLISHABLE_KEY || null
+}
+
+const StripeCardSectionInner = forwardRef<
+  StripeCardSectionHandle,
+  { onCardError: (message: string) => void }
+>(function StripeCardSectionInner({ onCardError }, ref) {
+  const stripe = useStripe()
+  const elements = useElements()
+  const [localCardError, setLocalCardError] = useState('')
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      async confirm(clientSecret: string) {
+        if (!stripe || !elements) {
+          return { error: 'Payment form is not ready. Please refresh and try again.' }
+        }
+
+        const cardElement = elements.getElement(CardElement)
+        if (!cardElement) {
+          return { error: 'Please enter your card details to pay.' }
+        }
+
+        const result = await stripe.confirmCardPayment(clientSecret, {
+          payment_method: {
+            card: cardElement,
+          },
+        })
+
+        if (result.error) {
+          const message = result.error.message || 'Payment failed'
+          setLocalCardError(message)
+          onCardError(message)
+          return { error: message }
+        }
+
+        setLocalCardError('')
+        onCardError('')
+        return {
+          status: result.paymentIntent?.status,
+          paymentIntentId: result.paymentIntent?.id,
+        }
+      },
+    }),
+    [elements, onCardError, stripe],
+  )
+
+  return (
+    <div className="rounded-[20px] border border-slate-200 bg-white p-3 sm:p-4">
+      <label className="text-[13px] font-medium text-slate-700 sm:text-sm">Card Details</label>
+      <div className="mt-2 rounded-[16px] border border-slate-200 bg-slate-50 p-3">
+        <CardElement
+          options={{ hidePostalCode: true }}
+          onChange={(event: any) => {
+            const message = String(event?.error?.message || '').trim()
+            setLocalCardError(message)
+            onCardError(message)
+          }}
+        />
+      </div>
+      {localCardError && <p className="mt-2 text-sm text-red-600">{localCardError}</p>}
+    </div>
+  )
+})
+
+const StripeCardSection = forwardRef<
+  StripeCardSectionHandle,
+  { publishableKey: string; onCardError: (message: string) => void }
+>(function StripeCardSection({ publishableKey, onCardError }, ref) {
+  const stripePromise = useMemo(
+    () => getStripePromiseForKey(publishableKey),
+    [publishableKey],
+  )
+
+  return (
+    <Elements key={publishableKey} stripe={stripePromise}>
+      <StripeCardSectionInner ref={ref} onCardError={onCardError} />
+    </Elements>
+  )
+})
 
 const SHIPPING_COUNTRY_GROUPS: Array<{
   label: string
@@ -382,8 +511,6 @@ function OrderFlowInner({
   returnUrl,
 }: OrderFlowProps) {
   const router = useRouter()
-  const stripe = useStripe()
-  const elements = useElements()
   const { user, setSession } = useAuthStore()
   const clearCart = useCartStore(state => state.clearCart)
   const [step, setStep] = useState<CheckoutStep>('shipping')
@@ -428,6 +555,10 @@ function OrderFlowInner({
   const [prefetchedPaymentRes, setPrefetchedPaymentRes] = useState<PrefetchedPaymentInit | null>(null)
   const [paymentInitLoading, setPaymentInitLoading] = useState(false)
   const [paymentInitError, setPaymentInitError] = useState<string | null>(null)
+  const [stripePublishableKey, setStripePublishableKey] = useState<string>(
+    DEFAULT_STRIPE_PUBLISHABLE_KEY,
+  )
+  const stripeCardSectionRef = useRef<StripeCardSectionHandle | null>(null)
 
   useEffect(() => {
     const normalized = normalizeCountryCode(shipping.country)
@@ -478,6 +609,17 @@ function OrderFlowInner({
     if (!cur || amountMinor == null) return null
     return `${quoteId}:${cur}:${amountMinor}`
   }, [currency, quote?.quote_id, total])
+
+  const syncStripeRuntime = (paymentResponse: any, action: any, detectedPsp?: string | null) => {
+    const resolvedPsp = detectedPsp || action?.psp || pspUsed || null
+    const isStripeRuntime =
+      action?.type === 'stripe_client_secret' || !resolvedPsp || resolvedPsp === 'stripe'
+    if (!isStripeRuntime) {
+      setStripePublishableKey('')
+      return
+    }
+    setStripePublishableKey(resolveStripePublishableKey(paymentResponse, action) || '')
+  }
 
   const formatAmount = (amount: number) => {
     const code = String(currency || 'USD').toUpperCase()
@@ -937,6 +1079,7 @@ function OrderFlowInner({
     if (orderPsp) {
       setPspUsed(orderPsp)
     }
+    syncStripeRuntime(orderResponse, orderPaymentAction, orderPsp)
 
     const allowRedirect = options.allowRedirect !== false
     if (allowRedirect && orderPaymentAction?.type === 'redirect_url' && orderPaymentAction?.url) {
@@ -1164,6 +1307,7 @@ function OrderFlowInner({
     setPrefetchedPaymentRes(null)
     setPaymentInitLoading(false)
     setPaymentInitError(null)
+    setStripePublishableKey(DEFAULT_STRIPE_PUBLISHABLE_KEY)
   }, [step])
 
   useEffect(() => {
@@ -1194,7 +1338,9 @@ function OrderFlowInner({
         const action = extractPaymentAction(prefetched.paymentResponse, initialPaymentAction)
         setPrefetchedPaymentRes(prefetched)
         setPaymentActionType(action?.type || null)
-        setPspUsed(detectPaymentPsp(prefetched.paymentResponse, action))
+        const detectedPsp = detectPaymentPsp(prefetched.paymentResponse, action)
+        setPspUsed(detectedPsp)
+        syncStripeRuntime(prefetched.paymentResponse, action, detectedPsp)
       })
       .catch((err: any) => {
         if (paymentInitRunIdRef.current !== runId) return
@@ -1559,6 +1705,7 @@ function OrderFlowInner({
         setPaymentActionType(action?.type || null)
         const detectedPsp = detectPaymentPsp(paymentResponse, action)
         setPspUsed(detectedPsp || pspUsed || null)
+        syncStripeRuntime(paymentResponse, action, detectedPsp || pspUsed || null)
 
         const redirectUrl =
           action?.url ||
@@ -1636,28 +1783,23 @@ function OrderFlowInner({
 
         const isStripePsp = !detectedPsp || detectedPsp === 'stripe'
         if (clientSecret && isStripePsp) {
-          if (!stripe || !elements) {
+          if (!stripePublishableKey) {
+            throw new Error(
+              'Stripe public key is missing for this merchant. Reconnect Stripe and try again.',
+            )
+          }
+          const stripeResult = await stripeCardSectionRef.current?.confirm(clientSecret)
+          if (!stripeResult) {
             throw new Error('Payment form is not ready. Please refresh and try again.')
           }
-          const cardElement = elements.getElement(CardElement)
-          if (!cardElement) {
-            throw new Error('Please enter your card details to pay.')
-          }
-
-          const result = await stripe.confirmCardPayment(clientSecret, {
-            payment_method: {
-              card: cardElement,
-            },
-          })
-
-          if (result.error) {
-            setCardError(result.error.message || 'Payment failed')
+          if (stripeResult.error) {
+            setCardError(stripeResult.error)
             throw new Error('Payment failed. Please check your card details or try again.')
           }
 
-          const status = result.paymentIntent?.status
+          const status = stripeResult.status
           if (status === 'succeeded') {
-            await completeCheckout(result.paymentIntent?.id || '')
+            await completeCheckout(stripeResult.paymentIntentId || '')
             return
           }
           if (status === 'requires_action') {
@@ -2421,15 +2563,22 @@ function OrderFlowInner({
                       </div>
                     </div>
 
-                    {publishableKey && (
-                      <div className="rounded-[20px] border border-slate-200 bg-white p-3 sm:p-4">
-                        <label className="text-[13px] font-medium text-slate-700 sm:text-sm">Card Details</label>
-                        <div className="mt-2 rounded-[16px] border border-slate-200 bg-slate-50 p-3">
-                          <CardElement options={{ hidePostalCode: true }} />
-                        </div>
-                        {cardError && <p className="mt-2 text-sm text-red-600">{cardError}</p>}
+                    {stripePublishableKey ? (
+                      <StripeCardSection
+                        ref={stripeCardSectionRef}
+                        publishableKey={stripePublishableKey}
+                        onCardError={setCardError}
+                      />
+                    ) : paymentActionType === 'stripe_client_secret' || pspUsed === 'stripe' ? (
+                      <div className="rounded-[20px] border border-red-200 bg-red-50 p-3 sm:p-4">
+                        <p className="text-sm font-medium text-red-700">
+                          Stripe public key is missing for this merchant.
+                        </p>
+                        <p className="mt-1 text-xs text-red-600">
+                          Reconnect Stripe with the merchant live publishable key, then retry checkout.
+                        </p>
                       </div>
-                    )}
+                    ) : null}
                   </>
                 )}
               </div>
@@ -2547,10 +2696,5 @@ function OrderFlowInner({
 }
 
 export default function OrderFlow(props: OrderFlowProps) {
-  // Always provide Elements context so useStripe/useElements hooks don't throw.
-  return (
-    <Elements stripe={stripePromise}>
-      <OrderFlowInner {...props} />
-    </Elements>
-  )
+  return <OrderFlowInner {...props} />
 }
