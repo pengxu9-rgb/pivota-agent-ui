@@ -1115,6 +1115,30 @@ function OrderFlowInner({
     return new URL(successPath, window.location.origin).toString()
   }
 
+  const isHostedCheckoutRedirect =
+    paymentActionType === 'redirect_url' && pspUsed === 'pivota_hosted_checkout'
+  const isExternalRedirectPayment =
+    paymentActionType === 'redirect_url' && !isHostedCheckoutRedirect
+  const paymentProviderLabel =
+    pspUsed === 'adyen'
+      ? 'Adyen (hosted card form)'
+      : isHostedCheckoutRedirect
+        ? 'Pivota hosted checkout'
+        : pspUsed === 'stripe' || paymentActionType === 'stripe_client_secret'
+          ? 'Stripe (card payment)'
+          : isExternalRedirectPayment
+            ? 'Redirect checkout'
+            : 'Card payment'
+  const paymentButtonLabel = isProcessing
+    ? 'Processing...'
+    : paymentInitLoading
+      ? 'Preparing payment...'
+      : isHostedCheckoutRedirect
+        ? 'Continue to secure payment'
+        : isExternalRedirectPayment
+          ? 'Continue to merchant payment'
+          : `Pay ${formatAmount(total)}`
+
   const finalizeOrderAfterPayment = async (orderId: string): Promise<OrderCompletionOptions> => {
     const confirmation = await confirmPaymentWithRetry({
       orderId,
@@ -2389,7 +2413,7 @@ function OrderFlowInner({
                 <div className="text-[13px] text-slate-500">
                   <span>Payment provider: </span>
                   <span className="font-medium text-slate-900">
-                    {pspUsed === 'adyen' ? 'Adyen (hosted card form)' : 'Stripe (card payment)'}
+                    {paymentProviderLabel}
                   </span>
                 </div>
                 {paymentInitLoading && (
@@ -2563,7 +2587,20 @@ function OrderFlowInner({
                       </div>
                     </div>
 
-                    {stripePublishableKey ? (
+                    {isHostedCheckoutRedirect || isExternalRedirectPayment ? (
+                      <div className="rounded-[20px] border border-slate-200 bg-white p-3 sm:p-4">
+                        <p className="text-sm font-medium text-slate-900">
+                          {isHostedCheckoutRedirect
+                            ? 'Continue to the secure hosted checkout'
+                            : 'Continue to the merchant payment page'}
+                        </p>
+                        <p className="mt-1 text-xs text-slate-500">
+                          {isHostedCheckoutRedirect
+                            ? 'We will hand you off to the canonical hosted checkout token flow before any payment details are entered.'
+                            : 'We will redirect you to finish payment on the merchant payment surface.'}
+                        </p>
+                      </div>
+                    ) : stripePublishableKey ? (
                       <StripeCardSection
                         ref={stripeCardSectionRef}
                         publishableKey={stripePublishableKey}
@@ -2646,11 +2683,7 @@ function OrderFlowInner({
                   disabled={isProcessing || paymentInitLoading}
                   className="rounded-[18px] bg-green-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:bg-slate-300 lg:w-full"
                 >
-                  {isProcessing
-                    ? 'Processing...'
-                    : paymentInitLoading
-                      ? 'Preparing payment...'
-                      : `Pay ${formatAmount(total)}`}
+                  {paymentButtonLabel}
                 </button>
               </div>
             </div>
