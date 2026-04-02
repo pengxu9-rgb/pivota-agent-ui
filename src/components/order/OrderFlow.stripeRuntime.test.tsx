@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { resolveStripePublishableKey } from './OrderFlow'
+import { resolveStripeAccount, resolveStripePublishableKey } from './OrderFlow'
 
 describe('resolveStripePublishableKey', () => {
   it('prefers explicit payment action public key from the backend contract', () => {
@@ -32,5 +32,19 @@ describe('resolveStripePublishableKey', () => {
         null,
       ),
     ).toBe('pk_live_from_raw')
+  })
+
+  it('resolves connected account context from the backend contract', () => {
+    expect(
+      resolveStripeAccount(
+        {
+          payment_action: {
+            type: 'stripe_client_secret',
+            stripe_account: 'acct_live_123',
+          },
+        },
+        null,
+      ),
+    ).toBe('acct_live_123')
   })
 })
