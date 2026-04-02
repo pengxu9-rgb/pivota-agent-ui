@@ -28,7 +28,7 @@ import {
 import { confirmPaymentWithRetry } from '@/lib/checkoutFinalization'
 import { useCartStore } from '@/store/cartStore'
 import { toast } from 'sonner'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { loadStripe, type Stripe } from '@stripe/stripe-js'
 import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js'
 import { useAuthStore } from '@/store/authStore'
@@ -109,6 +109,13 @@ type PrefetchedPaymentInit = {
   orderId: string
   quoteId: string
   paymentResponse: any
+}
+
+type CreatedOrderPaymentSnapshot = {
+  orderId: string
+  paymentResponse: any
+  action: any
+  psp: string | null
 }
 
 type CheckoutStep = 'shipping' | 'payment' | 'confirm'
@@ -210,6 +217,24 @@ function assertSupportedPaymentSurface(
   if (isUnsupportedPivotaHostedCheckout(paymentResponse, action, detectedPsp)) {
     throw new Error(UNSUPPORTED_PIVOTA_HOSTED_CHECKOUT_MESSAGE)
   }
+}
+
+function isReusablePaymentAction(action: any): boolean {
+  if (!action || typeof action !== 'object') return false
+  const type = String(action.type || '').trim().toLowerCase()
+  if (type === 'redirect_url') return typeof action.url === 'string' && action.url.trim().length > 0
+  if (type === 'stripe_client_secret' || type === 'adyen_session' || type === 'checkout_session') {
+    return typeof action.client_secret === 'string' && action.client_secret.trim().length > 0
+  }
+  return false
+}
+
+function parseBooleanToken(value: string | null | undefined): boolean | null {
+  const token = String(value || '').trim().toLowerCase()
+  if (!token) return null
+  if (['1', 'true', 'yes', 'y', 'on'].includes(token)) return true
+  if (['0', 'false', 'no', 'n', 'off'].includes(token)) return false
+  return null
 }
 
 const StripeCardSectionInner = forwardRef<
@@ -553,6 +578,7 @@ function OrderFlowInner({
   returnUrl,
 }: OrderFlowProps) {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { user, setSession } = useAuthStore()
   const clearCart = useCartStore(state => state.clearCart)
   const [step, setStep] = useState<CheckoutStep>('shipping')
@@ -591,6 +617,7 @@ function OrderFlowInner({
     order_lines?: any[] | null
   } | null>(null)
   const [debugEnabled, setDebugEnabled] = useState(false)
+  const createdOrderPaymentRef = useRef<CreatedOrderPaymentSnapshot | null>(null)
   const paymentInitPromiseRef = useRef<Promise<PrefetchedPaymentInit> | null>(null)
   const paymentInitKeyRef = useRef<string | null>(null)
   const paymentInitRunIdRef = useRef(0)
@@ -651,6 +678,26 @@ function OrderFlowInner({
     if (!cur || amountMinor == null) return null
     return `${quoteId}:${cur}:${amountMinor}`
   }, [currency, quote?.quote_id, total])
+  const requestedPreferredPsp = useMemo(() => {
+    const raw = searchParams?.get('preferred_psp') || searchParams?.get('psp') || ''
+    const normalized = raw.trim().toLowerCase()
+    return ['stripe', 'adyen', 'checkout'].includes(normalized) ? normalized : null
+  }, [searchParams])
+  const enforceLiveReadiness = useMemo(() => {
+    const explicit = parseBooleanToken(searchParams?.get('enforce_live_readiness'))
+    if (explicit != null) return explicit
+    const allowTest = parseBooleanToken(searchParams?.get('allow_test_psp_surfaces'))
+    if (allowTest != null) return !allowTest
+    const mode = String(
+      searchParams?.get('payment_mode') || searchParams?.get('psp_mode') || '',
+    )
+      .trim()
+      .toLowerCase()
+    if (['test', 'sandbox', 'test_surface', 'allow_test_surfaces'].includes(mode)) {
+      return false
+    }
+    return true
+  }, [searchParams])
 
   const syncStripeRuntime = (paymentResponse: any, action: any, detectedPsp?: string | null) => {
     const resolvedPsp = detectedPsp || action?.psp || pspUsed || null
@@ -680,6 +727,16 @@ function OrderFlowInner({
   }
 
   const deliveryOptions = Array.isArray(quote?.delivery_options) ? quote?.delivery_options : []
+  const clearCreatedOrderPaymentSnapshot = () => {
+    createdOrderPaymentRef.current = null
+  }
+  const getReusableCreatedOrderPayment = (
+    orderId: string,
+  ): CreatedOrderPaymentSnapshot | null => {
+    const snapshot = createdOrderPaymentRef.current
+    if (!snapshot || snapshot.orderId !== orderId) return null
+    return isReusablePaymentAction(snapshot.action) ? snapshot : null
+  }
 
   const offerIdsInCart = useMemo(() => {
     return Array.from(
@@ -1027,6 +1084,12 @@ function OrderFlowInner({
         ...(market ? { market } : {}),
         ...(locale ? { locale } : {}),
         ui_source: 'checkout_ui',
+        ...(enforceLiveReadiness
+          ? {}
+          : {
+              enforce_live_readiness: false,
+              allow_test_psp_surfaces: true,
+            }),
       },
       items: items.map((item) => {
         const variantId = getVariantIdForItem(item)
@@ -1056,7 +1119,9 @@ function OrderFlowInner({
         postal_code: shipping.postal_code,
         phone: shipping.phone
       },
-      ...(FORCE_PSP ? { preferred_psp: FORCE_PSP } : {})
+      ...((requestedPreferredPsp || FORCE_PSP)
+        ? { preferred_psp: requestedPreferredPsp || FORCE_PSP }
+        : {})
     })
 
     // Minimal, token-safe debug logging (do not print payment client secrets / tokens).
@@ -1115,6 +1180,13 @@ function OrderFlowInner({
 
     assertSupportedPaymentSurface(orderResponse, orderPaymentAction, orderPsp)
 
+    createdOrderPaymentRef.current = {
+      orderId,
+      paymentResponse: orderResponse,
+      action: orderPaymentAction,
+      psp: orderPsp,
+    }
+
     if (orderPaymentAction) {
       setInitialPaymentAction(orderPaymentAction)
       setPaymentActionType(orderPaymentAction?.type || null)
@@ -1163,6 +1235,8 @@ function OrderFlowInner({
   const paymentProviderLabel =
     pspUsed === 'adyen'
       ? 'Adyen (hosted card form)'
+      : paymentActionType === 'checkout_session'
+        ? 'Checkout.com (session)'
       : pspUsed === 'stripe' || paymentActionType === 'stripe_client_secret'
           ? 'Stripe (card payment)'
           : isExternalRedirectPayment
@@ -1337,17 +1411,27 @@ function OrderFlowInner({
     })
 
     let paymentResponse: any
+    const createdOrderPayment = getReusableCreatedOrderPayment(orderId)
+    if (createdOrderPayment) {
+      paymentResponse = createdOrderPayment.paymentResponse
+    }
     try {
-      paymentResponse = await processPayment(buildPayload(workingQuote, orderId))
+      if (!paymentResponse) {
+        paymentResponse = await processPayment(buildPayload(workingQuote, orderId))
+      }
     } catch (err: any) {
       if (isQuoteDrift(err)) {
+        clearCreatedOrderPaymentSnapshot()
         setCreatedOrderId('')
         setInitialPaymentAction(null)
         setPaymentActionType(null)
         setPspUsed(null)
         workingQuote = await refreshQuoteWithRetry()
         orderId = await createOrderIfNeeded(workingQuote, { forceNew: true, allowRedirect: false })
-        paymentResponse = await processPayment(buildPayload(workingQuote, orderId))
+        const nextCreatedOrderPayment = getReusableCreatedOrderPayment(orderId)
+        paymentResponse =
+          nextCreatedOrderPayment?.paymentResponse ||
+          (await processPayment(buildPayload(workingQuote, orderId)))
       } else {
         throw err
       }
@@ -1368,6 +1452,7 @@ function OrderFlowInner({
     setPrefetchedPaymentRes(null)
     setPaymentInitLoading(false)
     setPaymentInitError(null)
+    clearCreatedOrderPaymentSnapshot()
     setStripePublishableKey(DEFAULT_STRIPE_PUBLISHABLE_KEY)
   }, [step])
 
@@ -1593,6 +1678,7 @@ function OrderFlowInner({
       setInitialPaymentAction(null)
       setPaymentActionType(null)
       setPspUsed(null)
+      clearCreatedOrderPaymentSnapshot()
       setAdyenMounted(false)
       paymentInitRunIdRef.current += 1
       paymentInitPromiseRef.current = null
@@ -1661,6 +1747,7 @@ function OrderFlowInner({
           setInitialPaymentAction(null)
           setPaymentActionType(null)
           setPspUsed(null)
+          clearCreatedOrderPaymentSnapshot()
         }
 
         // Step 1: Create order if not already created
@@ -1716,6 +1803,12 @@ function OrderFlowInner({
           }
         }
         if (!paymentResponse) {
+          const createdOrderPayment = getReusableCreatedOrderPayment(orderId)
+          if (createdOrderPayment) {
+            paymentResponse = createdOrderPayment.paymentResponse
+          }
+        }
+        if (!paymentResponse) {
           try {
             paymentResponse = await processPayment({
               order_id: orderId,
@@ -1737,13 +1830,16 @@ function OrderFlowInner({
               resetForRequote()
               quoteForPayment = await refreshQuoteWithRetry()
               orderId = await createOrderIfNeeded(quoteForPayment, { forceNew: true })
-              paymentResponse = await processPayment({
-                order_id: orderId,
-                total_amount: Number(quoteForPayment.pricing.total) || total,
-                currency: String(quoteForPayment.currency || currency || 'USD'),
-                payment_method: { type: 'card' },
-                return_url: buildPostPayReturnUrl(orderId),
-              })
+              const nextCreatedOrderPayment = getReusableCreatedOrderPayment(orderId)
+              paymentResponse =
+                nextCreatedOrderPayment?.paymentResponse ||
+                (await processPayment({
+                  order_id: orderId,
+                  total_amount: Number(quoteForPayment.pricing.total) || total,
+                  currency: String(quoteForPayment.currency || currency || 'USD'),
+                  payment_method: { type: 'card' },
+                  return_url: buildPostPayReturnUrl(orderId),
+                }))
             } else {
               throw err
             }
@@ -1842,6 +1938,12 @@ function OrderFlowInner({
           await mountAdyenDropIn({ orderId, action, paymentResponse })
           setIsProcessing(false)
           return
+        }
+
+        if (action?.type === 'checkout_session') {
+          throw new Error(
+            'Checkout.com payment sessions are not yet supported in shopping UI. Route this checkout to Stripe or Adyen.',
+          )
         }
 
         const isStripePsp = !detectedPsp || detectedPsp === 'stripe'
@@ -2612,6 +2714,15 @@ function OrderFlowInner({
                         The secure Adyen payment form is initializing…
                       </p>
                     )}
+                  </div>
+                ) : paymentActionType === 'checkout_session' ? (
+                  <div className="rounded-[20px] border border-amber-200 bg-amber-50 p-3 sm:p-4">
+                    <p className="text-sm font-medium text-amber-900">
+                      Checkout.com embedded payment is not available in shopping UI yet.
+                    </p>
+                    <p className="mt-1 text-xs text-amber-800">
+                      Route this checkout to Stripe or Adyen, or use an internal canary path for PSP-only testing.
+                    </p>
                   </div>
                 ) : (
                   <>
