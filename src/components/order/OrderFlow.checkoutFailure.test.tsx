@@ -205,4 +205,77 @@ describe('OrderFlow checkout restart state', () => {
     })
     expect(orderPayload?.metadata?.source).toBeUndefined()
   })
+
+  it('blocks unsupported pivota hosted checkout payment surfaces', async () => {
+    previewQuoteMock.mockResolvedValueOnce({
+      quote_id: 'quote_123',
+      currency: 'USD',
+      pricing: {
+        subtotal: 24,
+        shipping_fee: 0,
+        tax: 0,
+        total: 24,
+      },
+      line_items: [
+        {
+          variant_id: 'var_123',
+          unit_price_effective: 24,
+        },
+      ],
+      delivery_options: [],
+    })
+    createOrderMock.mockResolvedValueOnce({
+      order_id: 'ord_123',
+    })
+    processPaymentMock.mockResolvedValueOnce({
+      status: 'requires_action',
+      psp: 'pivota_hosted_checkout',
+      payment_action: {
+        type: 'redirect_url',
+        url: 'https://checkout.example.com/session/csess_123',
+      },
+    })
+
+    const { container } = render(
+      <OrderFlow
+        items={[
+          {
+            product_id: 'prod_123',
+            variant_id: 'var_123',
+            merchant_id: 'merchant_checkout',
+            title: 'Creator serum',
+            quantity: 1,
+            unit_price: 24,
+            currency: 'USD',
+          },
+        ]}
+        skipEmailVerification
+      />,
+    )
+
+    fireEvent.change(container.querySelector('input[type="email"]') as HTMLInputElement, {
+      target: { value: 'buyer@example.com' },
+    })
+    fireEvent.change(container.querySelector('input[autocomplete="name"]') as HTMLInputElement, {
+      target: { value: 'Buyer One' },
+    })
+    fireEvent.change(container.querySelector('input[autocomplete="address-line1"]') as HTMLInputElement, {
+      target: { value: '123 Market St' },
+    })
+    fireEvent.change(container.querySelector('input[autocomplete="address-level2"]') as HTMLInputElement, {
+      target: { value: 'San Francisco' },
+    })
+    fireEvent.change(container.querySelector('input[autocomplete="postal-code"]') as HTMLInputElement, {
+      target: { value: '94107' },
+    })
+
+    fireEvent.click(screen.getAllByRole('button', { name: /continue to payment/i })[0])
+
+    expect(
+      await screen.findByText(
+        'Merchant checkout must render the merchant PSP payment form. Pivota hosted checkout is disabled.',
+      ),
+    ).toBeInTheDocument()
+    expect(screen.queryByText('Pivota hosted checkout')).not.toBeInTheDocument()
+  })
 })

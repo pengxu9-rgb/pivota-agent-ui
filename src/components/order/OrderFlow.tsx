@@ -122,6 +122,8 @@ const ADYEN_CLIENT_KEY =
   'test_RMFUADZPQBBYJIWI56KVOQSNUUT657ML' // public test key; replace in env for prod
 const FORCE_PSP = process.env.NEXT_PUBLIC_FORCE_PSP
 const stripePromiseCache = new Map<string, Promise<Stripe | null>>()
+const UNSUPPORTED_PIVOTA_HOSTED_CHECKOUT_MESSAGE =
+  'Merchant checkout must render the merchant PSP payment form. Pivota hosted checkout is disabled.'
 
 type StripeConfirmationResult = {
   error?: string
@@ -168,6 +170,46 @@ export function resolveStripePublishableKey(paymentResponse: any, fallbackAction
   }
 
   return DEFAULT_STRIPE_PUBLISHABLE_KEY || null
+}
+
+function normalizePaymentPspToken(value: unknown): string | null {
+  if (typeof value === 'string') {
+    const trimmed = value.trim().toLowerCase()
+    return trimmed || null
+  }
+  if (value == null) return null
+  const normalized = String(value).trim().toLowerCase()
+  return normalized || null
+}
+
+export function isUnsupportedPivotaHostedCheckout(
+  paymentResponse: any,
+  action: any = null,
+  detectedPsp: string | null = null,
+): boolean {
+  const paymentObj = paymentResponse?.payment || {}
+  const checkoutSession = paymentResponse?.checkout_session || paymentObj?.checkout_session || null
+  const candidates = [
+    detectedPsp,
+    action?.psp,
+    paymentResponse?.psp,
+    paymentResponse?.psp_used,
+    paymentObj?.psp,
+    paymentObj?.psp_used,
+    checkoutSession?.provider,
+  ]
+
+  return candidates.some((candidate) => normalizePaymentPspToken(candidate) === 'pivota_hosted_checkout')
+}
+
+function assertSupportedPaymentSurface(
+  paymentResponse: any,
+  action: any = null,
+  detectedPsp: string | null = null,
+): void {
+  if (isUnsupportedPivotaHostedCheckout(paymentResponse, action, detectedPsp)) {
+    throw new Error(UNSUPPORTED_PIVOTA_HOSTED_CHECKOUT_MESSAGE)
+  }
 }
 
 const StripeCardSectionInner = forwardRef<
@@ -1071,6 +1113,8 @@ function OrderFlowInner({
       }
     }
 
+    assertSupportedPaymentSurface(orderResponse, orderPaymentAction, orderPsp)
+
     if (orderPaymentAction) {
       setInitialPaymentAction(orderPaymentAction)
       setPaymentActionType(orderPaymentAction?.type || null)
@@ -1115,16 +1159,11 @@ function OrderFlowInner({
     return new URL(successPath, window.location.origin).toString()
   }
 
-  const isHostedCheckoutRedirect =
-    paymentActionType === 'redirect_url' && pspUsed === 'pivota_hosted_checkout'
-  const isExternalRedirectPayment =
-    paymentActionType === 'redirect_url' && !isHostedCheckoutRedirect
+  const isExternalRedirectPayment = paymentActionType === 'redirect_url'
   const paymentProviderLabel =
     pspUsed === 'adyen'
       ? 'Adyen (hosted card form)'
-      : isHostedCheckoutRedirect
-        ? 'Pivota hosted checkout'
-        : pspUsed === 'stripe' || paymentActionType === 'stripe_client_secret'
+      : pspUsed === 'stripe' || paymentActionType === 'stripe_client_secret'
           ? 'Stripe (card payment)'
           : isExternalRedirectPayment
             ? 'Redirect checkout'
@@ -1133,9 +1172,7 @@ function OrderFlowInner({
     ? 'Processing...'
     : paymentInitLoading
       ? 'Preparing payment...'
-      : isHostedCheckoutRedirect
-        ? 'Continue to secure payment'
-        : isExternalRedirectPayment
+      : isExternalRedirectPayment
           ? 'Continue to merchant payment'
           : `Pay ${formatAmount(total)}`
 
@@ -1360,9 +1397,10 @@ function OrderFlowInner({
       .then((prefetched) => {
         if (paymentInitRunIdRef.current !== runId) return
         const action = extractPaymentAction(prefetched.paymentResponse, initialPaymentAction)
+        const detectedPsp = detectPaymentPsp(prefetched.paymentResponse, action)
+        assertSupportedPaymentSurface(prefetched.paymentResponse, action, detectedPsp)
         setPrefetchedPaymentRes(prefetched)
         setPaymentActionType(action?.type || null)
-        const detectedPsp = detectPaymentPsp(prefetched.paymentResponse, action)
         setPspUsed(detectedPsp)
         syncStripeRuntime(prefetched.paymentResponse, action, detectedPsp)
       })
@@ -1726,8 +1764,9 @@ function OrderFlowInner({
             null,
         })
         const action = extractPaymentAction(paymentResponse, initialPaymentAction)
-        setPaymentActionType(action?.type || null)
         const detectedPsp = detectPaymentPsp(paymentResponse, action)
+        assertSupportedPaymentSurface(paymentResponse, action, detectedPsp)
+        setPaymentActionType(action?.type || null)
         setPspUsed(detectedPsp || pspUsed || null)
         syncStripeRuntime(paymentResponse, action, detectedPsp || pspUsed || null)
 
@@ -2587,17 +2626,13 @@ function OrderFlowInner({
                       </div>
                     </div>
 
-                    {isHostedCheckoutRedirect || isExternalRedirectPayment ? (
+                    {isExternalRedirectPayment ? (
                       <div className="rounded-[20px] border border-slate-200 bg-white p-3 sm:p-4">
                         <p className="text-sm font-medium text-slate-900">
-                          {isHostedCheckoutRedirect
-                            ? 'Continue to the secure hosted checkout'
-                            : 'Continue to the merchant payment page'}
+                          Continue to the merchant payment page
                         </p>
                         <p className="mt-1 text-xs text-slate-500">
-                          {isHostedCheckoutRedirect
-                            ? 'We will hand you off to the canonical hosted checkout token flow before any payment details are entered.'
-                            : 'We will redirect you to finish payment on the merchant payment surface.'}
+                          We will redirect you to finish payment on the merchant payment surface.
                         </p>
                       </div>
                     ) : stripePublishableKey ? (
