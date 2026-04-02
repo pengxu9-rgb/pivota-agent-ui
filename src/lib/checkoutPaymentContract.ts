@@ -19,6 +19,7 @@ const CLIENT_OWNED_PAYMENT_STATUSES = new Set([
 ])
 const CLIENT_OWNED_PAYMENT_ACTION_TYPES = new Set([
   'adyen_session',
+  'checkout_session',
   'redirect_url',
   'stripe_client_secret',
 ])
