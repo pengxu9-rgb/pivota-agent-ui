@@ -13,7 +13,6 @@ import {
   getProductDetail,
   recordBrowseHistoryEvent,
   resolveProductCandidates,
-  resolveProductGroup,
   type GetPdpV2Response,
   type ProductResponse,
   type UgcCapabilities,
@@ -36,8 +35,6 @@ import {
 } from '@/features/pdp/state/freezePolicy';
 import { shouldAllowLegacyProductDetailBroadScan } from '@/lib/productDetailFallback';
 import {
-  buildRawDetailWithResolvedOffers,
-  getCanonicalRefFromResolvedOffers,
   mapResolvedOffersToSellerCandidates,
 } from '@/lib/pdpResolvedOffers';
 
@@ -479,7 +476,6 @@ export default function ProductDetailPage({ params }: Props) {
     let cancelled = false;
     const candidateTimeoutMs = 4500;
     const v2TimeoutMs = merchantIdParam ? 9000 : 5000;
-    const fallbackTimeoutMs = 9000;
 
     const loadProduct = async () => {
       const explicitMerchantId = merchantIdParam ? String(merchantIdParam).trim() : null;
@@ -507,9 +503,7 @@ export default function ProductDetailPage({ params }: Props) {
         const v2 = await getPdpV2({
           product_id: id,
           ...(explicitMerchantId ? { merchant_id: explicitMerchantId } : {}),
-          // Keep first paint fast: fetch only core PDP data first.
-          // Reviews/similar are backfilled by progressive loaders below.
-          include: ['offers'],
+          include: ['offers', 'reviews_preview'],
           timeout_ms: v2TimeoutMs,
         });
         if (cancelled) return;
@@ -571,152 +565,20 @@ export default function ProductDetailPage({ params }: Props) {
         setLoading(false);
         return;
       } catch (v2Err) {
-        // Fall back to legacy per-merchant product detail so PDP can still render.
-        try {
-          const candidateResolution = await candidateResolutionPromise;
-          if (cancelled) return;
-
-          const candidateCanonicalRef = getCanonicalRefFromResolvedOffers(candidateResolution);
-          const candidateSellerOptions = mapResolvedOffersToSellerCandidates(candidateResolution);
-
-          if (candidateCanonicalRef?.merchant_id && candidateCanonicalRef?.product_id) {
-            const candidateDetail = await getProductDetail(
-              candidateCanonicalRef.product_id,
-              candidateCanonicalRef.merchant_id,
-              {
-                useConfiguredMerchantId: false,
-                allowBroadScan: false,
-                timeout_ms: fallbackTimeoutMs,
-                throwOnError: false,
-                includeReviewSummary: true,
-              },
-            );
-
-            if (cancelled) return;
-
-            if (candidateDetail) {
-              const candidatePayload = mapToPdpPayload({
-                product: candidateDetail,
-                rawDetail: buildRawDetailWithResolvedOffers(
-                  candidateDetail.raw_detail,
-                  candidateResolution,
-                ),
-                relatedProducts: [],
-                recommendationsLoading: true,
-                entryPoint: 'product_detail',
-              });
-              setPdpPayload({
-                ...candidatePayload,
-                x_source_locks: {
-                  reviews: false,
-                  similar: false,
-                  ugc: false,
-                },
-              });
-              pdpTracking.track('pdp_fallback_used', {
-                source: 'resolve_product_candidates',
-                reason: 'get_pdp_v2_failed',
-              });
-              pdpTracking.track('pdp_core_ready', {
-                source: 'resolve_product_candidates',
-                offers_count: candidatePayload.offers_count || 0,
-              });
-              setLoadedViaPdpV2(false);
-              setLoading(false);
-              return;
-            }
-          }
-
-          const resolvedGroup =
-            explicitMerchantId
-              ? await resolveProductGroup({
-                  product_id: id,
-                  merchant_id: explicitMerchantId,
-                  timeout_ms: 8000,
-                }).catch(() => null)
-              : await resolveProductGroup({
-                  product_id: id,
-                  timeout_ms: 8000,
-                }).catch(() => null);
-
-          if (cancelled) return;
-
-          const canonicalRef =
-            resolvedGroup?.canonical_product_ref?.merchant_id &&
-            resolvedGroup?.canonical_product_ref?.product_id
-              ? {
-                  merchant_id: String(resolvedGroup.canonical_product_ref.merchant_id),
-                  product_id: String(resolvedGroup.canonical_product_ref.product_id),
-                }
-              : null;
-
-          const targetMerchantId = canonicalRef?.merchant_id || explicitMerchantId || undefined;
-          const targetProductId = canonicalRef?.product_id || id;
-
-          const detail = await getProductDetail(targetProductId, targetMerchantId, {
-            useConfiguredMerchantId: false,
-            allowBroadScan: allowLegacyBroadScan,
-            timeout_ms: fallbackTimeoutMs,
-            throwOnError: true,
-            includeReviewSummary: true,
-          });
-
-          if (cancelled) return;
-
-          if (!detail) throw v2Err;
-
-          const legacyPayload = mapToPdpPayload({
-            product: detail,
-            rawDetail: detail.raw_detail,
-            relatedProducts: [],
-            recommendationsLoading: true,
-            entryPoint: 'product_detail',
-          });
-          setPdpPayload({
-            ...legacyPayload,
-            x_source_locks: {
-              reviews: false,
-              similar: false,
-              ugc: false,
-            },
-          });
-          pdpTracking.track('pdp_fallback_used', {
-            source: 'legacy_get_product_detail',
-            reason: 'get_pdp_v2_failed',
-          });
-          pdpTracking.track('pdp_core_ready', {
-            source: 'legacy_get_product_detail',
-          });
-          setLoadedViaPdpV2(false);
+        if (cancelled) return;
+        const candidateResolution = explicitMerchantId ? null : await candidateResolutionPromise;
+        const candidateSellerOptions = mapResolvedOffersToSellerCandidates(candidateResolution);
+        if (!explicitMerchantId && candidateSellerOptions.length > 1) {
+          setSellerCandidates(candidateSellerOptions);
           setLoading(false);
           return;
-        } catch (fallbackErr) {
-          if (cancelled) return;
-
-          const candidateResolution = explicitMerchantId ? null : await candidateResolutionPromise;
-          const candidateSellerOptions = mapResolvedOffersToSellerCandidates(candidateResolution);
-          if (!explicitMerchantId && candidateSellerOptions.length > 1) {
-            setSellerCandidates(candidateSellerOptions);
-            setLoading(false);
-            return;
-          }
-
-          if (
-            (fallbackErr as any)?.code === 'AMBIGUOUS_PRODUCT_ID' &&
-            Array.isArray((fallbackErr as any)?.candidates)
-          ) {
-            setSellerCandidates((fallbackErr as any).candidates as ProductResponse[]);
-            setLoading(false);
-            return;
-          }
-
-          const message =
-            (fallbackErr as Error)?.message ||
-            (v2Err as Error)?.message ||
-            'Failed to load product';
-          setError(message);
-          setLoading(false);
         }
+
+        const message =
+          (v2Err as Error)?.message ||
+          'Failed to load product';
+        setError(message);
+        setLoading(false);
       }
     };
 
@@ -1036,41 +898,6 @@ export default function ProductDetailPage({ params }: Props) {
 
         const reviewModuleUnavailable =
           reviewOnlyV2.nonRetryable || isUnavailableModuleErrorCode(reviewOnlyV2.code);
-
-        if (
-          needReviews &&
-          !reviewsModule &&
-          !reviewModuleUnavailable &&
-          !cancelled &&
-          remainingMs() > 220
-        ) {
-          try {
-            const reviewFallbackDetail = await getProductDetail(productId, merchantId, {
-              useConfiguredMerchantId: false,
-              allowBroadScan: false,
-              timeout_ms: Math.max(600, Math.min(2000, remainingMs())),
-              throwOnError: false,
-              includeReviewSummary: true,
-            });
-            if (reviewFallbackDetail && !cancelled) {
-              const reviewFallbackPayload = mapToPdpPayload({
-                product: reviewFallbackDetail,
-                rawDetail: reviewFallbackDetail.raw_detail,
-                relatedProducts: [],
-                recommendationsLoading: false,
-                entryPoint: 'product_detail',
-              });
-              reviewsModule =
-                (reviewFallbackPayload.modules.find((m) => m?.type === 'reviews_preview') as Module | undefined) ||
-                reviewsModule;
-              if (reviewsModule) {
-                reviewsRequestSucceeded = true;
-              }
-            }
-          } catch {
-            // keep empty reviews fallback below
-          }
-        }
 
         const normalizedReviewsModule =
           needReviews && !reviewsModule

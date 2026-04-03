@@ -6,6 +6,7 @@ import {
   persistCheckoutContext,
 } from '@/lib/checkoutToken'
 import { ensureAuroraSession, shouldUseAuroraAutoExchange } from '@/lib/auroraOrdersAuth'
+import { formatDescriptionText } from '@/features/pdp/utils/formatDescriptionText'
 
 // Point to the public Agent Gateway by default; override via NEXT_PUBLIC_API_URL if needed.
 const API_BASE =
@@ -286,7 +287,7 @@ export type FindSimilarProductsResponse = {
   };
 };
 
-function normalizeProduct(
+export function normalizeProduct(
   p: RealAPIProduct | ProductResponse,
 ): ProductResponse {
   const anyP = p as any;
@@ -403,10 +404,11 @@ function normalizeProduct(
     normalizedImage = '/placeholder.svg';
   }
 
-  const description =
+  const descriptionRaw =
     typeof anyP.description === 'string'
       ? anyP.description
       : anyP.description?.text || '';
+  const description = formatDescriptionText(descriptionRaw);
 
   const images = Array.isArray(anyP.images)
     ? anyP.images
@@ -1514,6 +1516,7 @@ export async function sendMessage(
           limit: requestedLimit,
           page: requestedPage,
           allow_external_seed: true,
+          allow_stale_cache: false,
           external_seed_strategy: 'unified_relevance',
           ...(merchantIdOverride
             ? { merchant_id: merchantIdOverride, search_all_merchants: false }
@@ -1601,6 +1604,7 @@ export async function getAllProducts(
       limit: clampedLimit,
       page,
       allow_external_seed: true,
+      allow_stale_cache: false,
       external_seed_strategy: 'unified_relevance',
       ...(merchantId
         ? { merchant_id: merchantId, search_all_merchants: false }

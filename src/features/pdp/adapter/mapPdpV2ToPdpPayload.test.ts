@@ -168,6 +168,45 @@ describe('mapPdpV2ToPdpPayload image normalization', () => {
     expect(howToUse?.data?.steps).toEqual(['Apply after cleansing.']);
   });
 
+  it('upserts structured modules when v2 returns them outside canonical payload', () => {
+    const response = buildMinimalResponse();
+    response.modules.push(
+      {
+        type: 'ingredients_inci',
+        data: {
+          title: 'Ingredients',
+          items: ['Water', 'Glycerin', 'Niacinamide'],
+        },
+      },
+      {
+        type: 'product_facts',
+        data: {
+          sections: [
+            {
+              heading: 'Clinical Results',
+              content_type: 'text',
+              content: 'Supports the skin barrier in 7 days.',
+            },
+          ],
+        },
+      },
+    );
+
+    const payload = mapPdpV2ToPdpPayload(response);
+    const ingredients = payload?.modules.find((module) => module.type === 'ingredients_inci') as any;
+    const facts = payload?.modules.find((module) => module.type === 'product_facts') as any;
+
+    expect(ingredients?.data?.items).toEqual(['Water', 'Glycerin', 'Niacinamide']);
+    expect(facts?.data?.sections).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          heading: 'Clinical Results',
+          content: 'Supports the skin barrier in 7 days.',
+        }),
+      ]),
+    );
+  });
+
   it('deduplicates official media image URLs while keeping videos', () => {
     const response = buildMinimalResponse();
     response.modules[0].data.pdp_payload.modules[0].data.items = [
