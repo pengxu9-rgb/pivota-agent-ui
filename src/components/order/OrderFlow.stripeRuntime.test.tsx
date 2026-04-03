@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  hasAvailableStripeExpressWallets,
   resolveCheckoutPaymentMethodHint,
   resolveStripeAccount,
   resolveStripePaymentMethodOrder,
@@ -78,5 +79,12 @@ describe('resolveStripePublishableKey', () => {
         'checkout',
       ),
     ).toBe(true)
+  })
+
+  it('shows express wallet buttons only when Apple Pay or Google Pay are actually available', () => {
+    expect(hasAvailableStripeExpressWallets(undefined)).toBe(false)
+    expect(hasAvailableStripeExpressWallets({ applePay: false, googlePay: false })).toBe(false)
+    expect(hasAvailableStripeExpressWallets({ applePay: true, googlePay: false })).toBe(true)
+    expect(hasAvailableStripeExpressWallets({ applePay: false, googlePay: true })).toBe(true)
   })
 })
