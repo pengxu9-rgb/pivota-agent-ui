@@ -16,6 +16,9 @@ export function ActiveIngredientsSection({ data }: { data: ActiveIngredientsData
           sourceQualityStatus={data.source_quality_status}
         />
       </div>
+      <p className="mt-1 text-xs text-muted-foreground">
+        Highlighted actives or hero ingredients, not the full formula.
+      </p>
       {items.length ? (
         <div className="mt-3 flex flex-wrap gap-2">
           {items.map((item, index) => (

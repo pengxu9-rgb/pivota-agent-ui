@@ -2,6 +2,17 @@ import Image from 'next/image';
 import type { Variant } from '@/features/pdp/types';
 import { cn } from '@/lib/utils';
 
+const SINGLE_VARIANT_PLACEHOLDER_TITLE = /^(default(?: title)?|variant \d+)$/i;
+const SINGLE_VARIANT_FALLBACK_LABEL = 'Default option';
+
+function getDisplayVariantLabel(variant: Variant | undefined): string {
+  const title = String(variant?.title || '').trim();
+  if (!title || SINGLE_VARIANT_PLACEHOLDER_TITLE.test(title)) {
+    return SINGLE_VARIANT_FALLBACK_LABEL;
+  }
+  return title;
+}
+
 export function VariantSelector({
   variants,
   selectedVariantId,
@@ -14,7 +25,42 @@ export function VariantSelector({
   mode: 'beauty' | 'generic';
 }) {
   if (!variants.length) return null;
-  if (variants.length === 1) return null;
+  const selectedVariant = variants.find((variant) => variant.variant_id === selectedVariantId) || variants[0];
+
+  if (variants.length === 1) {
+    const isBeauty = mode === 'beauty';
+    return (
+      <div className="mt-3">
+        <div className="flex items-center justify-between">
+          <div className="text-sm font-medium">{isBeauty ? 'Shade' : 'Options'}</div>
+          <div className="text-xs text-muted-foreground">1 variant</div>
+        </div>
+        <div className="mt-1.5 flex gap-2 overflow-x-auto pb-1">
+          <div
+            aria-disabled="true"
+            className={cn(
+              'flex items-center gap-2 rounded-full border px-3 py-1 text-xs whitespace-nowrap',
+              'border-primary bg-primary/10 text-primary ring-1 ring-primary/30 font-semibold opacity-85 cursor-default select-none',
+            )}
+          >
+            {isBeauty ? (
+              selectedVariant?.label_image_url ? (
+                <span className="relative h-3 w-3 overflow-hidden rounded-full ring-1 ring-border bg-muted">
+                  <Image src={selectedVariant.label_image_url} alt="" fill className="object-cover" sizes="12px" loading="lazy" />
+                </span>
+              ) : selectedVariant?.swatch?.hex ? (
+                <span
+                  className="h-3 w-3 rounded-full ring-1 ring-border"
+                  style={{ backgroundColor: selectedVariant.swatch.hex }}
+                />
+              ) : null
+            ) : null}
+            <span>{getDisplayVariantLabel(selectedVariant)}</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="mt-3">

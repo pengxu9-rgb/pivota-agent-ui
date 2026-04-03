@@ -16,6 +16,9 @@ export function IngredientsInciSection({ data }: { data: IngredientsInciData }) 
           sourceQualityStatus={data.source_quality_status}
         />
       </div>
+      <p className="mt-1 text-xs text-muted-foreground">
+        Full ingredient list (INCI) when available.
+      </p>
       {data.raw_text ? (
         <p className="mt-3 text-sm leading-relaxed text-muted-foreground whitespace-pre-line">
           {data.raw_text}
