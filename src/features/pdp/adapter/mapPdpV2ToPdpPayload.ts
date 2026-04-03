@@ -288,6 +288,17 @@ function upsertPayloadModule(payload: PDPPayload, nextModule: Module): PDPPayloa
   };
 }
 
+const CANONICAL_PASSTHROUGH_MODULE_TYPES: ReadonlyArray<Module['type']> = [
+  'media_gallery',
+  'price_promo',
+  'variant_selector',
+  'product_details',
+  'product_facts',
+  'ingredients_inci',
+  'active_ingredients',
+  'how_to_use',
+];
+
 export function mapPdpV2ToPdpPayload(response: GetPdpV2Response): PDPPayload | null {
   if (!response || typeof response !== 'object') return null;
 
@@ -318,6 +329,23 @@ export function mapPdpV2ToPdpPayload(response: GetPdpV2Response): PDPPayload | n
   const productGroupId = canonicalGroupId || subjectGroupId;
   if (productGroupId) {
     next.product_group_id = productGroupId;
+  }
+
+  for (const moduleType of CANONICAL_PASSTHROUGH_MODULE_TYPES) {
+    const moduleEntry = getModule(response, moduleType);
+    if (!isRecord(moduleEntry?.data)) continue;
+    next = upsertPayloadModule(next, {
+      module_id:
+        typeof moduleEntry.module_id === 'string' && moduleEntry.module_id.trim()
+          ? moduleEntry.module_id
+          : moduleType,
+      type: moduleType,
+      priority: Number(moduleEntry.priority) || 0,
+      ...(typeof moduleEntry.title === 'string' && moduleEntry.title.trim()
+        ? { title: moduleEntry.title }
+        : {}),
+      data: moduleEntry.data,
+    });
   }
 
   const offersModule = getModule(response, 'offers');
