@@ -72,7 +72,7 @@ export async function POST(req: NextRequest) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-Agent-API-Key': AGENT_API_KEY,
+        'X-API-Key': AGENT_API_KEY,
         Authorization: `Bearer ${AGENT_API_KEY}`,
       },
       body: JSON.stringify({

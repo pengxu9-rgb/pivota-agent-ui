@@ -467,7 +467,10 @@ export async function POST(req: NextRequest) {
         ...(checkoutToken
           ? { 'X-Checkout-Token': checkoutToken }
           : AGENT_API_KEY
-            ? { 'X-Agent-API-Key': AGENT_API_KEY }
+            ? {
+                'X-API-Key': AGENT_API_KEY,
+                Authorization: `Bearer ${AGENT_API_KEY}`,
+              }
             : {}),
       },
       ...(upstreamMethod === 'GET' ? {} : { body: JSON.stringify(upstreamBody || {}) }),
@@ -537,7 +540,7 @@ export async function OPTIONS() {
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Methods': 'POST, OPTIONS',
         'Access-Control-Allow-Headers':
-          'Content-Type, X-Agent-API-Key, X-Checkout-Token',
+          'Content-Type, Authorization, X-API-Key, X-Checkout-Token',
       },
     },
   );
