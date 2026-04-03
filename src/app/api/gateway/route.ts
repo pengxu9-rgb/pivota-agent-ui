@@ -416,8 +416,7 @@ export async function POST(req: NextRequest) {
     const checkoutToken = String(req.headers.get('x-checkout-token') || '').trim() || null;
     const operation = String(body?.operation || '').trim();
     const normalizedOperation = operation.toLowerCase();
-    const useCheckoutSafeProxy =
-      Boolean(checkoutToken) && CHECKOUT_SAFE_OPERATIONS.has(normalizedOperation);
+    const useCheckoutSafeProxy = CHECKOUT_SAFE_OPERATIONS.has(normalizedOperation);
     const checkoutSafeRequest = useCheckoutSafeProxy
       ? buildCheckoutSafeRequest(normalizedOperation, isPlainObject(body) ? body : {})
       : null;
