@@ -8,7 +8,7 @@ import ProductCard from '@/components/product/ProductCard';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useCartStore } from '@/store/cartStore';
-import { sendMessage, getAllProducts, type ProductResponse } from '@/lib/api';
+import { sendMessage, getDiscoveryProducts, type ProductResponse } from '@/lib/api';
 import { toast } from 'sonner';
 
 const TRENDING_TAGS = [
@@ -81,7 +81,7 @@ export default function ProductsPage() {
         let hasMoreFromResponse: boolean | undefined;
 
         if (!trimmed) {
-          fetchedProducts = await getAllProducts(GRID_INITIAL_PAGE_SIZE, undefined, {
+          fetchedProducts = await getDiscoveryProducts(GRID_INITIAL_PAGE_SIZE, undefined, {
             page: targetPage,
           });
           hasMoreFromResponse = fetchedProducts.length >= GRID_INITIAL_PAGE_SIZE;

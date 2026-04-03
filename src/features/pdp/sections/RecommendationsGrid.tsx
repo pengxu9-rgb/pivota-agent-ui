@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import type { MouseEvent } from 'react';
 import { Star, ChevronRight } from 'lucide-react';
 import type { RecommendationsData } from '@/features/pdp/types';
+import { buildProductHref } from '@/lib/productHref';
 import { appendCurrentPathAsReturn } from '@/lib/returnUrl';
 
 const IMAGE_PROXY_PATH = '/api/image-proxy';
@@ -135,7 +136,7 @@ export function RecommendationsGrid({
       </div>
       <div className="px-4 grid grid-cols-2 lg:grid-cols-4 gap-3">
         {visibleItems.map((p, idx) => {
-          const baseHref = `/products/${encodeURIComponent(p.product_id)}${p.merchant_id ? `?merchant_id=${encodeURIComponent(p.merchant_id)}` : ''}`;
+          const baseHref = buildProductHref(p.product_id, p.merchant_id);
           const handleClick = (event: MouseEvent<HTMLAnchorElement>) => {
             onItemClick?.(p, idx);
             if (event.defaultPrevented) return;

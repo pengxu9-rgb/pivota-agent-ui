@@ -17,6 +17,14 @@ import {
   splitParagraphs,
 } from '@/features/pdp/utils/formatDescriptionText';
 
+function resolveOverviewHeading(heading?: string): string {
+  const trimmed = String(heading || '').trim();
+  const normalized = trimmed.toLowerCase();
+  if (!normalized) return 'Overview';
+  if (normalized === 'product details' || normalized === 'details') return 'Overview';
+  return trimmed;
+}
+
 export function GenericDetailsSection({
   data,
   product,
@@ -50,7 +58,7 @@ export function GenericDetailsSection({
 
       {descriptionParagraphs.length ? (
         <div className="mt-3">
-          <h3 className="text-sm font-semibold mb-1.5">{primarySection?.heading || 'Details'}</h3>
+          <h3 className="text-sm font-semibold mb-1.5">{resolveOverviewHeading(primarySection?.heading)}</h3>
           <div className="space-y-2">
             {descriptionParagraphs.map((paragraph, idx) =>
               isLikelyHeadingParagraph(paragraph) ? (
