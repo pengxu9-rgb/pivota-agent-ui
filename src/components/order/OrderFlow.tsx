@@ -1,6 +1,6 @@
 'use client'
 
-import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import {
   ShoppingCart,
   CreditCard,
@@ -29,8 +29,19 @@ import { confirmPaymentWithRetry } from '@/lib/checkoutFinalization'
 import { useCartStore } from '@/store/cartStore'
 import { toast } from 'sonner'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { loadStripe, type Stripe } from '@stripe/stripe-js'
-import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js'
+import {
+  loadStripe,
+  type Stripe,
+  type StripeExpressCheckoutElementConfirmEvent,
+  type StripeExpressCheckoutElementReadyEvent,
+} from '@stripe/stripe-js'
+import {
+  Elements,
+  ExpressCheckoutElement,
+  PaymentElement,
+  useStripe,
+  useElements,
+} from '@stripe/react-stripe-js'
 import { useAuthStore } from '@/store/authStore'
 import '@adyen/adyen-web/dist/adyen.css'
 
@@ -353,11 +364,47 @@ function buildStripePaymentElementOptions(shipping?: Partial<ShippingInfo> | nul
       spacedAccordionItems: false,
     },
     wallets: {
-      applePay: 'auto' as const,
-      googlePay: 'auto' as const,
+      applePay: 'never' as const,
+      googlePay: 'never' as const,
     },
     ...(paymentMethodOrder ? { paymentMethodOrder } : {}),
   }
+}
+
+function buildStripeExpressCheckoutOptions(shipping?: Partial<ShippingInfo> | null) {
+  const paymentMethodOrder = resolveStripePaymentMethodOrder(shipping?.country || null)
+  return {
+    buttonHeight: 48,
+    buttonTheme: {
+      applePay: 'black' as const,
+      googlePay: 'black' as const,
+    },
+    buttonType: {
+      applePay: 'buy' as const,
+      googlePay: 'buy' as const,
+    },
+    layout: {
+      maxColumns: 2,
+      maxRows: 1,
+      overflow: 'auto' as const,
+    },
+    paymentMethods: {
+      applePay: 'always' as const,
+      googlePay: 'always' as const,
+      link: 'never' as const,
+      paypal: 'never' as const,
+    },
+    ...(paymentMethodOrder ? { paymentMethodOrder } : {}),
+  }
+}
+
+export function hasAvailableStripeExpressWallets(
+  availablePaymentMethods:
+    | StripeExpressCheckoutElementReadyEvent['availablePaymentMethods']
+    | null
+    | undefined,
+): boolean {
+  return Boolean(availablePaymentMethods?.applePay || availablePaymentMethods?.googlePay)
 }
 
 function formatStripePaymentMethodLabel(methodType: string | null | undefined): string | null {
@@ -387,72 +434,163 @@ const StripePaymentSectionInner = forwardRef<
   StripePaymentSectionHandle,
   {
     clientSecret: string
+    returnUrl?: string | null
     shipping?: Partial<ShippingInfo> | null
     onPaymentError: (message: string) => void
     onPaymentMethodChange: (methodType: string | null) => void
+    onConfirmationResult?: (result: { status?: string; paymentIntentId?: string }) => Promise<void> | void
   }
 >(function StripePaymentSectionInner(
-  { clientSecret, shipping = null, onPaymentError, onPaymentMethodChange },
+  {
+    clientSecret,
+    returnUrl = null,
+    shipping = null,
+    onPaymentError,
+    onPaymentMethodChange,
+    onConfirmationResult,
+  },
   ref,
 ) {
   const stripe = useStripe()
   const elements = useElements()
   const [localPaymentError, setLocalPaymentError] = useState('')
+  const [expressWalletsReady, setExpressWalletsReady] = useState(false)
+  const [expressWalletsAvailable, setExpressWalletsAvailable] = useState(false)
+
+  const setPaymentError = useCallback((message: string) => {
+    setLocalPaymentError(message)
+    onPaymentError(message)
+  }, [onPaymentError])
+
+  const runStripeConfirmation = useCallback(async ({
+    confirmClientSecret,
+    confirmShipping,
+    confirmReturnUrl,
+    skipSubmit = false,
+  }: {
+    confirmClientSecret?: string
+    confirmShipping?: Partial<ShippingInfo> | null
+    confirmReturnUrl?: string | null
+    skipSubmit?: boolean
+  }) => {
+    if (!stripe || !elements) {
+      return { error: 'Payment form is not ready. Please refresh and try again.' }
+    }
+
+    const resolvedReturnUrl = String(confirmReturnUrl || returnUrl || '').trim()
+    if (!resolvedReturnUrl) {
+      return { error: 'Payment return URL is missing. Please refresh and try again.' }
+    }
+
+    if (!skipSubmit) {
+      const submitResult = await elements.submit()
+      if (submitResult.error) {
+        const message = submitResult.error.message || 'Please complete the payment form.'
+        setPaymentError(message)
+        return { error: message }
+      }
+    }
+
+    const result = await stripe.confirmPayment({
+      elements,
+      clientSecret: confirmClientSecret || clientSecret,
+      confirmParams: {
+        return_url: resolvedReturnUrl,
+        payment_method_data: {
+          billing_details: buildStripeBillingDetails(confirmShipping || shipping),
+        },
+      },
+      redirect: 'if_required',
+    })
+
+    if (result.error) {
+      const message = result.error.message || 'Payment failed'
+      setPaymentError(message)
+      return { error: message }
+    }
+
+    setPaymentError('')
+    return {
+      status: result.paymentIntent?.status,
+      paymentIntentId: result.paymentIntent?.id,
+    }
+  }, [clientSecret, elements, returnUrl, setPaymentError, shipping, stripe])
 
   useImperativeHandle(
     ref,
     () => ({
       async confirm({ clientSecret: confirmClientSecret, returnUrl, shipping: confirmShipping }) {
-        if (!stripe || !elements) {
-          return { error: 'Payment form is not ready. Please refresh and try again.' }
-        }
-
-        if (!returnUrl) {
-          return { error: 'Payment return URL is missing. Please refresh and try again.' }
-        }
-
-        const submitResult = await elements.submit()
-        if (submitResult.error) {
-          const message = submitResult.error.message || 'Please complete the payment form.'
-          setLocalPaymentError(message)
-          onPaymentError(message)
-          return { error: message }
-        }
-
-        const result = await stripe.confirmPayment({
-          elements,
-          clientSecret: confirmClientSecret || clientSecret,
-          confirmParams: {
-            return_url: returnUrl,
-            payment_method_data: {
-              billing_details: buildStripeBillingDetails(confirmShipping || shipping),
-            },
-          },
-          redirect: 'if_required',
+        return runStripeConfirmation({
+          confirmClientSecret,
+          confirmShipping,
+          confirmReturnUrl: returnUrl,
         })
-
-        if (result.error) {
-          const message = result.error.message || 'Payment failed'
-          setLocalPaymentError(message)
-          onPaymentError(message)
-          return { error: message }
-        }
-
-        setLocalPaymentError('')
-        onPaymentError('')
-        return {
-          status: result.paymentIntent?.status,
-          paymentIntentId: result.paymentIntent?.id,
-        }
       },
     }),
-    [clientSecret, elements, onPaymentError, shipping, stripe],
+    [runStripeConfirmation],
   )
 
   return (
-    <div className="rounded-[20px] border border-slate-200 bg-white p-3 sm:p-4">
-      <label className="text-[13px] font-medium text-slate-700 sm:text-sm">Payment Details</label>
-      <div className="mt-2 rounded-[16px] border border-slate-200 bg-slate-50 p-3">
+    <div className="space-y-3">
+      <div
+        className={
+          expressWalletsReady && expressWalletsAvailable
+            ? 'rounded-[20px] border border-slate-200 bg-white p-3 sm:p-4'
+            : 'hidden'
+        }
+      >
+        <label className="text-[13px] font-medium text-slate-700 sm:text-sm">Wallets</label>
+        <div className="mt-2 rounded-[16px] border border-slate-200 bg-slate-50 p-3">
+          <ExpressCheckoutElement
+            options={buildStripeExpressCheckoutOptions(shipping)}
+            onReady={(event) => {
+              setExpressWalletsReady(true)
+              setExpressWalletsAvailable(hasAvailableStripeExpressWallets(event.availablePaymentMethods))
+            }}
+            onClick={(event: any) => {
+              const methodType = String(event?.expressPaymentType || '').trim() || null
+              onPaymentMethodChange(methodType)
+              setPaymentError('')
+            }}
+            onLoadError={(event) => {
+              const message =
+                String(event?.error?.message || '').trim() ||
+                'Wallet buttons could not be loaded in this browser.'
+              setExpressWalletsReady(true)
+              setExpressWalletsAvailable(false)
+              setPaymentError(message)
+            }}
+            onConfirm={async (event: StripeExpressCheckoutElementConfirmEvent) => {
+              const methodType = String(event.expressPaymentType || '').trim() || null
+              onPaymentMethodChange(methodType)
+              const result = await runStripeConfirmation({
+                confirmReturnUrl: returnUrl,
+                confirmShipping: shipping,
+                skipSubmit: true,
+              })
+              if (result.error) {
+                event.paymentFailed({ reason: 'fail' })
+                return
+              }
+              try {
+                await onConfirmationResult?.(result)
+              } catch (error: any) {
+                const message = String(error?.message || '').trim() || 'Payment failed'
+                setPaymentError(message)
+                event.paymentFailed({ reason: 'fail' })
+              }
+            }}
+          />
+        </div>
+        <p className="mt-2 text-xs text-slate-500">
+          Apple Pay and Google Pay appear here when Stripe marks them available for this device,
+          browser, domain, and merchant account.
+        </p>
+      </div>
+
+      <div className="rounded-[20px] border border-slate-200 bg-white p-3 sm:p-4">
+        <label className="text-[13px] font-medium text-slate-700 sm:text-sm">Payment Details</label>
+        <div className="mt-2 rounded-[16px] border border-slate-200 bg-slate-50 p-3">
         <PaymentElement
           options={buildStripePaymentElementOptions(shipping)}
           onChange={(event: any) => {
@@ -465,6 +603,7 @@ const StripePaymentSectionInner = forwardRef<
         />
       </div>
       {localPaymentError && <p className="mt-2 text-sm text-red-600">{localPaymentError}</p>}
+      </div>
     </div>
   )
 })
@@ -475,18 +614,22 @@ const StripePaymentSection = forwardRef<
     clientSecret: string
     publishableKey: string
     stripeAccount?: string | null
+    returnUrl?: string | null
     shipping?: Partial<ShippingInfo> | null
     onPaymentError: (message: string) => void
     onPaymentMethodChange: (methodType: string | null) => void
+    onConfirmationResult?: (result: { status?: string; paymentIntentId?: string }) => Promise<void> | void
   }
 >(function StripePaymentSection(
   {
     clientSecret,
     publishableKey,
     stripeAccount = null,
+    returnUrl = null,
     shipping = null,
     onPaymentError,
     onPaymentMethodChange,
+    onConfirmationResult,
   },
   ref,
 ) {
@@ -502,9 +645,11 @@ const StripePaymentSection = forwardRef<
       <StripePaymentSectionInner
         ref={ref}
         clientSecret={clientSecret}
+        returnUrl={returnUrl}
         shipping={shipping}
         onPaymentError={onPaymentError}
         onPaymentMethodChange={onPaymentMethodChange}
+        onConfirmationResult={onConfirmationResult}
       />
     </Elements>
   )
@@ -1438,6 +1583,9 @@ function OrderFlowInner({
     typeof initialPaymentAction?.client_secret === 'string'
       ? initialPaymentAction.client_secret
       : null
+  const stripeReturnUrlForRender = createdOrderId
+    ? buildPostPayReturnUrl(createdOrderId) || null
+    : null
   const stripeMethodLabel = formatStripePaymentMethodLabel(stripeSelectedMethodType)
   const isExternalRedirectPayment = paymentActionType === 'redirect_url'
   const paymentProviderLabel =
@@ -1470,6 +1618,77 @@ function OrderFlowInner({
     return {
       finalizing: confirmation.status !== 'confirmed',
     }
+  }
+
+  const completeCheckoutForOrder = async (targetOrderId: string, paymentIdValue?: string) => {
+    setPaymentId(paymentIdValue || '')
+    setStep('confirm')
+    toast.success('Payment completed successfully.')
+    clearCart()
+    const completionOptions = await finalizeOrderAfterPayment(targetOrderId)
+    if (onComplete) {
+      onComplete(targetOrderId, completionOptions)
+      return
+    }
+    const successPath = buildOrderSuccessPath(targetOrderId, completionOptions)
+    router.push(successPath || `/orders/${targetOrderId}?paid=1`)
+  }
+
+  const continuePendingPaymentConfirmationForOrder = async (
+    targetOrderId: string,
+    paymentIdValue?: string,
+  ) => {
+    setPaymentId(paymentIdValue || '')
+    setStep('confirm')
+    const completionOptions = { finalizing: true }
+    toast.message('Confirming payment status…', {
+      description: 'Your order was created. We are waiting for the final paid confirmation.',
+    })
+    clearCart()
+    if (onComplete) {
+      onComplete(targetOrderId, completionOptions)
+      return
+    }
+    const successPath = buildOrderSuccessPath(targetOrderId, completionOptions)
+    router.push(successPath || `/orders/${targetOrderId}?paid=1`)
+  }
+
+  const handleStripeConfirmationResult = async (result: {
+    error?: string
+    status?: string
+    paymentIntentId?: string
+  }) => {
+    if (!result) {
+      throw new Error('Payment form is not ready. Please refresh and try again.')
+    }
+    if (result.error) {
+      setCardError(result.error)
+      throw new Error('Payment failed. Please check the payment details or try again.')
+    }
+
+    const activeOrderId = String(createdOrderId || '').trim()
+    if (!activeOrderId) {
+      throw new Error('Order is missing. Please refresh and try again.')
+    }
+
+    const status = result.status
+    if (status === 'succeeded') {
+      await completeCheckoutForOrder(activeOrderId, result.paymentIntentId || '')
+      return
+    }
+    if (status === 'processing' || status === 'requires_capture') {
+      await continuePendingPaymentConfirmationForOrder(activeOrderId, result.paymentIntentId || '')
+      return
+    }
+    if (status === 'requires_action') {
+      toast.message('Additional authentication required', {
+        description: 'Continue in the verification window or redirected page to finish payment.',
+      })
+      return
+    }
+    throw new Error(
+      'Payment could not be completed. Please try again or choose a different payment method.',
+    )
   }
 
   const extractPaymentAction = (paymentResponse: any, fallbackAction: any = null) => {
@@ -2148,37 +2367,6 @@ function OrderFlowInner({
           paymentResponse,
           action,
         })
-        const completeCheckout = async (paymentIdValue?: string) => {
-          setPaymentId(paymentIdValue || '')
-          setStep('confirm')
-          toast.success('Payment completed successfully.')
-          clearCart()
-          const completionOptions = await finalizeOrderAfterPayment(orderId)
-          if (onComplete) {
-            onComplete(orderId, completionOptions)
-            return
-          }
-          const successPath = buildOrderSuccessPath(orderId, completionOptions)
-          router.push(successPath || `/orders/${orderId}?paid=1`)
-        }
-
-        const continuePendingPaymentConfirmation = async (paymentIdValue?: string) => {
-          setPaymentId(paymentIdValue || '')
-          setStep('confirm')
-          const completionOptions = { finalizing: true }
-          toast.message('Confirming payment status…', {
-            description:
-              'Your order was created. We are waiting for the final paid confirmation.',
-          })
-          clearCart()
-          if (onComplete) {
-            onComplete(orderId, completionOptions)
-            return
-          }
-          const successPath = buildOrderSuccessPath(orderId, completionOptions)
-          router.push(successPath || `/orders/${orderId}?paid=1`)
-        }
-
         if (!paymentContract.requiresClientConfirmation) {
           const paymentIdValue = String(
             (paymentResponse as any)?.payment_id ||
@@ -2186,10 +2374,10 @@ function OrderFlowInner({
               '',
           )
           if (isBackendSettledPaymentStatus(paymentContract.paymentStatus)) {
-            await completeCheckout(paymentIdValue)
+            await completeCheckoutForOrder(orderId, paymentIdValue)
             return
           }
-          await continuePendingPaymentConfirmation(paymentIdValue)
+          await continuePendingPaymentConfirmationForOrder(orderId, paymentIdValue)
           return
         }
 
@@ -2230,33 +2418,10 @@ function OrderFlowInner({
             returnUrl: stripeReturnUrl,
             shipping,
           })
-          if (!stripeResult) {
-            throw new Error('Payment form is not ready. Please refresh and try again.')
-          }
-          if (stripeResult.error) {
-            setCardError(stripeResult.error)
-            throw new Error('Payment failed. Please check the payment details or try again.')
-          }
-
-          const status = stripeResult.status
-          if (status === 'succeeded') {
-            await completeCheckout(stripeResult.paymentIntentId || '')
-            return
-          }
-          if (status === 'processing' || status === 'requires_capture') {
-            await continuePendingPaymentConfirmation(stripeResult.paymentIntentId || '')
-            return
-          }
-          if (status === 'requires_action') {
-            toast.message('Additional authentication required', {
-              description:
-                'Continue in the verification window or redirected page to finish payment.',
-            })
-            return
-          }
-          throw new Error(
-            'Payment could not be completed. Please try again or choose a different payment method.',
+          await handleStripeConfirmationResult(
+            stripeResult || { error: 'Payment form is not ready. Please refresh and try again.' },
           )
+          return
         }
 
         throw new Error(
@@ -3041,9 +3206,11 @@ function OrderFlowInner({
                         clientSecret={stripeClientSecretForRender}
                         publishableKey={stripePublishableKey}
                         stripeAccount={stripeAccount}
+                        returnUrl={stripeReturnUrlForRender}
                         shipping={shipping}
                         onPaymentError={setCardError}
                         onPaymentMethodChange={setStripeSelectedMethodType}
+                        onConfirmationResult={handleStripeConfirmationResult}
                       />
                     ) : paymentActionType === 'stripe_client_secret' || pspUsed === 'stripe' ? (
                       <div className="rounded-[20px] border border-red-200 bg-red-50 p-3 sm:p-4">
