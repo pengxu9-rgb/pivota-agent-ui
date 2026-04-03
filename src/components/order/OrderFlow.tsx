@@ -673,6 +673,7 @@ function OrderFlowInner({
   } | null>(null)
   const [debugEnabled, setDebugEnabled] = useState(false)
   const createdOrderPaymentRef = useRef<CreatedOrderPaymentSnapshot | null>(null)
+  const resumeHydratingRef = useRef(false)
   const paymentInitPromiseRef = useRef<Promise<PrefetchedPaymentInit> | null>(null)
   const paymentInitKeyRef = useRef<string | null>(null)
   const paymentInitRunIdRef = useRef(0)
@@ -1506,6 +1507,7 @@ function OrderFlowInner({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!resumeOrder?.orderId) return
+    resumeHydratingRef.current = true
 
     const nextShipping = resumeOrder.shipping || null
     if (nextShipping) {
@@ -1547,6 +1549,12 @@ function OrderFlowInner({
   }, [resumeOrder])
 
   useEffect(() => {
+    if (resumeHydratingRef.current) {
+      if (step === 'payment') {
+        resumeHydratingRef.current = false
+      }
+      return
+    }
     if (step === 'payment') return
     paymentInitRunIdRef.current += 1
     paymentInitPromiseRef.current = null
