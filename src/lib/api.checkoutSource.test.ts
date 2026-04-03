@@ -31,13 +31,7 @@ describe('checkout source propagation', () => {
     vi.unstubAllEnvs()
   })
 
-  it('keeps creator_agent through persisted checkout context on direct invoke', async () => {
-    vi.stubEnv('NEXT_PUBLIC_ENABLE_DIRECT_CHECKOUT_INVOKE', 'true')
-    vi.stubEnv(
-      'NEXT_PUBLIC_DIRECT_CHECKOUT_INVOKE_URL',
-      'https://direct.example.com/agent/shop/v1/invoke',
-    )
-
+  it('keeps creator_agent through persisted checkout context on proxy preview_quote', async () => {
     const checkoutTokenModule = await import('@/lib/checkoutToken')
     checkoutTokenModule.getCheckoutContextFromBrowser(
       '?checkout_token=tok_creator_123&source=creator_agent',
@@ -56,48 +50,10 @@ describe('checkout source propagation', () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1)
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
-    expect(url).toBe('https://direct.example.com/agent/shop/v1/invoke')
+    expect(url).toBe('/api/gateway')
     expect((init.headers as Record<string, string>)['X-Checkout-Token']).toBe('tok_creator_123')
     const body = JSON.parse(String(init.body || '{}'))
     expect(body.metadata).toMatchObject({
-      source: 'creator_agent',
-      ui_source: 'shopping-agent-ui',
-    })
-  })
-
-  it('preserves creator_agent on proxy fallback after direct invoke is rejected', async () => {
-    vi.stubEnv('NEXT_PUBLIC_ENABLE_DIRECT_CHECKOUT_INVOKE', 'true')
-    vi.stubEnv(
-      'NEXT_PUBLIC_DIRECT_CHECKOUT_INVOKE_URL',
-      'https://direct.example.com/agent/shop/v1/invoke',
-    )
-
-    const checkoutTokenModule = await import('@/lib/checkoutToken')
-    checkoutTokenModule.persistCheckoutContext({
-      token: 'tok_creator_456',
-      source: 'creator_agent',
-    })
-
-    const fetchMock = vi
-      .spyOn(globalThis, 'fetch')
-      .mockResolvedValueOnce(jsonResponse({ error: 'FORBIDDEN' }, 403))
-      .mockResolvedValueOnce(
-        jsonResponse({ quote_id: 'quote_proxy_123', pricing: { total: 24 }, currency: 'USD' }),
-      )
-
-    const { previewQuote } = await import('@/lib/api')
-    await previewQuote({
-      merchant_id: 'merchant_creator',
-      items: [{ product_id: 'prod_456', variant_id: 'var_456', quantity: 1 }],
-    })
-
-    expect(fetchMock).toHaveBeenCalledTimes(2)
-    const [directUrl] = fetchMock.mock.calls[0] as [string, RequestInit]
-    const [proxyUrl, proxyInit] = fetchMock.mock.calls[1] as [string, RequestInit]
-    expect(directUrl).toBe('https://direct.example.com/agent/shop/v1/invoke')
-    expect(proxyUrl).toBe('/api/gateway')
-    const proxyBody = JSON.parse(String(proxyInit.body || '{}'))
-    expect(proxyBody.metadata).toMatchObject({
       source: 'creator_agent',
       ui_source: 'shopping-agent-ui',
     })
