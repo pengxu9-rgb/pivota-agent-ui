@@ -15,6 +15,8 @@ const AGENT_API_KEY =
   process.env.PIVOTA_API_KEY ||
   '';
 
+const LEGACY_ROUTE_HEADER = 'x-pivota-legacy-route';
+
 function normalizeIntentItems(rawItems: any[]): any[] {
   return rawItems
     .map((raw) => {
@@ -67,6 +69,21 @@ export async function POST(req: NextRequest) {
     const locale = String(body?.locale || '').trim();
     const buyerRef = String(body?.buyer_ref || body?.buyerRef || '').trim();
     const jobId = String(body?.job_id || body?.jobId || '').trim();
+    const itemCount = items.length;
+
+    console.warn('[shopping][legacy-checkout-session-hit]', {
+      route: '/api/checkout/session',
+      item_count: itemCount,
+      source,
+      has_return_url: Boolean(returnUrl),
+      market: market || null,
+      locale: locale || null,
+      has_buyer_ref: Boolean(buyerRef),
+      has_job_id: Boolean(jobId),
+      referer: req.headers.get('referer') || null,
+      origin: req.headers.get('origin') || null,
+      user_agent: req.headers.get('user-agent') || null,
+    });
 
     const upstream = await fetch(`${BACKEND_BASE}/agent/v1/checkout/intents`, {
       method: 'POST',
@@ -99,6 +116,7 @@ export async function POST(req: NextRequest) {
       status: upstream.status,
       headers: {
         'Server-Timing': `gateway;dur=${totalMs}`,
+        [LEGACY_ROUTE_HEADER]: 'checkout-session',
       },
     });
   } catch (error) {
@@ -112,6 +130,7 @@ export async function POST(req: NextRequest) {
         status: 500,
         headers: {
           'Server-Timing': `gateway;dur=${totalMs}`,
+          [LEGACY_ROUTE_HEADER]: 'checkout-session',
         },
       },
     );
