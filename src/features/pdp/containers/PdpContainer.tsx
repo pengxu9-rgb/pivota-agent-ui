@@ -99,6 +99,13 @@ function formatPrice(amount: number, currency: string) {
 
 const SIMILAR_PAGE_STEP = 12;
 const SIMILAR_NO_GROWTH_STOP_THRESHOLD = 2;
+const SINGLE_VARIANT_PLACEHOLDER_TITLE = /^(default(?: title)?|variant \d+)$/i;
+
+function getSingleVariantSummaryLabel(variant: Variant | undefined): string {
+  const title = String(variant?.title || '').trim();
+  if (!title || SINGLE_VARIANT_PLACEHOLDER_TITLE.test(title)) return 'Default option';
+  return title;
+}
 function buildRecommendationKey(item: { product_id?: string; merchant_id?: string }) {
   return `${String(item?.merchant_id || '').trim()}::${String(item?.product_id || '').trim()}`;
 }
@@ -437,8 +444,8 @@ export function PdpContainer({
   const productFacts = getModuleData<ProductFactsData>(payload, 'product_facts');
   const legacyDetails = getModuleData<ProductDetailsData>(payload, 'product_details');
   const details = productFacts || legacyDetails;
-  const ingredientsInci = getModuleData<IngredientsInciData>(payload, 'ingredients_inci');
   const activeIngredients = getModuleData<ActiveIngredientsData>(payload, 'active_ingredients');
+  const ingredientsInci = getModuleData<IngredientsInciData>(payload, 'ingredients_inci');
   const howToUse = getModuleData<HowToUseData>(payload, 'how_to_use');
   const reviews = getModuleData<ReviewsPreviewData>(payload, 'reviews_preview');
   const payloadRecommendations = getModuleData<RecommendationsData>(payload, 'recommendations');
@@ -1104,6 +1111,27 @@ export function PdpContainer({
 
   const attributeOptions = extractAttributeOptions(selectedVariant);
   const beautyAttributes = extractBeautyAttributes(selectedVariant);
+  const hasDetailsSection = Boolean(
+    details ||
+      activeIngredients?.items?.length ||
+      ingredientsInci?.items?.length ||
+      howToUse?.steps?.length ||
+      activeIngredients?.raw_text ||
+      ingredientsInci?.raw_text ||
+      howToUse?.raw_text,
+  );
+  const isExternalSeedProduct =
+    String(payload.product.merchant_id || '').trim().toLowerCase() === 'external_seed';
+  const singleVariantSummaryLabel = useMemo(
+    () => getSingleVariantSummaryLabel(selectedVariant),
+    [selectedVariant],
+  );
+  const showExternalSeedSingleVariantSummary =
+    isExternalSeedProduct &&
+    variants.length === 1 &&
+    !colorOptions.length &&
+    !sizeOptions.length &&
+    !attributeOptions.length;
   const compareAmount =
     pricePromo?.compare_at?.amount ??
     selectedVariant.price?.compare_at?.amount ??
@@ -1806,6 +1834,19 @@ export function PdpContainer({
                   Selected: <span className="text-foreground">{selectedVariant?.title}</span>
                 </div>
               ) : null}
+              {showExternalSeedSingleVariantSummary ? (
+                <div className="mt-2">
+                  <div className="flex items-center justify-between">
+                    <div className="text-xs font-semibold">Option</div>
+                    <div className="text-[11px] text-muted-foreground">Selected by default</div>
+                  </div>
+                  <div className="mt-1.5 flex flex-wrap gap-1.5">
+                    <span className="inline-flex min-h-10 items-center rounded-full border border-[color:var(--accent-600)] bg-[var(--accent-50)] px-3 text-xs font-semibold text-[color:var(--accent-800)]">
+                      {singleVariantSummaryLabel}
+                    </span>
+                  </div>
+                </div>
+              ) : null}
 
               {reviews?.review_count ? (
                 <button
@@ -2333,7 +2374,7 @@ export function PdpContainer({
           </div>
         ) : null}
 
-        {details ? (
+        {hasDetailsSection ? (
           <div
             ref={(el) => {
               sectionRefs.current.details = el;
@@ -2362,7 +2403,7 @@ export function PdpContainer({
             ) : (
               <div className="px-4 py-4">
                 <h2 className="text-sm font-semibold mb-3">Details</h2>
-                <DetailsAccordion data={details} />
+                <DetailsAccordion data={details || { sections: [] }} />
               </div>
             )}
           </div>

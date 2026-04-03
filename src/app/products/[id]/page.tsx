@@ -43,7 +43,7 @@ interface Props {
 }
 
 const PDP_V2_SCOPED_TIMEOUT_MS = 9000;
-const PDP_V2_UNSCOPED_TIMEOUT_MS = 12000;
+const PDP_V2_UNSCOPED_TIMEOUT_MS = 9000;
 
 function normalizeVariantOptionToken(value: string): string {
   return String(value || '')
@@ -176,6 +176,53 @@ function hasRecommendationsItems(response: PDPPayload | null): boolean {
     const items = (m as any)?.data?.items;
     return Array.isArray(items) && items.length > 0;
   });
+}
+
+const PDP_INITIAL_INCLUDE = [
+  'offers',
+  'variant_selector',
+  'active_ingredients',
+  'ingredients_inci',
+  'how_to_use',
+  'product_details',
+] as const;
+
+function mapSellerCandidatesFromResolveCandidates(
+  resolved: Awaited<ReturnType<typeof resolveProductCandidates>>,
+): ProductResponse[] {
+  const offers = Array.isArray(resolved?.offers) ? resolved.offers : [];
+  return offers
+    .map((offer) => {
+      const merchantId = String(offer?.merchant_id || '').trim();
+      const productId = String(offer?.product_id || '').trim();
+      if (!merchantId || !productId) return null;
+      const rawPrice = offer?.price;
+      const price =
+        typeof rawPrice === 'number'
+          ? rawPrice
+          : Number(rawPrice?.amount ?? 0) || 0;
+      const currency =
+        typeof rawPrice === 'object' && rawPrice
+          ? String(rawPrice.currency || 'USD').trim() || 'USD'
+          : 'USD';
+      const inventory = offer?.inventory;
+      return {
+        product_id: productId,
+        merchant_id: merchantId,
+        merchant_name: String(offer?.merchant_name || '').trim() || undefined,
+        title: 'Seller option',
+        description: '',
+        price,
+        currency,
+        image_url: '/placeholder.svg',
+        category: 'General',
+        in_stock:
+          typeof inventory?.in_stock === 'boolean'
+            ? inventory.in_stock
+            : (Number(inventory?.available_quantity || 0) || 0) > 0,
+      } satisfies ProductResponse;
+    })
+    .filter((candidate): candidate is ProductResponse => Boolean(candidate));
 }
 
 function readApiErrorCode(err: unknown): string {
@@ -486,12 +533,16 @@ export default function ProductDetailPage({ params }: Props) {
       const explicitMerchantId = merchantIdParam ? String(merchantIdParam).trim() : null;
       const candidateResolutionPromise = explicitMerchantId
         ? Promise.resolve(null)
-        : resolveProductCandidates({
-            product_id: id,
-            limit: 12,
-            include_offers: true,
-            timeout_ms: candidateTimeoutMs,
-          }).catch(() => null);
+        : Promise.resolve()
+            .then(() =>
+              resolveProductCandidates({
+                product_id: id,
+                limit: 12,
+                include_offers: true,
+                timeout_ms: candidateTimeoutMs,
+              }),
+            )
+            .catch(() => null);
 
       setLoading(true);
       setError(null);
@@ -508,7 +559,7 @@ export default function ProductDetailPage({ params }: Props) {
         const v2 = await getPdpV2({
           product_id: id,
           ...(explicitMerchantId ? { merchant_id: explicitMerchantId } : {}),
-          include: ['offers', 'reviews_preview', 'similar'],
+          include: [...PDP_INITIAL_INCLUDE],
           timeout_ms: v2TimeoutMs,
         });
         if (cancelled) return;

@@ -9,10 +9,8 @@ import type {
   Product,
   ProductDetailsData,
 } from '@/features/pdp/types';
-import { ActiveIngredientsSection } from '@/features/pdp/sections/ActiveIngredientsSection';
 import { DetailsAccordion } from '@/features/pdp/sections/DetailsAccordion';
-import { HowToUseSection } from '@/features/pdp/sections/HowToUseSection';
-import { IngredientsInciSection } from '@/features/pdp/sections/IngredientsInciSection';
+import { StructuredDetailsBlocks } from '@/features/pdp/sections/StructuredDetailsBlocks';
 import {
   formatDescriptionText,
   isLikelyHeadingParagraph,
@@ -27,7 +25,7 @@ export function BeautyDetailsSection({
   ingredientsInci,
   howToUse,
 }: {
-  data: ProductDetailsData;
+  data?: ProductDetailsData | null;
   product: Product;
   media?: MediaGalleryData | null;
   activeIngredients?: ActiveIngredientsData | null;
@@ -36,10 +34,16 @@ export function BeautyDetailsSection({
 }) {
   const heroUrl = media?.items?.[0]?.url || product.image_url;
   const accentImages = media?.items?.slice(1, 3) || [];
-  const storySectionIndex = data.sections.findIndex((section) => /brand|story/i.test(section.heading));
-  const storySection = storySectionIndex >= 0 ? data.sections[storySectionIndex] : undefined;
+  const sections = Array.isArray(data?.sections) ? data.sections : [];
+  const storySectionIndex = sections.findIndex((section) =>
+    /brand|story/i.test(section.heading),
+  );
+  const storySection =
+    storySectionIndex >= 0 ? sections[storySectionIndex] : undefined;
   const remainingSections =
-    storySectionIndex >= 0 ? data.sections.filter((_, idx) => idx !== storySectionIndex) : data.sections;
+    storySectionIndex >= 0
+      ? sections.filter((_, idx) => idx !== storySectionIndex)
+      : sections;
   const formattedDescription =
     formatDescriptionText(product.description) || formatDescriptionText(remainingSections?.[0]?.content);
   const descriptionParagraphs = splitParagraphs(formattedDescription);
@@ -49,7 +53,7 @@ export function BeautyDetailsSection({
     '';
   const formattedBrandStory = formatDescriptionText(product.brand_story || storySection?.content);
   const brandStoryParagraphs = splitParagraphs(formattedBrandStory);
-  const factsSections = storySectionIndex >= 0 ? remainingSections : data.sections;
+  const factsSections = storySectionIndex >= 0 ? remainingSections : sections;
 
   return (
     <div className="py-4">
@@ -95,9 +99,13 @@ export function BeautyDetailsSection({
         </div>
       ) : null}
 
-      {activeIngredients ? <ActiveIngredientsSection data={activeIngredients} /> : null}
-      {ingredientsInci ? <IngredientsInciSection data={ingredientsInci} /> : null}
-      {howToUse ? <HowToUseSection data={howToUse} /> : null}
+      <div className="mx-3 space-y-3">
+        <StructuredDetailsBlocks
+          activeIngredients={activeIngredients}
+          ingredientsInci={ingredientsInci}
+          howToUse={howToUse}
+        />
+      </div>
 
       {formattedBrandStory ? (
         <div className="px-3 py-6 border-t border-muted/60">

@@ -255,9 +255,9 @@ describe('PdpContainer structured PDP modules', () => {
     );
 
     expect(screen.getByText('Active ingredients')).toBeInTheDocument();
-    expect(screen.getByText('Ceramide NP')).toBeInTheDocument();
+    expect(screen.getAllByText('Ceramide NP').length).toBeGreaterThan(0);
     expect(screen.getByText('Ingredients')).toBeInTheDocument();
-    expect(screen.getByText('Water, Glycerin, Ceramide NP, Cholesterol')).toBeInTheDocument();
+    expect(screen.getAllByText('Cholesterol').length).toBeGreaterThan(0);
     expect(screen.getByText('How to use')).toBeInTheDocument();
     expect(screen.getByText('Apply after cleansing.')).toBeInTheDocument();
     expect(screen.getByText('Brand Story')).toBeInTheDocument();
@@ -299,6 +299,6 @@ describe('PdpContainer structured PDP modules', () => {
 
     expect(screen.getByText('Options')).toBeInTheDocument();
     expect(screen.getByText('1 variant')).toBeInTheDocument();
-    expect(screen.getByText('Default option')).toBeInTheDocument();
+    expect(screen.getAllByText('Default option').length).toBeGreaterThan(0);
   });
 });
