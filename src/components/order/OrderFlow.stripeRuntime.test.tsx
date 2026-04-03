@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 
-import { resolveStripeAccount, resolveStripePublishableKey } from './OrderFlow'
+import {
+  resolveStripeAccount,
+  resolveStripePaymentMethodOrder,
+  resolveStripePublishableKey,
+} from './OrderFlow'
 
 describe('resolveStripePublishableKey', () => {
   it('prefers explicit payment action public key from the backend contract', () => {
@@ -46,5 +50,9 @@ describe('resolveStripePublishableKey', () => {
         null,
       ),
     ).toBe('acct_live_123')
+  })
+
+  it('leaves payment method ordering to Stripe dynamic defaults by default', () => {
+    expect(resolveStripePaymentMethodOrder('US')).toBeNull()
   })
 })

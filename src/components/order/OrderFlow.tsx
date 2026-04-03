@@ -30,7 +30,7 @@ import { useCartStore } from '@/store/cartStore'
 import { toast } from 'sonner'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { loadStripe, type Stripe } from '@stripe/stripe-js'
-import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js'
+import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js'
 import { useAuthStore } from '@/store/authStore'
 import '@adyen/adyen-web/dist/adyen.css'
 
@@ -146,8 +146,12 @@ type StripeConfirmationResult = {
   paymentIntentId?: string
 }
 
-type StripeCardSectionHandle = {
-  confirm: (clientSecret: string) => Promise<StripeConfirmationResult>
+type StripePaymentSectionHandle = {
+  confirm: (args: {
+    clientSecret: string
+    returnUrl: string
+    shipping?: Partial<ShippingInfo> | null
+  }) => Promise<StripeConfirmationResult>
 }
 
 function readStripeAccount(value: unknown): string | null {
@@ -290,82 +294,204 @@ function parseBooleanToken(value: string | null | undefined): boolean | null {
   return null
 }
 
-const StripeCardSectionInner = forwardRef<
-  StripeCardSectionHandle,
-  { onCardError: (message: string) => void }
->(function StripeCardSectionInner({ onCardError }, ref) {
+function normalizeStripePaymentCountry(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const normalized = value.trim().toUpperCase()
+  if (!normalized) return null
+  return normalized.slice(0, 2) || null
+}
+
+export function resolveStripePaymentMethodOrder(
+  countryCode: string | null | undefined,
+): string[] | null {
+  const normalized = normalizeStripePaymentCountry(countryCode)
+  if (!normalized) return null
+  return null
+}
+
+function buildStripeBillingDetails(shipping?: Partial<ShippingInfo> | null) {
+  const country = normalizeStripePaymentCountry(shipping?.country)
+  return {
+    ...(shipping?.name ? { name: shipping.name } : {}),
+    ...(shipping?.email ? { email: shipping.email } : {}),
+    ...(shipping?.phone ? { phone: shipping.phone } : {}),
+    address: {
+      ...(country ? { country } : {}),
+      ...(shipping?.postal_code ? { postal_code: shipping.postal_code } : {}),
+      ...(shipping?.state ? { state: shipping.state } : {}),
+      ...(shipping?.city ? { city: shipping.city } : {}),
+      ...(shipping?.address_line1 ? { line1: shipping.address_line1 } : {}),
+      ...(shipping?.address_line2 ? { line2: shipping.address_line2 } : {}),
+    },
+  }
+}
+
+function buildStripePaymentElementOptions(shipping?: Partial<ShippingInfo> | null) {
+  const paymentMethodOrder = resolveStripePaymentMethodOrder(shipping?.country || null)
+  return {
+    defaultValues: {
+      billingDetails: buildStripeBillingDetails(shipping),
+    },
+    layout: {
+      type: 'accordion' as const,
+      defaultCollapsed: false,
+      radios: true,
+      spacedAccordionItems: false,
+    },
+    wallets: {
+      applePay: 'auto' as const,
+      googlePay: 'auto' as const,
+    },
+    ...(paymentMethodOrder ? { paymentMethodOrder } : {}),
+  }
+}
+
+function formatStripePaymentMethodLabel(methodType: string | null | undefined): string | null {
+  const normalized = String(methodType || '').trim().toLowerCase()
+  if (!normalized) return null
+  const labels: Record<string, string> = {
+    apple_pay: 'Apple Pay',
+    google_pay: 'Google Pay',
+    link: 'Link',
+    klarna: 'Klarna',
+    affirm: 'Affirm',
+    afterpay_clearpay: 'Afterpay/Clearpay',
+    us_bank_account: 'US bank account',
+    cashapp: 'Cash App Pay',
+    cashapp_pay: 'Cash App Pay',
+    paypal: 'PayPal',
+    card: 'Card',
+  }
+  if (labels[normalized]) return labels[normalized]
+  return normalized
+    .split('_')
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ')
+}
+
+const StripePaymentSectionInner = forwardRef<
+  StripePaymentSectionHandle,
+  {
+    clientSecret: string
+    shipping?: Partial<ShippingInfo> | null
+    onPaymentError: (message: string) => void
+    onPaymentMethodChange: (methodType: string | null) => void
+  }
+>(function StripePaymentSectionInner(
+  { clientSecret, shipping = null, onPaymentError, onPaymentMethodChange },
+  ref,
+) {
   const stripe = useStripe()
   const elements = useElements()
-  const [localCardError, setLocalCardError] = useState('')
+  const [localPaymentError, setLocalPaymentError] = useState('')
 
   useImperativeHandle(
     ref,
     () => ({
-      async confirm(clientSecret: string) {
+      async confirm({ clientSecret: confirmClientSecret, returnUrl, shipping: confirmShipping }) {
         if (!stripe || !elements) {
           return { error: 'Payment form is not ready. Please refresh and try again.' }
         }
 
-        const cardElement = elements.getElement(CardElement)
-        if (!cardElement) {
-          return { error: 'Please enter your card details to pay.' }
+        if (!returnUrl) {
+          return { error: 'Payment return URL is missing. Please refresh and try again.' }
         }
 
-        const result = await stripe.confirmCardPayment(clientSecret, {
-          payment_method: {
-            card: cardElement,
+        const submitResult = await elements.submit()
+        if (submitResult.error) {
+          const message = submitResult.error.message || 'Please complete the payment form.'
+          setLocalPaymentError(message)
+          onPaymentError(message)
+          return { error: message }
+        }
+
+        const result = await stripe.confirmPayment({
+          elements,
+          clientSecret: confirmClientSecret || clientSecret,
+          confirmParams: {
+            return_url: returnUrl,
+            payment_method_data: {
+              billing_details: buildStripeBillingDetails(confirmShipping || shipping),
+            },
           },
+          redirect: 'if_required',
         })
 
         if (result.error) {
           const message = result.error.message || 'Payment failed'
-          setLocalCardError(message)
-          onCardError(message)
+          setLocalPaymentError(message)
+          onPaymentError(message)
           return { error: message }
         }
 
-        setLocalCardError('')
-        onCardError('')
+        setLocalPaymentError('')
+        onPaymentError('')
         return {
           status: result.paymentIntent?.status,
           paymentIntentId: result.paymentIntent?.id,
         }
       },
     }),
-    [elements, onCardError, stripe],
+    [clientSecret, elements, onPaymentError, shipping, stripe],
   )
 
   return (
     <div className="rounded-[20px] border border-slate-200 bg-white p-3 sm:p-4">
-      <label className="text-[13px] font-medium text-slate-700 sm:text-sm">Card Details</label>
+      <label className="text-[13px] font-medium text-slate-700 sm:text-sm">Payment Details</label>
       <div className="mt-2 rounded-[16px] border border-slate-200 bg-slate-50 p-3">
-        <CardElement
-          options={{ hidePostalCode: true }}
+        <PaymentElement
+          options={buildStripePaymentElementOptions(shipping)}
           onChange={(event: any) => {
             const message = String(event?.error?.message || '').trim()
-            setLocalCardError(message)
-            onCardError(message)
+            setLocalPaymentError(message)
+            onPaymentError(message)
+            const methodType = String(event?.value?.type || '').trim() || null
+            onPaymentMethodChange(methodType)
           }}
         />
       </div>
-      {localCardError && <p className="mt-2 text-sm text-red-600">{localCardError}</p>}
+      {localPaymentError && <p className="mt-2 text-sm text-red-600">{localPaymentError}</p>}
     </div>
   )
 })
 
-const StripeCardSection = forwardRef<
-  StripeCardSectionHandle,
-  { publishableKey: string; stripeAccount?: string | null; onCardError: (message: string) => void }
->(function StripeCardSection({ publishableKey, stripeAccount = null, onCardError }, ref) {
+const StripePaymentSection = forwardRef<
+  StripePaymentSectionHandle,
+  {
+    clientSecret: string
+    publishableKey: string
+    stripeAccount?: string | null
+    shipping?: Partial<ShippingInfo> | null
+    onPaymentError: (message: string) => void
+    onPaymentMethodChange: (methodType: string | null) => void
+  }
+>(function StripePaymentSection(
+  {
+    clientSecret,
+    publishableKey,
+    stripeAccount = null,
+    shipping = null,
+    onPaymentError,
+    onPaymentMethodChange,
+  },
+  ref,
+) {
   const stripePromise = useMemo(
     () => getStripePromiseForKey(publishableKey, stripeAccount),
     [publishableKey, stripeAccount],
   )
-  const sectionKey = stripeAccount ? `${publishableKey}::${stripeAccount}` : publishableKey
+  const billingKey = JSON.stringify(buildStripeBillingDetails(shipping))
+  const sectionKey = [publishableKey, stripeAccount || '', clientSecret, billingKey].join('::')
 
   return (
-    <Elements key={sectionKey} stripe={stripePromise}>
-      <StripeCardSectionInner ref={ref} onCardError={onCardError} />
+    <Elements key={sectionKey} stripe={stripePromise} options={{ clientSecret }}>
+      <StripePaymentSectionInner
+        ref={ref}
+        clientSecret={clientSecret}
+        shipping={shipping}
+        onPaymentError={onPaymentError}
+        onPaymentMethodChange={onPaymentMethodChange}
+      />
     </Elements>
   )
 })
@@ -684,7 +810,8 @@ function OrderFlowInner({
     DEFAULT_STRIPE_PUBLISHABLE_KEY,
   )
   const [stripeAccount, setStripeAccount] = useState<string | null>(null)
-  const stripeCardSectionRef = useRef<StripeCardSectionHandle | null>(null)
+  const [stripeSelectedMethodType, setStripeSelectedMethodType] = useState<string | null>(null)
+  const stripePaymentSectionRef = useRef<StripePaymentSectionHandle | null>(null)
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -764,6 +891,8 @@ function OrderFlowInner({
       action?.type === 'stripe_client_secret' || !resolvedPsp || resolvedPsp === 'stripe'
     if (!isStripeRuntime) {
       setStripePublishableKey('')
+      setStripeAccount(null)
+      setStripeSelectedMethodType(null)
       return
     }
     setStripePublishableKey(resolveStripePublishableKey(paymentResponse, action) || '')
@@ -795,6 +924,10 @@ function OrderFlowInner({
   ): CreatedOrderPaymentSnapshot | null => {
     const snapshot = createdOrderPaymentRef.current
     if (!snapshot || snapshot.orderId !== orderId) return null
+    const snapshotPsp = normalizePaymentPspToken(snapshot.psp)
+    if (snapshot.action?.type === 'stripe_client_secret' || snapshotPsp === 'stripe') {
+      return null
+    }
     return isReusablePaymentAction(snapshot.action) ? snapshot : null
   }
 
@@ -1291,6 +1424,12 @@ function OrderFlowInner({
     return new URL(successPath, window.location.origin).toString()
   }
 
+  const stripeClientSecretForRender =
+    initialPaymentAction?.type === 'stripe_client_secret' &&
+    typeof initialPaymentAction?.client_secret === 'string'
+      ? initialPaymentAction.client_secret
+      : null
+  const stripeMethodLabel = formatStripePaymentMethodLabel(stripeSelectedMethodType)
   const isExternalRedirectPayment = paymentActionType === 'redirect_url'
   const paymentProviderLabel =
     pspUsed === 'adyen'
@@ -1298,7 +1437,9 @@ function OrderFlowInner({
       : paymentActionType === 'checkout_session'
         ? 'Checkout.com (session)'
       : pspUsed === 'stripe' || paymentActionType === 'stripe_client_secret'
-          ? 'Stripe (card payment)'
+          ? stripeMethodLabel
+            ? `Stripe (${stripeMethodLabel})`
+            : 'Stripe (payment methods)'
           : isExternalRedirectPayment
             ? 'Redirect checkout'
             : 'Card payment'
@@ -1564,6 +1705,8 @@ function OrderFlowInner({
     setPaymentInitError(null)
     clearCreatedOrderPaymentSnapshot()
     setStripePublishableKey(DEFAULT_STRIPE_PUBLISHABLE_KEY)
+    setStripeAccount(null)
+    setStripeSelectedMethodType(null)
   }, [step])
 
   useEffect(() => {
@@ -1595,6 +1738,7 @@ function OrderFlowInner({
         const detectedPsp = detectPaymentPsp(prefetched.paymentResponse, action)
         assertSupportedPaymentSurface(prefetched.paymentResponse, action, detectedPsp)
         setPrefetchedPaymentRes(prefetched)
+        setInitialPaymentAction(action)
         setPaymentActionType(action?.type || null)
         setPspUsed(detectedPsp)
         syncStripeRuntime(prefetched.paymentResponse, action, detectedPsp)
@@ -1788,6 +1932,8 @@ function OrderFlowInner({
       setInitialPaymentAction(null)
       setPaymentActionType(null)
       setPspUsed(null)
+      setInitialPaymentAction(null)
+      setStripeSelectedMethodType(null)
       clearCreatedOrderPaymentSnapshot()
       setAdyenMounted(false)
       paymentInitRunIdRef.current += 1
@@ -2063,13 +2209,21 @@ function OrderFlowInner({
               'Stripe public key is missing for this merchant. Reconnect Stripe and try again.',
             )
           }
-          const stripeResult = await stripeCardSectionRef.current?.confirm(clientSecret)
+          const stripeReturnUrl = buildPostPayReturnUrl(orderId)
+          if (!stripeReturnUrl) {
+            throw new Error('Payment return URL is missing. Please refresh and try again.')
+          }
+          const stripeResult = await stripePaymentSectionRef.current?.confirm({
+            clientSecret,
+            returnUrl: stripeReturnUrl,
+            shipping,
+          })
           if (!stripeResult) {
             throw new Error('Payment form is not ready. Please refresh and try again.')
           }
           if (stripeResult.error) {
             setCardError(stripeResult.error)
-            throw new Error('Payment failed. Please check your card details or try again.')
+            throw new Error('Payment failed. Please check the payment details or try again.')
           }
 
           const status = stripeResult.status
@@ -2077,14 +2231,20 @@ function OrderFlowInner({
             await completeCheckout(stripeResult.paymentIntentId || '')
             return
           }
+          if (status === 'processing' || status === 'requires_capture') {
+            await continuePendingPaymentConfirmation(stripeResult.paymentIntentId || '')
+            return
+          }
           if (status === 'requires_action') {
-            // Stripe will handle 3DS in confirmCardPayment; keep user on page
             toast.message('Additional authentication required', {
-              description: 'Please complete the 3D Secure flow in the popup window if prompted.',
+              description:
+                'Continue in the verification window or redirected page to finish payment.',
             })
             return
           }
-          throw new Error('Payment could not be completed. Please try again or use a different card.')
+          throw new Error(
+            'Payment could not be completed. Please try again or choose a different payment method.',
+          )
         }
 
         throw new Error(
@@ -2672,6 +2832,11 @@ function OrderFlowInner({
                     Preparing payment session…
                   </p>
                 )}
+                {(pspUsed === 'stripe' || paymentActionType === 'stripe_client_secret') && !isExternalRedirectPayment && (
+                  <p className="text-xs text-slate-500">
+                    Available methods are decided by the merchant Stripe setup and the current payment context.
+                  </p>
+                )}
                 {paymentInitError && (
                   <p className="text-xs text-red-600">
                     {paymentInitError}
@@ -2841,8 +3006,10 @@ function OrderFlowInner({
                         <input type="radio" name="payment" defaultChecked className="mr-3" />
                         <CreditCard className="mr-3 h-5 w-5 sm:h-6 sm:w-6" />
                         <div>
-                          <p className="text-sm font-medium sm:text-base">Credit/Debit Card</p>
-                          <p className="text-xs text-slate-500 sm:text-sm">Secure payment</p>
+                          <p className="text-sm font-medium sm:text-base">Secure payment methods</p>
+                          <p className="text-xs text-slate-500 sm:text-sm">
+                            Cards, wallets, and other supported merchant payment methods
+                          </p>
                         </div>
                       </div>
                     </div>
@@ -2856,20 +3023,23 @@ function OrderFlowInner({
                           We will redirect you to finish payment on the merchant payment surface.
                         </p>
                       </div>
-                    ) : stripePublishableKey ? (
-                      <StripeCardSection
-                        ref={stripeCardSectionRef}
+                    ) : stripePublishableKey && stripeClientSecretForRender ? (
+                      <StripePaymentSection
+                        ref={stripePaymentSectionRef}
+                        clientSecret={stripeClientSecretForRender}
                         publishableKey={stripePublishableKey}
                         stripeAccount={stripeAccount}
-                        onCardError={setCardError}
+                        shipping={shipping}
+                        onPaymentError={setCardError}
+                        onPaymentMethodChange={setStripeSelectedMethodType}
                       />
                     ) : paymentActionType === 'stripe_client_secret' || pspUsed === 'stripe' ? (
                       <div className="rounded-[20px] border border-red-200 bg-red-50 p-3 sm:p-4">
                         <p className="text-sm font-medium text-red-700">
-                          Stripe public key is missing for this merchant.
+                          Stripe payment setup is incomplete for this merchant.
                         </p>
                         <p className="mt-1 text-xs text-red-600">
-                          Reconnect Stripe with the merchant live publishable key, then retry checkout.
+                          Refresh the payment session or reconnect Stripe, then retry checkout.
                         </p>
                       </div>
                     ) : null}
