@@ -503,7 +503,7 @@ export default function ProductDetailPage({ params }: Props) {
         const v2 = await getPdpV2({
           product_id: id,
           ...(explicitMerchantId ? { merchant_id: explicitMerchantId } : {}),
-          include: ['offers', 'reviews_preview'],
+          include: ['offers', 'reviews_preview', 'similar'],
           timeout_ms: v2TimeoutMs,
         });
         if (cancelled) return;

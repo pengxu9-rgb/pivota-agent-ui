@@ -1,8 +1,18 @@
 'use client';
 
 import Image from 'next/image';
-import type { MediaGalleryData, Product, ProductDetailsData } from '@/features/pdp/types';
+import type {
+  ActiveIngredientsData,
+  HowToUseData,
+  IngredientsInciData,
+  MediaGalleryData,
+  Product,
+  ProductDetailsData,
+} from '@/features/pdp/types';
+import { ActiveIngredientsSection } from '@/features/pdp/sections/ActiveIngredientsSection';
 import { DetailsAccordion } from '@/features/pdp/sections/DetailsAccordion';
+import { HowToUseSection } from '@/features/pdp/sections/HowToUseSection';
+import { IngredientsInciSection } from '@/features/pdp/sections/IngredientsInciSection';
 import {
   formatDescriptionText,
   isLikelyHeadingParagraph,
@@ -13,10 +23,16 @@ export function GenericDetailsSection({
   data,
   product,
   media,
+  activeIngredients,
+  ingredientsInci,
+  howToUse,
 }: {
   data: ProductDetailsData;
   product: Product;
   media?: MediaGalleryData | null;
+  activeIngredients?: ActiveIngredientsData | null;
+  ingredientsInci?: IngredientsInciData | null;
+  howToUse?: HowToUseData | null;
 }) {
   const primarySection = data.sections[0];
   const secondarySections = data.sections.slice(1);
@@ -67,6 +83,10 @@ export function GenericDetailsSection({
           ))}
         </div>
       ) : null}
+
+      {activeIngredients ? <ActiveIngredientsSection data={activeIngredients} /> : null}
+      {ingredientsInci ? <IngredientsInciSection data={ingredientsInci} /> : null}
+      {howToUse ? <HowToUseSection data={howToUse} /> : null}
 
       {secondarySections.length ? (
         <div className="mt-3">

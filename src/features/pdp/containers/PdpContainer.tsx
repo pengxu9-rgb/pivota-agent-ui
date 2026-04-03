@@ -2388,7 +2388,14 @@ export function PdpContainer({
                 howToUse={howToUse}
               />
             ) : resolvedMode === 'generic' ? (
-              <GenericDetailsSection data={details} product={payload.product} media={media} />
+              <GenericDetailsSection
+                data={details}
+                product={payload.product}
+                media={media}
+                activeIngredients={activeIngredients}
+                ingredientsInci={ingredientsInci}
+                howToUse={howToUse}
+              />
             ) : (
               <div className="px-4 py-4">
                 <h2 className="text-sm font-semibold mb-3">Details</h2>
