@@ -79,6 +79,50 @@ describe('/api/gateway checkout-safe proxy', () => {
     });
   });
 
+  it('routes submit_payment to the checkout-safe backend even without a checkout token', async () => {
+    vi.stubEnv('NEXT_PUBLIC_UPSTREAM_API_URL', 'https://invoke.example.com');
+    vi.stubEnv('PIVOTA_BACKEND_BASE_URL', 'https://checkout.example.com');
+
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      jsonResponse({
+        status: 'requires_action',
+        payment_id: 'pay_123',
+        payment_intent_id: 'pi_123',
+        client_secret: 'pi_123_secret_456',
+        psp_used: 'stripe',
+      }),
+    );
+
+    const { POST } = await import('@/app/api/gateway/route');
+
+    const req = new Request('http://localhost/api/gateway', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        operation: 'submit_payment',
+        payload: {
+          payment: {
+            order_id: 'ord_123',
+            return_url: 'https://agent.pivota.cc/order/success?orderId=ord_123',
+          },
+        },
+      }),
+    });
+
+    const res = await POST(req as any);
+
+    expect(res.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('https://checkout.example.com/agent/v1/payments');
+    expect(JSON.parse(String(init.body || '{}'))).toMatchObject({
+      order_id: 'ord_123',
+      payment_method: { type: 'dynamic' },
+    });
+  });
+
   it('normalizes checkout-token submit_payment responses for hosted checkout consumers', async () => {
     vi.stubEnv('NEXT_PUBLIC_UPSTREAM_API_URL', 'https://invoke.example.com');
     vi.stubEnv('PIVOTA_BACKEND_BASE_URL', 'https://checkout.example.com');
