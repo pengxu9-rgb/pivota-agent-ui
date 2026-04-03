@@ -308,4 +308,62 @@ describe('mapPdpV2ToPdpPayload image normalization', () => {
       'https://sdcdn.io/tf/tf_sku_T14Z01_2000x2000_2.jpg?width=650px&height=750px',
     ]);
   });
+
+  it('upserts structured canonical PDP modules from the v2 response', () => {
+    const response = buildMinimalResponse();
+    response.modules.push(
+      {
+        type: 'active_ingredients',
+        data: {
+          title: 'Active Ingredients',
+          items: ['Niacinamide', 'Panthenol'],
+        },
+      },
+      {
+        type: 'ingredients_inci',
+        data: {
+          title: 'Ingredients (INCI)',
+          items: ['Water', 'Niacinamide'],
+        },
+      },
+      {
+        type: 'how_to_use',
+        data: {
+          title: 'How to Use',
+          steps: ['Apply after cleansing', 'Follow with moisturizer'],
+        },
+      },
+      {
+        type: 'product_details',
+        data: {
+          sections: [{ heading: 'Details', content_type: 'text', content: 'Barrier-support serum.' }],
+        },
+      },
+    );
+
+    const payload = mapPdpV2ToPdpPayload(response);
+
+    expect(payload?.modules.find((module) => module.type === 'active_ingredients')).toEqual(
+      expect.objectContaining({
+        title: 'Active Ingredients',
+        data: expect.objectContaining({
+          items: ['Niacinamide', 'Panthenol'],
+        }),
+      }),
+    );
+    expect(payload?.modules.find((module) => module.type === 'ingredients_inci')).toEqual(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          items: ['Water', 'Niacinamide'],
+        }),
+      }),
+    );
+    expect(payload?.modules.find((module) => module.type === 'how_to_use')).toEqual(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          steps: ['Apply after cleansing', 'Follow with moisturizer'],
+        }),
+      }),
+    );
+  });
 });

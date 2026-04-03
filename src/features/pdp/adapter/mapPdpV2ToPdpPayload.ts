@@ -1,5 +1,14 @@
 import type { GetPdpV2Response } from '@/lib/api';
-import type { Module, PDPPayload, RecommendationsData, ReviewsPreviewData } from '@/features/pdp/types';
+import type {
+  ActiveIngredientsData,
+  HowToUseData,
+  IngredientsInciData,
+  Module,
+  PDPPayload,
+  ProductDetailsData,
+  RecommendationsData,
+  ReviewsPreviewData,
+} from '@/features/pdp/types';
 
 const IMAGE_PROXY_PATH = '/api/image-proxy';
 const ABSOLUTE_HTTP_URL_RE = /^https?:\/\//i;
@@ -369,6 +378,62 @@ export function mapPdpV2ToPdpPayload(response: GetPdpV2Response): PDPPayload | n
     if (offersGroupId && !next.product_group_id) {
       next.product_group_id = offersGroupId;
     }
+  }
+
+  const structuredModules = [
+    {
+      responseType: 'variant_selector',
+      module_id: 'variant_selector',
+      type: 'variant_selector' as const,
+      priority: 35,
+      title: 'Variants',
+    },
+    {
+      responseType: 'active_ingredients',
+      module_id: 'active_ingredients',
+      type: 'active_ingredients' as const,
+      priority: 40,
+      title: 'Active Ingredients',
+    },
+    {
+      responseType: 'ingredients_inci',
+      module_id: 'ingredients_inci',
+      type: 'ingredients_inci' as const,
+      priority: 41,
+      title: 'Ingredients (INCI)',
+    },
+    {
+      responseType: 'how_to_use',
+      module_id: 'how_to_use',
+      type: 'how_to_use' as const,
+      priority: 42,
+      title: 'How to Use',
+    },
+    {
+      responseType: 'product_details',
+      module_id: 'product_details',
+      type: 'product_details' as const,
+      priority: 45,
+      title: 'Product Details',
+    },
+  ] as const;
+
+  for (const moduleSpec of structuredModules) {
+    const responseModule = getModule(response, moduleSpec.responseType);
+    const responseData = isRecord(responseModule?.data) ? responseModule.data : null;
+    if (!responseData) continue;
+    next = upsertPayloadModule(next, {
+      module_id: moduleSpec.module_id,
+      type: moduleSpec.type,
+      priority: moduleSpec.priority,
+      title: moduleSpec.title,
+      data: responseData as
+        | ActiveIngredientsData
+        | IngredientsInciData
+        | HowToUseData
+        | ProductDetailsData
+        | Record<string, unknown>,
+    });
   }
 
   const reviewsModule = getModule(response, 'reviews_preview');

@@ -287,6 +287,34 @@ export type FindSimilarProductsResponse = {
   };
 };
 
+export function normalizeProductDescriptionText(value: unknown): string {
+  const raw =
+    typeof value === 'string'
+      ? value
+      : typeof (value as any)?.text === 'string'
+        ? (value as any).text
+        : '';
+  if (!raw) return '';
+
+  return raw
+    .replace(/<\s*br\s*\/?>/gi, '\n')
+    .replace(/<\s*li\b[^>]*>/gi, '\n- ')
+    .replace(/<\s*\/\s*(?:p|div|section|article|li|ul|ol|h[1-6])\s*>/gi, '\n')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/&#x27;/gi, "'")
+    .replace(/\r/g, '')
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/ *\n */g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 export function normalizeProduct(
   p: RealAPIProduct | ProductResponse,
 ): ProductResponse {
@@ -404,11 +432,7 @@ export function normalizeProduct(
     normalizedImage = '/placeholder.svg';
   }
 
-  const descriptionRaw =
-    typeof anyP.description === 'string'
-      ? anyP.description
-      : anyP.description?.text || '';
-  const description = formatDescriptionText(descriptionRaw);
+  const description = normalizeProductDescriptionText(anyP.description);
 
   const images = Array.isArray(anyP.images)
     ? anyP.images
@@ -1708,7 +1732,7 @@ export async function getPdpV2(args: {
 
   const include =
     args.include == null
-      ? ['offers', 'reviews_preview']
+      ? ['offers', 'variant_selector', 'active_ingredients', 'ingredients_inci', 'how_to_use', 'product_details', 'reviews_preview']
       : args.include;
 
   const data = await callGatewayWithTimeout(

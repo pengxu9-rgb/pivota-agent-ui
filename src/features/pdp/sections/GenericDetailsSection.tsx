@@ -9,10 +9,8 @@ import type {
   Product,
   ProductDetailsData,
 } from '@/features/pdp/types';
-import { ActiveIngredientsSection } from '@/features/pdp/sections/ActiveIngredientsSection';
 import { DetailsAccordion } from '@/features/pdp/sections/DetailsAccordion';
-import { HowToUseSection } from '@/features/pdp/sections/HowToUseSection';
-import { IngredientsInciSection } from '@/features/pdp/sections/IngredientsInciSection';
+import { StructuredDetailsBlocks } from '@/features/pdp/sections/StructuredDetailsBlocks';
 import {
   formatDescriptionText,
   isLikelyHeadingParagraph,
@@ -27,15 +25,16 @@ export function GenericDetailsSection({
   ingredientsInci,
   howToUse,
 }: {
-  data: ProductDetailsData;
+  data?: ProductDetailsData | null;
   product: Product;
   media?: MediaGalleryData | null;
   activeIngredients?: ActiveIngredientsData | null;
   ingredientsInci?: IngredientsInciData | null;
   howToUse?: HowToUseData | null;
 }) {
-  const primarySection = data.sections[0];
-  const secondarySections = data.sections.slice(1);
+  const sections = Array.isArray(data?.sections) ? data.sections : [];
+  const primarySection = sections[0];
+  const secondarySections = sections.slice(1);
   const description = formatDescriptionText(primarySection?.content || product.description);
   const descriptionParagraphs = splitParagraphs(description);
   const detailImages = (media?.items || []).slice(1, 3);
@@ -43,9 +42,15 @@ export function GenericDetailsSection({
   return (
     <div className="p-3">
       <h2 className="text-sm font-semibold mb-2">Product Details</h2>
-      <div className="mb-3">
-        <h3 className="text-sm font-semibold mb-1.5">{primarySection?.heading || 'Fabric & Care'}</h3>
-        {descriptionParagraphs.length ? (
+      <StructuredDetailsBlocks
+        activeIngredients={activeIngredients}
+        ingredientsInci={ingredientsInci}
+        howToUse={howToUse}
+      />
+
+      {descriptionParagraphs.length ? (
+        <div className="mt-3">
+          <h3 className="text-sm font-semibold mb-1.5">{primarySection?.heading || 'Details'}</h3>
           <div className="space-y-2">
             {descriptionParagraphs.map((paragraph, idx) =>
               isLikelyHeadingParagraph(paragraph) ? (
@@ -62,13 +67,11 @@ export function GenericDetailsSection({
               ),
             )}
           </div>
-        ) : (
-          <p className="text-sm text-muted-foreground leading-relaxed">Details not available.</p>
-        )}
-      </div>
+        </div>
+      ) : null}
 
       {detailImages.length ? (
-        <div className="space-y-2">
+        <div className="mt-3 space-y-2">
           {detailImages.map((item, idx) => (
             <Image
               key={`${item.url}-${idx}`}
@@ -84,14 +87,12 @@ export function GenericDetailsSection({
         </div>
       ) : null}
 
-      {activeIngredients ? <ActiveIngredientsSection data={activeIngredients} /> : null}
-      {ingredientsInci ? <IngredientsInciSection data={ingredientsInci} /> : null}
-      {howToUse ? <HowToUseSection data={howToUse} /> : null}
-
       {secondarySections.length ? (
         <div className="mt-3">
           <DetailsAccordion data={{ sections: secondarySections }} />
         </div>
+      ) : !descriptionParagraphs.length ? (
+        <p className="mt-3 text-sm text-muted-foreground leading-relaxed">Details not available.</p>
       ) : null}
     </div>
   );

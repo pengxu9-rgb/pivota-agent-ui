@@ -210,7 +210,7 @@ describe('PdpContainer gallery viewer wiring', () => {
 
     expect(screen.getByText('Option')).toBeInTheDocument();
     expect(screen.getByText('Selected by default')).toBeInTheDocument();
-    expect(screen.getByText('Black Mesh')).toBeInTheDocument();
+    expect(screen.getAllByText('Black Mesh').length).toBeGreaterThan(0);
   });
 
   it('shows a fallback single option summary for placeholder external-seed variants', () => {
@@ -233,7 +233,72 @@ describe('PdpContainer gallery viewer wiring', () => {
 
     expect(screen.getByText('Selected by default')).toBeInTheDocument();
     expect(screen.getByText('Option')).toBeInTheDocument();
-    expect(screen.getByText('Default option')).toBeInTheDocument();
+    expect(screen.getAllByText('Default option').length).toBeGreaterThan(0);
+  });
+
+  it('renders structured PDP detail modules before generic product details', () => {
+    const structuredPayload: PDPPayload = {
+      ...payload,
+      modules: [
+        ...payload.modules,
+        {
+          module_id: 'm_active_ingredients',
+          type: 'active_ingredients',
+          priority: 40,
+          data: {
+            title: 'Active Ingredients',
+            items: ['Niacinamide'],
+          },
+        },
+        {
+          module_id: 'm_ingredients_inci',
+          type: 'ingredients_inci',
+          priority: 41,
+          data: {
+            title: 'Ingredients (INCI)',
+            items: ['Water', 'Niacinamide'],
+          },
+        },
+        {
+          module_id: 'm_how_to_use',
+          type: 'how_to_use',
+          priority: 42,
+          data: {
+            title: 'How to Use',
+            steps: ['Apply after cleansing', 'Use morning and night'],
+          },
+        },
+        {
+          module_id: 'm_details',
+          type: 'product_details',
+          priority: 45,
+          data: {
+            sections: [
+              {
+                heading: 'Details',
+                content_type: 'text',
+                content: 'Barrier-support serum for daily use.',
+              },
+            ],
+          },
+        },
+      ],
+    };
+
+    render(
+      <PdpContainer
+        payload={structuredPayload}
+        mode="generic"
+        onAddToCart={() => {}}
+        onBuyNow={() => {}}
+      />,
+    );
+
+    expect(screen.getByText('Active Ingredients')).toBeInTheDocument();
+    expect(screen.getAllByText('Niacinamide').length).toBeGreaterThan(0);
+    expect(screen.getByText('Ingredients (INCI)')).toBeInTheDocument();
+    expect(screen.getByText('How to Use')).toBeInTheDocument();
+    expect(screen.getByText('Product Details')).toBeInTheDocument();
   });
 
   it('shows the single option summary for beauty-mode external-seed products too', () => {

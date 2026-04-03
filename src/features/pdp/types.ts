@@ -139,8 +139,8 @@ export type ModuleType =
   | 'media_gallery'
   | 'price_promo'
   | 'trust_badges'
-  | 'ingredients_inci'
   | 'active_ingredients'
+  | 'ingredients_inci'
   | 'how_to_use'
   | 'product_facts'
   | 'product_details'
@@ -190,26 +190,37 @@ export interface ProductFactsData {
   sections: DetailSection[];
 }
 
-export interface IngredientsInciData {
-  title: string;
+export interface StructuredTextItem {
+  name?: string;
+  title?: string;
+  value?: string;
+  description?: string;
+  detail?: string;
+  benefit?: string;
+  concentration?: string;
+  inci_name?: string;
+}
+
+export interface ActiveIngredientsData {
+  title?: string;
+  items?: Array<string | StructuredTextItem>;
   raw_text?: string;
-  items: string[];
   source_origin?: string;
   source_quality_status?: string;
 }
 
-export interface ActiveIngredientsData {
-  title: string;
-  items: string[];
+export interface IngredientsInciData {
+  title?: string;
+  items?: Array<string | StructuredTextItem>;
   raw_text?: string;
   source_origin?: string;
   source_quality_status?: string;
 }
 
 export interface HowToUseData {
-  title: string;
+  title?: string;
+  steps?: string[];
   raw_text?: string;
-  steps: string[];
   source_origin?: string;
 }
 
