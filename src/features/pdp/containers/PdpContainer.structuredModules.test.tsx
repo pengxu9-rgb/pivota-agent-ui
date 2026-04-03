@@ -172,6 +172,72 @@ function buildBeautyPayload(): PDPPayload {
   };
 }
 
+function buildGenericSingleVariantPayload(): PDPPayload {
+  return {
+    schema_version: '1.0.0',
+    page_type: 'product_detail',
+    tracking: {
+      page_request_id: 'pr_single_variant',
+      entry_point: 'agent',
+    },
+    product: {
+      product_id: 'P-GENERIC-1',
+      merchant_id: 'external_seed',
+      title: 'Soft Knit Lounge Set',
+      description: 'Matching set with a single merchant-default option.',
+      default_variant_id: 'SKU-DEFAULT',
+      variants: [
+        {
+          variant_id: 'SKU-DEFAULT',
+          sku_id: 'SKU-DEFAULT',
+          title: 'Default Title',
+          price: { current: { amount: 48, currency: 'USD' } },
+          availability: { in_stock: true, available_quantity: 3 },
+        },
+      ],
+      price: { current: { amount: 48, currency: 'USD' } },
+      availability: { in_stock: true, available_quantity: 3 },
+    },
+    modules: [
+      {
+        module_id: 'm_media',
+        type: 'media_gallery',
+        priority: 100,
+        data: {
+          items: [{ type: 'image', url: 'https://example.com/lounge-set.jpg' }],
+        },
+      },
+      {
+        module_id: 'm_price',
+        type: 'price_promo',
+        priority: 90,
+        data: {
+          price: { amount: 48, currency: 'USD' },
+          promotions: [],
+        },
+      },
+      {
+        module_id: 'm_details',
+        type: 'product_details',
+        priority: 70,
+        data: {
+          sections: [
+            {
+              heading: 'Description',
+              content_type: 'text',
+              content: 'Soft brushed knit with relaxed fit.',
+            },
+          ],
+        },
+      },
+    ],
+    actions: [
+      { action_type: 'add_to_cart', label: 'Add to Cart', priority: 20, target: {} },
+      { action_type: 'buy_now', label: 'Buy Now', priority: 10, target: {} },
+    ],
+  };
+}
+
 describe('PdpContainer structured PDP modules', () => {
   afterEach(() => {
     cleanup();
@@ -219,5 +285,20 @@ describe('PdpContainer structured PDP modules', () => {
     expect(screen.queryByText('Active ingredients')).toBeNull();
     expect(screen.queryByText('How to use')).toBeNull();
     expect(screen.getByRole('button', { name: 'Legacy Ingredients' })).toBeInTheDocument();
+  });
+
+  it('renders a locked selector surface for single-variant generic products', () => {
+    render(
+      <PdpContainer
+        payload={buildGenericSingleVariantPayload()}
+        mode="generic"
+        onAddToCart={() => {}}
+        onBuyNow={() => {}}
+      />,
+    );
+
+    expect(screen.getByText('Options')).toBeInTheDocument();
+    expect(screen.getByText('1 variant')).toBeInTheDocument();
+    expect(screen.getByText('Default option')).toBeInTheDocument();
   });
 });
