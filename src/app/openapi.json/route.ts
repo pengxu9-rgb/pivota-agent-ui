@@ -8,7 +8,7 @@ export async function GET() {
     info: {
       title: 'Pivota Shopping Assistant API',
       description:
-        'API for searching products, viewing details, and placing orders via Pivota Agent. Optimized for LLM usage.',
+        'API for product discovery, candidate resolution, and shopping handoff via the Pivota Agent gateway.',
       version: 'v1',
     },
     servers: [
@@ -17,53 +17,53 @@ export async function GET() {
       },
     ],
     paths: {
-      '/api/catalog': {
-        get: {
-          operationId: 'searchProducts',
-          summary: 'Search for products in the catalog',
+      '/api/gateway': {
+        post: {
+          operationId: 'invokeShoppingGateway',
+          summary: 'Invoke the shopping gateway',
           description:
-            'Search for products by keyword. Returns a list of products with details, images, and buy URLs. Use this when the user asks to find, browse, or buy items.',
-          parameters: [
-            {
-              name: 'q',
-              in: 'query',
-              description: 'Search query (e.g., "water bottle", "hoodie")',
-              required: false,
-              schema: {
-                type: 'string',
-              },
-            },
-            {
-              name: 'limit',
-              in: 'query',
-              description: 'Number of items to return (default 20, max 50)',
-              required: false,
-              schema: {
-                type: 'integer',
-              },
-            },
-          ],
-          responses: {
-            '200': {
-              description: 'Successful search results',
-              content: {
-                'application/json': {
-                  schema: {
-                    type: 'object',
-                    properties: {
-                      store: {
-                        type: 'object',
-                        properties: {
-                          name: { type: 'string' },
-                          url: { type: 'string' },
-                          currency: { type: 'string' },
+            'Primary machine-facing entrypoint for product search and candidate resolution. Use find_products_multi for discovery and resolve_product_candidates when you already have a product id.',
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  oneOf: [
+                    { $ref: '#/components/schemas/FindProductsMultiRequest' },
+                    { $ref: '#/components/schemas/ResolveProductCandidatesRequest' },
+                  ],
+                },
+                examples: {
+                  search: {
+                    summary: 'Beauty product discovery',
+                    value: {
+                      operation: 'find_products_multi',
+                      payload: {
+                        search: {
+                          query: 'best sunscreen for oily skin',
+                          limit: 5,
+                          search_all_merchants: true,
+                          allow_external_seed: true,
+                          allow_stale_cache: false,
+                          external_seed_strategy: 'unified_relevance',
                         },
                       },
-                      products: {
-                        type: 'array',
-                        items: {
-                          $ref: '#/components/schemas/ProductCard',
+                      metadata: {
+                        source: 'aurora-bff',
+                        ui_source: 'shopping-agent-ui',
+                      },
+                    },
+                  },
+                  resolve: {
+                    summary: 'Resolve merchant candidates for a known product',
+                    value: {
+                      operation: 'resolve_product_candidates',
+                      payload: {
+                        product_ref: {
+                          product_id: '9886499864904',
                         },
+                        include_offers: true,
+                        limit: 5,
                       },
                     },
                   },
@@ -71,14 +71,26 @@ export async function GET() {
               },
             },
           },
+          responses: {
+            '200': {
+              description: 'Gateway response',
+              content: {
+                'application/json': {
+                  schema: {
+                    $ref: '#/components/schemas/GatewayResponse',
+                  },
+                },
+              },
+            },
+          },
         },
       },
-      '/api/catalog/{id}': {
+      '/products/{id}': {
         get: {
-          operationId: 'getProductDetail',
-          summary: 'Get detailed information for a specific product',
+          operationId: 'openProductPage',
+          summary: 'Open the product detail page',
           description:
-            'Retrieve full details for a product by its ID. Use this when the user asks about a specific item from a search result.',
+            'Human-facing PDP for reviewing a product, variant options, and checkout handoff after discovery.',
           parameters: [
             {
               name: 'id',
@@ -89,30 +101,19 @@ export async function GET() {
                 type: 'string',
               },
             },
+            {
+              name: 'merchant_id',
+              in: 'query',
+              description: 'Optional merchant scope for cross-merchant products',
+              required: false,
+              schema: {
+                type: 'string',
+              },
+            },
           ],
           responses: {
             '200': {
-              description: 'Product details found',
-              content: {
-                'application/json': {
-                  schema: {
-                    $ref: '#/components/schemas/ProductCard',
-                  },
-                },
-              },
-            },
-            '404': {
-              description: 'Product not found',
-              content: {
-                'application/json': {
-                  schema: {
-                    type: 'object',
-                    properties: {
-                      error: { type: 'string' },
-                    },
-                  },
-                },
-              },
+              description: 'Product detail page',
             },
           },
         },
@@ -120,34 +121,104 @@ export async function GET() {
     },
     components: {
       schemas: {
+        FindProductsMultiRequest: {
+          type: 'object',
+          required: ['operation', 'payload'],
+          properties: {
+            operation: {
+              type: 'string',
+              const: 'find_products_multi',
+            },
+            payload: {
+              type: 'object',
+              required: ['search'],
+              properties: {
+                search: {
+                  type: 'object',
+                  required: ['query'],
+                  properties: {
+                    query: { type: 'string' },
+                    limit: { type: 'integer' },
+                    page: { type: 'integer' },
+                    merchant_id: { type: 'string' },
+                    search_all_merchants: { type: 'boolean' },
+                    allow_external_seed: { type: 'boolean' },
+                    allow_stale_cache: { type: 'boolean' },
+                    external_seed_strategy: { type: 'string' },
+                    catalog_surface: { type: 'string' },
+                  },
+                },
+              },
+            },
+            metadata: {
+              type: 'object',
+              additionalProperties: true,
+            },
+          },
+        },
+        ResolveProductCandidatesRequest: {
+          type: 'object',
+          required: ['operation', 'payload'],
+          properties: {
+            operation: {
+              type: 'string',
+              const: 'resolve_product_candidates',
+            },
+            payload: {
+              type: 'object',
+              required: ['product_ref'],
+              properties: {
+                product_ref: {
+                  type: 'object',
+                  properties: {
+                    product_id: { type: 'string' },
+                    merchant_id: { type: 'string' },
+                  },
+                },
+                include_offers: { type: 'boolean' },
+                limit: { type: 'integer' },
+              },
+            },
+          },
+        },
         ProductCard: {
           type: 'object',
           properties: {
-            id: { type: 'string' },
-            name: { type: 'string' },
-            short_description: { type: 'string' },
+            product_id: { type: 'string' },
+            merchant_id: { type: 'string' },
+            title: { type: 'string' },
             description: { type: 'string' },
-            price: {
-              type: 'object',
-              properties: {
-                amount: { type: 'number' },
-                currency: { type: 'string' },
-                display: { type: 'string' },
+            price: { type: 'number' },
+            currency: { type: 'string' },
+            image_url: { type: 'string', format: 'uri' },
+            variant_id: { type: 'string' },
+            platform: { type: 'string' },
+            external_redirect_url: { type: 'string', format: 'uri' },
+          },
+        },
+        GatewayResponse: {
+          type: 'object',
+          properties: {
+            status: { type: 'string' },
+            success: { type: 'boolean' },
+            products: {
+              type: 'array',
+              items: {
+                $ref: '#/components/schemas/ProductCard',
               },
             },
-            availability: {
-              type: 'string',
-              enum: ['in_stock', 'out_of_stock'],
+            total: { type: 'integer' },
+            page: { type: 'integer' },
+            page_size: { type: 'integer' },
+            reply: { type: 'string' },
+            metadata: {
+              type: 'object',
+              additionalProperties: true,
             },
-            image: { type: 'string', format: 'uri' },
-            url: { type: 'string', format: 'uri' },
-            buy_url: {
-              type: 'string',
-              format: 'uri',
-              description:
-                'Direct link to checkout. AI should present this to the user for purchase.',
+            clarification: {
+              type: 'object',
+              additionalProperties: true,
             },
-            why_recommended: { type: 'string' },
           },
         },
       },
@@ -156,4 +227,3 @@ export async function GET() {
 
   return NextResponse.json(openApiSchema);
 }
-

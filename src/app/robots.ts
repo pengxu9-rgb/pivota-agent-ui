@@ -5,22 +5,22 @@ export default function robots(): MetadataRoute.Robots {
     rules: [
       {
         userAgent: 'GPTBot',
-        allow: ['/', '/products/', '/products', '/api/catalog', '/api/catalog/'],
+        allow: ['/', '/products/', '/products', '/openapi.json', '/.well-known/', '/.well-known/ai-plugin.json'],
         disallow: ['/order/'],
       },
       {
         userAgent: 'ClaudeBot',
-        allow: ['/', '/products/', '/products', '/api/catalog', '/api/catalog/'],
+        allow: ['/', '/products/', '/products', '/openapi.json', '/.well-known/', '/.well-known/ai-plugin.json'],
         disallow: ['/order/'],
       },
       {
         userAgent: 'PerplexityBot',
-        allow: ['/', '/products/', '/products', '/api/catalog', '/api/catalog/'],
+        allow: ['/', '/products/', '/products', '/openapi.json', '/.well-known/', '/.well-known/ai-plugin.json'],
         disallow: ['/order/'],
       },
       {
         userAgent: 'Google-Extended',
-        allow: ['/', '/products/', '/products', '/api/catalog', '/api/catalog/'],
+        allow: ['/', '/products/', '/products', '/openapi.json', '/.well-known/', '/.well-known/ai-plugin.json'],
         disallow: ['/order/'],
       },
       {
@@ -32,4 +32,3 @@ export default function robots(): MetadataRoute.Robots {
     sitemap: 'https://agent.pivota.cc/sitemap.xml',
   }
 }
-

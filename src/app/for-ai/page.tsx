@@ -57,26 +57,26 @@ export default function ForAiPage() {
               <div className="p-6 rounded-2xl bg-slate-50 border border-slate-100">
                 <h3 className="text-lg font-semibold mb-2">1. Product Discovery</h3>
                 <code className="block bg-white p-3 rounded border border-slate-200 text-sm mb-3">
-                  GET /api/catalog?q=keyword&limit=10
+                  POST /api/gateway
                 </code>
                 <p className="text-slate-600">
-                  Returns a list of products matching the search query. The response is optimized for LLM context windows, 
-                  providing clear product names, pricing, availability, and tracked &quot;Buy Now&quot; links.
+                  Invoke <code>find_products_multi</code> to search the live shopping network. This is the current machine-facing
+                  entrypoint for product discovery and returns normalized products, reply text, metadata, and clarification when recall is exhausted.
                 </p>
                 <div className="mt-4 p-3 bg-blue-50 text-blue-800 text-sm rounded-lg">
-                  <strong>Note:</strong> This endpoint includes a &quot;why_recommended&quot; field that helps LLMs explain 
-                  selection rationale to users.
+                  <strong>Note:</strong> Send a JSON body with <code>operation=&quot;find_products_multi&quot;</code> and a
+                  <code>payload.search.query</code> string.
                 </div>
               </div>
 
               <div className="p-6 rounded-2xl bg-slate-50 border border-slate-100">
-                <h3 className="text-lg font-semibold mb-2">2. Product Detail</h3>
+                <h3 className="text-lg font-semibold mb-2">2. Product Review & Handoff</h3>
                 <code className="block bg-white p-3 rounded border border-slate-200 text-sm mb-3">
-                  GET /api/catalog/:id
+                  GET /products/:id
                 </code>
                 <p className="text-slate-600">
-                  Fetches detailed information for a specific product, including full description and attributes.
-                  Use this when a user asks for more details about a specific item found in search.
+                  Open the human-facing PDP to review variants, product details, and checkout handoff after discovery.
+                  For machine-side candidate resolution, use <code>resolve_product_candidates</code> through <code>/api/gateway</code>.
                 </p>
               </div>
             </div>
@@ -92,14 +92,14 @@ export default function ForAiPage() {
 https://agent.pivota.cc/.well-known/ai-plugin.json
               </pre>
               <p className="mt-4">
-                Or visit the catalog endpoint directly to see the JSON structure:
+                Or inspect the live OpenAPI schema for the current gateway contract:
               </p>
               <Link 
-                href="/api/catalog?q=water" 
+                href="/openapi.json"
                 className="inline-flex items-center gap-1 text-blue-600 hover:underline font-medium"
                 target="_blank"
               >
-                Test Search API <ArrowRight className="w-4 h-4" />
+                Open API Schema <ArrowRight className="w-4 h-4" />
               </Link>
             </div>
           </section>

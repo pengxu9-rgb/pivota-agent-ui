@@ -1264,6 +1264,14 @@ async function callAccountsRoot(path: string, options: AccountsCallOptions = {})
   return callAccountsBase(ACCOUNTS_ROOT_API_BASE, path, options);
 }
 
+function isUnauthenticatedAccountsError(err: any): boolean {
+  return (
+    err?.status === 401 ||
+    err?.code === 'NOT_AUTHENTICATED' ||
+    err?.code === 'UNAUTHENTICATED'
+  );
+}
+
 export async function getPdpV2Personalization(args: {
   productId: string;
   productGroupId?: string | null;
@@ -2282,49 +2290,64 @@ export async function recordBrowseHistoryEvent(
 ): Promise<BrowseHistoryItem | null> {
   const productId = String(payload.product_id || '').trim();
   if (!productId) return null;
-  const res = (await callAccounts('/browse-history/events', {
-    method: 'POST',
-    cache: 'no-store',
-    body: JSON.stringify({
-      product_id: productId,
-      merchant_id: payload.merchant_id == null ? null : String(payload.merchant_id).trim() || null,
-      title: payload.title == null ? null : String(payload.title),
-      price:
-        typeof payload.price === 'number' && Number.isFinite(payload.price)
-          ? payload.price
-          : null,
-      currency: payload.currency == null ? null : String(payload.currency),
-      image_url: payload.image_url == null ? null : String(payload.image_url),
-      description: payload.description == null ? null : String(payload.description),
-      viewed_at: payload.viewed_at == null ? null : String(payload.viewed_at),
-    }),
-  })) as any;
-  return (res?.item as BrowseHistoryItem) || null;
+  try {
+    const res = (await callAccounts('/browse-history/events', {
+      method: 'POST',
+      cache: 'no-store',
+      body: JSON.stringify({
+        product_id: productId,
+        merchant_id: payload.merchant_id == null ? null : String(payload.merchant_id).trim() || null,
+        title: payload.title == null ? null : String(payload.title),
+        price:
+          typeof payload.price === 'number' && Number.isFinite(payload.price)
+            ? payload.price
+            : null,
+        currency: payload.currency == null ? null : String(payload.currency),
+        image_url: payload.image_url == null ? null : String(payload.image_url),
+        description: payload.description == null ? null : String(payload.description),
+        viewed_at: payload.viewed_at == null ? null : String(payload.viewed_at),
+      }),
+    })) as any;
+    return (res?.item as BrowseHistoryItem) || null;
+  } catch (err: any) {
+    if (isUnauthenticatedAccountsError(err)) return null;
+    throw err;
+  }
 }
 
 export async function getBrowseHistory(limit = 50): Promise<BrowseHistoryListResult> {
   const normalizedLimit = Math.max(1, Math.min(Number(limit) || 50, 100));
   const params = new URLSearchParams({ limit: String(normalizedLimit) });
-  const res = (await callAccounts(`/browse-history?${params.toString()}`, {
-    cache: 'no-store',
-  })) as any;
-  return {
-    items: Array.isArray(res?.items) ? (res.items as BrowseHistoryItem[]) : [],
-    total: Number.isFinite(Number(res?.total))
-      ? Number(res.total)
-      : Array.isArray(res?.items)
-        ? res.items.length
-        : 0,
-  };
+  try {
+    const res = (await callAccounts(`/browse-history?${params.toString()}`, {
+      cache: 'no-store',
+    })) as any;
+    return {
+      items: Array.isArray(res?.items) ? (res.items as BrowseHistoryItem[]) : [],
+      total: Number.isFinite(Number(res?.total))
+        ? Number(res.total)
+        : Array.isArray(res?.items)
+          ? res.items.length
+          : 0,
+    };
+  } catch (err: any) {
+    if (isUnauthenticatedAccountsError(err)) return { items: [], total: 0 };
+    throw err;
+  }
 }
 
 export async function clearBrowseHistory(): Promise<{ status?: string; deleted?: number }> {
-  const res = (await callAccounts('/browse-history', {
-    method: 'DELETE',
-    cache: 'no-store',
-  })) as any;
-  return {
-    status: typeof res?.status === 'string' ? res.status : undefined,
-    deleted: Number.isFinite(Number(res?.deleted)) ? Number(res.deleted) : undefined,
-  };
+  try {
+    const res = (await callAccounts('/browse-history', {
+      method: 'DELETE',
+      cache: 'no-store',
+    })) as any;
+    return {
+      status: typeof res?.status === 'string' ? res.status : undefined,
+      deleted: Number.isFinite(Number(res?.deleted)) ? Number(res.deleted) : undefined,
+    };
+  } catch (err: any) {
+    if (isUnauthenticatedAccountsError(err)) return { status: 'unauthenticated', deleted: 0 };
+    throw err;
+  }
 }
