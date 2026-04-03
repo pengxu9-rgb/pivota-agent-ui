@@ -45,13 +45,6 @@ This app is deployed on Vercel at [https://agent.pivota.cc](https://agent.pivota
   - `MERCHANT_ADMIN_KEY` – admin key injected via proxy headers (`X-ADMIN-KEY`)
 - The browser never sees the admin key; all calls go through `/api/promotions`.
 
-## Checkout direct invoke (Phase 2)
-
-- `NEXT_PUBLIC_ENABLE_DIRECT_CHECKOUT_INVOKE`  
-  `true` = browser checkout ops (`preview_quote/create_order/submit_payment`) try direct invoke first with `X-Checkout-Token`, then auto-fallback to `/api/gateway` on CORS/network/401/403.
-- `NEXT_PUBLIC_DIRECT_CHECKOUT_INVOKE_URL`  
-  Direct invoke URL (default: `https://pivota-agent-production.up.railway.app/agent/shop/v1/invoke`).
-
 ## Aurora orders merchant scope (embed only)
 
 - `NEXT_PUBLIC_AURORA_ORDERS_MERCHANT_ID`  
