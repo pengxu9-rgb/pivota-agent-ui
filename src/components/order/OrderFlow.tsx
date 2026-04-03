@@ -286,6 +286,22 @@ function isReusablePaymentAction(action: any): boolean {
   return false
 }
 
+export function shouldHydrateCreatedOrderPaymentSurface(
+  action: any,
+  psp: unknown,
+): boolean {
+  if (!isReusablePaymentAction(action)) return false
+  const normalizedPsp = normalizePaymentPspToken(psp)
+  if (String(action?.type || '').trim().toLowerCase() === 'stripe_client_secret') return false
+  if (normalizedPsp === 'stripe') return false
+  return true
+}
+
+export function resolveCheckoutPaymentMethodHint(methodType: string | null | undefined): string {
+  const normalized = String(methodType || '').trim().toLowerCase()
+  return normalized || 'dynamic'
+}
+
 function parseBooleanToken(value: string | null | undefined): boolean | null {
   const token = String(value || '').trim().toLowerCase()
   if (!token) return null
@@ -924,11 +940,7 @@ function OrderFlowInner({
   ): CreatedOrderPaymentSnapshot | null => {
     const snapshot = createdOrderPaymentRef.current
     if (!snapshot || snapshot.orderId !== orderId) return null
-    const snapshotPsp = normalizePaymentPspToken(snapshot.psp)
-    if (snapshot.action?.type === 'stripe_client_secret' || snapshotPsp === 'stripe') {
-      return null
-    }
-    return isReusablePaymentAction(snapshot.action) ? snapshot : null
+    return shouldHydrateCreatedOrderPaymentSurface(snapshot.action, snapshot.psp) ? snapshot : null
   }
 
   const offerIdsInCart = useMemo(() => {
@@ -1380,15 +1392,14 @@ function OrderFlowInner({
       psp: orderPsp,
     }
 
-    if (orderPaymentAction) {
+    if (shouldHydrateCreatedOrderPaymentSurface(orderPaymentAction, orderPsp)) {
       setInitialPaymentAction(orderPaymentAction)
       setPaymentActionType(orderPaymentAction?.type || null)
+      if (orderPsp) {
+        setPspUsed(orderPsp)
+      }
+      syncStripeRuntime(orderResponse, orderPaymentAction, orderPsp)
     }
-
-    if (orderPsp) {
-      setPspUsed(orderPsp)
-    }
-    syncStripeRuntime(orderResponse, orderPaymentAction, orderPsp)
 
     const allowRedirect = options.allowRedirect !== false
     if (allowRedirect && orderPaymentAction?.type === 'redirect_url' && orderPaymentAction?.url) {
@@ -1607,7 +1618,7 @@ function OrderFlowInner({
       order_id: orderIdArg,
       total_amount: Number(quoteArg.pricing.total) || total,
       currency: String(quoteArg.currency || currency || 'USD'),
-      payment_method: { type: 'card' },
+      payment_method: { type: resolveCheckoutPaymentMethodHint(stripeSelectedMethodType) },
       return_url: buildPostPayReturnUrl(orderIdArg),
     })
 
@@ -1738,6 +1749,7 @@ function OrderFlowInner({
         const detectedPsp = detectPaymentPsp(prefetched.paymentResponse, action)
         assertSupportedPaymentSurface(prefetched.paymentResponse, action, detectedPsp)
         setPrefetchedPaymentRes(prefetched)
+        setPaymentInitError(null)
         setInitialPaymentAction(action)
         setPaymentActionType(action?.type || null)
         setPspUsed(detectedPsp)
@@ -2071,7 +2083,7 @@ function OrderFlowInner({
               total_amount: Number(quoteForPayment.pricing.total) || total,
               currency: String(quoteForPayment.currency || currency || 'USD'),
               payment_method: {
-                type: 'card',
+                type: resolveCheckoutPaymentMethodHint(stripeSelectedMethodType),
               },
               return_url: buildPostPayReturnUrl(orderId),
             })
@@ -2087,13 +2099,15 @@ function OrderFlowInner({
               quoteForPayment = await refreshQuoteWithRetry()
               orderId = await createOrderIfNeeded(quoteForPayment, { forceNew: true })
               const nextCreatedOrderPayment = getReusableCreatedOrderPayment(orderId)
-              paymentResponse =
+                paymentResponse =
                 nextCreatedOrderPayment?.paymentResponse ||
                 (await processPayment({
                   order_id: orderId,
                   total_amount: Number(quoteForPayment.pricing.total) || total,
                   currency: String(quoteForPayment.currency || currency || 'USD'),
-                  payment_method: { type: 'card' },
+                  payment_method: {
+                    type: resolveCheckoutPaymentMethodHint(stripeSelectedMethodType),
+                  },
                   return_url: buildPostPayReturnUrl(orderId),
                 }))
             } else {

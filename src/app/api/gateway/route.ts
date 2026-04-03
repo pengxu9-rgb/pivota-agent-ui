@@ -204,7 +204,7 @@ function buildSubmitPaymentRequest(body: JsonRecord): CheckoutSafeRequest {
       payment.paymentMethodHint,
       paymentMethod.type,
       payment.payment_method,
-    ) || 'card';
+    ) || 'dynamic';
 
   return {
     method: 'POST',
