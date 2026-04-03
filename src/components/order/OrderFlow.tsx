@@ -60,6 +60,13 @@ interface ShippingInfo {
   phone?: string
 }
 
+type ResumeOrderState = {
+  orderId: string
+  shipping?: Partial<ShippingInfo> | null
+  quote?: QuotePreview | null
+  paymentResponse?: any
+}
+
 type OrderCompletionOptions = {
   finalizing?: boolean
 }
@@ -76,6 +83,7 @@ interface OrderFlowProps {
   locale?: string | null
   checkoutToken?: string | null
   returnUrl?: string | null
+  resumeOrder?: ResumeOrderState | null
 }
 
 type QuotePricing = {
@@ -622,6 +630,7 @@ function OrderFlowInner({
   locale,
   checkoutToken,
   returnUrl,
+  resumeOrder,
 }: OrderFlowProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -676,6 +685,8 @@ function OrderFlowInner({
   const [stripeAccount, setStripeAccount] = useState<string | null>(null)
   const stripeCardSectionRef = useRef<StripeCardSectionHandle | null>(null)
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     const normalized = normalizeCountryCode(shipping.country)
     if (normalized && normalized !== shipping.country) {
@@ -1491,6 +1502,49 @@ function OrderFlowInner({
       paymentResponse,
     }
   }
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!resumeOrder?.orderId) return
+
+    const nextShipping = resumeOrder.shipping || null
+    if (nextShipping) {
+      setShipping((prev) => ({
+        ...prev,
+        ...nextShipping,
+        country: normalizeCountryCode(nextShipping.country || prev.country) || prev.country,
+      }))
+      if (nextShipping.email) {
+        setVerifiedEmail((prev) => prev || nextShipping.email || null)
+      }
+    }
+
+    if (resumeOrder.quote) {
+      setQuote(resumeOrder.quote)
+    }
+
+    setCreatedOrderId(resumeOrder.orderId)
+
+    const paymentResponse = resumeOrder.paymentResponse
+    if (paymentResponse) {
+      const action = extractPaymentAction(paymentResponse, null)
+      const detectedPsp = detectPaymentPsp(paymentResponse, action)
+      createdOrderPaymentRef.current = {
+        orderId: resumeOrder.orderId,
+        paymentResponse,
+        action,
+        psp: detectedPsp,
+      }
+      setInitialPaymentAction(action)
+      setPaymentActionType(action?.type || null)
+      setPspUsed(detectedPsp || null)
+      syncStripeRuntime(paymentResponse, action, detectedPsp)
+    }
+
+    setStep('payment')
+    setCheckoutFailure(null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resumeOrder])
 
   useEffect(() => {
     if (step === 'payment') return
