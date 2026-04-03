@@ -64,13 +64,13 @@ describe('resolveStripePublishableKey', () => {
     expect(resolveCheckoutPaymentMethodHint('klarna')).toBe('klarna')
   })
 
-  it('does not hydrate create_order Stripe surfaces ahead of canonical submit_payment', () => {
+  it('hydrates reusable create_order Stripe surfaces so fresh checkout does not re-init payment', () => {
     expect(
       shouldHydrateCreatedOrderPaymentSurface(
         { type: 'stripe_client_secret', client_secret: 'pi_secret_123' },
         'stripe',
       ),
-    ).toBe(false)
+    ).toBe(true)
 
     expect(
       shouldHydrateCreatedOrderPaymentSurface(
