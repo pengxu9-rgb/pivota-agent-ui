@@ -42,6 +42,9 @@ interface Props {
   params: Promise<{ id: string }>;
 }
 
+const PDP_V2_SCOPED_TIMEOUT_MS = 9000;
+const PDP_V2_UNSCOPED_TIMEOUT_MS = 12000;
+
 function normalizeVariantOptionToken(value: string): string {
   return String(value || '')
     .toLowerCase()
@@ -475,7 +478,9 @@ export default function ProductDetailPage({ params }: Props) {
   useEffect(() => {
     let cancelled = false;
     const candidateTimeoutMs = 4500;
-    const v2TimeoutMs = merchantIdParam ? 9000 : 5000;
+    const v2TimeoutMs = merchantIdParam
+      ? PDP_V2_SCOPED_TIMEOUT_MS
+      : PDP_V2_UNSCOPED_TIMEOUT_MS;
 
     const loadProduct = async () => {
       const explicitMerchantId = merchantIdParam ? String(merchantIdParam).trim() : null;
