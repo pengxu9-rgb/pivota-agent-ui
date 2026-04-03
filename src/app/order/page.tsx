@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import OrderFlow from '@/components/order/OrderFlow'
 import { ArrowLeft } from 'lucide-react'
 import { safeReturnUrl, withReturnParams } from '@/lib/returnUrl'
-import { setMerchantId } from '@/lib/api'
+import { getAccountOrder, setMerchantId } from '@/lib/api'
 import {
   getCheckoutContextFromBrowser,
   normalizeCheckoutSource,
@@ -26,15 +26,153 @@ interface OrderItem {
   image_url?: string
 }
 
+type ResumeOrderState = {
+  orderId: string
+  shipping: {
+    name: string
+    email: string
+    address_line1: string
+    address_line2?: string
+    city: string
+    state?: string
+    postal_code: string
+    country: string
+    phone?: string
+  }
+  quote: {
+    quote_id: string
+    currency: string
+    pricing: {
+      subtotal: number
+      discount_total: number
+      shipping_fee: number
+      tax: number
+      total: number
+    }
+    line_items: Array<{
+      variant_id: string
+      unit_price_effective: number
+    }>
+  }
+  paymentResponse: any
+}
+
+type ResumeOrderLoadResult = {
+  items: OrderItem[]
+  resumeOrder: ResumeOrderState
+}
+
 type UcpFailure = {
   reason: 'payment_failed' | 'system_error' | 'action_required'
   stage: 'payment' | 'shipping'
+}
+
+function toMinorAmount(value: unknown): number {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) return 0
+  return Math.round(numeric)
+}
+
+function buildResumeOrderState(raw: any): ResumeOrderLoadResult | null {
+  const order = raw?.order && typeof raw.order === 'object' ? raw.order : raw
+  const orderId = String(order?.order_id || order?.id || '').trim()
+  if (!orderId) return null
+
+  const currency = String(order?.currency || 'USD').trim().toUpperCase() || 'USD'
+  const orderMerchantId = String(order?.merchant_id || '').trim() || undefined
+  const shippingRaw = order?.shipping_address && typeof order.shipping_address === 'object'
+    ? order.shipping_address
+    : {}
+  const itemsRaw = Array.isArray(raw?.items) ? raw.items : Array.isArray(order?.items) ? order.items : []
+  const items = itemsRaw
+    .map((item: any) => {
+      const productId = String(item?.product_id || '').trim()
+      if (!productId) return null
+      const quantity = Number(item?.quantity) || 1
+      const unitPriceMinor = toMinorAmount(item?.unit_price_minor)
+      return {
+        product_id: productId,
+        variant_id: String(item?.variant_id || '').trim() || undefined,
+        sku: String(item?.sku || '').trim() || undefined,
+        merchant_id: String(item?.merchant_id || orderMerchantId || '').trim() || undefined,
+        offer_id: String(item?.offer_id || '').trim() || undefined,
+        title: String(item?.title || item?.product_title || productId),
+        quantity,
+        unit_price: unitPriceMinor / 100,
+        currency,
+        image_url: String(item?.image_url || '').trim() || undefined,
+      }
+    })
+    .filter(Boolean) as OrderItem[]
+
+  if (!items.length) return null
+
+  const subtotalMinor = itemsRaw.reduce((sum: number, item: any) => {
+    const subtotal = toMinorAmount(item?.subtotal_minor)
+    if (subtotal > 0) return sum + subtotal
+    return sum + toMinorAmount(item?.unit_price_minor) * (Number(item?.quantity) || 1)
+  }, 0)
+  const totalMinor = toMinorAmount(order?.total_amount_minor)
+  const surchargeMinor = Math.max(totalMinor - subtotalMinor, 0)
+  const paymentCurrent =
+    raw?.payment && typeof raw.payment === 'object' && raw.payment.current && typeof raw.payment.current === 'object'
+      ? raw.payment.current
+      : null
+  const paymentResponse = paymentCurrent
+    ? {
+        order_id: orderId,
+        psp: paymentCurrent.psp || null,
+        payment_intent_id: paymentCurrent.payment_intent_id || null,
+        payment_action: paymentCurrent.payment_action || null,
+        payment: {
+          psp: paymentCurrent.psp || null,
+          payment_intent_id: paymentCurrent.payment_intent_id || null,
+          payment_action: paymentCurrent.payment_action || null,
+        },
+      }
+    : null
+
+  return {
+    items,
+    resumeOrder: {
+      orderId,
+      shipping: {
+        name: String(shippingRaw?.name || ''),
+        email: String(raw?.customer?.email || order?.customer_email || ''),
+        address_line1: String(shippingRaw?.address_line1 || ''),
+        address_line2: String(shippingRaw?.address_line2 || ''),
+        city: String(shippingRaw?.city || ''),
+        state: String(shippingRaw?.province || shippingRaw?.state || ''),
+        postal_code: String(shippingRaw?.postal_code || ''),
+        country: String(shippingRaw?.country || 'US'),
+        phone: String(shippingRaw?.phone || ''),
+      },
+      quote: {
+        quote_id: `resume:${orderId}`,
+        currency,
+        pricing: {
+          subtotal: subtotalMinor / 100,
+          discount_total: 0,
+          shipping_fee: surchargeMinor / 100,
+          tax: 0,
+          total: totalMinor / 100,
+        },
+        line_items: items.map((item) => ({
+          variant_id: item.variant_id || item.product_id,
+          unit_price_effective: Number(item.unit_price) || 0,
+        })),
+      },
+      paymentResponse,
+    },
+  }
 }
 
 function OrderContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [orderItems, setOrderItems] = useState<OrderItem[]>([])
+  const [resumeOrder, setResumeOrder] = useState<ResumeOrderState | null>(null)
+  const [resumeOrderLoading, setResumeOrderLoading] = useState(false)
   const [ucpFailure, setUcpFailure] = useState<UcpFailure | null>(null)
   const hasAutoReturnedRef = useRef(false)
   const ucpCheckoutSessionId =
@@ -86,6 +224,8 @@ function OrderContent() {
   const locale = (searchParams.get('locale') || '').trim().toLowerCase() || null
   const checkoutDebug =
     (searchParams.get('checkout_debug') || searchParams.get('debug') || '').trim() || null
+  const resumeOrderId =
+    (searchParams.get('orderId') || searchParams.get('order_id') || '').trim() || null
 
   const markUcpCheckoutSessionFailure = async (
     checkoutId: string,
@@ -219,6 +359,34 @@ function OrderContent() {
             // Best-effort: if fetch fails, keep page empty.
           }
         })()
+      } else if (resumeOrderId) {
+        ;(async () => {
+          setResumeOrderLoading(true)
+          try {
+            const raw = await getAccountOrder(resumeOrderId)
+            const loaded = buildResumeOrderState(raw)
+            if (!loaded) {
+              setOrderItems([])
+              setResumeOrder(null)
+              return
+            }
+            setOrderItems(loaded.items)
+            setResumeOrder(loaded.resumeOrder)
+            const merchantId =
+              loaded.items
+                .map((item) => String(item.merchant_id || '').trim())
+                .find(Boolean) || null
+            if (merchantId) {
+              setMerchantId(merchantId)
+            }
+          } catch (error) {
+            console.error('[Order] Failed to load resumable order:', error)
+            setOrderItems([])
+            setResumeOrder(null)
+          } finally {
+            setResumeOrderLoading(false)
+          }
+        })()
       } else {
         // Mock data for testing
         setOrderItems([
@@ -233,7 +401,7 @@ function OrderContent() {
         ])
       }
     }
-  }, [searchParams, ucpCheckoutSessionId, sellerName, sellerDomain, billingDescriptor])
+  }, [searchParams, ucpCheckoutSessionId, sellerName, sellerDomain, billingDescriptor, resumeOrderId])
 
   useEffect(() => {
     if (!ucpFailure || !returnUrl) return
@@ -454,14 +622,19 @@ function OrderContent() {
                 void markUcpCheckoutSessionFailure(ucpCheckoutSessionId, args.reason, args.stage)
               }
             }}
-            skipEmailVerification={skipEmailVerification}
+            skipEmailVerification={skipEmailVerification || Boolean(resumeOrder?.orderId)}
             buyerRef={buyerRef}
             jobId={jobId}
             market={market}
             locale={locale}
             checkoutToken={checkoutToken}
             returnUrl={returnUrl}
+            resumeOrder={resumeOrder}
           />
+        ) : resumeOrderId && resumeOrderLoading ? (
+          <div className="text-center py-12">
+            <p className="text-gray-600">Loading your order…</p>
+          </div>
         ) : (
           <div className="text-center py-12">
             <p className="text-gray-600">No items in your order</p>

@@ -250,7 +250,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const onContinuePayment = () => {
     if (!order) return
     router.push(
-      `/checkout?orderId=${encodeURIComponent(order.id)}&amount_minor=${order.totalAmountMinor}&currency=${encodeURIComponent(order.currency)}`,
+      `/order?orderId=${encodeURIComponent(order.id)}&return=${encodeURIComponent(currentDetailUrl)}`,
     )
   }
 

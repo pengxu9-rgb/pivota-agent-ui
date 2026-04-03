@@ -10,6 +10,7 @@ import { ensureAuroraSession, shouldUseAuroraAutoExchange } from '@/lib/auroraOr
 import { isAuroraEmbedMode } from '@/lib/auroraEmbed'
 import {
   buildOrderDetailHref,
+  buildOrderListHref,
   resolveAuroraOrderScope,
 } from '@/lib/orders/navigationContext'
 import {
@@ -439,8 +440,9 @@ function OrdersPageContent() {
   }, [])
 
   const onContinuePayment = (order: NormalizedOrderListItem) => {
+    const returnPath = buildOrderListHref(scopedSearchParams)
     router.push(
-      `/checkout?orderId=${encodeURIComponent(order.id)}&amount_minor=${order.totalAmountMinor}&currency=${encodeURIComponent(order.currency)}`,
+      `/order?orderId=${encodeURIComponent(order.id)}&return=${encodeURIComponent(returnPath)}`,
     )
   }
 
