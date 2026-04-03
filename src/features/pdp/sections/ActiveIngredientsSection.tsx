@@ -3,8 +3,25 @@
 import type { ActiveIngredientsData } from '@/features/pdp/types';
 import { PdpSourceBadge } from '@/features/pdp/sections/PdpSourceBadge';
 
+function normalizeStructuredItemLabel(item: unknown): string {
+  if (typeof item === 'string') return item.trim();
+  if (!item || typeof item !== 'object') return '';
+  const typed = item as Record<string, unknown>;
+  const primary =
+    String(typed.name || typed.title || typed.inci_name || typed.value || '').trim();
+  const suffix = [typed.concentration, typed.description, typed.detail, typed.benefit]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .join(' - ');
+  if (!primary) return suffix;
+  if (!suffix) return primary;
+  return `${primary} - ${suffix}`;
+}
+
 export function ActiveIngredientsSection({ data }: { data: ActiveIngredientsData }) {
-  const items = Array.isArray(data.items) ? data.items.filter(Boolean) : [];
+  const items = Array.isArray(data.items)
+    ? data.items.map((item) => normalizeStructuredItemLabel(item)).filter(Boolean)
+    : [];
   if (!items.length && !data.raw_text) return null;
 
   return (

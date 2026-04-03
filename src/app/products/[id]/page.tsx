@@ -191,38 +191,40 @@ function mapSellerCandidatesFromResolveCandidates(
   resolved: Awaited<ReturnType<typeof resolveProductCandidates>>,
 ): ProductResponse[] {
   const offers = Array.isArray(resolved?.offers) ? resolved.offers : [];
-  return offers
-    .map((offer) => {
-      const merchantId = String(offer?.merchant_id || '').trim();
-      const productId = String(offer?.product_id || '').trim();
-      if (!merchantId || !productId) return null;
-      const rawPrice = offer?.price;
-      const price =
-        typeof rawPrice === 'number'
-          ? rawPrice
-          : Number(rawPrice?.amount ?? 0) || 0;
-      const currency =
-        typeof rawPrice === 'object' && rawPrice
-          ? String(rawPrice.currency || 'USD').trim() || 'USD'
-          : 'USD';
-      const inventory = offer?.inventory;
-      return {
-        product_id: productId,
-        merchant_id: merchantId,
-        merchant_name: String(offer?.merchant_name || '').trim() || undefined,
-        title: 'Seller option',
-        description: '',
-        price,
-        currency,
-        image_url: '/placeholder.svg',
-        category: 'General',
-        in_stock:
-          typeof inventory?.in_stock === 'boolean'
-            ? inventory.in_stock
-            : (Number(inventory?.available_quantity || 0) || 0) > 0,
-      } satisfies ProductResponse;
-    })
-    .filter((candidate): candidate is ProductResponse => Boolean(candidate));
+  return offers.reduce<ProductResponse[]>((candidates, offer) => {
+    const merchantId = String(offer?.merchant_id || '').trim();
+    const productId = String(offer?.product_id || '').trim();
+    if (!merchantId || !productId) return candidates;
+
+    const rawPrice = offer?.price;
+    const price =
+      typeof rawPrice === 'number'
+        ? rawPrice
+        : Number(rawPrice?.amount ?? 0) || 0;
+    const currency =
+      typeof rawPrice === 'object' && rawPrice
+        ? String(rawPrice.currency || 'USD').trim() || 'USD'
+        : 'USD';
+    const inventory = offer?.inventory;
+
+    candidates.push({
+      product_id: productId,
+      merchant_id: merchantId,
+      merchant_name: String(offer?.merchant_name || '').trim() || undefined,
+      title: 'Seller option',
+      description: '',
+      price,
+      currency,
+      image_url: '/placeholder.svg',
+      category: 'General',
+      in_stock:
+        typeof inventory?.in_stock === 'boolean'
+          ? inventory.in_stock
+          : (Number(inventory?.available_quantity || 0) || 0) > 0,
+    });
+
+    return candidates;
+  }, []);
 }
 
 function readApiErrorCode(err: unknown): string {
