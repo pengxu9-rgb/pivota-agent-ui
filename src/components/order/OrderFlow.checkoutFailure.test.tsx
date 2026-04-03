@@ -25,7 +25,7 @@ vi.mock('next/navigation', () => ({
 
 vi.mock('@stripe/react-stripe-js', () => ({
   Elements: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-  CardElement: () => <div data-testid="card-element" />,
+  PaymentElement: () => <div data-testid="payment-element" />,
   useStripe: () => null,
   useElements: () => null,
 }))
