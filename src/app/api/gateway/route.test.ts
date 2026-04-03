@@ -82,6 +82,7 @@ describe('/api/gateway checkout-safe proxy', () => {
   it('routes submit_payment to the checkout-safe backend even without a checkout token', async () => {
     vi.stubEnv('NEXT_PUBLIC_UPSTREAM_API_URL', 'https://invoke.example.com');
     vi.stubEnv('PIVOTA_BACKEND_BASE_URL', 'https://checkout.example.com');
+    vi.stubEnv('AGENT_API_KEY', 'ak_test_gateway_123');
 
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       jsonResponse({
@@ -117,6 +118,8 @@ describe('/api/gateway checkout-safe proxy', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe('https://checkout.example.com/agent/v1/payments');
+    expect((init.headers as Record<string, string>)['X-API-Key']).toBe('ak_test_gateway_123');
+    expect((init.headers as Record<string, string>).Authorization).toBe('Bearer ak_test_gateway_123');
     expect(JSON.parse(String(init.body || '{}'))).toMatchObject({
       order_id: 'ord_123',
       payment_method: { type: 'dynamic' },
