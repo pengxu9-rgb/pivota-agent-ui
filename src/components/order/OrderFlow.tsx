@@ -292,9 +292,7 @@ export function shouldHydrateCreatedOrderPaymentSurface(
 ): boolean {
   if (!isReusablePaymentAction(action)) return false
   const normalizedPsp = normalizePaymentPspToken(psp)
-  if (String(action?.type || '').trim().toLowerCase() === 'stripe_client_secret') return false
-  if (normalizedPsp === 'stripe') return false
-  return true
+  return normalizedPsp !== 'pivota_hosted_checkout'
 }
 
 export function resolveCheckoutPaymentMethodHint(methodType: string | null | undefined): string {
