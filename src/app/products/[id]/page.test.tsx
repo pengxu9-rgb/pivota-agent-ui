@@ -5,12 +5,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import ProductDetailPage from './page';
 
 const pushMock = vi.fn();
+const replaceMock = vi.fn();
 const getPdpV2Mock = vi.fn();
 const getPdpV2PersonalizationMock = vi.fn();
 const getProductDetailMock = vi.fn();
 const resolveProductCandidatesMock = vi.fn();
 const recordBrowseHistoryEventMock = vi.fn();
-const findSimilarProductsMock = vi.fn();
 const mapPdpV2ToPdpPayloadMock = vi.fn();
 const mapToPdpPayloadMock = vi.fn();
 const addItemMock = vi.fn();
@@ -29,6 +29,7 @@ vi.mock('react', async () => {
 vi.mock('next/navigation', () => ({
   useRouter: () => ({
     push: pushMock,
+    replace: replaceMock,
   }),
   useSearchParams: () => new URLSearchParams(searchParamsValue),
 }));
@@ -60,7 +61,6 @@ vi.mock('@/lib/productRouteLoading', () => ({
 }));
 
 vi.mock('@/lib/api', () => ({
-  findSimilarProducts: (...args: unknown[]) => findSimilarProductsMock(...args),
   getPdpV2: (...args: unknown[]) => getPdpV2Mock(...args),
   getPdpV2Personalization: (...args: unknown[]) => getPdpV2PersonalizationMock(...args),
   getProductDetail: (...args: unknown[]) => getProductDetailMock(...args),
@@ -164,12 +164,12 @@ describe('ProductDetailPage canonical PDP loading', () => {
   beforeEach(() => {
     searchParamsValue = '';
     pushMock.mockReset();
+    replaceMock.mockReset();
     getPdpV2Mock.mockReset();
     getPdpV2PersonalizationMock.mockReset();
     getProductDetailMock.mockReset();
     resolveProductCandidatesMock.mockReset();
     recordBrowseHistoryEventMock.mockReset();
-    findSimilarProductsMock.mockReset();
     mapPdpV2ToPdpPayloadMock.mockReset();
     mapToPdpPayloadMock.mockReset();
     addItemMock.mockReset();
@@ -177,7 +177,6 @@ describe('ProductDetailPage canonical PDP loading', () => {
 
     getPdpV2PersonalizationMock.mockResolvedValue({});
     recordBrowseHistoryEventMock.mockResolvedValue(null);
-    findSimilarProductsMock.mockResolvedValue({ items: [] });
     mapPdpV2ToPdpPayloadMock.mockReturnValue(canonicalPayload);
     mapToPdpPayloadMock.mockReturnValue(canonicalPayload);
   });
@@ -247,5 +246,15 @@ describe('ProductDetailPage canonical PDP loading', () => {
 
     await screen.findByText('Failed to load product');
     expect(getProductDetailMock).not.toHaveBeenCalled();
+  });
+
+  it('canonicalizes external_seed merchant routes back to the unscoped product URL', async () => {
+    searchParamsValue = 'merchant_id=external_seed';
+    getPdpV2Mock.mockResolvedValue({ status: 'success', modules: [] });
+
+    renderPage();
+
+    await screen.findByTestId('generic-pdp');
+    await waitFor(() => expect(replaceMock).toHaveBeenCalledWith('/products/prod_1'));
   });
 });

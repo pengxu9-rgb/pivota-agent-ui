@@ -7,6 +7,7 @@ import type { MouseEvent } from 'react';
 import { ChevronRight, Star } from 'lucide-react';
 import type { RecommendationsData } from '@/features/pdp/types';
 import { optimizeRecommendationImageUrl } from '@/features/pdp/sections/RecommendationsGrid';
+import { buildProductHref } from '@/lib/productHref';
 import { appendCurrentPathAsReturn } from '@/lib/returnUrl';
 import { ResponsiveSheet } from '@/features/pdp/components/ResponsiveSheet';
 
@@ -64,7 +65,7 @@ export function SimilarProductsSheet({
         {items.length ? (
           <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
             {items.map((p, idx) => {
-              const baseHref = `/products/${encodeURIComponent(p.product_id)}${p.merchant_id ? `?merchant_id=${encodeURIComponent(p.merchant_id)}` : ''}`;
+              const baseHref = buildProductHref(p.product_id, p.merchant_id);
               const handleClick = (event: MouseEvent<HTMLAnchorElement>) => {
                 onItemClick?.(p, idx);
                 if (event.defaultPrevented) return;
