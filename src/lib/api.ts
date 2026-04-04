@@ -16,6 +16,7 @@ const SEARCH_LIMIT_MAX = Math.max(
   1,
   Math.min(Number(process.env.NEXT_PUBLIC_SEARCH_LIMIT_MAX || 200) || 200, 200),
 );
+const BROWSE_DISCOVERY_MIN_LIMIT = 12;
 
 // Accounts API is proxied through same-origin routes so auth cookies remain first-party.
 // This avoids third-party cookie issues (e.g. in-app browsers / iOS Safari) and reduces CORS risk.
@@ -1620,20 +1621,39 @@ export async function sendMessage(
 export async function getAllProducts(
   limit = 20,
   merchantIdOverride?: string,
-  options?: { page?: number },
+  options?: {
+    page?: number;
+    entry?: ShoppingEntry;
+    catalog?: ShoppingScopeCatalog;
+  },
 ): Promise<ProductResponse[]> {
   const merchantId = String(merchantIdOverride || '').trim() || undefined;
-  const clampedLimit = clampSearchLimit(limit, 20);
+  const requestedLimit = clampSearchLimit(limit, 20);
   const page =
     Number.isFinite(Number(options?.page)) && Number(options?.page)! > 0
       ? Math.floor(Number(options?.page))
       : 1;
+  const entry =
+    options?.entry && SHOPPING_ENTRY_VALUES.has(options.entry)
+      ? options.entry
+      : 'plp';
+  const catalog: ShoppingScopeCatalog =
+    options?.catalog === 'promo_pool' || options?.catalog === 'category' || options?.catalog === 'global'
+      ? options.catalog
+      : 'global';
+  // Empty-query browse only returns featured picks reliably once the upstream limit
+  // clears the browse threshold. Keep the request on the same mainline path, but
+  // down-sample back to the caller's requested rail size.
+  const upstreamLimit =
+    !merchantId && entry === 'plp'
+      ? Math.max(requestedLimit, BROWSE_DISCOVERY_MIN_LIMIT)
+      : requestedLimit;
 
   const searchPayload = {
     search: {
       in_stock_only: false,
       query: '',
-      limit: clampedLimit,
+      limit: upstreamLimit,
       page,
       allow_external_seed: true,
       allow_stale_cache: false,
@@ -1647,12 +1667,18 @@ export async function getAllProducts(
   const data = await callGateway({
     operation: 'find_products_multi',
     payload: searchPayload as any,
+    metadata: {
+      entry,
+      scope: {
+        catalog,
+      },
+    },
   });
 
   const products = (data as any).products || [];
   return products.map((p: RealAPIProduct | ProductResponse) =>
     normalizeProduct(p),
-  );
+  ).slice(0, requestedLimit);
 }
 
 export async function resolveProductCandidates(args: {

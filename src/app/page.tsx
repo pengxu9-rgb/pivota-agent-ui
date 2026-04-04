@@ -105,6 +105,7 @@ function HomePageApp() {
   const [sidebarOpen, setSidebarOpen] = useState(false); // Mobile: closed by default, Desktop: always visible
   const [loading, setLoading] = useState(false);
   const [hotDeals, setHotDeals] = useState<ProductResponse[]>([]);
+  const [hotDealsStatus, setHotDealsStatus] = useState<'loading' | 'ready' | 'empty' | 'error'>('loading');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
   const { messages, addMessage, updateMessage, conversations, resetForGuest } = useChatStore();
@@ -118,15 +119,21 @@ function HomePageApp() {
   // 加载Hot Deals商品
   useEffect(() => {
     const loadHotDeals = async () => {
+      setHotDealsStatus('loading');
       try {
-        const products = await getAllProducts(6);
+        const products = await getAllProducts(6, undefined, {
+          entry: 'plp',
+          catalog: 'promo_pool',
+        });
         setHotDeals(products);
+        setHotDealsStatus(products.length > 0 ? 'ready' : 'empty');
       } catch (error) {
         console.error('Failed to load hot deals:', error);
-        // Keep empty array if API fails
+        setHotDeals([]);
+        setHotDealsStatus('error');
       }
     };
-    loadHotDeals();
+    void loadHotDeals();
   }, []);
 
   const scrollToBottom = () => {
@@ -563,8 +570,12 @@ function HomePageApp() {
                       </Link>
                       );
                     })
-                  ) : (
+                  ) : hotDealsStatus === 'loading' ? (
                     <p className="text-xs text-muted-foreground">Loading products...</p>
+                  ) : hotDealsStatus === 'error' ? (
+                    <p className="text-xs text-muted-foreground">Unable to load hot deals right now.</p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">No hot deals available right now.</p>
                   )}
                 </div>
               </div>
