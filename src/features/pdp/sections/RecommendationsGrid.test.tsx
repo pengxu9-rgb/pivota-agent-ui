@@ -67,7 +67,17 @@ describe('optimizeRecommendationImageUrl', () => {
       360,
     );
     expect(out).toBe(
-      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T1QT01_3000x3000_0.png?width=360',
+      'https://sdcdn.io/tf/tf_sku_T1QT01_3000x3000_0.png?height=1400px&width=1400px',
+    );
+  });
+
+  it('rewrites known Tom Ford Shopify assets onto sdcdn mirrors', () => {
+    const out = optimizeRecommendationImageUrl(
+      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T1QS01_2000x2000_1.jpg',
+      360,
+    );
+    expect(out).toBe(
+      'https://sdcdn.io/tf/tf_sku_T1QS01_2000x2000_1.jpg?height=1400px&width=1400px',
     );
   });
 });

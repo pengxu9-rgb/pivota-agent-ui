@@ -28,6 +28,24 @@ const DIRECT_REMOTE_IMAGE_HOSTS = [
   'pivota-agent-production.up.railway.app',
 ] as const;
 
+function rewriteKnownSdcdnMirror(parsed: URL): URL {
+  const next = new URL(parsed.toString());
+  const filename = String(next.pathname.split('/').pop() || '').trim();
+  if (!filename) return next;
+
+  if (
+    isKnownRemoteHost(next.hostname, ['cdn.shopify.com', 'shopifycdn.com']) &&
+    /^tf_/i.test(filename)
+  ) {
+    const mirror = new URL(`https://sdcdn.io/tf/${filename}`);
+    mirror.searchParams.set('height', '1400px');
+    mirror.searchParams.set('width', '1400px');
+    return mirror;
+  }
+
+  return next;
+}
+
 function isAbsoluteHttpUrl(value: string): boolean {
   return ABSOLUTE_HTTP_URL_RE.test(value);
 }
@@ -59,7 +77,7 @@ function normalizeShopifyLikeFilename(filename: string): string {
 }
 
 function normalizeImageAssetUrl(parsed: URL): URL {
-  const next = new URL(parsed.toString());
+  let next = new URL(parsed.toString());
   if (isShopifyLikeAsset(next)) {
     next.searchParams.delete('v');
     const segments = next.pathname.split('/');
@@ -67,6 +85,7 @@ function normalizeImageAssetUrl(parsed: URL): URL {
     segments[lastIndex] = normalizeShopifyLikeFilename(segments[lastIndex] || '');
     next.pathname = segments.join('/');
   }
+  next = rewriteKnownSdcdnMirror(next);
   return next;
 }
 

@@ -39,7 +39,8 @@ describe('StructuredDetailsBlocks', () => {
             'Please be aware that ingredient lists may change from time to time.',
             '[+/- Mica]',
           ],
-          raw_text: 'Ingredients: Talc, Mica, Silica, Dimethicone',
+          raw_text:
+            'Ingredients: Talc, Mica, Silica, Dimethicone, Yellow 5 Lake (ci 19140)] Please be aware that ingredient lists may change from time to time.',
         }}
         howToUse={{
           title: 'How to Use',
@@ -53,6 +54,7 @@ describe('StructuredDetailsBlocks', () => {
     expect(screen.getByText('Talc')).toBeInTheDocument();
     expect(screen.getByText('Mica')).toBeInTheDocument();
     expect(screen.getByText('Dimethicone')).toBeInTheDocument();
+    expect(screen.getByText('Yellow 5 Lake (ci 19140)')).toBeInTheDocument();
     expect(screen.queryByText(/Key Ingredients Ingredients/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Please be aware that ingredient lists/i)).not.toBeInTheDocument();
     expect(screen.queryByText('-')).not.toBeInTheDocument();

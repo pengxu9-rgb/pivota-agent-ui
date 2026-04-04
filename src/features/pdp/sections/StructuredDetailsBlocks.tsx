@@ -115,6 +115,7 @@ function normalizeIngredientListItem(item: string): string {
   return cleanStructuredToken(item)
     .replace(/^(?:key\s+ingredients?\s+)?ingredients(?:\s*\(inci\))?[:\s-]*/i, '')
     .replace(/^\[\+\/-\s*/i, '')
+    .replace(/\s*Please be aware that ingredient lists.*$/i, '')
     .replace(/\]+$/g, '')
     .trim();
 }

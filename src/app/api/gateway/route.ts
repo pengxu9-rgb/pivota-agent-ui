@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+export const runtime = 'edge';
+
 const SHOP_UPSTREAM_BASE =
   process.env.NEXT_PUBLIC_UPSTREAM_API_URL ||
   process.env.NEXT_PUBLIC_API_URL ||
