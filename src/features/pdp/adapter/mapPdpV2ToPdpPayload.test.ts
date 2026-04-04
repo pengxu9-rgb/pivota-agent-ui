@@ -207,6 +207,37 @@ describe('mapPdpV2ToPdpPayload image normalization', () => {
     );
   });
 
+  it('upserts similar products when v2 returns them outside canonical payload', () => {
+    const response = buildMinimalResponse();
+    response.modules.push({
+      type: 'similar',
+      data: {
+        strategy: 'related_products',
+        items: [
+          {
+            product_id: 'ext_789',
+            merchant_id: 'external_seed',
+            title: 'Recovery Balm',
+            image_url: 'https://sdcdn.io/tf/recovery-balm.png',
+          },
+        ],
+      },
+    });
+
+    const payload = mapPdpV2ToPdpPayload(response);
+    const recommendations = payload?.modules.find((module) => module.type === 'recommendations') as any;
+
+    expect(recommendations?.data?.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          product_id: 'ext_789',
+          merchant_id: 'external_seed',
+          title: 'Recovery Balm',
+        }),
+      ]),
+    );
+  });
+
   it('deduplicates official media image URLs while keeping videos', () => {
     const response = buildMinimalResponse();
     response.modules[0].data.pdp_payload.modules[0].data.items = [

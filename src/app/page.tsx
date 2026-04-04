@@ -14,7 +14,8 @@ import { useCartStore } from '@/store/cartStore';
 import { useAuthStore } from '@/store/authStore';
 import { useChatStore } from '@/store/chatStore';
 import { getAllowedParentOrigin, isAuroraEmbedMode, postRequestCloseToParent } from '@/lib/auroraEmbed';
-import { sendMessage, getAllProducts, type ProductResponse } from '@/lib/api';
+import { sendMessage, getDiscoveryProducts, type ProductResponse } from '@/lib/api';
+import { buildProductHref } from '@/lib/productHref';
 import { appendCurrentPathAsReturn } from '@/lib/returnUrl';
 import { toast } from 'sonner';
 
@@ -118,7 +119,7 @@ function HomePageApp() {
   useEffect(() => {
     const loadHotDeals = async () => {
       try {
-        const products = await getAllProducts(6);
+        const products = await getDiscoveryProducts(6);
         setHotDeals(products);
       } catch (error) {
         console.error('Failed to load hot deals:', error);
@@ -532,9 +533,7 @@ function HomePageApp() {
                   {hotDeals.length > 0 ? (
                     hotDeals.map((product) => {
                       const isExternal = Boolean(product.external_redirect_url);
-                      const cardHref = product.merchant_id
-                        ? `/products/${product.product_id}?merchant_id=${encodeURIComponent(product.merchant_id)}`
-                        : `/products/${product.product_id}`;
+                      const cardHref = buildProductHref(product.product_id, product.merchant_id);
                       return (
                       <Link
                         key={product.product_id}

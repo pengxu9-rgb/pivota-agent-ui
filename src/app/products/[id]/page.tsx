@@ -7,7 +7,6 @@ import { useCartStore } from '@/store/cartStore';
 import { useAuthStore } from '@/store/authStore';
 import { hideProductRouteLoading } from '@/lib/productRouteLoading';
 import {
-  findSimilarProducts,
   getPdpV2,
   getPdpV2Personalization,
   getProductDetail,
@@ -29,6 +28,10 @@ import {
   resolveExternalAgentHomeUrl,
   safeReturnUrl,
 } from '@/lib/returnUrl';
+import {
+  buildProductHref,
+  normalizeProductRouteMerchantId,
+} from '@/lib/productHref';
 import {
   DEFAULT_MODULE_SOURCE_LOCKS,
   upsertLockedModule,
@@ -180,6 +183,7 @@ function hasRecommendationsItems(response: PDPPayload | null): boolean {
 
 const PDP_INITIAL_INCLUDE = [
   'offers',
+  'similar',
   'variant_selector',
   'active_ingredients',
   'ingredients_inci',
@@ -256,73 +260,6 @@ function isUnavailableModuleErrorCode(code: string): boolean {
     'FEATURE_DISABLED',
     'NOT_IMPLEMENTED',
   ]).has(code);
-}
-
-function toNumberOrNull(value: unknown): number | null {
-  if (typeof value === 'number' && Number.isFinite(value)) return value;
-  if (typeof value === 'string') {
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? parsed : null;
-  }
-  return null;
-}
-
-function toCurrencyOrDefault(value: unknown, fallback = 'USD'): string {
-  const text = typeof value === 'string' ? value.trim() : '';
-  return text || fallback;
-}
-
-function normalizeSimilarProduct(item: any): ProductResponse | null {
-  if (!item || typeof item !== 'object') return null;
-
-  const productId = String(
-    item.product_id || item.id || item.productRef?.product_id || item.product_ref?.product_id || '',
-  ).trim();
-  const merchantId = String(
-    item.merchant_id || item.merchantId || item.merchant?.id || item.productRef?.merchant_id || item.product_ref?.merchant_id || '',
-  ).trim();
-
-  if (!productId) return null;
-
-  const priceAmount =
-    toNumberOrNull(item.price?.amount) ??
-    toNumberOrNull(item.price_amount) ??
-    toNumberOrNull(item.price) ??
-    0;
-  const priceCurrency = toCurrencyOrDefault(item.price?.currency || item.currency, 'USD');
-
-  return {
-    product_id: productId,
-    merchant_id: merchantId || undefined,
-    merchant_name: typeof item.merchant_name === 'string' ? item.merchant_name : undefined,
-    title: String(item.title || item.name || 'Untitled product'),
-    description: typeof item.description === 'string' ? item.description : '',
-    price: priceAmount,
-    currency: priceCurrency,
-    image_url: typeof item.image_url === 'string' ? item.image_url : undefined,
-    category:
-      typeof item.category === 'string'
-        ? item.category
-        : typeof item.product_type === 'string'
-          ? item.product_type
-          : 'General',
-    in_stock:
-      typeof item.in_stock === 'boolean'
-        ? item.in_stock
-        : (toNumberOrNull(item.inventory_quantity) ?? 0) > 0,
-    product_type: typeof item.product_type === 'string' ? item.product_type : undefined,
-    platform:
-      typeof item.platform === 'string'
-        ? item.platform
-        : typeof item.productRef?.platform === 'string'
-          ? item.productRef.platform
-          : undefined,
-    platform_product_id:
-      typeof item.platform_product_id === 'string'
-        ? item.platform_product_id
-        : productId,
-    raw_detail: item,
-  };
 }
 
 const BROWSE_HISTORY_STORAGE_KEY = 'browse_history';
@@ -425,7 +362,9 @@ function ProductDetailLoading({ label }: { label: string }) {
 export default function ProductDetailPage({ params }: Props) {
   const { id } = use(params);
   const searchParams = useSearchParams();
-  const merchantIdParam = searchParams.get('merchant_id') || undefined;
+  const searchParamsString = searchParams.toString();
+  const rawMerchantIdParam = searchParams.get('merchant_id');
+  const merchantIdParam = normalizeProductRouteMerchantId(rawMerchantIdParam);
   const entryPointParam =
     searchParams.get('entry_point') ||
     searchParams.get('entryPoint') ||
@@ -444,7 +383,6 @@ export default function ProductDetailPage({ params }: Props) {
   const offerProductDetailCacheRef = useRef<Map<string, ProductResponse>>(new Map());
   const offersFetchKeyRef = useRef<string | null>(null);
   const reviewsSimilarFetchKeyRef = useRef<string | null>(null);
-  const legacySimilarFetchKeyRef = useRef<string | null>(null);
   const browseHistoryRecordedRef = useRef<string | null>(null);
   const moduleSourceLocksRef = useRef({ ...DEFAULT_MODULE_SOURCE_LOCKS });
   const [ugcCapabilities, setUgcCapabilities] = useState<UgcCapabilities | null>({
@@ -474,6 +412,15 @@ export default function ProductDetailPage({ params }: Props) {
     if (loading && !error && !pdpPayload) return;
     hideProductRouteLoading();
   }, [loading, error, pdpPayload]);
+
+  useEffect(() => {
+    if (!rawMerchantIdParam) return;
+    if (merchantIdParam) return;
+    const nextParams = new URLSearchParams(searchParamsString);
+    nextParams.delete('merchant_id');
+    const nextQuery = nextParams.toString();
+    router.replace(`/products/${encodeURIComponent(id)}${nextQuery ? `?${nextQuery}` : ''}`);
+  }, [id, merchantIdParam, rawMerchantIdParam, router, searchParamsString]);
 
   useEffect(() => {
     const product = (pdpPayload as any)?.product;
@@ -553,7 +500,6 @@ export default function ProductDetailPage({ params }: Props) {
       setLoadedViaPdpV2(false);
       offersFetchKeyRef.current = null;
       reviewsSimilarFetchKeyRef.current = null;
-      legacySimilarFetchKeyRef.current = null;
       moduleSourceLocksRef.current = { ...DEFAULT_MODULE_SOURCE_LOCKS };
 
       try {
@@ -707,101 +653,6 @@ export default function ProductDetailPage({ params }: Props) {
   }, [
     loadedViaPdpV2,
     offersLoadState,
-    progressiveMerchantId,
-    progressiveProductId,
-  ]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const run = async () => {
-      if (loadedViaPdpV2) return;
-      if (similarLoadState !== 'loading') return;
-
-      const merchantId = progressiveMerchantId;
-      const productId = progressiveProductId;
-      if (!productId) return;
-
-      const key = `${merchantId || 'unknown'}:${productId}`;
-      if (legacySimilarFetchKeyRef.current === key) return;
-      legacySimilarFetchKeyRef.current = key;
-
-      try {
-        const similarResponse = await findSimilarProducts({
-          product_id: productId,
-          ...(merchantId ? { merchant_id: merchantId } : {}),
-          limit: 12,
-          timeout_ms: 3500,
-        });
-        if (cancelled) return;
-
-        const normalizedSimilar = Array.isArray(similarResponse?.products)
-          ? (similarResponse.products
-              .map((item: any) => normalizeSimilarProduct(item))
-              .filter(Boolean) as ProductResponse[])
-          : [];
-
-        const recommendationsModule: Module | null = normalizedSimilar.length
-          ? {
-              module_id: 'm_recs',
-              type: 'recommendations',
-              priority: 20,
-              data: {
-                strategy:
-                  typeof similarResponse?.strategy === 'string'
-                    ? similarResponse.strategy
-                    : 'related_products',
-                items: normalizedSimilar.map((item) => ({
-                  product_id: item.product_id,
-                  merchant_id: item.merchant_id,
-                  title: item.title,
-                  image_url: item.image_url,
-                  price: {
-                    amount: Number(item.price || 0) || 0,
-                    currency: String(item.currency || 'USD'),
-                  },
-                })),
-              },
-            }
-          : null;
-
-        setPdpPayload((prev) => {
-          if (!prev) return prev;
-          const baseModules = Array.isArray(prev.modules)
-            ? prev.modules.filter((module) => module?.type !== 'recommendations')
-            : [];
-          return {
-            ...prev,
-            modules: recommendationsModule
-              ? [...baseModules, recommendationsModule]
-              : baseModules,
-            x_recommendations_state: 'ready',
-            x_source_locks: {
-              ...(prev.x_source_locks || {}),
-              similar: false,
-            },
-          };
-        });
-      } catch {
-        if (cancelled) return;
-        setPdpPayload((prev) =>
-          prev
-            ? {
-                ...prev,
-                x_recommendations_state: 'ready',
-              }
-            : prev,
-        );
-      }
-    };
-
-    void run();
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    loadedViaPdpV2,
-    similarLoadState,
     progressiveMerchantId,
     progressiveProductId,
   ]);
@@ -1552,7 +1403,7 @@ export default function ProductDetailPage({ params }: Props) {
                       product_id: id,
                       merchant_id: merchantId,
                     });
-                    router.push(`/products/${encodeURIComponent(id)}?merchant_id=${encodeURIComponent(merchantId)}`);
+                    router.push(buildProductHref(id, merchantId));
                   }}
                   disabled={!merchantId}
                 >
