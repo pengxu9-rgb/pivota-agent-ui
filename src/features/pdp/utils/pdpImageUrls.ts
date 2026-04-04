@@ -15,6 +15,9 @@ const IMAGE_DEDUPE_IGNORED_QUERY_KEYS = new Set([
   'fm',
   'fit',
 ]);
+const KNOWN_SDCND_FILENAME_ALIASES: Record<string, string> = {
+  'tf_sku_t2ss02_3000x3000_0.png': 'tf_sku_T2SS02_3000x3000_1.png',
+};
 
 const DIRECT_REMOTE_IMAGE_HOSTS = [
   'cdn.shopify.com',
@@ -76,11 +79,12 @@ function normalizeShopifyLikeFilename(filename: string): string {
     decoded = trimmed;
   }
   const compacted = decoded.replace(/\s*_\s*/g, '_').trim();
-  const hashed = compacted.match(SHOPIFY_FILE_HASH_SUFFIX_RE);
+  const aliased = KNOWN_SDCND_FILENAME_ALIASES[compacted.toLowerCase()] || compacted;
+  const hashed = aliased.match(SHOPIFY_FILE_HASH_SUFFIX_RE);
   if (hashed) {
     return `${hashed[1]}.${hashed[2]}`;
   }
-  return compacted;
+  return aliased;
 }
 
 function normalizeImageAssetUrl(parsed: URL): URL {

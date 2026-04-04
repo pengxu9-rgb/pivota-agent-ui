@@ -90,6 +90,16 @@ describe('optimizeRecommendationImageUrl', () => {
       'https://sdcdn.io/tf/tf_sku_T2SS02_3000x3000_1.png?width=650px&height=750px',
     );
   });
+
+  it('remaps known missing Tom Ford sdcdn assets onto existing siblings', () => {
+    const out = optimizeRecommendationImageUrl(
+      'https://sdcdn.io/tf/tf_sku_T2SS02%20_3000x3000_0.png?width=650px&height=750px',
+      360,
+    );
+    expect(out).toBe(
+      'https://sdcdn.io/tf/tf_sku_T2SS02_3000x3000_1.png?width=650px&height=750px',
+    );
+  });
 });
 
 describe('RecommendationsGrid', () => {
