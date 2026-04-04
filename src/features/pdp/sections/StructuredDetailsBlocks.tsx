@@ -107,6 +107,14 @@ function parseIngredientsFromText(text: string): string[] {
   );
 }
 
+function normalizeIngredientListItem(item: string): string {
+  return cleanStructuredToken(item)
+    .replace(/^(?:key\s+ingredients?\s+)?ingredients(?:\s*\(inci\))?[:\s-]*/i, '')
+    .replace(/^\[\+\/-\s*/i, '')
+    .replace(/\]+$/g, '')
+    .trim();
+}
+
 function splitHowToUseFragments(text: string): string[] {
   const normalized = formatDescriptionText(text)
     .replace(/\r/g, '\n')
@@ -202,7 +210,13 @@ export function StructuredDetailsBlocks({
     Boolean(activeIngredientItems.length || String(activeIngredients?.raw_text || '').trim()),
   );
   const ingredientsInciItems = uniqueNonEmpty([
-    ...getStructuredItems(ingredientsInci?.items),
+    ...getStructuredItems(ingredientsInci?.items)
+      .map((item) => normalizeIngredientListItem(item))
+      .filter(
+        (item) =>
+          item.length > 1 &&
+          !/^please be aware that ingredient lists/i.test(item),
+      ),
     ...parseIngredientsFromText(normalizedIngredientsRawText),
   ]);
   const shouldHideActiveIngredients =

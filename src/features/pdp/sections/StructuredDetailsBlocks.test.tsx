@@ -33,6 +33,12 @@ describe('StructuredDetailsBlocks', () => {
       <StructuredDetailsBlocks
         ingredientsInci={{
           title: 'Ingredients',
+          items: [
+            'Ingredients: Talc',
+            'Key Ingredients Ingredients: Dimethicone',
+            'Please be aware that ingredient lists may change from time to time.',
+            '[+/- Mica]',
+          ],
           raw_text: 'Ingredients: Talc, Mica, Silica, Dimethicone',
         }}
         howToUse={{
@@ -46,6 +52,9 @@ describe('StructuredDetailsBlocks', () => {
 
     expect(screen.getByText('Talc')).toBeInTheDocument();
     expect(screen.getByText('Mica')).toBeInTheDocument();
+    expect(screen.getByText('Dimethicone')).toBeInTheDocument();
+    expect(screen.queryByText(/Key Ingredients Ingredients/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Please be aware that ingredient lists/i)).not.toBeInTheDocument();
     expect(screen.queryByText('-')).not.toBeInTheDocument();
     expect(screen.getByText('Apply dry for soft definition.')).toBeInTheDocument();
     expect(screen.getByText('Blend edges')).toBeInTheDocument();
