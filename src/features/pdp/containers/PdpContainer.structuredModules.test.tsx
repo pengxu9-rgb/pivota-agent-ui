@@ -223,7 +223,7 @@ function buildGenericSingleVariantPayload(): PDPPayload {
         data: {
           sections: [
             {
-              heading: 'Description',
+              heading: 'Product Details',
               content_type: 'text',
               content: 'Soft brushed knit with relaxed fit.',
             },
@@ -257,13 +257,15 @@ describe('PdpContainer structured PDP modules', () => {
     expect(screen.getByText('Active ingredients')).toBeInTheDocument();
     expect(screen.getAllByText('Ceramide NP').length).toBeGreaterThan(0);
     expect(screen.getByText('Ingredients')).toBeInTheDocument();
-    expect(screen.getAllByText('Cholesterol').length).toBeGreaterThan(0);
+    expect(screen.getByText(/Water, Glycerin, Ceramide NP, Cholesterol/i)).toBeInTheDocument();
     expect(screen.getByText('How to use')).toBeInTheDocument();
     expect(screen.getByText('Apply after cleansing.')).toBeInTheDocument();
     expect(screen.getByText('Brand Story')).toBeInTheDocument();
     expect(screen.getByText('Product Information')).toBeInTheDocument();
+    expect(screen.getAllByText('Retail PDP').length).toBeGreaterThan(0);
     expect(screen.getByRole('button', { name: 'Clinical Results' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Legacy Ingredients' })).not.toBeInTheDocument();
+    expect(screen.queryByText(/^Cholesterol$/)).toBeNull();
     expect(screen.getAllByRole('button', { name: 'Add to Cart' }).length).toBeGreaterThan(0);
     expect(screen.getAllByRole('button', { name: 'Buy Now' }).length).toBeGreaterThan(0);
   });
@@ -300,5 +302,7 @@ describe('PdpContainer structured PDP modules', () => {
     expect(screen.getByText('Options')).toBeInTheDocument();
     expect(screen.getByText('1 variant')).toBeInTheDocument();
     expect(screen.getAllByText('Default option').length).toBeGreaterThan(0);
+    expect(screen.getByText('Overview')).toBeInTheDocument();
+    expect(screen.queryAllByText('Product Details')).toHaveLength(1);
   });
 });

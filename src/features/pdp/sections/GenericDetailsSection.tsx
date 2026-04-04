@@ -38,6 +38,11 @@ export function GenericDetailsSection({
   const description = formatDescriptionText(primarySection?.content || product.description);
   const descriptionParagraphs = splitParagraphs(description);
   const detailImages = (media?.items || []).slice(1, 3);
+  const primaryHeadingRaw = String(primarySection?.heading || '').trim();
+  const primaryHeading =
+    primaryHeadingRaw && !/^(product details|details)$/i.test(primaryHeadingRaw)
+      ? primaryHeadingRaw
+      : 'Overview';
 
   return (
     <div className="p-3">
@@ -50,7 +55,7 @@ export function GenericDetailsSection({
 
       {descriptionParagraphs.length ? (
         <div className="mt-3">
-          <h3 className="text-sm font-semibold mb-1.5">{primarySection?.heading || 'Overview'}</h3>
+          <h3 className="text-sm font-semibold mb-1.5">{primaryHeading}</h3>
           <div className="space-y-2">
             {descriptionParagraphs.map((paragraph, idx) =>
               isLikelyHeadingParagraph(paragraph) ? (

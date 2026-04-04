@@ -49,7 +49,13 @@ function formatSourceLabel(sourceOrigin: unknown): string | null {
   return raw
     .split(/[_\s]+/)
     .filter(Boolean)
-    .map((token) => token.charAt(0).toUpperCase() + token.slice(1).toLowerCase())
+    .map((token) => {
+      const normalized = token.toLowerCase();
+      if (normalized === 'pdp') return 'PDP';
+      if (normalized === 'inci') return 'INCI';
+      if (normalized === 'sku') return 'SKU';
+      return token.charAt(0).toUpperCase() + token.slice(1).toLowerCase();
+    })
     .join(' ');
 }
 
@@ -192,7 +198,7 @@ export function StructuredDetailsBlocks({
               <StructuredText text={normalizedIngredientsRawText} />
             </div>
           ) : null}
-          {ingredientsInciItems.length ? (
+          {!normalizedIngredientsRawText && ingredientsInciItems.length ? (
             <ul className="mt-3 space-y-2 pl-4 text-sm text-muted-foreground list-disc">
               {ingredientsInciItems.map((item, idx) => (
                 <li key={`ingredients-inci-${idx}`}>{item}</li>
