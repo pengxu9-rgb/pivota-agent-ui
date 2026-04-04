@@ -102,8 +102,12 @@ function parseIngredientsFromText(text: string): string[] {
   return uniqueNonEmpty(
     normalized
       .split(/\n+|;|,(?![^()]*\))/)
-      .map((item) => cleanStructuredToken(item))
-      .filter((item) => item.length > 1),
+      .map((item) => normalizeIngredientListItem(item))
+      .filter(
+        (item) =>
+          item.length > 1 &&
+          !/^please be aware that ingredient lists/i.test(item),
+      ),
   );
 }
 
