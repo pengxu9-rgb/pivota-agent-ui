@@ -55,13 +55,35 @@ function normalizeVariantOptionToken(value: string): string {
 function normalizeVariantOptionName(name: string): string {
   const normalized = normalizeVariantOptionToken(name);
   if (!normalized) return '';
-  if (normalized.includes('colour') || normalized.includes('color') || normalized.includes('shade') || normalized.includes('tone')) {
+  const hasColorToken =
+    normalized.includes('colour') ||
+    normalized.includes('color') ||
+    normalized.includes('shade') ||
+    normalized.includes('tone');
+  const hasSizeToken = normalized.includes('size') || normalized.includes('fit');
+  if (hasColorToken && hasSizeToken) {
+    return 'color_size';
+  }
+  if (hasColorToken) {
     return 'color';
   }
-  if (normalized.includes('size') || normalized.includes('fit')) {
+  if (hasSizeToken) {
     return 'size';
   }
   return normalized;
+}
+
+function parseCombinedColorSizeOptionValue(value: string): { color: string; size: string } | null {
+  const parts = String(value || '')
+    .trim()
+    .split(/\s*\/\s*/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (parts.length !== 2) return null;
+  const [color, size] = parts;
+  if (!color || !size) return null;
+  if (!/\d/.test(size) && !/\b(size|fit|pack|count)\b/i.test(size)) return null;
+  return { color, size };
 }
 
 function normalizeVariantOptionValue(value: string): string {
@@ -92,7 +114,16 @@ function getNormalizedVariantOptionValue(
   if (!wanted) return null;
   const match = options.find((opt) => normalizeVariantOptionName(opt?.name || '') === wanted);
   const value = normalizeVariantOptionValue(match?.value || '');
-  return value || null;
+  if (value) return value;
+
+  if (wanted === 'color' || wanted === 'size') {
+    const combined = options.find((opt) => normalizeVariantOptionName(opt?.name || '') === 'color_size');
+    const parsed = combined?.value ? parseCombinedColorSizeOptionValue(String(combined.value)) : null;
+    const fallback = wanted === 'color' ? parsed?.color : parsed?.size;
+    return fallback ? normalizeVariantOptionValue(fallback) : null;
+  }
+
+  return null;
 }
 
 function normalizeHttpUrl(value: unknown): string | null {
@@ -185,6 +216,8 @@ const PDP_INITIAL_INCLUDE = [
   'ingredients_inci',
   'how_to_use',
   'product_details',
+  'reviews_preview',
+  'similar',
 ] as const;
 
 function mapSellerCandidatesFromResolveCandidates(

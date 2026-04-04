@@ -44,6 +44,7 @@ import {
   extractAttributeOptions,
   extractBeautyAttributes,
   findVariantByOptions,
+  getStaticSizeOption,
   getOptionValue,
 } from '@/features/pdp/utils/variantOptions';
 import { pdpTracking } from '@/features/pdp/tracking';
@@ -555,7 +556,12 @@ export function PdpContainer({
 
     return colorOptions.map((value) => byValue.get(value) || { value });
   }, [colorOptions, variants]);
-  const sizeOptions = useMemo(() => collectSizeOptions(variants), [variants]);
+  const rawSizeOptions = useMemo(() => collectSizeOptions(variants), [variants]);
+  const staticSizeOption = useMemo(() => getStaticSizeOption(variants), [variants]);
+  const sizeOptions = useMemo(
+    () => (staticSizeOption ? rawSizeOptions.filter((value) => value !== staticSizeOption) : rawSizeOptions),
+    [rawSizeOptions, staticSizeOption],
+  );
   const [selectedColor, setSelectedColor] = useState<string | null>(
     getOptionValue(selectedVariant, ['color', 'colour', 'shade', 'tone']) || null,
   );
@@ -1122,6 +1128,14 @@ export function PdpContainer({
   );
   const isExternalSeedProduct =
     String(payload.product.merchant_id || '').trim().toLowerCase() === 'external_seed';
+  const beautyLikeCategoryText = `${payload.product.title || ''} ${(payload.product.category_path || []).join(' ')} ${
+    (payload.product.tags || []).join(' ')
+  }`.toLowerCase();
+  const shouldHideLowConfidenceActiveIngredients =
+    isExternalSeedProduct &&
+    (resolvedMode === 'beauty' ||
+      isBeautyProduct(payload.product) ||
+      /(beauty|makeup|cosmetic|palette|powder|eyeshadow|lip|skincare|fragrance)/.test(beautyLikeCategoryText));
   const singleVariantSummaryLabel = useMemo(
     () => getSingleVariantSummaryLabel(selectedVariant),
     [selectedVariant],
@@ -1932,6 +1946,20 @@ export function PdpContainer({
                 </div>
               ) : null}
 
+              {resolvedMode === 'generic' && staticSizeOption ? (
+                <div className="mt-2">
+                  <div className="flex items-center justify-between">
+                    <div className="text-xs font-semibold">Size</div>
+                    <div className="text-[11px] text-muted-foreground">Same across all variants</div>
+                  </div>
+                  <div className="mt-1.5">
+                    <span className="inline-flex h-10 items-center rounded-full border border-border bg-card px-3 text-xs font-semibold text-foreground">
+                      {staticSizeOption}
+                    </span>
+                  </div>
+                </div>
+              ) : null}
+
               {resolvedMode === 'generic' && sizeOptions.length ? (
                 <div className="mt-2">
                   <div className="flex items-center justify-between">
@@ -2390,6 +2418,7 @@ export function PdpContainer({
                 activeIngredients={activeIngredients}
                 ingredientsInci={ingredientsInci}
                 howToUse={howToUse}
+                hideLowConfidenceActiveIngredients={shouldHideLowConfidenceActiveIngredients}
               />
             ) : resolvedMode === 'generic' ? (
               <GenericDetailsSection
@@ -2399,6 +2428,7 @@ export function PdpContainer({
                 activeIngredients={activeIngredients}
                 ingredientsInci={ingredientsInci}
                 howToUse={howToUse}
+                hideLowConfidenceActiveIngredients={shouldHideLowConfidenceActiveIngredients}
               />
             ) : (
               <div className="px-4 py-4">

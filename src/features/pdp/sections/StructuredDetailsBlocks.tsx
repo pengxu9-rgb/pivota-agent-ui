@@ -43,6 +43,27 @@ function getStructuredItems(items: unknown): string[] {
     .filter(Boolean);
 }
 
+function uniqueNonEmpty(items: string[]): string[] {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    const normalized = item.trim();
+    if (!normalized) return false;
+    const key = normalized.toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function cleanStructuredToken(value: string): string {
+  return String(value || '')
+    .replace(/^[\s\-•*]+/, '')
+    .replace(/^(?:step\s*)?\d+[\).:\-]\s*/i, '')
+    .replace(/\s+/g, ' ')
+    .replace(/\s*[-•]\s*$/, '')
+    .trim();
+}
+
 function formatSourceLabel(sourceOrigin: unknown): string | null {
   const raw = String(sourceOrigin || '').trim();
   if (!raw) return null;
@@ -73,6 +94,47 @@ function normalizeIngredientsRawText(text: string, hasActiveIngredients: boolean
 
   normalized = normalized.replace(/^ingredients(?:\s*\(inci\))?[:\s-]*/i, '').trim();
   return normalized;
+}
+
+function parseIngredientsFromText(text: string): string[] {
+  const normalized = normalizeIngredientsRawText(text, false);
+  if (!normalized) return [];
+  return uniqueNonEmpty(
+    normalized
+      .split(/\n+|;|,(?![^()]*\))/)
+      .map((item) => cleanStructuredToken(item))
+      .filter((item) => item.length > 1),
+  );
+}
+
+function splitHowToUseFragments(text: string): string[] {
+  const normalized = formatDescriptionText(text)
+    .replace(/\r/g, '\n')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!normalized) return [];
+
+  const withBreaks = normalized
+    .replace(/(?:^|\s)(?:step\s*)?\d+[\).:\-]\s*/gi, '\n')
+    .replace(/(?:^|\s)[•*-]\s+/g, '\n')
+    .replace(/\s+-\s+/g, '\n');
+
+  return uniqueNonEmpty(
+    withBreaks
+      .split(/\n+/)
+      .map((item) => cleanStructuredToken(item))
+      .filter((item) => item.length > 1),
+  );
+}
+
+function sanitizeHowToUseItems(steps: unknown, rawText: string): string[] {
+  const sourceSteps = Array.isArray(steps) ? steps : [];
+  const cleanedFromSteps = uniqueNonEmpty(
+    sourceSteps.flatMap((step) => splitHowToUseFragments(String(step || ''))),
+  );
+  if (cleanedFromSteps.length >= 2) return cleanedFromSteps;
+  const cleanedFromRaw = splitHowToUseFragments(rawText);
+  return cleanedFromRaw.length >= 2 ? cleanedFromRaw : [];
 }
 
 function SectionHeader({
@@ -125,38 +187,45 @@ export function StructuredDetailsBlocks({
   activeIngredients,
   ingredientsInci,
   howToUse,
+  hideLowConfidenceActiveIngredients = false,
 }: {
   activeIngredients?: ActiveIngredientsData | null;
   ingredientsInci?: IngredientsInciData | null;
   howToUse?: HowToUseData | null;
+  hideLowConfidenceActiveIngredients?: boolean;
 }) {
   const activeIngredientItems = getStructuredItems(activeIngredients?.items);
-  const ingredientsInciItems = getStructuredItems(ingredientsInci?.items);
-  const howToUseItems = Array.isArray(howToUse?.steps)
-    ? howToUse.steps.map((step) => String(step || '').trim()).filter(Boolean)
-    : [];
-  const hasActiveIngredients = Boolean(
-    activeIngredientItems.length || String(activeIngredients?.raw_text || '').trim(),
-  );
+  const normalizedHowToUseRawText = String(howToUse?.raw_text || '').trim();
+  const howToUseItems = sanitizeHowToUseItems(howToUse?.steps, normalizedHowToUseRawText);
   const normalizedIngredientsRawText = normalizeIngredientsRawText(
     String(ingredientsInci?.raw_text || ''),
-    hasActiveIngredients,
+    Boolean(activeIngredientItems.length || String(activeIngredients?.raw_text || '').trim()),
+  );
+  const ingredientsInciItems = uniqueNonEmpty([
+    ...getStructuredItems(ingredientsInci?.items),
+    ...parseIngredientsFromText(normalizedIngredientsRawText),
+  ]);
+  const shouldHideActiveIngredients =
+    hideLowConfidenceActiveIngredients &&
+    activeIngredientItems.length <= 1 &&
+    (ingredientsInciItems.length >= 4 || normalizedIngredientsRawText.length >= 80);
+  const hasActiveIngredients = !shouldHideActiveIngredients && Boolean(
+    activeIngredientItems.length || String(activeIngredients?.raw_text || '').trim(),
   );
 
   const hasContent = Boolean(
-    activeIngredientItems.length ||
+    hasActiveIngredients ||
       ingredientsInciItems.length ||
       howToUseItems.length ||
-      activeIngredients?.raw_text ||
       normalizedIngredientsRawText ||
-      howToUse?.raw_text,
+      normalizedHowToUseRawText,
   );
 
   if (!hasContent) return null;
 
   return (
     <div className="space-y-3">
-      {(activeIngredientItems.length || activeIngredients?.raw_text) ? (
+      {hasActiveIngredients ? (
         <div className="rounded-xl border border-border/70 bg-card/70 px-3 py-3">
           <SectionHeader
             title={String(activeIngredients?.title || 'Active Ingredients').trim() || 'Active Ingredients'}
@@ -193,22 +262,22 @@ export function StructuredDetailsBlocks({
           <p className="mt-1 text-xs text-muted-foreground">
             Full ingredient list (INCI) when available.
           </p>
-          {normalizedIngredientsRawText ? (
-            <div className="mt-3">
-              <StructuredText text={normalizedIngredientsRawText} />
-            </div>
-          ) : null}
-          {!normalizedIngredientsRawText && ingredientsInciItems.length ? (
+          {ingredientsInciItems.length ? (
             <ul className="mt-3 space-y-2 pl-4 text-sm text-muted-foreground list-disc">
               {ingredientsInciItems.map((item, idx) => (
                 <li key={`ingredients-inci-${idx}`}>{item}</li>
               ))}
             </ul>
           ) : null}
+          {!ingredientsInciItems.length && normalizedIngredientsRawText ? (
+            <div className="mt-3">
+              <StructuredText text={normalizedIngredientsRawText} />
+            </div>
+          ) : null}
         </div>
       ) : null}
 
-      {(howToUseItems.length || howToUse?.raw_text) ? (
+      {(howToUseItems.length || normalizedHowToUseRawText) ? (
         <div className="rounded-xl border border-border/70 bg-card/70 px-3 py-3">
           <SectionHeader
             title={String(howToUse?.title || 'How to Use').trim() || 'How to Use'}
@@ -225,9 +294,9 @@ export function StructuredDetailsBlocks({
                 </li>
               ))}
             </ol>
-          ) : howToUse?.raw_text ? (
+          ) : normalizedHowToUseRawText ? (
             <div className="mt-3">
-              <StructuredText text={String(howToUse.raw_text)} />
+              <StructuredText text={normalizedHowToUseRawText} />
             </div>
           ) : null}
         </div>

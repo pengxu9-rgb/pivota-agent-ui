@@ -24,6 +24,7 @@ export function GenericDetailsSection({
   activeIngredients,
   ingredientsInci,
   howToUse,
+  hideLowConfidenceActiveIngredients = false,
 }: {
   data?: ProductDetailsData | null;
   product: Product;
@@ -31,6 +32,7 @@ export function GenericDetailsSection({
   activeIngredients?: ActiveIngredientsData | null;
   ingredientsInci?: IngredientsInciData | null;
   howToUse?: HowToUseData | null;
+  hideLowConfidenceActiveIngredients?: boolean;
 }) {
   const sections = Array.isArray(data?.sections) ? data.sections : [];
   const primarySection = sections[0];
@@ -51,6 +53,7 @@ export function GenericDetailsSection({
         activeIngredients={activeIngredients}
         ingredientsInci={ingredientsInci}
         howToUse={howToUse}
+        hideLowConfidenceActiveIngredients={hideLowConfidenceActiveIngredients}
       />
 
       {descriptionParagraphs.length ? (

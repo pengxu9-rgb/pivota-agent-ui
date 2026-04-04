@@ -202,10 +202,13 @@ describe('ProductDetailPage canonical PDP loading', () => {
           'ingredients_inci',
           'how_to_use',
           'product_details',
+          'reviews_preview',
+          'similar',
         ],
         timeout_ms: 9000,
       }),
     );
+    expect(getPdpV2Mock).toHaveBeenCalledTimes(1);
   });
 
   it('shows seller chooser on canonical failure and does not revive legacy product detail', async () => {

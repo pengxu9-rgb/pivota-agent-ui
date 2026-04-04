@@ -24,6 +24,7 @@ export function BeautyDetailsSection({
   activeIngredients,
   ingredientsInci,
   howToUse,
+  hideLowConfidenceActiveIngredients = false,
 }: {
   data?: ProductDetailsData | null;
   product: Product;
@@ -31,6 +32,7 @@ export function BeautyDetailsSection({
   activeIngredients?: ActiveIngredientsData | null;
   ingredientsInci?: IngredientsInciData | null;
   howToUse?: HowToUseData | null;
+  hideLowConfidenceActiveIngredients?: boolean;
 }) {
   const heroUrl = media?.items?.[0]?.url || product.image_url;
   const accentImages = media?.items?.slice(1, 3) || [];
@@ -104,6 +106,7 @@ export function BeautyDetailsSection({
           activeIngredients={activeIngredients}
           ingredientsInci={ingredientsInci}
           howToUse={howToUse}
+          hideLowConfidenceActiveIngredients={hideLowConfidenceActiveIngredients}
         />
       </div>
 
