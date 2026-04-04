@@ -239,4 +239,57 @@ describe('PdpContainer recommendations interactions', () => {
       expect(screen.queryByRole('button', { name: /load more recommendations/i })).not.toBeInTheDocument();
     });
   });
+
+  it('deduplicates repeated recommendation titles from the same merchant', async () => {
+    const duplicatePayload: PDPPayload = {
+      ...payload,
+      modules: payload.modules.map((module) =>
+        module.type !== 'recommendations'
+          ? module
+          : {
+              ...module,
+              data: {
+                strategy: 'related_products',
+                items: [
+                  {
+                    product_id: 'ext_rose_prick_30',
+                    merchant_id: 'external_seed',
+                    title: 'Rose Prick Eau de Parfum',
+                    image_url: 'https://example.com/rose-prick-30.jpg',
+                    price: { amount: 180, currency: 'USD' },
+                  },
+                  {
+                    product_id: 'ext_rose_prick_50',
+                    merchant_id: 'external_seed',
+                    title: 'Rose Prick Eau de Parfum',
+                    image_url: 'https://example.com/rose-prick-50.jpg',
+                    price: { amount: 182, currency: 'USD' },
+                  },
+                  {
+                    product_id: 'ext_electric_cherry_30',
+                    merchant_id: 'external_seed',
+                    title: 'Electric Cherry Eau de Parfum',
+                    image_url: 'https://example.com/electric-cherry-30.jpg',
+                    price: { amount: 175, currency: 'USD' },
+                  },
+                ],
+              },
+            },
+      ),
+    };
+
+    render(
+      <PdpContainer
+        payload={duplicatePayload}
+        mode="generic"
+        onAddToCart={() => {}}
+        onBuyNow={() => {}}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getAllByText('Rose Prick Eau de Parfum')).toHaveLength(1);
+    });
+    expect(screen.getAllByText('Electric Cherry Eau de Parfum')).toHaveLength(1);
+  });
 });

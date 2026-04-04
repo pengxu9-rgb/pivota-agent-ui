@@ -294,17 +294,38 @@ function normalizeRecommendationItems(
     .filter(Boolean) as RecommendationsData['items'];
 }
 
+function buildRecommendationSemanticKey(
+  item: RecommendationsData['items'][number],
+): string {
+  const merchantId = String(item.merchant_id || '').trim();
+  const normalizedTitle = String(item.title || '')
+    .toLowerCase()
+    .replace(/&nbsp;/g, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/[^a-z0-9\s-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!normalizedTitle) return '';
+  return merchantId ? `${merchantId}:${normalizedTitle}` : normalizedTitle;
+}
+
 function mergeRecommendationItems(
   current: RecommendationsData['items'],
   incoming: RecommendationsData['items'],
 ): { items: RecommendationsData['items']; added: number } {
-  const seen = new Set<string>();
+  const seenProductKeys = new Set<string>();
+  const seenSemanticKeys = new Set<string>();
   const merged: RecommendationsData['items'] = [];
 
   const append = (item: RecommendationsData['items'][number]) => {
-    const key = `${String(item.merchant_id || '').trim()}:${String(item.product_id || '').trim()}`;
-    if (!item.product_id || seen.has(key)) return;
-    seen.add(key);
+    const productKey = `${String(item.merchant_id || '').trim()}:${String(item.product_id || '').trim()}`;
+    const semanticKey = buildRecommendationSemanticKey(item);
+    if (!item.product_id || seenProductKeys.has(productKey)) return;
+    if (semanticKey && seenSemanticKeys.has(semanticKey)) return;
+    seenProductKeys.add(productKey);
+    if (semanticKey) {
+      seenSemanticKeys.add(semanticKey);
+    }
     merged.push(item);
   };
 
