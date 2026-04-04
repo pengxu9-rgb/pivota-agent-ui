@@ -69,11 +69,18 @@ function isShopifyLikeAsset(parsed: URL): boolean {
 function normalizeShopifyLikeFilename(filename: string): string {
   const trimmed = String(filename || '').trim();
   if (!trimmed) return trimmed;
-  const hashed = trimmed.match(SHOPIFY_FILE_HASH_SUFFIX_RE);
+  let decoded = trimmed;
+  try {
+    decoded = decodeURIComponent(trimmed);
+  } catch {
+    decoded = trimmed;
+  }
+  const compacted = decoded.replace(/\s*_\s*/g, '_').trim();
+  const hashed = compacted.match(SHOPIFY_FILE_HASH_SUFFIX_RE);
   if (hashed) {
     return `${hashed[1]}.${hashed[2]}`;
   }
-  return trimmed;
+  return compacted;
 }
 
 function normalizeImageAssetUrl(parsed: URL): URL {

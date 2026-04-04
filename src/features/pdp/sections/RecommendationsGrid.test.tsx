@@ -80,6 +80,16 @@ describe('optimizeRecommendationImageUrl', () => {
       'https://sdcdn.io/tf/tf_sku_T1QS01_2000x2000_1.jpg?height=1400px&width=1400px',
     );
   });
+
+  it('normalizes encoded whitespace around underscores in sdcdn asset names', () => {
+    const out = optimizeRecommendationImageUrl(
+      'https://sdcdn.io/tf/tf_sku_T2SS02%20_3000x3000_1.png?width=650px&height=750px',
+      360,
+    );
+    expect(out).toBe(
+      'https://sdcdn.io/tf/tf_sku_T2SS02_3000x3000_1.png?width=650px&height=750px',
+    );
+  });
 });
 
 describe('RecommendationsGrid', () => {
