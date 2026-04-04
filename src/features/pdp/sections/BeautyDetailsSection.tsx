@@ -17,10 +17,6 @@ import {
   splitParagraphs,
 } from '@/features/pdp/utils/formatDescriptionText';
 
-function resolveFactsHeading(sectionsCount: number): string {
-  return sectionsCount > 0 ? 'Product Information' : 'Details';
-}
-
 export function BeautyDetailsSection({
   data,
   product,
@@ -139,7 +135,7 @@ export function BeautyDetailsSection({
 
       {factsSections.length ? (
         <div className="mx-3 border-t border-muted/60 pt-5">
-          <h3 className="text-sm font-semibold mb-3">{resolveFactsHeading(factsSections.length)}</h3>
+          <h3 className="text-sm font-semibold mb-3">Details</h3>
           <DetailsAccordion data={{ sections: factsSections }} />
         </div>
       ) : null}

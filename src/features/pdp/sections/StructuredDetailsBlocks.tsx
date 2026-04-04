@@ -1,12 +1,10 @@
 'use client';
 
-import type { ReactNode } from 'react';
 import type {
   ActiveIngredientsData,
   HowToUseData,
   IngredientsInciData,
 } from '@/features/pdp/types';
-import { PdpSourceBadge } from '@/features/pdp/sections/PdpSourceBadge';
 import {
   formatDescriptionText,
   isLikelyHeadingParagraph,
@@ -71,27 +69,35 @@ function StructuredText({
   );
 }
 
-function StructuredBlock({
+function StructuredList({
   title,
-  subtitle,
-  sourceOrigin,
-  sourceQualityStatus,
-  children,
+  items,
+  fallbackText,
+  ordered = false,
 }: {
   title: string;
-  subtitle?: string;
-  sourceOrigin?: string;
-  sourceQualityStatus?: string;
-  children: ReactNode;
+  items: string[];
+  fallbackText?: string;
+  ordered?: boolean;
 }) {
+  if (!items.length && !fallbackText) return null;
+
+  const ListTag = ordered ? 'ol' : 'ul';
+
   return (
-    <div className="rounded-2xl border border-border/70 bg-card/70 px-4 py-4">
-      <div className="flex items-center justify-between gap-3">
-        <h3 className="text-sm font-semibold">{title}</h3>
-        <PdpSourceBadge sourceOrigin={sourceOrigin} sourceQualityStatus={sourceQualityStatus} />
-      </div>
-      {subtitle ? <p className="mt-1 text-xs text-muted-foreground">{subtitle}</p> : null}
-      <div className="mt-3">{children}</div>
+    <div className="rounded-xl border border-border/70 bg-card/70 px-3 py-3">
+      <h3 className="text-sm font-semibold">{title}</h3>
+      {items.length ? (
+        <ListTag className={ordered ? 'mt-2 space-y-2 pl-4 text-sm text-muted-foreground list-decimal' : 'mt-2 space-y-2 pl-4 text-sm text-muted-foreground list-disc'}>
+          {items.map((item, idx) => (
+            <li key={`${title}-${idx}`}>{item}</li>
+          ))}
+        </ListTag>
+      ) : fallbackText ? (
+        <div className="mt-2">
+          <StructuredText text={fallbackText} />
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -124,72 +130,22 @@ export function StructuredDetailsBlocks({
 
   return (
     <div className="space-y-3">
-      {activeIngredientItems.length || activeIngredients?.raw_text ? (
-        <StructuredBlock
-          title={String(activeIngredients?.title || 'Active ingredients').trim() || 'Active ingredients'}
-          subtitle="Highlighted actives or hero ingredients, not the full formula."
-          sourceOrigin={activeIngredients?.source_origin}
-          sourceQualityStatus={activeIngredients?.source_quality_status}
-        >
-          {activeIngredientItems.length ? (
-            <div className="flex flex-wrap gap-2">
-              {activeIngredientItems.map((item, index) => (
-                <span
-                  key={`${item}-${index}`}
-                  className="inline-flex items-center rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-foreground"
-                >
-                  {item}
-                </span>
-              ))}
-            </div>
-          ) : null}
-          {activeIngredients?.raw_text ? (
-            <div className={activeIngredientItems.length ? 'mt-3' : ''}>
-              <StructuredText text={String(activeIngredients.raw_text)} />
-            </div>
-          ) : null}
-        </StructuredBlock>
-      ) : null}
-      {ingredientsInciItems.length || ingredientsInci?.raw_text ? (
-        <StructuredBlock
-          title={String(ingredientsInci?.title || 'Ingredients').trim() || 'Ingredients'}
-          subtitle="Full ingredient list (INCI) when available."
-          sourceOrigin={ingredientsInci?.source_origin}
-          sourceQualityStatus={ingredientsInci?.source_quality_status}
-        >
-          {ingredientsInci?.raw_text ? (
-            <p className="text-sm leading-relaxed text-muted-foreground whitespace-pre-line">
-              {String(ingredientsInci.raw_text).trim()}
-            </p>
-          ) : ingredientsInciItems.length ? (
-            <p className="text-sm leading-relaxed text-muted-foreground">
-              {ingredientsInciItems.join(', ')}
-            </p>
-          ) : null}
-        </StructuredBlock>
-      ) : null}
-      {howToUseItems.length || howToUse?.raw_text ? (
-        <StructuredBlock
-          title={String(howToUse?.title || 'How to use').trim() || 'How to use'}
-          sourceOrigin={howToUse?.source_origin}
-        >
-          {howToUseItems.length ? (
-            <ol className="space-y-2">
-              {howToUseItems.map((item, index) => (
-                <li key={`${item}-${index}`} className="flex gap-3 text-sm text-muted-foreground">
-                  <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-[11px] font-semibold text-foreground">
-                    {index + 1}
-                  </span>
-                  <span className="leading-relaxed">{item}</span>
-                </li>
-              ))}
-            </ol>
-          ) : null}
-          {!howToUseItems.length && howToUse?.raw_text ? (
-            <StructuredText text={String(howToUse.raw_text)} />
-          ) : null}
-        </StructuredBlock>
-      ) : null}
+      <StructuredList
+        title={String(activeIngredients?.title || 'Active Ingredients').trim() || 'Active Ingredients'}
+        items={activeIngredientItems}
+        fallbackText={String(activeIngredients?.raw_text || '').trim() || undefined}
+      />
+      <StructuredList
+        title={String(ingredientsInci?.title || 'Ingredients (INCI)').trim() || 'Ingredients (INCI)'}
+        items={ingredientsInciItems}
+        fallbackText={String(ingredientsInci?.raw_text || '').trim() || undefined}
+      />
+      <StructuredList
+        title={String(howToUse?.title || 'How to Use').trim() || 'How to Use'}
+        items={howToUseItems}
+        fallbackText={String(howToUse?.raw_text || '').trim() || undefined}
+        ordered
+      />
     </div>
   );
 }

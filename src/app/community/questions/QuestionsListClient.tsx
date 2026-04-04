@@ -7,7 +7,6 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { listQuestions, postQuestion, type QuestionListItem } from '@/lib/api';
-import { buildProductHref } from '@/lib/productHref';
 
 export default function QuestionsListClient() {
   const router = useRouter();
@@ -91,7 +90,8 @@ export default function QuestionsListClient() {
     }
   };
 
-  const backToPdpHref = productId ? buildProductHref(productId, merchantId) : '/products';
+  const backToPdpHref =
+    productId ? `/products/${encodeURIComponent(productId)}${merchantId ? `?merchant_id=${encodeURIComponent(merchantId)}` : ''}` : '/products';
 
   return (
     <div className="min-h-screen bg-gradient-mesh px-4 py-10 pb-[calc(96px+env(safe-area-inset-bottom,0px))]">

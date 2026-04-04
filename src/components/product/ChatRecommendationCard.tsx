@@ -5,7 +5,6 @@ import { ShoppingCart } from 'lucide-react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { hideProductRouteLoading, showProductRouteLoading } from '@/lib/productRouteLoading';
-import { buildProductHref } from '@/lib/productHref';
 import { appendCurrentPathAsReturn } from '@/lib/returnUrl';
 
 import type { ProductResponse } from '@/lib/api';
@@ -32,7 +31,9 @@ export function ChatRecommendationCard({ product, onAddToCart }: Props) {
   const isNavigatingRef = useRef(false);
   const resetTimerRef = useRef<number | null>(null);
 
-  const href = buildProductHref(product.product_id, product.merchant_id);
+  const href = product.merchant_id
+    ? `/products/${encodeURIComponent(product.product_id)}?merchant_id=${encodeURIComponent(product.merchant_id)}`
+    : `/products/${encodeURIComponent(product.product_id)}`;
 
   const handleCardClick = () => {
     if (isNavigatingRef.current) return;

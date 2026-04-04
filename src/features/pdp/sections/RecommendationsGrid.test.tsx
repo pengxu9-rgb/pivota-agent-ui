@@ -107,13 +107,4 @@ describe('RecommendationsGrid', () => {
     fireEvent.click(screen.getByRole('button', { name: /load more recommendations/i }));
     expect(onLoadMore).toHaveBeenCalledTimes(1);
   });
-
-  it('omits external_seed merchant scope from recommendation links', () => {
-    render(<RecommendationsGrid data={data} />);
-
-    expect(screen.getAllByRole('link', { name: /product 1/i })[0]).toHaveAttribute(
-      'href',
-      '/products/prod_1',
-    );
-  });
 });
