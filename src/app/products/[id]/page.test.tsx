@@ -109,8 +109,8 @@ vi.mock('@/features/pdp/state/freezePolicy', () => ({
   upsertLockedModule: vi.fn((payload: unknown) => payload),
 }));
 
-function renderPage() {
-  return render(<ProductDetailPage params={{ id: 'prod_1' } as any} />);
+function renderPage(productId = 'prod_1') {
+  return render(<ProductDetailPage params={{ id: productId } as any} />);
 }
 
 const canonicalPayload = {
@@ -259,5 +259,20 @@ describe('ProductDetailPage canonical PDP loading', () => {
 
     await screen.findByTestId('generic-pdp');
     await waitFor(() => expect(replaceMock).toHaveBeenCalledWith('/products/prod_1'));
+  });
+
+  it('infers external_seed merchant ids for ext_ product routes on the first get_pdp_v2 call', async () => {
+    getPdpV2Mock.mockResolvedValue({ status: 'success', modules: [] });
+
+    renderPage('ext_8e7b0abf06e2ebc11f1356ae');
+
+    await screen.findByTestId('generic-pdp');
+    expect(getPdpV2Mock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        product_id: 'ext_8e7b0abf06e2ebc11f1356ae',
+        merchant_id: 'external_seed',
+      }),
+    );
+    expect(resolveProductCandidatesMock).not.toHaveBeenCalled();
   });
 });

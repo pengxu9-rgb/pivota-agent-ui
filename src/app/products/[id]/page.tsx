@@ -28,7 +28,11 @@ import {
   resolveExternalAgentHomeUrl,
   safeReturnUrl,
 } from '@/lib/returnUrl';
-import { buildProductHref, normalizeProductRouteMerchantId } from '@/lib/productHref';
+import {
+  buildProductHref,
+  inferCanonicalPdpMerchantId,
+  normalizeProductRouteMerchantId,
+} from '@/lib/productHref';
 import {
   DEFAULT_MODULE_SOURCE_LOCKS,
   upsertLockedModule,
@@ -431,6 +435,7 @@ export default function ProductDetailPage({ params }: Props) {
     merchantId: merchantIdParam,
     entryPoint: entryPointParam,
   });
+  const inferredMerchantId = inferCanonicalPdpMerchantId(id, merchantIdParam);
   const progressiveMerchantId = String(pdpPayload?.product?.merchant_id || '').trim();
   const progressiveProductId = String(pdpPayload?.product?.product_id || id || '').trim();
   const offersLoadState = pdpPayload?.x_offers_state;
@@ -508,7 +513,7 @@ export default function ProductDetailPage({ params }: Props) {
       : PDP_V2_UNSCOPED_TIMEOUT_MS;
 
     const loadProduct = async () => {
-      const explicitMerchantId = merchantIdParam ? String(merchantIdParam).trim() : null;
+      const explicitMerchantId = inferredMerchantId ? String(inferredMerchantId).trim() : null;
       const candidateResolutionPromise = explicitMerchantId
         ? Promise.resolve(null)
         : Promise.resolve()
@@ -619,7 +624,7 @@ export default function ProductDetailPage({ params }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [allowLegacyBroadScan, id, merchantIdParam, reloadKey]);
+  }, [allowLegacyBroadScan, id, inferredMerchantId, merchantIdParam, reloadKey]);
 
   useEffect(() => {
     let cancelled = false;
