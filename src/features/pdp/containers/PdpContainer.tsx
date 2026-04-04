@@ -101,12 +101,36 @@ function formatPrice(amount: number, currency: string) {
 const SIMILAR_PAGE_STEP = 12;
 const SIMILAR_NO_GROWTH_STOP_THRESHOLD = 2;
 const SINGLE_VARIANT_PLACEHOLDER_TITLE = /^(default(?: title)?|variant \d+)$/i;
+const LOW_CONFIDENCE_ACTIVE_INGREDIENT_BEAUTY_HINT_RE =
+  /(beauty|makeup|cosmetic|palette|powder|eyeshadow|eye color|eye|quad|shadow|blush|bronzer|concealer|foundation|lip|lips|mascara|brow|skincare|serum|cream|creme|fragrance|perfume|parfum|eau de parfum)/i;
 
 function getSingleVariantSummaryLabel(variant: Variant | undefined): string {
   const title = String(variant?.title || '').trim();
   if (!title || SINGLE_VARIANT_PLACEHOLDER_TITLE.test(title)) return 'Default option';
   return title;
 }
+
+export function isLikelyBeautyExternalSeedProduct(
+  product: PDPPayload['product'],
+  resolvedMode: 'beauty' | 'generic',
+): boolean {
+  if (resolvedMode === 'beauty') return true;
+  if (isBeautyProduct(product)) return true;
+
+  const beautyLikeText = [
+    product.title,
+    product.subtitle,
+    product.brand?.name,
+    Array.isArray(product.category_path) ? product.category_path.join(' ') : '',
+    Array.isArray(product.tags) ? product.tags.join(' ') : '',
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+
+  return LOW_CONFIDENCE_ACTIVE_INGREDIENT_BEAUTY_HINT_RE.test(beautyLikeText);
+}
+
 function buildRecommendationKey(item: { product_id?: string; merchant_id?: string }) {
   return `${String(item?.merchant_id || '').trim()}::${String(item?.product_id || '').trim()}`;
 }
@@ -1128,14 +1152,9 @@ export function PdpContainer({
   );
   const isExternalSeedProduct =
     String(payload.product.merchant_id || '').trim().toLowerCase() === 'external_seed';
-  const beautyLikeCategoryText = `${payload.product.title || ''} ${(payload.product.category_path || []).join(' ')} ${
-    (payload.product.tags || []).join(' ')
-  }`.toLowerCase();
   const shouldHideLowConfidenceActiveIngredients =
     isExternalSeedProduct &&
-    (resolvedMode === 'beauty' ||
-      isBeautyProduct(payload.product) ||
-      /(beauty|makeup|cosmetic|palette|powder|eyeshadow|lip|skincare|fragrance)/.test(beautyLikeCategoryText));
+    isLikelyBeautyExternalSeedProduct(payload.product, resolvedMode);
   const singleVariantSummaryLabel = useMemo(
     () => getSingleVariantSummaryLabel(selectedVariant),
     [selectedVariant],
