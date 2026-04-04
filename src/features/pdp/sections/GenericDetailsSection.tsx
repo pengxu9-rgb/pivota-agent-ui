@@ -50,7 +50,7 @@ export function GenericDetailsSection({
 
       {descriptionParagraphs.length ? (
         <div className="mt-3">
-          <h3 className="text-sm font-semibold mb-1.5">{primarySection?.heading || 'Details'}</h3>
+          <h3 className="text-sm font-semibold mb-1.5">{primarySection?.heading || 'Overview'}</h3>
           <div className="space-y-2">
             {descriptionParagraphs.map((paragraph, idx) =>
               isLikelyHeadingParagraph(paragraph) ? (

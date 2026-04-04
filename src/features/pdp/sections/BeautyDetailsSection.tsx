@@ -135,7 +135,7 @@ export function BeautyDetailsSection({
 
       {factsSections.length ? (
         <div className="mx-3 border-t border-muted/60 pt-5">
-          <h3 className="text-sm font-semibold mb-3">Details</h3>
+          <h3 className="text-sm font-semibold mb-3">Product Information</h3>
           <DetailsAccordion data={{ sections: factsSections }} />
         </div>
       ) : null}

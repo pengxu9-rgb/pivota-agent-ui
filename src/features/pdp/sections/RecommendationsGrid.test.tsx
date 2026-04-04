@@ -107,4 +107,14 @@ describe('RecommendationsGrid', () => {
     fireEvent.click(screen.getByRole('button', { name: /load more recommendations/i }));
     expect(onLoadMore).toHaveBeenCalledTimes(1);
   });
+
+  it('uses canonical product links for external seed recommendations', () => {
+    render(<RecommendationsGrid data={data} visibleCount={2} />);
+
+    const [firstLink] = screen.getAllByRole('link', { name: /product 1/i });
+    const [secondLink] = screen.getAllByRole('link', { name: /product 2/i });
+
+    expect(firstLink).toHaveAttribute('href', '/products/prod_1');
+    expect(secondLink).toHaveAttribute('href', '/products/prod_2');
+  });
 });

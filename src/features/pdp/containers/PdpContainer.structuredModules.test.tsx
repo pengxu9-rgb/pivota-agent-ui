@@ -261,7 +261,7 @@ describe('PdpContainer structured PDP modules', () => {
     expect(screen.getByText('How to use')).toBeInTheDocument();
     expect(screen.getByText('Apply after cleansing.')).toBeInTheDocument();
     expect(screen.getByText('Brand Story')).toBeInTheDocument();
-    expect(screen.getByText('Details')).toBeInTheDocument();
+    expect(screen.getByText('Product Information')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Clinical Results' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Legacy Ingredients' })).not.toBeInTheDocument();
     expect(screen.getAllByRole('button', { name: 'Add to Cart' }).length).toBeGreaterThan(0);
