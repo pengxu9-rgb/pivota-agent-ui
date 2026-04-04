@@ -8,7 +8,6 @@ import { GlassCard } from '@/components/ui/glass-card';
 import { Button } from '@/components/ui/button';
 import { useCartStore } from '@/store/cartStore';
 import { hideProductRouteLoading, showProductRouteLoading } from '@/lib/productRouteLoading';
-import { buildProductHref } from '@/lib/productHref';
 import { appendCurrentPathAsReturn } from '@/lib/returnUrl';
 import { toast } from 'sonner';
 
@@ -51,7 +50,9 @@ export default function ProductCard({
   const { addItem } = useCartStore();
   const isExternal = Boolean(external_redirect_url);
 
-  const href = buildProductHref(product_id, merchant_id);
+  const href = merchant_id
+    ? `/products/${product_id}?merchant_id=${encodeURIComponent(merchant_id)}`
+    : `/products/${product_id}`;
 
   const handleAddToCart = (e: React.MouseEvent) => {
     e.preventDefault();
