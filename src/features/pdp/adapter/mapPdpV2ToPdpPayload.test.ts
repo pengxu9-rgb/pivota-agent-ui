@@ -114,31 +114,19 @@ describe('mapPdpV2ToPdpPayload image normalization', () => {
     const payload = mapPdpV2ToPdpPayload(buildMinimalResponse());
     expect(payload).not.toBeNull();
 
-    expect(payload?.product.image_url).toBe(
-      '/api/image-proxy?url=https%3A%2F%2Fsdcdn.io%2Ftf%2Fproduct-main.png',
-    );
-    expect(payload?.product.variants?.[0]?.image_url).toBe(
-      '/api/image-proxy?url=https%3A%2F%2Fsdcdn.io%2Ftf%2Fvariant-main.png',
-    );
-    expect(payload?.product.variants?.[0]?.label_image_url).toBe(
-      '/api/image-proxy?url=https%3A%2F%2Fsdcdn.io%2Ftf%2Fswatch.png',
-    );
+    expect(payload?.product.image_url).toBe('https://sdcdn.io/tf/product-main.png');
+    expect(payload?.product.variants?.[0]?.image_url).toBe('https://sdcdn.io/tf/variant-main.png');
+    expect(payload?.product.variants?.[0]?.label_image_url).toBe('https://sdcdn.io/tf/swatch.png');
 
     const mediaGallery = payload?.modules.find((m) => m.type === 'media_gallery') as any;
-    expect(mediaGallery?.data?.items?.[0]?.url).toBe(
-      '/api/image-proxy?url=https%3A%2F%2Fsdcdn.io%2Ftf%2Fhero.png',
-    );
+    expect(mediaGallery?.data?.items?.[0]?.url).toBe('https://sdcdn.io/tf/hero.png');
     expect(mediaGallery?.data?.items?.[1]?.url).toBe('https://cdn.example.com/video.mp4');
 
     const recs = payload?.modules.find((m) => m.type === 'recommendations') as any;
-    expect(recs?.data?.items?.[0]?.image_url).toBe(
-      '/api/image-proxy?url=https%3A%2F%2Fsdcdn.io%2Ftf%2Frelated.png',
-    );
+    expect(recs?.data?.items?.[0]?.image_url).toBe('https://sdcdn.io/tf/related.png');
 
     const reviews = payload?.modules.find((m) => m.type === 'reviews_preview') as any;
-    expect(reviews?.data?.preview_items?.[0]?.media?.[0]?.url).toBe(
-      '/api/image-proxy?url=https%3A%2F%2Fsdcdn.io%2Ftf%2Freview.png',
-    );
+    expect(reviews?.data?.preview_items?.[0]?.media?.[0]?.url).toBe('https://sdcdn.io/tf/review.png');
   });
 
   it('does not double-wrap already proxied URLs', () => {
@@ -149,13 +137,9 @@ describe('mapPdpV2ToPdpPayload image normalization', () => {
       '/api/image-proxy?url=https%3A%2F%2Fsdcdn.io%2Ftf%2Falready-media.png';
 
     const payload = mapPdpV2ToPdpPayload(response);
-    expect(payload?.product.image_url).toBe(
-      '/api/image-proxy?url=https%3A%2F%2Fsdcdn.io%2Ftf%2Falready.png',
-    );
+    expect(payload?.product.image_url).toBe('https://sdcdn.io/tf/already.png');
     const mediaGallery = payload?.modules.find((m) => m.type === 'media_gallery') as any;
-    expect(mediaGallery?.data?.items?.[0]?.url).toBe(
-      '/api/image-proxy?url=https%3A%2F%2Fsdcdn.io%2Ftf%2Falready-media.png',
-    );
+    expect(mediaGallery?.data?.items?.[0]?.url).toBe('https://sdcdn.io/tf/already-media.png');
   });
 
   it('preserves additive structured PDP modules from canonical payload', () => {
@@ -298,14 +282,18 @@ describe('mapPdpV2ToPdpPayload image normalization', () => {
     const items = Array.isArray(mediaGallery?.data?.items) ? mediaGallery.data.items : [];
     const imageItems = items.filter((item: any) => item?.type === 'image');
 
-    expect(imageItems).toHaveLength(4);
+    expect(imageItems).toHaveLength(8);
     expect(
       imageItems.map((item: any) => unwrapProxyTarget(String(item?.url || ''))),
     ).toEqual([
-      'https://sdcdn.io/tf/tf_sku_T14Q01_3000x3000_0.png',
-      'https://sdcdn.io/tf/tf_sku_T14Q01_2000x2000_1.jpg',
-      'https://sdcdn.io/tf/tf_sku_T2TL01_2000x2000_0.png?width=650px&height=750px',
-      'https://sdcdn.io/tf/tf_sku_T14Z01_2000x2000_2.jpg?width=650px&height=750px',
+      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T14Q01_3000x3000_0.png',
+      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T14S01_3000x3000_0.jpg',
+      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T16S01_3000x3000_0.png',
+      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T14Q01_2000x2000_1.jpg',
+      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T13S01_2000x2000_1.png',
+      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T2TL01_2000x2000_0.png',
+      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T4DB01_US_3000x3000_0.png',
+      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T14Z01_2000x2000_2.jpg',
     ]);
   });
 

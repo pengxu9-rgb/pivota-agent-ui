@@ -55,6 +55,35 @@ function uniqueNonEmpty(items: string[]): string[] {
   });
 }
 
+function extractIngredientFamily(item: string): { base: string; ciCodes: string[] } | null {
+  const cleaned = cleanStructuredToken(item).toLowerCase();
+  if (!cleaned) return null;
+  const base = cleaned.replace(/\s*\([^)]*\)\s*/g, ' ').replace(/\s+/g, ' ').trim();
+  const ciCodes = /\bci\b/i.test(cleaned)
+    ? Array.from(cleaned.matchAll(/(\d{4,6})/g)).map((match) => match[1])
+    : [];
+  if (!base) return null;
+  return { base, ciCodes };
+}
+
+function isIngredientCoveredByExistingItem(candidate: string, existingItems: string[]): boolean {
+  const normalizedCandidate = candidate.trim().toLowerCase();
+  if (!normalizedCandidate) return true;
+
+  const candidateFamily = extractIngredientFamily(candidate);
+  return existingItems.some((existing) => {
+    const normalizedExisting = existing.trim().toLowerCase();
+    if (!normalizedExisting) return false;
+    if (normalizedExisting === normalizedCandidate) return true;
+
+    const existingFamily = extractIngredientFamily(existing);
+    if (!candidateFamily || !existingFamily) return false;
+    if (candidateFamily.base !== existingFamily.base) return false;
+    if (!candidateFamily.ciCodes.length || !existingFamily.ciCodes.length) return false;
+    return candidateFamily.ciCodes.every((code) => existingFamily.ciCodes.includes(code));
+  });
+}
+
 function cleanStructuredToken(value: string): string {
   return String(value || '')
     .replace(/^[\s\-•*]+/, '')
@@ -214,15 +243,19 @@ export function StructuredDetailsBlocks({
     String(ingredientsInci?.raw_text || ''),
     Boolean(activeIngredientItems.length || String(activeIngredients?.raw_text || '').trim()),
   );
+  const structuredIngredientsInciItems = getStructuredItems(ingredientsInci?.items)
+    .map((item) => normalizeIngredientListItem(item))
+    .filter(
+      (item) =>
+        item.length > 1 &&
+        !/^please be aware that ingredient lists/i.test(item),
+    );
+  const parsedRawIngredientItems = parseIngredientsFromText(normalizedIngredientsRawText).filter(
+    (item) => !isIngredientCoveredByExistingItem(item, structuredIngredientsInciItems),
+  );
   const ingredientsInciItems = uniqueNonEmpty([
-    ...getStructuredItems(ingredientsInci?.items)
-      .map((item) => normalizeIngredientListItem(item))
-      .filter(
-        (item) =>
-          item.length > 1 &&
-          !/^please be aware that ingredient lists/i.test(item),
-      ),
-    ...parseIngredientsFromText(normalizedIngredientsRawText),
+    ...structuredIngredientsInciItems,
+    ...parsedRawIngredientItems,
   ]);
   const shouldHideActiveIngredients =
     hideLowConfidenceActiveIngredients &&

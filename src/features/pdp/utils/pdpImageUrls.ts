@@ -18,6 +18,7 @@ const IMAGE_DEDUPE_IGNORED_QUERY_KEYS = new Set([
 const KNOWN_SDCND_FILENAME_ALIASES: Record<string, string> = {
   'tf_sku_t2ss02_3000x3000_0.png': 'tf_sku_T2SS02_3000x3000_1.png',
 };
+const TOM_FORD_SHOPIFY_FILES_PREFIX = '/s/files/1/0761/9690/5173/files/';
 
 const DIRECT_REMOTE_IMAGE_HOSTS = [
   'cdn.shopify.com',
@@ -31,19 +32,13 @@ const DIRECT_REMOTE_IMAGE_HOSTS = [
   'pivota-agent-production.up.railway.app',
 ] as const;
 
-function rewriteKnownSdcdnMirror(parsed: URL): URL {
+function rewriteTomFordAssetToOfficialShopify(parsed: URL): URL {
   const next = new URL(parsed.toString());
-  const filename = String(next.pathname.split('/').pop() || '').trim();
+  const filename = normalizeShopifyLikeFilename(String(next.pathname.split('/').pop() || '').trim());
   if (!filename) return next;
 
-  if (
-    isKnownRemoteHost(next.hostname, ['cdn.shopify.com', 'shopifycdn.com']) &&
-    /^tfb?_/i.test(filename)
-  ) {
-    const mirror = new URL(`https://sdcdn.io/tf/${filename}`);
-    mirror.searchParams.set('height', '1400px');
-    mirror.searchParams.set('width', '1400px');
-    return mirror;
+  if (/^tfb?_sku_/i.test(filename)) {
+    return new URL(`https://cdn.shopify.com${TOM_FORD_SHOPIFY_FILES_PREFIX}${filename}`);
   }
 
   return next;
@@ -96,7 +91,7 @@ function normalizeImageAssetUrl(parsed: URL): URL {
     segments[lastIndex] = normalizeShopifyLikeFilename(segments[lastIndex] || '');
     next.pathname = segments.join('/');
   }
-  next = rewriteKnownSdcdnMirror(next);
+  next = rewriteTomFordAssetToOfficialShopify(next);
   return next;
 }
 

@@ -62,4 +62,26 @@ describe('StructuredDetailsBlocks', () => {
     expect(screen.getByText('Blend edges')).toBeInTheDocument();
     expect(screen.getByText('Deepen the outer corner.')).toBeInTheDocument();
   });
+
+  it('treats structured ingredient items as authoritative over raw text reparsing', () => {
+    render(
+      <StructuredDetailsBlocks
+        ingredientsInci={{
+          title: 'Ingredients',
+          items: [
+            'Mica',
+            'Titanium Dioxide (CI 77891)',
+            'Iron Oxides (CI 77491 / 77492 / 77499)',
+          ],
+          raw_text:
+            'Ingredients: Mica, Titanium Dioxide (ci 77891), Iron Oxides (ci 77491), Iron Oxides (ci 77492), Iron Oxides (ci 77499)',
+        }}
+      />,
+    );
+
+    expect(screen.getByText('Iron Oxides (CI 77491 / 77492 / 77499)')).toBeInTheDocument();
+    expect(screen.queryByText('Iron Oxides (ci 77491)')).not.toBeInTheDocument();
+    expect(screen.queryByText('Iron Oxides (ci 77492)')).not.toBeInTheDocument();
+    expect(screen.queryByText('Iron Oxides (ci 77499)')).not.toBeInTheDocument();
+  });
 });

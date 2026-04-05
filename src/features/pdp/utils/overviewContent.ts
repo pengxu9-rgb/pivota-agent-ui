@@ -74,7 +74,7 @@ function uniqueStrings(items: string[]): string[] {
 function uniqueFacts(items: OverviewFact[]): OverviewFact[] {
   const seen = new Set<string>();
   return items.filter((item) => {
-    const key = `${normalizeKey(item.label)}::${normalizeKey(item.value)}`;
+    const key = normalizeKey(item.label);
     if (!key || seen.has(key)) return false;
     seen.add(key);
     return true;
@@ -278,6 +278,26 @@ function collectInlineSegments(
   return consumed;
 }
 
+function shouldPreferLineParsing(paragraph: string): boolean {
+  if (!paragraph.includes('\n')) return false;
+  const rawLines = paragraph
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (rawLines.length < 2) return false;
+
+  return rawLines.some((line) => FACT_LABEL_RE.test(cleanLine(line))) ||
+    rawLines.some((line) => {
+      const cleaned = cleanLine(line);
+      const normalized = normalizeKey(cleaned);
+      return (
+        cleaned.length <= 32 &&
+        !/[.?!]/.test(cleaned) &&
+        (isFactLabel(cleaned) || isHighlightLabel(cleaned) || HIGHLIGHT_HEADING_RE.test(normalized))
+      );
+    });
+}
+
 type BuildOverviewContentArgs = {
   description?: string | null;
   section?: DetailSection | null;
@@ -310,16 +330,18 @@ export function buildOverviewContent(args: BuildOverviewContentArgs): OverviewCo
       continue;
     }
 
-    const consumedInline = collectInlineSegments(
-      paragraph,
-      facts,
-      highlightCandidates,
-      paragraphCandidates,
-      args.hideStructuredDuplicates === true,
-    );
-    if (consumedInline) {
-      currentHeading = '';
-      continue;
+    if (!shouldPreferLineParsing(paragraph)) {
+      const consumedInline = collectInlineSegments(
+        paragraph,
+        facts,
+        highlightCandidates,
+        paragraphCandidates,
+        args.hideStructuredDuplicates === true,
+      );
+      if (consumedInline) {
+        currentHeading = '';
+        continue;
+      }
     }
 
     if (currentHeading && isFactLabel(currentHeading)) {
@@ -410,8 +432,21 @@ export function buildOverviewContent(args: BuildOverviewContentArgs): OverviewCo
   const summary = paragraphCandidates[0] || '';
   const body = uniqueStrings(paragraphCandidates.slice(1))
     .filter((paragraph) => normalizeKey(paragraph) !== normalizeKey(summary))
+    .filter((paragraph) => paragraph.length >= 18 || /[.?!]/.test(paragraph))
     .slice(0, 3);
   let highlights = uniqueStrings(highlightCandidates).slice(0, 4);
+
+  if (!highlights.length) {
+    const fallbackHighlightCandidates: string[] = [];
+    collectInlineSegments(
+      paragraphs.join(' '),
+      [],
+      fallbackHighlightCandidates,
+      [],
+      args.hideStructuredDuplicates === true,
+    );
+    highlights = uniqueStrings(fallbackHighlightCandidates).slice(0, 4);
+  }
 
   if (!highlights.length) {
     const derived = uniqueStrings(

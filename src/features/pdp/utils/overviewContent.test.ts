@@ -105,4 +105,44 @@ describe('buildOverviewContent', () => {
       ]),
     );
   });
+
+  it('keeps structured overview fact labels unique when benefits follow on later lines', () => {
+    const content = buildOverviewContent({
+      description:
+        'The formula merges hydrating skincare ingredients with imperfection-blurring makeup technology. It features hyaluronic acid for instant and 12-hour hydration and vitamin E for antioxidant protection. Spherical powders ensure silky-smooth, seamless application for comfortable, non-drying wear.',
+      section: {
+        heading: 'Overview',
+        content_type: 'text',
+        content: `Skin Type: Combination, Dry, For All Skin Types, Normal, Oily, Sensitive
+Finish: Matte, Natural/Satin
+Coverage: Buildable, Full
+
+Benefits
+- Imperfection blurring makeup technology corrects and conceals to diminish the look of imperfections, dark spots, undereye circles and hyperpigmentation
+- Soft-focus powders offer a natural, soft-matte finish
+- Weightless spherical powders provide comfortable, non-drying wear
+- Hyaluronic acid plumps skin through moisture, reducing the look of lines – immediately and for 12 hours
+- Vitamin E provides antioxidant protection for skin
+- Transfer, sweat, and humidity-resistant and waterproof
+- Non-caking, poring, and crease-resistant
+- Encased in a luxe, highly covetable, matte mahogany-hued portable stick format for on-the-go ease`,
+      },
+      hideStructuredDuplicates: true,
+    });
+
+    expect(content).not.toBeNull();
+    expect(content?.facts).toEqual([
+      { label: 'Skin Type', value: 'Combination, Dry, For All Skin Types, Normal, Oily, Sensitive' },
+      { label: 'Finish', value: 'Matte, Natural/Satin' },
+      { label: 'Coverage', value: 'Buildable, Full' },
+    ]);
+    expect(content?.highlights).toEqual(
+      expect.arrayContaining([
+        'Imperfection blurring makeup technology corrects and conceals to diminish the look of imperfections, dark spots, undereye circles and hyperpigmentation',
+        'Soft-focus powders offer a natural, soft-matte finish',
+        'Weightless spherical powders provide comfortable, non-drying wear',
+        'Hyaluronic acid plumps skin through moisture, reducing the look of lines – immediately and for 12 hours',
+      ]),
+    );
+  });
 });
