@@ -265,7 +265,9 @@ export type FindSimilarProductsResponse = {
   total?: number;
   page?: number;
   page_size?: number;
+  has_more?: boolean;
   metadata?: {
+    has_more?: boolean;
     similar_confidence?: 'high' | 'medium' | 'low' | string;
     low_confidence?: boolean;
     low_confidence_reason_codes?: string[];
@@ -1798,6 +1800,11 @@ export async function findSimilarProducts(args: {
   product_id: string;
   merchant_id?: string | null;
   limit?: number;
+  exclude_items?: Array<{
+    product_id: string;
+    merchant_id?: string | null;
+    title?: string | null;
+  }>;
   timeout_ms?: number;
   debug?: boolean;
   cache_bypass?: boolean;
@@ -1806,6 +1813,21 @@ export async function findSimilarProducts(args: {
   if (!productId) throw new Error('product_id is required');
   const merchantId = args.merchant_id ? String(args.merchant_id).trim() : '';
   const limit = Math.max(1, Math.floor(Number(args.limit || 6) || 6));
+  const excludeItems = Array.isArray(args.exclude_items)
+    ? args.exclude_items
+        .map((item) => {
+          const excludeProductId = String(item?.product_id || '').trim();
+          if (!excludeProductId) return null;
+          const excludeMerchantId = item?.merchant_id ? String(item.merchant_id).trim() : '';
+          const excludeTitle = item?.title ? String(item.title).trim() : '';
+          return {
+            product_id: excludeProductId,
+            ...(excludeMerchantId ? { merchant_id: excludeMerchantId } : {}),
+            ...(excludeTitle ? { title: excludeTitle } : {}),
+          };
+        })
+        .filter(Boolean)
+    : [];
 
   const data = await callGatewayWithTimeout(
     {
@@ -1815,6 +1837,7 @@ export async function findSimilarProducts(args: {
           product_id: productId,
           ...(merchantId ? { merchant_id: merchantId } : {}),
           limit,
+          ...(excludeItems.length ? { exclude_items: excludeItems } : {}),
         },
         options: {
           ...(args.debug ? { debug: true } : {}),

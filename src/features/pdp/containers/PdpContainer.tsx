@@ -342,18 +342,6 @@ function dedupeRecommendationItems(
   return mergeRecommendationItems([], items).items;
 }
 
-function computeSimilarFetchLimit(targetVisibleCount: number): number {
-  const safeTarget = Math.max(
-    SIMILAR_PAGE_SIZE,
-    Math.min(Math.floor(targetVisibleCount), SIMILAR_MAX),
-  );
-  const exploratoryFloor = Math.min(SIMILAR_MAX, SIMILAR_VIEW_ALL_MIN * 2);
-  return Math.min(
-    SIMILAR_MAX,
-    Math.max(safeTarget + SIMILAR_PAGE_SIZE, exploratoryFloor),
-  );
-}
-
 function normalizeSimilarMetadata(
   metadata:
     | FindSimilarProductsResponse['metadata']
@@ -362,6 +350,7 @@ function normalizeSimilarMetadata(
     | undefined,
 ): RecommendationsData['metadata'] | null {
   if (!metadata || typeof metadata !== 'object') return null;
+  const hasMore = (metadata as any).has_more;
   const similarConfidence = String((metadata as any).similar_confidence || '').trim();
   const lowConfidence = Boolean((metadata as any).low_confidence);
   const reasonCodesRaw = (metadata as any).low_confidence_reason_codes;
@@ -382,6 +371,7 @@ function normalizeSimilarMetadata(
       : undefined;
 
   return {
+    ...(typeof hasMore === 'boolean' ? { has_more: hasMore } : {}),
     ...(similarConfidence ? { similar_confidence: similarConfidence } : {}),
     ...(lowConfidence ? { low_confidence: true } : {}),
     ...(reasonCodes.length ? { low_confidence_reason_codes: reasonCodes } : {}),
@@ -544,7 +534,11 @@ export function PdpContainer({
   const [similarItems, setSimilarItems] =
     useState<RecommendationsData['items']>(initialSimilarState.items);
   const [similarVisibleCount, setSimilarVisibleCount] = useState(SIMILAR_PAGE_SIZE);
-  const [similarHasMore, setSimilarHasMore] = useState(initialSimilarState.rawCount < SIMILAR_MAX);
+  const [similarHasMore, setSimilarHasMore] = useState(
+    typeof initialSimilarState.metadata?.has_more === 'boolean'
+      ? initialSimilarState.metadata.has_more
+      : initialSimilarState.rawCount < SIMILAR_MAX,
+  );
   const [similarLoadingMore, setSimilarLoadingMore] = useState(false);
   const [similarSheetOpen, setSimilarSheetOpen] = useState(false);
   const [similarStrategy, setSimilarStrategy] = useState(initialSimilarState.strategy);
@@ -1289,7 +1283,10 @@ export function PdpContainer({
         SIMILAR_PAGE_SIZE,
         Math.min(Math.floor(targetVisibleCount), SIMILAR_MAX),
       );
-      const fetchLimit = computeSimilarFetchLimit(safeTarget);
+      const requestLimit = Math.max(
+        1,
+        Math.min(SIMILAR_PAGE_SIZE, SIMILAR_MAX - similarItems.length),
+      );
 
       if (safeTarget <= similarItems.length) {
         setSimilarVisibleCount((prev) => Math.max(prev, safeTarget));
@@ -1303,7 +1300,12 @@ export function PdpContainer({
         const response = await findSimilarProducts({
           product_id: productId,
           ...(merchantId ? { merchant_id: merchantId } : {}),
-          limit: fetchLimit,
+          limit: requestLimit,
+          exclude_items: similarItems.map((item) => ({
+            product_id: item.product_id,
+            ...(item.merchant_id ? { merchant_id: item.merchant_id } : {}),
+            ...(item.title ? { title: item.title } : {}),
+          })),
           timeout_ms: SIMILAR_FETCH_TIMEOUT_MS,
         });
 
@@ -1312,6 +1314,12 @@ export function PdpContainer({
           recommendationCurrencyFallback,
         );
         const responseMetadata = normalizeSimilarMetadata(response?.metadata);
+        const responseHasMore =
+          typeof response?.has_more === 'boolean'
+            ? response.has_more
+            : typeof responseMetadata?.has_more === 'boolean'
+              ? responseMetadata.has_more
+              : null;
 
         let mergedCount = similarItems.length;
         let addedCount = 0;
@@ -1334,13 +1342,14 @@ export function PdpContainer({
         const totalRaw = toFiniteNumber(response?.total);
         setSimilarHasMore(() => {
           if (mergedCount >= SIMILAR_MAX) return false;
+          if (typeof responseHasMore === 'boolean') return responseHasMore;
           if (totalRaw != null) {
             return mergedCount < Math.min(Math.max(0, Math.floor(totalRaw)), SIMILAR_MAX);
           }
           if (responseMetadata?.low_confidence === true) {
             return false;
           }
-          if (addedCount === 0) return false;
+          if (addedCount < requestLimit) return false;
           return true;
         });
 
@@ -1358,7 +1367,7 @@ export function PdpContainer({
       merchantId,
       productId,
       recommendationCurrencyFallback,
-      similarItems.length,
+      similarItems,
       similarLoadingMore,
     ],
   );

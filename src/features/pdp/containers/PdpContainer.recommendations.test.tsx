@@ -126,8 +126,8 @@ describe('PdpContainer recommendations interactions', () => {
   it('loads more recommendations in-page', async () => {
     findSimilarProductsMock.mockResolvedValue({
       strategy: 'related_products',
-      products: buildSimilar(12),
-      total: 12,
+      products: buildSimilar(12).slice(6),
+      has_more: false,
     });
 
     render(
@@ -145,6 +145,18 @@ describe('PdpContainer recommendations interactions', () => {
       expect(findSimilarProductsMock).toHaveBeenCalled();
     });
 
+    expect(findSimilarProductsMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        product_id: 'P_SIMILAR_001',
+        merchant_id: 'external_seed',
+        limit: 6,
+        exclude_items: expect.arrayContaining([
+          expect.objectContaining({ product_id: 'prod_1', merchant_id: 'external_seed', title: 'Product 1' }),
+          expect.objectContaining({ product_id: 'prod_6', merchant_id: 'external_seed', title: 'Product 6' }),
+        ]),
+      }),
+    );
+
     await waitFor(() => {
       expect(screen.getByText('Product 12')).toBeInTheDocument();
     });
@@ -153,8 +165,8 @@ describe('PdpContainer recommendations interactions', () => {
   it('opens View all sheet and fetches more than first fold', async () => {
     findSimilarProductsMock.mockResolvedValue({
       strategy: 'related_products',
-      products: buildSimilar(12),
-      total: 12,
+      products: buildSimilar(12).slice(6),
+      has_more: false,
     });
 
     render(
@@ -182,8 +194,8 @@ describe('PdpContainer recommendations interactions', () => {
   it('keeps the sheet load-more CTA pinned outside the scroll body', async () => {
     findSimilarProductsMock.mockResolvedValue({
       strategy: 'related_products',
-      products: buildSimilar(12),
-      total: 12,
+      products: buildSimilar(12).slice(6),
+      has_more: false,
     });
 
     render(
@@ -296,8 +308,8 @@ describe('PdpContainer recommendations interactions', () => {
   it('backfills deduped first-fold recommendations back to six visible items', async () => {
     findSimilarProductsMock.mockResolvedValue({
       strategy: 'related_products',
-      products: buildSimilar(12),
-      total: 12,
+      products: buildSimilar(9).slice(3),
+      has_more: true,
     });
 
     const underfilledPayload: PDPPayload = {
@@ -336,7 +348,12 @@ describe('PdpContainer recommendations interactions', () => {
         expect.objectContaining({
           product_id: 'P_SIMILAR_001',
           merchant_id: 'external_seed',
-          limit: 24,
+          limit: 6,
+          exclude_items: expect.arrayContaining([
+            expect.objectContaining({ product_id: 'dup_1a', merchant_id: 'external_seed', title: 'Product 1' }),
+            expect.objectContaining({ product_id: 'dup_2a', merchant_id: 'external_seed', title: 'Product 2' }),
+            expect.objectContaining({ product_id: 'dup_3a', merchant_id: 'external_seed', title: 'Product 3' }),
+          ]),
           timeout_ms: 7000,
         }),
       );
