@@ -7,6 +7,7 @@ import { motion } from 'framer-motion';
 import ProductCard from '@/components/product/ProductCard';
 import { Button } from '@/components/ui/button';
 import {
+  type BrandDiscoveryFacet,
   getBrandDiscoveryFeed,
   getBrowseHistory,
   type BrandDiscoverySort,
@@ -52,6 +53,13 @@ function decodeSlugToBrand(slug: string): string {
     .replace(/-/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function normalizeCategoryValue(value: string): string {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
 }
 
 function buildRecentViewKey(item: DiscoveryRecentView): string {
@@ -115,6 +123,26 @@ function mapRemoteHistory(items: any[]): DiscoveryRecentView[] {
     .filter(Boolean) as DiscoveryRecentView[];
 }
 
+function syncBrandLandingUrlState({ query, category }: { query: string; category: string }) {
+  if (typeof window === 'undefined') return;
+  const params = new URLSearchParams(window.location.search);
+  const normalizedQuery = String(query || '').trim();
+  const normalizedCategory = normalizeCategoryValue(category);
+  if (normalizedQuery) {
+    params.set('q', normalizedQuery);
+  } else {
+    params.delete('q');
+  }
+  if (normalizedCategory) {
+    params.set('category', normalizedCategory);
+  } else {
+    params.delete('category');
+  }
+  const nextQuery = params.toString();
+  const nextUrl = nextQuery ? `${window.location.pathname}?${nextQuery}` : window.location.pathname;
+  window.history.replaceState({}, '', nextUrl);
+}
+
 export function BrandLandingPage({
   slug,
   initialBrandName,
@@ -123,6 +151,7 @@ export function BrandLandingPage({
   initialSourceProductId,
   initialSourceMerchantId,
   initialQuery,
+  initialCategory,
 }: {
   slug: string;
   initialBrandName?: string;
@@ -131,6 +160,7 @@ export function BrandLandingPage({
   initialSourceProductId?: string;
   initialSourceMerchantId?: string;
   initialQuery?: string;
+  initialCategory?: string;
 }) {
   const brandName = normalizeBrandLabel(initialBrandName || decodeSlugToBrand(slug));
   const subtitle = String(initialSubtitle || '').trim();
@@ -141,6 +171,8 @@ export function BrandLandingPage({
   const [queryDraft, setQueryDraft] = useState(initialQuery || '');
   const [activeQuery, setActiveQuery] = useState(initialQuery || '');
   const [sort, setSort] = useState<BrandDiscoverySort>('popular');
+  const [selectedCategory, setSelectedCategory] = useState(normalizeCategoryValue(initialCategory || ''));
+  const [categoryFacets, setCategoryFacets] = useState<BrandDiscoveryFacet[]>([]);
   const [loading, setLoading] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [page, setPage] = useState(1);
@@ -160,10 +192,21 @@ export function BrandLandingPage({
         .join('|'),
     [recentViews],
   );
+  const totalFacetCount = useMemo(
+    () => categoryFacets.reduce((sum, item) => sum + Math.max(0, Number(item.count) || 0), 0),
+    [categoryFacets],
+  );
 
   useEffect(() => {
     recentViewsRef.current = recentViews;
   }, [recentViews]);
+
+  useEffect(() => {
+    syncBrandLandingUrlState({
+      query: activeQuery,
+      category: selectedCategory,
+    });
+  }, [activeQuery, selectedCategory]);
 
   useEffect(() => {
     const local = readLocalRecentViews();
@@ -200,6 +243,7 @@ export function BrandLandingPage({
     void getBrandDiscoveryFeed({
       brandName,
       query: activeQuery,
+      category: selectedCategory,
       sort,
       page: 1,
       limit: PAGE_SIZE,
@@ -214,12 +258,14 @@ export function BrandLandingPage({
         setProducts(result.products);
         setTotal(result.page_info.total);
         setHasMore(Boolean(result.page_info.has_more));
+        setCategoryFacets(Array.isArray(result.facets?.categories) ? result.facets.categories : []);
       })
       .catch(() => {
         if (cancelled || requestSeq !== requestSeqRef.current) return;
         setProducts([]);
         setTotal(0);
         setHasMore(false);
+        setCategoryFacets([]);
       })
       .finally(() => {
         if (cancelled || requestSeq !== requestSeqRef.current) return;
@@ -229,7 +275,15 @@ export function BrandLandingPage({
     return () => {
       cancelled = true;
     };
-  }, [activeQuery, brandName, historySignature, initialSourceMerchantId, initialSourceProductId, sort]);
+  }, [
+    activeQuery,
+    brandName,
+    historySignature,
+    initialSourceMerchantId,
+    initialSourceProductId,
+    selectedCategory,
+    sort,
+  ]);
 
   useEffect(() => {
     const target = loadMoreRef.current;
@@ -247,6 +301,7 @@ export function BrandLandingPage({
         void getBrandDiscoveryFeed({
           brandName,
           query: activeQuery,
+          category: selectedCategory,
           sort,
           page: nextPage,
           limit: PAGE_SIZE,
@@ -259,6 +314,7 @@ export function BrandLandingPage({
           .then((result) => {
             if (requestSeq !== requestSeqRef.current) return;
             setTotal(result.page_info.total);
+            setCategoryFacets(Array.isArray(result.facets?.categories) ? result.facets.categories : []);
             setProducts((current) => {
               const { merged, added } = mergeUniqueProducts(current, result.products);
               if (added === 0) {
@@ -295,6 +351,7 @@ export function BrandLandingPage({
     isLoadingMore,
     loading,
     page,
+    selectedCategory,
     sort,
   ]);
 
@@ -371,6 +428,37 @@ export function BrandLandingPage({
                 </Button>
               ))}
             </div>
+
+            {categoryFacets.length > 0 ? (
+              <div className="mt-4 space-y-2">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                  Categories
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={selectedCategory ? 'outline' : 'gradient'}
+                    onClick={() => setSelectedCategory('')}
+                  >
+                    All
+                    <span className="text-[11px] opacity-80">{totalFacetCount || total || products.length}</span>
+                  </Button>
+                  {categoryFacets.map((facet) => (
+                    <Button
+                      key={facet.value}
+                      type="button"
+                      size="sm"
+                      variant={selectedCategory === facet.value ? 'gradient' : 'outline'}
+                      onClick={() => setSelectedCategory(facet.value)}
+                    >
+                      {facet.label}
+                      <span className="text-[11px] opacity-80">{facet.count}</span>
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
           </section>
 
           {loading ? (
@@ -379,11 +467,16 @@ export function BrandLandingPage({
             </section>
           ) : products.length === 0 ? (
             <section className="rounded-2xl border border-dashed border-border bg-card/60 p-8 text-center">
-              <h2 className="text-lg font-semibold">No products found for {brandName}</h2>
+              <h2 className="text-lg font-semibold">
+                No products found
+                {selectedCategory ? ` in ${selectedCategory}` : ''} for {brandName}
+              </h2>
               <p className="mt-2 text-sm text-muted-foreground">
                 {activeQuery
-                  ? 'Try a different keyword within this brand.'
-                  : 'This brand does not have matching catalog items yet.'}
+                  ? 'Try a different keyword or category within this brand.'
+                  : selectedCategory
+                    ? 'Try another category within this brand.'
+                    : 'This brand does not have matching catalog items yet.'}
               </p>
             </section>
           ) : (

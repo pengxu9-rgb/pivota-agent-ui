@@ -1540,9 +1540,20 @@ export type DiscoveryRecentView = {
 
 export type BrandDiscoverySort = 'popular' | 'price_desc' | 'price_asc';
 
+export type BrandDiscoveryFacet = {
+  value: string;
+  label: string;
+  count: number;
+};
+
+export type BrandDiscoveryFacets = {
+  categories: BrandDiscoveryFacet[];
+};
+
 export type BrandDiscoveryFeedResult = {
   products: ProductResponse[];
   metadata: Record<string, any>;
+  facets: BrandDiscoveryFacets;
   query_text: string;
   page_info: {
     page: number;
@@ -1551,6 +1562,28 @@ export type BrandDiscoveryFeedResult = {
     has_more: boolean;
   };
 };
+
+function normalizeBrandDiscoveryFacet(input: any): BrandDiscoveryFacet | null {
+  const value = String(input?.value || input?.key || '').trim();
+  if (!value) return null;
+  const count = Number(input?.count);
+  return {
+    value,
+    label: String(input?.label || value).trim() || value,
+    count: Number.isFinite(count) && count >= 0 ? Math.floor(count) : 0,
+  };
+}
+
+function normalizeBrandDiscoveryFacets(metadata: Record<string, any>): BrandDiscoveryFacets {
+  const rawCategories = metadata?.facets?.categories;
+  return {
+    categories: Array.isArray(rawCategories)
+      ? rawCategories
+          .map((item) => normalizeBrandDiscoveryFacet(item))
+          .filter(Boolean) as BrandDiscoveryFacet[]
+      : [],
+  };
+}
 
 function normalizeDiscoveryRecentView(input: any): DiscoveryRecentView | null {
   const productId = String(input?.product_id || input?.productId || '').trim();
@@ -1673,6 +1706,7 @@ export async function sendMessage(
 export async function getBrandDiscoveryFeed(args: {
   brandName: string;
   query?: string;
+  category?: string;
   sort?: BrandDiscoverySort;
   page?: number;
   limit?: number;
@@ -1685,6 +1719,7 @@ export async function getBrandDiscoveryFeed(args: {
 }): Promise<BrandDiscoveryFeedResult> {
   const brandName = String(args.brandName || '').trim();
   const queryText = String(args.query || '').trim();
+  const category = String(args.category || '').trim().toLowerCase();
   const sort: BrandDiscoverySort =
     args.sort === 'price_desc' || args.sort === 'price_asc' ? args.sort : 'popular';
   const requestedPage = Math.max(1, Math.floor(Number(args.page || 1) || 1));
@@ -1707,9 +1742,16 @@ export async function getBrandDiscoveryFeed(args: {
       products: [],
       metadata: {
         brand_scope_applied: [],
+        category_scope_applied: category ? [category] : [],
         sort_applied: sort,
         query_text: queryText,
         has_more: false,
+        facets: {
+          categories: [],
+        },
+      },
+      facets: {
+        categories: [],
       },
       query_text: queryText,
       page_info: {
@@ -1732,6 +1774,7 @@ export async function getBrandDiscoveryFeed(args: {
       },
       scope: {
         brand_names: [brandName],
+        ...(category ? { categories: [category] } : {}),
       },
       context: {
         recent_views: recentViews,
@@ -1758,6 +1801,7 @@ export async function getBrandDiscoveryFeed(args: {
     data && typeof data === 'object' && data.metadata && typeof (data as any).metadata === 'object'
       ? ((data as any).metadata as Record<string, any>)
       : {};
+  const facets = normalizeBrandDiscoveryFacets(metadata);
   const responsePageRaw = Number((data as any)?.page);
   const responsePageSizeRaw = Number((data as any)?.page_size ?? (data as any)?.pageSize);
   const responseTotalRaw = Number((data as any)?.total);
@@ -1781,6 +1825,7 @@ export async function getBrandDiscoveryFeed(args: {
   return {
     products,
     metadata,
+    facets,
     query_text: queryText,
     page_info: {
       page,

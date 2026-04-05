@@ -92,7 +92,11 @@ describe('getAllProducts browse routing', () => {
           has_more: true,
           sort_applied: 'price_desc',
           brand_scope_applied: ['Tom Ford Beauty'],
+          category_scope_applied: ['lip balm'],
           query_text: 'lip',
+          facets: {
+            categories: [{ value: 'lip balm', label: 'Lip Balm', count: 2 }],
+          },
         },
       }),
     );
@@ -100,12 +104,14 @@ describe('getAllProducts browse routing', () => {
     const result = await getBrandDiscoveryFeed({
       brandName: 'Tom Ford Beauty',
       query: 'lip',
+      category: 'lip balm',
       sort: 'price_desc',
       recentViews: [{ product_id: 'seed_1', merchant_id: 'external_seed', title: 'Rose lipstick' }],
     });
 
     expect(result.products).toHaveLength(2);
     expect(result.page_info.has_more).toBe(true);
+    expect(result.facets.categories).toEqual([{ value: 'lip balm', label: 'Lip Balm', count: 2 }]);
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     const body = JSON.parse(String(init.body || '{}'));
     expect(body).toMatchObject({
@@ -118,6 +124,7 @@ describe('getAllProducts browse routing', () => {
         },
         scope: {
           brand_names: ['Tom Ford Beauty'],
+          categories: ['lip balm'],
         },
       },
     });
