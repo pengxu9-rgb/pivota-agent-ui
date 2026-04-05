@@ -1,0 +1,197 @@
+import type { DetailSection } from '@/features/pdp/types';
+import {
+  formatDescriptionText,
+  isLikelyHeadingParagraph,
+  splitParagraphs,
+} from '@/features/pdp/utils/formatDescriptionText';
+
+export type OverviewFact = {
+  label: string;
+  value: string;
+};
+
+export type OverviewContent = {
+  eyebrow?: string;
+  summary: string;
+  highlights: string[];
+  facts: OverviewFact[];
+  body: string[];
+};
+
+const GENERIC_SECTION_HEADING_RE = /^(overview|product details|details|about|description)$/i;
+const STRUCTURED_DUPLICATE_HEADING_RE =
+  /^(ingredients|key ingredients|active ingredients?|how to use|directions|warnings?|warning|caution)$/i;
+const HIGHLIGHT_HEADING_RE =
+  /^(benefits?|features?|highlights?|results?|at a glance|why(?: you(?:'|’)ll| youll)? love it|best for)$/i;
+const FACT_LABEL_RE = /^([A-Za-z][A-Za-z0-9 '&/()+-]{1,32}):\s*(.{2,180})$/;
+
+function normalizeKey(value: string): string {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function uniqueStrings(items: string[]): string[] {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    const key = normalizeKey(item);
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function uniqueFacts(items: OverviewFact[]): OverviewFact[] {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    const key = `${normalizeKey(item.label)}::${normalizeKey(item.value)}`;
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function cleanLine(value: string): string {
+  return String(value || '')
+    .replace(/^[\s\-•*]+/, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function splitHighlightFragments(value: string): string[] {
+  const normalized = cleanLine(value);
+  if (!normalized) return [];
+  return normalized
+    .split(/[•;]+|\s{2,}/)
+    .map((item) => cleanLine(item))
+    .filter((item) => item.length >= 6);
+}
+
+function splitSentences(value: string): string[] {
+  return String(value || '')
+    .split(/(?<=[.!?])\s+/)
+    .map((item) => item.trim())
+    .filter((item) => item.length >= 18);
+}
+
+function formatEyebrow(heading: string | null | undefined): string | undefined {
+  const text = String(heading || '').trim();
+  if (!text || GENERIC_SECTION_HEADING_RE.test(text)) return undefined;
+  return text;
+}
+
+type BuildOverviewContentArgs = {
+  description?: string | null;
+  section?: DetailSection | null;
+  hideStructuredDuplicates?: boolean;
+};
+
+export function buildOverviewContent(args: BuildOverviewContentArgs): OverviewContent | null {
+  const description = formatDescriptionText(args.description);
+  const sectionContent = formatDescriptionText(args.section?.content);
+  const paragraphs = splitParagraphs([description, sectionContent].filter(Boolean).join('\n\n'));
+
+  if (!paragraphs.length) return null;
+
+  const facts: OverviewFact[] = [];
+  const highlightCandidates: string[] = [];
+  const paragraphCandidates: string[] = [];
+
+  let currentHeading = '';
+
+  for (const paragraph of paragraphs) {
+    if (isLikelyHeadingParagraph(paragraph)) {
+      currentHeading = paragraph;
+      continue;
+    }
+
+    if (args.hideStructuredDuplicates && STRUCTURED_DUPLICATE_HEADING_RE.test(normalizeKey(currentHeading))) {
+      currentHeading = '';
+      continue;
+    }
+
+    const remainingLines: string[] = [];
+    let paragraphHeading = currentHeading;
+
+    for (const rawLine of paragraph.split('\n')) {
+      const line = cleanLine(rawLine);
+      if (!line) continue;
+      const normalizedLine = normalizeKey(line);
+      if (
+        line.length <= 32 &&
+        !/[.?!]/.test(line) &&
+        (HIGHLIGHT_HEADING_RE.test(normalizedLine) || STRUCTURED_DUPLICATE_HEADING_RE.test(normalizedLine))
+      ) {
+        paragraphHeading = line;
+        continue;
+      }
+      const activeHeading = normalizeKey(paragraphHeading);
+      if (args.hideStructuredDuplicates && STRUCTURED_DUPLICATE_HEADING_RE.test(activeHeading)) {
+        continue;
+      }
+      const factMatch = line.match(FACT_LABEL_RE);
+      if (factMatch) {
+        let label = cleanLine(factMatch[1] || '');
+        const prefix = remainingLines[remainingLines.length - 1];
+        if (
+          prefix &&
+          prefix.length <= 18 &&
+          /^[A-Za-z][A-Za-z0-9 '&/()+-]*$/.test(prefix) &&
+          !HIGHLIGHT_HEADING_RE.test(normalizeKey(prefix))
+        ) {
+          label = `${prefix} ${label}`.trim();
+          remainingLines.pop();
+        }
+        facts.push({
+          label,
+          value: cleanLine(factMatch[2] || ''),
+        });
+        continue;
+      }
+
+      if (
+        /^[\s\-•*]+/.test(rawLine) ||
+        (HIGHLIGHT_HEADING_RE.test(activeHeading) && line.length >= 12)
+      ) {
+        highlightCandidates.push(...splitHighlightFragments(line));
+        continue;
+      }
+
+      remainingLines.push(line);
+    }
+
+    const normalizedParagraph = remainingLines.join(' ').replace(/\s+/g, ' ').trim();
+    if (!normalizedParagraph) continue;
+    paragraphCandidates.push(normalizedParagraph);
+    currentHeading = '';
+  }
+
+  const summary = paragraphCandidates[0] || '';
+  const body = uniqueStrings(paragraphCandidates.slice(1)).slice(0, 3);
+  let highlights = uniqueStrings(highlightCandidates).slice(0, 4);
+
+  if (!highlights.length) {
+    const derived = uniqueStrings(
+      paragraphCandidates
+        .slice(0, 2)
+        .flatMap((paragraph) => splitSentences(paragraph))
+        .filter((sentence) => normalizeKey(sentence) !== normalizeKey(summary) && sentence.length <= 140),
+    );
+    highlights = derived.slice(0, 3);
+  }
+
+  const normalizedFacts = uniqueFacts(
+    facts.filter((item) => item.label.length >= 2 && item.value.length >= 2),
+  ).slice(0, 4);
+
+  if (!summary && !highlights.length && !normalizedFacts.length && !body.length) return null;
+
+  return {
+    ...(formatEyebrow(args.section?.heading) ? { eyebrow: formatEyebrow(args.section?.heading) } : {}),
+    summary,
+    highlights,
+    facts: normalizedFacts,
+    body,
+  };
+}

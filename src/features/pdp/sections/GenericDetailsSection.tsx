@@ -10,12 +10,9 @@ import type {
   ProductDetailsData,
 } from '@/features/pdp/types';
 import { DetailsAccordion } from '@/features/pdp/sections/DetailsAccordion';
+import { OverviewSection } from '@/features/pdp/sections/OverviewSection';
 import { StructuredDetailsBlocks } from '@/features/pdp/sections/StructuredDetailsBlocks';
-import {
-  formatDescriptionText,
-  isLikelyHeadingParagraph,
-  splitParagraphs,
-} from '@/features/pdp/utils/formatDescriptionText';
+import { buildOverviewContent } from '@/features/pdp/utils/overviewContent';
 
 export function GenericDetailsSection({
   data,
@@ -37,46 +34,23 @@ export function GenericDetailsSection({
   const sections = Array.isArray(data?.sections) ? data.sections : [];
   const primarySection = sections[0];
   const secondarySections = sections.slice(1);
-  const description = formatDescriptionText(primarySection?.content || product.description);
-  const descriptionParagraphs = splitParagraphs(description);
   const detailImages = (media?.items || []).slice(1, 3);
-  const primaryHeadingRaw = String(primarySection?.heading || '').trim();
-  const primaryHeading =
-    primaryHeadingRaw && !/^(product details|details)$/i.test(primaryHeadingRaw)
-      ? primaryHeadingRaw
-      : 'Overview';
+  const overviewContent = buildOverviewContent({
+    description: product.description,
+    section: primarySection,
+    hideStructuredDuplicates: true,
+  });
+  const hasOverview = Boolean(
+    overviewContent?.summary ||
+      overviewContent?.highlights.length ||
+      overviewContent?.facts.length ||
+      overviewContent?.body.length,
+  );
 
   return (
     <div className="p-3">
       <h2 className="text-sm font-semibold mb-2">Product Details</h2>
-      <StructuredDetailsBlocks
-        activeIngredients={activeIngredients}
-        ingredientsInci={ingredientsInci}
-        howToUse={howToUse}
-        hideLowConfidenceActiveIngredients={hideLowConfidenceActiveIngredients}
-      />
-
-      {descriptionParagraphs.length ? (
-        <div className="mt-3">
-          <h3 className="text-sm font-semibold mb-1.5">{primaryHeading}</h3>
-          <div className="space-y-2">
-            {descriptionParagraphs.map((paragraph, idx) =>
-              isLikelyHeadingParagraph(paragraph) ? (
-                <div key={`${paragraph}-${idx}`} className="text-xs font-semibold tracking-wide text-foreground">
-                  {paragraph}
-                </div>
-              ) : (
-                <p
-                  key={`${paragraph}-${idx}`}
-                  className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line"
-                >
-                  {paragraph}
-                </p>
-              ),
-            )}
-          </div>
-        </div>
-      ) : null}
+      <OverviewSection content={overviewContent} />
 
       {detailImages.length ? (
         <div className="mt-3 space-y-2">
@@ -95,11 +69,18 @@ export function GenericDetailsSection({
         </div>
       ) : null}
 
+      <StructuredDetailsBlocks
+        activeIngredients={activeIngredients}
+        ingredientsInci={ingredientsInci}
+        howToUse={howToUse}
+        hideLowConfidenceActiveIngredients={hideLowConfidenceActiveIngredients}
+      />
+
       {secondarySections.length ? (
         <div className="mt-3">
           <DetailsAccordion data={{ sections: secondarySections }} />
         </div>
-      ) : !descriptionParagraphs.length ? (
+      ) : !hasOverview ? (
         <p className="mt-3 text-sm text-muted-foreground leading-relaxed">Details not available.</p>
       ) : null}
     </div>

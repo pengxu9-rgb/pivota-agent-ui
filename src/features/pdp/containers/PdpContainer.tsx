@@ -72,6 +72,7 @@ import { ModuleShell } from '@/features/pdp/components/ModuleShell';
 import { DEFAULT_UGC_SNAPSHOT, lockFirstUgcSource, mergeUgcItems } from '@/features/pdp/state/freezePolicy';
 import { getStableGalleryItems, resolveHeroMediaUrl } from '@/features/pdp/state/heroMedia';
 import { buildPdpViewModel } from '@/features/pdp/state/viewModel';
+import { buildBrandHref } from '@/lib/brandRoute';
 import { cn } from '@/lib/utils';
 import { resolveReviewGate, reviewGateMessage, reviewGateResultToReason } from '@/lib/reviewGate';
 import { postRequestCloseToParent } from '@/lib/auroraEmbed';
@@ -108,6 +109,11 @@ function getSingleVariantSummaryLabel(variant: Variant | undefined): string {
   const title = String(variant?.title || '').trim();
   if (!title || SINGLE_VARIANT_PLACEHOLDER_TITLE.test(title)) return 'Default option';
   return title;
+}
+
+function getCurrentRelativePath(): string | null {
+  if (typeof window === 'undefined') return null;
+  return `${window.location.pathname}${window.location.search}`;
 }
 
 export function isLikelyBeautyExternalSeedProduct(
@@ -520,6 +526,7 @@ export function PdpContainer({
   const ingredientsInci = getModuleData<IngredientsInciData>(payload, 'ingredients_inci');
   const howToUse = getModuleData<HowToUseData>(payload, 'how_to_use');
   const reviews = getModuleData<ReviewsPreviewData>(payload, 'reviews_preview');
+  const brandNameForCard = String(reviews?.brand_card?.name || payload.product.brand?.name || '').trim();
   const payloadRecommendations = getModuleData<RecommendationsData>(payload, 'recommendations');
   const payloadRecommendationItemCount = Array.isArray(payloadRecommendations?.items)
     ? payloadRecommendations.items.length
@@ -531,6 +538,16 @@ export function PdpContainer({
     () => `pdp_promo_dismissed:${payload.product.product_id}`,
     [payload.product.product_id],
   );
+  const [currentRelativePath, setCurrentRelativePath] = useState<string | null>(null);
+  const brandHref = brandNameForCard
+    ? buildBrandHref({
+        brandName: brandNameForCard,
+        subtitle: reviews?.brand_card?.subtitle || null,
+        sourceProductId: payload.product.product_id,
+        sourceMerchantId: payload.product.merchant_id,
+        returnUrl: currentRelativePath,
+      })
+    : undefined;
   const [similarItems, setSimilarItems] =
     useState<RecommendationsData['items']>(initialSimilarState.items);
   const [similarVisibleCount, setSimilarVisibleCount] = useState(SIMILAR_PAGE_SIZE);
@@ -584,6 +601,10 @@ export function PdpContainer({
     const envAllowed = String(process.env.NEXT_PUBLIC_PDP_DEBUG || '').trim() === '1';
     if (process.env.NODE_ENV === 'production' && !envAllowed) return false;
     return true;
+  }, []);
+
+  useEffect(() => {
+    setCurrentRelativePath(getCurrentRelativePath());
   }, []);
 
   useEffect(() => {
@@ -2390,6 +2411,7 @@ export function PdpContainer({
                 <BeautyReviewsSection
                   data={(reviewsForRender || reviews) as ReviewsPreviewData}
                   brandName={payload.product.brand?.name}
+                  brandHref={brandHref}
                   showEmpty
                   onWriteReview={() => {
                     handleWriteReview();

@@ -10,12 +10,14 @@ import type {
   ProductDetailsData,
 } from '@/features/pdp/types';
 import { DetailsAccordion } from '@/features/pdp/sections/DetailsAccordion';
+import { OverviewSection } from '@/features/pdp/sections/OverviewSection';
 import { StructuredDetailsBlocks } from '@/features/pdp/sections/StructuredDetailsBlocks';
 import {
   formatDescriptionText,
   isLikelyHeadingParagraph,
   splitParagraphs,
 } from '@/features/pdp/utils/formatDescriptionText';
+import { buildOverviewContent } from '@/features/pdp/utils/overviewContent';
 
 export function BeautyDetailsSection({
   data,
@@ -46,16 +48,15 @@ export function BeautyDetailsSection({
     storySectionIndex >= 0
       ? sections.filter((_, idx) => idx !== storySectionIndex)
       : sections;
-  const formattedDescription =
-    formatDescriptionText(product.description) || formatDescriptionText(remainingSections?.[0]?.content);
-  const descriptionParagraphs = splitParagraphs(formattedDescription);
-  const introText =
-    descriptionParagraphs.find((paragraph) => !isLikelyHeadingParagraph(paragraph)) ||
-    descriptionParagraphs[0] ||
-    '';
+  const overviewSourceSection = remainingSections[0];
+  const overviewContent = buildOverviewContent({
+    description: product.description,
+    section: overviewSourceSection,
+    hideStructuredDuplicates: true,
+  });
   const formattedBrandStory = formatDescriptionText(product.brand_story || storySection?.content);
   const brandStoryParagraphs = splitParagraphs(formattedBrandStory);
-  const factsSections = storySectionIndex >= 0 ? remainingSections : sections;
+  const factsSections = remainingSections.slice(1);
 
   return (
     <div className="py-4">
@@ -75,11 +76,6 @@ export function BeautyDetailsSection({
       <div className="px-3 py-6 text-center">
         <h2 className="text-xl font-serif tracking-wide">{product.title}</h2>
         {product.subtitle ? <p className="mt-2 text-sm text-muted-foreground">{product.subtitle}</p> : null}
-        {introText ? (
-          <p className="mt-4 text-sm text-muted-foreground leading-relaxed max-w-xs mx-auto whitespace-pre-line">
-            {introText}
-          </p>
-        ) : null}
       </div>
 
       {accentImages.length ? (
@@ -102,6 +98,7 @@ export function BeautyDetailsSection({
       ) : null}
 
       <div className="mx-3 space-y-3">
+        <OverviewSection content={overviewContent} />
         <StructuredDetailsBlocks
           activeIngredients={activeIngredients}
           ingredientsInci={ingredientsInci}

@@ -78,4 +78,23 @@ describe('Reviews text rendering', () => {
 
     expect(screen.getByText('No written details provided.')).toBeInTheDocument();
   });
+
+  it('renders brand card as a link when brandHref is provided', () => {
+    render(
+      <BeautyReviewsSection
+        data={{
+          ...baseReviewsData,
+          brand_card: {
+            name: 'Tom Ford Beauty',
+            subtitle: 'Fragrance and makeup',
+          },
+        }}
+        brandHref="/brands/tom-ford?name=Tom%20Ford"
+      />,
+    );
+
+    const link = screen.getByRole('link', { name: /Tom Ford Beauty/i });
+    expect(link).toHaveAttribute('href', '/brands/tom-ford?name=Tom%20Ford');
+    expect(screen.getByText('Fragrance and makeup')).toBeInTheDocument();
+  });
 });

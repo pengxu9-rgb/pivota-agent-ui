@@ -1,6 +1,7 @@
 'use client';
 
 import Image from 'next/image';
+import Link from 'next/link';
 import { Star, ChevronRight } from 'lucide-react';
 import type { ReviewsPreviewData } from '@/features/pdp/types';
 import { cn } from '@/lib/utils';
@@ -30,6 +31,7 @@ export function BeautyReviewsSection({
   onSeeAllQuestions,
   onOpenQuestion,
   brandName,
+  brandHref,
   showEmpty = false,
   writeReviewLabel = 'Write a review',
   writeReviewEnabled = true,
@@ -45,6 +47,7 @@ export function BeautyReviewsSection({
   onSeeAllQuestions?: () => void;
   onOpenQuestion?: (questionId: number) => void;
   brandName?: string;
+  brandHref?: string;
   showEmpty?: boolean;
   writeReviewLabel?: string;
   writeReviewEnabled?: boolean;
@@ -265,18 +268,37 @@ export function BeautyReviewsSection({
       ) : null}
 
       {(data.brand_card?.name || brandName) ? (
-        <div className="mt-4 mx-3 flex items-center gap-3 rounded-xl bg-card border border-border p-3">
-          <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center text-[10px] font-bold tracking-tight">
-            {(data.brand_card?.name || brandName || '').slice(0, 12).toUpperCase()}
+        brandHref ? (
+          <Link
+            href={brandHref}
+            prefetch={false}
+            className="mt-4 mx-3 flex items-center gap-3 rounded-xl bg-card border border-border p-3 transition-colors hover:border-primary/50"
+          >
+            <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center text-[10px] font-bold tracking-tight">
+              {(data.brand_card?.name || brandName || '').slice(0, 12).toUpperCase()}
+            </div>
+            <div className="flex-1">
+              <p className="font-semibold">{data.brand_card?.name || brandName}</p>
+              {data.brand_card?.subtitle ? (
+                <p className="text-xs text-muted-foreground">{data.brand_card.subtitle}</p>
+              ) : null}
+            </div>
+            <ChevronRight className="h-5 w-5 text-muted-foreground" />
+          </Link>
+        ) : (
+          <div className="mt-4 mx-3 flex items-center gap-3 rounded-xl bg-card border border-border p-3">
+            <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center text-[10px] font-bold tracking-tight">
+              {(data.brand_card?.name || brandName || '').slice(0, 12).toUpperCase()}
+            </div>
+            <div className="flex-1">
+              <p className="font-semibold">{data.brand_card?.name || brandName}</p>
+              {data.brand_card?.subtitle ? (
+                <p className="text-xs text-muted-foreground">{data.brand_card.subtitle}</p>
+              ) : null}
+            </div>
+            <ChevronRight className="h-5 w-5 text-muted-foreground" />
           </div>
-          <div className="flex-1">
-            <p className="font-semibold">{data.brand_card?.name || brandName}</p>
-            {data.brand_card?.subtitle ? (
-              <p className="text-xs text-muted-foreground">{data.brand_card.subtitle}</p>
-            ) : null}
-          </div>
-          <ChevronRight className="h-5 w-5 text-muted-foreground" />
-        </div>
+        )
       ) : null}
     </div>
   );

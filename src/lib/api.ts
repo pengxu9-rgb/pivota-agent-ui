@@ -681,6 +681,7 @@ function inferShoppingEntryFromLocation(body: InvokeBody): ShoppingEntry {
 
   // Search / listing routes.
   if (pathname.startsWith('/search')) return 'search';
+  if (pathname.startsWith('/brands/')) return 'plp';
   if (
     pathname.startsWith('/category') ||
     pathname.startsWith('/collection') ||
@@ -1525,6 +1526,56 @@ export type SendMessageResult = {
   };
 };
 
+export type DiscoveryRecentView = {
+  merchant_id?: string | null;
+  product_id: string;
+  title?: string | null;
+  description?: string | null;
+  brand?: string | null;
+  category?: string | null;
+  product_type?: string | null;
+  viewed_at?: string | null;
+  history_source?: string | null;
+};
+
+export type BrandDiscoverySort = 'popular' | 'price_desc' | 'price_asc';
+
+export type BrandDiscoveryFeedResult = {
+  products: ProductResponse[];
+  metadata: Record<string, any>;
+  query_text: string;
+  page_info: {
+    page: number;
+    page_size: number;
+    total?: number;
+    has_more: boolean;
+  };
+};
+
+function normalizeDiscoveryRecentView(input: any): DiscoveryRecentView | null {
+  const productId = String(input?.product_id || input?.productId || '').trim();
+  if (!productId) return null;
+  return {
+    product_id: productId,
+    ...(input?.merchant_id != null || input?.merchantId != null
+      ? { merchant_id: String(input?.merchant_id || input?.merchantId || '').trim() || null }
+      : {}),
+    ...(input?.title ? { title: String(input.title).trim() } : {}),
+    ...(input?.description ? { description: String(input.description).trim() } : {}),
+    ...(input?.brand ? { brand: String(input.brand).trim() } : {}),
+    ...(input?.category ? { category: String(input.category).trim() } : {}),
+    ...(input?.product_type || input?.productType
+      ? { product_type: String(input?.product_type || input?.productType).trim() }
+      : {}),
+    ...(input?.viewed_at || input?.viewedAt
+      ? { viewed_at: String(input?.viewed_at || input?.viewedAt) }
+      : {}),
+    ...(input?.history_source || input?.historySource
+      ? { history_source: String(input?.history_source || input?.historySource).trim() }
+      : {}),
+  };
+}
+
 // Chat entrypoint: search products by free text query.
 export async function sendMessage(
   message: string,
@@ -1610,6 +1661,127 @@ export async function sendMessage(
     reply: replyRaw || null,
     metadata,
     strict_empty: strictEmpty,
+    page_info: {
+      page,
+      page_size: pageSize,
+      ...(typeof total === 'number' ? { total } : {}),
+      has_more: hasMore,
+    },
+  };
+}
+
+export async function getBrandDiscoveryFeed(args: {
+  brandName: string;
+  query?: string;
+  sort?: BrandDiscoverySort;
+  page?: number;
+  limit?: number;
+  recentViews?: DiscoveryRecentView[];
+  recentQueries?: string[];
+  sourceProductRef?: {
+    product_id?: string | null;
+    merchant_id?: string | null;
+  };
+}): Promise<BrandDiscoveryFeedResult> {
+  const brandName = String(args.brandName || '').trim();
+  const queryText = String(args.query || '').trim();
+  const sort: BrandDiscoverySort =
+    args.sort === 'price_desc' || args.sort === 'price_asc' ? args.sort : 'popular';
+  const requestedPage = Math.max(1, Math.floor(Number(args.page || 1) || 1));
+  const requestedLimit = clampSearchLimit(args.limit, 24);
+  const recentViews = (Array.isArray(args.recentViews) ? args.recentViews : [])
+    .map((item) => normalizeDiscoveryRecentView(item))
+    .filter(Boolean)
+    .slice(0, 16) as DiscoveryRecentView[];
+  const recentQueries = (
+    Array.isArray(args.recentQueries) && args.recentQueries.length
+      ? args.recentQueries
+      : readRecentQueries()
+  )
+    .map((item) => String(item || '').trim())
+    .filter(Boolean)
+    .slice(0, MAX_RECENT_QUERIES);
+
+  if (!brandName) {
+    return {
+      products: [],
+      metadata: {
+        brand_scope_applied: [],
+        sort_applied: sort,
+        query_text: queryText,
+        has_more: false,
+      },
+      query_text: queryText,
+      page_info: {
+        page: requestedPage,
+        page_size: 0,
+        has_more: false,
+      },
+    };
+  }
+
+  const data = await callGateway({
+    operation: 'get_discovery_feed',
+    payload: {
+      surface: 'browse_products',
+      page: requestedPage,
+      limit: requestedLimit,
+      sort,
+      query: {
+        text: queryText,
+      },
+      scope: {
+        brand_names: [brandName],
+      },
+      context: {
+        recent_views: recentViews,
+        recent_queries: recentQueries,
+        locale: getBrowserLanguage() || 'en-US',
+      },
+      ...(args.sourceProductRef?.product_id
+        ? {
+            source_product_ref: {
+              product_id: String(args.sourceProductRef.product_id).trim(),
+              ...(args.sourceProductRef.merchant_id
+                ? { merchant_id: String(args.sourceProductRef.merchant_id).trim() }
+                : {}),
+            },
+          }
+        : {}),
+    },
+  });
+
+  const products = ((data as any).products || []).map(
+    (p: RealAPIProduct | ProductResponse) => normalizeProduct(p),
+  );
+  const metadata =
+    data && typeof data === 'object' && data.metadata && typeof (data as any).metadata === 'object'
+      ? ((data as any).metadata as Record<string, any>)
+      : {};
+  const responsePageRaw = Number((data as any)?.page);
+  const responsePageSizeRaw = Number((data as any)?.page_size ?? (data as any)?.pageSize);
+  const responseTotalRaw = Number((data as any)?.total);
+  const page = Number.isFinite(responsePageRaw) && responsePageRaw > 0
+    ? Math.floor(responsePageRaw)
+    : requestedPage;
+  const pageSize = Number.isFinite(responsePageSizeRaw) && responsePageSizeRaw >= 0
+    ? Math.floor(responsePageSizeRaw)
+    : products.length;
+  const total =
+    Number.isFinite(responseTotalRaw) && responseTotalRaw >= 0
+      ? Math.floor(responseTotalRaw)
+      : undefined;
+  const hasMore =
+    typeof metadata.has_more === 'boolean'
+      ? metadata.has_more
+      : typeof total === 'number'
+        ? page * requestedLimit < total
+        : products.length >= requestedLimit;
+
+  return {
+    products,
+    metadata,
+    query_text: queryText,
     page_info: {
       page,
       page_size: pageSize,

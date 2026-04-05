@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { getAllProducts } from './api';
+import { getAllProducts, getBrandDiscoveryFeed } from './api';
 
 const jsonResponse = (payload: unknown, status = 200) =>
   new Response(JSON.stringify(payload), {
@@ -79,5 +79,47 @@ describe('getAllProducts browse routing', () => {
     expect(body?.payload?.search?.page).toBe(2);
     expect(body?.payload?.search?.limit).toBe(12);
     expect(body?.metadata?.scope?.catalog).toBe('promo_pool');
+  });
+
+  it('requests brand-scoped discovery feed with sort and query metadata', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      jsonResponse({
+        products: makeProducts(2),
+        total: 8,
+        page: 1,
+        page_size: 2,
+        metadata: {
+          has_more: true,
+          sort_applied: 'price_desc',
+          brand_scope_applied: ['Tom Ford Beauty'],
+          query_text: 'lip',
+        },
+      }),
+    );
+
+    const result = await getBrandDiscoveryFeed({
+      brandName: 'Tom Ford Beauty',
+      query: 'lip',
+      sort: 'price_desc',
+      recentViews: [{ product_id: 'seed_1', merchant_id: 'external_seed', title: 'Rose lipstick' }],
+    });
+
+    expect(result.products).toHaveLength(2);
+    expect(result.page_info.has_more).toBe(true);
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(String(init.body || '{}'));
+    expect(body).toMatchObject({
+      operation: 'get_discovery_feed',
+      payload: {
+        surface: 'browse_products',
+        sort: 'price_desc',
+        query: {
+          text: 'lip',
+        },
+        scope: {
+          brand_names: ['Tom Ford Beauty'],
+        },
+      },
+    });
   });
 });

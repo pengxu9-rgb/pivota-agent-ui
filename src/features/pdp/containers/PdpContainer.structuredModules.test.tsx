@@ -257,15 +257,16 @@ describe('PdpContainer structured PDP modules', () => {
     expect(screen.getByText('Active ingredients')).toBeInTheDocument();
     expect(screen.getAllByText('Ceramide NP').length).toBeGreaterThan(0);
     expect(screen.getByText('Ingredients')).toBeInTheDocument();
-    expect(screen.getByText(/Water, Glycerin, Ceramide NP, Cholesterol/i)).toBeInTheDocument();
+    expect(screen.getByText('Water')).toBeInTheDocument();
+    expect(screen.getAllByText('Glycerin').length).toBeGreaterThan(0);
+    expect(screen.getByText('Cholesterol')).toBeInTheDocument();
     expect(screen.getByText('How to use')).toBeInTheDocument();
     expect(screen.getByText('Apply after cleansing.')).toBeInTheDocument();
     expect(screen.getByText('Brand Story')).toBeInTheDocument();
-    expect(screen.getByText('Product Information')).toBeInTheDocument();
+    expect(screen.getByText('Overview')).toBeInTheDocument();
     expect(screen.getAllByText('Retail PDP').length).toBeGreaterThan(0);
-    expect(screen.getByRole('button', { name: 'Clinical Results' })).toBeInTheDocument();
+    expect(screen.getByText('Clinical Results')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Legacy Ingredients' })).not.toBeInTheDocument();
-    expect(screen.queryByText(/^Cholesterol$/)).toBeNull();
     expect(screen.getAllByRole('button', { name: 'Add to Cart' }).length).toBeGreaterThan(0);
     expect(screen.getAllByRole('button', { name: 'Buy Now' }).length).toBeGreaterThan(0);
   });
@@ -286,7 +287,8 @@ describe('PdpContainer structured PDP modules', () => {
 
     expect(screen.queryByText('Active ingredients')).toBeNull();
     expect(screen.queryByText('How to use')).toBeNull();
-    expect(screen.getByRole('button', { name: 'Legacy Ingredients' })).toBeInTheDocument();
+    expect(screen.getByText('Legacy Ingredients')).toBeInTheDocument();
+    expect(screen.getByText('Overview')).toBeInTheDocument();
   });
 
   it('renders a locked selector surface for single-variant generic products', () => {
