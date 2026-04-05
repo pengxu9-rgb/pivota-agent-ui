@@ -67,7 +67,7 @@ describe('optimizeRecommendationImageUrl', () => {
       360,
     );
     expect(out).toBe(
-      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T1QT01_3000x3000_0.png?width=360',
+      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T1QT01_3000x3000_0_1cb1287f-acde-4d9e-8c24-aa58cf23e5d7.png?width=360',
     );
   });
 

@@ -34,7 +34,9 @@ const DIRECT_REMOTE_IMAGE_HOSTS = [
 
 function rewriteTomFordAssetToOfficialShopify(parsed: URL): URL {
   const next = new URL(parsed.toString());
-  const filename = normalizeShopifyLikeFilename(String(next.pathname.split('/').pop() || '').trim());
+  const filename = normalizeShopifyLikeFilename(String(next.pathname.split('/').pop() || '').trim(), {
+    stripHash: false,
+  });
   if (!filename) return next;
 
   if (/^tfb?_sku_/i.test(filename)) {
@@ -64,7 +66,8 @@ function isShopifyLikeAsset(parsed: URL): boolean {
   );
 }
 
-function normalizeShopifyLikeFilename(filename: string): string {
+function normalizeShopifyLikeFilename(filename: string, options: { stripHash?: boolean } = {}): string {
+  const stripHash = options.stripHash === true;
   const trimmed = String(filename || '').trim();
   if (!trimmed) return trimmed;
   let decoded = trimmed;
@@ -75,6 +78,9 @@ function normalizeShopifyLikeFilename(filename: string): string {
   }
   const compacted = decoded.replace(/\s*_\s*/g, '_').trim();
   const aliased = KNOWN_SDCND_FILENAME_ALIASES[compacted.toLowerCase()] || compacted;
+  if (!stripHash) {
+    return aliased;
+  }
   const hashed = aliased.match(SHOPIFY_FILE_HASH_SUFFIX_RE);
   if (hashed) {
     return `${hashed[1]}.${hashed[2]}`;
@@ -88,7 +94,9 @@ function normalizeImageAssetUrl(parsed: URL): URL {
     next.searchParams.delete('v');
     const segments = next.pathname.split('/');
     const lastIndex = segments.length - 1;
-    segments[lastIndex] = normalizeShopifyLikeFilename(segments[lastIndex] || '');
+    segments[lastIndex] = normalizeShopifyLikeFilename(segments[lastIndex] || '', {
+      stripHash: false,
+    });
     next.pathname = segments.join('/');
   }
   next = rewriteTomFordAssetToOfficialShopify(next);
@@ -179,6 +187,13 @@ export function buildPdpImageDedupeKey(rawUrl: unknown): string | null {
   try {
     const parsed = absolute ? new URL(unwrapped) : new URL(unwrapped, 'http://localhost');
     const normalizedSearch = new URLSearchParams();
+    const dedupePathname =
+      absolute && isShopifyLikeAsset(parsed)
+        ? `${parsed.pathname.split('/').slice(0, -1).join('/')}/${normalizeShopifyLikeFilename(
+            parsed.pathname.split('/').pop() || '',
+            { stripHash: true },
+          )}`
+        : parsed.pathname;
     Array.from(parsed.searchParams.entries())
       .sort(([aKey, aValue], [bKey, bValue]) => {
         if (aKey === bKey) return aValue.localeCompare(bValue);
@@ -190,7 +205,7 @@ export function buildPdpImageDedupeKey(rawUrl: unknown): string | null {
       });
 
     if (absolute) {
-      return `${parsed.protocol}//${parsed.host}${parsed.pathname}${
+      return `${parsed.protocol}//${parsed.host}${dedupePathname}${
         normalizedSearch.toString() ? `?${normalizedSearch.toString()}` : ''
       }`;
     }
