@@ -25,6 +25,8 @@ export function SimilarProductsSheet({
   open,
   onClose,
   items,
+  statusNoteTitle,
+  statusNote,
   isLoadingMore = false,
   canLoadMore = false,
   onLoadMore,
@@ -33,6 +35,8 @@ export function SimilarProductsSheet({
   open: boolean;
   onClose: () => void;
   items: RecommendationsData['items'];
+  statusNoteTitle?: string | null;
+  statusNote?: string | null;
   isLoadingMore?: boolean;
   canLoadMore?: boolean;
   onLoadMore?: () => void;
@@ -62,6 +66,18 @@ export function SimilarProductsSheet({
       footer={loadMoreFooter}
     >
       <div className="px-4 py-4">
+        {statusNote ? (
+          <div className="mb-4 rounded-xl border border-border bg-background/70 px-3 py-3">
+            {statusNoteTitle ? (
+              <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-foreground/80">
+                {statusNoteTitle}
+              </div>
+            ) : null}
+            <div className="mt-1 text-xs leading-5 text-muted-foreground">
+              {statusNote}
+            </div>
+          </div>
+        ) : null}
         {items.length ? (
           <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
             {items.map((p, idx) => {

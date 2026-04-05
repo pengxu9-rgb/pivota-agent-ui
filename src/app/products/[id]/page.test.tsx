@@ -205,7 +205,6 @@ describe('ProductDetailPage canonical PDP loading', () => {
           'how_to_use',
           'product_details',
           'reviews_preview',
-          'similar',
         ],
         timeout_ms: 9000,
       }),

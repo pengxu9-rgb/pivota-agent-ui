@@ -78,6 +78,7 @@ import { resolveReviewGate, reviewGateMessage, reviewGateResultToReason } from '
 import { postRequestCloseToParent } from '@/lib/auroraEmbed';
 import { isExternalAgentEntry, resolveExternalAgentHomeUrl, safeReturnUrl } from '@/lib/returnUrl';
 import { useIsDesktop } from '@/features/pdp/hooks/useIsDesktop';
+import { buildSimilarMainlineStatus } from '@/features/pdp/utils/similarHints';
 
 function nonEmptyText(value: unknown, fallback: string): string {
   const text = String(value ?? '').trim();
@@ -375,14 +376,62 @@ function normalizeSimilarMetadata(
             : {}),
         }
       : undefined;
+  const underfillRaw = Number((metadata as any).underfill);
+  const underfill = Number.isFinite(underfillRaw) ? Math.max(0, Math.trunc(underfillRaw)) : undefined;
+  const selectionMix = (metadata as any).selection_mix;
+  const normalizedSelectionMix =
+    selectionMix && typeof selectionMix === 'object'
+      ? {
+          ...(Number.isFinite(Number((selectionMix as any).same_brand_same_category))
+            ? { same_brand_same_category: Number((selectionMix as any).same_brand_same_category) }
+            : {}),
+          ...(Number.isFinite(Number((selectionMix as any).same_brand_other_category))
+            ? { same_brand_other_category: Number((selectionMix as any).same_brand_other_category) }
+            : {}),
+          ...(Number.isFinite(Number((selectionMix as any).other_brand_same_category))
+            ? { other_brand_same_category: Number((selectionMix as any).other_brand_same_category) }
+            : {}),
+          ...(Number.isFinite(Number((selectionMix as any).other_brand_same_vertical))
+            ? { other_brand_same_vertical: Number((selectionMix as any).other_brand_same_vertical) }
+            : {}),
+          ...(Number.isFinite(Number((selectionMix as any).semantic_peer))
+            ? { semantic_peer: Number((selectionMix as any).semantic_peer) }
+            : {}),
+        }
+      : undefined;
+  const baseSemantic = (metadata as any).base_semantic;
+  const normalizedBaseSemantic =
+    baseSemantic && typeof baseSemantic === 'object'
+      ? {
+          ...(typeof (baseSemantic as any).brand === 'string'
+            ? { brand: String((baseSemantic as any).brand).trim() || null }
+            : {}),
+          ...(typeof (baseSemantic as any).vertical === 'string'
+            ? { vertical: String((baseSemantic as any).vertical).trim() || null }
+            : {}),
+          ...(typeof (baseSemantic as any).inferred === 'boolean'
+            ? { inferred: (baseSemantic as any).inferred }
+            : {}),
+          ...(Number.isFinite(Number((baseSemantic as any).signal_strength))
+            ? { signal_strength: Number((baseSemantic as any).signal_strength) }
+            : {}),
+        }
+      : undefined;
 
   return {
     ...(typeof hasMore === 'boolean' ? { has_more: hasMore } : {}),
     ...(similarConfidence ? { similar_confidence: similarConfidence } : {}),
     ...(lowConfidence ? { low_confidence: true } : {}),
     ...(reasonCodes.length ? { low_confidence_reason_codes: reasonCodes } : {}),
+    ...(underfill != null ? { underfill } : {}),
     ...(normalizedMix && (normalizedMix.internal != null || normalizedMix.external != null)
       ? { retrieval_mix: normalizedMix }
+      : {}),
+    ...(normalizedSelectionMix && Object.keys(normalizedSelectionMix).length > 0
+      ? { selection_mix: normalizedSelectionMix }
+      : {}),
+    ...(normalizedBaseSemantic && Object.keys(normalizedBaseSemantic).length > 0
+      ? { base_semantic: normalizedBaseSemantic }
       : {}),
   };
 }
@@ -757,6 +806,10 @@ export function PdpContainer({
       items: similarItems,
     }),
     [payloadRecommendations?.strategy, similarItems, similarMetadata, similarStrategy],
+  );
+  const similarStatus = useMemo(
+    () => buildSimilarMainlineStatus(recommendations.metadata),
+    [recommendations.metadata],
   );
 
   useEffect(() => {
@@ -2603,11 +2656,8 @@ export function PdpContainer({
                   visibleCount={similarVisibleCount}
                   canLoadMore={similarHasMore || similarVisibleCount < similarItems.length}
                   isLoadingMore={similarLoadingMore}
-                  lowConfidenceHint={
-                    recommendations.metadata?.low_confidence
-                      ? 'Showing the best matches available for now.'
-                      : null
-                  }
+                  statusNoteTitle={similarStatus?.title || null}
+                  statusNote={similarStatus?.body || null}
                   onLoadMore={() => {
                     pdpTracking.track('pdp_action_click', {
                       action_type: 'load_more_similar',
@@ -2837,6 +2887,8 @@ export function PdpContainer({
         open={similarSheetOpen}
         onClose={() => setSimilarSheetOpen(false)}
         items={similarItems}
+        statusNoteTitle={similarStatus?.title || null}
+        statusNote={similarStatus?.body || null}
         canLoadMore={similarHasMore}
         isLoadingMore={similarLoadingMore}
         onLoadMore={() => {

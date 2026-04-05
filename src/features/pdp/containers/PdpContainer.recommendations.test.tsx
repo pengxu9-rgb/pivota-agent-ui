@@ -225,6 +225,12 @@ describe('PdpContainer recommendations interactions', () => {
         low_confidence: true,
         similar_confidence: 'low',
         low_confidence_reason_codes: ['UNDERFILL_FOR_QUALITY'],
+        underfill: 6,
+        selection_mix: {
+          same_brand_same_category: 0,
+          same_brand_other_category: 4,
+          other_brand_same_category: 2,
+        },
       },
     });
 
@@ -244,7 +250,12 @@ describe('PdpContainer recommendations interactions', () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText('Showing the best matches available for now.')).toBeInTheDocument();
+      expect(screen.getByText('Mainline only')).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          'Showing the strongest mainline matches available right now. Exact like-for-like matches were limited, so this set widens to nearby categories and leaves 6 recommendation slots unfilled instead of using fallback padding.',
+        ),
+      ).toBeInTheDocument();
     });
 
     await waitFor(() => {
