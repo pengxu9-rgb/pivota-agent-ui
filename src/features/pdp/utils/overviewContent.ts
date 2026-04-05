@@ -123,6 +123,16 @@ function normalizeInlineLabel(label: string): string {
   );
 }
 
+function isFactLabel(label: string): boolean {
+  const key = normalizeKey(label);
+  return INLINE_FACT_LABELS.some((candidate) => normalizeKey(candidate) === key);
+}
+
+function isHighlightLabel(label: string): boolean {
+  const key = normalizeKey(label);
+  return INLINE_HIGHLIGHT_LABELS.some((candidate) => normalizeKey(candidate) === key);
+}
+
 function extractInlineLabelSegments(text: string): Array<{ label: string; value: string }> {
   const input = String(text || '').replace(/\s+/g, ' ').trim();
   if (!input) return [];
@@ -310,6 +320,35 @@ export function buildOverviewContent(args: BuildOverviewContentArgs): OverviewCo
     if (consumedInline) {
       currentHeading = '';
       continue;
+    }
+
+    if (currentHeading && isFactLabel(currentHeading)) {
+      const { factValue, narrative } = splitFactValueFromNarrative(
+        normalizeInlineLabel(currentHeading),
+        paragraph,
+      );
+      if (factValue) {
+        facts.push({
+          label: normalizeInlineLabel(currentHeading),
+          value: factValue,
+        });
+        if (narrative) paragraphCandidates.push(narrative);
+        currentHeading = '';
+        continue;
+      }
+    }
+
+    if (currentHeading && isHighlightLabel(currentHeading)) {
+      const { items, narrative } = extractHighlightItems(
+        normalizeInlineLabel(currentHeading),
+        paragraph,
+      );
+      if (items.length || narrative.length) {
+        if (items.length) highlightCandidates.push(...items);
+        if (narrative.length) paragraphCandidates.push(...narrative);
+        currentHeading = '';
+        continue;
+      }
     }
 
     const remainingLines: string[] = [];
