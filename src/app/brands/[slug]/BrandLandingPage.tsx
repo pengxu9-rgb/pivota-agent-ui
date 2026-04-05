@@ -15,6 +15,7 @@ import {
 } from '@/lib/api';
 import { normalizeBrandLabel } from '@/lib/brandRoute';
 import { safeReturnUrl } from '@/lib/returnUrl';
+import { useAuthStore } from '@/store/authStore';
 
 const PAGE_SIZE = 24;
 const NO_GROWTH_STOP_THRESHOLD = 2;
@@ -134,6 +135,7 @@ export function BrandLandingPage({
   const brandName = normalizeBrandLabel(initialBrandName || decodeSlugToBrand(slug));
   const subtitle = String(initialSubtitle || '').trim();
   const returnHref = safeReturnUrl(initialReturnUrl || null) || '/';
+  const user = useAuthStore((state) => state.user);
 
   const [products, setProducts] = useState<ProductResponse[]>([]);
   const [queryDraft, setQueryDraft] = useState(initialQuery || '');
@@ -167,6 +169,8 @@ export function BrandLandingPage({
     const local = readLocalRecentViews();
     setRecentViews(local);
 
+    if (!user?.id) return;
+
     let cancelled = false;
     void getBrowseHistory(40)
       .then((result) => {
@@ -182,7 +186,7 @@ export function BrandLandingPage({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [user?.id]);
 
   useEffect(() => {
     if (!brandName) return;

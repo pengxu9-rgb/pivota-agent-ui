@@ -24,6 +24,35 @@ const STRUCTURED_DUPLICATE_HEADING_RE =
 const HIGHLIGHT_HEADING_RE =
   /^(benefits?|features?|highlights?|results?|at a glance|why(?: you(?:'|’)ll| youll)? love it|best for)$/i;
 const FACT_LABEL_RE = /^([A-Za-z][A-Za-z0-9 '&/()+-]{1,32}):\s*(.{2,180})$/;
+const INLINE_FACT_LABELS = [
+  'Key Notes',
+  'Skin Type',
+  'Skin Concern',
+  'Finish',
+  'Coverage',
+  'Best For',
+];
+const INLINE_HIGHLIGHT_LABELS = [
+  'Benefits',
+  'Features',
+  'Highlights',
+  'Results',
+  'Why You’ll Love It',
+  "Why You'll Love It",
+  'Set Includes',
+  'Shades Included',
+  'What Else You Need To Know',
+  'Free From',
+];
+const INLINE_LABELS = [...INLINE_FACT_LABELS, ...INLINE_HIGHLIGHT_LABELS].sort(
+  (a, b) => b.length - a.length,
+);
+const INLINE_LABEL_RE = new RegExp(
+  `(?<![A-Za-z])(?:${INLINE_LABELS.map((label) => label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})(?![A-Za-z])`,
+  'gi',
+);
+const SHORT_FACT_LABELS = new Set(INLINE_FACT_LABELS.map((label) => normalizeKey(label)));
+const INLINE_NARRATIVE_SPLIT_RE = /\s+(?=(?:The|This|These|Each|A|An|Our|Its|It)\b)/;
 
 function normalizeKey(value: string): string {
   return String(value || '')
@@ -55,6 +84,7 @@ function uniqueFacts(items: OverviewFact[]): OverviewFact[] {
 function cleanLine(value: string): string {
   return String(value || '')
     .replace(/^[\s\-•*]+/, '')
+    .replace(/^[:\-–•]+\s*/, '')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -81,6 +111,163 @@ function formatEyebrow(heading: string | null | undefined): string | undefined {
   return text;
 }
 
+function dedupeParagraphs(items: string[]): string[] {
+  return uniqueStrings(items.map((item) => item.trim()).filter(Boolean));
+}
+
+function normalizeInlineLabel(label: string): string {
+  const key = normalizeKey(label);
+  return (
+    INLINE_LABELS.find((candidate) => normalizeKey(candidate) === key) ||
+    String(label || '').trim()
+  );
+}
+
+function extractInlineLabelSegments(text: string): Array<{ label: string; value: string }> {
+  const input = String(text || '').replace(/\s+/g, ' ').trim();
+  if (!input) return [];
+  INLINE_LABEL_RE.lastIndex = 0;
+  const matches = Array.from(input.matchAll(INLINE_LABEL_RE))
+    .map((match) => ({
+      label: normalizeInlineLabel(match[0] || ''),
+      index: match.index ?? 0,
+      raw: match[0] || '',
+    }))
+    .filter((match) => match.label);
+
+  if (!matches.length) return [];
+
+  return matches
+    .map((match, idx) => {
+      const next = matches[idx + 1];
+      const value = cleanLine(
+        input.slice(match.index + match.raw.length, next ? next.index : input.length),
+      );
+      return {
+        label: match.label,
+        value,
+      };
+    })
+    .filter((segment) => segment.value);
+}
+
+function splitFactValueFromNarrative(label: string, value: string): { factValue: string; narrative: string } {
+  const cleaned = cleanLine(value);
+  if (!cleaned) return { factValue: '', narrative: '' };
+  const labelKey = normalizeKey(label);
+  if (!SHORT_FACT_LABELS.has(labelKey)) {
+    return { factValue: cleaned, narrative: '' };
+  }
+  const narrativeMatch = cleaned.match(INLINE_NARRATIVE_SPLIT_RE);
+  if (narrativeMatch?.index && narrativeMatch.index > 0) {
+    const factValue = cleanLine(cleaned.slice(0, narrativeMatch.index));
+    const narrative = cleanLine(cleaned.slice(narrativeMatch.index));
+    if (factValue.split(/\s+/).length <= 6) {
+      return { factValue, narrative };
+    }
+  }
+  return { factValue: cleaned, narrative: '' };
+}
+
+function extractHighlightItems(label: string, value: string): { items: string[]; narrative: string[] } {
+  const cleaned = cleanLine(value);
+  if (!cleaned) return { items: [], narrative: [] };
+  const labelKey = normalizeKey(label);
+
+  if (labelKey === normalizeKey('free from')) {
+    return {
+      items: [`Free from ${cleaned}`],
+      narrative: [],
+    };
+  }
+
+  const bulletSplit = cleaned
+    .replace(/\s+[•·]\s+/g, '\n')
+    .replace(/\s+-\s+/g, '\n')
+    .split('\n')
+    .map((item) => cleanLine(item))
+    .filter(Boolean);
+
+  if (bulletSplit.length > 1) {
+    const items = bulletSplit.filter((item) => item.length >= 6 && !/:$/.test(item)).slice(0, 4);
+    return { items, narrative: [] };
+  }
+
+  if (labelKey === normalizeKey('shades included')) {
+    const sentences = splitSentences(cleaned);
+    if (sentences.length) {
+      const shade = cleanLine(cleaned.slice(0, cleaned.indexOf(sentences[0])).trim());
+      return {
+        items: shade ? [shade] : [],
+        narrative: sentences.slice(0, 1),
+      };
+    }
+  }
+
+  const sentences = splitSentences(cleaned);
+  if (sentences.length > 1) {
+    return {
+      items: uniqueStrings(sentences.slice(0, 3).filter((item) => item.length <= 140)),
+      narrative: [],
+    };
+  }
+
+  return {
+    items: cleaned.length <= 140 ? [cleaned] : [],
+    narrative: cleaned.length > 140 ? [cleaned] : [],
+  };
+}
+
+function collectInlineSegments(
+  paragraph: string,
+  facts: OverviewFact[],
+  highlightCandidates: string[],
+  paragraphCandidates: string[],
+  hideStructuredDuplicates: boolean,
+) {
+  const segments = extractInlineLabelSegments(paragraph);
+  if (!segments.length) return false;
+
+  const firstLabel = normalizeKey(segments[0]?.label || '');
+  const beginsWithLabel =
+    firstLabel &&
+    normalizeKey(paragraph).startsWith(firstLabel);
+  if (!beginsWithLabel && segments.length < 2) return false;
+
+  let consumed = false;
+  for (const segment of segments) {
+    const labelKey = normalizeKey(segment.label);
+    if (hideStructuredDuplicates && STRUCTURED_DUPLICATE_HEADING_RE.test(labelKey)) {
+      consumed = true;
+      continue;
+    }
+
+    if (INLINE_FACT_LABELS.some((label) => normalizeKey(label) === labelKey)) {
+      const { factValue, narrative } = splitFactValueFromNarrative(segment.label, segment.value);
+      if (factValue) {
+        facts.push({ label: segment.label, value: factValue });
+        consumed = true;
+      }
+      if (narrative) paragraphCandidates.push(narrative);
+      continue;
+    }
+
+    if (INLINE_HIGHLIGHT_LABELS.some((label) => normalizeKey(label) === labelKey)) {
+      const { items, narrative } = extractHighlightItems(segment.label, segment.value);
+      if (items.length) {
+        highlightCandidates.push(...items);
+        consumed = true;
+      }
+      if (narrative.length) paragraphCandidates.push(...narrative);
+      continue;
+    }
+
+    paragraphCandidates.push(segment.value);
+  }
+
+  return consumed;
+}
+
 type BuildOverviewContentArgs = {
   description?: string | null;
   section?: DetailSection | null;
@@ -90,7 +277,9 @@ type BuildOverviewContentArgs = {
 export function buildOverviewContent(args: BuildOverviewContentArgs): OverviewContent | null {
   const description = formatDescriptionText(args.description);
   const sectionContent = formatDescriptionText(args.section?.content);
-  const paragraphs = splitParagraphs([description, sectionContent].filter(Boolean).join('\n\n'));
+  const paragraphs = dedupeParagraphs(
+    splitParagraphs([description, sectionContent].filter(Boolean).join('\n\n')),
+  );
 
   if (!paragraphs.length) return null;
 
@@ -107,6 +296,18 @@ export function buildOverviewContent(args: BuildOverviewContentArgs): OverviewCo
     }
 
     if (args.hideStructuredDuplicates && STRUCTURED_DUPLICATE_HEADING_RE.test(normalizeKey(currentHeading))) {
+      currentHeading = '';
+      continue;
+    }
+
+    const consumedInline = collectInlineSegments(
+      paragraph,
+      facts,
+      highlightCandidates,
+      paragraphCandidates,
+      args.hideStructuredDuplicates === true,
+    );
+    if (consumedInline) {
       currentHeading = '';
       continue;
     }
@@ -168,7 +369,9 @@ export function buildOverviewContent(args: BuildOverviewContentArgs): OverviewCo
   }
 
   const summary = paragraphCandidates[0] || '';
-  const body = uniqueStrings(paragraphCandidates.slice(1)).slice(0, 3);
+  const body = uniqueStrings(paragraphCandidates.slice(1))
+    .filter((paragraph) => normalizeKey(paragraph) !== normalizeKey(summary))
+    .slice(0, 3);
   let highlights = uniqueStrings(highlightCandidates).slice(0, 4);
 
   if (!highlights.length) {

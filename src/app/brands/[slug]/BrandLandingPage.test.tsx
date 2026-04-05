@@ -5,6 +5,7 @@ import { BrandLandingPage } from './BrandLandingPage';
 
 const getBrandDiscoveryFeedMock = vi.fn();
 const getBrowseHistoryMock = vi.fn();
+let authUser: { id: string } | null = null;
 
 let intersectionCallback: ((entries: Array<{ isIntersecting: boolean }>) => void) | null = null;
 
@@ -13,12 +14,20 @@ vi.mock('@/lib/api', () => ({
   getBrowseHistory: (...args: unknown[]) => getBrowseHistoryMock(...args),
 }));
 
+vi.mock('@/store/authStore', () => ({
+  useAuthStore: (selector?: (state: { user: { id: string } | null }) => unknown) => {
+    const state = { user: authUser };
+    return selector ? selector(state) : state;
+  },
+}));
+
 vi.mock('@/components/product/ProductCard', () => ({
   default: ({ title }: { title: string }) => <div>{title}</div>,
 }));
 
 describe('BrandLandingPage', () => {
   beforeEach(() => {
+    authUser = null;
     intersectionCallback = null;
     vi.stubGlobal(
       'IntersectionObserver',
@@ -78,6 +87,7 @@ describe('BrandLandingPage', () => {
       );
     });
     expect(screen.getByText('Rose Prick Eau de Parfum')).toBeInTheDocument();
+    expect(getBrowseHistoryMock).not.toHaveBeenCalled();
 
     fireEvent.change(screen.getByPlaceholderText('Search within Tom Ford'), {
       target: { value: 'cherry' },
@@ -93,6 +103,28 @@ describe('BrandLandingPage', () => {
           page: 1,
         }),
       );
+    });
+  });
+
+  it('hydrates remote browse history only for authenticated users', async () => {
+    authUser = { id: 'user_123' };
+    getBrandDiscoveryFeedMock.mockResolvedValue({
+      products: [],
+      metadata: { has_more: false },
+      query_text: '',
+      page_info: { page: 1, page_size: 0, total: 0, has_more: false },
+    });
+
+    render(
+      <BrandLandingPage
+        slug="tom-ford"
+        initialBrandName="Tom Ford"
+        initialReturnUrl="/products/ext_123"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(getBrowseHistoryMock).toHaveBeenCalledWith(40);
     });
   });
 
