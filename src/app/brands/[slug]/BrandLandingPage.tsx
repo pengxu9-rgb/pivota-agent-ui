@@ -403,6 +403,7 @@ export function BrandLandingPage({
                     currency={product.currency}
                     image={product.image_url || '/placeholder.svg'}
                     description={product.description}
+                    compact
                   />
                 ))}
               </div>
