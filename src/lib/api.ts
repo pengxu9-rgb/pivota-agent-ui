@@ -271,9 +271,17 @@ export type FindSimilarProductsResponse = {
     similar_confidence?: 'high' | 'medium' | 'low' | string;
     low_confidence?: boolean;
     low_confidence_reason_codes?: string[];
+    underfill?: number;
     retrieval_mix?: {
       internal?: number;
       external?: number;
+    };
+    selection_mix?: {
+      same_brand_same_category?: number;
+      same_brand_other_category?: number;
+      other_brand_same_category?: number;
+      other_brand_same_vertical?: number;
+      semantic_peer?: number;
     };
     base_semantic?: {
       brand?: string | null;

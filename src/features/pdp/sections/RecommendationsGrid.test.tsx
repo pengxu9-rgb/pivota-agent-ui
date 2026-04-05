@@ -149,4 +149,22 @@ describe('RecommendationsGrid', () => {
     expect(firstLink).toHaveAttribute('href', '/products/prod_1');
     expect(secondLink).toHaveAttribute('href', '/products/prod_2');
   });
+
+  it('renders a mainline-only status note when provided', () => {
+    render(
+      <RecommendationsGrid
+        data={data}
+        visibleCount={2}
+        statusNoteTitle="Mainline only"
+        statusNote="Exact like-for-like matches were limited, so this section stays on the mainline instead of being padded with fallback results."
+      />,
+    );
+
+    expect(screen.getByText('Mainline only')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Exact like-for-like matches were limited, so this section stays on the mainline instead of being padded with fallback results.',
+      ),
+    ).toBeInTheDocument();
+  });
 });

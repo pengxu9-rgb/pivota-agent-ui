@@ -30,7 +30,8 @@ export function RecommendationsGrid({
   visibleCount,
   canLoadMore = false,
   isLoadingMore = false,
-  lowConfidenceHint,
+  statusNoteTitle,
+  statusNote,
   onLoadMore,
   onItemClick,
   onOpenAll,
@@ -39,7 +40,8 @@ export function RecommendationsGrid({
   visibleCount?: number;
   canLoadMore?: boolean;
   isLoadingMore?: boolean;
-  lowConfidenceHint?: string | null;
+  statusNoteTitle?: string | null;
+  statusNote?: string | null;
   onLoadMore?: () => void;
   onItemClick?: (item: RecommendationsData['items'][number], index: number) => void;
   onOpenAll?: () => void;
@@ -122,9 +124,18 @@ export function RecommendationsGrid({
           );
         })}
       </div>
-      {lowConfidenceHint ? (
-        <div className="px-4 mt-3 text-xs text-muted-foreground">
-          {lowConfidenceHint}
+      {statusNote ? (
+        <div className="px-4 mt-3">
+          <div className="rounded-xl border border-border bg-background/70 px-3 py-3">
+            {statusNoteTitle ? (
+              <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-foreground/80">
+                {statusNoteTitle}
+              </div>
+            ) : null}
+            <div className="mt-1 text-xs leading-5 text-muted-foreground">
+              {statusNote}
+            </div>
+          </div>
         </div>
       ) : null}
       {showLoadMore ? (
