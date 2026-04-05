@@ -27,6 +27,7 @@ vi.mock('@/components/product/ProductCard', () => ({
 
 describe('BrandLandingPage', () => {
   beforeEach(() => {
+    window.history.replaceState({}, '', '/brands/tom-ford-beauty?name=Tom+Ford+Beauty');
     authUser = null;
     intersectionCallback = null;
     vi.stubGlobal(
@@ -224,5 +225,81 @@ describe('BrandLandingPage', () => {
       );
     });
     expect(screen.getByText('Lost Cherry')).toBeInTheDocument();
+  });
+
+  it('renders backend category facets, syncs category to the URL, and re-queries from page 1', async () => {
+    getBrandDiscoveryFeedMock
+      .mockResolvedValueOnce({
+        products: [
+          {
+            product_id: 'prod_1',
+            merchant_id: 'merch_1',
+            title: 'Bitter Peach',
+            description: 'Fragrance',
+            price: 420,
+            currency: 'USD',
+            image_url: 'https://example.com/1.jpg',
+            in_stock: true,
+          },
+        ],
+        metadata: { has_more: false },
+        facets: {
+          categories: [
+            { value: 'perfume', label: 'Perfume', count: 4 },
+            { value: 'lip balm', label: 'Lip Balm', count: 2 },
+          ],
+        },
+        query_text: '',
+        page_info: { page: 1, page_size: 1, total: 6, has_more: false },
+      })
+      .mockResolvedValueOnce({
+        products: [
+          {
+            product_id: 'prod_2',
+            merchant_id: 'merch_1',
+            title: 'Soleil Summer Lip Balm',
+            description: 'Lip',
+            price: 62,
+            currency: 'USD',
+            image_url: 'https://example.com/2.jpg',
+            in_stock: true,
+          },
+        ],
+        metadata: { has_more: false, category_scope_applied: ['lip balm'] },
+        facets: {
+          categories: [
+            { value: 'perfume', label: 'Perfume', count: 4 },
+            { value: 'lip balm', label: 'Lip Balm', count: 2 },
+          ],
+        },
+        query_text: '',
+        page_info: { page: 1, page_size: 1, total: 2, has_more: false },
+      });
+
+    render(
+      <BrandLandingPage
+        slug="tom-ford"
+        initialBrandName="Tom Ford"
+        initialReturnUrl="/products/ext_123"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Lip Balm/i })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /Lip Balm/i }));
+
+    await waitFor(() => {
+      expect(getBrandDiscoveryFeedMock).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          brandName: 'Tom Ford',
+          category: 'lip balm',
+          page: 1,
+        }),
+      );
+    });
+    expect(screen.getByText('Soleil Summer Lip Balm')).toBeInTheDocument();
+    expect(window.location.search).toContain('category=lip+balm');
   });
 });

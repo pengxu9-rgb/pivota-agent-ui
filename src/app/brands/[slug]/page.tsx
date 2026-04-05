@@ -24,6 +24,7 @@ export default async function Page({
       initialSourceProductId={readSearchParam(resolvedSearchParams.source_product_id)}
       initialSourceMerchantId={readSearchParam(resolvedSearchParams.source_merchant_id)}
       initialQuery={readSearchParam(resolvedSearchParams.q)}
+      initialCategory={readSearchParam(resolvedSearchParams.category)}
     />
   );
 }
