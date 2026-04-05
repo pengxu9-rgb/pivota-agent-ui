@@ -264,4 +264,37 @@ describe('/api/gateway checkout-safe proxy', () => {
     const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe('https://invoke.example.com/agent/shop/v1/invoke');
   });
+
+  it('uses explicit /api/gateway upstreams without appending invoke twice', async () => {
+    vi.stubEnv('NEXT_PUBLIC_UPSTREAM_API_URL', 'https://agent.pivota.cc/api/gateway');
+    vi.stubEnv('PIVOTA_BACKEND_BASE_URL', 'https://checkout.example.com');
+
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      jsonResponse({ status: 'success', products: [] }),
+    );
+
+    const { POST } = await import('@/app/api/gateway/route');
+
+    const req = new Request('http://localhost/api/gateway', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        operation: 'find_products_multi',
+        payload: {
+          query: 'winona serum',
+        },
+      }),
+    });
+
+    const res = await POST(req as any);
+    const data = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(data).toMatchObject({ status: 'success' });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('https://agent.pivota.cc/api/gateway');
+  });
 });

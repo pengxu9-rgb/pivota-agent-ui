@@ -43,6 +43,13 @@ const AGENT_API_KEY =
   process.env.PIVOTA_API_KEY ||
   '';
 
+function buildShopUpstreamInvokeUrl(base: string): string {
+  const normalized = String(base || '').trim().replace(/\/+$/, '');
+  if (!normalized) return '/agent/shop/v1/invoke';
+  if (/\/api\/gateway$/i.test(normalized)) return normalized;
+  return `${normalized}/agent/shop/v1/invoke`;
+}
+
 const CLIENT_OWNED_PAYMENT_STATUSES = new Set(['requires_action']);
 const KNOWN_PAYMENT_STATUSES = new Set([
   ...CLIENT_OWNED_PAYMENT_STATUSES,
@@ -442,7 +449,7 @@ export async function POST(req: NextRequest) {
     const upstreamUrl =
       checkoutSafeRequest && !('error' in checkoutSafeRequest)
         ? checkoutSafeRequest.url
-        : `${upstreamBase}/agent/shop/v1/invoke`;
+        : buildShopUpstreamInvokeUrl(upstreamBase);
     const upstreamMethod =
       checkoutSafeRequest && !('error' in checkoutSafeRequest)
         ? checkoutSafeRequest.method
