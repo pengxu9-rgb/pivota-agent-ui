@@ -12,6 +12,7 @@ import type {
 import { DetailsAccordion } from '@/features/pdp/sections/DetailsAccordion';
 import { OverviewSection } from '@/features/pdp/sections/OverviewSection';
 import { StructuredDetailsBlocks } from '@/features/pdp/sections/StructuredDetailsBlocks';
+import { partitionDetailSections } from '@/features/pdp/utils/detailSections';
 import { buildOverviewContent } from '@/features/pdp/utils/overviewContent';
 
 export function GenericDetailsSection({
@@ -32,8 +33,10 @@ export function GenericDetailsSection({
   hideLowConfidenceActiveIngredients?: boolean;
 }) {
   const sections = Array.isArray(data?.sections) ? data.sections : [];
-  const primarySection = sections[0];
-  const secondarySections = sections.slice(1);
+  const {
+    overviewSection: primarySection,
+    supplementalSections: secondarySections,
+  } = partitionDetailSections(sections);
   const detailImages = (media?.items || []).slice(1, 3);
   const overviewContent = buildOverviewContent({
     description: product.description,

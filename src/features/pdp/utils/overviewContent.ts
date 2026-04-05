@@ -105,6 +105,17 @@ function splitSentences(value: string): string[] {
     .filter((item) => item.length >= 18);
 }
 
+function isCoverageEquivalent(a: string, b: string): boolean {
+  const left = normalizeKey(a);
+  const right = normalizeKey(b);
+  if (!left || !right) return false;
+  if (left === right) return true;
+  const shorter = Math.min(left.length, right.length);
+  const longer = Math.max(left.length, right.length);
+  if (shorter < 18) return false;
+  return longer > 0 && (left.includes(right) || right.includes(left)) && shorter / longer >= 0.72;
+}
+
 function formatEyebrow(heading: string | null | undefined): string | undefined {
   const text = String(heading || '').trim();
   if (!text || GENERIC_SECTION_HEADING_RE.test(text)) return undefined;
@@ -226,6 +237,27 @@ function extractHighlightItems(label: string, value: string): { items: string[];
     items: cleaned.length <= 140 ? [cleaned] : [],
     narrative: cleaned.length > 140 ? [cleaned] : [],
   };
+}
+
+function finalizeBodyParagraphs(
+  paragraphs: string[],
+  summary: string,
+  facts: OverviewFact[],
+  highlights: string[],
+): string[] {
+  const coverageItems = [
+    summary,
+    ...highlights,
+    ...facts.flatMap((item) => [item.value, `${item.label}: ${item.value}`, item.label]),
+  ].filter(Boolean);
+
+  return uniqueStrings(paragraphs)
+    .filter((paragraph) => normalizeKey(paragraph) !== normalizeKey(summary))
+    .filter((paragraph) => paragraph.length >= 18 || /[.?!]/.test(paragraph))
+    .filter(
+      (paragraph) => !coverageItems.some((covered) => isCoverageEquivalent(paragraph, covered)),
+    )
+    .slice(0, 3);
 }
 
 function collectInlineSegments(
@@ -430,11 +462,16 @@ export function buildOverviewContent(args: BuildOverviewContentArgs): OverviewCo
   }
 
   const summary = paragraphCandidates[0] || '';
-  const body = uniqueStrings(paragraphCandidates.slice(1))
-    .filter((paragraph) => normalizeKey(paragraph) !== normalizeKey(summary))
-    .filter((paragraph) => paragraph.length >= 18 || /[.?!]/.test(paragraph))
-    .slice(0, 3);
-  let highlights = uniqueStrings(highlightCandidates).slice(0, 4);
+  const normalizedFacts = uniqueFacts(
+    facts.filter((item) => item.label.length >= 2 && item.value.length >= 2),
+  ).slice(0, 4);
+  let highlights = uniqueStrings(highlightCandidates)
+    .filter(
+      (item) =>
+        !normalizedFacts.some((fact) => isCoverageEquivalent(item, fact.value)) &&
+        !isCoverageEquivalent(item, summary),
+    )
+    .slice(0, 4);
 
   if (!highlights.length) {
     const fallbackHighlightCandidates: string[] = [];
@@ -458,9 +495,7 @@ export function buildOverviewContent(args: BuildOverviewContentArgs): OverviewCo
     highlights = derived.slice(0, 3);
   }
 
-  const normalizedFacts = uniqueFacts(
-    facts.filter((item) => item.label.length >= 2 && item.value.length >= 2),
-  ).slice(0, 4);
+  const body = finalizeBodyParagraphs(paragraphCandidates.slice(1), summary, normalizedFacts, highlights);
 
   if (!summary && !highlights.length && !normalizedFacts.length && !body.length) return null;
 

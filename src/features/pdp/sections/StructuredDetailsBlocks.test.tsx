@@ -54,7 +54,7 @@ describe('StructuredDetailsBlocks', () => {
     expect(screen.getByText('Talc')).toBeInTheDocument();
     expect(screen.getByText('Mica')).toBeInTheDocument();
     expect(screen.getByText('Dimethicone')).toBeInTheDocument();
-    expect(screen.getByText('Yellow 5 Lake (ci 19140)')).toBeInTheDocument();
+    expect(screen.getByText('Yellow 5 Lake (CI 19140)')).toBeInTheDocument();
     expect(screen.queryByText(/Key Ingredients Ingredients/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Please be aware that ingredient lists/i)).not.toBeInTheDocument();
     expect(screen.queryByText('-')).not.toBeInTheDocument();
@@ -83,5 +83,26 @@ describe('StructuredDetailsBlocks', () => {
     expect(screen.queryByText('Iron Oxides (ci 77491)')).not.toBeInTheDocument();
     expect(screen.queryByText('Iron Oxides (ci 77492)')).not.toBeInTheDocument();
     expect(screen.queryByText('Iron Oxides (ci 77499)')).not.toBeInTheDocument();
+  });
+
+  it('collapses repeated colorant families across structured ingredient items', () => {
+    render(
+      <StructuredDetailsBlocks
+        ingredientsInci={{
+          title: 'Ingredients',
+          items: [
+            'Mica',
+            'Iron Oxides (CI 77491)',
+            'Iron Oxides (CI 77492)',
+            'Iron Oxides (CI 77499)',
+          ],
+        }}
+      />,
+    );
+
+    expect(screen.getByText('Iron Oxides (CI 77491 / 77492 / 77499)')).toBeInTheDocument();
+    expect(screen.queryByText('Iron Oxides (CI 77491)')).not.toBeInTheDocument();
+    expect(screen.queryByText('Iron Oxides (CI 77492)')).not.toBeInTheDocument();
+    expect(screen.queryByText('Iron Oxides (CI 77499)')).not.toBeInTheDocument();
   });
 });

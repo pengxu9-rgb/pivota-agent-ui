@@ -145,4 +145,34 @@ Benefits
       ]),
     );
   });
+
+  it('does not leak fact and highlight copies back into body paragraphs', () => {
+    const content = buildOverviewContent({
+      description:
+        'The formula blurs, smooths, and hydrates for comfortable all-day wear.',
+      section: {
+        heading: 'Overview',
+        content_type: 'text',
+        content: `Finish: Soft matte
+Coverage: Medium, Buildable
+
+Benefits
+- Blurs the look of pores
+- Blurs the look of pores
+
+The formula blurs, smooths, and hydrates for comfortable all-day wear.
+Coverage: Medium, Buildable`,
+      },
+      hideStructuredDuplicates: true,
+    });
+
+    expect(content?.facts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ label: 'Finish', value: 'Soft matte' }),
+        expect.objectContaining({ label: 'Coverage', value: 'Medium, Buildable' }),
+      ]),
+    );
+    expect(content?.highlights).toEqual(['Blurs the look of pores']);
+    expect(content?.body).toEqual([]);
+  });
 });

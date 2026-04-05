@@ -55,6 +55,10 @@ function uniqueNonEmpty(items: string[]): string[] {
   });
 }
 
+function sortIngredientCodes(codes: string[]): string[] {
+  return [...codes].sort((left, right) => Number(left) - Number(right));
+}
+
 function extractIngredientFamily(item: string): { base: string; ciCodes: string[] } | null {
   const cleaned = cleanStructuredToken(item).toLowerCase();
   if (!cleaned) return null;
@@ -82,6 +86,45 @@ function isIngredientCoveredByExistingItem(candidate: string, existingItems: str
     if (!candidateFamily.ciCodes.length || !existingFamily.ciCodes.length) return false;
     return candidateFamily.ciCodes.every((code) => existingFamily.ciCodes.includes(code));
   });
+}
+
+function collapseIngredientFamilyItems(items: string[]): string[] {
+  const out: string[] = [];
+  const seenExact = new Set<string>();
+  const familyState = new Map<string, { index: number; displayBase: string; codes: Set<string> }>();
+
+  for (const rawItem of items) {
+    const item = normalizeIngredientListItem(rawItem);
+    const normalizedItem = item.trim().toLowerCase();
+    if (!normalizedItem || seenExact.has(normalizedItem)) continue;
+
+    const family = extractIngredientFamily(item);
+    if (family && family.ciCodes.length) {
+      const displayBase = item.replace(/\s*\([^)]*\)\s*$/, '').trim();
+      const existing = familyState.get(family.base);
+      if (existing) {
+        family.ciCodes.forEach((code) => existing.codes.add(code));
+        out[existing.index] = `${existing.displayBase} (CI ${sortIngredientCodes(Array.from(existing.codes)).join(' / ')})`;
+      } else {
+        const codes = new Set(family.ciCodes);
+        const index = out.push(
+          `${displayBase} (CI ${sortIngredientCodes(Array.from(codes)).join(' / ')})`,
+        ) - 1;
+        familyState.set(family.base, {
+          index,
+          displayBase,
+          codes,
+        });
+      }
+      seenExact.add(normalizedItem);
+      continue;
+    }
+
+    seenExact.add(normalizedItem);
+    out.push(item);
+  }
+
+  return out;
 }
 
 function cleanStructuredToken(value: string): string {
@@ -253,7 +296,7 @@ export function StructuredDetailsBlocks({
   const parsedRawIngredientItems = parseIngredientsFromText(normalizedIngredientsRawText).filter(
     (item) => !isIngredientCoveredByExistingItem(item, structuredIngredientsInciItems),
   );
-  const ingredientsInciItems = uniqueNonEmpty([
+  const ingredientsInciItems = collapseIngredientFamilyItems([
     ...structuredIngredientsInciItems,
     ...parsedRawIngredientItems,
   ]);

@@ -17,6 +17,7 @@ import {
   isLikelyHeadingParagraph,
   splitParagraphs,
 } from '@/features/pdp/utils/formatDescriptionText';
+import { partitionDetailSections } from '@/features/pdp/utils/detailSections';
 import { buildOverviewContent } from '@/features/pdp/utils/overviewContent';
 
 export function BeautyDetailsSection({
@@ -39,16 +40,11 @@ export function BeautyDetailsSection({
   const heroUrl = media?.items?.[0]?.url || product.image_url;
   const accentImages = media?.items?.slice(1, 3) || [];
   const sections = Array.isArray(data?.sections) ? data.sections : [];
-  const storySectionIndex = sections.findIndex((section) =>
-    /brand|story/i.test(section.heading),
-  );
-  const storySection =
-    storySectionIndex >= 0 ? sections[storySectionIndex] : undefined;
-  const remainingSections =
-    storySectionIndex >= 0
-      ? sections.filter((_, idx) => idx !== storySectionIndex)
-      : sections;
-  const overviewSourceSection = remainingSections[0];
+  const {
+    overviewSection: overviewSourceSection,
+    supplementalSections: factsSections,
+    brandStorySection: storySection,
+  } = partitionDetailSections(sections);
   const overviewContent = buildOverviewContent({
     description: product.description,
     section: overviewSourceSection,
@@ -56,7 +52,6 @@ export function BeautyDetailsSection({
   });
   const formattedBrandStory = formatDescriptionText(product.brand_story || storySection?.content);
   const brandStoryParagraphs = splitParagraphs(formattedBrandStory);
-  const factsSections = remainingSections.slice(1);
 
   return (
     <div className="py-4">
