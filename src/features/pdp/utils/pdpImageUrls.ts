@@ -38,7 +38,7 @@ function rewriteKnownSdcdnMirror(parsed: URL): URL {
 
   if (
     isKnownRemoteHost(next.hostname, ['cdn.shopify.com', 'shopifycdn.com']) &&
-    /^tf_/i.test(filename)
+    /^tfb?_/i.test(filename)
   ) {
     const mirror = new URL(`https://sdcdn.io/tf/${filename}`);
     mirror.searchParams.set('height', '1400px');

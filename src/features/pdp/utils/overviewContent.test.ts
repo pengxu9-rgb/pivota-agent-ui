@@ -67,4 +67,42 @@ describe('buildOverviewContent', () => {
     expect(content?.highlights.join(' ')).toMatch(/Free from Formaldehyde/i);
     expect(content?.body).toEqual([]);
   });
+
+  it('maps heading and value paragraphs into stable facts and highlights', () => {
+    const content = buildOverviewContent({
+      description: `
+        The formula merges hydrating skincare ingredients with imperfection-blurring makeup technology.
+
+        FINISH
+
+        Matte, Natural/Satin
+
+        COVERAGE
+
+        Buildable, Full
+
+        BENEFITS
+
+        - Soft-focus powders offer a natural, soft-matte finish
+        - Weightless spherical powders provide comfortable, non-drying wear
+      `,
+      hideStructuredDuplicates: true,
+    });
+
+    expect(content).not.toBeNull();
+    expect(content?.summary).toContain('imperfection-blurring makeup technology');
+    expect(content?.facts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ label: 'Finish', value: 'Matte, Natural/Satin' }),
+        expect.objectContaining({ label: 'Coverage', value: 'Buildable, Full' }),
+      ]),
+    );
+    expect(content?.facts.filter((item) => item.label === 'Finish')).toHaveLength(1);
+    expect(content?.highlights).toEqual(
+      expect.arrayContaining([
+        'Soft-focus powders offer a natural, soft-matte finish',
+        'Weightless spherical powders provide comfortable, non-drying wear',
+      ]),
+    );
+  });
 });
