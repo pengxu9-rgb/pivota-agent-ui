@@ -336,7 +336,7 @@ describe('PdpContainer recommendations interactions', () => {
         expect.objectContaining({
           product_id: 'P_SIMILAR_001',
           merchant_id: 'external_seed',
-          limit: 12,
+          limit: 24,
           timeout_ms: 7000,
         }),
       );

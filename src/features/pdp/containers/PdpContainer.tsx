@@ -347,7 +347,11 @@ function computeSimilarFetchLimit(targetVisibleCount: number): number {
     SIMILAR_PAGE_SIZE,
     Math.min(Math.floor(targetVisibleCount), SIMILAR_MAX),
   );
-  return Math.min(SIMILAR_MAX, Math.max(safeTarget, safeTarget + SIMILAR_PAGE_SIZE));
+  const exploratoryFloor = Math.min(SIMILAR_MAX, SIMILAR_VIEW_ALL_MIN * 2);
+  return Math.min(
+    SIMILAR_MAX,
+    Math.max(safeTarget + SIMILAR_PAGE_SIZE, exploratoryFloor),
+  );
 }
 
 function normalizeSimilarMetadata(
