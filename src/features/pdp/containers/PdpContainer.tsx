@@ -788,14 +788,17 @@ export function PdpContainer({
 
   const baseMediaItems = useMemo(() => media?.items ?? [], [media]);
   const galleryItems: MediaItem[] = useMemo(
-    () => getStableGalleryItems(baseMediaItems),
-    [baseMediaItems],
+    () => getStableGalleryItems({
+      items: baseMediaItems,
+      variants,
+      selectedVariantId,
+    }),
+    [baseMediaItems, selectedVariantId, variants],
   );
   const galleryData = useMemo(() => ({ items: galleryItems }), [galleryItems]);
 
   const heroUrl = resolveHeroMediaUrl({
     activeMediaIndex,
-    selectedVariantImageUrl: selectedVariant?.image_url || null,
     galleryItems,
     fallbackUrl: payload.product.image_url || '',
   });
