@@ -226,6 +226,7 @@ function StarRating({ value }: { value: number }) {
 const SIMILAR_PAGE_SIZE = 6;
 const SIMILAR_VIEW_ALL_MIN = 12;
 const SIMILAR_MAX = 30;
+const SIMILAR_FETCH_TIMEOUT_MS = 7000;
 
 function toFiniteNumber(value: unknown): number | null {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
@@ -335,6 +336,20 @@ function mergeRecommendationItems(
   return { items: merged, added: merged.length - before };
 }
 
+function dedupeRecommendationItems(
+  items: RecommendationsData['items'],
+): RecommendationsData['items'] {
+  return mergeRecommendationItems([], items).items;
+}
+
+function computeSimilarFetchLimit(targetVisibleCount: number): number {
+  const safeTarget = Math.max(
+    SIMILAR_PAGE_SIZE,
+    Math.min(Math.floor(targetVisibleCount), SIMILAR_MAX),
+  );
+  return Math.min(SIMILAR_MAX, Math.max(safeTarget, safeTarget + SIMILAR_PAGE_SIZE));
+}
+
 function normalizeSimilarMetadata(
   metadata:
     | FindSimilarProductsResponse['metadata']
@@ -369,6 +384,31 @@ function normalizeSimilarMetadata(
     ...(normalizedMix && (normalizedMix.internal != null || normalizedMix.external != null)
       ? { retrieval_mix: normalizedMix }
       : {}),
+  };
+}
+
+function getInitialSimilarState(payload: PDPPayload): {
+  items: RecommendationsData['items'];
+  strategy: string;
+  metadata: RecommendationsData['metadata'] | null;
+  rawCount: number;
+} {
+  const payloadRecommendations = getModuleData<RecommendationsData>(payload, 'recommendations');
+  const recommendationCurrencyFallback =
+    payload.product.price?.current.currency || payload.product.price?.compare_at?.currency || 'USD';
+  const rawItems = normalizeRecommendationItems(
+    payloadRecommendations?.items || [],
+    recommendationCurrencyFallback,
+  );
+
+  return {
+    items: dedupeRecommendationItems(rawItems),
+    strategy:
+      typeof payloadRecommendations?.strategy === 'string' && payloadRecommendations.strategy.trim()
+        ? payloadRecommendations.strategy
+        : 'related_products',
+    metadata: normalizeSimilarMetadata(payloadRecommendations?.metadata),
+    rawCount: Array.isArray(payloadRecommendations?.items) ? payloadRecommendations.items.length : 0,
   };
 }
 
@@ -441,14 +481,6 @@ export function PdpContainer({
   const [ugcQuestions, setUgcQuestions] = useState<QuestionListItem[]>([]);
   const questionsFetchedProductIdRef = useRef<string>('');
   const latestProductGroupIdRef = useRef<string | null>(null);
-  const [similarItems, setSimilarItems] = useState<RecommendationsData['items']>([]);
-  const [similarVisibleCount, setSimilarVisibleCount] = useState(SIMILAR_PAGE_SIZE);
-  const [similarHasMore, setSimilarHasMore] = useState(true);
-  const [similarLoadingMore, setSimilarLoadingMore] = useState(false);
-  const [similarSheetOpen, setSimilarSheetOpen] = useState(false);
-  const [similarStrategy, setSimilarStrategy] = useState('related_products');
-  const [similarMetadata, setSimilarMetadata] = useState<RecommendationsData['metadata'] | null>(null);
-  const similarResetProductIdRef = useRef<string>('');
 
   const variants = useMemo(() => payload.product.variants ?? [], [payload.product.variants]);
 
@@ -495,12 +527,27 @@ export function PdpContainer({
   const howToUse = getModuleData<HowToUseData>(payload, 'how_to_use');
   const reviews = getModuleData<ReviewsPreviewData>(payload, 'reviews_preview');
   const payloadRecommendations = getModuleData<RecommendationsData>(payload, 'recommendations');
+  const payloadRecommendationItemCount = Array.isArray(payloadRecommendations?.items)
+    ? payloadRecommendations.items.length
+    : 0;
   const recommendationCurrencyFallback =
     payload.product.price?.current.currency || payload.product.price?.compare_at?.currency || 'USD';
+  const initialSimilarState = getInitialSimilarState(payload);
   const promoDismissStorageKey = useMemo(
     () => `pdp_promo_dismissed:${payload.product.product_id}`,
     [payload.product.product_id],
   );
+  const [similarItems, setSimilarItems] =
+    useState<RecommendationsData['items']>(initialSimilarState.items);
+  const [similarVisibleCount, setSimilarVisibleCount] = useState(SIMILAR_PAGE_SIZE);
+  const [similarHasMore, setSimilarHasMore] = useState(initialSimilarState.rawCount < SIMILAR_MAX);
+  const [similarLoadingMore, setSimilarLoadingMore] = useState(false);
+  const [similarSheetOpen, setSimilarSheetOpen] = useState(false);
+  const [similarStrategy, setSimilarStrategy] = useState(initialSimilarState.strategy);
+  const [similarMetadata, setSimilarMetadata] =
+    useState<RecommendationsData['metadata'] | null>(initialSimilarState.metadata);
+  const similarResetProductIdRef = useRef<string>('');
+  const similarBootstrapFillRef = useRef<string>('');
 
   const offers = useMemo(() => payload.offers ?? [], [payload.offers]);
   const internalFirstDefaultOfferId = useMemo(
@@ -642,22 +689,15 @@ export function PdpContainer({
     if (similarResetProductIdRef.current === payload.product.product_id) return;
     similarResetProductIdRef.current = payload.product.product_id;
 
-    const initialItems = normalizeRecommendationItems(
-      payloadRecommendations?.items || [],
-      recommendationCurrencyFallback,
-    );
-    const initialStrategy =
-      typeof payloadRecommendations?.strategy === 'string' && payloadRecommendations.strategy.trim()
-        ? payloadRecommendations.strategy
-        : 'related_products';
-    const initialMetadata = normalizeSimilarMetadata(payloadRecommendations?.metadata);
-    setSimilarItems(initialItems);
-    setSimilarStrategy(initialStrategy);
-    setSimilarMetadata(initialMetadata);
+    const initialSimilarState = getInitialSimilarState(payload);
+    setSimilarItems(initialSimilarState.items);
+    setSimilarStrategy(initialSimilarState.strategy);
+    setSimilarMetadata(initialSimilarState.metadata);
     setSimilarVisibleCount(SIMILAR_PAGE_SIZE);
-    setSimilarHasMore(initialItems.length < SIMILAR_MAX);
+    setSimilarHasMore(initialSimilarState.rawCount < SIMILAR_MAX);
     setSimilarLoadingMore(false);
     setSimilarSheetOpen(false);
+    similarBootstrapFillRef.current = '';
   }, [
     payload.product.product_id,
     payloadRecommendations?.items,
@@ -1237,11 +1277,15 @@ export function PdpContainer({
   latestProductGroupIdRef.current = productGroupId;
 
   const loadMoreSimilarWithTarget = useCallback(
-    async (targetVisibleCount: number) => {
+    async (
+      targetVisibleCount: number,
+      options?: { silent?: boolean },
+    ) => {
       const safeTarget = Math.max(
         SIMILAR_PAGE_SIZE,
         Math.min(Math.floor(targetVisibleCount), SIMILAR_MAX),
       );
+      const fetchLimit = computeSimilarFetchLimit(safeTarget);
 
       if (safeTarget <= similarItems.length) {
         setSimilarVisibleCount((prev) => Math.max(prev, safeTarget));
@@ -1255,8 +1299,8 @@ export function PdpContainer({
         const response = await findSimilarProducts({
           product_id: productId,
           ...(merchantId ? { merchant_id: merchantId } : {}),
-          limit: safeTarget,
-          timeout_ms: 3500,
+          limit: fetchLimit,
+          timeout_ms: SIMILAR_FETCH_TIMEOUT_MS,
         });
 
         const incomingItems = normalizeRecommendationItems(
@@ -1298,7 +1342,9 @@ export function PdpContainer({
 
         return true;
       } catch {
-        toast.error('Unable to load more recommendations. Please try again.');
+        if (!options?.silent) {
+          toast.error('Unable to load more recommendations. Please try again.');
+        }
         return false;
       } finally {
         setSimilarLoadingMore(false);
@@ -1312,6 +1358,26 @@ export function PdpContainer({
       similarLoadingMore,
     ],
   );
+
+  useEffect(() => {
+    if (!productId) return;
+    if (payloadRecommendationItemCount < SIMILAR_PAGE_SIZE) return;
+    if (similarItems.length >= SIMILAR_PAGE_SIZE) return;
+    if (similarLoadingMore) return;
+
+    const refillKey = `${productId}:${merchantId || ''}:${payloadRecommendationItemCount}:${similarItems.length}`;
+    if (similarBootstrapFillRef.current === refillKey) return;
+    similarBootstrapFillRef.current = refillKey;
+
+    void loadMoreSimilarWithTarget(SIMILAR_PAGE_SIZE, { silent: true });
+  }, [
+    loadMoreSimilarWithTarget,
+    merchantId,
+    payloadRecommendationItemCount,
+    productId,
+    similarItems.length,
+    similarLoadingMore,
+  ]);
 
   const handleOpenSimilarAll = useCallback(async () => {
     setSimilarSheetOpen(true);

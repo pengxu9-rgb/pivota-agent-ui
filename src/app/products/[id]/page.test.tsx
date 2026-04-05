@@ -15,6 +15,7 @@ const mapPdpV2ToPdpPayloadMock = vi.fn();
 const mapToPdpPayloadMock = vi.fn();
 const addItemMock = vi.fn();
 const openCartMock = vi.fn();
+let authUser: { id: string } | null = null;
 
 let searchParamsValue = '';
 
@@ -50,8 +51,8 @@ vi.mock('@/store/cartStore', () => ({
 }));
 
 vi.mock('@/store/authStore', () => ({
-  useAuthStore: (selector?: (state: { user: null }) => unknown) => {
-    const state = { user: null };
+  useAuthStore: (selector?: (state: { user: { id: string } | null }) => unknown) => {
+    const state = { user: authUser };
     return typeof selector === 'function' ? selector(state) : state;
   },
 }));
@@ -174,6 +175,7 @@ describe('ProductDetailPage canonical PDP loading', () => {
     mapToPdpPayloadMock.mockReset();
     addItemMock.mockReset();
     openCartMock.mockReset();
+    authUser = null;
 
     getPdpV2PersonalizationMock.mockResolvedValue({});
     recordBrowseHistoryEventMock.mockResolvedValue(null);
@@ -274,5 +276,16 @@ describe('ProductDetailPage canonical PDP loading', () => {
       }),
     );
     expect(resolveProductCandidatesMock).not.toHaveBeenCalled();
+  });
+
+  it('does not post remote browse history events for guests', async () => {
+    getPdpV2Mock.mockResolvedValue({ status: 'success', modules: [] });
+
+    renderPage();
+
+    await screen.findByTestId('generic-pdp');
+    await waitFor(() => {
+      expect(recordBrowseHistoryEventMock).not.toHaveBeenCalled();
+    });
   });
 });

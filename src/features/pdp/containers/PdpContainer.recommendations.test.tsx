@@ -292,4 +292,58 @@ describe('PdpContainer recommendations interactions', () => {
     });
     expect(screen.getAllByText('Electric Cherry Eau de Parfum')).toHaveLength(1);
   });
+
+  it('backfills deduped first-fold recommendations back to six visible items', async () => {
+    findSimilarProductsMock.mockResolvedValue({
+      strategy: 'related_products',
+      products: buildSimilar(12),
+      total: 12,
+    });
+
+    const underfilledPayload: PDPPayload = {
+      ...payload,
+      modules: payload.modules.map((module) =>
+        module.type !== 'recommendations'
+          ? module
+          : {
+              ...module,
+              data: {
+                strategy: 'related_products',
+                items: [
+                  { product_id: 'dup_1a', merchant_id: 'external_seed', title: 'Product 1', image_url: 'https://example.com/dup_1a.jpg', price: { amount: 99, currency: 'USD' } },
+                  { product_id: 'dup_1b', merchant_id: 'external_seed', title: 'Product 1', image_url: 'https://example.com/dup_1b.jpg', price: { amount: 99, currency: 'USD' } },
+                  { product_id: 'dup_2a', merchant_id: 'external_seed', title: 'Product 2', image_url: 'https://example.com/dup_2a.jpg', price: { amount: 100, currency: 'USD' } },
+                  { product_id: 'dup_2b', merchant_id: 'external_seed', title: 'Product 2', image_url: 'https://example.com/dup_2b.jpg', price: { amount: 100, currency: 'USD' } },
+                  { product_id: 'dup_3a', merchant_id: 'external_seed', title: 'Product 3', image_url: 'https://example.com/dup_3a.jpg', price: { amount: 101, currency: 'USD' } },
+                  { product_id: 'dup_3b', merchant_id: 'external_seed', title: 'Product 3', image_url: 'https://example.com/dup_3b.jpg', price: { amount: 101, currency: 'USD' } },
+                ],
+              },
+            },
+      ),
+    };
+
+    render(
+      <PdpContainer
+        payload={underfilledPayload}
+        mode="generic"
+        onAddToCart={() => {}}
+        onBuyNow={() => {}}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(findSimilarProductsMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          product_id: 'P_SIMILAR_001',
+          merchant_id: 'external_seed',
+          limit: 12,
+          timeout_ms: 7000,
+        }),
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('Product 6')).toBeInTheDocument();
+    });
+  });
 });

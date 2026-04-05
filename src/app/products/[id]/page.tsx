@@ -416,7 +416,8 @@ export default function ProductDetailPage({ params }: Props) {
   const offerProductDetailCacheRef = useRef<Map<string, ProductResponse>>(new Map());
   const offersFetchKeyRef = useRef<string | null>(null);
   const reviewsSimilarFetchKeyRef = useRef<string | null>(null);
-  const browseHistoryRecordedRef = useRef<string | null>(null);
+  const localBrowseHistoryRecordedRef = useRef<string | null>(null);
+  const remoteBrowseHistoryRecordedRef = useRef<string | null>(null);
   const moduleSourceLocksRef = useRef({ ...DEFAULT_MODULE_SOURCE_LOCKS });
   const [ugcCapabilities, setUgcCapabilities] = useState<UgcCapabilities | null>({
     canUploadMedia: false,
@@ -464,8 +465,33 @@ export default function ProductDetailPage({ params }: Props) {
     if (!productId) return;
     const merchantId = String(product?.merchant_id || merchantIdParam || '').trim() || undefined;
     const recordKey = `${productId}::${merchantId || ''}`;
-    if (browseHistoryRecordedRef.current === recordKey) return;
-    browseHistoryRecordedRef.current = recordKey;
+    if (localBrowseHistoryRecordedRef.current !== recordKey) {
+      localBrowseHistoryRecordedRef.current = recordKey;
+
+      const nowMs = Date.now();
+      const rawPrice = product?.price;
+      const normalizedPrice =
+        typeof rawPrice === 'number'
+          ? rawPrice
+          : typeof rawPrice === 'string'
+            ? Number(rawPrice) || 0
+            : Number(rawPrice?.amount) || 0;
+      const title = String(product?.title || 'Untitled product').trim() || 'Untitled product';
+      const description = String(product?.description || '').trim() || undefined;
+      const imageUrl = pickHistoryImage(product);
+
+      upsertLocalBrowseHistory({
+        product_id: productId,
+        merchant_id: merchantId,
+        title,
+        price: normalizedPrice,
+        image: imageUrl,
+        description,
+        timestamp: nowMs,
+      });
+    }
+
+    if (!userId) return;
 
     const nowMs = Date.now();
     const rawPrice = product?.price;
@@ -480,16 +506,9 @@ export default function ProductDetailPage({ params }: Props) {
     const title = String(product?.title || 'Untitled product').trim() || 'Untitled product';
     const description = String(product?.description || '').trim() || undefined;
     const imageUrl = pickHistoryImage(product);
-
-    upsertLocalBrowseHistory({
-      product_id: productId,
-      merchant_id: merchantId,
-      title,
-      price: normalizedPrice,
-      image: imageUrl,
-      description,
-      timestamp: nowMs,
-    });
+    const remoteRecordKey = `${recordKey}::${userId}`;
+    if (remoteBrowseHistoryRecordedRef.current === remoteRecordKey) return;
+    remoteBrowseHistoryRecordedRef.current = remoteRecordKey;
 
     void recordBrowseHistoryEvent({
       product_id: productId,
@@ -503,7 +522,7 @@ export default function ProductDetailPage({ params }: Props) {
     }).catch(() => {
       // keep local history as fallback even when account history API is unavailable
     });
-  }, [pdpPayload, id, merchantIdParam]);
+  }, [pdpPayload, id, merchantIdParam, userId]);
 
   useEffect(() => {
     let cancelled = false;
