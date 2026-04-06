@@ -123,13 +123,7 @@ describe('PdpContainer recommendations interactions', () => {
     findSimilarProductsMock.mockReset();
   });
 
-  it('loads more recommendations in-page', async () => {
-    findSimilarProductsMock.mockResolvedValue({
-      strategy: 'related_products',
-      products: buildSimilar(12).slice(6),
-      has_more: false,
-    });
-
+  it('keeps first-fold similar recommendations on the mainline path', async () => {
     render(
       <PdpContainer
         payload={payload}
@@ -139,36 +133,16 @@ describe('PdpContainer recommendations interactions', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /load more recommendations/i }));
-
     await waitFor(() => {
-      expect(findSimilarProductsMock).toHaveBeenCalled();
+      expect(screen.getByText('Product 6')).toBeInTheDocument();
     });
 
-    expect(findSimilarProductsMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        product_id: 'P_SIMILAR_001',
-        merchant_id: 'external_seed',
-        limit: 6,
-        exclude_items: expect.arrayContaining([
-          expect.objectContaining({ product_id: 'prod_1', merchant_id: 'external_seed', title: 'Product 1' }),
-          expect.objectContaining({ product_id: 'prod_6', merchant_id: 'external_seed', title: 'Product 6' }),
-        ]),
-      }),
-    );
-
-    await waitFor(() => {
-      expect(screen.getByText('Product 12')).toBeInTheDocument();
-    });
+    expect(findSimilarProductsMock).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: /load more recommendations/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^view all$/i })).toBeInTheDocument();
   });
 
-  it('opens View all sheet and fetches more than first fold', async () => {
-    findSimilarProductsMock.mockResolvedValue({
-      strategy: 'related_products',
-      products: buildSimilar(12).slice(6),
-      has_more: false,
-    });
-
+  it('opens View all sheet without hitting legacy similar search', async () => {
     render(
       <PdpContainer
         payload={payload}
@@ -181,23 +155,11 @@ describe('PdpContainer recommendations interactions', () => {
     fireEvent.click(screen.getByRole('button', { name: /view all/i }));
 
     expect(screen.getByText(/all recommendations/i)).toBeInTheDocument();
-
-    await waitFor(() => {
-      expect(findSimilarProductsMock).toHaveBeenCalled();
-    });
-
-    await waitFor(() => {
-      expect(screen.getAllByText('Product 12').length).toBeGreaterThan(0);
-    });
+    expect(screen.getAllByText('Product 6').length).toBeGreaterThan(0);
+    expect(findSimilarProductsMock).not.toHaveBeenCalled();
   });
 
-  it('keeps the sheet load-more CTA pinned outside the scroll body', async () => {
-    findSimilarProductsMock.mockResolvedValue({
-      strategy: 'related_products',
-      products: buildSimilar(12).slice(6),
-      has_more: false,
-    });
-
+  it('does not render a sheet load-more CTA for mainline-only recommendations', async () => {
     render(
       <PdpContainer
         payload={payload}
@@ -209,45 +171,44 @@ describe('PdpContainer recommendations interactions', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /view all/i }));
 
-    const footer = await screen.findByTestId('responsive-sheet-footer');
-    const body = screen.getByTestId('responsive-sheet-body');
-    const loadMoreButton = within(footer).getByRole('button');
-
-    expect(footer).toContainElement(loadMoreButton);
-    expect(body).not.toContainElement(loadMoreButton);
+    expect(screen.queryByRole('button', { name: /load more recommendations/i })).not.toBeInTheDocument();
+    expect(findSimilarProductsMock).not.toHaveBeenCalled();
   });
 
-  it('shows low-confidence hint and stops misleading load-more when backend underfills', async () => {
-    findSimilarProductsMock.mockResolvedValue({
-      strategy: 'related_products',
-      products: buildSimilar(6),
-      metadata: {
-        low_confidence: true,
-        similar_confidence: 'low',
-        low_confidence_reason_codes: ['UNDERFILL_FOR_QUALITY'],
-        underfill: 6,
-        selection_mix: {
-          same_brand_same_category: 0,
-          same_brand_other_category: 4,
-          other_brand_same_category: 2,
-        },
-      },
-    });
-
+  it('shows low-confidence hint from mainline metadata without offering old direct backfill', async () => {
+    const lowConfidencePayload: PDPPayload = {
+      ...payload,
+      modules: payload.modules.map((module) =>
+        module.type !== 'recommendations'
+          ? module
+          : {
+              ...module,
+              data: {
+                strategy: 'related_products',
+                items: buildSimilar(6),
+                metadata: {
+                  low_confidence: true,
+                  similar_confidence: 'low',
+                  low_confidence_reason_codes: ['UNDERFILL_FOR_QUALITY'],
+                  underfill: 6,
+                  selection_mix: {
+                    same_brand_same_category: 0,
+                    same_brand_other_category: 4,
+                    other_brand_same_category: 2,
+                  },
+                },
+              },
+            },
+      ),
+    };
     render(
       <PdpContainer
-        payload={payload}
+        payload={lowConfidencePayload}
         mode="generic"
         onAddToCart={() => {}}
         onBuyNow={() => {}}
       />,
     );
-
-    fireEvent.click(screen.getByRole('button', { name: /load more recommendations/i }));
-
-    await waitFor(() => {
-      expect(findSimilarProductsMock).toHaveBeenCalled();
-    });
 
     await waitFor(() => {
       expect(screen.getByText('Mainline only')).toBeInTheDocument();
@@ -258,9 +219,8 @@ describe('PdpContainer recommendations interactions', () => {
       ).toBeInTheDocument();
     });
 
-    await waitFor(() => {
-      expect(screen.queryByRole('button', { name: /load more recommendations/i })).not.toBeInTheDocument();
-    });
+    expect(screen.queryByRole('button', { name: /load more recommendations/i })).not.toBeInTheDocument();
+    expect(findSimilarProductsMock).not.toHaveBeenCalled();
   });
 
   it('deduplicates repeated recommendation titles from the same merchant', async () => {
@@ -316,13 +276,7 @@ describe('PdpContainer recommendations interactions', () => {
     expect(screen.getAllByText('Electric Cherry Eau de Parfum')).toHaveLength(1);
   });
 
-  it('backfills deduped first-fold recommendations back to six visible items', async () => {
-    findSimilarProductsMock.mockResolvedValue({
-      strategy: 'related_products',
-      products: buildSimilar(9).slice(3),
-      has_more: true,
-    });
-
+  it('does not bootstrap direct similar search when mainline dedupes below six visible items', async () => {
     const underfilledPayload: PDPPayload = {
       ...payload,
       modules: payload.modules.map((module) =>
@@ -355,23 +309,9 @@ describe('PdpContainer recommendations interactions', () => {
     );
 
     await waitFor(() => {
-      expect(findSimilarProductsMock).toHaveBeenCalledWith(
-        expect.objectContaining({
-          product_id: 'P_SIMILAR_001',
-          merchant_id: 'external_seed',
-          limit: 6,
-          exclude_items: expect.arrayContaining([
-            expect.objectContaining({ product_id: 'dup_1a', merchant_id: 'external_seed', title: 'Product 1' }),
-            expect.objectContaining({ product_id: 'dup_2a', merchant_id: 'external_seed', title: 'Product 2' }),
-            expect.objectContaining({ product_id: 'dup_3a', merchant_id: 'external_seed', title: 'Product 3' }),
-          ]),
-          timeout_ms: 7000,
-        }),
-      );
+      expect(screen.getByText('Product 3')).toBeInTheDocument();
     });
-
-    await waitFor(() => {
-      expect(screen.getByText('Product 6')).toBeInTheDocument();
-    });
+    expect(screen.queryByText('Product 6')).not.toBeInTheDocument();
+    expect(findSimilarProductsMock).not.toHaveBeenCalled();
   });
 });
