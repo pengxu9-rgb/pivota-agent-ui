@@ -436,6 +436,43 @@ describe('BrandLandingPage', () => {
     expect(screen.queryByText(/^New$/i)).not.toBeInTheDocument();
   });
 
+  it('uses a data-driven editorial slot when reviews are missing instead of rendering generic newness', async () => {
+    getBrandDiscoveryFeedMock.mockResolvedValue({
+      products: [
+        {
+          product_id: 'prod_1',
+          merchant_id: 'merch_1',
+          title: 'Match Stix Skinstick',
+          description: 'Complexion',
+          category: 'complexion',
+          price: 32,
+          currency: 'USD',
+          image_url: 'https://example.com/1.jpg',
+          in_stock: true,
+          tags: ["editorial: rihanna's pick"],
+        },
+      ],
+      metadata: { has_more: false },
+      query_text: '',
+      page_info: { page: 1, page_size: 1, total: 1, has_more: false },
+    });
+
+    render(
+      <BrandLandingPage
+        slug="fenty-beauty"
+        initialBrandName="Fenty Beauty"
+        initialReturnUrl="/products/ext_123"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Match Stix Skinstick')).toBeInTheDocument();
+    });
+
+    expect(screen.getByText("Rihanna's Pick")).toBeInTheDocument();
+    expect(screen.queryByText(/^New$/i)).not.toBeInTheDocument();
+  });
+
   it('keeps backend-scoped concealer results visible instead of re-filtering them away on the client', async () => {
     const scopedResponse = deferred<{
       products: Array<Record<string, unknown>>;

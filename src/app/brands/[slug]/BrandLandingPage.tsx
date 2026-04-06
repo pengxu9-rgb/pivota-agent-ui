@@ -6,7 +6,6 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowLeft,
-  DollarSign,
   Plus,
   Search,
   ShoppingBag,
@@ -60,6 +59,17 @@ type BrandStory = {
   quote: string;
   author?: string;
 };
+
+type ProductCardMeta =
+  | {
+      kind: 'review';
+      rating: number | null;
+      reviewCount: number;
+    }
+  | {
+      kind: 'editorial';
+      label: string;
+    };
 
 function buildProductKey(product: ProductResponse): string {
   return `${String(product?.merchant_id || '').trim()}::${String(product?.product_id || '').trim()}`;
@@ -197,6 +207,21 @@ function formatCategoryLabel(label: string): string {
     .replace(/\b\w/g, (match) => match.toUpperCase());
 }
 
+function toReadableLabel(value: string): string {
+  return value
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function toTitleCase(value: string): string {
+  return toReadableLabel(value)
+    .split(' ')
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(' ');
+}
+
 function normalizeCategoryScopeValue(value: string | null | undefined): string | null {
   const trimmed = String(value || '').trim();
   if (!trimmed) return null;
@@ -324,10 +349,75 @@ function resolveProductBadge(product: ProductResponse): string | null {
   if (rawTags.some((tag) => /(best seller|bestseller|iconic|top rated|top-rated)/.test(tag))) {
     return 'Bestseller';
   }
-  if ((rating || 0) >= 4.6 && reviewCount >= 25) return 'Bestseller';
-  if (reviewCount > 0) {
-    return `${formatCompactCount(reviewCount)} Reviews`;
+  if (rawTags.some((tag) => /(trending|viral|hot item|fan favorite|editor'?s pick)/.test(tag))) {
+    return 'Trending';
   }
+  if ((rating || 0) >= 4.6 && reviewCount >= 25) return 'Bestseller';
+  return null;
+}
+
+function readConfiguredMerchSlot(product: ProductResponse): string | null {
+  const tags = Array.isArray(product.tags)
+    ? product.tags.map((tag) => String(tag || '').trim()).filter(Boolean)
+    : [];
+
+  for (const tag of tags) {
+    const match = tag.match(/^(?:editorial|callout|spotlight|merch|badge|featured)\s*:\s*(.+)$/i);
+    if (match?.[1]) return toTitleCase(match[1]).slice(0, 40);
+  }
+
+  const rawDetail = product.raw_detail && typeof product.raw_detail === 'object'
+    ? (product.raw_detail as Record<string, any>)
+    : null;
+  const attributes = product.attributes && typeof product.attributes === 'object'
+    ? (product.attributes as Record<string, any>)
+    : null;
+  const merchandising = rawDetail?.merchandising && typeof rawDetail.merchandising === 'object'
+    ? (rawDetail.merchandising as Record<string, any>)
+    : null;
+
+  const candidates = [
+    merchandising?.card_callout,
+    merchandising?.card_label,
+    merchandising?.editorial_badge,
+    merchandising?.badge,
+    attributes?.card_callout,
+    attributes?.card_label,
+    attributes?.editorial_badge,
+    attributes?.badge,
+    rawDetail?.card_callout,
+    rawDetail?.card_label,
+    rawDetail?.editorial_badge,
+    rawDetail?.badge,
+  ];
+
+  for (const candidate of candidates) {
+    const value = String(candidate || '').trim();
+    if (value) return toTitleCase(value).slice(0, 40);
+  }
+
+  return null;
+}
+
+function resolveProductCardMeta(product: ProductResponse): ProductCardMeta | null {
+  const { rating, reviewCount } = getReviewMeta(product);
+
+  if (reviewCount > 0) {
+    return {
+      kind: 'review',
+      rating,
+      reviewCount,
+    };
+  }
+
+  const configuredLabel = readConfiguredMerchSlot(product);
+  if (configuredLabel) {
+    return {
+      kind: 'editorial',
+      label: configuredLabel,
+    };
+  }
+
   return null;
 }
 
@@ -396,8 +486,7 @@ function BrandProductCard({ product }: { product: ProductResponse }) {
 
   const href = buildProductHref(product.product_id, product.merchant_id);
   const badge = resolveProductBadge(product);
-  const { rating, reviewCount } = getReviewMeta(product);
-  const hasReviewMeta = (rating || 0) > 0 && reviewCount > 0;
+  const cardMeta = resolveProductCardMeta(product);
   const isDirectCartEligible =
     Boolean(product.merchant_id) &&
     product.merchant_id !== 'external_seed' &&
@@ -438,7 +527,7 @@ function BrandProductCard({ product }: { product: ProductResponse }) {
   return (
     <div className="group relative">
       <Link href={href} prefetch={false} className="block h-full">
-        <article className="h-full overflow-hidden rounded-[18px] border border-[#f1ebe4] bg-white shadow-[0_8px_24px_rgba(15,23,42,0.05)] transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_14px_28px_rgba(15,23,42,0.08)]">
+        <article className="h-full overflow-hidden rounded-[16px] border border-[#f3ede5] bg-white shadow-[0_6px_18px_rgba(15,23,42,0.045)] transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_12px_22px_rgba(15,23,42,0.07)]">
           <div className="relative aspect-[4/5] overflow-hidden bg-[#f7f3ee]">
             <Image
               src={imageSrc}
@@ -452,27 +541,41 @@ function BrandProductCard({ product }: { product: ProductResponse }) {
             />
 
             {badge ? (
-              <span className="absolute left-2.5 top-2.5 rounded-md bg-white/95 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-700 shadow-sm">
+              <span className="absolute left-2 top-2 rounded-md bg-white/96 px-1.5 py-0.5 text-[8.5px] font-semibold uppercase tracking-[0.12em] text-slate-700 shadow-sm">
                 {badge}
               </span>
             ) : null}
           </div>
 
-          <div className="space-y-1.5 p-3 pr-11 sm:space-y-1.5 sm:p-3.5 sm:pr-11">
-            {hasReviewMeta ? (
-              <div className="flex min-h-[0.875rem] items-center gap-1 text-[11px] text-slate-500">
-                <Star className="h-3 w-3 fill-[#f6c548] text-[#f6c548]" />
-                <span className="font-semibold text-slate-700">{rating?.toFixed(1)}</span>
-                <span className="text-[#8c96a8]">({formatCompactCount(reviewCount)})</span>
-              </div>
+          <div className="space-y-1 p-2.5 pr-10 sm:p-3 sm:pr-10">
+            {cardMeta ? (
+              cardMeta.kind === 'review' ? (
+                <div className="flex items-center gap-1 text-[10px] text-slate-500">
+                  {cardMeta.rating ? (
+                    <>
+                      <Star className="h-2.5 w-2.5 fill-[#f6c548] text-[#f6c548]" />
+                      <span className="font-semibold text-slate-700">{cardMeta.rating.toFixed(1)}</span>
+                    </>
+                  ) : null}
+                  <span className="text-[#8c96a8]">
+                    {cardMeta.rating
+                      ? `(${formatCompactCount(cardMeta.reviewCount)})`
+                      : `${formatCompactCount(cardMeta.reviewCount)} reviews`}
+                  </span>
+                </div>
+              ) : (
+                <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[#8a5cf6]">
+                  {cardMeta.label}
+                </p>
+              )
             ) : null}
 
-            <h3 className="min-h-[2.95rem] line-clamp-3 text-[13px] font-medium leading-[1rem] text-[#202531] sm:text-[13.5px] sm:leading-[1.05rem]">
+            <h3 className="min-h-[2.7rem] line-clamp-3 text-[12px] font-medium leading-[0.92rem] tracking-[-0.01em] text-[#202531] sm:text-[12.5px] sm:leading-[0.98rem]">
               {product.title}
             </h3>
 
             <div>
-              <p className="text-[15px] font-semibold tracking-[-0.01em] text-[#111827] sm:text-[15.5px]">
+              <p className="text-[14px] font-semibold tracking-[-0.015em] text-[#111827] sm:text-[14.5px]">
                 {formatPrice(product.price, product.currency)}
               </p>
             </div>
@@ -483,12 +586,12 @@ function BrandProductCard({ product }: { product: ProductResponse }) {
       <button
         type="button"
         onClick={handleQuickAction}
-        className="absolute bottom-3 right-3 inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#e6e0d7] bg-white text-slate-700 shadow-[0_6px_14px_rgba(15,23,42,0.1)] transition hover:scale-105 hover:text-slate-950"
+        className="absolute bottom-2.5 right-2.5 inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#e6e0d7] bg-white text-slate-700 shadow-[0_4px_12px_rgba(15,23,42,0.1)] transition hover:scale-105 hover:text-slate-950"
         aria-label={
           isDirectCartEligible ? `Quick add ${product.title}` : `View details for ${product.title}`
         }
       >
-        <Plus className="h-3.5 w-3.5" />
+        <Plus className="h-3.25 w-3.25" />
       </button>
     </div>
   );
@@ -830,22 +933,14 @@ export function BrandLandingPage({
           isScrolled ? 'shadow-sm' : ''
         }`}
       >
-        <div className="mx-auto flex h-12 max-w-6xl items-center justify-between px-4 sm:h-14 sm:px-6 lg:px-8">
+        <div className="mx-auto flex h-11 max-w-6xl items-center justify-between px-4 sm:h-12 sm:px-6 lg:px-8">
           <a
             href={returnHref}
-            className="inline-flex h-9 w-9 items-center justify-center rounded-full text-slate-600 transition hover:text-slate-950"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-full text-slate-600 transition hover:text-slate-950"
             aria-label="Back"
           >
-            <ArrowLeft className="h-3.5 w-3.5" />
+            <ArrowLeft className="h-3.5 w-3.5" strokeWidth={2.2} />
           </a>
-
-          <Link
-            href="/"
-            className="absolute left-1/2 inline-flex -translate-x-1/2 items-center gap-1 text-[18px] font-semibold tracking-[-0.02em] text-[#1f2937]"
-          >
-            <DollarSign className="h-3.5 w-3.5 text-[#4f7cff]" strokeWidth={2.4} />
-            <span className="text-[17px] font-semibold tracking-[-0.03em]">Pivota</span>
-          </Link>
 
           <div className="flex items-center gap-2">
             <button
@@ -854,19 +949,19 @@ export function BrandLandingPage({
                 setIsSearchOpen((current) => !current);
                 setIsFilterOpen(false);
               }}
-              className="inline-flex h-9 w-9 items-center justify-center rounded-full text-slate-600 transition hover:text-slate-950"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-full text-slate-600 transition hover:text-slate-950"
               aria-label={isSearchOpen ? 'Close brand search' : 'Open brand search'}
             >
-              {isSearchOpen ? <X className="h-3.5 w-3.5" /> : <Search className="h-3.5 w-3.5" />}
+              {isSearchOpen ? <X className="h-3.25 w-3.25" /> : <Search className="h-3.25 w-3.25" />}
             </button>
 
             <button
               type="button"
               onClick={openCart}
-              className="relative inline-flex h-9 w-9 items-center justify-center rounded-full text-slate-600 transition hover:text-slate-950"
+              className="relative inline-flex h-8 w-8 items-center justify-center rounded-full text-slate-600 transition hover:text-slate-950"
               aria-label="Open cart"
             >
-              <ShoppingBag className="h-3.5 w-3.5" />
+              <ShoppingBag className="h-3.25 w-3.25" />
               {cartItemCount > 0 ? (
                 <span className="absolute -right-0.5 -top-0.5 inline-flex min-h-4 min-w-4 items-center justify-center rounded-full bg-[#c16cf3] px-1 text-[9px] font-semibold text-white">
                   {cartItemCount > 99 ? '99+' : cartItemCount}
@@ -913,66 +1008,66 @@ export function BrandLandingPage({
           animate={{ opacity: 1, y: 0 }}
           className="flex flex-col gap-4"
         >
-          <section className="flex items-start justify-between gap-3 px-1 py-1 sm:items-center">
-            <div className="min-w-0 space-y-1.5">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-[#98a2b3]">
+          <section className="flex items-start justify-between gap-3 px-1 py-0.5 sm:items-center">
+            <div className="min-w-0 space-y-1">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#98a2b3]">
                 Official Brand
               </p>
-              <h1 className="text-[1.8rem] font-semibold tracking-[-0.04em] text-[#111827] sm:text-[2.2rem]">
+              <h1 className="text-[1.6rem] font-semibold tracking-[-0.045em] text-[#111827] sm:text-[1.95rem]">
                 {brandName || 'Brand'}
               </h1>
-              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-[#667085]">
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] leading-none text-[#667085]">
                 {typeof displayTotal === 'number' ? (
                   <p>{displayTotal} products across sellers</p>
                 ) : (
                   <div className="h-3.5 w-32 animate-pulse rounded-full bg-[#ece5dd]" aria-hidden />
                 )}
                 {isRefreshing ? (
-                  <span className="inline-flex items-center rounded-full bg-[#f3efff] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#7c3aed]">
+                    <span className="inline-flex items-center rounded-full bg-[#f3efff] px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.12em] text-[#7c3aed]">
                     Updating
                   </span>
                 ) : null}
               </div>
-              {subtitle ? <p className="max-w-2xl text-[13px] text-[#667085]">{subtitle}</p> : null}
+              {subtitle ? <p className="max-w-2xl text-[12px] text-[#667085]">{subtitle}</p> : null}
               {activeQuery ? (
-                <p className="text-[13px] text-[#667085]">
+                <p className="text-[12px] text-[#667085]">
                   Showing results for <span className="font-medium text-slate-900">“{activeQuery}”</span>
                 </p>
               ) : null}
             </div>
 
-            <div className="relative mt-1 h-14 w-14 shrink-0 overflow-hidden rounded-full border border-[#e5e7eb] bg-[#dfe8db] shadow-[0_6px_14px_rgba(15,23,42,0.06)] sm:h-16 sm:w-16">
+            <div className="relative mt-1 h-12 w-12 shrink-0 overflow-hidden rounded-full border border-[#e5e7eb] bg-[#dfe8db] shadow-[0_6px_14px_rgba(15,23,42,0.06)] sm:h-14 sm:w-14">
               {brandAvatarUrl ? (
                 <Image src={brandAvatarUrl} alt={brandName} fill unoptimized className="object-cover" />
               ) : (
-                <div className="flex h-full w-full items-center justify-center text-base font-semibold text-[#334155]">
+                <div className="flex h-full w-full items-center justify-center text-sm font-semibold text-[#334155]">
                   {getBrandInitials(brandName)}
                 </div>
               )}
             </div>
           </section>
 
-          <section className="sticky top-12 z-40 -mx-4 border-y border-[#f1ebe3] bg-white/96 px-4 py-2.5 backdrop-blur sm:top-14 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
-            <div className="mx-auto flex max-w-6xl items-center gap-2.5">
+          <section className="sticky top-11 z-40 -mx-4 border-y border-[#f1ebe3] bg-white/96 px-4 py-2 backdrop-blur sm:top-12 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
+            <div className="mx-auto flex max-w-6xl items-center gap-2">
               <button
                 type="button"
                 onClick={() => {
                   setIsFilterOpen((current) => !current);
                   setIsSearchOpen(false);
                 }}
-                className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-xl border border-[#ece5dd] bg-[#f8f5f1] px-3 text-[13px] font-semibold text-[#4b5563] shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition hover:bg-[#f4f0ea]"
+                className="inline-flex h-8 shrink-0 items-center gap-1 rounded-xl border border-[#ece5dd] bg-[#f8f5f1] px-2.5 text-[12px] font-semibold tracking-[-0.01em] text-[#4b5563] shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition hover:bg-[#f4f0ea]"
               >
-                <SlidersHorizontal className="h-3.5 w-3.5" />
+                <SlidersHorizontal className="h-3.25 w-3.25" />
                 Filter
                 {activeFilterCount > 0 ? (
-                  <span className="inline-flex min-w-4 items-center justify-center rounded-full bg-white px-1.5 text-[10px] font-semibold text-[#6d28d9]">
+                  <span className="inline-flex min-w-4 items-center justify-center rounded-full bg-white px-1 text-[9px] font-semibold text-[#6d28d9]">
                     {activeFilterCount}
                   </span>
                 ) : null}
               </button>
 
               <div className="flex-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                <div className="flex min-w-max items-center gap-1.5 pr-1">
+                <div className="flex min-w-max items-center gap-1 pr-1">
                   {categoryChips.map((chip) => {
                     const selected =
                       chip.scopeValue === activeCategory || (!chip.scopeValue && !activeCategory);
@@ -981,7 +1076,7 @@ export function BrandLandingPage({
                         key={chip.key}
                         type="button"
                         onClick={() => setActiveCategory(chip.scopeValue)}
-                        className={`inline-flex h-9 items-center gap-1 rounded-full border px-3 text-[13px] font-semibold transition ${
+                        className={`inline-flex h-8 items-center gap-1 rounded-full border px-2.5 text-[12px] font-semibold tracking-[-0.01em] transition ${
                           selected
                             ? 'border-transparent bg-gradient-to-r from-[#8f57ff] via-[#a35cff] to-[#4f7cff] text-white shadow-[0_10px_24px_rgba(143,87,255,0.28)]'
                             : 'border-[#e8e1d7] bg-white text-[#667085] hover:border-[#d9d1c6]'
@@ -989,7 +1084,7 @@ export function BrandLandingPage({
                       >
                         <span>{chip.label}</span>
                         {typeof chip.count === 'number' ? (
-                          <span className={`text-[11px] ${selected ? 'text-white/78' : 'text-[#98a2b3]'}`}>
+                          <span className={`text-[10px] ${selected ? 'text-white/78' : 'text-[#98a2b3]'}`}>
                             {chip.count}
                           </span>
                         ) : null}
@@ -1007,10 +1102,10 @@ export function BrandLandingPage({
               >
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
                       Filter products
                     </p>
-                    <p className="mt-1 text-[13px] text-slate-500">
+                    <p className="mt-1 text-[12px] text-slate-500">
                       Narrow this brand feed with real category scope and sort.
                     </p>
                   </div>
@@ -1021,7 +1116,7 @@ export function BrandLandingPage({
                         setActiveCategory(null);
                         setSort('popular');
                       }}
-                      className="text-sm font-medium text-slate-500 transition hover:text-slate-900"
+                      className="text-[12px] font-medium text-slate-500 transition hover:text-slate-900"
                     >
                       Clear all
                     </button>
@@ -1030,14 +1125,14 @@ export function BrandLandingPage({
 
                 {filterCategoryChips.length ? (
                   <div className="mt-4">
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                      Category
-                    </p>
-                    <div className="mt-3 flex flex-wrap gap-2">
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+                        Category
+                      </p>
+                      <div className="mt-3 flex flex-wrap gap-2">
                       <button
                         type="button"
                         onClick={() => setActiveCategory(null)}
-                      className={`rounded-full px-3 py-1.5 text-[13px] font-medium transition ${
+                        className={`rounded-full px-2.5 py-1.5 text-[12px] font-medium transition ${
                         !activeCategory
                             ? 'bg-gradient-to-r from-[#8f57ff] via-[#a35cff] to-[#4f7cff] text-white shadow-[0_10px_24px_rgba(143,87,255,0.22)]'
                             : 'border border-[#ece5dd] bg-[#fbf9f6] text-slate-700 hover:border-[#ddd3c8]'
@@ -1052,7 +1147,7 @@ export function BrandLandingPage({
                             key={`filter-${chip.key}`}
                             type="button"
                             onClick={() => setActiveCategory(chip.scopeValue)}
-                            className={`rounded-full px-3 py-1.5 text-[13px] font-medium transition ${
+                            className={`rounded-full px-2.5 py-1.5 text-[12px] font-medium transition ${
                               selected
                                 ? 'bg-gradient-to-r from-[#8f57ff] via-[#a35cff] to-[#4f7cff] text-white shadow-[0_10px_24px_rgba(143,87,255,0.22)]'
                                 : 'border border-[#ece5dd] bg-[#fbf9f6] text-slate-700 hover:border-[#ddd3c8]'
@@ -1068,10 +1163,10 @@ export function BrandLandingPage({
                 ) : null}
 
                 <div className="mt-4">
-                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                    Sort products
-                  </p>
-                  <div className="mt-3 flex flex-wrap gap-2">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+                      Sort products
+                    </p>
+                    <div className="mt-3 flex flex-wrap gap-2">
                     {SORT_OPTIONS.map((option) => (
                       <button
                         key={option.value}
@@ -1079,7 +1174,7 @@ export function BrandLandingPage({
                         onClick={() => {
                           setSort(option.value);
                         }}
-                        className={`rounded-full px-3 py-1.5 text-[13px] font-medium transition ${
+                        className={`rounded-full px-2.5 py-1.5 text-[12px] font-medium transition ${
                           sort === option.value
                             ? 'bg-[#1f2937] text-white'
                             : 'border border-[#ece5dd] bg-[#fbf9f6] text-slate-700 hover:border-[#ddd3c8]'
@@ -1095,7 +1190,7 @@ export function BrandLandingPage({
                   <button
                     type="button"
                     onClick={() => setIsFilterOpen(false)}
-                    className="inline-flex h-9 items-center justify-center rounded-full bg-[#1f2937] px-4 text-[13px] font-medium text-white transition hover:bg-[#111827]"
+                    className="inline-flex h-8 items-center justify-center rounded-full bg-[#1f2937] px-4 text-[12px] font-medium text-white transition hover:bg-[#111827]"
                   >
                     Done
                   </button>
@@ -1164,7 +1259,7 @@ export function BrandLandingPage({
             </section>
           ) : (
             <section id="brand-products" className="space-y-4" aria-busy={isRefreshing}>
-              <div className={`grid grid-cols-2 gap-x-3 gap-y-4 md:gap-x-4 md:gap-y-5 lg:grid-cols-3 xl:grid-cols-4 ${isRefreshing ? 'opacity-80 transition-opacity' : ''}`}>
+              <div className={`grid grid-cols-2 gap-x-2.5 gap-y-3.5 md:gap-x-4 md:gap-y-5 lg:grid-cols-3 xl:grid-cols-4 ${isRefreshing ? 'opacity-80 transition-opacity' : ''}`}>
                 {visibleProducts.map((product) => (
                   <BrandProductCard key={buildProductKey(product)} product={product} />
                 ))}
