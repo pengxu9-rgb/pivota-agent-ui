@@ -594,10 +594,7 @@ export function BrandLandingPage({
     return count;
   }, [activeCategory, sort]);
 
-  const visibleProducts = useMemo(() => {
-    if (!activeCategory) return products;
-    return products.filter((product) => inferCategoryLabel(product) === activeCategory);
-  }, [activeCategory, products]);
+  const visibleProducts = useMemo(() => products, [products]);
 
   const brandCampaign = useMemo(() => resolveBrandCampaign(feedMetadata), [feedMetadata]);
   const brandStory = useMemo(() => resolveBrandStory(feedMetadata), [feedMetadata]);
