@@ -776,10 +776,11 @@ export default function ProductDetailPage({ params }: Props) {
 
       try {
         const backfillStartedAt = Date.now();
-        const backfillBudgetMs = 12000;
+        // Similar sits below the fold, so it can afford a wider recovery budget than core PDP modules.
+        const backfillBudgetMs = 18000;
         const reviewsInitialTimeoutMs = 4200;
-        const similarInitialTimeoutMs = 7200;
-        const similarRetryTimeoutMs = 4200;
+        const similarInitialTimeoutMs = 10500;
+        const similarRetryTimeoutMs = 6500;
         const deadlineAt = Date.now() + backfillBudgetMs;
         const remainingMs = () => deadlineAt - Date.now();
 
