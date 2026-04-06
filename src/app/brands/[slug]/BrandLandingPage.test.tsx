@@ -388,6 +388,91 @@ describe('BrandLandingPage', () => {
     });
   });
 
+  it('keeps backend-scoped concealer results visible instead of re-filtering them away on the client', async () => {
+    getBrandDiscoveryFeedMock
+      .mockResolvedValueOnce({
+        products: [
+          {
+            product_id: 'prod_1',
+            merchant_id: 'merch_1',
+            title: 'Fenty Starter Item',
+            description: 'Starter',
+            category: 'moisturizer',
+            price: 39,
+            currency: 'USD',
+            image_url: 'https://example.com/start.jpg',
+            in_stock: true,
+          },
+        ],
+        metadata: {
+          has_more: false,
+          facets: {
+            categories: [
+              { value: 'Concealer', count: 35 },
+              { value: 'Foundation', count: 29 },
+            ],
+          },
+        },
+        query_text: '',
+        page_info: { page: 1, page_size: 1, total: 130, has_more: false },
+      })
+      .mockResolvedValueOnce({
+        products: [
+          {
+            product_id: 'prod_concealer',
+            merchant_id: 'merch_1',
+            title: "Pro Filt'r Instant Retouch Concealer — #300",
+            description: 'Concealer',
+            category: 'concealer',
+            price: 30,
+            currency: 'USD',
+            image_url: 'https://example.com/concealer.jpg',
+            in_stock: true,
+          },
+        ],
+        metadata: {
+          has_more: false,
+          facets: {
+            categories: [
+              { value: 'Concealer', count: 35 },
+              { value: 'Foundation', count: 29 },
+            ],
+          },
+        },
+        query_text: '',
+        page_info: { page: 1, page_size: 1, total: 35, has_more: false },
+      });
+
+    render(
+      <BrandLandingPage
+        slug="fenty-beauty"
+        initialBrandName="Fenty Beauty"
+        initialReturnUrl="/products/ext_123"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Fenty Starter Item')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /Concealer\s*35/i }));
+
+    await waitFor(() => {
+      expect(getBrandDiscoveryFeedMock).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          brandName: 'Fenty Beauty',
+          category: 'Concealer',
+          page: 1,
+        }),
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Pro Filt'r Instant Retouch Concealer — #300")).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/No concealer picks yet/i)).not.toBeInTheDocument();
+  });
+
   it('exposes real category filters inside the filter sheet and can clear them', async () => {
     getBrandDiscoveryFeedMock
       .mockResolvedValueOnce({
