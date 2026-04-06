@@ -172,6 +172,43 @@ describe('BrandLandingPage', () => {
     });
   });
 
+  it('preserves the current brand page as return url on product card links', async () => {
+    window.history.replaceState({}, '', '/brands/tom-ford');
+
+    getBrandDiscoveryFeedMock.mockResolvedValue({
+      products: [
+        {
+          product_id: 'prod_1',
+          merchant_id: 'merch_1',
+          title: 'Rose Prick Eau de Parfum',
+          description: 'Fragrance',
+          category: 'fragrance',
+          price: 395,
+          currency: 'USD',
+          image_url: 'https://example.com/1.jpg',
+          in_stock: true,
+        },
+      ],
+      metadata: { has_more: false },
+      query_text: '',
+      page_info: { page: 1, page_size: 1, total: 1, has_more: false },
+    });
+
+    render(
+      <BrandLandingPage
+        slug="tom-ford"
+        initialBrandName="Tom Ford"
+        initialReturnUrl="/products/ext_123"
+      />,
+    );
+
+    const productLink = await screen.findByRole('link', { name: /rose prick eau de parfum/i });
+    expect(productLink).toHaveAttribute(
+      'href',
+      '/products/prod_1?merchant_id=merch_1&return=%2Fbrands%2Ftom-ford',
+    );
+  });
+
   it('hydrates remote browse history only for authenticated users', async () => {
     authUser = { id: 'user_123' };
     getBrandDiscoveryFeedMock.mockResolvedValue({

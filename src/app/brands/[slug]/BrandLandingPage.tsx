@@ -485,6 +485,7 @@ function BrandProductCard({ product }: { product: ProductResponse }) {
   const [imageSrc, setImageSrc] = useState(product.image_url || '/placeholder.svg');
 
   const href = buildProductHref(product.product_id, product.merchant_id);
+  const hrefWithReturn = appendCurrentPathAsReturn(href);
   const badge = resolveProductBadge(product);
   const cardMeta = resolveProductCardMeta(product);
   const isDirectCartEligible =
@@ -501,7 +502,7 @@ function BrandProductCard({ product }: { product: ProductResponse }) {
     event.stopPropagation();
 
     if (!isDirectCartEligible) {
-      router.push(appendCurrentPathAsReturn(href));
+      router.push(hrefWithReturn);
       return;
     }
 
@@ -526,7 +527,7 @@ function BrandProductCard({ product }: { product: ProductResponse }) {
 
   return (
     <div className="group relative">
-      <Link href={href} prefetch={false} className="block h-full">
+      <Link href={hrefWithReturn} prefetch={false} className="block h-full">
         <article className="h-full overflow-hidden rounded-[16px] border border-[#f3ede5] bg-white shadow-[0_6px_18px_rgba(15,23,42,0.045)] transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_12px_22px_rgba(15,23,42,0.07)]">
           <div className="relative aspect-[4/5] overflow-hidden bg-[#f7f3ee]">
             <Image
