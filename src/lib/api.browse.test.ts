@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { getAllProducts, getBrandDiscoveryFeed } from './api';
+import { getAllProducts, getBrandDiscoveryFeed, getSimilarProductsMainline } from './api';
 
 const jsonResponse = (payload: unknown, status = 200) =>
   new Response(JSON.stringify(payload), {
@@ -126,6 +126,64 @@ describe('getAllProducts browse routing', () => {
           brand_names: ['Tom Ford Beauty'],
           categories: ['lip balm'],
         },
+      },
+    });
+  });
+
+  it('requests explicit mainline similar products with exclusions for user-driven load more', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      jsonResponse({
+        strategy: 'related_products',
+        products: [
+          {
+            product_id: 'sim_7',
+            merchant_id: 'external_seed',
+            title: 'Hair Mask',
+            image_url: 'https://example.com/sim-7.png',
+            price: { amount: 39, currency: 'USD' },
+          },
+        ],
+        metadata: {
+          has_more: true,
+          route: 'find_similar_products_mainline_wrapper',
+        },
+        total: 1,
+        page: 1,
+        page_size: 1,
+        has_more: true,
+      }),
+    );
+
+    const result = await getSimilarProductsMainline({
+      product_id: 'ext_095c6c8edcc67317c0b377a0',
+      merchant_id: 'external_seed',
+      limit: 6,
+      exclude_items: [
+        { product_id: 'sim_1', merchant_id: 'external_seed' },
+        { product_id: 'sim_2', merchant_id: 'external_seed' },
+      ],
+    });
+
+    expect(result.items).toEqual([
+      expect.objectContaining({
+        product_id: 'sim_7',
+        merchant_id: 'external_seed',
+        title: 'Hair Mask',
+      }),
+    ]);
+    expect(result.page_info.has_more).toBe(true);
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(String(init.body || '{}'));
+    expect(body).toMatchObject({
+      operation: 'find_similar_products',
+      payload: {
+        product_id: 'ext_095c6c8edcc67317c0b377a0',
+        merchant_id: 'external_seed',
+        limit: 6,
+        exclude_items: [
+          { product_id: 'sim_1', merchant_id: 'external_seed' },
+          { product_id: 'sim_2', merchant_id: 'external_seed' },
+        ],
       },
     });
   });

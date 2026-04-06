@@ -1,5 +1,5 @@
 import React from 'react';
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BrandLandingPage } from './BrandLandingPage';
 
@@ -384,6 +384,127 @@ describe('BrandLandingPage', () => {
       expect(replaceMock).toHaveBeenCalledWith(
         expect.stringContaining('category=Lip'),
         { scroll: false },
+      );
+    });
+  });
+
+  it('exposes real category filters inside the filter sheet and can clear them', async () => {
+    getBrandDiscoveryFeedMock
+      .mockResolvedValueOnce({
+        products: [
+          {
+            product_id: 'prod_1',
+            merchant_id: 'merch_1',
+            title: 'Gloss Bomb',
+            description: 'Lip',
+            category: 'lip',
+            price: 22,
+            currency: 'USD',
+            image_url: 'https://example.com/1.jpg',
+            in_stock: true,
+          },
+        ],
+        metadata: {
+          has_more: false,
+          facets: {
+            categories: [
+              { value: 'Lip', count: 8 },
+              { value: 'Complexion', count: 5 },
+            ],
+          },
+        },
+        query_text: '',
+        page_info: { page: 1, page_size: 1, total: 13, has_more: false },
+      })
+      .mockResolvedValueOnce({
+        products: [
+          {
+            product_id: 'prod_1',
+            merchant_id: 'merch_1',
+            title: 'Gloss Bomb',
+            description: 'Lip',
+            category: 'lip',
+            price: 22,
+            currency: 'USD',
+            image_url: 'https://example.com/1.jpg',
+            in_stock: true,
+          },
+        ],
+        metadata: {
+          has_more: false,
+          facets: {
+            categories: [
+              { value: 'Lip', count: 8 },
+              { value: 'Complexion', count: 5 },
+            ],
+          },
+        },
+        query_text: '',
+        page_info: { page: 1, page_size: 1, total: 8, has_more: false },
+      })
+      .mockResolvedValueOnce({
+        products: [
+          {
+            product_id: 'prod_1',
+            merchant_id: 'merch_1',
+            title: 'Gloss Bomb',
+            description: 'Lip',
+            category: 'lip',
+            price: 22,
+            currency: 'USD',
+            image_url: 'https://example.com/1.jpg',
+            in_stock: true,
+          },
+        ],
+        metadata: {
+          has_more: false,
+          facets: {
+            categories: [
+              { value: 'Lip', count: 8 },
+              { value: 'Complexion', count: 5 },
+            ],
+          },
+        },
+        query_text: '',
+        page_info: { page: 1, page_size: 1, total: 13, has_more: false },
+      });
+
+    render(
+      <BrandLandingPage
+        slug="fenty-beauty"
+        initialBrandName="Fenty Beauty"
+        initialReturnUrl="/products/ext_123"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Gloss Bomb')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /filter/i }));
+    const filterPanel = screen.getByLabelText('Brand filters');
+
+    fireEvent.click(within(filterPanel).getByRole('button', { name: 'Lip 8' }));
+
+    await waitFor(() => {
+      expect(getBrandDiscoveryFeedMock).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          brandName: 'Fenty Beauty',
+          category: 'Lip',
+          page: 1,
+        }),
+      );
+    });
+
+    fireEvent.click(within(filterPanel).getByRole('button', { name: /clear all/i }));
+
+    await waitFor(() => {
+      expect(getBrandDiscoveryFeedMock).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          brandName: 'Fenty Beauty',
+          sort: 'popular',
+          page: 1,
+        }),
       );
     });
   });

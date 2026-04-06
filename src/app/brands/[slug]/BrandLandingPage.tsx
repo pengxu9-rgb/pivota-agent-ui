@@ -583,6 +583,16 @@ export function BrandLandingPage({
     },
     [activeCategory, feedMetadata, products, total],
   );
+  const filterCategoryChips = useMemo(
+    () => categoryChips.filter((chip) => chip.scopeValue),
+    [categoryChips],
+  );
+  const activeFilterCount = useMemo(() => {
+    let count = 0;
+    if (activeCategory) count += 1;
+    if (sort !== 'popular') count += 1;
+    return count;
+  }, [activeCategory, sort]);
 
   const visibleProducts = useMemo(() => {
     if (!activeCategory) return products;
@@ -918,6 +928,11 @@ export function BrandLandingPage({
               >
                 <SlidersHorizontal className="h-4 w-4" />
                 Filter
+                {activeFilterCount > 0 ? (
+                  <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-white px-1.5 text-[11px] font-semibold text-[#6d28d9]">
+                    {activeFilterCount}
+                  </span>
+                ) : null}
               </button>
 
               <div className="flex-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -950,28 +965,104 @@ export function BrandLandingPage({
             </div>
 
             {isFilterOpen ? (
-              <div className="mx-auto mt-3 max-w-6xl rounded-[24px] border border-[#ece5dd] bg-white p-4 shadow-[0_10px_30px_rgba(15,23,42,0.08)]">
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                  Sort products
-                </p>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {SORT_OPTIONS.map((option) => (
+              <div
+                aria-label="Brand filters"
+                className="mx-auto mt-3 max-w-6xl rounded-[24px] border border-[#ece5dd] bg-white p-4 shadow-[0_10px_30px_rgba(15,23,42,0.08)]"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                      Filter products
+                    </p>
+                    <p className="mt-1 text-sm text-slate-500">
+                      Narrow this brand feed with real category scope and sort.
+                    </p>
+                  </div>
+                  {activeFilterCount > 0 ? (
                     <button
-                      key={option.value}
                       type="button"
                       onClick={() => {
-                        setSort(option.value);
-                        setIsFilterOpen(false);
+                        setActiveCategory(null);
+                        setSort('popular');
                       }}
-                      className={`rounded-full px-3.5 py-2 text-sm font-medium transition ${
-                        sort === option.value
-                          ? 'bg-[#1f2937] text-white'
-                          : 'border border-[#ece5dd] bg-[#fbf9f6] text-slate-700 hover:border-[#ddd3c8]'
-                      }`}
+                      className="text-sm font-medium text-slate-500 transition hover:text-slate-900"
                     >
-                      {option.label}
+                      Clear all
                     </button>
-                  ))}
+                  ) : null}
+                </div>
+
+                {filterCategoryChips.length ? (
+                  <div className="mt-4">
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                      Category
+                    </p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setActiveCategory(null)}
+                        className={`rounded-full px-3.5 py-2 text-sm font-medium transition ${
+                          !activeCategory
+                            ? 'bg-gradient-to-r from-[#8f57ff] via-[#a35cff] to-[#4f7cff] text-white shadow-[0_10px_24px_rgba(143,87,255,0.22)]'
+                            : 'border border-[#ece5dd] bg-[#fbf9f6] text-slate-700 hover:border-[#ddd3c8]'
+                        }`}
+                      >
+                        All categories
+                      </button>
+                      {filterCategoryChips.map((chip) => {
+                        const selected = chip.scopeValue === activeCategory;
+                        return (
+                          <button
+                            key={`filter-${chip.key}`}
+                            type="button"
+                            onClick={() => setActiveCategory(chip.scopeValue)}
+                            className={`rounded-full px-3.5 py-2 text-sm font-medium transition ${
+                              selected
+                                ? 'bg-gradient-to-r from-[#8f57ff] via-[#a35cff] to-[#4f7cff] text-white shadow-[0_10px_24px_rgba(143,87,255,0.22)]'
+                                : 'border border-[#ece5dd] bg-[#fbf9f6] text-slate-700 hover:border-[#ddd3c8]'
+                            }`}
+                          >
+                            {chip.label}
+                            {typeof chip.count === 'number' ? ` ${chip.count}` : ''}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : null}
+
+                <div className="mt-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                    Sort products
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {SORT_OPTIONS.map((option) => (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => {
+                          setSort(option.value);
+                        }}
+                        className={`rounded-full px-3.5 py-2 text-sm font-medium transition ${
+                          sort === option.value
+                            ? 'bg-[#1f2937] text-white'
+                            : 'border border-[#ece5dd] bg-[#fbf9f6] text-slate-700 hover:border-[#ddd3c8]'
+                        }`}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="mt-4 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setIsFilterOpen(false)}
+                    className="inline-flex h-10 items-center justify-center rounded-full bg-[#1f2937] px-4 text-sm font-medium text-white transition hover:bg-[#111827]"
+                  >
+                    Done
+                  </button>
                 </div>
               </div>
             ) : null}

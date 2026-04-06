@@ -30,6 +30,7 @@ import type {
   Variant,
 } from '@/features/pdp/types';
 import {
+  getSimilarProductsMainline,
   listQuestions,
   postQuestion,
   type QuestionListItem,
@@ -593,13 +594,16 @@ export function PdpContainer({
   const [similarItems, setSimilarItems] =
     useState<RecommendationsData['items']>(initialSimilarState.items);
   const [similarVisibleCount, setSimilarVisibleCount] = useState(SIMILAR_PAGE_SIZE);
-  const [similarHasMore, setSimilarHasMore] = useState(false);
+  const [similarHasMore, setSimilarHasMore] = useState(
+    Boolean(initialSimilarState.metadata?.has_more),
+  );
   const [similarLoadingMore, setSimilarLoadingMore] = useState(false);
   const [similarSheetOpen, setSimilarSheetOpen] = useState(false);
   const [similarStrategy, setSimilarStrategy] = useState(initialSimilarState.strategy);
   const [similarMetadata, setSimilarMetadata] =
     useState<RecommendationsData['metadata'] | null>(initialSimilarState.metadata);
   const similarResetProductIdRef = useRef<string>('');
+  const similarNoGrowthCountRef = useRef(0);
 
   const offers = useMemo(() => payload.offers ?? [], [payload.offers]);
   const internalFirstDefaultOfferId = useMemo(
@@ -749,9 +753,10 @@ export function PdpContainer({
     setSimilarStrategy(initialSimilarState.strategy);
     setSimilarMetadata(initialSimilarState.metadata);
     setSimilarVisibleCount(SIMILAR_PAGE_SIZE);
-    setSimilarHasMore(false);
+    setSimilarHasMore(Boolean(initialSimilarState.metadata?.has_more));
     setSimilarLoadingMore(false);
     setSimilarSheetOpen(false);
+    similarNoGrowthCountRef.current = 0;
   }, [
     initialSimilarState,
     payloadProductId,
@@ -771,7 +776,12 @@ export function PdpContainer({
       setSimilarStrategy(payloadRecommendations.strategy);
     }
     const incomingMetadata = normalizeSimilarMetadata(payloadRecommendations?.metadata);
-    if (incomingMetadata) setSimilarMetadata(incomingMetadata);
+    if (incomingMetadata) {
+      setSimilarMetadata((prev) => ({ ...(prev || {}), ...incomingMetadata }));
+      if (typeof incomingMetadata.has_more === 'boolean') {
+        setSimilarHasMore(incomingMetadata.has_more);
+      }
+    }
   }, [
     payloadRecommendations?.items,
     payloadRecommendations?.metadata,
@@ -1344,41 +1354,90 @@ export function PdpContainer({
     similarVisibleCount,
   ]);
 
-  const handleSimilarLoadMore = useCallback(async () => {
-    const target = Math.min(similarVisibleCount + SIMILAR_PAGE_SIZE, SIMILAR_MAX);
+  const loadMoreSimilarProducts = useCallback(async (entrySurface: 'grid' | 'similar_sheet') => {
+    const targetVisibleCount = Math.min(
+      Math.max(similarVisibleCount, Math.min(similarItems.length, SIMILAR_MAX)) + SIMILAR_PAGE_SIZE,
+      SIMILAR_MAX,
+    );
     pdpTracking.track('similar_load_more', {
       loaded_count: similarItems.length,
       visible_count: Math.min(similarVisibleCount, similarItems.length),
-      target_visible_count: target,
+      target_visible_count: targetVisibleCount,
       source: pdpViewModel.sourceLocks.similar ? 'locked' : 'live',
+      entry_surface: entrySurface,
     });
-    if (target <= similarItems.length) {
-      setSimilarVisibleCount(target);
+
+    if (targetVisibleCount <= similarItems.length) {
+      setSimilarVisibleCount(targetVisibleCount);
       return;
     }
+
+    if (similarLoadingMore || !productId) return;
+
+    setSimilarLoadingMore(true);
+    try {
+      const result = await getSimilarProductsMainline({
+        product_id: productId,
+        ...(merchantId ? { merchant_id: merchantId } : {}),
+        limit: Math.min(SIMILAR_PAGE_SIZE, SIMILAR_MAX - similarItems.length),
+        exclude_items: similarItems.map((item) => ({
+          product_id: item.product_id,
+          ...(item.merchant_id ? { merchant_id: item.merchant_id } : {}),
+        })),
+        timeout_ms: 8000,
+      });
+
+      const incomingItems = normalizeRecommendationItems(
+        result.items,
+        recommendationCurrencyFallback,
+      );
+      const incomingMetadata = normalizeSimilarMetadata(result.metadata);
+      const merged = mergeRecommendationItems(similarItems, incomingItems);
+      const mergedLength = merged.items.length;
+      const addedCount = merged.added;
+
+      setSimilarItems(merged.items);
+
+      if (incomingMetadata) {
+        setSimilarMetadata((prev) => ({ ...(prev || {}), ...incomingMetadata }));
+      }
+
+      if (addedCount === 0) {
+        similarNoGrowthCountRef.current += 1;
+      } else {
+        similarNoGrowthCountRef.current = 0;
+      }
+
+      const stopForNoGrowth = similarNoGrowthCountRef.current >= SIMILAR_NO_GROWTH_STOP_THRESHOLD;
+      const upstreamHasMore =
+        typeof incomingMetadata?.has_more === 'boolean'
+          ? incomingMetadata.has_more
+          : result.page_info.has_more;
+
+      setSimilarHasMore(Boolean(upstreamHasMore) && !stopForNoGrowth && mergedLength < SIMILAR_MAX);
+      setSimilarVisibleCount(Math.min(targetVisibleCount, mergedLength));
+    } catch {
+      toast.message('Could not load more similar products right now.');
+    } finally {
+      setSimilarLoadingMore(false);
+    }
   }, [
+    merchantId,
     pdpViewModel.sourceLocks.similar,
-    similarItems.length,
+    productId,
+    recommendationCurrencyFallback,
+    similarItems,
+    similarLoadingMore,
     similarVisibleCount,
   ]);
 
+  const handleSimilarLoadMore = useCallback(async () => {
+    await loadMoreSimilarProducts('grid');
+  }, [loadMoreSimilarProducts]);
+
   const handleSimilarSheetLoadMore = useCallback(async () => {
-    const target = Math.min(similarItems.length + SIMILAR_PAGE_SIZE, SIMILAR_MAX);
-    pdpTracking.track('similar_load_more', {
-      loaded_count: similarItems.length,
-      visible_count: Math.min(similarVisibleCount, similarItems.length),
-      target_visible_count: target,
-      source: pdpViewModel.sourceLocks.similar ? 'locked' : 'live',
-      entry_surface: 'similar_sheet',
-    });
-    if (target <= similarItems.length) {
-      setSimilarVisibleCount(target);
-    }
-  }, [
-    pdpViewModel.sourceLocks.similar,
-    similarItems.length,
-    similarVisibleCount,
-  ]);
+    await loadMoreSimilarProducts('similar_sheet');
+  }, [loadMoreSimilarProducts]);
 
   useEffect(() => {
     let cancelled = false;

@@ -5,6 +5,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PdpContainer } from './PdpContainer';
 import type { PDPPayload } from '@/features/pdp/types';
 
+const getSimilarProductsMainlineMock = vi.fn();
+
 vi.mock('next/image', () => ({
   default: (
     props: React.ImgHTMLAttributes<HTMLImageElement> & {
@@ -35,6 +37,7 @@ vi.mock('next/navigation', () => ({
 vi.mock('@/lib/api', () => ({
   listQuestions: vi.fn(async () => ({ items: [] })),
   postQuestion: vi.fn(async () => ({ question_id: 1 })),
+  getSimilarProductsMainline: (...args: unknown[]) => getSimilarProductsMainlineMock(...args),
 }));
 
 vi.mock('sonner', () => ({
@@ -117,6 +120,7 @@ describe('PdpContainer recommendations interactions', () => {
   afterEach(() => {
     cleanup();
     vi.restoreAllMocks();
+    getSimilarProductsMainlineMock.mockReset();
   });
 
   it('keeps first-fold similar recommendations on the mainline path', async () => {
@@ -133,8 +137,75 @@ describe('PdpContainer recommendations interactions', () => {
       expect(screen.getByText('Product 6')).toBeInTheDocument();
     });
 
-    expect(screen.queryByRole('button', { name: /load more recommendations/i })).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /^view all$/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /load more similar products/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /view all similar/i })).toBeInTheDocument();
+  });
+
+  it('loads more similar products through the explicit mainline wrapper when more are available', async () => {
+    getSimilarProductsMainlineMock.mockResolvedValue({
+      strategy: 'related_products',
+      items: buildSimilar(6).map((item, index) => ({
+        ...item,
+        product_id: `prod_${index + 7}`,
+        title: `Product ${index + 7}`,
+      })),
+      metadata: { has_more: false },
+      page_info: {
+        page: 1,
+        page_size: 6,
+        total: 6,
+        has_more: false,
+      },
+    });
+
+    const payloadWithMore: PDPPayload = {
+      ...payload,
+      modules: payload.modules.map((module) =>
+        module.type !== 'recommendations'
+          ? module
+          : {
+              ...module,
+              data: {
+                strategy: 'related_products',
+                items: buildSimilar(6),
+                metadata: {
+                  has_more: true,
+                },
+              },
+            },
+      ),
+    };
+
+    render(
+      <PdpContainer
+        payload={payloadWithMore}
+        mode="generic"
+        onAddToCart={() => {}}
+        onBuyNow={() => {}}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /load more similar products/i })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /load more similar products/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Product 12')).toBeInTheDocument();
+    });
+
+    expect(getSimilarProductsMainlineMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        product_id: 'P_SIMILAR_001',
+        merchant_id: 'external_seed',
+        limit: 6,
+        exclude_items: expect.arrayContaining([
+          expect.objectContaining({ product_id: 'prod_1', merchant_id: 'external_seed' }),
+          expect.objectContaining({ product_id: 'prod_6', merchant_id: 'external_seed' }),
+        ]),
+      }),
+    );
   });
 
   it('opens View all sheet without hitting legacy similar search', async () => {
@@ -147,9 +218,9 @@ describe('PdpContainer recommendations interactions', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /view all/i }));
+    fireEvent.click(screen.getByRole('button', { name: /view all similar/i }));
 
-    expect(screen.getByText(/all recommendations/i)).toBeInTheDocument();
+    expect(screen.getByText(/all similar products/i)).toBeInTheDocument();
     expect(screen.getAllByText('Product 6').length).toBeGreaterThan(0);
   });
 
@@ -163,9 +234,9 @@ describe('PdpContainer recommendations interactions', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /view all/i }));
+    fireEvent.click(screen.getByRole('button', { name: /view all similar/i }));
 
-    expect(screen.queryByRole('button', { name: /load more recommendations/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /load more similar products/i })).not.toBeInTheDocument();
   });
 
   it('shows low-confidence hint from mainline metadata without offering old direct backfill', async () => {
@@ -212,7 +283,7 @@ describe('PdpContainer recommendations interactions', () => {
       ).toBeInTheDocument();
     });
 
-    expect(screen.queryByRole('button', { name: /load more recommendations/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /load more similar products/i })).not.toBeInTheDocument();
   });
 
   it('deduplicates repeated recommendation titles from the same merchant', async () => {
