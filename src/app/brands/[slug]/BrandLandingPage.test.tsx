@@ -14,6 +14,16 @@ let cartItems: Array<{ quantity: number }> = [];
 
 let intersectionCallback: ((entries: Array<{ isIntersecting: boolean }>) => void) | null = null;
 
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
 vi.mock('@/lib/api', () => ({
   getBrandDiscoveryFeed: (...args: unknown[]) => getBrandDiscoveryFeedMock(...args),
   getBrowseHistory: (...args: unknown[]) => getBrowseHistoryMock(...args),
@@ -388,7 +398,52 @@ describe('BrandLandingPage', () => {
     });
   });
 
+  it('shows review-derived badges and never falls back to a generic New badge', async () => {
+    getBrandDiscoveryFeedMock.mockResolvedValue({
+      products: [
+        {
+          product_id: 'prod_1',
+          merchant_id: 'merch_1',
+          title: 'Gloss Bomb',
+          description: 'Lip',
+          category: 'lip',
+          price: 22,
+          currency: 'USD',
+          image_url: 'https://example.com/1.jpg',
+          in_stock: true,
+          review_summary: { rating: 4.8, review_count: 128, scale: 5 },
+        },
+      ],
+      metadata: { has_more: false },
+      query_text: '',
+      page_info: { page: 1, page_size: 1, total: 1, has_more: false },
+    });
+
+    render(
+      <BrandLandingPage
+        slug="fenty-beauty"
+        initialBrandName="Fenty Beauty"
+        initialReturnUrl="/products/ext_123"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Gloss Bomb')).toBeInTheDocument();
+    });
+
+    expect(screen.getByText('4.8')).toBeInTheDocument();
+    expect(screen.getByText('(128)')).toBeInTheDocument();
+    expect(screen.queryByText(/^New$/i)).not.toBeInTheDocument();
+  });
+
   it('keeps backend-scoped concealer results visible instead of re-filtering them away on the client', async () => {
+    const scopedResponse = deferred<{
+      products: Array<Record<string, unknown>>;
+      metadata: Record<string, unknown>;
+      query_text: string;
+      page_info: { page: number; page_size: number; total: number; has_more: boolean };
+    }>();
+
     getBrandDiscoveryFeedMock
       .mockResolvedValueOnce({
         products: [
@@ -416,32 +471,7 @@ describe('BrandLandingPage', () => {
         query_text: '',
         page_info: { page: 1, page_size: 1, total: 130, has_more: false },
       })
-      .mockResolvedValueOnce({
-        products: [
-          {
-            product_id: 'prod_concealer',
-            merchant_id: 'merch_1',
-            title: "Pro Filt'r Instant Retouch Concealer — #300",
-            description: 'Concealer',
-            category: 'concealer',
-            price: 30,
-            currency: 'USD',
-            image_url: 'https://example.com/concealer.jpg',
-            in_stock: true,
-          },
-        ],
-        metadata: {
-          has_more: false,
-          facets: {
-            categories: [
-              { value: 'Concealer', count: 35 },
-              { value: 'Foundation', count: 29 },
-            ],
-          },
-        },
-        query_text: '',
-        page_info: { page: 1, page_size: 1, total: 35, has_more: false },
-      });
+      .mockReturnValueOnce(scopedResponse.promise);
 
     render(
       <BrandLandingPage
@@ -467,9 +497,40 @@ describe('BrandLandingPage', () => {
       );
     });
 
+    expect(screen.getByText('130 products across sellers')).toBeInTheDocument();
+    expect(screen.queryByText('0 products across sellers')).not.toBeInTheDocument();
+
+    scopedResponse.resolve({
+      products: [
+        {
+          product_id: 'prod_concealer',
+          merchant_id: 'merch_1',
+          title: "Pro Filt'r Instant Retouch Concealer — #300",
+          description: 'Concealer',
+          category: 'concealer',
+          price: 30,
+          currency: 'USD',
+          image_url: 'https://example.com/concealer.jpg',
+          in_stock: true,
+        },
+      ],
+      metadata: {
+        has_more: false,
+        facets: {
+          categories: [
+            { value: 'Concealer', count: 35 },
+            { value: 'Foundation', count: 29 },
+          ],
+        },
+      },
+      query_text: '',
+      page_info: { page: 1, page_size: 1, total: 35, has_more: false },
+    });
+
     await waitFor(() => {
       expect(screen.getByText("Pro Filt'r Instant Retouch Concealer — #300")).toBeInTheDocument();
     });
+    expect(screen.getByText('35 products across sellers')).toBeInTheDocument();
     expect(screen.queryByText(/No concealer picks yet/i)).not.toBeInTheDocument();
   });
 
