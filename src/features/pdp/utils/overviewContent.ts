@@ -519,10 +519,10 @@ export function buildOverviewContent(args: BuildOverviewContentArgs): OverviewCo
     highlights = uniqueStrings(fallbackHighlightCandidates).slice(0, 4);
   }
 
-  if (!highlights.length) {
+  if (!highlights.length && paragraphCandidates.length > 1) {
     const derived = uniqueStrings(
       paragraphCandidates
-        .slice(0, 2)
+        .slice(1, 3)
         .flatMap((paragraph) => splitSentences(paragraph))
         .filter((sentence) => normalizeKey(sentence) !== normalizeKey(summary) && sentence.length <= 140),
     );

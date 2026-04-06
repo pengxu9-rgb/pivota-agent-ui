@@ -194,4 +194,19 @@ Coverage: Medium, Buildable`,
     );
     expect(content?.body).toEqual([]);
   });
+
+  it('does not split a single narrative description back into duplicate fallback highlights', () => {
+    const content = buildOverviewContent({
+      description:
+        "Discover Fenty Skin's Salicylic Acid spot-targeting gel fights blemishes, clarifies skin and reduces surface oil. Its unique gel texture dries down quickly and works perfect canvas for makeup.",
+      hideStructuredDuplicates: true,
+    });
+
+    expect(content?.summary).toBe(
+      "Discover Fenty Skin's Salicylic Acid spot-targeting gel fights blemishes, clarifies skin and reduces surface oil. Its unique gel texture dries down quickly and works perfect canvas for makeup.",
+    );
+    expect(content?.highlights).toEqual([]);
+    expect(content?.facts).toEqual([]);
+    expect(content?.body).toEqual([]);
+  });
 });
