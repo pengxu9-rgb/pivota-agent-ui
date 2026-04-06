@@ -678,7 +678,7 @@ export function BrandLandingPage({
     void getBrandDiscoveryFeed({
       brandName,
       query: activeQuery,
-      category: activeCategory,
+      ...(activeCategory ? { category: activeCategory } : {}),
       sort,
       page: 1,
       limit: PAGE_SIZE,
@@ -728,7 +728,7 @@ export function BrandLandingPage({
         void getBrandDiscoveryFeed({
           brandName,
           query: activeQuery,
-          category: activeCategory,
+          ...(activeCategory ? { category: activeCategory } : {}),
           sort,
           page: nextPage,
           limit: PAGE_SIZE,
