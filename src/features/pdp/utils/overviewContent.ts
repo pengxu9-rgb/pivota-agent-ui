@@ -89,12 +89,40 @@ function cleanLine(value: string): string {
     .trim();
 }
 
+function normalizeHighlightItem(value: string): string {
+  const cleaned = cleanLine(value);
+  if (!cleaned) return '';
+  return /^free from\b/i.test(cleaned)
+    ? cleaned.replace(/^free from\b/i, 'Free from')
+    : cleaned;
+}
+
+function splitEmbeddedHighlightLabels(value: string, activeLabel?: string): string[] {
+  let normalized = cleanLine(value);
+  if (!normalized) return [];
+  const activeKey = normalizeKey(activeLabel || '');
+
+  for (const candidate of INLINE_HIGHLIGHT_LABELS) {
+    const candidateKey = normalizeKey(candidate);
+    if (!candidateKey || candidateKey === activeKey) continue;
+    const escaped = candidate.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    normalized = normalized
+      .replace(new RegExp(`([.!?])\\s+(${escaped})(?=\\s+[A-Z0-9])`, 'gi'), '$1\n$2 ')
+      .replace(new RegExp(`\\s+(${escaped})(?=\\s+[A-Z0-9])`, 'gi'), '\n$1 ');
+  }
+
+  return normalized
+    .split('\n')
+    .map((item) => normalizeHighlightItem(item))
+    .filter((item) => item.length >= 6);
+}
+
 function splitHighlightFragments(value: string): string[] {
   const normalized = cleanLine(value);
   if (!normalized) return [];
   return normalized
     .split(/[•;]+|\s{2,}/)
-    .map((item) => cleanLine(item))
+    .flatMap((item) => splitEmbeddedHighlightLabels(item))
     .filter((item) => item.length >= 6);
 }
 
@@ -191,7 +219,7 @@ function splitFactValueFromNarrative(label: string, value: string): { factValue:
 }
 
 function extractHighlightItems(label: string, value: string): { items: string[]; narrative: string[] } {
-  const cleaned = cleanLine(value);
+  let cleaned = cleanLine(value);
   if (!cleaned) return { items: [], narrative: [] };
   const labelKey = normalizeKey(label);
 
@@ -206,7 +234,7 @@ function extractHighlightItems(label: string, value: string): { items: string[];
     .replace(/\s+[•·]\s+/g, '\n')
     .replace(/\s+-\s+/g, '\n')
     .split('\n')
-    .map((item) => cleanLine(item))
+    .flatMap((item) => splitEmbeddedHighlightLabels(item, label))
     .filter(Boolean);
 
   if (bulletSplit.length > 1) {
@@ -228,13 +256,18 @@ function extractHighlightItems(label: string, value: string): { items: string[];
   const sentences = splitSentences(cleaned);
   if (sentences.length > 1) {
     return {
-      items: uniqueStrings(sentences.slice(0, 3).filter((item) => item.length <= 140)),
+      items: uniqueStrings(
+        sentences
+          .slice(0, 3)
+          .flatMap((item) => splitEmbeddedHighlightLabels(item, label))
+          .filter((item) => item.length <= 140),
+      ),
       narrative: [],
     };
   }
 
   return {
-    items: cleaned.length <= 140 ? [cleaned] : [],
+    items: cleaned.length <= 140 ? splitEmbeddedHighlightLabels(cleaned, label) : [],
     narrative: cleaned.length > 140 ? [cleaned] : [],
   };
 }
@@ -466,6 +499,7 @@ export function buildOverviewContent(args: BuildOverviewContentArgs): OverviewCo
     facts.filter((item) => item.label.length >= 2 && item.value.length >= 2),
   ).slice(0, 4);
   let highlights = uniqueStrings(highlightCandidates)
+    .flatMap((item) => splitEmbeddedHighlightLabels(item))
     .filter(
       (item) =>
         !normalizedFacts.some((fact) => isCoverageEquivalent(item, fact.value)) &&

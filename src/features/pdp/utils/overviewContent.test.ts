@@ -175,4 +175,23 @@ Coverage: Medium, Buildable`,
     expect(content?.highlights).toEqual(['Blurs the look of pores']);
     expect(content?.body).toEqual([]);
   });
+
+  it('keeps inline benefits and free-from labels out of the summary paragraph', () => {
+    const content = buildOverviewContent({
+      description:
+        'The formula merges hydrating skincare ingredients with imperfection-blurring makeup technology. Benefits Soft-focus powders offer a natural, soft-matte finish. Free From Parabens, Sulfates',
+      hideStructuredDuplicates: true,
+    });
+
+    expect(content?.summary).toBe(
+      'The formula merges hydrating skincare ingredients with imperfection-blurring makeup technology.',
+    );
+    expect(content?.highlights).toEqual(
+      expect.arrayContaining([
+        'Soft-focus powders offer a natural, soft-matte finish.',
+        'Free from Parabens, Sulfates',
+      ]),
+    );
+    expect(content?.body).toEqual([]);
+  });
 });
