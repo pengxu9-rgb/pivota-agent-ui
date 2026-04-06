@@ -258,46 +258,6 @@ export type GetPdpV2Response = {
   missing?: Array<{ type: string; reason?: string }>;
 };
 
-export type FindSimilarProductsResponse = {
-  status?: string;
-  strategy?: string;
-  products?: Array<any>;
-  total?: number;
-  page?: number;
-  page_size?: number;
-  has_more?: boolean;
-  metadata?: {
-    has_more?: boolean;
-    similar_confidence?: 'high' | 'medium' | 'low' | string;
-    low_confidence?: boolean;
-    low_confidence_reason_codes?: string[];
-    underfill?: number;
-    retrieval_mix?: {
-      internal?: number;
-      external?: number;
-    };
-    selection_mix?: {
-      same_brand_same_category?: number;
-      same_brand_other_category?: number;
-      other_brand_same_category?: number;
-      other_brand_same_vertical?: number;
-      semantic_peer?: number;
-    };
-    base_semantic?: {
-      brand?: string | null;
-      vertical?: string | null;
-      inferred?: boolean;
-      signal_strength?: number;
-    };
-  };
-  debug?: any;
-  cache?: {
-    hit?: boolean;
-    age_ms?: number;
-    ttl_ms?: number;
-  };
-};
-
 export function normalizeProductDescriptionText(value: unknown): string {
   const raw =
     typeof value === 'string'
@@ -2019,65 +1979,6 @@ export async function getPdpV2(args: {
   );
 
   return data as GetPdpV2Response;
-}
-
-export async function findSimilarProducts(args: {
-  product_id: string;
-  merchant_id?: string | null;
-  limit?: number;
-  exclude_items?: Array<{
-    product_id: string;
-    merchant_id?: string | null;
-    title?: string | null;
-  }>;
-  timeout_ms?: number;
-  debug?: boolean;
-  cache_bypass?: boolean;
-}): Promise<FindSimilarProductsResponse> {
-  const productId = String(args.product_id || '').trim();
-  if (!productId) throw new Error('product_id is required');
-  const merchantId = args.merchant_id ? String(args.merchant_id).trim() : '';
-  const limit = Math.max(1, Math.floor(Number(args.limit || 6) || 6));
-  const excludeItems = Array.isArray(args.exclude_items)
-    ? args.exclude_items
-        .map((item) => {
-          const excludeProductId = String(item?.product_id || '').trim();
-          if (!excludeProductId) return null;
-          const excludeMerchantId = item?.merchant_id ? String(item.merchant_id).trim() : '';
-          const excludeTitle = item?.title ? String(item.title).trim() : '';
-          return {
-            product_id: excludeProductId,
-            ...(excludeMerchantId ? { merchant_id: excludeMerchantId } : {}),
-            ...(excludeTitle ? { title: excludeTitle } : {}),
-          };
-        })
-        .filter(Boolean)
-    : [];
-
-  const data = await callGatewayWithTimeout(
-    {
-      operation: 'find_similar_products',
-      payload: {
-        similar: {
-          product_id: productId,
-          ...(merchantId ? { merchant_id: merchantId } : {}),
-          limit,
-          ...(excludeItems.length ? { exclude_items: excludeItems } : {}),
-        },
-        options: {
-          ...(args.debug ? { debug: true } : {}),
-          ...(args.cache_bypass ? { cache_bypass: true } : {}),
-        },
-        capabilities: {
-          client: 'shopping',
-          client_version: process.env.NEXT_PUBLIC_APP_VERSION || null,
-        },
-      },
-    },
-    args.timeout_ms,
-  );
-
-  return data as FindSimilarProductsResponse;
 }
 
 function _inferReviewSubjectFromProduct(product: ProductResponse): {

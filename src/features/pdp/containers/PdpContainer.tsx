@@ -32,7 +32,6 @@ import type {
 import {
   listQuestions,
   postQuestion,
-  type FindSimilarProductsResponse,
   type QuestionListItem,
   type UgcCapabilities,
 } from '@/lib/api';
@@ -348,7 +347,6 @@ function dedupeRecommendationItems(
 
 function normalizeSimilarMetadata(
   metadata:
-    | FindSimilarProductsResponse['metadata']
     | RecommendationsData['metadata']
     | null
     | undefined,
