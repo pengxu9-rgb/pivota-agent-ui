@@ -5,7 +5,12 @@ import { BrandLandingPage } from './BrandLandingPage';
 
 const getBrandDiscoveryFeedMock = vi.fn();
 const getBrowseHistoryMock = vi.fn();
+const addItemMock = vi.fn();
+const openCartMock = vi.fn();
+const pushMock = vi.fn();
+const replaceMock = vi.fn();
 let authUser: { id: string } | null = null;
+let cartItems: Array<{ quantity: number }> = [];
 
 let intersectionCallback: ((entries: Array<{ isIntersecting: boolean }>) => void) | null = null;
 
@@ -21,14 +26,51 @@ vi.mock('@/store/authStore', () => ({
   },
 }));
 
-vi.mock('@/components/product/ProductCard', () => ({
-  default: ({ title }: { title: string }) => <div>{title}</div>,
+vi.mock('@/store/cartStore', () => ({
+  useCartStore: (selector?: (state: {
+    items: Array<{ quantity: number }>;
+    addItem: typeof addItemMock;
+    open: typeof openCartMock;
+  }) => unknown) => {
+    const state = {
+      items: cartItems,
+      addItem: addItemMock,
+      open: openCartMock,
+    };
+    return selector ? selector(state) : state;
+  },
+}));
+
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({
+    push: pushMock,
+    replace: replaceMock,
+  }),
+  usePathname: () => '/brands/tom-ford',
+}));
+
+vi.mock('next/image', () => ({
+  default: ({
+    alt,
+    fill: _fill,
+    unoptimized: _unoptimized,
+    ...props
+  }: React.ImgHTMLAttributes<HTMLImageElement> & {
+    fill?: boolean;
+    unoptimized?: boolean;
+  }) => <img alt={alt || ''} {...props} />,
+}));
+
+vi.mock('sonner', () => ({
+  toast: {
+    success: vi.fn(),
+  },
 }));
 
 describe('BrandLandingPage', () => {
   beforeEach(() => {
-    window.history.replaceState({}, '', '/brands/tom-ford-beauty?name=Tom+Ford+Beauty');
     authUser = null;
+    cartItems = [];
     intersectionCallback = null;
     vi.stubGlobal(
       'IntersectionObserver',
@@ -49,9 +91,13 @@ describe('BrandLandingPage', () => {
     vi.restoreAllMocks();
     getBrandDiscoveryFeedMock.mockReset();
     getBrowseHistoryMock.mockReset();
+    addItemMock.mockReset();
+    openCartMock.mockReset();
+    pushMock.mockReset();
+    replaceMock.mockReset();
   });
 
-  it('loads popular products by default and resets to page 1 for brand search', async () => {
+  it('renders the new mobile-first shell and resets to page 1 for brand search', async () => {
     getBrandDiscoveryFeedMock.mockResolvedValue({
       products: [
         {
@@ -59,10 +105,13 @@ describe('BrandLandingPage', () => {
           merchant_id: 'merch_1',
           title: 'Rose Prick Eau de Parfum',
           description: 'Fragrance',
+          category: 'fragrance',
           price: 395,
           currency: 'USD',
           image_url: 'https://example.com/1.jpg',
           in_stock: true,
+          tags: ['bestseller'],
+          review_summary: { rating: 4.8, review_count: 128, scale: 5 },
         },
       ],
       metadata: { has_more: false },
@@ -87,10 +136,16 @@ describe('BrandLandingPage', () => {
         }),
       );
     });
+
     expect(screen.getByText('Rose Prick Eau de Parfum')).toBeInTheDocument();
+    expect(screen.getByText('Summer Glow Sale')).toBeInTheDocument();
+    expect(screen.getByText('Brand story')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Brand Home' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Open brand search' })).toBeInTheDocument();
     expect(getBrowseHistoryMock).not.toHaveBeenCalled();
 
-    fireEvent.change(screen.getByPlaceholderText('Search within Tom Ford'), {
+    fireEvent.click(screen.getByRole('button', { name: 'Open brand search' }));
+    fireEvent.change(screen.getByPlaceholderText('Search Tom Ford products'), {
       target: { value: 'cherry' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Search' }));
@@ -129,7 +184,7 @@ describe('BrandLandingPage', () => {
     });
   });
 
-  it('switches sort and dedupes products when loading more pages', async () => {
+  it('switches sort, shows category chips, and dedupes products when loading more pages', async () => {
     getBrandDiscoveryFeedMock
       .mockResolvedValueOnce({
         products: [
@@ -138,10 +193,12 @@ describe('BrandLandingPage', () => {
             merchant_id: 'merch_1',
             title: 'Bitter Peach',
             description: 'Fragrance',
+            category: 'fragrance',
             price: 420,
             currency: 'USD',
             image_url: 'https://example.com/1.jpg',
             in_stock: true,
+            review_summary: { rating: 4.7, review_count: 88, scale: 5 },
           },
         ],
         metadata: { has_more: true },
@@ -155,6 +212,7 @@ describe('BrandLandingPage', () => {
             merchant_id: 'merch_1',
             title: 'Bitter Peach',
             description: 'Fragrance',
+            category: 'fragrance',
             price: 420,
             currency: 'USD',
             image_url: 'https://example.com/1.jpg',
@@ -165,6 +223,7 @@ describe('BrandLandingPage', () => {
             merchant_id: 'merch_2',
             title: 'Electric Cherry',
             description: 'Fragrance',
+            category: 'fragrance',
             price: 395,
             currency: 'USD',
             image_url: 'https://example.com/2.jpg',
@@ -182,6 +241,7 @@ describe('BrandLandingPage', () => {
             merchant_id: 'merch_3',
             title: 'Lost Cherry',
             description: 'Fragrance',
+            category: 'fragrance',
             price: 550,
             currency: 'USD',
             image_url: 'https://example.com/3.jpg',
@@ -205,6 +265,8 @@ describe('BrandLandingPage', () => {
       expect(screen.getByText('Bitter Peach')).toBeInTheDocument();
     });
 
+    expect(screen.getByRole('button', { name: /Fragrance/i })).toBeInTheDocument();
+
     await act(async () => {
       intersectionCallback?.([{ isIntersecting: true }]);
     });
@@ -214,6 +276,7 @@ describe('BrandLandingPage', () => {
     });
     expect(screen.getAllByText('Bitter Peach')).toHaveLength(1);
 
+    fireEvent.click(screen.getByRole('button', { name: 'Filter' }));
     fireEvent.click(screen.getByRole('button', { name: 'Price: High to Low' }));
 
     await waitFor(() => {
@@ -227,79 +290,101 @@ describe('BrandLandingPage', () => {
     expect(screen.getByText('Lost Cherry')).toBeInTheDocument();
   });
 
-  it('renders backend category facets, syncs category to the URL, and re-queries from page 1', async () => {
+  it('requests real category scope when a brand category chip is selected', async () => {
     getBrandDiscoveryFeedMock
       .mockResolvedValueOnce({
         products: [
           {
             product_id: 'prod_1',
             merchant_id: 'merch_1',
-            title: 'Bitter Peach',
-            description: 'Fragrance',
-            price: 420,
+            title: 'Gloss Bomb',
+            description: 'Lip',
+            category: 'lip',
+            price: 22,
             currency: 'USD',
             image_url: 'https://example.com/1.jpg',
             in_stock: true,
           },
-        ],
-        metadata: { has_more: false },
-        facets: {
-          categories: [
-            { value: 'perfume', label: 'Perfume', count: 4 },
-            { value: 'lip balm', label: 'Lip Balm', count: 2 },
-          ],
-        },
-        query_text: '',
-        page_info: { page: 1, page_size: 1, total: 6, has_more: false },
-      })
-      .mockResolvedValueOnce({
-        products: [
           {
             product_id: 'prod_2',
             merchant_id: 'merch_1',
-            title: 'Soleil Summer Lip Balm',
-            description: 'Lip',
-            price: 62,
+            title: 'Soft Matte Foundation',
+            description: 'Complexion',
+            category: 'complexion',
+            price: 39,
             currency: 'USD',
             image_url: 'https://example.com/2.jpg',
             in_stock: true,
           },
         ],
-        metadata: { has_more: false, category_scope_applied: ['lip balm'] },
-        facets: {
-          categories: [
-            { value: 'perfume', label: 'Perfume', count: 4 },
-            { value: 'lip balm', label: 'Lip Balm', count: 2 },
-          ],
+        metadata: {
+          has_more: false,
+          facets: {
+            categories: [
+              { value: 'Lip', count: 1 },
+              { value: 'Complexion', count: 1 },
+            ],
+          },
         },
         query_text: '',
-        page_info: { page: 1, page_size: 1, total: 2, has_more: false },
+        page_info: { page: 1, page_size: 2, total: 2, has_more: false },
+      })
+      .mockResolvedValueOnce({
+        products: [
+          {
+            product_id: 'prod_1',
+            merchant_id: 'merch_1',
+            title: 'Gloss Bomb',
+            description: 'Lip',
+            category: 'lip',
+            price: 22,
+            currency: 'USD',
+            image_url: 'https://example.com/1.jpg',
+            in_stock: true,
+          },
+        ],
+        metadata: {
+          has_more: false,
+          facets: {
+            categories: [
+              { value: 'Lip', count: 1 },
+              { value: 'Complexion', count: 1 },
+            ],
+          },
+        },
+        query_text: '',
+        page_info: { page: 1, page_size: 1, total: 1, has_more: false },
       });
 
     render(
       <BrandLandingPage
-        slug="tom-ford"
-        initialBrandName="Tom Ford"
+        slug="fenty-beauty"
+        initialBrandName="Fenty Beauty"
         initialReturnUrl="/products/ext_123"
       />,
     );
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /Lip Balm/i })).toBeInTheDocument();
+      expect(screen.getByText('Gloss Bomb')).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole('button', { name: /Lip Balm/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Lip/i }));
 
     await waitFor(() => {
       expect(getBrandDiscoveryFeedMock).toHaveBeenLastCalledWith(
         expect.objectContaining({
-          brandName: 'Tom Ford',
-          category: 'lip balm',
+          brandName: 'Fenty Beauty',
+          category: 'Lip',
           page: 1,
         }),
       );
     });
-    expect(screen.getByText('Soleil Summer Lip Balm')).toBeInTheDocument();
-    expect(window.location.search).toContain('category=lip+balm');
+
+    await waitFor(() => {
+      expect(replaceMock).toHaveBeenCalledWith(
+        expect.stringContaining('category=Lip'),
+        { scroll: false },
+      );
+    });
   });
 });
