@@ -5,8 +5,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PdpContainer } from './PdpContainer';
 import type { PDPPayload } from '@/features/pdp/types';
 
-const findSimilarProductsMock = vi.fn();
-
 vi.mock('next/image', () => ({
   default: (
     props: React.ImgHTMLAttributes<HTMLImageElement> & {
@@ -35,7 +33,6 @@ vi.mock('next/navigation', () => ({
 }));
 
 vi.mock('@/lib/api', () => ({
-  findSimilarProducts: (...args: any[]) => findSimilarProductsMock(...args),
   listQuestions: vi.fn(async () => ({ items: [] })),
   postQuestion: vi.fn(async () => ({ question_id: 1 })),
 }));
@@ -120,7 +117,6 @@ describe('PdpContainer recommendations interactions', () => {
   afterEach(() => {
     cleanup();
     vi.restoreAllMocks();
-    findSimilarProductsMock.mockReset();
   });
 
   it('keeps first-fold similar recommendations on the mainline path', async () => {
@@ -137,7 +133,6 @@ describe('PdpContainer recommendations interactions', () => {
       expect(screen.getByText('Product 6')).toBeInTheDocument();
     });
 
-    expect(findSimilarProductsMock).not.toHaveBeenCalled();
     expect(screen.queryByRole('button', { name: /load more recommendations/i })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^view all$/i })).toBeInTheDocument();
   });
@@ -156,7 +151,6 @@ describe('PdpContainer recommendations interactions', () => {
 
     expect(screen.getByText(/all recommendations/i)).toBeInTheDocument();
     expect(screen.getAllByText('Product 6').length).toBeGreaterThan(0);
-    expect(findSimilarProductsMock).not.toHaveBeenCalled();
   });
 
   it('does not render a sheet load-more CTA for mainline-only recommendations', async () => {
@@ -172,7 +166,6 @@ describe('PdpContainer recommendations interactions', () => {
     fireEvent.click(screen.getByRole('button', { name: /view all/i }));
 
     expect(screen.queryByRole('button', { name: /load more recommendations/i })).not.toBeInTheDocument();
-    expect(findSimilarProductsMock).not.toHaveBeenCalled();
   });
 
   it('shows low-confidence hint from mainline metadata without offering old direct backfill', async () => {
@@ -220,7 +213,6 @@ describe('PdpContainer recommendations interactions', () => {
     });
 
     expect(screen.queryByRole('button', { name: /load more recommendations/i })).not.toBeInTheDocument();
-    expect(findSimilarProductsMock).not.toHaveBeenCalled();
   });
 
   it('deduplicates repeated recommendation titles from the same merchant', async () => {
@@ -312,6 +304,5 @@ describe('PdpContainer recommendations interactions', () => {
       expect(screen.getByText('Product 3')).toBeInTheDocument();
     });
     expect(screen.queryByText('Product 6')).not.toBeInTheDocument();
-    expect(findSimilarProductsMock).not.toHaveBeenCalled();
   });
 });
