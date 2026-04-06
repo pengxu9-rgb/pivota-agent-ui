@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-export const runtime = 'edge';
+// This route is a backend-bound proxy, not a latency-sensitive edge personalization layer.
+// Keep it on the Node runtime in the project's home region so requests do not bounce from
+// request-local edge regions back to the US-hosted upstream on every PDP/API call.
+export const runtime = 'nodejs';
+export const preferredRegion = 'home';
 
 const SHOP_UPSTREAM_BASE =
   process.env.NEXT_PUBLIC_UPSTREAM_API_URL ||

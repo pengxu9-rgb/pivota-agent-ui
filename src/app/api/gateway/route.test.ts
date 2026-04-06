@@ -18,6 +18,12 @@ describe('/api/gateway checkout-safe proxy', () => {
     vi.unstubAllEnvs();
   });
 
+  it('pins the gateway proxy to the node runtime in the home region', async () => {
+    const route = await import('@/app/api/gateway/route');
+    expect(route.runtime).toBe('nodejs');
+    expect(route.preferredRegion).toBe('home');
+  });
+
   it('routes creator checkout-token preview_quote to checkout-safe backend endpoints', async () => {
     vi.stubEnv('NEXT_PUBLIC_UPSTREAM_API_URL', 'https://invoke.example.com');
     vi.stubEnv('PIVOTA_BACKEND_BASE_URL', 'https://checkout.example.com');
