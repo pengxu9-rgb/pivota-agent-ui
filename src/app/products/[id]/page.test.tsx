@@ -84,8 +84,22 @@ vi.mock('@/features/pdp/containers/BeautyPDPContainer', () => ({
 }));
 
 vi.mock('@/features/pdp/containers/GenericPDPContainer', () => ({
-  GenericPDPContainer: ({ payload }: { payload: { product: { title: string } } }) => (
-    <div data-testid="generic-pdp">{payload.product.title}</div>
+  GenericPDPContainer: ({
+    payload,
+  }: {
+    payload: {
+      product: { title: string };
+      modules?: Array<{ type?: string; data?: { items?: unknown[] } }>;
+      x_recommendations_state?: string;
+    };
+  }) => (
+    <div data-testid="generic-pdp">
+      <div>{payload.product.title}</div>
+      <div data-testid="recommendations-count">
+        {payload.modules?.find((module) => module.type === 'recommendations')?.data?.items?.length ?? 0}
+      </div>
+      <div data-testid="recommendations-state">{payload.x_recommendations_state ?? ''}</div>
+    </div>
   ),
 }));
 
@@ -107,7 +121,27 @@ vi.mock('@/features/pdp/state/freezePolicy', () => ({
     similar: false,
     ugc: false,
   },
-  upsertLockedModule: vi.fn((payload: unknown) => payload),
+  upsertLockedModule: vi.fn(
+    ({
+      currentModules,
+      type,
+      nextModule,
+      locked,
+    }: {
+      currentModules?: Array<{ type?: string }>;
+      type?: string;
+      nextModule?: { type?: string } | null;
+      locked?: boolean;
+    }) => ({
+      modules: [
+        ...(Array.isArray(currentModules)
+          ? currentModules.filter((module) => module?.type !== type)
+          : []),
+        ...(nextModule ? [nextModule] : []),
+      ],
+      locked: Boolean(locked),
+    }),
+  ),
 }));
 
 function renderPage(productId = 'prod_1') {
@@ -159,6 +193,32 @@ const canonicalPayload = {
     },
   ],
   actions: [],
+} as const;
+
+const canonicalLoadingPayload = {
+  ...canonicalPayload,
+  modules: canonicalPayload.modules.filter((module) => module.type !== 'recommendations'),
+  x_recommendations_state: 'loading',
+} as const;
+
+const canonicalWithSimilarPayload = {
+  ...canonicalLoadingPayload,
+  modules: [
+    ...canonicalLoadingPayload.modules,
+    {
+      module_id: 'recommendations',
+      type: 'recommendations',
+      priority: 90,
+      data: {
+        strategy: 'related_products',
+        items: [
+          { product_id: 'sim_1', merchant_id: 'external_seed', title: 'Similar 1' },
+          { product_id: 'sim_2', merchant_id: 'external_seed', title: 'Similar 2' },
+        ],
+      },
+    },
+  ],
+  x_recommendations_state: 'ready',
 } as const;
 
 describe('ProductDetailPage canonical PDP loading', () => {
@@ -286,5 +346,52 @@ describe('ProductDetailPage canonical PDP loading', () => {
     await waitFor(() => {
       expect(recordBrowseHistoryEventMock).not.toHaveBeenCalled();
     });
+  });
+
+  it('retries similar backfill after timeout and keeps the module on the mainline path', async () => {
+    const timeoutErr = Object.assign(new Error('The request timed out. Please retry.'), {
+      code: 'UPSTREAM_TIMEOUT',
+    });
+
+    getPdpV2Mock.mockImplementation(async (args: { include?: string[]; cache_bypass?: boolean }) => {
+      if (Array.isArray(args?.include) && args.include.length === 1 && args.include[0] === 'similar') {
+        if (args.cache_bypass) {
+          return { kind: 'similar-success' };
+        }
+        throw timeoutErr;
+      }
+      return { kind: 'initial' };
+    });
+
+    mapPdpV2ToPdpPayloadMock.mockImplementation((response: { kind?: string }) => {
+      if (response?.kind === 'similar-success') {
+        return canonicalWithSimilarPayload;
+      }
+      return canonicalLoadingPayload;
+    });
+
+    renderPage();
+
+    await screen.findByTestId('generic-pdp');
+    await waitFor(() => {
+      expect(screen.getByTestId('recommendations-count')).toHaveTextContent('2');
+      expect(screen.getByTestId('recommendations-state')).toHaveTextContent('ready');
+    });
+
+    expect(getPdpV2Mock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        product_id: 'prod_1',
+        include: ['similar'],
+        timeout_ms: 7200,
+      }),
+    );
+    expect(getPdpV2Mock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        product_id: 'prod_1',
+        include: ['similar'],
+        timeout_ms: 4200,
+        cache_bypass: true,
+      }),
+    );
   });
 });

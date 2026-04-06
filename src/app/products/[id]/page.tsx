@@ -776,9 +776,10 @@ export default function ProductDetailPage({ params }: Props) {
 
       try {
         const backfillStartedAt = Date.now();
-        const backfillBudgetMs = 7600;
+        const backfillBudgetMs = 12000;
         const reviewsInitialTimeoutMs = 4200;
-        const similarInitialTimeoutMs = 5600;
+        const similarInitialTimeoutMs = 7200;
+        const similarRetryTimeoutMs = 4200;
         const deadlineAt = Date.now() + backfillBudgetMs;
         const remainingMs = () => deadlineAt - Date.now();
 
@@ -791,6 +792,9 @@ export default function ProductDetailPage({ params }: Props) {
         const fetchModuleWithBudget = async (
           modules: string[],
           timeoutCapMs: number,
+          options?: {
+            cacheBypass?: boolean;
+          },
         ): Promise<ModuleFetchResult> => {
           const remaining = remainingMs();
           if (cancelled || remaining <= 120) {
@@ -803,6 +807,7 @@ export default function ProductDetailPage({ params }: Props) {
               merchant_id: merchantId,
               include: modules,
               timeout_ms: timeoutMs,
+              ...(options?.cacheBypass ? { cache_bypass: true } : {}),
             });
             return { response, nonRetryable: false, code: '' };
           } catch (err) {
@@ -814,6 +819,9 @@ export default function ProductDetailPage({ params }: Props) {
             };
           }
         };
+
+        const shouldRetryTimeout = (result: ModuleFetchResult) =>
+          !result.response && !result.nonRetryable && result.code === 'UPSTREAM_TIMEOUT';
 
         const extractModules = (payload: PDPPayload | null) => {
           const reviews =
@@ -835,6 +843,12 @@ export default function ProductDetailPage({ params }: Props) {
             ? fetchModuleWithBudget(['similar'], similarInitialTimeoutMs)
             : Promise.resolve({ response: null, nonRetryable: false, code: '' }),
         ]);
+
+        if (needSimilar && shouldRetryTimeout(similarOnlyV2) && remainingMs() > 500) {
+          similarOnlyV2 = await fetchModuleWithBudget(['similar'], similarRetryTimeoutMs, {
+            cacheBypass: true,
+          });
+        }
 
         if (cancelled) return;
 
@@ -868,6 +882,10 @@ export default function ProductDetailPage({ params }: Props) {
         const itemsCount = Array.isArray((recModule as any)?.data?.items)
           ? ((recModule as any).data.items as unknown[]).length
           : 0;
+        const similarState =
+          recModule || moduleSourceLocksRef.current.similar || similarRequestSucceeded
+            ? 'ready'
+            : 'error';
 
         setPdpPayload((prev) => {
           if (!prev) return prev;
@@ -904,7 +922,7 @@ export default function ProductDetailPage({ params }: Props) {
             next = {
               ...next,
               modules: mergedSimilar.modules,
-              x_recommendations_state: 'ready',
+              x_recommendations_state: similarState,
               x_source_locks: {
                 ...(next.x_source_locks || {}),
                 similar: mergedSimilar.locked,
@@ -958,7 +976,7 @@ export default function ProductDetailPage({ params }: Props) {
           if (needSimilar) {
             next = {
               ...next,
-              x_recommendations_state: 'ready',
+              x_recommendations_state: 'error',
             };
           }
           return next;
