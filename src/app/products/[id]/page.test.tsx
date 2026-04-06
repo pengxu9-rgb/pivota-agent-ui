@@ -382,14 +382,14 @@ describe('ProductDetailPage canonical PDP loading', () => {
       expect.objectContaining({
         product_id: 'prod_1',
         include: ['similar'],
-        timeout_ms: 7200,
+        timeout_ms: 10500,
       }),
     );
     expect(getPdpV2Mock).toHaveBeenCalledWith(
       expect.objectContaining({
         product_id: 'prod_1',
         include: ['similar'],
-        timeout_ms: 4200,
+        timeout_ms: 6500,
         cache_bypass: true,
       }),
     );
