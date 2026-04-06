@@ -29,7 +29,7 @@ import { useAuthStore } from '@/store/authStore';
 import { useCartStore } from '@/store/cartStore';
 import { toast } from 'sonner';
 
-const PAGE_SIZE = 20;
+const PAGE_SIZE = 12;
 const NO_GROWTH_STOP_THRESHOLD = 2;
 const LOCAL_HISTORY_KEY = 'browse_history';
 const ALL_CATEGORY_KEY = 'all';

@@ -50,7 +50,7 @@ async function fetchInitialBrandFeed(args: {
   if (!shouldServerPrefetch) return null;
   const headerList = await headers();
   const baseUrl = resolveServerBaseUrl(headerList);
-  const limit = 20;
+  const limit = 12;
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), INITIAL_BRAND_FEED_TIMEOUT_MS);
 
