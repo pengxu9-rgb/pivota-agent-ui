@@ -1673,6 +1673,7 @@ export async function sendMessage(
 export async function getBrandDiscoveryFeed(args: {
   brandName: string;
   query?: string;
+  category?: string | null;
   sort?: BrandDiscoverySort;
   page?: number;
   limit?: number;
@@ -1685,6 +1686,7 @@ export async function getBrandDiscoveryFeed(args: {
 }): Promise<BrandDiscoveryFeedResult> {
   const brandName = String(args.brandName || '').trim();
   const queryText = String(args.query || '').trim();
+  const categoryText = String(args.category || '').trim();
   const sort: BrandDiscoverySort =
     args.sort === 'price_desc' || args.sort === 'price_asc' ? args.sort : 'popular';
   const requestedPage = Math.max(1, Math.floor(Number(args.page || 1) || 1));
@@ -1707,6 +1709,7 @@ export async function getBrandDiscoveryFeed(args: {
       products: [],
       metadata: {
         brand_scope_applied: [],
+        ...(categoryText ? { category_scope_applied: [categoryText] } : {}),
         sort_applied: sort,
         query_text: queryText,
         has_more: false,
@@ -1732,6 +1735,7 @@ export async function getBrandDiscoveryFeed(args: {
       },
       scope: {
         brand_names: [brandName],
+        ...(categoryText ? { categories: [categoryText] } : {}),
       },
       context: {
         recent_views: recentViews,

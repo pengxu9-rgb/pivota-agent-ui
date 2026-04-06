@@ -100,6 +100,7 @@ describe('getAllProducts browse routing', () => {
     const result = await getBrandDiscoveryFeed({
       brandName: 'Tom Ford Beauty',
       query: 'lip',
+      category: 'Lip',
       sort: 'price_desc',
       recentViews: [{ product_id: 'seed_1', merchant_id: 'external_seed', title: 'Rose lipstick' }],
     });
@@ -118,6 +119,7 @@ describe('getAllProducts browse routing', () => {
         },
         scope: {
           brand_names: ['Tom Ford Beauty'],
+          categories: ['Lip'],
         },
       },
     });
