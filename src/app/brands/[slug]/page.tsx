@@ -3,6 +3,8 @@ import type { BrandDiscoveryFeedResult } from '@/lib/api';
 import { normalizeProduct } from '@/lib/api';
 import { BrandLandingPage } from './BrandLandingPage';
 
+const INITIAL_BRAND_FEED_TIMEOUT_MS = 1500;
+
 function readSearchParam(value: string | string[] | undefined): string {
   if (Array.isArray(value)) return String(value[0] || '').trim();
   return String(value || '').trim();
@@ -42,9 +44,15 @@ async function fetchInitialBrandFeed(args: {
 
   const query = readSearchParam(args.query);
   const category = readSearchParam(args.category).toLowerCase();
+  const sourceProductId = readSearchParam(args.sourceProductId);
+  const sourceMerchantId = readSearchParam(args.sourceMerchantId);
+  const shouldServerPrefetch = Boolean(query || category || sourceProductId);
+  if (!shouldServerPrefetch) return null;
   const headerList = await headers();
   const baseUrl = resolveServerBaseUrl(headerList);
   const limit = 20;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), INITIAL_BRAND_FEED_TIMEOUT_MS);
 
   try {
     const res = await fetch(`${baseUrl}/api/gateway`, {
@@ -53,6 +61,7 @@ async function fetchInitialBrandFeed(args: {
         'Content-Type': 'application/json',
       },
       cache: 'no-store',
+      signal: controller.signal,
       body: JSON.stringify({
         operation: 'get_discovery_feed',
         payload: {
@@ -72,11 +81,11 @@ async function fetchInitialBrandFeed(args: {
             recent_queries: [],
             locale: 'en-US',
           },
-          ...(args.sourceProductId
+          ...(sourceProductId
             ? {
                 source_product_ref: {
-                  product_id: args.sourceProductId,
-                  ...(args.sourceMerchantId ? { merchant_id: args.sourceMerchantId } : {}),
+                  product_id: sourceProductId,
+                  ...(sourceMerchantId ? { merchant_id: sourceMerchantId } : {}),
                 },
               }
             : {}),
@@ -124,6 +133,8 @@ async function fetchInitialBrandFeed(args: {
     };
   } catch {
     return null;
+  } finally {
+    clearTimeout(timeoutId);
   }
 }
 
