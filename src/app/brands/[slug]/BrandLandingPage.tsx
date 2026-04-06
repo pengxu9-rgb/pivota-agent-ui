@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import {
+  type BrandDiscoveryFeedResult,
   getBrandDiscoveryFeed,
   getBrowseHistory,
   type BrandDiscoverySort,
@@ -28,7 +29,7 @@ import { useAuthStore } from '@/store/authStore';
 import { useCartStore } from '@/store/cartStore';
 import { toast } from 'sonner';
 
-const PAGE_SIZE = 24;
+const PAGE_SIZE = 20;
 const NO_GROWTH_STOP_THRESHOLD = 2;
 const LOCAL_HISTORY_KEY = 'browse_history';
 const ALL_CATEGORY_KEY = 'all';
@@ -621,6 +622,7 @@ export function BrandLandingPage({
   initialSourceMerchantId,
   initialQuery,
   initialCategory,
+  initialFeed,
 }: {
   slug: string;
   initialBrandName?: string;
@@ -630,6 +632,7 @@ export function BrandLandingPage({
   initialSourceMerchantId?: string;
   initialQuery?: string;
   initialCategory?: string;
+  initialFeed?: BrandDiscoveryFeedResult | null;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -640,8 +643,11 @@ export function BrandLandingPage({
   const cartItems = useCartStore((state) => state.items);
   const openCart = useCartStore((state) => state.open);
 
-  const [products, setProducts] = useState<ProductResponse[]>([]);
-  const [feedMetadata, setFeedMetadata] = useState<Record<string, any>>({});
+  const hasInitialFeed = Boolean(initialFeed);
+  const [products, setProducts] = useState<ProductResponse[]>(() => initialFeed?.products || []);
+  const [feedMetadata, setFeedMetadata] = useState<Record<string, any>>(
+    () => initialFeed?.metadata || {},
+  );
   const [queryDraft, setQueryDraft] = useState(initialQuery || '');
   const [activeQuery, setActiveQuery] = useState(initialQuery || '');
   const [sort, setSort] = useState<BrandDiscoverySort>('popular');
@@ -654,14 +660,18 @@ export function BrandLandingPage({
   const [loading, setLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
-  const [page, setPage] = useState(1);
-  const [hasMore, setHasMore] = useState(true);
-  const [total, setTotal] = useState<number | undefined>(undefined);
+  const [page, setPage] = useState(() => initialFeed?.page_info.page || 1);
+  const [hasMore, setHasMore] = useState(() => {
+    if (!hasInitialFeed) return true;
+    return Boolean(initialFeed?.page_info.has_more);
+  });
+  const [total, setTotal] = useState<number | undefined>(() => initialFeed?.page_info.total);
   const [recentViews, setRecentViews] = useState<DiscoveryRecentView[]>([]);
-  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(hasInitialFeed);
 
   const requestSeqRef = useRef(0);
-  const hasLoadedOnceRef = useRef(false);
+  const hasLoadedOnceRef = useRef(hasInitialFeed);
+  const skipInitialClientFetchRef = useRef(hasInitialFeed);
   const noGrowthCountRef = useRef(0);
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
   const recentViewsRef = useRef<DiscoveryRecentView[]>([]);
@@ -722,13 +732,6 @@ export function BrandLandingPage({
 
   const brandCampaign = useMemo(() => resolveBrandCampaign(feedMetadata), [feedMetadata]);
   const brandStory = useMemo(() => resolveBrandStory(feedMetadata), [feedMetadata]);
-  const historySignature = useMemo(
-    () =>
-      recentViews
-        .map((item) => `${buildRecentViewKey(item)}:${String(item.viewed_at || '')}`)
-        .join('|'),
-    [recentViews],
-  );
   const brandAvatarUrl = String(
     feedMetadata?.brand_avatar_url || feedMetadata?.brand_logo_url || feedMetadata?.brand_image_url || '',
   ).trim();
@@ -775,10 +778,11 @@ export function BrandLandingPage({
   }, [activeCategory, activeQuery, pathname, router]);
 
   useEffect(() => {
-    const local = readLocalRecentViews();
-    setRecentViews(local);
+    setRecentViews(readLocalRecentViews());
+  }, []);
 
-    if (!user?.id) return;
+  useEffect(() => {
+    if (!user?.id || !hasLoadedOnce) return;
 
     let cancelled = false;
     void getBrowseHistory(40)
@@ -795,10 +799,14 @@ export function BrandLandingPage({
     return () => {
       cancelled = true;
     };
-  }, [user?.id]);
+  }, [hasLoadedOnce, user?.id]);
 
   useEffect(() => {
     if (!brandName) return;
+    if (skipInitialClientFetchRef.current) {
+      skipInitialClientFetchRef.current = false;
+      return;
+    }
     let cancelled = false;
     const requestSeq = ++requestSeqRef.current;
     noGrowthCountRef.current = 0;
@@ -851,7 +859,7 @@ export function BrandLandingPage({
     return () => {
       cancelled = true;
     };
-  }, [activeCategory, activeQuery, brandName, historySignature, initialSourceMerchantId, initialSourceProductId, sort]);
+  }, [activeCategory, activeQuery, brandName, initialSourceMerchantId, initialSourceProductId, sort]);
 
   useEffect(() => {
     const target = loadMoreRef.current;
@@ -1294,24 +1302,6 @@ export function BrandLandingPage({
               ) : null}
             </section>
           ) : null}
-
-          <footer className="flex flex-col gap-3 border-t border-[#eee7dd] pt-6 text-sm text-[#667085] sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex flex-wrap items-center gap-4">
-              <Link
-                href={`/brands/${encodeURIComponent(slug)}?name=${encodeURIComponent(brandName)}`}
-                className="font-medium text-slate-700 transition hover:text-slate-950"
-              >
-                Brand Home
-              </Link>
-              <a
-                href="mailto:support@pivota.cc?subject=Brand%20Page%20Support"
-                className="font-medium text-slate-700 transition hover:text-slate-950"
-              >
-                Contact Support
-              </a>
-            </div>
-            <p>Mobile-first browsing, tuned for faster product discovery.</p>
-          </footer>
         </motion.section>
       </main>
     </div>
