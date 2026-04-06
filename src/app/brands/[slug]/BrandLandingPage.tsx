@@ -6,11 +6,11 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowLeft,
+  DollarSign,
   Plus,
   Search,
   ShoppingBag,
   SlidersHorizontal,
-  Sparkles,
   Star,
   X,
 } from 'lucide-react';
@@ -40,18 +40,25 @@ const SORT_OPTIONS: Array<{ value: BrandDiscoverySort; label: string }> = [
   { value: 'price_asc', label: 'Price: Low to High' },
 ];
 
-const BRAND_QUOTES: Record<string, { quote: string; author: string }> = {
-  'fenty beauty': {
-    quote: 'Makeup is there for you to have fun with. It should never feel like pressure.',
-    author: 'Rihanna, founder',
-  },
-};
-
 type CategoryChip = {
   key: string;
   label: string;
   scopeValue: string | null;
   count?: number;
+};
+
+type BrandCampaign = {
+  eyebrow?: string;
+  title: string;
+  subtitle?: string;
+  ctaLabel?: string;
+  ctaHref?: string;
+};
+
+type BrandStory = {
+  title?: string;
+  quote: string;
+  author?: string;
 };
 
 function buildProductKey(product: ProductResponse): string {
@@ -318,12 +325,60 @@ function resolveProductBadge(product: ProductResponse): string | null {
   return null;
 }
 
-function getBrandStory(brandName: string) {
-  const normalized = String(brandName || '').trim().toLowerCase();
-  if (BRAND_QUOTES[normalized]) return BRAND_QUOTES[normalized];
+function resolveBrandCampaign(metadata: Record<string, any> | null | undefined): BrandCampaign | null {
+  const candidate =
+    metadata?.brand_campaign ||
+    metadata?.campaign_banner ||
+    metadata?.promo_banner ||
+    metadata?.campaign ||
+    null;
+
+  if (!candidate || typeof candidate !== 'object') return null;
+  if (candidate.enabled === false || candidate.visible === false) return null;
+
+  const title = String(candidate.title || candidate.headline || candidate.name || '').trim();
+  if (!title) return null;
+
+  const subtitle = String(candidate.subtitle || candidate.body || candidate.description || '').trim();
+  const ctaLabel = String(candidate.cta_label || candidate.ctaLabel || candidate.button_label || '').trim();
+  const ctaHref = String(candidate.cta_href || candidate.ctaHref || candidate.href || '').trim();
+  const eyebrow = String(candidate.eyebrow || candidate.label || '').trim();
+
   return {
-    quote: `${brandName} brings together signature formulas, elevated textures, and the pieces shoppers keep reaching for.`,
-    author: 'Pivota brand edit',
+    ...(eyebrow ? { eyebrow } : {}),
+    title,
+    ...(subtitle ? { subtitle } : {}),
+    ...(ctaLabel ? { ctaLabel } : {}),
+    ...(ctaHref ? { ctaHref } : {}),
+  };
+}
+
+function resolveBrandStory(metadata: Record<string, any> | null | undefined): BrandStory | null {
+  const candidate =
+    metadata?.brand_story ||
+    metadata?.story ||
+    metadata?.brand_editorial ||
+    null;
+
+  if (!candidate) return null;
+
+  if (typeof candidate === 'string') {
+    const quote = candidate.trim();
+    return quote ? { quote } : null;
+  }
+
+  if (typeof candidate !== 'object') return null;
+
+  const quote = String(candidate.quote || candidate.body || candidate.text || '').trim();
+  if (!quote) return null;
+
+  const title = String(candidate.title || candidate.label || '').trim();
+  const author = String(candidate.author || candidate.attribution || candidate.byline || '').trim();
+
+  return {
+    ...(title ? { title } : {}),
+    quote,
+    ...(author ? { author } : {}),
   };
 }
 
@@ -376,8 +431,8 @@ function BrandProductCard({ product }: { product: ProductResponse }) {
   return (
     <div className="group relative">
       <Link href={href} prefetch={false} className="block h-full">
-        <article className="h-full overflow-hidden rounded-[24px] bg-white shadow-[0_8px_32px_rgba(15,23,42,0.08)] ring-1 ring-black/5 transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_18px_38px_rgba(15,23,42,0.14)]">
-          <div className="relative aspect-[4/5] overflow-hidden bg-[#f4efe8]">
+        <article className="h-full overflow-hidden rounded-[20px] border border-[#efe7dc] bg-white shadow-[0_12px_28px_rgba(15,23,42,0.06)] transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_18px_36px_rgba(15,23,42,0.1)]">
+          <div className="relative aspect-[4/5] overflow-hidden bg-[#f7f3ee]">
             <Image
               src={imageSrc}
               alt={product.title}
@@ -390,34 +445,29 @@ function BrandProductCard({ product }: { product: ProductResponse }) {
             />
 
             {badge ? (
-              <span className="absolute left-3 top-3 rounded-full bg-white/95 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-700 shadow-sm">
+              <span className="absolute left-3 top-3 rounded-md bg-white/95 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-700 shadow-sm">
                 {badge}
               </span>
             ) : null}
           </div>
 
-          <div className="space-y-3 p-3.5 pr-16 sm:p-4 sm:pr-16">
-            <h3 className="min-h-[2.5rem] line-clamp-2 text-sm font-semibold leading-5 text-slate-900">
-              {product.title}
-            </h3>
-
-            <div className="flex min-h-[1.25rem] items-center gap-2 text-xs text-slate-500">
-              <span className="inline-flex items-center gap-1 rounded-full bg-slate-50 px-2 py-1 font-medium text-slate-700">
-                <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" />
-                {rating ? rating.toFixed(1) : 'New'}
-              </span>
-              <span className="line-clamp-1">
-                {reviewCount > 0 ? `${reviewCount} reviews` : 'Fresh on Pivota'}
+          <div className="space-y-2.5 p-3.5 pr-14 sm:p-4 sm:pr-14">
+            <div className="flex min-h-[1.125rem] items-center gap-1.5 text-[12px] text-slate-500">
+              <Star className="h-3.5 w-3.5 fill-[#f6c548] text-[#f6c548]" />
+              <span className="font-semibold text-slate-700">{rating ? rating.toFixed(1) : 'New'}</span>
+              <span className="text-[#8c96a8]">
+                {reviewCount > 0 ? `(${reviewCount >= 1000 ? `${(reviewCount / 1000).toFixed(1)}k` : reviewCount})` : ''}
               </span>
             </div>
 
-            <div className="space-y-1">
-              <p className="text-base font-semibold text-slate-900">
+            <h3 className="min-h-[2.65rem] line-clamp-2 text-[15px] font-semibold leading-5 text-[#202531]">
+              {product.title}
+            </h3>
+
+            <div className="space-y-0.5">
+              <p className="text-[17px] font-bold tracking-tight text-[#111827]">
                 {formatPrice(product.price, product.currency)}
               </p>
-              {product.merchant_name ? (
-                <p className="line-clamp-1 text-[11px] text-slate-500">{product.merchant_name}</p>
-              ) : null}
             </div>
           </div>
         </article>
@@ -426,7 +476,7 @@ function BrandProductCard({ product }: { product: ProductResponse }) {
       <button
         type="button"
         onClick={handleQuickAction}
-        className="absolute bottom-4 right-4 inline-flex h-10 w-10 items-center justify-center rounded-full bg-slate-900 text-white shadow-lg transition hover:scale-105 hover:bg-slate-800"
+        className="absolute bottom-4 right-4 inline-flex h-9 w-9 items-center justify-center rounded-full border border-[#e6e0d7] bg-white text-slate-700 shadow-[0_8px_18px_rgba(15,23,42,0.12)] transition hover:scale-105 hover:text-slate-950"
         aria-label={
           isDirectCartEligible ? `Quick add ${product.title}` : `View details for ${product.title}`
         }
@@ -539,7 +589,8 @@ export function BrandLandingPage({
     return products.filter((product) => inferCategoryLabel(product) === activeCategory);
   }, [activeCategory, products]);
 
-  const brandStory = useMemo(() => getBrandStory(brandName || 'This brand'), [brandName]);
+  const brandCampaign = useMemo(() => resolveBrandCampaign(feedMetadata), [feedMetadata]);
+  const brandStory = useMemo(() => resolveBrandStory(feedMetadata), [feedMetadata]);
   const historySignature = useMemo(
     () =>
       recentViews
@@ -732,16 +783,20 @@ export function BrandLandingPage({
   ]);
 
   return (
-    <div className="min-h-screen bg-[#faf7f2] text-slate-900">
+    <div className="relative min-h-screen overflow-x-hidden bg-white text-slate-900">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 top-0 h-[220px] bg-[radial-gradient(circle_at_top,_rgba(117,146,255,0.14),_rgba(255,255,255,0)_58%),radial-gradient(circle_at_90%_8%,_rgba(216,127,255,0.12),_rgba(255,255,255,0)_34%)]"
+      />
       <header
-        className={`sticky top-0 z-50 border-b border-slate-200/80 bg-[#faf7f2]/95 backdrop-blur transition-shadow ${
+        className={`sticky top-0 z-50 border-b border-[#eee7dd] bg-white/95 backdrop-blur transition-shadow ${
           isScrolled ? 'shadow-sm' : ''
         }`}
       >
-        <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4 sm:h-16 sm:px-6 lg:px-8">
+        <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4 sm:h-16 sm:px-6 lg:px-8">
           <a
             href={returnHref}
-            className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 transition hover:border-slate-300 hover:text-slate-950"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-full text-slate-600 transition hover:text-slate-950"
             aria-label="Back"
           >
             <ArrowLeft className="h-4 w-4" />
@@ -749,10 +804,10 @@ export function BrandLandingPage({
 
           <Link
             href="/"
-            className="absolute left-1/2 inline-flex -translate-x-1/2 items-center gap-2 text-sm font-semibold tracking-[0.18em] text-slate-900 uppercase"
+            className="absolute left-1/2 inline-flex -translate-x-1/2 items-center gap-1.5 text-[22px] font-semibold tracking-[-0.02em] text-[#1f2937]"
           >
-            <Sparkles className="h-4 w-4 text-fuchsia-500" />
-            Pivota
+            <DollarSign className="h-4 w-4 text-[#4f7cff]" strokeWidth={2.4} />
+            <span className="text-[20px] font-semibold tracking-[-0.03em]">Pivota</span>
           </Link>
 
           <div className="flex items-center gap-2">
@@ -762,7 +817,7 @@ export function BrandLandingPage({
                 setIsSearchOpen((current) => !current);
                 setIsFilterOpen(false);
               }}
-              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 transition hover:border-slate-300 hover:text-slate-950"
+              className="inline-flex h-10 w-10 items-center justify-center rounded-full text-slate-600 transition hover:text-slate-950"
               aria-label={isSearchOpen ? 'Close brand search' : 'Open brand search'}
             >
               {isSearchOpen ? <X className="h-4 w-4" /> : <Search className="h-4 w-4" />}
@@ -771,12 +826,12 @@ export function BrandLandingPage({
             <button
               type="button"
               onClick={openCart}
-              className="relative inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 transition hover:border-slate-300 hover:text-slate-950"
+              className="relative inline-flex h-10 w-10 items-center justify-center rounded-full text-slate-600 transition hover:text-slate-950"
               aria-label="Open cart"
             >
               <ShoppingBag className="h-4 w-4" />
               {cartItemCount > 0 ? (
-                <span className="absolute -right-1 -top-1 inline-flex min-h-5 min-w-5 items-center justify-center rounded-full bg-slate-900 px-1.5 text-[10px] font-semibold text-white">
+                <span className="absolute -right-0.5 -top-0.5 inline-flex min-h-4 min-w-4 items-center justify-center rounded-full bg-[#c16cf3] px-1 text-[9px] font-semibold text-white">
                   {cartItemCount > 99 ? '99+' : cartItemCount}
                 </span>
               ) : null}
@@ -785,15 +840,15 @@ export function BrandLandingPage({
         </div>
 
         {isSearchOpen ? (
-          <div className="border-t border-slate-200/70 bg-white/80 px-4 py-3 sm:px-6 lg:px-8">
+          <div className="border-t border-[#f1ebe3] bg-white px-4 py-3 sm:px-6 lg:px-8">
             <form
-              className="mx-auto flex max-w-7xl items-center gap-2"
+              className="mx-auto flex max-w-6xl items-center gap-2"
               onSubmit={(event) => {
                 event.preventDefault();
                 setActiveQuery(queryDraft.trim());
               }}
             >
-              <div className="flex h-11 flex-1 items-center gap-2 rounded-full border border-slate-200 bg-white px-4 shadow-sm">
+              <div className="flex h-11 flex-1 items-center gap-2 rounded-full border border-[#ece5dd] bg-[#fcfbf9] px-4 shadow-sm">
                 <Search className="h-4 w-4 text-slate-400" />
                 <input
                   ref={searchInputRef}
@@ -805,7 +860,7 @@ export function BrandLandingPage({
               </div>
               <button
                 type="submit"
-                className="inline-flex h-11 items-center justify-center rounded-full bg-slate-900 px-4 text-sm font-medium text-white transition hover:bg-slate-800"
+                className="inline-flex h-11 items-center justify-center rounded-full bg-[#1f2937] px-4 text-sm font-medium text-white transition hover:bg-[#111827]"
               >
                 Search
               </button>
@@ -813,134 +868,146 @@ export function BrandLandingPage({
           </div>
         ) : null}
 
-        <div className="border-t border-slate-200/70 bg-[#faf7f2]/95 px-4 py-3 sm:px-6 lg:px-8">
-          <div className="mx-auto flex max-w-7xl items-center gap-3">
-            <button
-              type="button"
-              onClick={() => {
-                setIsFilterOpen((current) => !current);
-                setIsSearchOpen(false);
-              }}
-              className="inline-flex shrink-0 items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-800 shadow-sm transition hover:border-slate-300"
-            >
-              <SlidersHorizontal className="h-4 w-4" />
-              Filter
-            </button>
-
-            <div className="flex-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-              <div className="flex min-w-max items-center gap-2 pr-2">
-                {categoryChips.map((chip) => {
-                  const selected = chip.scopeValue === activeCategory || (!chip.scopeValue && !activeCategory);
-                  return (
-                    <button
-                      key={chip.key}
-                      type="button"
-                      onClick={() => setActiveCategory(chip.scopeValue)}
-                      className={`inline-flex items-center gap-1 rounded-full border px-3.5 py-2 text-sm font-medium transition ${
-                        selected
-                          ? 'border-transparent bg-gradient-to-r from-fuchsia-500 via-violet-500 to-sky-500 text-white shadow-sm'
-                          : 'border-slate-200 bg-white/90 text-slate-700 hover:border-slate-300'
-                      }`}
-                    >
-                      <span>{chip.label}</span>
-                      {typeof chip.count === 'number' ? (
-                        <span className={selected ? 'text-white/80' : 'text-slate-400'}>
-                          {chip.count}
-                        </span>
-                      ) : null}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-
-          {isFilterOpen ? (
-            <div className="mx-auto mt-3 max-w-7xl rounded-[28px] border border-slate-200 bg-white p-4 shadow-[0_10px_30px_rgba(15,23,42,0.08)]">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                Sort products
-              </p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {SORT_OPTIONS.map((option) => (
-                  <button
-                    key={option.value}
-                    type="button"
-                    onClick={() => {
-                      setSort(option.value);
-                      setIsFilterOpen(false);
-                    }}
-                    className={`rounded-full px-3.5 py-2 text-sm font-medium transition ${
-                      sort === option.value
-                        ? 'bg-slate-900 text-white'
-                        : 'border border-slate-200 bg-slate-50 text-slate-700 hover:border-slate-300'
-                    }`}
-                  >
-                    {option.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          ) : null}
-        </div>
       </header>
 
-      <main className="mx-auto max-w-7xl px-4 pb-16 pt-4 sm:px-6 lg:px-8">
+      <main className="relative mx-auto max-w-6xl px-4 pb-16 pt-4 sm:px-6 lg:px-8">
         <motion.section
           initial={{ opacity: 0, y: 18 }}
           animate={{ opacity: 1, y: 0 }}
-          className="flex flex-col gap-4"
+          className="flex flex-col gap-5"
         >
-          <section className="flex items-start justify-between gap-4 rounded-[28px] bg-white px-5 py-4 shadow-[0_10px_30px_rgba(15,23,42,0.08)] ring-1 ring-black/5 sm:px-6 sm:py-5">
+          <section className="flex items-start justify-between gap-4 px-1 py-1 sm:items-center">
             <div className="min-w-0 space-y-2">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">
+              <p className="text-[12px] font-semibold uppercase tracking-[0.16em] text-[#98a2b3]">
                 Official Brand
               </p>
-              <h1 className="text-[2rem] font-semibold tracking-tight text-slate-950 sm:text-[2.35rem]">
+              <h1 className="text-[2.15rem] font-semibold tracking-[-0.04em] text-[#111827] sm:text-[2.6rem]">
                 {brandName || 'Brand'}
               </h1>
-              <p className="text-sm text-slate-500">
+              <p className="text-[15px] text-[#667085]">
                 {(typeof total === 'number' ? total : products.length) || 0} products across sellers
               </p>
-              {subtitle ? <p className="max-w-2xl text-sm text-slate-500">{subtitle}</p> : null}
+              {subtitle ? <p className="max-w-2xl text-sm text-[#667085]">{subtitle}</p> : null}
               {activeQuery ? (
-                <p className="text-sm text-slate-600">
+                <p className="text-sm text-[#667085]">
                   Showing results for <span className="font-medium text-slate-900">“{activeQuery}”</span>
                 </p>
               ) : null}
             </div>
 
-            <div className="relative mt-1 h-14 w-14 shrink-0 overflow-hidden rounded-full bg-gradient-to-br from-fuchsia-500 via-violet-500 to-sky-500 text-white shadow-lg sm:h-16 sm:w-16">
+            <div className="relative mt-1 h-16 w-16 shrink-0 overflow-hidden rounded-full border border-[#e5e7eb] bg-[#dfe8db] shadow-[0_8px_18px_rgba(15,23,42,0.08)] sm:h-20 sm:w-20">
               {brandAvatarUrl ? (
                 <Image src={brandAvatarUrl} alt={brandName} fill unoptimized className="object-cover" />
               ) : (
-                <div className="flex h-full w-full items-center justify-center text-lg font-semibold">
+                <div className="flex h-full w-full items-center justify-center text-lg font-semibold text-[#334155]">
                   {getBrandInitials(brandName)}
                 </div>
               )}
             </div>
           </section>
 
-          <section className="overflow-hidden rounded-[28px] bg-gradient-to-r from-[#241057] via-[#5e2cc5] to-[#f35db0] px-4 py-4 text-white shadow-[0_18px_40px_rgba(91,33,182,0.18)] sm:px-5 sm:py-4">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="space-y-1">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-white/70">
-                  Summer Glow Sale
-                </p>
-                <h2 className="text-xl font-semibold tracking-tight sm:text-2xl">
-                  Shop standout picks from {brandName}
-                </h2>
-                <p className="max-w-2xl text-sm text-white/80">
-                  Discover hero formulas, fresh drops, and the products shoppers are opening first.
-                </p>
-              </div>
-              <a
-                href="#brand-products"
-                className="inline-flex h-10 shrink-0 items-center justify-center rounded-full bg-white px-4 text-sm font-medium text-slate-900 transition hover:bg-slate-100"
+          <section className="sticky top-14 z-40 -mx-4 border-y border-[#f1ebe3] bg-white/96 px-4 py-3 backdrop-blur sm:top-16 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
+            <div className="mx-auto flex max-w-6xl items-center gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsFilterOpen((current) => !current);
+                  setIsSearchOpen(false);
+                }}
+                className="inline-flex h-10 shrink-0 items-center gap-2 rounded-xl border border-[#ece5dd] bg-[#f8f5f1] px-3.5 text-[15px] font-semibold text-[#4b5563] shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition hover:bg-[#f4f0ea]"
               >
-                Browse products
-              </a>
+                <SlidersHorizontal className="h-4 w-4" />
+                Filter
+              </button>
+
+              <div className="flex-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                <div className="flex min-w-max items-center gap-2 pr-2">
+                  {categoryChips.map((chip) => {
+                    const selected =
+                      chip.scopeValue === activeCategory || (!chip.scopeValue && !activeCategory);
+                    return (
+                      <button
+                        key={chip.key}
+                        type="button"
+                        onClick={() => setActiveCategory(chip.scopeValue)}
+                        className={`inline-flex h-10 items-center gap-1 rounded-full border px-4 text-[15px] font-semibold transition ${
+                          selected
+                            ? 'border-transparent bg-gradient-to-r from-[#8f57ff] via-[#a35cff] to-[#4f7cff] text-white shadow-[0_10px_24px_rgba(143,87,255,0.28)]'
+                            : 'border-[#e8e1d7] bg-white text-[#667085] hover:border-[#d9d1c6]'
+                        }`}
+                      >
+                        <span>{chip.label}</span>
+                        {typeof chip.count === 'number' ? (
+                          <span className={selected ? 'text-white/78' : 'text-[#98a2b3]'}>
+                            {chip.count}
+                          </span>
+                        ) : null}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
+
+            {isFilterOpen ? (
+              <div className="mx-auto mt-3 max-w-6xl rounded-[24px] border border-[#ece5dd] bg-white p-4 shadow-[0_10px_30px_rgba(15,23,42,0.08)]">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                  Sort products
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {SORT_OPTIONS.map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => {
+                        setSort(option.value);
+                        setIsFilterOpen(false);
+                      }}
+                      className={`rounded-full px-3.5 py-2 text-sm font-medium transition ${
+                        sort === option.value
+                          ? 'bg-[#1f2937] text-white'
+                          : 'border border-[#ece5dd] bg-[#fbf9f6] text-slate-700 hover:border-[#ddd3c8]'
+                      }`}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
           </section>
+
+          {brandCampaign ? (
+            <section className="overflow-hidden rounded-[22px] bg-gradient-to-r from-[#8f2df2] via-[#c53cd7] to-[#ef5ca8] px-5 py-5 text-white shadow-[0_16px_32px_rgba(197,60,215,0.24)]">
+              <div className="relative overflow-hidden rounded-[18px]">
+                <div className="pointer-events-none absolute -right-8 -top-3 h-24 w-24 rounded-full bg-white/10" />
+                <div className="pointer-events-none absolute right-4 top-6 h-20 w-20 rounded-full bg-white/12" />
+                <div className="relative flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="space-y-1">
+                    {brandCampaign.eyebrow ? (
+                      <p className="text-[12px] font-semibold uppercase tracking-[0.16em] text-white/74">
+                        {brandCampaign.eyebrow}
+                      </p>
+                    ) : null}
+                    <h2 className="text-[1.55rem] font-semibold leading-7 tracking-[-0.03em]">
+                      {brandCampaign.title}
+                    </h2>
+                    {brandCampaign.subtitle ? (
+                      <p className="max-w-2xl text-sm text-white/88">{brandCampaign.subtitle}</p>
+                    ) : null}
+                  </div>
+                  {brandCampaign.ctaLabel ? (
+                    <a
+                      href={brandCampaign.ctaHref || '#brand-products'}
+                      className="inline-flex h-10 shrink-0 items-center justify-center rounded-full bg-white px-4 text-sm font-semibold text-[#8f2df2] transition hover:bg-white/90"
+                    >
+                      {brandCampaign.ctaLabel}
+                    </a>
+                  ) : null}
+                </div>
+              </div>
+            </section>
+          ) : null}
 
           {loading ? (
             <section id="brand-products" className="space-y-4">
@@ -951,7 +1018,7 @@ export function BrandLandingPage({
               </div>
             </section>
           ) : products.length === 0 ? (
-            <section className="rounded-[28px] border border-dashed border-slate-300 bg-white/70 px-6 py-10 text-center shadow-sm">
+            <section className="rounded-[24px] border border-dashed border-[#ddd3c8] bg-white px-6 py-10 text-center shadow-sm">
               <h2 className="text-lg font-semibold text-slate-900">No products found for {brandName}</h2>
               <p className="mt-2 text-sm text-slate-500">
                 {activeQuery
@@ -960,7 +1027,7 @@ export function BrandLandingPage({
               </p>
             </section>
           ) : visibleProducts.length === 0 ? (
-            <section className="rounded-[28px] border border-dashed border-slate-300 bg-white/70 px-6 py-10 text-center shadow-sm">
+            <section className="rounded-[24px] border border-dashed border-[#ddd3c8] bg-white px-6 py-10 text-center shadow-sm">
               <h2 className="text-lg font-semibold text-slate-900">
                 No {categoryChips.find((chip) => chip.scopeValue === activeCategory)?.label?.toLowerCase() || 'matching'} picks yet
               </h2>
@@ -970,7 +1037,7 @@ export function BrandLandingPage({
             </section>
           ) : (
             <section id="brand-products" className="space-y-5">
-              <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-4">
+              <div className="grid grid-cols-2 gap-3 md:gap-5 lg:grid-cols-3 xl:grid-cols-4">
                 {visibleProducts.map((product) => (
                   <BrandProductCard key={buildProductKey(product)} product={product} />
                 ))}
@@ -989,15 +1056,21 @@ export function BrandLandingPage({
             </section>
           )}
 
-          <section className="rounded-[32px] bg-white px-5 py-6 shadow-[0_10px_30px_rgba(15,23,42,0.08)] ring-1 ring-black/5 sm:px-6">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Brand story</p>
-            <blockquote className="mt-3 text-lg leading-8 text-slate-900 sm:text-xl">
-              “{brandStory.quote}”
-            </blockquote>
-            <p className="mt-3 text-sm font-medium text-slate-500">{brandStory.author}</p>
-          </section>
+          {brandStory ? (
+            <section className="rounded-[24px] border border-[#efe7dc] bg-white px-5 py-6 shadow-[0_10px_28px_rgba(15,23,42,0.05)] sm:px-6">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#98a2b3]">
+                {brandStory.title || 'Brand story'}
+              </p>
+              <blockquote className="mt-3 text-lg leading-8 text-[#111827] sm:text-xl">
+                “{brandStory.quote}”
+              </blockquote>
+              {brandStory.author ? (
+                <p className="mt-3 text-sm font-medium text-[#667085]">{brandStory.author}</p>
+              ) : null}
+            </section>
+          ) : null}
 
-          <footer className="flex flex-col gap-3 border-t border-slate-200 pt-6 text-sm text-slate-500 sm:flex-row sm:items-center sm:justify-between">
+          <footer className="flex flex-col gap-3 border-t border-[#eee7dd] pt-6 text-sm text-[#667085] sm:flex-row sm:items-center sm:justify-between">
             <div className="flex flex-wrap items-center gap-4">
               <Link
                 href={`/brands/${encodeURIComponent(slug)}?name=${encodeURIComponent(brandName)}`}
