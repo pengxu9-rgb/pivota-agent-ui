@@ -136,7 +136,7 @@ describe('RecommendationsGrid', () => {
     fireEvent.click(screen.getByRole('button', { name: /view all/i }));
     expect(onOpenAll).toHaveBeenCalledTimes(1);
 
-    fireEvent.click(screen.getByRole('button', { name: /load more recommendations/i }));
+    fireEvent.click(screen.getByRole('button', { name: /load more similar products/i }));
     expect(onLoadMore).toHaveBeenCalledTimes(1);
   });
 

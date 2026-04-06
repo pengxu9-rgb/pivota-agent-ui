@@ -7,6 +7,7 @@ import {
 } from '@/lib/checkoutToken'
 import { ensureAuroraSession, shouldUseAuroraAutoExchange } from '@/lib/auroraOrdersAuth'
 import { formatDescriptionText } from '@/features/pdp/utils/formatDescriptionText'
+import type { RecommendationsData } from '@/features/pdp/types'
 
 // Point to the public Agent Gateway by default; override via NEXT_PUBLIC_API_URL if needed.
 const API_BASE =
@@ -1531,6 +1532,74 @@ export type BrandDiscoveryFeedResult = {
   };
 };
 
+export type SimilarProductsMainlineResult = {
+  strategy: string;
+  items: RecommendationsData['items'];
+  metadata: RecommendationsData['metadata'] | null;
+  page_info: {
+    page: number;
+    page_size: number;
+    total?: number;
+    has_more: boolean;
+  };
+};
+
+function normalizeRecommendationItem(
+  input: any,
+  fallbackCurrency = 'USD',
+): RecommendationsData['items'][number] | null {
+  const productId = String(input?.product_id || input?.productId || input?.id || '').trim();
+  if (!productId) return null;
+
+  const merchantId = String(
+    input?.merchant_id || input?.merchantId || input?.merchant?.id || '',
+  ).trim();
+  const title = String(input?.title || input?.name || '').trim() || 'Untitled product';
+  const amount = Number(input?.price?.amount ?? input?.price_amount ?? input?.price ?? 0);
+  const currency = String(input?.price?.currency || input?.currency || '').trim() || fallbackCurrency;
+  const rating = Number(input?.rating);
+  const reviewCount = Number(input?.review_count ?? input?.reviewCount);
+
+  return {
+    product_id: productId,
+    title,
+    ...(merchantId ? { merchant_id: merchantId } : {}),
+    ...(typeof input?.image_url === 'string' && input.image_url.trim()
+      ? { image_url: input.image_url.trim() }
+      : {}),
+    ...(Number.isFinite(amount) && amount > 0 ? { price: { amount, currency } } : {}),
+    ...(Number.isFinite(rating) ? { rating } : {}),
+    ...(Number.isFinite(reviewCount) ? { review_count: Math.max(0, Math.round(reviewCount)) } : {}),
+  };
+}
+
+function normalizeRecommendationsMetadata(input: any): RecommendationsData['metadata'] | null {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return null;
+  const hasMore = typeof input.has_more === 'boolean' ? input.has_more : undefined;
+  const similarConfidence = String(input.similar_confidence || '').trim();
+  const lowConfidence = input.low_confidence === true;
+  const underfill = Number(input.underfill);
+  const retrievalMix = input.retrieval_mix;
+  const selectionMix = input.selection_mix;
+  const baseSemantic = input.base_semantic;
+  const lowConfidenceReasonCodes = Array.isArray(input.low_confidence_reason_codes)
+    ? input.low_confidence_reason_codes
+        .map((item: unknown) => String(item || '').trim())
+        .filter(Boolean)
+    : [];
+
+  return {
+    ...(typeof hasMore === 'boolean' ? { has_more: hasMore } : {}),
+    ...(similarConfidence ? { similar_confidence: similarConfidence } : {}),
+    ...(lowConfidence ? { low_confidence: true } : {}),
+    ...(lowConfidenceReasonCodes.length ? { low_confidence_reason_codes: lowConfidenceReasonCodes } : {}),
+    ...(Number.isFinite(underfill) ? { underfill: Math.max(0, Math.trunc(underfill)) } : {}),
+    ...(retrievalMix && typeof retrievalMix === 'object' ? { retrieval_mix: retrievalMix } : {}),
+    ...(selectionMix && typeof selectionMix === 'object' ? { selection_mix: selectionMix } : {}),
+    ...(baseSemantic && typeof baseSemantic === 'object' ? { base_semantic: baseSemantic } : {}),
+  };
+}
+
 function normalizeBrandDiscoveryFacet(input: any): BrandDiscoveryFacet | null {
   const value = String(input?.value || input?.key || '').trim();
   if (!value) return null;
@@ -1866,6 +1935,78 @@ export async function getAllProducts(
   return products.map((p: RealAPIProduct | ProductResponse) =>
     normalizeProduct(p),
   ).slice(0, requestedLimit);
+}
+
+export async function getSimilarProductsMainline(args: {
+  product_id: string;
+  merchant_id?: string | null;
+  limit?: number;
+  exclude_items?: Array<{
+    product_id: string;
+    merchant_id?: string | null;
+  }>;
+  timeout_ms?: number;
+  cache_bypass?: boolean;
+}): Promise<SimilarProductsMainlineResult> {
+  const productId = String(args.product_id || '').trim();
+  if (!productId) {
+    throw new Error('product_id is required');
+  }
+
+  const limit = Math.max(1, Math.min(Number(args.limit || 6) || 6, 30));
+  const excludeItems = (Array.isArray(args.exclude_items) ? args.exclude_items : [])
+    .map((item) => {
+      const excludedProductId = String(item?.product_id || '').trim();
+      if (!excludedProductId) return null;
+      const excludedMerchantId = String(item?.merchant_id || '').trim();
+      return {
+        product_id: excludedProductId,
+        ...(excludedMerchantId ? { merchant_id: excludedMerchantId } : {}),
+      };
+    })
+    .filter(Boolean) as Array<{ product_id: string; merchant_id?: string }>;
+
+  const data = await callGatewayWithTimeout(
+    {
+      operation: 'find_similar_products',
+      payload: {
+        product_id: productId,
+        ...(args.merchant_id ? { merchant_id: String(args.merchant_id).trim() } : {}),
+        limit,
+        ...(excludeItems.length ? { exclude_items: excludeItems } : {}),
+        options: {
+          ...(args.cache_bypass ? { cache_bypass: true } : {}),
+        },
+      },
+    },
+    args.timeout_ms,
+  );
+
+  const rawProducts = Array.isArray((data as any)?.products) ? (data as any).products : [];
+  const metadata = normalizeRecommendationsMetadata((data as any)?.metadata);
+  const pageRaw = Number((data as any)?.page);
+  const pageSizeRaw = Number((data as any)?.page_size);
+  const totalRaw = Number((data as any)?.total);
+  const responseHasMore =
+    typeof (data as any)?.has_more === 'boolean'
+      ? (data as any).has_more
+      : typeof metadata?.has_more === 'boolean'
+        ? metadata.has_more
+        : false;
+
+  return {
+    strategy: String((data as any)?.strategy || 'related_products').trim() || 'related_products',
+    items: rawProducts
+      .map((item: any) => normalizeRecommendationItem(item))
+      .filter(Boolean) as RecommendationsData['items'],
+    metadata,
+    page_info: {
+      page: Number.isFinite(pageRaw) && pageRaw > 0 ? Math.floor(pageRaw) : 1,
+      page_size: Number.isFinite(pageSizeRaw) && pageSizeRaw > 0 ? Math.floor(pageSizeRaw) : rawProducts.length,
+      ...(Number.isFinite(totalRaw) && totalRaw >= 0 ? { total: Math.floor(totalRaw) } : {}),
+      has_more: responseHasMore,
+    },
+  };
 }
 
 export async function resolveProductCandidates(args: {

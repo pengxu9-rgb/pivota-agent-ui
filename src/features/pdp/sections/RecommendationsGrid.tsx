@@ -63,7 +63,7 @@ export function RecommendationsGrid({
             onClick={onOpenAll}
             className="text-xs text-muted-foreground flex items-center gap-1 hover:text-foreground"
           >
-            View all <ChevronRight className="h-4 w-4" />
+            View all similar <ChevronRight className="h-4 w-4" />
           </button>
         ) : null}
       </div>
@@ -145,7 +145,7 @@ export function RecommendationsGrid({
           disabled={isLoadingMore}
           className="w-full mt-4 py-3 text-sm text-muted-foreground hover:text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
         >
-          {isLoadingMore ? 'Loading more…' : 'Load more recommendations'}
+          {isLoadingMore ? 'Loading more…' : 'Load more similar products'}
         </button>
       ) : null}
     </div>

@@ -51,7 +51,7 @@ export function SimilarProductsSheet({
         disabled={isLoadingMore}
         className="w-full rounded-xl border border-border px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted/30 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center justify-center gap-1"
       >
-        {isLoadingMore ? 'Loading more…' : 'Load more recommendations'}
+        {isLoadingMore ? 'Loading more…' : 'Load more similar products'}
         {!isLoadingMore ? <ChevronRight className="h-4 w-4" /> : null}
       </button>
     </div>
@@ -61,7 +61,7 @@ export function SimilarProductsSheet({
     <ResponsiveSheet
       open={open}
       onClose={onClose}
-      title={`All recommendations (${items.length})`}
+      title={`All similar products (${items.length})`}
       mobileHeight="h-[80vh]"
       footer={loadMoreFooter}
     >
