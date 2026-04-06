@@ -138,8 +138,8 @@ describe('BrandLandingPage', () => {
     });
 
     expect(screen.getByText('Rose Prick Eau de Parfum')).toBeInTheDocument();
-    expect(screen.getByText('Summer Glow Sale')).toBeInTheDocument();
-    expect(screen.getByText('Brand story')).toBeInTheDocument();
+    expect(screen.queryByText('Summer Glow Sale')).not.toBeInTheDocument();
+    expect(screen.queryByText('Brand story')).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Brand Home' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Open brand search' })).toBeInTheDocument();
     expect(getBrowseHistoryMock).not.toHaveBeenCalled();
@@ -386,5 +386,96 @@ describe('BrandLandingPage', () => {
         { scroll: false },
       );
     });
+  });
+
+  it('shows the campaign banner only when real banner config is present', async () => {
+    getBrandDiscoveryFeedMock.mockResolvedValue({
+      products: [
+        {
+          product_id: 'prod_1',
+          merchant_id: 'merch_1',
+          title: 'Gloss Bomb Universal Lip Luminizer',
+          description: 'Lip',
+          category: 'lip',
+          price: 21,
+          currency: 'USD',
+          image_url: 'https://example.com/1.jpg',
+          in_stock: true,
+        },
+      ],
+      metadata: {
+        has_more: false,
+        brand_campaign: {
+          enabled: true,
+          eyebrow: 'Summer Glow Sale',
+          title: 'Summer Glow Sale',
+          subtitle: 'Up to 30% off summer essentials',
+          cta_label: 'Shop now',
+          cta_href: '#brand-products',
+        },
+      },
+      query_text: '',
+      page_info: { page: 1, page_size: 1, total: 1, has_more: false },
+    });
+
+    render(
+      <BrandLandingPage
+        slug="fenty-beauty"
+        initialBrandName="Fenty Beauty"
+        initialReturnUrl="/products/ext_123"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getAllByText('Summer Glow Sale')).toHaveLength(2);
+    });
+
+    expect(screen.getByText('Up to 30% off summer essentials')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Shop now' })).toBeInTheDocument();
+  });
+
+  it('shows brand story only when real brand story metadata is present', async () => {
+    getBrandDiscoveryFeedMock.mockResolvedValue({
+      products: [
+        {
+          product_id: 'prod_1',
+          merchant_id: 'merch_1',
+          title: 'Gloss Bomb Universal Lip Luminizer',
+          description: 'Lip',
+          category: 'lip',
+          price: 21,
+          currency: 'USD',
+          image_url: 'https://example.com/1.jpg',
+          in_stock: true,
+        },
+      ],
+      metadata: {
+        has_more: false,
+        brand_story: {
+          title: 'Brand story',
+          quote: 'Beauty should be playful, expressive, and never feel like pressure.',
+          author: 'Rihanna, founder',
+        },
+      },
+      query_text: '',
+      page_info: { page: 1, page_size: 1, total: 1, has_more: false },
+    });
+
+    render(
+      <BrandLandingPage
+        slug="fenty-beauty"
+        initialBrandName="Fenty Beauty"
+        initialReturnUrl="/products/ext_123"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Brand story')).toBeInTheDocument();
+    });
+
+    expect(
+      screen.getByText('“Beauty should be playful, expressive, and never feel like pressure.”'),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Rihanna, founder')).toBeInTheDocument();
   });
 });
