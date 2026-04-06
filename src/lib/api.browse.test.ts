@@ -118,6 +118,7 @@ describe('getAllProducts browse routing', () => {
       operation: 'get_discovery_feed',
       payload: {
         surface: 'browse_products',
+        response_detail: 'card',
         sort: 'price_desc',
         query: {
           text: 'lip',

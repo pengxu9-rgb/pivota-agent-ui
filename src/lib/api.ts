@@ -1803,6 +1803,7 @@ export async function getBrandDiscoveryFeed(args: {
     operation: 'get_discovery_feed',
     payload: {
       surface: 'browse_products',
+      response_detail: 'card',
       page: requestedPage,
       limit: requestedLimit,
       sort,
