@@ -66,6 +66,7 @@ async function fetchInitialBrandFeed(args: {
         operation: 'get_discovery_feed',
         payload: {
           surface: 'browse_products',
+          response_detail: 'card',
           page: 1,
           limit,
           sort: 'popular',
