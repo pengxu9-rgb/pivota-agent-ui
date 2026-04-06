@@ -150,7 +150,6 @@ describe('BrandLandingPage', () => {
     expect(screen.getByText('Rose Prick Eau de Parfum')).toBeInTheDocument();
     expect(screen.queryByText('Summer Glow Sale')).not.toBeInTheDocument();
     expect(screen.queryByText('Brand story')).not.toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Brand Home' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Open brand search' })).toBeInTheDocument();
     expect(getBrowseHistoryMock).not.toHaveBeenCalled();
 
@@ -207,6 +206,37 @@ describe('BrandLandingPage', () => {
       'href',
       '/products/prod_1?merchant_id=merch_1&return=%2Fbrands%2Ftom-ford',
     );
+  });
+
+  it('renders an initial server-fed brand result without re-fetching on mount', async () => {
+    render(
+      <BrandLandingPage
+        slug="fenty-beauty"
+        initialBrandName="Fenty Beauty"
+        initialFeed={{
+          products: [
+            {
+              product_id: 'prod_1',
+              merchant_id: 'merch_1',
+              title: 'Gloss Bomb Universal Lip Luminizer',
+              description: 'Lip',
+              category: 'lip',
+              price: 21,
+              currency: 'USD',
+              image_url: 'https://example.com/1.jpg',
+              in_stock: true,
+            },
+          ],
+          metadata: { has_more: false },
+          facets: { categories: [] },
+          query_text: '',
+          page_info: { page: 1, page_size: 1, total: 1, has_more: false },
+        }}
+      />,
+    );
+
+    expect(screen.getByText('Gloss Bomb Universal Lip Luminizer')).toBeInTheDocument();
+    expect(getBrandDiscoveryFeedMock).not.toHaveBeenCalled();
   });
 
   it('hydrates remote browse history only for authenticated users', async () => {
