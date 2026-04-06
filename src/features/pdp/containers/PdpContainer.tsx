@@ -574,12 +574,13 @@ export function PdpContainer({
   const reviews = getModuleData<ReviewsPreviewData>(payload, 'reviews_preview');
   const brandNameForCard = String(reviews?.brand_card?.name || payload.product.brand?.name || '').trim();
   const payloadRecommendations = getModuleData<RecommendationsData>(payload, 'recommendations');
+  const payloadProductId = String(payload.product.product_id || '').trim();
   const recommendationCurrencyFallback =
     payload.product.price?.current.currency || payload.product.price?.compare_at?.currency || 'USD';
   const initialSimilarState = getInitialSimilarState(payload);
   const promoDismissStorageKey = useMemo(
-    () => `pdp_promo_dismissed:${payload.product.product_id}`,
-    [payload.product.product_id],
+    () => `pdp_promo_dismissed:${payloadProductId}`,
+    [payloadProductId],
   );
   const [currentRelativePath, setCurrentRelativePath] = useState<string | null>(null);
   const brandHref = brandNameForCard
@@ -743,10 +744,9 @@ export function PdpContainer({
   }, [payload.product.product_id]);
 
   useEffect(() => {
-    if (similarResetProductIdRef.current === payload.product.product_id) return;
-    similarResetProductIdRef.current = payload.product.product_id;
+    if (similarResetProductIdRef.current === payloadProductId) return;
+    similarResetProductIdRef.current = payloadProductId;
 
-    const initialSimilarState = getInitialSimilarState(payload);
     setSimilarItems(initialSimilarState.items);
     setSimilarStrategy(initialSimilarState.strategy);
     setSimilarMetadata(initialSimilarState.metadata);
@@ -755,11 +755,8 @@ export function PdpContainer({
     setSimilarLoadingMore(false);
     setSimilarSheetOpen(false);
   }, [
-    payload.product.product_id,
-    payloadRecommendations?.items,
-    payloadRecommendations?.metadata,
-    payloadRecommendations?.strategy,
-    recommendationCurrencyFallback,
+    initialSimilarState,
+    payloadProductId,
   ]);
 
   useEffect(() => {
@@ -1331,8 +1328,9 @@ export function PdpContainer({
     moduleStates.offers !== 'LOADING' &&
     offers.length <= 1;
 
-  const productId = String(payload.product.product_id || '').trim();
+  const productId = payloadProductId;
   const productGroupId = String(payload.product_group_id || selectedOffer?.product_group_id || '').trim() || null;
+  const merchantId = String(payload.product.merchant_id || '').trim() || null;
   latestProductGroupIdRef.current = productGroupId;
 
   const handleOpenSimilarAll = useCallback(async () => {
