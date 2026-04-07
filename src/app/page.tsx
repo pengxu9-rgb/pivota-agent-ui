@@ -14,7 +14,13 @@ import { useCartStore } from '@/store/cartStore';
 import { useAuthStore } from '@/store/authStore';
 import { useChatStore } from '@/store/chatStore';
 import { getAllowedParentOrigin, isAuroraEmbedMode, postRequestCloseToParent } from '@/lib/auroraEmbed';
-import { sendMessage, getAllProducts, type ProductResponse } from '@/lib/api';
+import {
+  sendMessage,
+  getAllProducts,
+  getBrowseHistory,
+  type DiscoveryRecentView,
+  type ProductResponse,
+} from '@/lib/api';
 import { buildProductHref } from '@/lib/productHref';
 import { appendCurrentPathAsReturn } from '@/lib/returnUrl';
 import { toast } from 'sonner';
@@ -106,6 +112,8 @@ function HomePageApp() {
   const [loading, setLoading] = useState(false);
   const [hotDeals, setHotDeals] = useState<ProductResponse[]>([]);
   const [hotDealsStatus, setHotDealsStatus] = useState<'loading' | 'ready' | 'empty' | 'error'>('loading');
+  const [recentViews, setRecentViews] = useState<DiscoveryRecentView[]>([]);
+  const [recentViewsReady, setRecentViewsReady] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
   const { messages, addMessage, updateMessage, conversations, resetForGuest } = useChatStore();
@@ -116,14 +124,44 @@ function HomePageApp() {
   const itemCount = items.reduce((acc, item) => acc + item.quantity, 0);
   const hasUserMessages = messages.some(msg => msg.role === 'user');
 
+  useEffect(() => {
+    let cancelled = false;
+    const userId = user?.id || null;
+    if (!userId) {
+      setRecentViews([]);
+      setRecentViewsReady(true);
+      return;
+    }
+
+    setRecentViewsReady(false);
+    getBrowseHistory(50)
+      .then((history) => {
+        if (!cancelled) setRecentViews(history.items || []);
+      })
+      .catch((error) => {
+        console.warn('Failed to load shopping behavior history:', error);
+        if (!cancelled) setRecentViews([]);
+      })
+      .finally(() => {
+        if (!cancelled) setRecentViewsReady(true);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id]);
+
   // 加载Hot Deals商品
   useEffect(() => {
+    if (!recentViewsReady) return;
     const loadHotDeals = async () => {
       setHotDealsStatus('loading');
       try {
         const products = await getAllProducts(6, undefined, {
           entry: 'plp',
           catalog: 'promo_pool',
+          userId: user?.id || null,
+          recentViews,
         });
         setHotDeals(products);
         setHotDealsStatus(products.length > 0 ? 'ready' : 'empty');
@@ -134,7 +172,7 @@ function HomePageApp() {
       }
     };
     void loadHotDeals();
-  }, []);
+  }, [recentViews, recentViewsReady, user?.id]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -223,6 +261,7 @@ function HomePageApp() {
         {
           ...(evalMetadata ? { metadata: evalMetadata } : {}),
           pagination: { page: 1, limit: CHAT_RAIL_INITIAL_PAGE_SIZE },
+          userId: user?.id || null,
         },
       );
       const products = Array.isArray(searchResult?.products) ? searchResult.products : [];
@@ -288,6 +327,7 @@ function HomePageApp() {
             page: nextPage,
             limit: Math.max(CHAT_RAIL_PAGE_STEP, Number(paging.limit || CHAT_RAIL_INITIAL_PAGE_SIZE)),
           },
+          userId: user?.id || null,
         });
 
         const incoming = Array.isArray(result?.products) ? result.products : [];
@@ -317,7 +357,7 @@ function HomePageApp() {
         });
       }
     },
-    [messages, updateMessage],
+    [messages, updateMessage, user?.id],
   );
 
   const handleAddToCart = (product: any) => {

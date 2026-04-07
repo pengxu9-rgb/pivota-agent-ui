@@ -485,7 +485,8 @@ interface InvokeBody {
   metadata?: Record<string, any>;
 }
 
-const RECENT_QUERIES_STORAGE_KEY = 'pivota_recent_queries_v1';
+const RECENT_QUERIES_STORAGE_KEY_PREFIX = 'pivota_recent_queries_v1';
+const DEVICE_ID_STORAGE_KEY = 'pivota_shopping_device_id_v1';
 const MAX_RECENT_QUERIES = 8;
 const EVAL_META_STORAGE_KEY = 'pivota_eval_meta_v1';
 
@@ -495,6 +496,8 @@ type ShoppingScope = {
   region: string | null;
   language: string | null;
 };
+
+type DiscoverySurface = 'home_hot_deals' | 'browse_products';
 
 type ShoppingEvalMeta = {
   run_id?: string;
@@ -670,26 +673,54 @@ function inferShoppingEntryFromLocation(body: InvokeBody): ShoppingEntry {
   return 'other';
 }
 
-function readRecentQueries(): string[] {
+function getOrCreateBehaviorDeviceId(): string {
+  if (typeof window === 'undefined') return 'server';
+  try {
+    const existing = window.localStorage.getItem(DEVICE_ID_STORAGE_KEY);
+    if (existing && existing.trim()) return existing.trim();
+    const generated =
+      typeof crypto !== 'undefined' && 'randomUUID' in crypto
+        ? crypto.randomUUID()
+        : `device_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+    window.localStorage.setItem(DEVICE_ID_STORAGE_KEY, generated);
+    return generated;
+  } catch {
+    return 'anonymous';
+  }
+}
+
+function getRecentQueriesStorageKey(userId?: string | null): string {
+  const normalizedUserId = String(userId || '').trim();
+  if (normalizedUserId) {
+    return `${RECENT_QUERIES_STORAGE_KEY_PREFIX}:user:${normalizedUserId}`;
+  }
+  return `${RECENT_QUERIES_STORAGE_KEY_PREFIX}:anon:${getOrCreateBehaviorDeviceId()}`;
+}
+
+function normalizeRecentQueries(input: unknown, limit = MAX_RECENT_QUERIES): string[] {
+  if (!Array.isArray(input)) return [];
+  return input
+    .map((v) => (typeof v === 'string' ? v.trim() : ''))
+    .filter(Boolean)
+    .slice(0, limit);
+}
+
+function readRecentQueries(userId?: string | null): string[] {
   if (typeof window === 'undefined') return [];
   try {
-    const raw = window.localStorage.getItem(RECENT_QUERIES_STORAGE_KEY);
+    const raw = window.localStorage.getItem(getRecentQueriesStorageKey(userId));
     const parsed = raw ? JSON.parse(raw) : [];
-    if (!Array.isArray(parsed)) return [];
-    return parsed
-      .map((v) => (typeof v === 'string' ? v.trim() : ''))
-      .filter(Boolean)
-      .slice(0, MAX_RECENT_QUERIES);
+    return normalizeRecentQueries(parsed);
   } catch {
     return [];
   }
 }
 
-function writeRecentQueries(queries: string[]) {
+function writeRecentQueries(queries: string[], userId?: string | null) {
   if (typeof window === 'undefined') return;
   try {
     window.localStorage.setItem(
-      RECENT_QUERIES_STORAGE_KEY,
+      getRecentQueriesStorageKey(userId),
       JSON.stringify(queries.slice(0, MAX_RECENT_QUERIES)),
     );
   } catch {
@@ -697,15 +728,15 @@ function writeRecentQueries(queries: string[]) {
   }
 }
 
-function rememberRecentQuery(query: string) {
+function rememberRecentQuery(query: string, userId?: string | null) {
   const q = String(query || '').trim();
   if (!q) return;
-  const existing = readRecentQueries();
+  const existing = readRecentQueries(userId);
   const next = [q, ...existing.filter((x) => x !== q)].slice(
     0,
     MAX_RECENT_QUERIES,
   );
-  writeRecentQueries(next);
+  writeRecentQueries(next, userId);
 }
 
 function getCheckoutContext() {
@@ -1654,10 +1685,12 @@ export async function sendMessage(
     metadata?: Record<string, any>;
     signal?: AbortSignal;
     pagination?: { page?: number; limit?: number };
+    userId?: string | null;
   },
 ): Promise<SendMessageResult> {
   const query = message.trim();
-  const recentQueries = getEvalVariant() === 'A' ? [] : readRecentQueries();
+  const userId = String(options?.userId || '').trim() || null;
+  const recentQueries = getEvalVariant() === 'A' ? [] : readRecentQueries(userId);
   const requestedPage = Math.max(1, Math.floor(Number(options?.pagination?.page || 1) || 1));
   const requestedLimit = clampSearchLimit(options?.pagination?.limit, 24);
 
@@ -1681,6 +1714,7 @@ export async function sendMessage(
         user: {
           // Provide lightweight context to stabilize intent/constraint extraction
           // across follow-up queries (aligned with creator-agent contract).
+          ...(userId ? { id: userId } : {}),
           recent_queries: recentQueries,
         },
       },
@@ -1724,7 +1758,7 @@ export async function sendMessage(
   const strictEmpty = Boolean(metadata?.strict_empty) || (query.length > 0 && products.length === 0);
 
   // Update the local recent query list after using the previous context.
-  rememberRecentQuery(query);
+  rememberRecentQuery(query, userId);
 
   return {
     products,
@@ -1882,6 +1916,9 @@ export async function getAllProducts(
     page?: number;
     entry?: ShoppingEntry;
     catalog?: ShoppingScopeCatalog;
+    userId?: string | null;
+    recentViews?: DiscoveryRecentView[];
+    recentQueries?: string[];
   },
 ): Promise<ProductResponse[]> {
   const merchantId = String(merchantIdOverride || '').trim() || undefined;
@@ -1898,9 +1935,50 @@ export async function getAllProducts(
     options?.catalog === 'promo_pool' || options?.catalog === 'category' || options?.catalog === 'global'
       ? options.catalog
       : 'global';
-  // Empty-query browse only returns featured picks reliably once the upstream limit
-  // clears the browse threshold. Keep the request on the same mainline path, but
-  // down-sample back to the caller's requested rail size.
+  const userId = String(options?.userId || '').trim() || null;
+
+  if (!merchantId) {
+    const surface: DiscoverySurface = catalog === 'promo_pool' ? 'home_hot_deals' : 'browse_products';
+    const recentViews = (Array.isArray(options?.recentViews) ? options?.recentViews : [])
+      .map((item) => normalizeDiscoveryRecentView(item))
+      .filter(Boolean)
+      .slice(0, 50) as DiscoveryRecentView[];
+    const recentQueries = normalizeRecentQueries(
+      Array.isArray(options?.recentQueries) && options.recentQueries.length
+        ? options.recentQueries
+        : readRecentQueries(userId),
+    );
+
+    const data = await callGateway({
+      operation: 'get_discovery_feed',
+      payload: {
+        surface,
+        response_detail: 'card',
+        page,
+        limit: requestedLimit,
+        context: {
+          recent_views: recentViews,
+          recent_queries: recentQueries,
+          auth_state: userId ? 'authenticated' : 'anonymous',
+          locale: getBrowserLanguage() || 'en-US',
+        },
+      },
+      metadata: {
+        entry,
+        scope: {
+          catalog,
+        },
+      },
+    });
+
+    const products = (data as any).products || [];
+    return products.map((p: RealAPIProduct | ProductResponse) =>
+      normalizeProduct(p),
+    ).slice(0, requestedLimit);
+  }
+
+  // Merchant-scoped empty browse still uses product search; generic rails above
+  // route through discovery so user behavior can influence the starting query.
   const upstreamLimit =
     !merchantId && entry === 'plp'
       ? Math.max(requestedLimit, BROWSE_DISCOVERY_MIN_LIMIT)
