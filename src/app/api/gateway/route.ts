@@ -7,8 +7,9 @@ export const runtime = 'nodejs';
 export const preferredRegion = 'home';
 
 const SHOP_UPSTREAM_BASE =
-  process.env.NEXT_PUBLIC_UPSTREAM_API_URL ||
-  process.env.NEXT_PUBLIC_API_URL ||
+  process.env.SHOP_UPSTREAM_API_URL ||
+  process.env.SHOP_GATEWAY_UPSTREAM_BASE_URL ||
+  process.env.SHOP_GATEWAY_AGENT_BASE_URL ||
   'https://pivota-agent-production.up.railway.app';
 
 const CHECKOUT_UPSTREAM_BASE =

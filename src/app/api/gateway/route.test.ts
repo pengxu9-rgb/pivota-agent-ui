@@ -25,7 +25,7 @@ describe('/api/gateway checkout-safe proxy', () => {
   });
 
   it('routes creator checkout-token preview_quote to checkout-safe backend endpoints', async () => {
-    vi.stubEnv('NEXT_PUBLIC_UPSTREAM_API_URL', 'https://invoke.example.com');
+    vi.stubEnv('SHOP_UPSTREAM_API_URL', 'https://invoke.example.com');
     vi.stubEnv('PIVOTA_BACKEND_BASE_URL', 'https://checkout.example.com');
 
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
@@ -86,7 +86,7 @@ describe('/api/gateway checkout-safe proxy', () => {
   });
 
   it('routes submit_payment to the checkout-safe backend even without a checkout token', async () => {
-    vi.stubEnv('NEXT_PUBLIC_UPSTREAM_API_URL', 'https://invoke.example.com');
+    vi.stubEnv('SHOP_UPSTREAM_API_URL', 'https://invoke.example.com');
     vi.stubEnv('PIVOTA_BACKEND_BASE_URL', 'https://checkout.example.com');
     vi.stubEnv('AGENT_API_KEY', 'ak_test_gateway_123');
 
@@ -133,7 +133,7 @@ describe('/api/gateway checkout-safe proxy', () => {
   });
 
   it('normalizes checkout-token submit_payment responses for hosted checkout consumers', async () => {
-    vi.stubEnv('NEXT_PUBLIC_UPSTREAM_API_URL', 'https://invoke.example.com');
+    vi.stubEnv('SHOP_UPSTREAM_API_URL', 'https://invoke.example.com');
     vi.stubEnv('PIVOTA_BACKEND_BASE_URL', 'https://checkout.example.com');
 
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
@@ -195,7 +195,7 @@ describe('/api/gateway checkout-safe proxy', () => {
   });
 
   it('defaults submit_payment to dynamic payment methods when the client does not pin one', async () => {
-    vi.stubEnv('NEXT_PUBLIC_UPSTREAM_API_URL', 'https://invoke.example.com');
+    vi.stubEnv('SHOP_UPSTREAM_API_URL', 'https://invoke.example.com');
     vi.stubEnv('PIVOTA_BACKEND_BASE_URL', 'https://checkout.example.com');
 
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
@@ -239,7 +239,7 @@ describe('/api/gateway checkout-safe proxy', () => {
   });
 
   it('keeps non-checkout traffic on the invoke gateway path', async () => {
-    vi.stubEnv('NEXT_PUBLIC_UPSTREAM_API_URL', 'https://invoke.example.com');
+    vi.stubEnv('SHOP_UPSTREAM_API_URL', 'https://invoke.example.com');
     vi.stubEnv('PIVOTA_BACKEND_BASE_URL', 'https://checkout.example.com');
 
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
@@ -272,7 +272,7 @@ describe('/api/gateway checkout-safe proxy', () => {
   });
 
   it('uses explicit /api/gateway upstreams without appending invoke twice', async () => {
-    vi.stubEnv('NEXT_PUBLIC_UPSTREAM_API_URL', 'https://agent.pivota.cc/api/gateway');
+    vi.stubEnv('SHOP_UPSTREAM_API_URL', 'https://agent.pivota.cc/api/gateway');
     vi.stubEnv('PIVOTA_BACKEND_BASE_URL', 'https://checkout.example.com');
 
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
@@ -302,5 +302,39 @@ describe('/api/gateway checkout-safe proxy', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe('https://agent.pivota.cc/api/gateway');
+  });
+
+  it('ignores NEXT_PUBLIC upstream drift for server-side shop proxy traffic', async () => {
+    vi.stubEnv('NEXT_PUBLIC_UPSTREAM_API_URL', 'https://stale.example.com');
+    vi.stubEnv('NEXT_PUBLIC_API_URL', 'https://stale-two.example.com');
+    vi.stubEnv('PIVOTA_BACKEND_BASE_URL', 'https://checkout.example.com');
+
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      jsonResponse({ status: 'success', products: [] }),
+    );
+
+    const { POST } = await import('@/app/api/gateway/route');
+
+    const req = new Request('http://localhost/api/gateway', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        operation: 'find_products_multi',
+        payload: {
+          query: 'blemish defeatr',
+        },
+      }),
+    });
+
+    const res = await POST(req as any);
+    const data = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(data).toMatchObject({ status: 'success' });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('https://pivota-agent-production.up.railway.app/agent/shop/v1/invoke');
   });
 });
