@@ -497,7 +497,7 @@ type ShoppingScope = {
   language: string | null;
 };
 
-type DiscoverySurface = 'home_hot_deals' | 'browse_products';
+export type ShoppingDiscoverySurface = 'home_hot_deals' | 'browse_products';
 
 type ShoppingEvalMeta = {
   run_id?: string;
@@ -1563,6 +1563,17 @@ export type BrandDiscoveryFeedResult = {
   };
 };
 
+export type ShoppingDiscoveryFeedResult = {
+  products: ProductResponse[];
+  metadata: Record<string, any>;
+  page_info: {
+    page: number;
+    page_size: number;
+    total?: number;
+    has_more: boolean;
+  };
+};
+
 export type SimilarProductsMainlineResult = {
   strategy: string;
   items: RecommendationsData['items'];
@@ -1908,6 +1919,111 @@ export async function getBrandDiscoveryFeed(args: {
   };
 }
 
+export async function getShoppingDiscoveryFeed(args: {
+  surface: ShoppingDiscoverySurface;
+  page?: number;
+  limit?: number;
+  entry?: ShoppingEntry;
+  catalog?: ShoppingScopeCatalog;
+  userId?: string | null;
+  recentViews?: DiscoveryRecentView[];
+  recentQueries?: string[];
+}): Promise<ShoppingDiscoveryFeedResult> {
+  const surface: ShoppingDiscoverySurface =
+    args.surface === 'home_hot_deals' ? 'home_hot_deals' : 'browse_products';
+  const requestedLimit = clampSearchLimit(args.limit, 20);
+  const requestedPage =
+    Number.isFinite(Number(args.page)) && Number(args.page)! > 0
+      ? Math.floor(Number(args.page))
+      : 1;
+  const entry =
+    args.entry && SHOPPING_ENTRY_VALUES.has(args.entry)
+      ? args.entry
+      : 'plp';
+  const catalog: ShoppingScopeCatalog =
+    args.catalog === 'promo_pool' || args.catalog === 'category' || args.catalog === 'global'
+      ? args.catalog
+      : surface === 'home_hot_deals'
+        ? 'promo_pool'
+        : 'global';
+  const userId = String(args.userId || '').trim() || null;
+  const recentViews = (Array.isArray(args.recentViews) ? args.recentViews : [])
+    .map((item) => normalizeDiscoveryRecentView(item))
+    .filter(Boolean)
+    .slice(0, 50) as DiscoveryRecentView[];
+  const recentQueries = normalizeRecentQueries(
+    Array.isArray(args.recentQueries) && args.recentQueries.length
+      ? args.recentQueries
+      : readRecentQueries(userId),
+  );
+
+  const data = await callGateway({
+    operation: 'get_discovery_feed',
+    payload: {
+      surface,
+      response_detail: 'card',
+      page: requestedPage,
+      limit: requestedLimit,
+      context: {
+        recent_views: recentViews,
+        recent_queries: recentQueries,
+        auth_state: userId ? 'authenticated' : 'anonymous',
+        locale: getBrowserLanguage() || 'en-US',
+      },
+    },
+    metadata: {
+      entry,
+      scope: {
+        catalog,
+      },
+    },
+  });
+
+  const products = ((data as any).products || []).map(
+    (p: RealAPIProduct | ProductResponse) => normalizeProduct(p),
+  );
+  const metadata =
+    data && typeof data === 'object' && data.metadata && typeof (data as any).metadata === 'object'
+      ? ((data as any).metadata as Record<string, any>)
+      : {};
+  const responsePageRaw = Number((data as any)?.page);
+  const responsePageSizeRaw = Number((data as any)?.page_size ?? (data as any)?.pageSize);
+  const responseTotalRaw = Number((data as any)?.total);
+  const responseHasMore = (data as any)?.has_more;
+  const responseHasMoreAlt = (data as any)?.hasMore;
+  const page = Number.isFinite(responsePageRaw) && responsePageRaw > 0
+    ? Math.floor(responsePageRaw)
+    : requestedPage;
+  const pageSize = Number.isFinite(responsePageSizeRaw) && responsePageSizeRaw >= 0
+    ? Math.floor(responsePageSizeRaw)
+    : products.length;
+  const total =
+    Number.isFinite(responseTotalRaw) && responseTotalRaw >= 0
+      ? Math.floor(responseTotalRaw)
+      : undefined;
+  const hasMore =
+    typeof metadata.has_more === 'boolean'
+      ? metadata.has_more
+      : typeof responseHasMore === 'boolean'
+        ? responseHasMore
+        : typeof responseHasMoreAlt === 'boolean'
+          ? responseHasMoreAlt
+          : typeof total === 'number'
+            ? page * requestedLimit < total
+            : products.length >= requestedLimit;
+
+  return {
+    products,
+    metadata,
+    page_info: {
+      page,
+      page_size: pageSize,
+      ...(typeof total === 'number' ? { total } : {}),
+      has_more: hasMore,
+    },
+  };
+}
+
 // Generic product list (Hot Deals, history, etc.)
 export async function getAllProducts(
   limit = 20,
@@ -1938,43 +2054,19 @@ export async function getAllProducts(
   const userId = String(options?.userId || '').trim() || null;
 
   if (!merchantId) {
-    const surface: DiscoverySurface = catalog === 'promo_pool' ? 'home_hot_deals' : 'browse_products';
-    const recentViews = (Array.isArray(options?.recentViews) ? options?.recentViews : [])
-      .map((item) => normalizeDiscoveryRecentView(item))
-      .filter(Boolean)
-      .slice(0, 50) as DiscoveryRecentView[];
-    const recentQueries = normalizeRecentQueries(
-      Array.isArray(options?.recentQueries) && options.recentQueries.length
-        ? options.recentQueries
-        : readRecentQueries(userId),
-    );
-
-    const data = await callGateway({
-      operation: 'get_discovery_feed',
-      payload: {
-        surface,
-        response_detail: 'card',
-        page,
-        limit: requestedLimit,
-        context: {
-          recent_views: recentViews,
-          recent_queries: recentQueries,
-          auth_state: userId ? 'authenticated' : 'anonymous',
-          locale: getBrowserLanguage() || 'en-US',
-        },
-      },
-      metadata: {
-        entry,
-        scope: {
-          catalog,
-        },
-      },
+    const surface: ShoppingDiscoverySurface =
+      catalog === 'promo_pool' ? 'home_hot_deals' : 'browse_products';
+    const result = await getShoppingDiscoveryFeed({
+      surface,
+      page,
+      limit: requestedLimit,
+      entry,
+      catalog,
+      userId,
+      recentViews: options?.recentViews,
+      recentQueries: options?.recentQueries,
     });
-
-    const products = (data as any).products || [];
-    return products.map((p: RealAPIProduct | ProductResponse) =>
-      normalizeProduct(p),
-    ).slice(0, requestedLimit);
+    return result.products.slice(0, requestedLimit);
   }
 
   // Merchant-scoped empty browse still uses product search; generic rails above

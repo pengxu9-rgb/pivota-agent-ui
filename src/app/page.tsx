@@ -16,11 +16,12 @@ import { useChatStore } from '@/store/chatStore';
 import { getAllowedParentOrigin, isAuroraEmbedMode, postRequestCloseToParent } from '@/lib/auroraEmbed';
 import {
   sendMessage,
-  getAllProducts,
+  getShoppingDiscoveryFeed,
   getBrowseHistory,
   type DiscoveryRecentView,
   type ProductResponse,
 } from '@/lib/api';
+import { mergeDiscoveryRecentViews, readLocalBrowseHistory } from '@/lib/browseHistoryStorage';
 import { buildProductHref } from '@/lib/productHref';
 import { appendCurrentPathAsReturn } from '@/lib/returnUrl';
 import { toast } from 'sonner';
@@ -127,8 +128,12 @@ function HomePageApp() {
   useEffect(() => {
     let cancelled = false;
     const userId = user?.id || null;
+    const localRecentViews = mergeDiscoveryRecentViews({
+      localItems: readLocalBrowseHistory(50),
+      limit: 50,
+    }) as DiscoveryRecentView[];
     if (!userId) {
-      setRecentViews([]);
+      setRecentViews(localRecentViews);
       setRecentViewsReady(true);
       return;
     }
@@ -136,11 +141,19 @@ function HomePageApp() {
     setRecentViewsReady(false);
     getBrowseHistory(50)
       .then((history) => {
-        if (!cancelled) setRecentViews(history.items || []);
+        if (!cancelled) {
+          setRecentViews(
+            mergeDiscoveryRecentViews({
+              accountItems: history.items || [],
+              localItems: readLocalBrowseHistory(50),
+              limit: 50,
+            }) as DiscoveryRecentView[],
+          );
+        }
       })
       .catch((error) => {
         console.warn('Failed to load shopping behavior history:', error);
-        if (!cancelled) setRecentViews([]);
+        if (!cancelled) setRecentViews(localRecentViews);
       })
       .finally(() => {
         if (!cancelled) setRecentViewsReady(true);
@@ -157,14 +170,16 @@ function HomePageApp() {
     const loadHotDeals = async () => {
       setHotDealsStatus('loading');
       try {
-        const products = await getAllProducts(6, undefined, {
+        const result = await getShoppingDiscoveryFeed({
+          surface: 'home_hot_deals',
+          limit: 6,
           entry: 'plp',
           catalog: 'promo_pool',
           userId: user?.id || null,
           recentViews,
         });
-        setHotDeals(products);
-        setHotDealsStatus(products.length > 0 ? 'ready' : 'empty');
+        setHotDeals(result.products);
+        setHotDealsStatus(result.products.length > 0 ? 'ready' : 'empty');
       } catch (error) {
         console.error('Failed to load hot deals:', error);
         setHotDeals([]);
