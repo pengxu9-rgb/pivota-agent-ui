@@ -23,16 +23,17 @@ const makeProducts = (count: number) =>
 describe('getAllProducts browse routing', () => {
   beforeEach(() => {
     window.history.replaceState({}, '', '/');
+    window.localStorage.clear();
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
   });
 
-  it('forces small browse rails onto the PLP mainline and trims the response back to the requested size', async () => {
+  it('routes generic browse rails through discovery feed instead of empty product search', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       jsonResponse({
-        products: makeProducts(12),
+        products: makeProducts(6),
       }),
     );
 
@@ -44,16 +45,15 @@ describe('getAllProducts browse routing', () => {
     expect(url).toBe('/api/gateway');
     const body = JSON.parse(String(init.body || '{}'));
     expect(body).toMatchObject({
-      operation: 'find_products_multi',
+      operation: 'get_discovery_feed',
       payload: {
-        search: {
-          query: '',
-          limit: 12,
-          page: 1,
-          search_all_merchants: true,
-          allow_external_seed: true,
-          allow_stale_cache: false,
-          external_seed_strategy: 'unified_relevance',
+        surface: 'browse_products',
+        response_detail: 'card',
+        limit: 6,
+        context: {
+          auth_state: 'anonymous',
+          recent_queries: [],
+          recent_views: [],
         },
       },
       metadata: {
@@ -65,10 +65,55 @@ describe('getAllProducts browse routing', () => {
     });
   });
 
-  it('preserves explicit browse catalog overrides while still honoring the minimum discovery limit', async () => {
+  it('binds discovery context to the current shopping user', async () => {
+    window.localStorage.setItem(
+      'pivota_recent_queries_v1:user:user_123',
+      JSON.stringify(['vitamin c serum']),
+    );
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       jsonResponse({
-        products: makeProducts(12),
+        products: makeProducts(6),
+      }),
+    );
+
+    await getAllProducts(6, undefined, {
+      userId: 'user_123',
+      recentViews: [
+        {
+          product_id: 'viewed_1',
+          merchant_id: 'external_seed',
+          title: 'Barrier repair serum',
+          product_type: 'serum',
+        },
+      ],
+    });
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(String(init.body || '{}'));
+    expect(body).toMatchObject({
+      operation: 'get_discovery_feed',
+      payload: {
+        surface: 'browse_products',
+        context: {
+          auth_state: 'authenticated',
+          recent_queries: ['vitamin c serum'],
+          recent_views: [
+            {
+              product_id: 'viewed_1',
+              merchant_id: 'external_seed',
+              title: 'Barrier repair serum',
+              product_type: 'serum',
+            },
+          ],
+        },
+      },
+    });
+  });
+
+  it('preserves explicit browse catalog overrides while using the matching discovery surface', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      jsonResponse({
+        products: makeProducts(6),
       }),
     );
 
@@ -76,9 +121,46 @@ describe('getAllProducts browse routing', () => {
 
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     const body = JSON.parse(String(init.body || '{}'));
-    expect(body?.payload?.search?.page).toBe(2);
-    expect(body?.payload?.search?.limit).toBe(12);
-    expect(body?.metadata?.scope?.catalog).toBe('promo_pool');
+    expect(body).toMatchObject({
+      operation: 'get_discovery_feed',
+      payload: {
+        surface: 'home_hot_deals',
+        response_detail: 'card',
+        page: 2,
+        limit: 6,
+        context: {
+          auth_state: 'anonymous',
+        },
+      },
+      metadata: {
+        scope: {
+          catalog: 'promo_pool',
+        },
+      },
+    });
+  });
+
+  it('keeps explicit merchant browse on product search', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      jsonResponse({
+        products: makeProducts(6),
+      }),
+    );
+
+    await getAllProducts(6, 'merchant_1', { page: 2, entry: 'plp', catalog: 'promo_pool' });
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(String(init.body || '{}'));
+    expect(body).toMatchObject({
+      operation: 'find_products_multi',
+      payload: {
+        search: {
+          page: 2,
+          merchant_id: 'merchant_1',
+          search_all_merchants: false,
+        },
+      },
+    });
   });
 
   it('requests brand-scoped discovery feed with sort and query metadata', async () => {

@@ -8,7 +8,14 @@ import ProductCard from '@/components/product/ProductCard';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useCartStore } from '@/store/cartStore';
-import { sendMessage, getAllProducts, type ProductResponse } from '@/lib/api';
+import { useAuthStore } from '@/store/authStore';
+import {
+  sendMessage,
+  getAllProducts,
+  getBrowseHistory,
+  type DiscoveryRecentView,
+  type ProductResponse,
+} from '@/lib/api';
 import { toast } from 'sonner';
 
 const TRENDING_TAGS = [
@@ -45,6 +52,8 @@ export default function ProductsPage() {
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
+  const [recentViews, setRecentViews] = useState<DiscoveryRecentView[]>([]);
+  const [recentViewsReady, setRecentViewsReady] = useState(false);
   const searchAbortRef = useRef<AbortController | null>(null);
   const searchDebounceRef = useRef<number | null>(null);
   const searchRequestSeqRef = useRef(0);
@@ -52,8 +61,36 @@ export default function ProductsPage() {
   const activeQueryRef = useRef('');
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
   const { items, open } = useCartStore();
+  const { user } = useAuthStore();
 
   const itemCount = items.reduce((acc, item) => acc + item.quantity, 0);
+
+  useEffect(() => {
+    let cancelled = false;
+    const userId = user?.id || null;
+    if (!userId) {
+      setRecentViews([]);
+      setRecentViewsReady(true);
+      return;
+    }
+
+    setRecentViewsReady(false);
+    getBrowseHistory(50)
+      .then((history) => {
+        if (!cancelled) setRecentViews(history.items || []);
+      })
+      .catch((error) => {
+        console.warn('Failed to load shopping behavior history:', error);
+        if (!cancelled) setRecentViews([]);
+      })
+      .finally(() => {
+        if (!cancelled) setRecentViewsReady(true);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id]);
 
   const executeSearchPage = useCallback(
     async (query: string, targetPage: number, options?: { append?: boolean }) => {
@@ -83,6 +120,8 @@ export default function ProductsPage() {
         if (!trimmed) {
           fetchedProducts = await getAllProducts(GRID_INITIAL_PAGE_SIZE, undefined, {
             page: targetPage,
+            userId: user?.id || null,
+            recentViews,
           });
           hasMoreFromResponse = fetchedProducts.length >= GRID_INITIAL_PAGE_SIZE;
         } else {
@@ -92,6 +131,7 @@ export default function ProductsPage() {
               page: targetPage,
               limit: GRID_INITIAL_PAGE_SIZE,
             },
+            userId: user?.id || null,
           });
           fetchedProducts = Array.isArray(result?.products) ? result.products : [];
           hasMoreFromResponse = Boolean(result?.page_info?.has_more);
@@ -139,7 +179,7 @@ export default function ProductsPage() {
         }
       }
     },
-    [],
+    [recentViews, user?.id],
   );
 
   const executeSearch = useCallback(
@@ -173,13 +213,14 @@ export default function ProductsPage() {
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
+    if (!recentViewsReady) return;
     const q = new URLSearchParams(window.location.search).get('q')?.trim() || '';
     if (q) {
       handleSearch(q, { immediate: true });
       return;
     }
     void executeSearch('');
-  }, [executeSearch, handleSearch]);
+  }, [executeSearch, handleSearch, recentViewsReady]);
 
   const loadMore = useCallback(() => {
     if (loading || isLoadingMore || !hasMore) return;
