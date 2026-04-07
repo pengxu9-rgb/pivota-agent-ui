@@ -41,6 +41,10 @@ import { shouldAllowLegacyProductDetailBroadScan } from '@/lib/productDetailFall
 import {
   mapResolvedOffersToSellerCandidates,
 } from '@/lib/pdpResolvedOffers';
+import {
+  pickHistoryImage,
+  upsertLocalBrowseHistory,
+} from '@/lib/browseHistoryStorage';
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -292,71 +296,6 @@ function isUnavailableModuleErrorCode(code: string): boolean {
     'FEATURE_DISABLED',
     'NOT_IMPLEMENTED',
   ]).has(code);
-}
-
-const BROWSE_HISTORY_STORAGE_KEY = 'browse_history';
-const BROWSE_HISTORY_MAX_ITEMS = 100;
-
-type LocalBrowseHistoryItem = {
-  product_id: string;
-  merchant_id?: string;
-  title: string;
-  price: number;
-  image: string;
-  description?: string;
-  timestamp: number;
-};
-
-function normalizeHistoryImageCandidate(value: unknown): string | null {
-  if (typeof value !== 'string') return null;
-  const trimmed = value.trim();
-  if (!trimmed) return null;
-  if (/^https?:\/\//i.test(trimmed) || trimmed.startsWith('/')) return trimmed;
-  return null;
-}
-
-function pickHistoryImage(product: any): string {
-  const direct =
-    normalizeHistoryImageCandidate(product?.image_url) ||
-    normalizeHistoryImageCandidate(product?.imageUrl) ||
-    normalizeHistoryImageCandidate(product?.image);
-  if (direct) return direct;
-
-  const images = Array.isArray(product?.images) ? product.images : [];
-  for (const img of images) {
-    if (typeof img === 'string') {
-      const candidate = normalizeHistoryImageCandidate(img);
-      if (candidate) return candidate;
-      continue;
-    }
-    if (img && typeof img === 'object') {
-      const candidate =
-        normalizeHistoryImageCandidate((img as any).url) ||
-        normalizeHistoryImageCandidate((img as any).image_url) ||
-        normalizeHistoryImageCandidate((img as any).src);
-      if (candidate) return candidate;
-    }
-  }
-  return '/placeholder.svg';
-}
-
-function upsertLocalBrowseHistory(item: LocalBrowseHistoryItem) {
-  if (typeof window === 'undefined') return;
-  try {
-    const raw = window.localStorage.getItem(BROWSE_HISTORY_STORAGE_KEY);
-    const parsed = raw ? JSON.parse(raw) : [];
-    const list = Array.isArray(parsed) ? parsed : [];
-    const key = `${item.product_id}::${item.merchant_id || ''}`;
-    const deduped = list.filter((entry: any) => {
-      const productId = String(entry?.product_id || '').trim();
-      const merchantId = String(entry?.merchant_id || '').trim();
-      return `${productId}::${merchantId}` !== key;
-    });
-    const next = [item, ...deduped].slice(0, BROWSE_HISTORY_MAX_ITEMS);
-    window.localStorage.setItem(BROWSE_HISTORY_STORAGE_KEY, JSON.stringify(next));
-  } catch {
-    // ignore storage errors
-  }
 }
 
 function ProductDetailLoading({ label }: { label: string }) {

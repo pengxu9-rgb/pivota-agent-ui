@@ -1,6 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { getAllProducts, getBrandDiscoveryFeed, getSimilarProductsMainline } from './api';
+import {
+  getAllProducts,
+  getBrandDiscoveryFeed,
+  getShoppingDiscoveryFeed,
+  getSimilarProductsMainline,
+} from './api';
 
 const jsonResponse = (payload: unknown, status = 200) =>
   new Response(JSON.stringify(payload), {
@@ -135,6 +140,78 @@ describe('getAllProducts browse routing', () => {
       metadata: {
         scope: {
           catalog: 'promo_pool',
+        },
+      },
+    });
+  });
+
+  it('requests shopping discovery feed with auth and scoped behavior context', async () => {
+    window.localStorage.setItem(
+      'pivota_recent_queries_v1:user:user_789',
+      JSON.stringify(['niacinamide serum', 'barrier moisturizer']),
+    );
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      jsonResponse({
+        products: makeProducts(4),
+        page: 2,
+        page_size: 4,
+        total: 10,
+        metadata: {
+          has_more: true,
+        },
+      }),
+    );
+
+    const result = await getShoppingDiscoveryFeed({
+      surface: 'browse_products',
+      page: 2,
+      limit: 4,
+      entry: 'plp',
+      userId: 'user_789',
+      recentViews: [
+        {
+          product_id: 'viewed_1',
+          merchant_id: 'external_seed',
+          title: 'Barrier repair serum',
+          product_type: 'serum',
+        },
+      ],
+    });
+
+    expect(result.products).toHaveLength(4);
+    expect(result.page_info).toEqual({
+      page: 2,
+      page_size: 4,
+      total: 10,
+      has_more: true,
+    });
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(String(init.body || '{}'));
+    expect(body).toMatchObject({
+      operation: 'get_discovery_feed',
+      payload: {
+        surface: 'browse_products',
+        response_detail: 'card',
+        page: 2,
+        limit: 4,
+        context: {
+          auth_state: 'authenticated',
+          locale: 'en-US',
+          recent_queries: ['niacinamide serum', 'barrier moisturizer'],
+          recent_views: [
+            {
+              product_id: 'viewed_1',
+              merchant_id: 'external_seed',
+              title: 'Barrier repair serum',
+              product_type: 'serum',
+            },
+          ],
+        },
+      },
+      metadata: {
+        entry: 'plp',
+        scope: {
+          catalog: 'global',
         },
       },
     });

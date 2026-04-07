@@ -11,11 +11,12 @@ import { useCartStore } from '@/store/cartStore';
 import { useAuthStore } from '@/store/authStore';
 import {
   sendMessage,
-  getAllProducts,
+  getShoppingDiscoveryFeed,
   getBrowseHistory,
   type DiscoveryRecentView,
   type ProductResponse,
 } from '@/lib/api';
+import { mergeDiscoveryRecentViews, readLocalBrowseHistory } from '@/lib/browseHistoryStorage';
 import { toast } from 'sonner';
 
 const TRENDING_TAGS = [
@@ -68,8 +69,12 @@ export default function ProductsPage() {
   useEffect(() => {
     let cancelled = false;
     const userId = user?.id || null;
+    const localRecentViews = mergeDiscoveryRecentViews({
+      localItems: readLocalBrowseHistory(50),
+      limit: 50,
+    }) as DiscoveryRecentView[];
     if (!userId) {
-      setRecentViews([]);
+      setRecentViews(localRecentViews);
       setRecentViewsReady(true);
       return;
     }
@@ -77,11 +82,19 @@ export default function ProductsPage() {
     setRecentViewsReady(false);
     getBrowseHistory(50)
       .then((history) => {
-        if (!cancelled) setRecentViews(history.items || []);
+        if (!cancelled) {
+          setRecentViews(
+            mergeDiscoveryRecentViews({
+              accountItems: history.items || [],
+              localItems: readLocalBrowseHistory(50),
+              limit: 50,
+            }) as DiscoveryRecentView[],
+          );
+        }
       })
       .catch((error) => {
         console.warn('Failed to load shopping behavior history:', error);
-        if (!cancelled) setRecentViews([]);
+        if (!cancelled) setRecentViews(localRecentViews);
       })
       .finally(() => {
         if (!cancelled) setRecentViewsReady(true);
@@ -118,12 +131,15 @@ export default function ProductsPage() {
         let hasMoreFromResponse: boolean | undefined;
 
         if (!trimmed) {
-          fetchedProducts = await getAllProducts(GRID_INITIAL_PAGE_SIZE, undefined, {
+          const result = await getShoppingDiscoveryFeed({
+            surface: 'browse_products',
             page: targetPage,
+            limit: GRID_INITIAL_PAGE_SIZE,
             userId: user?.id || null,
             recentViews,
           });
-          hasMoreFromResponse = fetchedProducts.length >= GRID_INITIAL_PAGE_SIZE;
+          fetchedProducts = result.products;
+          hasMoreFromResponse = result.page_info.has_more;
         } else {
           const result = await sendMessage(trimmed, undefined, {
             signal: controller.signal,
