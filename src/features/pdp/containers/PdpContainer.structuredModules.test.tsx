@@ -291,6 +291,68 @@ describe('PdpContainer structured PDP modules', () => {
     expect(screen.getByText('Overview')).toBeInTheDocument();
   });
 
+  it('drops polluted product_facts and how-to-use blocks, then falls back to clean legacy overview', () => {
+    const payload = buildBeautyPayload();
+    payload.product.description = 'Barrier-first overview copy.';
+    payload.modules = payload.modules.map((module) => {
+      if (module.type === 'how_to_use') {
+        return {
+          ...module,
+          data: {
+            title: 'How to use',
+            raw_text: 'Oat So Simple Water Cream Pair with a water-based moisturizer. Shop Now',
+            steps: ['Pair with a water-based moisturizer.', 'Shop Now'],
+            source_origin: 'retail_pdp',
+          },
+        };
+      }
+      if (module.type === 'product_facts') {
+        return {
+          ...module,
+          data: {
+            sections: [
+              {
+                heading: 'How to Pair',
+                content_type: 'text',
+                content: 'Shop Now Pair with Oat So Simple Water Cream.',
+              },
+              {
+                heading: 'ABOUT',
+                content_type: 'text',
+                content: 'Our Story Product Philosophy Sustainability Journey',
+              },
+            ],
+          },
+        };
+      }
+      if (module.type === 'product_details') {
+        return {
+          ...module,
+          data: {
+            sections: [
+              {
+                heading: 'Overview',
+                content_type: 'text',
+                content: 'This reparative serum helps soothe and restore your skin barrier.',
+              },
+            ],
+          },
+        };
+      }
+      return module;
+    });
+
+    render(
+      <PdpContainer payload={payload} mode="beauty" onAddToCart={() => {}} onBuyNow={() => {}} />,
+    );
+
+    expect(screen.getAllByText('This reparative serum helps soothe and restore your skin barrier.').length).toBeGreaterThan(0);
+    expect(screen.queryByText(/Pair with Oat So Simple Water Cream/i)).not.toBeInTheDocument();
+    expect(screen.queryByText('How to use')).not.toBeInTheDocument();
+    expect(screen.queryByText('How to Pair')).not.toBeInTheDocument();
+    expect(screen.queryByText('ABOUT')).not.toBeInTheDocument();
+  });
+
   it('renders a locked selector surface for single-variant generic products', () => {
     render(
       <PdpContainer

@@ -203,15 +203,22 @@ function getExternalRedirectUrlFromOffer(offer: unknown): string | null {
   return null;
 }
 
+function isRecommendationModuleType(type: unknown): boolean {
+  return type === 'recommendations' || type === 'similar';
+}
+
 function hasModule(response: PDPPayload | null, type: 'reviews_preview' | 'recommendations'): boolean {
   if (!response || !Array.isArray(response.modules)) return false;
+  if (type === 'recommendations') {
+    return response.modules.some((m) => isRecommendationModuleType(m?.type));
+  }
   return response.modules.some((m) => m?.type === type);
 }
 
 function hasRecommendationsItems(response: PDPPayload | null): boolean {
   if (!response || !Array.isArray(response.modules)) return false;
   return response.modules.some((m) => {
-    if (m?.type !== 'recommendations') return false;
+    if (!isRecommendationModuleType(m?.type)) return false;
     const items = (m as any)?.data?.items;
     return Array.isArray(items) && items.length > 0;
   });
@@ -509,12 +516,12 @@ export default function ProductDetailPage({ params }: Props) {
         const hasSimilarModule = hasModule(assembled, 'recommendations');
         const hasRecommendations = hasRecommendationsItems(assembled);
         const similarCount = Array.isArray(
-          (assembled.modules.find((m) => m?.type === 'recommendations') as any)?.data
+          (assembled.modules.find((m) => isRecommendationModuleType(m?.type)) as any)?.data
             ?.items,
         )
           ? (
               assembled.modules.find(
-                (m) => m?.type === 'recommendations',
+                (m) => isRecommendationModuleType(m?.type),
               ) as any
             ).data.items.length
           : 0;
@@ -770,7 +777,7 @@ export default function ProductDetailPage({ params }: Props) {
               : null;
           const recommendations =
             payload && Array.isArray(payload.modules)
-              ? (payload.modules.find((m) => m?.type === 'recommendations') as Module | undefined) || null
+              ? (payload.modules.find((m) => isRecommendationModuleType(m?.type)) as Module | undefined) || null
               : null;
           return { reviews, recommendations };
         };

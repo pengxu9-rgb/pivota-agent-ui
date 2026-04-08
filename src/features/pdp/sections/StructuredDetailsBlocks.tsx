@@ -11,6 +11,13 @@ import {
   splitParagraphs,
 } from '@/features/pdp/utils/formatDescriptionText';
 
+const INGREDIENT_NOISE_RE =
+  /\b(shop now|pair with|our story|product philosophy|sustainability|inclusivity pledge|peta-certified|vegan and cruelty-free|no worries|patch test|allerg(?:y|ic)|warning|warnings|caution|note:)\b/i;
+const HOW_TO_USE_NOISE_RE =
+  /\b(shop now|pair with|our story|product philosophy|sustainability|inclusivity pledge|faq|question(?:s)?|about)\b/i;
+const HOW_TO_USE_ACTION_RE =
+  /\b(apply|use|massage|dispense|lather|rinse|pat|layer|follow|start|finish|take|swipe|smooth|spray|press|cleanse|shake|wet|dry|leave|reapply|mix|blend|deepen|define|buff|morning|night|am|pm)\b/i;
+
 function getStructuredItemLabel(item: unknown): string {
   if (typeof item === 'string') return item.trim();
   if (!item || typeof item !== 'object') return '';
@@ -127,6 +134,49 @@ function collapseIngredientFamilyItems(items: string[]): string[] {
   return out;
 }
 
+function ingredientCoreKey(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/^[\d\s,.-]+/, '')
+    .replace(/[^a-z]+/g, '');
+}
+
+function dedupeIngredientItems(items: string[]): string[] {
+  const preferredByCore = new Map<string, string>();
+  for (const item of items) {
+    const core = ingredientCoreKey(item) || item.toLowerCase();
+    const existing = preferredByCore.get(core);
+    if (!existing || item.length > existing.length) {
+      preferredByCore.set(core, item);
+    }
+  }
+
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    const core = ingredientCoreKey(item) || item.toLowerCase();
+    const preferred = preferredByCore.get(core) || item;
+    const key = preferred.toLowerCase();
+    if (preferred !== item || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function combineBrokenIngredientParts(items: string[]): string[] {
+  const combined: string[] = [];
+  for (let index = 0; index < items.length; index += 1) {
+    const current = items[index];
+    const next = items[index + 1];
+    if (/^\d+$/.test(current) && typeof next === 'string' && /^\d+-[A-Za-z]/.test(next)) {
+      combined.push(`${current},${next}`);
+      index += 1;
+      continue;
+    }
+    combined.push(current);
+  }
+  return combined;
+}
+
 function cleanStructuredToken(value: string): string {
   return String(value || '')
     .replace(/^[\s\-•*]+/, '')
@@ -168,23 +218,33 @@ function normalizeIngredientsRawText(text: string, hasActiveIngredients: boolean
   return normalized;
 }
 
+function isLikelyPureIngredientItem(item: string): boolean {
+  const normalized = String(item || '').trim();
+  if (!normalized) return false;
+  if (INGREDIENT_NOISE_RE.test(normalized)) return false;
+  if (normalized.includes(':')) return false;
+  if (/[.!?]/.test(normalized)) return false;
+  if (/^\d+$/.test(normalized)) return false;
+  const wordCount = normalized.split(/\s+/).filter(Boolean).length;
+  return wordCount <= 16;
+}
+
 function parseIngredientsFromText(text: string): string[] {
   const normalized = normalizeIngredientsRawText(text, false);
   if (!normalized) return [];
-  return uniqueNonEmpty(
-    normalized
+  return dedupeIngredientItems(
+    combineBrokenIngredientParts(
+      normalized
       .split(/\n+|;|,(?![^()]*\))/)
       .map((item) => normalizeIngredientListItem(item))
-      .filter(
-        (item) =>
-          item.length > 1 &&
-          !/^please be aware that ingredient lists/i.test(item),
-      ),
+      .filter((item) => item.length > 1 && !/^please be aware that ingredient lists/i.test(item)),
+    ).filter((item) => isLikelyPureIngredientItem(item)),
   );
 }
 
 function normalizeIngredientListItem(item: string): string {
   return cleanStructuredToken(item)
+    .replace(/^full ingredients[:\s-]*/i, '')
     .replace(/^(?:key\s+ingredients?\s+)?ingredients(?:\s*\(inci\))?[:\s-]*/i, '')
     .replace(/^\[\+\/-\s*/i, '')
     .replace(/\s*Please be aware that ingredient lists.*$/i, '')
@@ -215,11 +275,16 @@ function splitHowToUseFragments(text: string): string[] {
 function sanitizeHowToUseItems(steps: unknown, rawText: string): string[] {
   const sourceSteps = Array.isArray(steps) ? steps : [];
   const cleanedFromSteps = uniqueNonEmpty(
-    sourceSteps.flatMap((step) => splitHowToUseFragments(String(step || ''))),
+    sourceSteps
+      .flatMap((step) => splitHowToUseFragments(String(step || '')))
+      .filter((step) => !HOW_TO_USE_NOISE_RE.test(step))
+      .filter((step) => HOW_TO_USE_ACTION_RE.test(step)),
   );
-  if (cleanedFromSteps.length >= 2) return cleanedFromSteps;
-  const cleanedFromRaw = splitHowToUseFragments(rawText);
-  return cleanedFromRaw.length >= 2 ? cleanedFromRaw : [];
+  if (cleanedFromSteps.length >= 1) return cleanedFromSteps;
+  const cleanedFromRaw = splitHowToUseFragments(rawText)
+    .filter((step) => !HOW_TO_USE_NOISE_RE.test(step))
+    .filter((step) => HOW_TO_USE_ACTION_RE.test(step));
+  return cleanedFromRaw.length >= 1 ? cleanedFromRaw : [];
 }
 
 function SectionHeader({
@@ -292,14 +357,19 @@ export function StructuredDetailsBlocks({
       (item) =>
         item.length > 1 &&
         !/^please be aware that ingredient lists/i.test(item),
-    );
+    )
+    .filter((item) => isLikelyPureIngredientItem(item));
   const parsedRawIngredientItems = parseIngredientsFromText(normalizedIngredientsRawText).filter(
     (item) => !isIngredientCoveredByExistingItem(item, structuredIngredientsInciItems),
   );
-  const ingredientsInciItems = collapseIngredientFamilyItems([
-    ...structuredIngredientsInciItems,
-    ...parsedRawIngredientItems,
-  ]);
+  const ingredientsInciItems = dedupeIngredientItems(
+    collapseIngredientFamilyItems(
+      combineBrokenIngredientParts([
+        ...structuredIngredientsInciItems,
+        ...parsedRawIngredientItems,
+      ]),
+    ),
+  );
   const shouldHideActiveIngredients =
     hideLowConfidenceActiveIngredients &&
     activeIngredientItems.length <= 1 &&
@@ -312,8 +382,7 @@ export function StructuredDetailsBlocks({
     hasActiveIngredients ||
       ingredientsInciItems.length ||
       howToUseItems.length ||
-      normalizedIngredientsRawText ||
-      normalizedHowToUseRawText,
+      normalizedIngredientsRawText,
   );
 
   if (!hasContent) return null;
@@ -372,7 +441,7 @@ export function StructuredDetailsBlocks({
         </div>
       ) : null}
 
-      {(howToUseItems.length || normalizedHowToUseRawText) ? (
+      {howToUseItems.length ? (
         <div className="rounded-xl border border-border/70 bg-card/70 px-3 py-3">
           <SectionHeader
             title={String(howToUse?.title || 'How to Use').trim() || 'How to Use'}
@@ -389,10 +458,6 @@ export function StructuredDetailsBlocks({
                 </li>
               ))}
             </ol>
-          ) : normalizedHowToUseRawText ? (
-            <div className="mt-3">
-              <StructuredText text={normalizedHowToUseRawText} />
-            </div>
           ) : null}
         </div>
       ) : null}
