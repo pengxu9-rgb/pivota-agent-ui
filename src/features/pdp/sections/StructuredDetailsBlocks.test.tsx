@@ -62,4 +62,41 @@ describe('StructuredDetailsBlocks', () => {
     expect(screen.getByText('Blend edges')).toBeInTheDocument();
     expect(screen.getByText('Deepen the outer corner.')).toBeInTheDocument();
   });
+
+  it('drops noisy ingredient pollution, keeps intact chemical tokens, and suppresses promo how-to-use', () => {
+    render(
+      <StructuredDetailsBlocks
+        ingredientsInci={{
+          title: 'Ingredients (INCI)',
+          items: [
+            'Water (Aqua/Eau)',
+            '1,2-Hexanediol',
+            'Hexanediol',
+            'PETA-certified vegan and cruelty-free.',
+            'Patch test before use.',
+            'Caprylic/Capric Triglyceride',
+          ],
+          raw_text:
+            'Water (Aqua/Eau), 1,2-Hexanediol, Caprylic/Capric Triglyceride, PETA-certified vegan and cruelty-free.',
+        }}
+        howToUse={{
+          title: 'How to Use',
+          steps: [
+            'Pair with a water-based moisturizer for extra moisture.',
+            'Shop Now',
+          ],
+          raw_text:
+            'Pair with a water-based moisturizer for extra moisture. Shop Now',
+        }}
+      />,
+    );
+
+    expect(screen.getByText('Water (Aqua/Eau)')).toBeInTheDocument();
+    expect(screen.getByText('1,2-Hexanediol')).toBeInTheDocument();
+    expect(screen.queryByText(/^Hexanediol$/)).not.toBeInTheDocument();
+    expect(screen.getByText('Caprylic/Capric Triglyceride')).toBeInTheDocument();
+    expect(screen.queryByText(/PETA-certified vegan/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Patch test/i)).not.toBeInTheDocument();
+    expect(screen.queryByText('How to Use')).not.toBeInTheDocument();
+  });
 });

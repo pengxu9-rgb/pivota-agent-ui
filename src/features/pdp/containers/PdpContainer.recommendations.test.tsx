@@ -363,4 +363,36 @@ describe('PdpContainer recommendations interactions', () => {
       expect(screen.getByText('Product 6')).toBeInTheDocument();
     });
   });
+
+  it('renders recommendations from a raw similar module when adapter normalization drifts', async () => {
+    const similarOnlyPayload: PDPPayload = {
+      ...payload,
+      modules: payload.modules.map((module) =>
+        module.type === 'recommendations'
+          ? {
+              ...module,
+              type: 'similar' as any,
+              data: {
+                strategy: 'related_products',
+                items: buildSimilar(2),
+              },
+            }
+          : module,
+      ),
+      x_recommendations_state: 'ready',
+    };
+
+    render(
+      <PdpContainer
+        payload={similarOnlyPayload}
+        mode="generic"
+        onAddToCart={() => {}}
+        onBuyNow={() => {}}
+      />,
+    );
+
+    expect(screen.getByText('You May Also Like')).toBeInTheDocument();
+    expect(screen.getByText('Product 1')).toBeInTheDocument();
+    expect(screen.getByText('Product 2')).toBeInTheDocument();
+  });
 });

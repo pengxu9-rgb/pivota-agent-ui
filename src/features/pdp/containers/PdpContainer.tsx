@@ -78,6 +78,12 @@ import { resolveReviewGate, reviewGateMessage, reviewGateResultToReason } from '
 import { postRequestCloseToParent } from '@/lib/auroraEmbed';
 import { isExternalAgentEntry, resolveExternalAgentHomeUrl, safeReturnUrl } from '@/lib/returnUrl';
 import { useIsDesktop } from '@/features/pdp/hooks/useIsDesktop';
+import {
+  chooseProductDetailsData,
+  sanitizeActiveIngredientsData,
+  sanitizeHowToUseData,
+  sanitizeIngredientsInciData,
+} from '@/features/pdp/utils/pdpDisplaySanitizers';
 
 function nonEmptyText(value: unknown, fallback: string): string {
   const text = String(value ?? '').trim();
@@ -87,6 +93,13 @@ function nonEmptyText(value: unknown, fallback: string): string {
 function getModuleData<T>(payload: PDPPayload, type: string): T | null {
   const m = payload.modules.find((x) => x.type === type);
   return (m?.data as T) ?? null;
+}
+
+function getRecommendationsModuleData(payload: PDPPayload): RecommendationsData | null {
+  const recommendationModule = payload.modules.find(
+    (module) => module?.type === 'recommendations' || module?.type === ('similar' as any),
+  );
+  return (recommendationModule?.data as RecommendationsData) ?? null;
 }
 
 function formatPrice(amount: number, currency: string) {
@@ -393,7 +406,7 @@ function getInitialSimilarState(payload: PDPPayload): {
   metadata: RecommendationsData['metadata'] | null;
   rawCount: number;
 } {
-  const payloadRecommendations = getModuleData<RecommendationsData>(payload, 'recommendations');
+  const payloadRecommendations = getRecommendationsModuleData(payload);
   const recommendationCurrencyFallback =
     payload.product.price?.current.currency || payload.product.price?.compare_at?.currency || 'USD';
   const rawItems = normalizeRecommendationItems(
@@ -521,13 +534,23 @@ export function PdpContainer({
   const pricePromo = getModuleData<PricePromoData>(payload, 'price_promo');
   const productFacts = getModuleData<ProductFactsData>(payload, 'product_facts');
   const legacyDetails = getModuleData<ProductDetailsData>(payload, 'product_details');
-  const details = productFacts || legacyDetails;
-  const activeIngredients = getModuleData<ActiveIngredientsData>(payload, 'active_ingredients');
-  const ingredientsInci = getModuleData<IngredientsInciData>(payload, 'ingredients_inci');
-  const howToUse = getModuleData<HowToUseData>(payload, 'how_to_use');
+  const activeIngredients = sanitizeActiveIngredientsData(
+    getModuleData<ActiveIngredientsData>(payload, 'active_ingredients'),
+  );
+  const ingredientsInci = sanitizeIngredientsInciData(
+    getModuleData<IngredientsInciData>(payload, 'ingredients_inci'),
+  );
+  const howToUse = sanitizeHowToUseData(
+    getModuleData<HowToUseData>(payload, 'how_to_use'),
+  );
+  const details = chooseProductDetailsData({
+    productFacts,
+    legacyDetails,
+    hasStructuredBlocks: Boolean(activeIngredients || ingredientsInci || howToUse),
+  });
   const reviews = getModuleData<ReviewsPreviewData>(payload, 'reviews_preview');
   const brandNameForCard = String(reviews?.brand_card?.name || payload.product.brand?.name || '').trim();
-  const payloadRecommendations = getModuleData<RecommendationsData>(payload, 'recommendations');
+  const payloadRecommendations = getRecommendationsModuleData(payload);
   const payloadRecommendationItemCount = Array.isArray(payloadRecommendations?.items)
     ? payloadRecommendations.items.length
     : 0;
