@@ -80,6 +80,7 @@ import { postRequestCloseToParent } from '@/lib/auroraEmbed';
 import { isExternalAgentEntry, resolveExternalAgentHomeUrl, safeReturnUrl } from '@/lib/returnUrl';
 import { useIsDesktop } from '@/features/pdp/hooks/useIsDesktop';
 import { buildSimilarMainlineStatus } from '@/features/pdp/utils/similarHints';
+import { partitionDetailSections } from '@/features/pdp/utils/detailSections';
 import {
   chooseProductDetailsData,
   sanitizeActiveIngredientsData,
@@ -150,6 +151,18 @@ export function isLikelyBeautyExternalSeedProduct(
     .toLowerCase();
 
   return LOW_CONFIDENCE_ACTIVE_INGREDIENT_BEAUTY_HINT_RE.test(beautyLikeText);
+}
+
+export function resolveVisiblePdpTab(
+  entries: Array<{ id: string; top: number }>,
+  anchor: number,
+): string | null {
+  if (!entries.length) return null;
+  let current = entries[0].id;
+  for (const entry of entries) {
+    if (entry.top <= anchor) current = entry.id;
+  }
+  return current;
 }
 
 function buildRecommendationKey(item: { product_id?: string; merchant_id?: string }) {
@@ -596,6 +609,10 @@ export function PdpContainer({
     legacyDetails,
     hasStructuredBlocks: Boolean(activeIngredients || ingredientsInci || howToUse),
   });
+  const detailSectionParts = useMemo(
+    () => partitionDetailSections(Array.isArray(details?.sections) ? details.sections : []),
+    [details],
+  );
   const reviews = getModuleData<ReviewsPreviewData>(payload, 'reviews_preview');
   const brandNameForCard = String(reviews?.brand_card?.name || payload.product.brand?.name || '').trim();
   const payloadProductId = String(payload.product.product_id || '').trim();
@@ -1131,6 +1148,7 @@ export function PdpContainer({
       if (frame) cancelAnimationFrame(frame);
       frame = window.requestAnimationFrame(() => {
         const offset = headerHeight + (navVisible ? 36 : 0) + 10;
+        const anchor = offset + Math.min(180, Math.max(96, window.innerHeight * 0.18));
         const entries = tabs
           .map((tab) => {
             const node = sectionRefs.current[tab.id];
@@ -1140,10 +1158,7 @@ export function PdpContainer({
           .filter(Boolean) as Array<{ id: string; top: number }>;
 
         if (!entries.length) return;
-        let current = entries[0].id;
-        entries.forEach((entry) => {
-          if (entry.top - offset <= 0) current = entry.id;
-        });
+        const current = resolveVisiblePdpTab(entries, anchor);
         if (current && current !== activeTab) {
           setActiveTab(current);
         }
@@ -1298,14 +1313,22 @@ export function PdpContainer({
 
   const attributeOptions = extractAttributeOptions(selectedVariant);
   const beautyAttributes = extractBeautyAttributes(selectedVariant);
-  const hasDetailsSection = Boolean(
-    details ||
-      activeIngredients?.items?.length ||
+  const suppressOverviewInDetails = hasInsights;
+  const hasStructuredDetailBlocks = Boolean(
+    activeIngredients?.items?.length ||
       ingredientsInci?.items?.length ||
       howToUse?.steps?.length ||
       activeIngredients?.raw_text ||
       ingredientsInci?.raw_text ||
       howToUse?.raw_text,
+  );
+  const hasNonOverviewDetails = Boolean(
+    detailSectionParts.supplementalSections.length || detailSectionParts.brandStorySection,
+  );
+  const hasDetailsSection = Boolean(
+    (!suppressOverviewInDetails && details) ||
+      hasStructuredDetailBlocks ||
+      hasNonOverviewDetails,
   );
   const isExternalSeedProduct =
     String(payload.product.merchant_id || '').trim().toLowerCase() === 'external_seed';
@@ -2564,6 +2587,7 @@ export function PdpContainer({
                 ingredientsInci={ingredientsInci}
                 howToUse={howToUse}
                 hideLowConfidenceActiveIngredients={shouldHideLowConfidenceActiveIngredients}
+                suppressOverview={suppressOverviewInDetails}
               />
             ) : resolvedMode === 'generic' ? (
               <GenericDetailsSection
@@ -2574,6 +2598,7 @@ export function PdpContainer({
                 ingredientsInci={ingredientsInci}
                 howToUse={howToUse}
                 hideLowConfidenceActiveIngredients={shouldHideLowConfidenceActiveIngredients}
+                suppressOverview={suppressOverviewInDetails}
               />
             ) : (
               <div className="px-4 py-4">

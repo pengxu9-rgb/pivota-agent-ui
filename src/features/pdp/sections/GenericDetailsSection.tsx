@@ -23,6 +23,7 @@ export function GenericDetailsSection({
   ingredientsInci,
   howToUse,
   hideLowConfidenceActiveIngredients = false,
+  suppressOverview = false,
 }: {
   data?: ProductDetailsData | null;
   product: Product;
@@ -31,6 +32,7 @@ export function GenericDetailsSection({
   ingredientsInci?: IngredientsInciData | null;
   howToUse?: HowToUseData | null;
   hideLowConfidenceActiveIngredients?: boolean;
+  suppressOverview?: boolean;
 }) {
   const sections = Array.isArray(data?.sections) ? data.sections : [];
   const {
@@ -53,7 +55,7 @@ export function GenericDetailsSection({
   return (
     <div className="p-3">
       <h2 className="text-sm font-semibold mb-2">Product Details</h2>
-      <OverviewSection content={overviewContent} />
+      {!suppressOverview ? <OverviewSection content={overviewContent} /> : null}
 
       {detailImages.length ? (
         <div className="mt-3 space-y-2">
@@ -83,7 +85,7 @@ export function GenericDetailsSection({
         <div className="mt-3">
           <DetailsAccordion data={{ sections: secondarySections }} />
         </div>
-      ) : !hasOverview ? (
+      ) : !hasOverview && !suppressOverview ? (
         <p className="mt-3 text-sm text-muted-foreground leading-relaxed">Details not available.</p>
       ) : null}
     </div>
