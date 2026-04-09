@@ -46,7 +46,9 @@ async function fetchInitialBrandFeed(args: {
   const category = readSearchParam(args.category).toLowerCase();
   const sourceProductId = readSearchParam(args.sourceProductId);
   const sourceMerchantId = readSearchParam(args.sourceMerchantId);
-  const shouldServerPrefetch = Boolean(query || category || sourceProductId);
+  // Plain brand routes should hydrate with a first page of products when the feed
+  // responds quickly enough; query/category/source-product params still refine it.
+  const shouldServerPrefetch = true;
   if (!shouldServerPrefetch) return null;
   const headerList = await headers();
   const baseUrl = resolveServerBaseUrl(headerList);

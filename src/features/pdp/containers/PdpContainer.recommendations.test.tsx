@@ -119,6 +119,7 @@ const payload: PDPPayload = {
 describe('PdpContainer recommendations interactions', () => {
   afterEach(() => {
     cleanup();
+    window.localStorage.clear();
     vi.restoreAllMocks();
     getSimilarProductsMainlineMock.mockReset();
   });
@@ -142,6 +143,18 @@ describe('PdpContainer recommendations interactions', () => {
   });
 
   it('loads more similar products through the explicit mainline wrapper when more are available', async () => {
+    window.localStorage.setItem(
+      'browse_history',
+      JSON.stringify([
+        {
+          product_id: 'recent_1',
+          merchant_id: 'external_seed',
+          title: 'Barrier repair serum',
+          category: 'Serum',
+          timestamp: Date.parse('2026-04-09T10:00:00.000Z'),
+        },
+      ]),
+    );
     getSimilarProductsMainlineMock.mockResolvedValue({
       strategy: 'related_products',
       items: buildSimilar(6).map((item, index) => ({
@@ -204,6 +217,14 @@ describe('PdpContainer recommendations interactions', () => {
           expect.objectContaining({ product_id: 'prod_1', merchant_id: 'external_seed' }),
           expect.objectContaining({ product_id: 'prod_6', merchant_id: 'external_seed' }),
         ]),
+        recentViews: [
+          expect.objectContaining({
+            product_id: 'recent_1',
+            merchant_id: 'external_seed',
+            title: 'Barrier repair serum',
+            category: 'Serum',
+          }),
+        ],
       }),
     );
   });
@@ -284,6 +305,47 @@ describe('PdpContainer recommendations interactions', () => {
     });
 
     expect(screen.queryByRole('button', { name: /load more similar products/i })).not.toBeInTheDocument();
+  });
+
+  it('shows recent-browsing hint when the rail used history fallback', async () => {
+    const historyFallbackPayload: PDPPayload = {
+      ...payload,
+      modules: payload.modules.map((module) =>
+        module.type !== 'recommendations'
+          ? module
+          : {
+              ...module,
+              data: {
+                strategy: 'related_products',
+                items: buildSimilar(3),
+                metadata: {
+                  low_confidence: true,
+                  similar_confidence: 'low',
+                  low_confidence_reason_codes: ['RECENT_VIEWS_FALLBACK_USED'],
+                  underfill: 1,
+                },
+              },
+            },
+      ),
+    };
+
+    render(
+      <PdpContainer
+        payload={historyFallbackPayload}
+        mode="generic"
+        onAddToCart={() => {}}
+        onBuyNow={() => {}}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Based on recent browsing')).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          'Exact like-for-like matches were limited for this product, so this section falls back to products related to your recent browsing instead of generic padding. 1 recommendation slot remains unfilled rather than widening further.',
+        ),
+      ).toBeInTheDocument();
+    });
   });
 
   it('deduplicates repeated recommendation titles from the same merchant', async () => {

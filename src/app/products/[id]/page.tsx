@@ -10,6 +10,7 @@ import {
   getPdpV2,
   getPdpV2Personalization,
   getProductDetail,
+  getSimilarProductsMainline,
   recordBrowseHistoryEvent,
   resolveProductCandidates,
   type GetPdpV2Response,
@@ -32,6 +33,7 @@ import {
   buildProductHref,
   inferCanonicalPdpMerchantId,
   normalizeProductRouteMerchantId,
+  resolveProductRouteMerchantId,
 } from '@/lib/productHref';
 import {
   DEFAULT_MODULE_SOURCE_LOCKS,
@@ -43,12 +45,22 @@ import {
 } from '@/lib/pdpResolvedOffers';
 import {
   pickHistoryImage,
+  readLocalDiscoveryRecentViews,
   upsertLocalBrowseHistory,
 } from '@/lib/browseHistoryStorage';
 
 interface Props {
   params: Promise<{ id: string }>;
 }
+
+type PdpLoadError = {
+  title: string;
+  message: string;
+  code?: string | null;
+  status?: number | null;
+  gatewayRequestId?: string | null;
+  upstreamRequestId?: string | null;
+};
 
 const PDP_V2_SCOPED_TIMEOUT_MS = 9000;
 const PDP_V2_UNSCOPED_TIMEOUT_MS = 9000;
@@ -142,6 +154,105 @@ function normalizeHttpUrl(value: unknown): string | null {
   return trimmed;
 }
 
+function normalizePdpLoadError(err: unknown): PdpLoadError {
+  const fallback: PdpLoadError = {
+    title: 'Failed to load product',
+    message: 'Product unavailable',
+    code: null,
+    status: null,
+    gatewayRequestId: null,
+    upstreamRequestId: null,
+  };
+
+  if (!err || typeof err !== 'object') {
+    return {
+      ...fallback,
+      message: err instanceof Error && err.message ? err.message : fallback.message,
+    };
+  }
+
+  const errorLike = err as {
+    message?: unknown;
+    code?: unknown;
+    status?: unknown;
+    detail?: Record<string, unknown> | null;
+  };
+  const detail =
+    errorLike.detail && typeof errorLike.detail === 'object' ? errorLike.detail : null;
+  const code = String(
+    errorLike.code ||
+      detail?.reason_code ||
+      detail?.error ||
+      '',
+  )
+    .trim()
+    .toUpperCase();
+  const status = Number(errorLike.status || detail?.status || 0) || null;
+  const gatewayRequestId = String(detail?.gateway_request_id || '').trim() || null;
+  const upstreamRequestId = String(detail?.upstream_request_id || '').trim() || null;
+  const rawMessage =
+    (typeof errorLike.message === 'string' && errorLike.message.trim()) ||
+    (typeof detail?.message === 'string' && String(detail.message).trim()) ||
+    '';
+
+  if (code === 'PRODUCT_NOT_FOUND' || code === 'NOT_FOUND' || status === 404) {
+    const userFacingMessage =
+      !rawMessage || /^product not found$/i.test(rawMessage)
+        ? 'This product is no longer available.'
+        : rawMessage;
+    return {
+      title: 'Product not found',
+      message: userFacingMessage,
+      code: code || 'PRODUCT_NOT_FOUND',
+      status,
+      gatewayRequestId,
+      upstreamRequestId,
+    };
+  }
+
+  if (code === 'UPSTREAM_TIMEOUT') {
+    return {
+      title: 'Product request timed out',
+      message: rawMessage || 'The product service timed out. Please retry.',
+      code,
+      status: status || 504,
+      gatewayRequestId,
+      upstreamRequestId,
+    };
+  }
+
+  if (code === 'UPSTREAM_UNAVAILABLE' || code === 'TEMPORARY_UNAVAILABLE') {
+    return {
+      title: 'Product service unavailable',
+      message: rawMessage || 'The product service is temporarily unavailable. Please retry.',
+      code,
+      status: status || 503,
+      gatewayRequestId,
+      upstreamRequestId,
+    };
+  }
+
+  if (code === 'PRODUCT_ROUTE_MERCHANT_MISMATCH') {
+    return {
+      title: 'Refreshing product route',
+      message: rawMessage || 'The product route changed. Please retry.',
+      code,
+      status,
+      gatewayRequestId,
+      upstreamRequestId,
+    };
+  }
+
+  return {
+    title: fallback.title,
+    message: rawMessage || fallback.message,
+    code: code || null,
+    status,
+    gatewayRequestId,
+    upstreamRequestId,
+  };
+}
+
 function buildExternalRedirectNotice(url: string): string {
   const fallback = 'Redirecting to external website in a new tab…';
 
@@ -168,6 +279,8 @@ function buildExternalRedirectNotice(url: string): string {
     return fallback;
   }
 }
+
+type SimilarProductsBackfillResult = Awaited<ReturnType<typeof getSimilarProductsMainline>>;
 
 function decodeBase64UrlJson(input: string): Record<string, unknown> | null {
   if (!input) return null;
@@ -222,6 +335,21 @@ function hasRecommendationsItems(response: PDPPayload | null): boolean {
     const items = (m as any)?.data?.items;
     return Array.isArray(items) && items.length > 0;
   });
+}
+
+function buildRecommendationsModule(
+  result: SimilarProductsBackfillResult,
+): Module {
+  return {
+    module_id: 'recommendations',
+    type: 'recommendations',
+    priority: 20,
+    data: {
+      strategy: String(result.strategy || 'related_products').trim() || 'related_products',
+      ...(result.metadata ? { metadata: result.metadata } : {}),
+      items: Array.isArray(result.items) ? result.items : [],
+    },
+  };
 }
 
 const PDP_INITIAL_INCLUDE = [
@@ -355,7 +483,7 @@ export default function ProductDetailPage({ params }: Props) {
   const [pdpPayload, setPdpPayload] = useState<PDPPayload | null>(null);
   const [sellerCandidates, setSellerCandidates] = useState<ProductResponse[] | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<PdpLoadError | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [loadedViaPdpV2, setLoadedViaPdpV2] = useState(false);
   const offerProductDetailCacheRef = useRef<Map<string, ProductResponse>>(new Map());
@@ -406,6 +534,35 @@ export default function ProductDetailPage({ params }: Props) {
     const product = (pdpPayload as any)?.product;
     if (!product) return;
 
+    const canonicalProductId =
+      String(product?.product_id || product?.id || id || '').trim() || String(id || '').trim();
+    if (!canonicalProductId) return;
+
+    const nextParams = new URLSearchParams(searchParamsString);
+    const canonicalRouteMerchantId = resolveProductRouteMerchantId(
+      canonicalProductId,
+      product?.merchant_id,
+    );
+    if (canonicalRouteMerchantId) nextParams.set('merchant_id', canonicalRouteMerchantId);
+    else nextParams.delete('merchant_id');
+
+    const nextQuery = nextParams.toString();
+    const nextUrl = `/products/${encodeURIComponent(canonicalProductId)}${
+      nextQuery ? `?${nextQuery}` : ''
+    }`;
+    const currentUrl = `/products/${encodeURIComponent(id)}${
+      searchParamsString ? `?${searchParamsString}` : ''
+    }`;
+
+    if (nextUrl !== currentUrl) {
+      router.replace(nextUrl);
+    }
+  }, [id, pdpPayload, router, searchParamsString]);
+
+  useEffect(() => {
+    const product = (pdpPayload as any)?.product;
+    if (!product) return;
+
     const productId = String(product?.product_id || id || '').trim();
     if (!productId) return;
     const merchantId = String(product?.merchant_id || merchantIdParam || '').trim() || undefined;
@@ -423,6 +580,17 @@ export default function ProductDetailPage({ params }: Props) {
             : Number(rawPrice?.amount) || 0;
       const title = String(product?.title || 'Untitled product').trim() || 'Untitled product';
       const description = String(product?.description || '').trim() || undefined;
+      const brand =
+        String(product?.brand?.name || product?.brand || '').trim() || undefined;
+      const categoryPath = Array.isArray(product?.category_path) ? product.category_path : [];
+      const category =
+        String(
+          categoryPath[categoryPath.length - 1] ||
+            product?.category ||
+            product?.product_type ||
+            '',
+        ).trim() || undefined;
+      const productType = String(product?.product_type || '').trim() || undefined;
       const imageUrl = pickHistoryImage(product);
 
       upsertLocalBrowseHistory({
@@ -432,6 +600,9 @@ export default function ProductDetailPage({ params }: Props) {
         price: normalizedPrice,
         image: imageUrl,
         description,
+        brand,
+        category,
+        product_type: productType,
         timestamp: nowMs,
       });
     }
@@ -576,10 +747,7 @@ export default function ProductDetailPage({ params }: Props) {
           return;
         }
 
-        const message =
-          (v2Err as Error)?.message ||
-          'Failed to load product';
-        setError(message);
+        setError(normalizePdpLoadError(v2Err));
         setLoading(false);
       }
     };
@@ -722,11 +890,12 @@ export default function ProductDetailPage({ params }: Props) {
 
       try {
         const backfillStartedAt = Date.now();
-        // Similar sits below the fold, so it can afford a wider recovery budget than core PDP modules.
-        const backfillBudgetMs = 18000;
+        // Similar sits below the fold, but we still keep the tail bounded to avoid 10s+ recovery.
+        const backfillBudgetMs = 10000;
         const reviewsInitialTimeoutMs = 4200;
-        const similarInitialTimeoutMs = 10500;
-        const similarRetryTimeoutMs = 6500;
+        const similarMainlineTimeoutMs = 3200;
+        const similarFallbackTimeoutMs = 4200;
+        const similarRetryTimeoutMs = 2200;
         const deadlineAt = Date.now() + backfillBudgetMs;
         const remainingMs = () => deadlineAt - Date.now();
 
@@ -770,6 +939,24 @@ export default function ProductDetailPage({ params }: Props) {
         const shouldRetryTimeout = (result: ModuleFetchResult) =>
           !result.response && !result.nonRetryable && result.code === 'UPSTREAM_TIMEOUT';
 
+        type SimilarModuleFetchResult = {
+          module: Module | null;
+          requestSucceeded: boolean;
+          nonRetryable: boolean;
+          code: string;
+          source: 'mainline' | 'get_pdp_v2' | 'get_pdp_v2_cache_bypass' | '';
+        };
+        const emptySimilarFetchResult: SimilarModuleFetchResult = {
+          module: null,
+          requestSucceeded: false,
+          nonRetryable: false,
+          code: '',
+          source: '',
+        };
+
+        const shouldRetrySimilarTimeout = (result: SimilarModuleFetchResult) =>
+          !result.requestSucceeded && !result.nonRetryable && result.code === 'UPSTREAM_TIMEOUT';
+
         const extractModules = (payload: PDPPayload | null) => {
           const reviews =
             payload && Array.isArray(payload.modules)
@@ -782,17 +969,82 @@ export default function ProductDetailPage({ params }: Props) {
           return { reviews, recommendations };
         };
 
-        let [reviewOnlyV2, similarOnlyV2] = await Promise.all([
+        const fetchSimilarMainlineWithBudget = async (
+          timeoutCapMs: number,
+        ): Promise<SimilarModuleFetchResult> => {
+          const remaining = remainingMs();
+          if (cancelled || remaining <= 120) {
+            return emptySimilarFetchResult;
+          }
+          const timeoutMs = Math.max(350, Math.min(timeoutCapMs, remaining));
+          try {
+            const response = await getSimilarProductsMainline({
+              product_id: productId,
+              merchant_id: merchantId,
+              limit: 6,
+              recentViews: readLocalDiscoveryRecentViews(6),
+              timeout_ms: timeoutMs,
+            });
+            return {
+              module: buildRecommendationsModule(response),
+              requestSucceeded: true,
+              nonRetryable: false,
+              code: '',
+              source: 'mainline',
+            };
+          } catch (err) {
+            return {
+              module: null,
+              requestSucceeded: false,
+              nonRetryable: isNonRetryablePdpError(err),
+              code: readApiErrorCode(err),
+              source: '',
+            };
+          }
+        };
+
+        const fetchSimilarViaPdpV2WithBudget = async (
+          timeoutCapMs: number,
+          options?: {
+            cacheBypass?: boolean;
+          },
+        ): Promise<SimilarModuleFetchResult> => {
+          const result = await fetchModuleWithBudget(['similar'], timeoutCapMs, options);
+          if (!result.response) {
+            return {
+              module: null,
+              requestSucceeded: false,
+              nonRetryable: result.nonRetryable,
+              code: result.code,
+              source: '',
+            };
+          }
+          const similarOnlyPayload = mapPdpV2ToPdpPayload(result.response);
+          const extractedSimilarOnly = extractModules(similarOnlyPayload);
+          return {
+            module: extractedSimilarOnly.recommendations || null,
+            requestSucceeded: true,
+            nonRetryable: false,
+            code: '',
+            source: options?.cacheBypass ? 'get_pdp_v2_cache_bypass' : 'get_pdp_v2',
+          };
+        };
+
+        let [reviewOnlyV2, similarResult] = await Promise.all([
           needReviews
             ? fetchModuleWithBudget(['reviews_preview'], reviewsInitialTimeoutMs)
             : Promise.resolve({ response: null, nonRetryable: false, code: '' }),
           needSimilar
-            ? fetchModuleWithBudget(['similar'], similarInitialTimeoutMs)
-            : Promise.resolve({ response: null, nonRetryable: false, code: '' }),
+            ? fetchSimilarMainlineWithBudget(similarMainlineTimeoutMs)
+            : Promise.resolve(emptySimilarFetchResult),
         ]);
 
-        if (needSimilar && shouldRetryTimeout(similarOnlyV2) && remainingMs() > 500) {
-          similarOnlyV2 = await fetchModuleWithBudget(['similar'], similarRetryTimeoutMs, {
+        if (needSimilar && shouldRetrySimilarTimeout(similarResult) && remainingMs() > 500) {
+          similarResult = await fetchSimilarViaPdpV2WithBudget(similarFallbackTimeoutMs);
+        }
+
+        if (needSimilar && shouldRetrySimilarTimeout(similarResult) && remainingMs() > 500) {
+          similarResult = await fetchSimilarViaPdpV2WithBudget(similarRetryTimeoutMs, {
             cacheBypass: true,
           });
         }
@@ -811,12 +1063,8 @@ export default function ProductDetailPage({ params }: Props) {
           reviewsModule = extractedReviewOnly.reviews || null;
         }
 
-        if (similarOnlyV2.response) {
-          similarRequestSucceeded = true;
-          const similarOnlyPayload = mapPdpV2ToPdpPayload(similarOnlyV2.response);
-          const extractedSimilarOnly = extractModules(similarOnlyPayload);
-          recModule = extractedSimilarOnly.recommendations || null;
-        }
+        recModule = similarResult.module;
+        similarRequestSucceeded = similarResult.requestSucceeded;
 
         const reviewModuleUnavailable =
           reviewOnlyV2.nonRetryable || isUnavailableModuleErrorCode(reviewOnlyV2.code);
@@ -889,7 +1137,7 @@ export default function ProductDetailPage({ params }: Props) {
         if (needSimilar) {
           pdpTracking.track('pdp_module_ready', {
             module: 'similar',
-            source: 'get_pdp_v2_backfill_parallel',
+            source: similarResult.source || 'backfill',
             count: itemsCount,
             frozen: moduleSourceLocksRef.current.similar,
             similar_request_succeeded: similarRequestSucceeded,
@@ -1455,8 +1703,20 @@ export default function ProductDetailPage({ params }: Props) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background px-6">
         <div className="w-full max-w-md rounded-3xl border border-border bg-card/70 backdrop-blur p-6 text-center">
-          <div className="text-lg font-semibold">Failed to load product</div>
-          <div className="mt-2 text-sm text-muted-foreground">{error || 'Product unavailable'}</div>
+          <div className="text-lg font-semibold">{error?.title || 'Failed to load product'}</div>
+          <div className="mt-2 text-sm text-muted-foreground">
+            {error?.message || 'Product unavailable'}
+          </div>
+          {error?.gatewayRequestId ? (
+            <div className="mt-3 text-xs text-muted-foreground">
+              Request ID: <code>{error.gatewayRequestId}</code>
+            </div>
+          ) : null}
+          {error?.upstreamRequestId ? (
+            <div className="mt-1 text-xs text-muted-foreground">
+              Upstream ID: <code>{error.upstreamRequestId}</code>
+            </div>
+          ) : null}
           <div className="mt-4">
             <button
               className="text-sm font-medium text-primary"

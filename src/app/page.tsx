@@ -132,20 +132,17 @@ function HomePageApp() {
       localItems: readLocalBrowseHistory(50),
       limit: 50,
     }) as DiscoveryRecentView[];
-    if (!userId) {
-      setRecentViews(localRecentViews);
-      setRecentViewsReady(true);
-      return;
-    }
+    setRecentViews(localRecentViews);
+    setRecentViewsReady(true);
+    if (!userId) return;
 
-    setRecentViewsReady(false);
     getBrowseHistory(50)
       .then((history) => {
         if (!cancelled) {
           setRecentViews(
             mergeDiscoveryRecentViews({
               accountItems: history.items || [],
-              localItems: readLocalBrowseHistory(50),
+              localItems: localRecentViews,
               limit: 50,
             }) as DiscoveryRecentView[],
           );
@@ -153,10 +150,6 @@ function HomePageApp() {
       })
       .catch((error) => {
         console.warn('Failed to load shopping behavior history:', error);
-        if (!cancelled) setRecentViews(localRecentViews);
-      })
-      .finally(() => {
-        if (!cancelled) setRecentViewsReady(true);
       });
 
     return () => {

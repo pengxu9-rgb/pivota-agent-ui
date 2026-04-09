@@ -337,4 +337,94 @@ describe('/api/gateway checkout-safe proxy', () => {
     const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe('https://pivota-agent-production.up.railway.app/agent/shop/v1/invoke');
   });
+
+  it('normalizes non-2xx upstream invoke errors with request ids and reason codes', async () => {
+    vi.stubEnv('SHOP_UPSTREAM_API_URL', 'https://invoke.example.com');
+
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          error: 'PRODUCT_NOT_FOUND',
+          message: 'Product not found',
+          detail: { canonical: true },
+        }),
+        {
+          status: 404,
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Gateway-Request-Id': 'gw_upstream_123',
+            'X-Upstream-Request-Id': 'upstream_req_456',
+          },
+        },
+      ),
+    );
+
+    const { POST } = await import('@/app/api/gateway/route');
+
+    const req = new Request('http://localhost/api/gateway', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        operation: 'get_pdp_v2',
+        payload: {
+          product_ref: {
+            product_id: 'ext_123',
+            merchant_id: 'merchant_wrong',
+          },
+        },
+      }),
+    });
+
+    const res = await POST(req as any);
+    const data = await res.json();
+
+    expect(res.status).toBe(404);
+    expect(data).toMatchObject({
+      error: 'PRODUCT_NOT_FOUND',
+      message: 'Product not found',
+      reason_code: 'PRODUCT_NOT_FOUND',
+      gateway_request_id: 'gw_upstream_123',
+      upstream_request_id: 'upstream_req_456',
+      detail: { canonical: true },
+    });
+    expect(res.headers.get('X-Gateway-Request-Id')).toBe('gw_upstream_123');
+    expect(res.headers.get('X-Upstream-Request-Id')).toBe('upstream_req_456');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('maps proxy aborts to UPSTREAM_TIMEOUT with a gateway request id', async () => {
+    vi.stubEnv('SHOP_UPSTREAM_API_URL', 'https://invoke.example.com');
+
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(
+      Object.assign(new Error('The operation was aborted.'), {
+        name: 'AbortError',
+      }),
+    );
+
+    const { POST } = await import('@/app/api/gateway/route');
+
+    const req = new Request('http://localhost/api/gateway', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        operation: 'get_pdp_v2',
+        payload: {
+          product_ref: {
+            product_id: 'ext_123',
+          },
+        },
+      }),
+    });
+
+    const res = await POST(req as any);
+    const data = await res.json();
+
+    expect(res.status).toBe(504);
+    expect(data).toMatchObject({
+      error: 'UPSTREAM_TIMEOUT',
+      reason_code: 'UPSTREAM_TIMEOUT',
+    });
+    expect(typeof data.gateway_request_id).toBe('string');
+    expect(res.headers.get('X-Gateway-Request-Id')).toBe(data.gateway_request_id);
+  });
 });
