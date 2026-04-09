@@ -484,7 +484,7 @@ export default function ProductDetailPage({ params }: Props) {
           ...(explicitMerchantId ? { merchant_id: explicitMerchantId } : {}),
           // Keep first paint fast: fetch only core PDP data first.
           // Reviews/similar are backfilled by progressive loaders below.
-          include: ['offers'],
+          include: ['offers', 'product_intel'],
           timeout_ms: v2TimeoutMs,
         });
         if (cancelled) return;

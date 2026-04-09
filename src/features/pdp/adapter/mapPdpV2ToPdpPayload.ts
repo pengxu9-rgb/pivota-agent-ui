@@ -1,5 +1,5 @@
 import type { GetPdpV2Response } from '@/lib/api';
-import type { Module, PDPPayload, RecommendationsData, ReviewsPreviewData } from '@/features/pdp/types';
+import type { Module, PDPPayload, ProductIntelData, RecommendationsData, ReviewsPreviewData } from '@/features/pdp/types';
 
 const IMAGE_PROXY_PATH = '/api/image-proxy';
 const ABSOLUTE_HTTP_URL_RE = /^https?:\/\//i;
@@ -341,6 +341,24 @@ export function mapPdpV2ToPdpPayload(response: GetPdpV2Response): PDPPayload | n
     if (offersGroupId && !next.product_group_id) {
       next.product_group_id = offersGroupId;
     }
+  }
+
+  const productIntelModule = getModule(response, 'product_intel');
+  const productIntelData = isRecord(productIntelModule?.data)
+    ? (productIntelModule.data as ProductIntelData)
+    : null;
+  if (productIntelData) {
+    const displayName =
+      typeof productIntelData.display_name === 'string' && productIntelData.display_name.trim()
+        ? productIntelData.display_name.trim()
+        : 'Pivota Insights';
+    next = upsertPayloadModule(next, {
+      module_id: 'product_intel',
+      type: 'product_intel',
+      priority: 65,
+      title: displayName,
+      data: productIntelData,
+    });
   }
 
   const reviewsModule = getModule(response, 'reviews_preview');

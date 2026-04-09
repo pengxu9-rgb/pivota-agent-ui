@@ -21,6 +21,7 @@ import type {
   PDPPayload,
   PricePromoData,
   ProductDetailsData,
+  ProductIntelData,
   RecommendationsData,
   ReviewsPreviewData,
   Variant,
@@ -62,6 +63,7 @@ import { GenericStyleGallery } from '@/features/pdp/sections/GenericStyleGallery
 import { GenericSizeHelper } from '@/features/pdp/sections/GenericSizeHelper';
 import { GenericSizeGuide } from '@/features/pdp/sections/GenericSizeGuide';
 import { GenericDetailsSection } from '@/features/pdp/sections/GenericDetailsSection';
+import { PivotaInsightsSection } from '@/features/pdp/sections/PivotaInsightsSection';
 import { OfferSheet } from '@/features/pdp/offers/OfferSheet';
 import { ModuleShell } from '@/features/pdp/components/ModuleShell';
 import { DEFAULT_UGC_SNAPSHOT, lockFirstUgcSource, mergeUgcItems } from '@/features/pdp/state/freezePolicy';
@@ -429,6 +431,7 @@ export function PdpContainer({
 
   const media = getModuleData<MediaGalleryData>(payload, 'media_gallery');
   const pricePromo = getModuleData<PricePromoData>(payload, 'price_promo');
+  const productIntel = getModuleData<ProductIntelData>(payload, 'product_intel');
   const details = getModuleData<ProductDetailsData>(payload, 'product_details');
   const reviews = getModuleData<ReviewsPreviewData>(payload, 'reviews_preview');
   const payloadRecommendations = getModuleData<RecommendationsData>(payload, 'recommendations');
@@ -818,6 +821,7 @@ export function PdpContainer({
 
   const showShades = resolvedMode === 'beauty' && variants.length > 1;
   const showSizeGuide = resolvedMode === 'generic' && !!payload.product.size_guide;
+  const hasInsights = Boolean(productIntel?.product_intel_core);
   const showSizeHelper = useMemo(() => {
     if (resolvedMode !== 'generic') return false;
     const categoryPath = payload.product.category_path || [];
@@ -868,13 +872,14 @@ export function PdpContainer({
   const tabs = useMemo(() => {
     return [
       { id: 'product', label: 'Product' },
+      ...(hasInsights ? [{ id: 'insights', label: 'Insights' }] : []),
       ...(hasReviews ? [{ id: 'reviews', label: 'Reviews' }] : []),
       ...(showShades ? [{ id: 'shades', label: 'Shades' }] : []),
       ...(showSizeGuide ? [{ id: 'size', label: 'Size' }] : []),
       { id: 'details', label: 'Details' },
       ...(showRecommendationsSection ? [{ id: 'similar', label: 'Similar' }] : []),
     ];
-  }, [hasReviews, showShades, showSizeGuide, showRecommendationsSection]);
+  }, [hasInsights, hasReviews, showShades, showSizeGuide, showRecommendationsSection]);
 
   const handleTabChange = (tabId: string) => {
     setActiveTab(tabId);
@@ -2059,6 +2064,18 @@ export function PdpContainer({
             </>
           ) : null}
         </div>
+
+        {hasInsights && productIntel ? (
+          <div
+            ref={(el) => {
+              sectionRefs.current.insights = el;
+            }}
+            className="border-t border-muted/60"
+            style={{ scrollMarginTop }}
+          >
+            <PivotaInsightsSection data={productIntel} />
+          </div>
+        ) : null}
 
         {hasReviews ? (
           <div
