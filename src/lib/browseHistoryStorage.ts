@@ -171,6 +171,13 @@ export function readLocalBrowseHistory(limit = 50): LocalBrowseHistoryItem[] {
   }
 }
 
+export function readLocalDiscoveryRecentViews(limit = 6): DiscoveryRecentViewLike[] {
+  return mergeDiscoveryRecentViews({
+    localItems: readLocalBrowseHistory(limit),
+    limit,
+  });
+}
+
 export function mergeDiscoveryRecentViews(args: {
   accountItems?: unknown[];
   localItems?: LocalBrowseHistoryItem[];

@@ -322,6 +322,14 @@ describe('getAllProducts browse routing', () => {
         { product_id: 'sim_1', merchant_id: 'external_seed' },
         { product_id: 'sim_2', merchant_id: 'external_seed' },
       ],
+      recentViews: [
+        {
+          product_id: 'recent_1',
+          merchant_id: 'external_seed',
+          title: 'Barrier repair serum',
+          category: 'Serum',
+        },
+      ],
     });
 
     expect(result.items).toEqual([
@@ -344,6 +352,16 @@ describe('getAllProducts browse routing', () => {
           { product_id: 'sim_1', merchant_id: 'external_seed' },
           { product_id: 'sim_2', merchant_id: 'external_seed' },
         ],
+        context: {
+          recent_views: [
+            {
+              product_id: 'recent_1',
+              merchant_id: 'external_seed',
+              title: 'Barrier repair serum',
+              category: 'Serum',
+            },
+          ],
+        },
       },
     });
   });

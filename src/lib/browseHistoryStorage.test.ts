@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   mergeDiscoveryRecentViews,
+  readLocalDiscoveryRecentViews,
   readLocalBrowseHistory,
   upsertLocalBrowseHistory,
 } from './browseHistoryStorage';
@@ -75,6 +76,38 @@ describe('browseHistoryStorage', () => {
         merchant_id: 'merchant_1',
         title: 'Account title',
         history_source: 'account',
+      }),
+    ]);
+  });
+
+  it('derives discovery recent views from local browse history only', () => {
+    upsertLocalBrowseHistory({
+      product_id: 'prod_1',
+      merchant_id: 'merchant_1',
+      title: 'Newest local title',
+      category: 'Serum',
+      timestamp: Date.parse('2026-04-07T11:00:00.000Z'),
+    });
+    upsertLocalBrowseHistory({
+      product_id: 'prod_2',
+      merchant_id: 'merchant_2',
+      title: 'Older local title',
+      category: 'Moisturizer',
+      timestamp: Date.parse('2026-04-07T10:00:00.000Z'),
+    });
+
+    expect(readLocalDiscoveryRecentViews(2)).toEqual([
+      expect.objectContaining({
+        product_id: 'prod_1',
+        merchant_id: 'merchant_1',
+        category: 'Serum',
+        history_source: 'local',
+      }),
+      expect.objectContaining({
+        product_id: 'prod_2',
+        merchant_id: 'merchant_2',
+        category: 'Moisturizer',
+        history_source: 'local',
       }),
     ]);
   });

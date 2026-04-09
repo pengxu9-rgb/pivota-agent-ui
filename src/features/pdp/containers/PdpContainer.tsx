@@ -72,6 +72,7 @@ import { DEFAULT_UGC_SNAPSHOT, lockFirstUgcSource, mergeUgcItems } from '@/featu
 import { getStableGalleryItems, resolveHeroMediaUrl } from '@/features/pdp/state/heroMedia';
 import { buildPdpViewModel } from '@/features/pdp/state/viewModel';
 import { buildBrandHref } from '@/lib/brandRoute';
+import { readLocalDiscoveryRecentViews } from '@/lib/browseHistoryStorage';
 import { cn } from '@/lib/utils';
 import { resolveReviewGate, reviewGateMessage, reviewGateResultToReason } from '@/lib/reviewGate';
 import { postRequestCloseToParent } from '@/lib/auroraEmbed';
@@ -1376,6 +1377,7 @@ export function PdpContainer({
 
     setSimilarLoadingMore(true);
     try {
+      const recentViews = readLocalDiscoveryRecentViews(6);
       const result = await getSimilarProductsMainline({
         product_id: productId,
         ...(merchantId ? { merchant_id: merchantId } : {}),
@@ -1384,6 +1386,7 @@ export function PdpContainer({
           product_id: item.product_id,
           ...(item.merchant_id ? { merchant_id: item.merchant_id } : {}),
         })),
+        recentViews,
         timeout_ms: 8000,
       });
 

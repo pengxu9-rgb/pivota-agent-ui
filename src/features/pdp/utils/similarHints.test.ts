@@ -29,4 +29,19 @@ describe('buildSimilarMainlineStatus', () => {
         'Showing the strongest mainline matches available right now. Exact like-for-like matches were limited, so this set widens to nearby categories and leaves 2 recommendation slots unfilled instead of using fallback padding.',
     });
   });
+
+  it('explains when the rail falls back to recent browsing instead of generic padding', () => {
+    expect(
+      buildSimilarMainlineStatus({
+        low_confidence: true,
+        similar_confidence: 'low',
+        low_confidence_reason_codes: ['RECENT_VIEWS_FALLBACK_USED'],
+        underfill: 1,
+      }),
+    ).toEqual({
+      title: 'Based on recent browsing',
+      body:
+        'Exact like-for-like matches were limited for this product, so this section falls back to products related to your recent browsing instead of generic padding. 1 recommendation slot remains unfilled rather than widening further.',
+    });
+  });
 });

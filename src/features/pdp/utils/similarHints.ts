@@ -23,6 +23,18 @@ export function buildSimilarMainlineStatus(metadata: SimilarMetadata): {
     ),
   );
 
+  if (reasonCodes.has('RECENT_VIEWS_FALLBACK_USED')) {
+    const slotSuffix = underfill === 1 ? '' : 's';
+    return {
+      title: 'Based on recent browsing',
+      body:
+        'Exact like-for-like matches were limited for this product, so this section falls back to products related to your recent browsing instead of generic padding.' +
+        (underfill > 0
+          ? ` ${underfill} recommendation slot${slotSuffix} ${underfill === 1 ? 'remains' : 'remain'} unfilled rather than widening further.`
+          : ''),
+    };
+  }
+
   let body = 'Showing the strongest mainline matches available right now.';
 
   if (broadenedToNearbyCategories && underfill > 0) {

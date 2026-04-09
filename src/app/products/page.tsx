@@ -60,6 +60,7 @@ export default function ProductsPage() {
   const searchRequestSeqRef = useRef(0);
   const noGrowthCountRef = useRef(0);
   const activeQueryRef = useRef('');
+  const initialLoadTriggeredRef = useRef(false);
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
   const { items, open } = useCartStore();
   const { user } = useAuthStore();
@@ -73,20 +74,17 @@ export default function ProductsPage() {
       localItems: readLocalBrowseHistory(50),
       limit: 50,
     }) as DiscoveryRecentView[];
-    if (!userId) {
-      setRecentViews(localRecentViews);
-      setRecentViewsReady(true);
-      return;
-    }
+    setRecentViews(localRecentViews);
+    setRecentViewsReady(true);
+    if (!userId) return;
 
-    setRecentViewsReady(false);
     getBrowseHistory(50)
       .then((history) => {
         if (!cancelled) {
           setRecentViews(
             mergeDiscoveryRecentViews({
               accountItems: history.items || [],
-              localItems: readLocalBrowseHistory(50),
+              localItems: localRecentViews,
               limit: 50,
             }) as DiscoveryRecentView[],
           );
@@ -94,10 +92,6 @@ export default function ProductsPage() {
       })
       .catch((error) => {
         console.warn('Failed to load shopping behavior history:', error);
-        if (!cancelled) setRecentViews(localRecentViews);
-      })
-      .finally(() => {
-        if (!cancelled) setRecentViewsReady(true);
       });
 
     return () => {
@@ -230,13 +224,16 @@ export default function ProductsPage() {
   useEffect(() => {
     if (typeof window === 'undefined') return;
     if (!recentViewsReady) return;
+    if (initialLoadTriggeredRef.current) return;
+    initialLoadTriggeredRef.current = true;
     const q = new URLSearchParams(window.location.search).get('q')?.trim() || '';
     if (q) {
-      handleSearch(q, { immediate: true });
+      setSearchQuery(q);
+      void executeSearch(q);
       return;
     }
     void executeSearch('');
-  }, [executeSearch, handleSearch, recentViewsReady]);
+  }, [executeSearch, recentViewsReady]);
 
   const loadMore = useCallback(() => {
     if (loading || isLoadingMore || !hasMore) return;

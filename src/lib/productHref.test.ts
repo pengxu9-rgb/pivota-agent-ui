@@ -1,11 +1,20 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildProductHref, normalizeProductRouteMerchantId } from './productHref';
+import {
+  buildProductHref,
+  inferCanonicalPdpMerchantId,
+  normalizeProductRouteMerchantId,
+} from './productHref';
 
 describe('productHref helpers', () => {
   it('drops external_seed merchant ids from canonical product URLs', () => {
     expect(normalizeProductRouteMerchantId('external_seed')).toBeUndefined();
     expect(buildProductHref('ext_123', 'external_seed')).toBe('/products/ext_123');
+  });
+
+  it('drops scoped merchant ids for ext_* product URLs and infers external_seed on load', () => {
+    expect(buildProductHref('ext_123', 'merchant_wrong')).toBe('/products/ext_123');
+    expect(inferCanonicalPdpMerchantId('ext_123', 'merchant_wrong')).toBe('external_seed');
   });
 
   it('preserves scoped merchant ids for real merchants', () => {

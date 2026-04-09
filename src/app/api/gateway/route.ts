@@ -48,6 +48,23 @@ const AGENT_API_KEY =
   process.env.PIVOTA_API_KEY ||
   '';
 
+const PDP_PROXY_TIMEOUTS_MS: Record<string, number> = {
+  get_pdp_v2: Math.max(1000, Number(process.env.SHOP_GATEWAY_GET_PDP_V2_PROXY_TIMEOUT_MS || 16000)),
+  get_pdp: Math.max(1000, Number(process.env.SHOP_GATEWAY_GET_PDP_PROXY_TIMEOUT_MS || 14000)),
+  get_product_detail: Math.max(
+    1000,
+    Number(process.env.SHOP_GATEWAY_GET_PRODUCT_DETAIL_PROXY_TIMEOUT_MS || 10000),
+  ),
+  resolve_product_candidates: Math.max(
+    1000,
+    Number(process.env.SHOP_GATEWAY_RESOLVE_PRODUCT_CANDIDATES_PROXY_TIMEOUT_MS || 7000),
+  ),
+  find_similar_products: Math.max(
+    1000,
+    Number(process.env.SHOP_GATEWAY_FIND_SIMILAR_PROXY_TIMEOUT_MS || 7000),
+  ),
+};
+
 function buildShopUpstreamInvokeUrl(base: string): string {
   const normalized = String(base || '').trim().replace(/\/+$/, '');
   if (!normalized) return '/agent/shop/v1/invoke';
@@ -88,6 +105,13 @@ function isPlainObject(value: unknown): value is JsonRecord {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
+function createGatewayRequestId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return `gw_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
 function firstNonEmptyString(...values: unknown[]): string | null {
   for (const value of values) {
     if (typeof value === 'string') {
@@ -112,6 +136,93 @@ function pruneEmptyFields(input: JsonRecord): JsonRecord {
     output[key] = value;
   }
   return output;
+}
+
+function extractResponseHeader(
+  headers: Headers,
+  candidates: string[],
+): string | null {
+  for (const candidate of candidates) {
+    const value = String(headers.get(candidate) || '').trim();
+    if (value) return value;
+  }
+  return null;
+}
+
+function getProxyTimeoutMs(operation: string): number | null {
+  const normalizedOperation = String(operation || '').trim().toLowerCase();
+  const configured = PDP_PROXY_TIMEOUTS_MS[normalizedOperation];
+  return Number.isFinite(configured) && configured > 0 ? configured : null;
+}
+
+function inferReasonCodeFromPayload(
+  payload: unknown,
+  fallbackError: string,
+): string {
+  if (isPlainObject(payload)) {
+    const nestedError = isPlainObject(payload.error) ? payload.error : null;
+    const nestedDetails = nestedError && isPlainObject(nestedError.details) ? nestedError.details : null;
+    const candidate =
+      firstNonEmptyString(
+        payload.reason_code,
+        payload.reasonCode,
+        payload.code,
+        nestedError?.code,
+        nestedDetails?.reason_code,
+        nestedDetails?.error,
+        typeof payload.error === 'string' ? payload.error : null,
+      ) || fallbackError;
+    return candidate;
+  }
+  return fallbackError;
+}
+
+function inferErrorMessageFromPayload(
+  payload: unknown,
+  fallbackMessage: string,
+): string {
+  if (isPlainObject(payload)) {
+    const nestedError = isPlainObject(payload.error) ? payload.error : null;
+    const nestedDetails = nestedError && isPlainObject(nestedError.details) ? nestedError.details : null;
+    return (
+      firstNonEmptyString(
+        payload.message,
+        nestedError?.message,
+        nestedDetails?.message,
+        typeof payload.detail === 'string' ? payload.detail : null,
+      ) || fallbackMessage
+    );
+  }
+  if (typeof payload === 'string' && payload.trim()) return payload.trim();
+  return fallbackMessage;
+}
+
+function buildGatewayErrorPayload(args: {
+  status: number;
+  payload?: unknown;
+  operation: string;
+  gatewayRequestId: string;
+  upstreamRequestId?: string | null;
+  fallbackError: string;
+  fallbackMessage: string;
+}): JsonRecord {
+  const reasonCode = inferReasonCodeFromPayload(args.payload, args.fallbackError);
+  const message = inferErrorMessageFromPayload(args.payload, args.fallbackMessage);
+  const payload = isPlainObject(args.payload)
+    ? { ...args.payload }
+    : args.payload == null
+      ? {}
+      : { detail: args.payload };
+
+  return {
+    ...payload,
+    error: firstNonEmptyString(payload.error, args.fallbackError) || args.fallbackError,
+    message,
+    reason_code: reasonCode,
+    operation: firstNonEmptyString(payload.operation, args.operation) || args.operation,
+    gateway_request_id: args.gatewayRequestId,
+    ...(args.upstreamRequestId ? { upstream_request_id: args.upstreamRequestId } : {}),
+  };
 }
 
 function normalizeShippingAddress(raw: unknown): JsonRecord | undefined {
@@ -424,6 +535,7 @@ function normalizeCheckoutSafeResponse(operation: string, payload: unknown): unk
 }
 
 export async function POST(req: NextRequest) {
+  const localGatewayRequestId = createGatewayRequestId();
   try {
     const startedAt = Date.now();
     const body = await req.json();
@@ -474,28 +586,53 @@ export async function POST(req: NextRequest) {
     }
 
     const upstreamStartedAt = Date.now();
-    const upstreamRes = await fetch(upstreamUrl, {
-      method: upstreamMethod,
-      headers: {
-        'Content-Type': 'application/json',
-        ...(checkoutToken
-          ? { 'X-Checkout-Token': checkoutToken }
-          : AGENT_API_KEY
-            ? {
-                'X-API-Key': AGENT_API_KEY,
-                Authorization: `Bearer ${AGENT_API_KEY}`,
-              }
-            : {}),
-      },
-      ...(upstreamMethod === 'GET' ? {} : { body: JSON.stringify(upstreamBody || {}) }),
-    });
+    const timeoutMs = getProxyTimeoutMs(normalizedOperation);
+    const controller = timeoutMs ? new AbortController() : null;
+    const timer = timeoutMs
+      ? setTimeout(() => {
+          controller?.abort();
+        }, timeoutMs)
+      : null;
+    let upstreamRes: Response;
+    try {
+      upstreamRes = await fetch(upstreamUrl, {
+        method: upstreamMethod,
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Gateway-Request-Id': localGatewayRequestId,
+          ...(checkoutToken
+            ? { 'X-Checkout-Token': checkoutToken }
+            : AGENT_API_KEY
+              ? {
+                  'X-API-Key': AGENT_API_KEY,
+                  Authorization: `Bearer ${AGENT_API_KEY}`,
+                }
+              : {}),
+        },
+        ...(controller ? { signal: controller.signal } : {}),
+        ...(upstreamMethod === 'GET' ? {} : { body: JSON.stringify(upstreamBody || {}) }),
+      });
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
     const upstreamMs = Math.max(0, Date.now() - upstreamStartedAt);
     const totalMs = Math.max(0, Date.now() - startedAt);
     const proxyMs = Math.max(0, totalMs - upstreamMs);
     const upstreamTiming = String(upstreamRes.headers.get('server-timing') || '').trim();
     const upstreamRetries = String(upstreamRes.headers.get('x-gateway-retries') || '').trim();
+    const upstreamGatewayRequestId =
+      extractResponseHeader(upstreamRes.headers, ['x-gateway-request-id']) || null;
+    const upstreamRequestId =
+      extractResponseHeader(upstreamRes.headers, [
+        'x-upstream-request-id',
+        'x-request-id',
+        'x-requestid',
+        'x-railway-request-id',
+      ]) || null;
+    const effectiveGatewayRequestId = upstreamGatewayRequestId || localGatewayRequestId;
     const timingParts = [
-      ...(upstreamTiming ? [upstreamTiming] : [`upstream;dur=${upstreamMs}`]),
+      `upstream_fetch;dur=${upstreamMs}`,
+      ...(upstreamTiming ? [upstreamTiming] : []),
       `proxy;dur=${proxyMs}`,
       `gateway;dur=${totalMs}`,
     ];
@@ -513,13 +650,36 @@ export async function POST(req: NextRequest) {
       ? normalizeCheckoutSafeResponse(normalizedOperation, json)
       : json;
 
+    const responseHeaders: Record<string, string> = {
+      'Access-Control-Allow-Origin': '*',
+      'Server-Timing': timingParts.join(', '),
+      'X-Gateway-Request-Id': effectiveGatewayRequestId,
+      ...(upstreamRetries ? { 'x-gateway-retries': upstreamRetries } : {}),
+      ...(upstreamRequestId ? { 'X-Upstream-Request-Id': upstreamRequestId } : {}),
+    };
+
+    if (!upstreamRes.ok) {
+      const normalizedError = buildGatewayErrorPayload({
+        status: upstreamRes.status,
+        payload: responsePayload,
+        operation,
+        gatewayRequestId: effectiveGatewayRequestId,
+        upstreamRequestId,
+        fallbackError: upstreamRes.status === 404 ? 'NOT_FOUND' : 'UPSTREAM_ERROR',
+        fallbackMessage: `Gateway error: ${upstreamRes.status} ${upstreamRes.statusText}`,
+      });
+
+      return NextResponse.json(normalizedError, {
+        status: upstreamRes.status,
+        headers: responseHeaders,
+      });
+    }
+
     if (typeof responsePayload === 'string') {
       return new Response(responsePayload, {
         status: upstreamRes.status,
         headers: {
-          'Access-Control-Allow-Origin': '*',
-          'Server-Timing': timingParts.join(', '),
-          ...(upstreamRetries ? { 'x-gateway-retries': upstreamRetries } : {}),
+          ...responseHeaders,
           'Content-Type': upstreamRes.headers.get('content-type') || 'text/plain; charset=utf-8',
         },
       });
@@ -527,20 +687,29 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json(responsePayload, {
       status: upstreamRes.status,
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Server-Timing': timingParts.join(', '),
-        ...(upstreamRetries ? { 'x-gateway-retries': upstreamRetries } : {}),
-      },
+      headers: responseHeaders,
     });
   } catch (error) {
     console.error('Gateway proxy error:', error);
+    const isAbortError = (error as Error | null)?.name === 'AbortError';
+    const status = isAbortError ? 504 : 502;
+    const reasonCode = isAbortError ? 'UPSTREAM_TIMEOUT' : 'UPSTREAM_UNAVAILABLE';
     return NextResponse.json(
       {
-        error: 'Gateway proxy error',
-        message: (error as Error).message ?? String(error),
+        error: reasonCode,
+        message: isAbortError
+          ? 'The request timed out before the upstream responded. Please retry.'
+          : (error as Error).message ?? String(error),
+        reason_code: reasonCode,
+        gateway_request_id: localGatewayRequestId,
       },
-      { status: 500 },
+      {
+        status,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'X-Gateway-Request-Id': localGatewayRequestId,
+        },
+      },
     );
   }
 }

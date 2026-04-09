@@ -6,6 +6,7 @@ import {
   persistCheckoutContext,
 } from '@/lib/checkoutToken'
 import { ensureAuroraSession, shouldUseAuroraAutoExchange } from '@/lib/auroraOrdersAuth'
+import type { DiscoveryRecentViewLike } from '@/lib/browseHistoryStorage'
 import { formatDescriptionText } from '@/features/pdp/utils/formatDescriptionText'
 import type { RecommendationsData } from '@/features/pdp/types'
 
@@ -2116,6 +2117,7 @@ export async function getSimilarProductsMainline(args: {
     product_id: string;
     merchant_id?: string | null;
   }>;
+  recentViews?: DiscoveryRecentViewLike[];
   timeout_ms?: number;
   cache_bypass?: boolean;
 }): Promise<SimilarProductsMainlineResult> {
@@ -2136,6 +2138,23 @@ export async function getSimilarProductsMainline(args: {
       };
     })
     .filter(Boolean) as Array<{ product_id: string; merchant_id?: string }>;
+  const recentViews = (Array.isArray(args.recentViews) ? args.recentViews : [])
+    .map((item) => {
+      const recentProductId = String(item?.product_id || '').trim();
+      if (!recentProductId) return null;
+      const recentMerchantId = String(item?.merchant_id || '').trim();
+      return {
+        product_id: recentProductId,
+        ...(recentMerchantId ? { merchant_id: recentMerchantId } : {}),
+        ...(item?.title ? { title: String(item.title).trim() } : {}),
+        ...(item?.description ? { description: String(item.description).trim() } : {}),
+        ...(item?.brand ? { brand: String(item.brand).trim() } : {}),
+        ...(item?.category ? { category: String(item.category).trim() } : {}),
+        ...(item?.product_type ? { product_type: String(item.product_type).trim() } : {}),
+        ...(item?.viewed_at ? { viewed_at: String(item.viewed_at).trim() } : {}),
+      };
+    })
+    .filter(Boolean) as DiscoveryRecentViewLike[];
 
   const data = await callGatewayWithTimeout(
     {
@@ -2145,6 +2164,13 @@ export async function getSimilarProductsMainline(args: {
         ...(args.merchant_id ? { merchant_id: String(args.merchant_id).trim() } : {}),
         limit,
         ...(excludeItems.length ? { exclude_items: excludeItems } : {}),
+        ...(recentViews.length
+          ? {
+              context: {
+                recent_views: recentViews,
+              },
+            }
+          : {}),
         options: {
           ...(args.cache_bypass ? { cache_bypass: true } : {}),
         },
