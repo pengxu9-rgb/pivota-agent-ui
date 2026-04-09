@@ -191,6 +191,32 @@ describe('mapPdpV2ToPdpPayload image normalization', () => {
     );
   });
 
+  it('bridges top-level product_intel into payload modules', () => {
+    const response = buildMinimalResponse();
+    response.modules.push({
+      type: 'product_intel',
+      data: {
+        display_name: 'Pivota Insights',
+        evidence_profile: 'seller_only',
+        product_intel_core: {
+          evidence_profile: 'seller_only',
+          quality_state: 'limited',
+          what_it_is: {
+            body: 'A lightweight serum focused on daily brightening support.',
+          },
+          best_for: [{ label: 'Dullness' }],
+        },
+      },
+    });
+
+    const payload = mapPdpV2ToPdpPayload(response);
+    const intelModule = payload?.modules.find((m) => m.type === 'product_intel') as any;
+
+    expect(intelModule).toBeTruthy();
+    expect(intelModule?.title).toBe('Pivota Insights');
+    expect(intelModule?.data?.product_intel_core?.best_for?.[0]?.label).toBe('Dullness');
+  });
+
   it('deduplicates official media image URLs while keeping videos', () => {
     const response = buildMinimalResponse();
     response.modules[0].data.pdp_payload.modules[0].data.items = [

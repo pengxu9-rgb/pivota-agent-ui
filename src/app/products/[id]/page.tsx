@@ -227,6 +227,7 @@ function hasRecommendationsItems(response: PDPPayload | null): boolean {
 const PDP_INITIAL_INCLUDE = [
   'offers',
   'variant_selector',
+  'product_intel',
   'active_ingredients',
   'ingredients_inci',
   'how_to_use',

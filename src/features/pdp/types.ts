@@ -138,6 +138,7 @@ export interface Module {
 export type ModuleType =
   | 'media_gallery'
   | 'price_promo'
+  | 'product_intel'
   | 'trust_badges'
   | 'active_ingredients'
   | 'ingredients_inci'
@@ -184,6 +185,114 @@ export interface PricePromoData {
 
 export interface ProductDetailsData {
   sections: DetailSection[];
+}
+
+export interface ProductIntelNarrative {
+  headline?: string;
+  body?: string;
+}
+
+export interface ProductIntelBestForItem {
+  tag?: string;
+  label: string;
+  confidence?: string;
+}
+
+export interface ProductIntelHighlight {
+  headline?: string;
+  body?: string;
+  evidence_strength?: string;
+}
+
+export interface ProductIntelRoutineFit {
+  step?: string;
+  am_pm?: string[];
+  pairing_notes?: string[];
+}
+
+export interface ProductIntelWatchout {
+  type?: string;
+  label: string;
+  severity?: string;
+}
+
+export interface ProductIntelCoreData {
+  what_it_is?: ProductIntelNarrative;
+  best_for?: ProductIntelBestForItem[];
+  why_it_stands_out?: ProductIntelHighlight[];
+  routine_fit?: ProductIntelRoutineFit;
+  watchouts?: ProductIntelWatchout[];
+  confidence?: {
+    overall?: string;
+    fields?: Record<string, string>;
+  };
+  freshness?: {
+    generated_at?: string;
+    source_version?: string;
+    ttl_hours?: number;
+  };
+  quality_state?: string;
+  evidence_profile?: string;
+  source_coverage?: Record<string, boolean>;
+}
+
+export interface TextureFinishData {
+  texture?: string;
+  finish?: string;
+  sensory_notes?: string[];
+  layering_notes?: string[];
+  confidence?: string;
+  evidence_profile?: string;
+}
+
+export interface CommunitySignalsData {
+  status?: 'available' | 'unavailable' | string;
+  unavailable_reason?: string;
+  top_loves?: string[];
+  top_complaints?: string[];
+  best_fit_users?: string[];
+  mixed_feedback?: string[];
+  source_counts?: Record<string, number>;
+  source_mix?: string[];
+  last_refreshed_at?: string;
+  confidence?: string;
+  evidence_profile?: string;
+}
+
+export interface ProductIntelData {
+  contract_version?: string;
+  display_name?: string;
+  canonical_product_ref?: {
+    merchant_id?: string;
+    product_id?: string;
+  };
+  product_group_id?: string | null;
+  product_intel_core?: ProductIntelCoreData;
+  texture_finish?: TextureFinishData | null;
+  community_signals?: CommunitySignalsData | null;
+  normalized_pdp?: {
+    surface?: string;
+    display_name?: string;
+    insights_available?: boolean;
+    self_canonical?: boolean;
+    indexability?: string;
+    structured_data_mode?: string;
+    page_positioning?: string;
+    quality_state?: string;
+    evidence_profile?: string;
+    truth_layers?: Record<string, string>;
+  };
+  confidence?: {
+    overall?: string;
+    fields?: Record<string, string>;
+  };
+  freshness?: {
+    generated_at?: string;
+    source_version?: string;
+  };
+  quality_state?: string;
+  evidence_profile?: string;
+  source_coverage?: Record<string, boolean>;
 }
 
 export interface ProductFactsData {

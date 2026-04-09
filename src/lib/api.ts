@@ -845,10 +845,17 @@ type GatewayCallOptions = {
   signal?: AbortSignal;
 };
 
+function resolveGatewayInvokeUrl(base: string): string {
+  const normalized = String(base || '').trim().replace(/\/$/, '');
+  if (!normalized) return '/api/gateway';
+  if (/\/agent\/shop\/v1\/invoke$/i.test(normalized)) return normalized;
+  if (/\/api\/gateway$/i.test(normalized)) return normalized;
+  if (normalized.startsWith('/api/gateway')) return normalized;
+  return `${normalized}/agent/shop/v1/invoke`;
+}
+
 async function callGateway(body: InvokeBody, options: GatewayCallOptions = {}) {
-  // If API_BASE is our same-origin proxy (/api/gateway), hit it directly; otherwise append the invoke path.
-  const isProxy = API_BASE.startsWith('/api/gateway');
-  const url = isProxy ? API_BASE : `${API_BASE}/agent/shop/v1/invoke`;
+  const url = resolveGatewayInvokeUrl(API_BASE);
   const checkoutContext = getCheckoutContext()
   let checkoutToken = checkoutContext.token
   const defaultScope = getDefaultShoppingScope();
