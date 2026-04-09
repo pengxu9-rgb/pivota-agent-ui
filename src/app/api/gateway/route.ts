@@ -208,7 +208,7 @@ function buildGatewayErrorPayload(args: {
 }): JsonRecord {
   const reasonCode = inferReasonCodeFromPayload(args.payload, args.fallbackError);
   const message = inferErrorMessageFromPayload(args.payload, args.fallbackMessage);
-  const payload = isPlainObject(args.payload)
+  const payload: JsonRecord = isPlainObject(args.payload)
     ? { ...args.payload }
     : args.payload == null
       ? {}
