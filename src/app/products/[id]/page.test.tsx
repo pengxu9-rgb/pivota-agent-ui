@@ -264,7 +264,6 @@ describe('ProductDetailPage canonical PDP loading', () => {
           'ingredients_inci',
           'how_to_use',
           'product_details',
-          'reviews_preview',
         ],
         timeout_ms: 9000,
       }),
