@@ -28,6 +28,7 @@ export function BeautyDetailsSection({
   ingredientsInci,
   howToUse,
   hideLowConfidenceActiveIngredients = false,
+  suppressOverview = false,
 }: {
   data?: ProductDetailsData | null;
   product: Product;
@@ -36,6 +37,7 @@ export function BeautyDetailsSection({
   ingredientsInci?: IngredientsInciData | null;
   howToUse?: HowToUseData | null;
   hideLowConfidenceActiveIngredients?: boolean;
+  suppressOverview?: boolean;
 }) {
   const heroUrl = media?.items?.[0]?.url || product.image_url;
   const accentImages = media?.items?.slice(1, 3) || [];
@@ -93,7 +95,7 @@ export function BeautyDetailsSection({
       ) : null}
 
       <div className="mx-3 space-y-3">
-        <OverviewSection content={overviewContent} />
+        {!suppressOverview ? <OverviewSection content={overviewContent} /> : null}
         <StructuredDetailsBlocks
           activeIngredients={activeIngredients}
           ingredientsInci={ingredientsInci}

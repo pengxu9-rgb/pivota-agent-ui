@@ -199,4 +199,42 @@ describe('PdpContainer product intel section', () => {
     expect(screen.queryByText('Why it stands out')).not.toBeInTheDocument();
     expect(screen.queryByText(/Double up and save/i)).not.toBeInTheDocument();
   });
+
+  it('hides legacy product-details overview when Pivota Insights already carries the normalized summary', () => {
+    const dedupedPayload: PDPPayload = {
+      ...payload,
+      modules: payload.modules.map((module) =>
+        module.type !== 'product_details'
+          ? module
+          : {
+              ...module,
+              data: {
+                sections: [
+                  {
+                    heading: 'Overview',
+                    content_type: 'text',
+                    content:
+                      'Seller overview copy that would otherwise duplicate the normalized summary.',
+                  },
+                ],
+              },
+            },
+      ),
+    };
+
+    render(
+      <PdpContainer
+        payload={dedupedPayload}
+        mode="generic"
+        onAddToCart={() => {}}
+        onBuyNow={() => {}}
+      />,
+    );
+
+    expect(screen.getByText('Pivota Insights')).toBeInTheDocument();
+    expect(screen.queryByText('Product Details')).not.toBeInTheDocument();
+    expect(
+      screen.queryByText('Seller overview copy that would otherwise duplicate the normalized summary.'),
+    ).not.toBeInTheDocument();
+  });
 });

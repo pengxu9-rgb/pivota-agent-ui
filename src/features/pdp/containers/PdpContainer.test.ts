@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isLikelyBeautyExternalSeedProduct } from './PdpContainer';
+import { isLikelyBeautyExternalSeedProduct, resolveVisiblePdpTab } from './PdpContainer';
 
 describe('isLikelyBeautyExternalSeedProduct', () => {
   it('treats eye-color quad external-seed products as beauty-like even in generic mode', () => {
@@ -37,5 +37,33 @@ describe('isLikelyBeautyExternalSeedProduct', () => {
         'generic',
       ),
     ).toBe(false);
+  });
+});
+
+describe('resolveVisiblePdpTab', () => {
+  it('switches to insights once the insights section enters the primary reading band', () => {
+    expect(
+      resolveVisiblePdpTab(
+        [
+          { id: 'product', top: -24 },
+          { id: 'insights', top: 128 },
+          { id: 'details', top: 620 },
+        ],
+        160,
+      ),
+    ).toBe('insights');
+  });
+
+  it('keeps product active when insights is still well below the reading band', () => {
+    expect(
+      resolveVisiblePdpTab(
+        [
+          { id: 'product', top: -24 },
+          { id: 'insights', top: 260 },
+          { id: 'details', top: 620 },
+        ],
+        160,
+      ),
+    ).toBe('product');
   });
 });

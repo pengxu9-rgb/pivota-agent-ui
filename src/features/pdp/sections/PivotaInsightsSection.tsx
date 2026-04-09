@@ -28,6 +28,24 @@ function normalizeNarrativeLead(value: unknown, evidenceProfile?: string): strin
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
+function normalizeHighlightBody(value: unknown, evidenceProfile?: string): string {
+  let text = normalizeNarrativeLead(value, evidenceProfile);
+  if (!text) return '';
+  if (String(evidenceProfile || '').trim().toLowerCase() === 'seller_only') {
+    text = text
+      .replace(/^Positions itself as\s+/i, '')
+      .replace(/^Designed to\s+/i, '')
+      .replace(/^This formula is designed to\s+/i, '')
+      .replace(/^This serum is designed to\s+/i, '')
+      .replace(/^Features?\s+/i, '')
+      .replace(/^Delivers?\s+/i, '');
+    if (/^(a|an)\s+single\s+(serum|step)\s+for\b/i.test(text)) {
+      text = text.replace(/^(a|an)\s+single\s+(serum|step)\s+for\s+/i, 'Targets ');
+    }
+  }
+  return text;
+}
+
 function compactNarrative(value: unknown, maxChars: number): string {
   const text = normalizeWhitespace(value);
   if (!text) return '';
@@ -132,7 +150,10 @@ export function PivotaInsightsSection({ data }: { data: ProductIntelData }) {
     ? core.why_it_stands_out
         .map((item) => ({
           headline: normalizeHighlightHeadline(item?.headline),
-          body: compactNarrative(normalizeNarrativeLead(item?.body, evidenceProfile), evidenceProfile === 'seller_only' ? 92 : 116),
+          body: compactNarrative(
+            normalizeHighlightBody(item?.body, evidenceProfile),
+            evidenceProfile === 'seller_only' ? 76 : 108,
+          ),
         }))
         .filter((item) => {
           const combined = [item.headline, item.body].filter(Boolean).join(' ');
