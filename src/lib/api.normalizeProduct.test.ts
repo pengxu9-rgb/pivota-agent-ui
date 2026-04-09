@@ -20,4 +20,36 @@ describe('normalizeProduct', () => {
     expect(normalized.description).toContain('Niacinamide');
     expect(normalized.description).toContain('Panthenol');
   });
+
+  it('preserves normalized search-card fields for shared card rendering', () => {
+    const normalized = normalizeProduct({
+      product_id: 'ext_2',
+      merchant_id: 'external_seed',
+      title: 'Legacy title',
+      price: { amount: 35, currency: 'USD' },
+      image_url: 'https://example.com/stick.png',
+      description: 'Legacy overview',
+      search_card: {
+        title_candidate: 'Olehenriksen Vitamin C Eye Stick',
+        compact_candidate: 'Color-correcting eye stick',
+        proof_badge_candidate: 'Seen in 4 editor picks',
+      },
+      market_signal_badges: [
+        {
+          badge_type: 'editorial_signal',
+          badge_label: 'Seen in 4 editor picks',
+        },
+      ],
+    } as any);
+
+    expect(normalized.card_title).toBe('Olehenriksen Vitamin C Eye Stick');
+    expect(normalized.card_subtitle).toBe('Color-correcting eye stick');
+    expect(normalized.card_badge).toBe('Seen in 4 editor picks');
+    expect(normalized.market_signal_badges).toEqual([
+      {
+        badge_type: 'editorial_signal',
+        badge_label: 'Seen in 4 editor picks',
+      },
+    ]);
+  });
 });

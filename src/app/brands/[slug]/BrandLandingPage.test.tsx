@@ -498,9 +498,48 @@ describe('BrandLandingPage', () => {
       expect(screen.getByText('Gloss Bomb')).toBeInTheDocument();
     });
 
-    expect(screen.getByText('4.8')).toBeInTheDocument();
-    expect(screen.getByText('(128)')).toBeInTheDocument();
+    expect(screen.getByText('4.8★ (128)')).toBeInTheDocument();
     expect(screen.queryByText(/^New$/i)).not.toBeInTheDocument();
+  });
+
+  it('prefers explicit search-card title subtitle and badge when backend provides them', async () => {
+    getBrandDiscoveryFeedMock.mockResolvedValue({
+      products: [
+        {
+          product_id: 'prod_1',
+          merchant_id: 'merch_1',
+          title: 'Air Max Special Edition',
+          description: 'Legacy overview',
+          category: 'shoes',
+          price: 120,
+          currency: 'USD',
+          image_url: 'https://example.com/1.jpg',
+          in_stock: true,
+          card_title: 'Nike Air Max Running Shoes',
+          card_subtitle: 'Men’s black air-cushion sneaker',
+          card_badge: 'Seen in 4 editor picks',
+        },
+      ],
+      metadata: { has_more: false },
+      query_text: '',
+      page_info: { page: 1, page_size: 1, total: 1, has_more: false },
+    });
+
+    render(
+      <BrandLandingPage
+        slug="nike"
+        initialBrandName="Nike"
+        initialReturnUrl="/products/ext_123"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Nike Air Max Running Shoes')).toBeInTheDocument();
+    });
+
+    expect(screen.getByText('Men’s black air-cushion sneaker')).toBeInTheDocument();
+    expect(screen.getByText('Seen in 4 editor picks')).toBeInTheDocument();
+    expect(screen.queryByText('Air Max Special Edition')).not.toBeInTheDocument();
   });
 
   it('uses a data-driven editorial slot when reviews are missing instead of rendering generic newness', async () => {

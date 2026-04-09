@@ -20,6 +20,8 @@ interface ProductCardProps {
   sku?: string;
   external_redirect_url?: string;
   title: string;
+  subtitle?: string;
+  badge?: string;
   price: number;
   currency?: string;
   image: string;
@@ -37,6 +39,8 @@ export default function ProductCard({
   sku,
   external_redirect_url,
   title,
+  subtitle,
+  badge,
   price,
   currency,
   image,
@@ -163,6 +167,12 @@ export default function ProductCard({
               if (imageSrc !== '/placeholder.svg') setImageSrc('/placeholder.svg');
             }}
           />
+
+          {badge ? (
+            <span className="absolute left-2 top-2 rounded-full bg-white/95 px-2 py-1 text-[10px] font-semibold tracking-[-0.01em] text-slate-700 shadow-sm">
+              {badge}
+            </span>
+          ) : null}
         </div>
 
         <div className={compact ? 'space-y-1.5 p-2.5' : 'space-y-2 p-3'}>
@@ -174,13 +184,17 @@ export default function ProductCard({
             {title}
           </h3>
 
-          {merchant_name && (
+          {subtitle ? (
+            <p className="text-xs text-muted-foreground line-clamp-1">{subtitle}</p>
+          ) : null}
+
+          {!subtitle && merchant_name && (
             <p className="text-xs text-muted-foreground line-clamp-1">
               {merchant_name}
             </p>
           )}
 
-          {!compact && description && (
+          {!compact && !subtitle && description && (
             <p className="text-xs text-muted-foreground line-clamp-2">{description}</p>
           )}
 
