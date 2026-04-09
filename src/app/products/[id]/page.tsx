@@ -231,7 +231,6 @@ const PDP_INITIAL_INCLUDE = [
   'ingredients_inci',
   'how_to_use',
   'product_details',
-  'reviews_preview',
 ] as const;
 
 function mapSellerCandidatesFromResolveCandidates(
