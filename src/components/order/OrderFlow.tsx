@@ -1,7 +1,15 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { ShoppingCart, CreditCard, Check, ChevronRight, Info } from 'lucide-react'
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
+import {
+  ShoppingCart,
+  CreditCard,
+  Check,
+  ChevronRight,
+  ChevronDown,
+  Info,
+  Lock,
+} from 'lucide-react'
 import Image from 'next/image'
 import {
   createOrder,
@@ -17,11 +25,23 @@ import {
   isBackendSettledPaymentStatus,
   resolveCheckoutPaymentContract,
 } from '@/lib/checkoutPaymentContract'
+import { confirmPaymentWithRetry } from '@/lib/checkoutFinalization'
 import { useCartStore } from '@/store/cartStore'
 import { toast } from 'sonner'
-import { useRouter } from 'next/navigation'
-import { loadStripe } from '@stripe/stripe-js'
-import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js'
+import { useRouter, useSearchParams } from 'next/navigation'
+import {
+  loadStripe,
+  type Stripe,
+  type StripeExpressCheckoutElementConfirmEvent,
+  type StripeExpressCheckoutElementReadyEvent,
+} from '@stripe/stripe-js'
+import {
+  Elements,
+  ExpressCheckoutElement,
+  PaymentElement,
+  useStripe,
+  useElements,
+} from '@stripe/react-stripe-js'
 import { useAuthStore } from '@/store/authStore'
 import '@adyen/adyen-web/dist/adyen.css'
 
@@ -51,9 +71,20 @@ interface ShippingInfo {
   phone?: string
 }
 
+type ResumeOrderState = {
+  orderId: string
+  shipping?: Partial<ShippingInfo> | null
+  quote?: QuotePreview | null
+  paymentResponse?: any
+}
+
+type OrderCompletionOptions = {
+  finalizing?: boolean
+}
+
 interface OrderFlowProps {
   items: OrderItem[]
-  onComplete?: (orderId: string) => void
+  onComplete?: (orderId: string, options?: OrderCompletionOptions) => void
   onCancel?: () => void
   onFailure?: (args: { reason: 'payment_failed' | 'system_error' | 'action_required'; stage: 'payment' | 'shipping' }) => void
   skipEmailVerification?: boolean
@@ -63,6 +94,7 @@ interface OrderFlowProps {
   locale?: string | null
   checkoutToken?: string | null
   returnUrl?: string | null
+  resumeOrder?: ResumeOrderState | null
 }
 
 type QuotePricing = {
@@ -98,12 +130,530 @@ type PrefetchedPaymentInit = {
   paymentResponse: any
 }
 
-const publishableKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || ''
-const stripePromise = publishableKey ? loadStripe(publishableKey) : Promise.resolve(null)
+type CreatedOrderPaymentSnapshot = {
+  orderId: string
+  paymentResponse: any
+  action: any
+  psp: string | null
+}
+
+type CheckoutStep = 'shipping' | 'payment' | 'confirm'
+
+const DEFAULT_STRIPE_PUBLISHABLE_KEY =
+  process.env.NODE_ENV === 'production'
+    ? ''
+    : process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || ''
 const ADYEN_CLIENT_KEY =
   process.env.NEXT_PUBLIC_ADYEN_CLIENT_KEY ||
   'test_RMFUADZPQBBYJIWI56KVOQSNUUT657ML' // public test key; replace in env for prod
 const FORCE_PSP = process.env.NEXT_PUBLIC_FORCE_PSP
+const stripePromiseCache = new Map<string, Promise<Stripe | null>>()
+const UNSUPPORTED_PIVOTA_HOSTED_CHECKOUT_MESSAGE =
+  'Merchant checkout must render the merchant PSP payment form. Pivota hosted checkout is disabled.'
+
+type StripeConfirmationResult = {
+  error?: string
+  status?: string
+  paymentIntentId?: string
+}
+
+type StripePaymentSectionHandle = {
+  confirm: (args: {
+    clientSecret: string
+    returnUrl: string
+    shipping?: Partial<ShippingInfo> | null
+  }) => Promise<StripeConfirmationResult>
+}
+
+function readStripeAccount(value: unknown): string | null {
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    return trimmed || null
+  }
+  return null
+}
+
+function getStripePromiseForKey(
+  publishableKey: string,
+  stripeAccount: string | null = null,
+): Promise<Stripe | null> {
+  const normalized = String(publishableKey || '').trim()
+  if (!normalized) return Promise.resolve(null)
+  const normalizedStripeAccount = readStripeAccount(stripeAccount)
+  const cacheKey = normalizedStripeAccount ? `${normalized}::${normalizedStripeAccount}` : normalized
+  if (!stripePromiseCache.has(cacheKey)) {
+    stripePromiseCache.set(
+      cacheKey,
+      loadStripe(
+        normalized,
+        normalizedStripeAccount ? { stripeAccount: normalizedStripeAccount } : undefined,
+      ),
+    )
+  }
+  return stripePromiseCache.get(cacheKey) || Promise.resolve(null)
+}
+
+function readPublicKey(value: unknown): string | null {
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    return trimmed || null
+  }
+  return null
+}
+
+export function resolveStripePublishableKey(paymentResponse: any, fallbackAction: any = null): string | null {
+  const candidates = [
+    fallbackAction?.public_key,
+    fallbackAction?.raw?.public_key,
+    paymentResponse?.payment_action?.public_key,
+    paymentResponse?.payment_action?.raw?.public_key,
+    paymentResponse?.payment?.payment_action?.public_key,
+    paymentResponse?.payment?.payment_action?.raw?.public_key,
+    paymentResponse?.public_key,
+    paymentResponse?.payment?.public_key,
+  ]
+
+  for (const candidate of candidates) {
+    const resolved = readPublicKey(candidate)
+    if (resolved) return resolved
+  }
+
+  return DEFAULT_STRIPE_PUBLISHABLE_KEY || null
+}
+
+export function resolveStripeAccount(paymentResponse: any, fallbackAction: any = null): string | null {
+  const candidates = [
+    fallbackAction?.stripe_account,
+    fallbackAction?.raw?.stripe_account,
+    fallbackAction?.raw?.stripeAccount,
+    fallbackAction?.raw?.account_id,
+    paymentResponse?.payment_action?.stripe_account,
+    paymentResponse?.payment_action?.raw?.stripe_account,
+    paymentResponse?.payment_action?.raw?.stripeAccount,
+    paymentResponse?.payment_action?.raw?.account_id,
+    paymentResponse?.payment?.payment_action?.stripe_account,
+    paymentResponse?.payment?.payment_action?.raw?.stripe_account,
+    paymentResponse?.payment?.payment_action?.raw?.stripeAccount,
+    paymentResponse?.payment?.payment_action?.raw?.account_id,
+    paymentResponse?.stripe_account,
+    paymentResponse?.payment?.stripe_account,
+  ]
+
+  for (const candidate of candidates) {
+    const resolved = readStripeAccount(candidate)
+    if (resolved) return resolved
+  }
+
+  return null
+}
+
+function normalizePaymentPspToken(value: unknown): string | null {
+  if (typeof value === 'string') {
+    const trimmed = value.trim().toLowerCase()
+    return trimmed || null
+  }
+  if (value == null) return null
+  const normalized = String(value).trim().toLowerCase()
+  return normalized || null
+}
+
+export function isUnsupportedPivotaHostedCheckout(
+  paymentResponse: any,
+  action: any = null,
+  detectedPsp: string | null = null,
+): boolean {
+  const paymentObj = paymentResponse?.payment || {}
+  const checkoutSession = paymentResponse?.checkout_session || paymentObj?.checkout_session || null
+  const candidates = [
+    detectedPsp,
+    action?.psp,
+    paymentResponse?.psp,
+    paymentResponse?.psp_used,
+    paymentObj?.psp,
+    paymentObj?.psp_used,
+    checkoutSession?.provider,
+  ]
+
+  return candidates.some((candidate) => normalizePaymentPspToken(candidate) === 'pivota_hosted_checkout')
+}
+
+function assertSupportedPaymentSurface(
+  paymentResponse: any,
+  action: any = null,
+  detectedPsp: string | null = null,
+): void {
+  if (isUnsupportedPivotaHostedCheckout(paymentResponse, action, detectedPsp)) {
+    throw new Error(UNSUPPORTED_PIVOTA_HOSTED_CHECKOUT_MESSAGE)
+  }
+}
+
+function isReusablePaymentAction(action: any): boolean {
+  if (!action || typeof action !== 'object') return false
+  const type = String(action.type || '').trim().toLowerCase()
+  if (type === 'redirect_url') return typeof action.url === 'string' && action.url.trim().length > 0
+  if (type === 'stripe_client_secret' || type === 'adyen_session' || type === 'checkout_session') {
+    return typeof action.client_secret === 'string' && action.client_secret.trim().length > 0
+  }
+  return false
+}
+
+export function shouldHydrateCreatedOrderPaymentSurface(
+  action: any,
+  psp: unknown,
+): boolean {
+  if (!isReusablePaymentAction(action)) return false
+  const normalizedPsp = normalizePaymentPspToken(psp)
+  return normalizedPsp !== 'pivota_hosted_checkout'
+}
+
+export function resolveCheckoutPaymentMethodHint(methodType: string | null | undefined): string {
+  const normalized = String(methodType || '').trim().toLowerCase()
+  return normalized || 'dynamic'
+}
+
+function parseBooleanToken(value: string | null | undefined): boolean | null {
+  const token = String(value || '').trim().toLowerCase()
+  if (!token) return null
+  if (['1', 'true', 'yes', 'y', 'on'].includes(token)) return true
+  if (['0', 'false', 'no', 'n', 'off'].includes(token)) return false
+  return null
+}
+
+function normalizeStripePaymentCountry(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const normalized = value.trim().toUpperCase()
+  if (!normalized) return null
+  return normalized.slice(0, 2) || null
+}
+
+export function resolveStripePaymentMethodOrder(
+  countryCode: string | null | undefined,
+): string[] | null {
+  const normalized = normalizeStripePaymentCountry(countryCode)
+  if (!normalized) return null
+  return null
+}
+
+function buildStripeBillingDetails(shipping?: Partial<ShippingInfo> | null) {
+  const country = normalizeStripePaymentCountry(shipping?.country)
+  return {
+    ...(shipping?.name ? { name: shipping.name } : {}),
+    ...(shipping?.email ? { email: shipping.email } : {}),
+    ...(shipping?.phone ? { phone: shipping.phone } : {}),
+    address: {
+      ...(country ? { country } : {}),
+      ...(shipping?.postal_code ? { postal_code: shipping.postal_code } : {}),
+      ...(shipping?.state ? { state: shipping.state } : {}),
+      ...(shipping?.city ? { city: shipping.city } : {}),
+      ...(shipping?.address_line1 ? { line1: shipping.address_line1 } : {}),
+      ...(shipping?.address_line2 ? { line2: shipping.address_line2 } : {}),
+    },
+  }
+}
+
+function buildStripePaymentElementOptions(shipping?: Partial<ShippingInfo> | null) {
+  const paymentMethodOrder = resolveStripePaymentMethodOrder(shipping?.country || null)
+  return {
+    defaultValues: {
+      billingDetails: buildStripeBillingDetails(shipping),
+    },
+    layout: {
+      type: 'accordion' as const,
+      defaultCollapsed: false,
+      radios: true,
+      spacedAccordionItems: false,
+    },
+    wallets: {
+      applePay: 'never' as const,
+      googlePay: 'never' as const,
+    },
+    ...(paymentMethodOrder ? { paymentMethodOrder } : {}),
+  }
+}
+
+function buildStripeExpressCheckoutOptions(shipping?: Partial<ShippingInfo> | null) {
+  const paymentMethodOrder = resolveStripePaymentMethodOrder(shipping?.country || null)
+  return {
+    buttonHeight: 48,
+    buttonTheme: {
+      applePay: 'black' as const,
+      googlePay: 'black' as const,
+    },
+    buttonType: {
+      applePay: 'buy' as const,
+      googlePay: 'buy' as const,
+    },
+    layout: {
+      maxColumns: 2,
+      maxRows: 1,
+      overflow: 'auto' as const,
+    },
+    paymentMethods: {
+      applePay: 'always' as const,
+      googlePay: 'always' as const,
+      link: 'never' as const,
+      paypal: 'never' as const,
+    },
+    ...(paymentMethodOrder ? { paymentMethodOrder } : {}),
+  }
+}
+
+export function hasAvailableStripeExpressWallets(
+  availablePaymentMethods:
+    | StripeExpressCheckoutElementReadyEvent['availablePaymentMethods']
+    | null
+    | undefined,
+): boolean {
+  return Boolean(availablePaymentMethods?.applePay || availablePaymentMethods?.googlePay)
+}
+
+function formatStripePaymentMethodLabel(methodType: string | null | undefined): string | null {
+  const normalized = String(methodType || '').trim().toLowerCase()
+  if (!normalized) return null
+  const labels: Record<string, string> = {
+    apple_pay: 'Apple Pay',
+    google_pay: 'Google Pay',
+    link: 'Link',
+    klarna: 'Klarna',
+    affirm: 'Affirm',
+    afterpay_clearpay: 'Afterpay/Clearpay',
+    us_bank_account: 'US bank account',
+    cashapp: 'Cash App Pay',
+    cashapp_pay: 'Cash App Pay',
+    paypal: 'PayPal',
+    card: 'Card',
+  }
+  if (labels[normalized]) return labels[normalized]
+  return normalized
+    .split('_')
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ')
+}
+
+const StripePaymentSectionInner = forwardRef<
+  StripePaymentSectionHandle,
+  {
+    clientSecret: string
+    returnUrl?: string | null
+    shipping?: Partial<ShippingInfo> | null
+    onPaymentError: (message: string) => void
+    onPaymentMethodChange: (methodType: string | null) => void
+    onConfirmationResult?: (result: { status?: string; paymentIntentId?: string }) => Promise<void> | void
+  }
+>(function StripePaymentSectionInner(
+  {
+    clientSecret,
+    returnUrl = null,
+    shipping = null,
+    onPaymentError,
+    onPaymentMethodChange,
+    onConfirmationResult,
+  },
+  ref,
+) {
+  const stripe = useStripe()
+  const elements = useElements()
+  const [localPaymentError, setLocalPaymentError] = useState('')
+  const [expressWalletsReady, setExpressWalletsReady] = useState(false)
+  const [expressWalletsAvailable, setExpressWalletsAvailable] = useState(false)
+
+  const setPaymentError = useCallback((message: string) => {
+    setLocalPaymentError(message)
+    onPaymentError(message)
+  }, [onPaymentError])
+
+  const runStripeConfirmation = useCallback(async ({
+    confirmClientSecret,
+    confirmShipping,
+    confirmReturnUrl,
+    skipSubmit = false,
+  }: {
+    confirmClientSecret?: string
+    confirmShipping?: Partial<ShippingInfo> | null
+    confirmReturnUrl?: string | null
+    skipSubmit?: boolean
+  }) => {
+    if (!stripe || !elements) {
+      return { error: 'Payment form is not ready. Please refresh and try again.' }
+    }
+
+    const resolvedReturnUrl = String(confirmReturnUrl || returnUrl || '').trim()
+    if (!resolvedReturnUrl) {
+      return { error: 'Payment return URL is missing. Please refresh and try again.' }
+    }
+
+    if (!skipSubmit) {
+      const submitResult = await elements.submit()
+      if (submitResult.error) {
+        const message = submitResult.error.message || 'Please complete the payment form.'
+        setPaymentError(message)
+        return { error: message }
+      }
+    }
+
+    const result = await stripe.confirmPayment({
+      elements,
+      clientSecret: confirmClientSecret || clientSecret,
+      confirmParams: {
+        return_url: resolvedReturnUrl,
+        payment_method_data: {
+          billing_details: buildStripeBillingDetails(confirmShipping || shipping),
+        },
+      },
+      redirect: 'if_required',
+    })
+
+    if (result.error) {
+      const message = result.error.message || 'Payment failed'
+      setPaymentError(message)
+      return { error: message }
+    }
+
+    setPaymentError('')
+    return {
+      status: result.paymentIntent?.status,
+      paymentIntentId: result.paymentIntent?.id,
+    }
+  }, [clientSecret, elements, returnUrl, setPaymentError, shipping, stripe])
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      async confirm({ clientSecret: confirmClientSecret, returnUrl, shipping: confirmShipping }) {
+        return runStripeConfirmation({
+          confirmClientSecret,
+          confirmShipping,
+          confirmReturnUrl: returnUrl,
+        })
+      },
+    }),
+    [runStripeConfirmation],
+  )
+
+  return (
+    <div className="space-y-3">
+      <div
+        className={
+          expressWalletsReady && expressWalletsAvailable
+            ? 'rounded-[20px] border border-slate-200 bg-white p-3 sm:p-4'
+            : 'hidden'
+        }
+      >
+        <label className="text-[13px] font-medium text-slate-700 sm:text-sm">Wallets</label>
+        <div className="mt-2 rounded-[16px] border border-slate-200 bg-slate-50 p-3">
+          <ExpressCheckoutElement
+            options={buildStripeExpressCheckoutOptions(shipping)}
+            onReady={(event) => {
+              setExpressWalletsReady(true)
+              setExpressWalletsAvailable(hasAvailableStripeExpressWallets(event.availablePaymentMethods))
+            }}
+            onClick={(event: any) => {
+              const methodType = String(event?.expressPaymentType || '').trim() || null
+              onPaymentMethodChange(methodType)
+              setPaymentError('')
+            }}
+            onLoadError={(event) => {
+              const message =
+                String(event?.error?.message || '').trim() ||
+                'Wallet buttons could not be loaded in this browser.'
+              setExpressWalletsReady(true)
+              setExpressWalletsAvailable(false)
+              setPaymentError(message)
+            }}
+            onConfirm={async (event: StripeExpressCheckoutElementConfirmEvent) => {
+              const methodType = String(event.expressPaymentType || '').trim() || null
+              onPaymentMethodChange(methodType)
+              const result = await runStripeConfirmation({
+                confirmReturnUrl: returnUrl,
+                confirmShipping: shipping,
+                skipSubmit: true,
+              })
+              if (result.error) {
+                event.paymentFailed({ reason: 'fail' })
+                return
+              }
+              try {
+                await onConfirmationResult?.(result)
+              } catch (error: any) {
+                const message = String(error?.message || '').trim() || 'Payment failed'
+                setPaymentError(message)
+                event.paymentFailed({ reason: 'fail' })
+              }
+            }}
+          />
+        </div>
+        <p className="mt-2 text-xs text-slate-500">
+          Apple Pay and Google Pay appear here when Stripe marks them available for this device,
+          browser, domain, and merchant account.
+        </p>
+      </div>
+
+      <div className="rounded-[20px] border border-slate-200 bg-white p-3 sm:p-4">
+        <label className="text-[13px] font-medium text-slate-700 sm:text-sm">Payment Details</label>
+        <div className="mt-2 rounded-[16px] border border-slate-200 bg-slate-50 p-3">
+        <PaymentElement
+          options={buildStripePaymentElementOptions(shipping)}
+          onChange={(event: any) => {
+            const message = String(event?.error?.message || '').trim()
+            setLocalPaymentError(message)
+            onPaymentError(message)
+            const methodType = String(event?.value?.type || '').trim() || null
+            onPaymentMethodChange(methodType)
+          }}
+        />
+      </div>
+      {localPaymentError && <p className="mt-2 text-sm text-red-600">{localPaymentError}</p>}
+      </div>
+    </div>
+  )
+})
+
+const StripePaymentSection = forwardRef<
+  StripePaymentSectionHandle,
+  {
+    clientSecret: string
+    publishableKey: string
+    stripeAccount?: string | null
+    returnUrl?: string | null
+    shipping?: Partial<ShippingInfo> | null
+    onPaymentError: (message: string) => void
+    onPaymentMethodChange: (methodType: string | null) => void
+    onConfirmationResult?: (result: { status?: string; paymentIntentId?: string }) => Promise<void> | void
+  }
+>(function StripePaymentSection(
+  {
+    clientSecret,
+    publishableKey,
+    stripeAccount = null,
+    returnUrl = null,
+    shipping = null,
+    onPaymentError,
+    onPaymentMethodChange,
+    onConfirmationResult,
+  },
+  ref,
+) {
+  const stripePromise = useMemo(
+    () => getStripePromiseForKey(publishableKey, stripeAccount),
+    [publishableKey, stripeAccount],
+  )
+  const billingKey = JSON.stringify(buildStripeBillingDetails(shipping))
+  const sectionKey = [publishableKey, stripeAccount || '', clientSecret, billingKey].join('::')
+
+  return (
+    <Elements key={sectionKey} stripe={stripePromise} options={{ clientSecret }}>
+      <StripePaymentSectionInner
+        ref={ref}
+        clientSecret={clientSecret}
+        returnUrl={returnUrl}
+        shipping={shipping}
+        onPaymentError={onPaymentError}
+        onPaymentMethodChange={onPaymentMethodChange}
+        onConfirmationResult={onConfirmationResult}
+      />
+    </Elements>
+  )
+})
 
 const SHIPPING_COUNTRY_GROUPS: Array<{
   label: string
@@ -242,6 +792,30 @@ function normalizeCountryCode(value: unknown): string | null {
   return null
 }
 
+function getCountryFlagEmoji(value: unknown): string {
+  const normalized = normalizeCountryCode(value)
+  if (!normalized || normalized.length !== 2) return '🌍'
+  return Array.from(normalized)
+    .map((char) => String.fromCodePoint(char.charCodeAt(0) + 127397))
+    .join('')
+}
+
+function collapseWhitespace(value: unknown): string {
+  return String(value ?? '')
+    .trim()
+    .replace(/\s+/g, ' ')
+}
+
+function normalizePostalCodeValue(value: unknown): string {
+  return collapseWhitespace(value).toUpperCase()
+}
+
+const CHECKOUT_STEPS: Array<{ id: CheckoutStep; label: string }> = [
+  { id: 'shipping', label: 'Shipping' },
+  { id: 'payment', label: 'Payment' },
+  { id: 'confirm', label: 'Review' },
+]
+
 function getVariantIdForItem(item: {
   product_id: string
   variant_id?: string
@@ -263,9 +837,13 @@ function extractMerchantIdFromOfferId(offerId: unknown): string | null {
 
 function isTemporaryUnavailable(err: any): boolean {
   const code = String(err?.code || '').trim().toUpperCase()
-  if (code === 'TEMPORARY_UNAVAILABLE') return true
+  if (code === 'TEMPORARY_UNAVAILABLE' || code === 'UPSTREAM_UNAVAILABLE') return true
   const message = String(err?.message || '').toUpperCase()
-  return message.includes('TEMPORARY_UNAVAILABLE') || message.includes('DATABASE BUSY')
+  return (
+    message.includes('TEMPORARY_UNAVAILABLE') ||
+    message.includes('UPSTREAM_UNAVAILABLE') ||
+    message.includes('DATABASE BUSY')
+  )
 }
 
 function isRetryableQuoteError(err: any): boolean {
@@ -288,6 +866,11 @@ function isQuoteDrift(err: any): boolean {
 function isInventoryUnavailable(err: any): boolean {
   const code = String(err?.code || '').trim().toUpperCase()
   return code === 'OUT_OF_STOCK' || code === 'INSUFFICIENT_INVENTORY'
+}
+
+function isCheckoutRestartRequired(err: any): boolean {
+  const code = String(err?.code || '').trim().toUpperCase()
+  return code === 'CHECKOUT_RESTART_REQUIRED'
 }
 
 function extractInventoryIssue(err: any): {
@@ -332,13 +915,13 @@ function OrderFlowInner({
   locale,
   checkoutToken,
   returnUrl,
+  resumeOrder,
 }: OrderFlowProps) {
   const router = useRouter()
-  const stripe = useStripe()
-  const elements = useElements()
+  const searchParams = useSearchParams()
   const { user, setSession } = useAuthStore()
   const clearCart = useCartStore(state => state.clearCart)
-  const [step, setStep] = useState<'shipping' | 'payment' | 'confirm'>('shipping')
+  const [step, setStep] = useState<CheckoutStep>('shipping')
   const [shipping, setShipping] = useState<ShippingInfo>({
     name: '',
     email: '',
@@ -353,6 +936,7 @@ function OrderFlowInner({
   const [cardError, setCardError] = useState<string>('')
   const [otp, setOtp] = useState('')
   const [otpSent, setOtpSent] = useState(false)
+  const [showAddressLine2Mobile, setShowAddressLine2Mobile] = useState(false)
   const [otpLoading, setOtpLoading] = useState(false)
   const [verifiedEmail, setVerifiedEmail] = useState<string | null>(null)
   const [authMethod, setAuthMethod] = useState<'otp' | 'password'>('otp')
@@ -365,6 +949,7 @@ function OrderFlowInner({
   const [quote, setQuote] = useState<QuotePreview | null>(null)
   const [selectedDeliveryOption, setSelectedDeliveryOption] = useState<any>(null)
   const [quotePending, setQuotePending] = useState(false)
+  const [checkoutFailure, setCheckoutFailure] = useState<{ message: string } | null>(null)
   const [orderDebug, setOrderDebug] = useState<{
     order_id?: string | null
     resolved_offer_id?: string | null
@@ -372,13 +957,23 @@ function OrderFlowInner({
     order_lines?: any[] | null
   } | null>(null)
   const [debugEnabled, setDebugEnabled] = useState(false)
+  const createdOrderPaymentRef = useRef<CreatedOrderPaymentSnapshot | null>(null)
+  const resumeHydratingRef = useRef(false)
   const paymentInitPromiseRef = useRef<Promise<PrefetchedPaymentInit> | null>(null)
   const paymentInitKeyRef = useRef<string | null>(null)
   const paymentInitRunIdRef = useRef(0)
   const [prefetchedPaymentRes, setPrefetchedPaymentRes] = useState<PrefetchedPaymentInit | null>(null)
   const [paymentInitLoading, setPaymentInitLoading] = useState(false)
   const [paymentInitError, setPaymentInitError] = useState<string | null>(null)
+  const [stripePublishableKey, setStripePublishableKey] = useState<string>(
+    DEFAULT_STRIPE_PUBLISHABLE_KEY,
+  )
+  const [stripeAccount, setStripeAccount] = useState<string | null>(null)
+  const [stripeSelectedMethodType, setStripeSelectedMethodType] = useState<string | null>(null)
+  const stripePaymentSectionRef = useRef<StripePaymentSectionHandle | null>(null)
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     const normalized = normalizeCountryCode(shipping.country)
     if (normalized && normalized !== shipping.country) {
@@ -428,6 +1023,40 @@ function OrderFlowInner({
     if (!cur || amountMinor == null) return null
     return `${quoteId}:${cur}:${amountMinor}`
   }, [currency, quote?.quote_id, total])
+  const requestedPreferredPsp = useMemo(() => {
+    const raw = searchParams?.get('preferred_psp') || searchParams?.get('psp') || ''
+    const normalized = raw.trim().toLowerCase()
+    return ['stripe', 'adyen', 'checkout'].includes(normalized) ? normalized : null
+  }, [searchParams])
+  const enforceLiveReadiness = useMemo(() => {
+    const explicit = parseBooleanToken(searchParams?.get('enforce_live_readiness'))
+    if (explicit != null) return explicit
+    const allowTest = parseBooleanToken(searchParams?.get('allow_test_psp_surfaces'))
+    if (allowTest != null) return !allowTest
+    const mode = String(
+      searchParams?.get('payment_mode') || searchParams?.get('psp_mode') || '',
+    )
+      .trim()
+      .toLowerCase()
+    if (['test', 'sandbox', 'test_surface', 'allow_test_surfaces'].includes(mode)) {
+      return false
+    }
+    return true
+  }, [searchParams])
+
+  const syncStripeRuntime = (paymentResponse: any, action: any, detectedPsp?: string | null) => {
+    const resolvedPsp = detectedPsp || action?.psp || pspUsed || null
+    const isStripeRuntime =
+      action?.type === 'stripe_client_secret' || !resolvedPsp || resolvedPsp === 'stripe'
+    if (!isStripeRuntime) {
+      setStripePublishableKey('')
+      setStripeAccount(null)
+      setStripeSelectedMethodType(null)
+      return
+    }
+    setStripePublishableKey(resolveStripePublishableKey(paymentResponse, action) || '')
+    setStripeAccount(resolveStripeAccount(paymentResponse, action))
+  }
 
   const formatAmount = (amount: number) => {
     const code = String(currency || 'USD').toUpperCase()
@@ -446,6 +1075,16 @@ function OrderFlowInner({
   }
 
   const deliveryOptions = Array.isArray(quote?.delivery_options) ? quote?.delivery_options : []
+  const clearCreatedOrderPaymentSnapshot = () => {
+    createdOrderPaymentRef.current = null
+  }
+  const getReusableCreatedOrderPayment = (
+    orderId: string,
+  ): CreatedOrderPaymentSnapshot | null => {
+    const snapshot = createdOrderPaymentRef.current
+    if (!snapshot || snapshot.orderId !== orderId) return null
+    return shouldHydrateCreatedOrderPaymentSurface(snapshot.action, snapshot.psp) ? snapshot : null
+  }
 
   const offerIdsInCart = useMemo(() => {
     return Array.from(
@@ -792,7 +1431,13 @@ function OrderFlowInner({
         ...(jobId ? { job_id: jobId } : {}),
         ...(market ? { market } : {}),
         ...(locale ? { locale } : {}),
-        source: 'checkout_ui',
+        ui_source: 'checkout_ui',
+        ...(enforceLiveReadiness
+          ? {}
+          : {
+              enforce_live_readiness: false,
+              allow_test_psp_surfaces: true,
+            }),
       },
       items: items.map((item) => {
         const variantId = getVariantIdForItem(item)
@@ -822,7 +1467,9 @@ function OrderFlowInner({
         postal_code: shipping.postal_code,
         phone: shipping.phone
       },
-      ...(FORCE_PSP ? { preferred_psp: FORCE_PSP } : {})
+      ...((requestedPreferredPsp || FORCE_PSP)
+        ? { preferred_psp: requestedPreferredPsp || FORCE_PSP }
+        : {})
     })
 
     // Minimal, token-safe debug logging (do not print payment client secrets / tokens).
@@ -879,13 +1526,22 @@ function OrderFlowInner({
       }
     }
 
-    if (orderPaymentAction) {
-      setInitialPaymentAction(orderPaymentAction)
-      setPaymentActionType(orderPaymentAction?.type || null)
+    assertSupportedPaymentSurface(orderResponse, orderPaymentAction, orderPsp)
+
+    createdOrderPaymentRef.current = {
+      orderId,
+      paymentResponse: orderResponse,
+      action: orderPaymentAction,
+      psp: orderPsp,
     }
 
-    if (orderPsp) {
-      setPspUsed(orderPsp)
+    if (shouldHydrateCreatedOrderPaymentSurface(orderPaymentAction, orderPsp)) {
+      setInitialPaymentAction(orderPaymentAction)
+      setPaymentActionType(orderPaymentAction?.type || null)
+      if (orderPsp) {
+        setPspUsed(orderPsp)
+      }
+      syncStripeRuntime(orderResponse, orderPaymentAction, orderPsp)
     }
 
     const allowRedirect = options.allowRedirect !== false
@@ -897,10 +1553,14 @@ function OrderFlowInner({
     return orderId
   }
 
-  const buildPostPayReturnUrl = (orderId: string): string | undefined => {
+  const buildOrderSuccessPath = (
+    orderId: string,
+    options: OrderCompletionOptions = {},
+  ): string | undefined => {
     if (typeof window === 'undefined') return undefined
     const url = new URL('/order/success', window.location.origin)
     url.searchParams.set('orderId', orderId)
+    if (options.finalizing) url.searchParams.set('finalizing', '1')
     if (returnUrl) url.searchParams.set('return', returnUrl)
     const current = new URL(window.location.href)
     const passthrough = ['entry', 'embed', 'lang', 'aurora_uid', 'parent_origin']
@@ -909,7 +1569,126 @@ function OrderFlowInner({
       if (value) url.searchParams.set(key, value)
     }
     if (checkoutToken) url.searchParams.set('checkout_token', checkoutToken)
-    return url.toString()
+    return `${url.pathname}${url.search}`
+  }
+
+  const buildPostPayReturnUrl = (orderId: string): string | undefined => {
+    const successPath = buildOrderSuccessPath(orderId, { finalizing: true })
+    if (!successPath || typeof window === 'undefined') return undefined
+    return new URL(successPath, window.location.origin).toString()
+  }
+
+  const stripeClientSecretForRender =
+    initialPaymentAction?.type === 'stripe_client_secret' &&
+    typeof initialPaymentAction?.client_secret === 'string'
+      ? initialPaymentAction.client_secret
+      : null
+  const stripeReturnUrlForRender = createdOrderId
+    ? buildPostPayReturnUrl(createdOrderId) || null
+    : null
+  const stripeMethodLabel = formatStripePaymentMethodLabel(stripeSelectedMethodType)
+  const isExternalRedirectPayment = paymentActionType === 'redirect_url'
+  const paymentProviderLabel =
+    pspUsed === 'adyen'
+      ? 'Adyen (hosted card form)'
+      : paymentActionType === 'checkout_session'
+        ? 'Checkout.com (session)'
+      : pspUsed === 'stripe' || paymentActionType === 'stripe_client_secret'
+          ? stripeMethodLabel
+            ? `Stripe (${stripeMethodLabel})`
+            : 'Stripe (payment methods)'
+          : isExternalRedirectPayment
+            ? 'Redirect checkout'
+            : 'Card payment'
+  const paymentButtonLabel = isProcessing
+    ? 'Processing...'
+    : paymentInitLoading
+      ? 'Preparing payment...'
+      : isExternalRedirectPayment
+          ? 'Continue to merchant payment'
+          : `Pay ${formatAmount(total)}`
+
+  const finalizeOrderAfterPayment = async (orderId: string): Promise<OrderCompletionOptions> => {
+    const confirmation = await confirmPaymentWithRetry({
+      orderId,
+      confirmPayment: confirmOrderPayment,
+      maxAttempts: 3,
+      retryDelayMs: 220,
+    })
+    return {
+      finalizing: confirmation.status !== 'confirmed',
+    }
+  }
+
+  const completeCheckoutForOrder = async (targetOrderId: string, paymentIdValue?: string) => {
+    setPaymentId(paymentIdValue || '')
+    setStep('confirm')
+    toast.success('Payment completed successfully.')
+    clearCart()
+    const completionOptions = await finalizeOrderAfterPayment(targetOrderId)
+    if (onComplete) {
+      onComplete(targetOrderId, completionOptions)
+      return
+    }
+    const successPath = buildOrderSuccessPath(targetOrderId, completionOptions)
+    router.push(successPath || `/orders/${targetOrderId}?paid=1`)
+  }
+
+  const continuePendingPaymentConfirmationForOrder = async (
+    targetOrderId: string,
+    paymentIdValue?: string,
+  ) => {
+    setPaymentId(paymentIdValue || '')
+    setStep('confirm')
+    const completionOptions = { finalizing: true }
+    toast.message('Confirming payment status…', {
+      description: 'Your order was created. We are waiting for the final paid confirmation.',
+    })
+    clearCart()
+    if (onComplete) {
+      onComplete(targetOrderId, completionOptions)
+      return
+    }
+    const successPath = buildOrderSuccessPath(targetOrderId, completionOptions)
+    router.push(successPath || `/orders/${targetOrderId}?paid=1`)
+  }
+
+  const handleStripeConfirmationResult = async (result: {
+    error?: string
+    status?: string
+    paymentIntentId?: string
+  }) => {
+    if (!result) {
+      throw new Error('Payment form is not ready. Please refresh and try again.')
+    }
+    if (result.error) {
+      setCardError(result.error)
+      throw new Error('Payment failed. Please check the payment details or try again.')
+    }
+
+    const activeOrderId = String(createdOrderId || '').trim()
+    if (!activeOrderId) {
+      throw new Error('Order is missing. Please refresh and try again.')
+    }
+
+    const status = result.status
+    if (status === 'succeeded') {
+      await completeCheckoutForOrder(activeOrderId, result.paymentIntentId || '')
+      return
+    }
+    if (status === 'processing' || status === 'requires_capture') {
+      await continuePendingPaymentConfirmationForOrder(activeOrderId, result.paymentIntentId || '')
+      return
+    }
+    if (status === 'requires_action') {
+      toast.message('Additional authentication required', {
+        description: 'Continue in the verification window or redirected page to finish payment.',
+      })
+      return
+    }
+    throw new Error(
+      'Payment could not be completed. Please try again or choose a different payment method.',
+    )
   }
 
   const extractPaymentAction = (paymentResponse: any, fallbackAction: any = null) => {
@@ -1022,17 +1801,18 @@ function OrderFlowInner({
       },
       analytics: { enabled: false },
       onPaymentCompleted: () => {
-        void confirmOrderPayment(orderId).catch((err) => {
-          console.warn('confirmOrderPayment failed', err)
-        })
-        setStep('confirm')
-        toast.success('Payment completed successfully.')
-        clearCart()
-        if (onComplete) {
-          onComplete(orderId)
-          return
-        }
-        router.push(`/orders/${orderId}?paid=1`)
+        void (async () => {
+          setStep('confirm')
+          toast.success('Payment completed successfully.')
+          clearCart()
+          const completionOptions = await finalizeOrderAfterPayment(orderId)
+          if (onComplete) {
+            onComplete(orderId, completionOptions)
+            return
+          }
+          const successPath = buildOrderSuccessPath(orderId, completionOptions)
+          router.push(successPath || `/orders/${orderId}?paid=1`)
+        })()
       },
       onError: (err: any) => {
         console.error('Adyen error:', err)
@@ -1055,22 +1835,32 @@ function OrderFlowInner({
       order_id: orderIdArg,
       total_amount: Number(quoteArg.pricing.total) || total,
       currency: String(quoteArg.currency || currency || 'USD'),
-      payment_method: { type: 'card' },
+      payment_method: { type: resolveCheckoutPaymentMethodHint(stripeSelectedMethodType) },
       return_url: buildPostPayReturnUrl(orderIdArg),
     })
 
     let paymentResponse: any
+    const createdOrderPayment = getReusableCreatedOrderPayment(orderId)
+    if (createdOrderPayment) {
+      paymentResponse = createdOrderPayment.paymentResponse
+    }
     try {
-      paymentResponse = await processPayment(buildPayload(workingQuote, orderId))
+      if (!paymentResponse) {
+        paymentResponse = await processPayment(buildPayload(workingQuote, orderId))
+      }
     } catch (err: any) {
       if (isQuoteDrift(err)) {
+        clearCreatedOrderPaymentSnapshot()
         setCreatedOrderId('')
         setInitialPaymentAction(null)
         setPaymentActionType(null)
         setPspUsed(null)
         workingQuote = await refreshQuoteWithRetry()
         orderId = await createOrderIfNeeded(workingQuote, { forceNew: true, allowRedirect: false })
-        paymentResponse = await processPayment(buildPayload(workingQuote, orderId))
+        const nextCreatedOrderPayment = getReusableCreatedOrderPayment(orderId)
+        paymentResponse =
+          nextCreatedOrderPayment?.paymentResponse ||
+          (await processPayment(buildPayload(workingQuote, orderId)))
       } else {
         throw err
       }
@@ -1083,7 +1873,57 @@ function OrderFlowInner({
     }
   }
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
+    if (!resumeOrder?.orderId) return
+    resumeHydratingRef.current = true
+
+    const nextShipping = resumeOrder.shipping || null
+    if (nextShipping) {
+      setShipping((prev) => ({
+        ...prev,
+        ...nextShipping,
+        country: normalizeCountryCode(nextShipping.country || prev.country) || prev.country,
+      }))
+      if (nextShipping.email) {
+        setVerifiedEmail((prev) => prev || nextShipping.email || null)
+      }
+    }
+
+    if (resumeOrder.quote) {
+      setQuote(resumeOrder.quote)
+    }
+
+    setCreatedOrderId(resumeOrder.orderId)
+
+    const paymentResponse = resumeOrder.paymentResponse
+    if (paymentResponse) {
+      const action = extractPaymentAction(paymentResponse, null)
+      const detectedPsp = detectPaymentPsp(paymentResponse, action)
+      createdOrderPaymentRef.current = {
+        orderId: resumeOrder.orderId,
+        paymentResponse,
+        action,
+        psp: detectedPsp,
+      }
+      setInitialPaymentAction(action)
+      setPaymentActionType(action?.type || null)
+      setPspUsed(detectedPsp || null)
+      syncStripeRuntime(paymentResponse, action, detectedPsp)
+    }
+
+    setStep('payment')
+    setCheckoutFailure(null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resumeOrder])
+
+  useEffect(() => {
+    if (resumeHydratingRef.current) {
+      if (step === 'payment') {
+        resumeHydratingRef.current = false
+      }
+      return
+    }
     if (step === 'payment') return
     paymentInitRunIdRef.current += 1
     paymentInitPromiseRef.current = null
@@ -1091,6 +1931,10 @@ function OrderFlowInner({
     setPrefetchedPaymentRes(null)
     setPaymentInitLoading(false)
     setPaymentInitError(null)
+    clearCreatedOrderPaymentSnapshot()
+    setStripePublishableKey(DEFAULT_STRIPE_PUBLISHABLE_KEY)
+    setStripeAccount(null)
+    setStripeSelectedMethodType(null)
   }, [step])
 
   useEffect(() => {
@@ -1119,12 +1963,26 @@ function OrderFlowInner({
       .then((prefetched) => {
         if (paymentInitRunIdRef.current !== runId) return
         const action = extractPaymentAction(prefetched.paymentResponse, initialPaymentAction)
+        const detectedPsp = detectPaymentPsp(prefetched.paymentResponse, action)
+        assertSupportedPaymentSurface(prefetched.paymentResponse, action, detectedPsp)
         setPrefetchedPaymentRes(prefetched)
+        setPaymentInitError(null)
+        setInitialPaymentAction(action)
         setPaymentActionType(action?.type || null)
-        setPspUsed(detectPaymentPsp(prefetched.paymentResponse, action))
+        setPspUsed(detectedPsp)
+        syncStripeRuntime(prefetched.paymentResponse, action, detectedPsp)
       })
       .catch((err: any) => {
         if (paymentInitRunIdRef.current !== runId) return
+        if (isCheckoutRestartRequired(err)) {
+          setCheckoutFailure({
+            message:
+              String(err?.message || '').trim() ||
+              'This checkout link is invalid or expired. Please restart checkout to continue.',
+          })
+          setPaymentInitError(null)
+          return
+        }
         const msg = String(err?.message || '').trim() || 'Failed to prepare payment'
         setPaymentInitError(msg)
       })
@@ -1179,6 +2037,86 @@ function OrderFlowInner({
     }
   }, [user])
 
+  const handlePasswordSignIn = async () => {
+    setOtpLoading(true)
+    try {
+      const data = await accountsLoginWithPassword(
+        shipping.email.trim(),
+        loginPassword,
+      )
+      setSession({
+        user: (data as any).user,
+        memberships: (data as any).memberships || [],
+        active_merchant_id: (data as any).active_merchant_id,
+      })
+      setVerifiedEmail(shipping.email.trim())
+      setLoginPassword('')
+      toast.success('Signed in')
+    } catch (err: any) {
+      const code = err?.code
+      if (code === 'NO_PASSWORD') {
+        toast.error('No password is set. Use email code once, then set a password.')
+        setAuthMethod('otp')
+      } else if (code === 'INVALID_CREDENTIALS') {
+        toast.error('Email or password is incorrect')
+      } else {
+        toast.error(err?.message || 'Sign in failed')
+      }
+    } finally {
+      setOtpLoading(false)
+    }
+  }
+
+  const handleSendOtp = async () => {
+    setOtpLoading(true)
+    try {
+      await accountsLogin(shipping.email.trim())
+      setOtpSent(true)
+      toast.success('Code sent to your email')
+    } catch (err: any) {
+      const code = err?.code
+      if (code === 'INVALID_INPUT') toast.error('Please enter a valid email')
+      else if (code === 'RATE_LIMITED') {
+        toast.error('Too many requests, please retry later')
+      } else {
+        toast.error(err?.message || 'Failed to send code')
+      }
+    } finally {
+      setOtpLoading(false)
+    }
+  }
+
+  const handleVerifyOtp = async () => {
+    setOtpLoading(true)
+    try {
+      const data = await accountsVerify(shipping.email.trim(), otp.trim())
+      setSession({
+        user: (data as any).user,
+        memberships: (data as any).memberships || [],
+        active_merchant_id: (data as any).active_merchant_id,
+      })
+      setVerifiedEmail(shipping.email.trim())
+      toast.success('Email verified and logged in')
+    } catch (err: any) {
+      const code = err?.code
+      if (code === 'INVALID_OTP') toast.error('Code invalid or expired')
+      else if (code === 'RATE_LIMITED') {
+        toast.error('Too many attempts, please retry later')
+      } else {
+        toast.error(err?.message || 'Verification failed')
+      }
+    } finally {
+      setOtpLoading(false)
+    }
+  }
+
+  const cardClassName =
+    'rounded-[24px] border border-white/80 bg-white/95 px-4 py-4 shadow-[0_16px_40px_rgba(56,88,162,0.1)] backdrop-blur sm:px-5 sm:py-5 md:px-6 md:py-6 lg:rounded-[28px]'
+  const fieldClassName =
+    'w-full rounded-[18px] border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 shadow-[inset_0_1px_2px_rgba(15,23,42,0.04)] transition placeholder:text-slate-400 focus:border-blue-400 focus:outline-none focus:ring-4 focus:ring-blue-100'
+  const helperTextClassName = 'text-[13px] leading-5 text-slate-500'
+  const stepIndex = CHECKOUT_STEPS.findIndex((item) => item.id === step)
+
   const hasSellerSelection = Boolean(merchantIdForOrder || offerIdForOrder)
   if (items.length > 0 && !hasSellerSelection) {
     return (
@@ -1216,12 +2154,16 @@ function OrderFlowInner({
       return
     }
     try {
+      setCheckoutFailure(null)
       setIsProcessing(true)
       // Reset any existing order if shipping changes.
       setCreatedOrderId('')
       setInitialPaymentAction(null)
       setPaymentActionType(null)
       setPspUsed(null)
+      setInitialPaymentAction(null)
+      setStripeSelectedMethodType(null)
+      clearCreatedOrderPaymentSnapshot()
       setAdyenMounted(false)
       paymentInitRunIdRef.current += 1
       paymentInitPromiseRef.current = null
@@ -1242,6 +2184,14 @@ function OrderFlowInner({
       setStep('payment')
     } catch (err: any) {
       console.error('Create order error:', err)
+      if (isCheckoutRestartRequired(err)) {
+        const message =
+          String(err?.message || '').trim() ||
+          'This checkout link is invalid or expired. Please restart checkout to continue.'
+        setCheckoutFailure({ message })
+        toast.error(message)
+        return
+      }
       const code = String(err?.code || '').trim().toUpperCase()
       const fallback =
         code === 'TEMPORARY_UNAVAILABLE'
@@ -1260,6 +2210,7 @@ function OrderFlowInner({
     setIsProcessing(true)
     setCardError('')
     setPaymentInitError(null)
+    setCheckoutFailure(null)
     
     try {
       if (!skipEmailVerification && !user && verifiedEmail !== shipping.email.trim()) {
@@ -1281,6 +2232,7 @@ function OrderFlowInner({
           setInitialPaymentAction(null)
           setPaymentActionType(null)
           setPspUsed(null)
+          clearCreatedOrderPaymentSnapshot()
         }
 
         // Step 1: Create order if not already created
@@ -1336,13 +2288,19 @@ function OrderFlowInner({
           }
         }
         if (!paymentResponse) {
+          const createdOrderPayment = getReusableCreatedOrderPayment(orderId)
+          if (createdOrderPayment) {
+            paymentResponse = createdOrderPayment.paymentResponse
+          }
+        }
+        if (!paymentResponse) {
           try {
             paymentResponse = await processPayment({
               order_id: orderId,
               total_amount: Number(quoteForPayment.pricing.total) || total,
               currency: String(quoteForPayment.currency || currency || 'USD'),
               payment_method: {
-                type: 'card',
+                type: resolveCheckoutPaymentMethodHint(stripeSelectedMethodType),
               },
               return_url: buildPostPayReturnUrl(orderId),
             })
@@ -1357,13 +2315,18 @@ function OrderFlowInner({
               resetForRequote()
               quoteForPayment = await refreshQuoteWithRetry()
               orderId = await createOrderIfNeeded(quoteForPayment, { forceNew: true })
-              paymentResponse = await processPayment({
-                order_id: orderId,
-                total_amount: Number(quoteForPayment.pricing.total) || total,
-                currency: String(quoteForPayment.currency || currency || 'USD'),
-                payment_method: { type: 'card' },
-                return_url: buildPostPayReturnUrl(orderId),
-              })
+              const nextCreatedOrderPayment = getReusableCreatedOrderPayment(orderId)
+                paymentResponse =
+                nextCreatedOrderPayment?.paymentResponse ||
+                (await processPayment({
+                  order_id: orderId,
+                  total_amount: Number(quoteForPayment.pricing.total) || total,
+                  currency: String(quoteForPayment.currency || currency || 'USD'),
+                  payment_method: {
+                    type: resolveCheckoutPaymentMethodHint(stripeSelectedMethodType),
+                  },
+                  return_url: buildPostPayReturnUrl(orderId),
+                }))
             } else {
               throw err
             }
@@ -1384,9 +2347,11 @@ function OrderFlowInner({
             null,
         })
         const action = extractPaymentAction(paymentResponse, initialPaymentAction)
-        setPaymentActionType(action?.type || null)
         const detectedPsp = detectPaymentPsp(paymentResponse, action)
+        assertSupportedPaymentSurface(paymentResponse, action, detectedPsp)
+        setPaymentActionType(action?.type || null)
         setPspUsed(detectedPsp || pspUsed || null)
+        syncStripeRuntime(paymentResponse, action, detectedPsp || pspUsed || null)
 
         const redirectUrl =
           action?.url ||
@@ -1402,35 +2367,18 @@ function OrderFlowInner({
           paymentResponse,
           action,
         })
-        const completeCheckout = (paymentIdValue?: string) => {
-          void confirmOrderPayment(orderId).catch((err) => {
-            console.warn('confirmOrderPayment failed', err)
-          })
-          setPaymentId(paymentIdValue || '')
-          setStep('confirm')
-          toast.success('Payment completed successfully.')
-          clearCart()
-          if (onComplete) {
-            onComplete(orderId)
-            return
-          }
-          router.push(`/orders/${orderId}?paid=1`)
-        }
-
         if (!paymentContract.requiresClientConfirmation) {
+          const paymentIdValue = String(
+            (paymentResponse as any)?.payment_id ||
+              (paymentResponse as any)?.payment?.payment_id ||
+              '',
+          )
           if (isBackendSettledPaymentStatus(paymentContract.paymentStatus)) {
-            completeCheckout(
-              String(
-                (paymentResponse as any)?.payment_id ||
-                  (paymentResponse as any)?.payment?.payment_id ||
-                  '',
-              ),
-            )
+            await completeCheckoutForOrder(orderId, paymentIdValue)
             return
           }
-          throw new Error(
-            'Your order was created, but payment is still pending. Please check your orders page shortly.',
-          )
+          await continuePendingPaymentConfirmationForOrder(orderId, paymentIdValue)
+          return
         }
 
         // Client-owned confirmation paths.
@@ -1448,40 +2396,32 @@ function OrderFlowInner({
           return
         }
 
+        if (action?.type === 'checkout_session') {
+          throw new Error(
+            'Checkout.com payment sessions are not yet supported in shopping UI. Route this checkout to Stripe or Adyen.',
+          )
+        }
+
         const isStripePsp = !detectedPsp || detectedPsp === 'stripe'
         if (clientSecret && isStripePsp) {
-          if (!stripe || !elements) {
-            throw new Error('Payment form is not ready. Please refresh and try again.')
+          if (!stripePublishableKey) {
+            throw new Error(
+              'Stripe public key is missing for this merchant. Reconnect Stripe and try again.',
+            )
           }
-          const cardElement = elements.getElement(CardElement)
-          if (!cardElement) {
-            throw new Error('Please enter your card details to pay.')
+          const stripeReturnUrl = buildPostPayReturnUrl(orderId)
+          if (!stripeReturnUrl) {
+            throw new Error('Payment return URL is missing. Please refresh and try again.')
           }
-
-          const result = await stripe.confirmCardPayment(clientSecret, {
-            payment_method: {
-              card: cardElement,
-            },
+          const stripeResult = await stripePaymentSectionRef.current?.confirm({
+            clientSecret,
+            returnUrl: stripeReturnUrl,
+            shipping,
           })
-
-          if (result.error) {
-            setCardError(result.error.message || 'Payment failed')
-            throw new Error('Payment failed. Please check your card details or try again.')
-          }
-
-          const status = result.paymentIntent?.status
-          if (status === 'succeeded' || status === 'processing') {
-            completeCheckout(result.paymentIntent?.id || '')
-            return
-          }
-          if (status === 'requires_action') {
-            // Stripe will handle 3DS in confirmCardPayment; keep user on page
-            toast.message('Additional authentication required', {
-              description: 'Please complete the 3D Secure flow in the popup window if prompted.',
-            })
-            return
-          }
-          throw new Error('Payment could not be completed. Please try again or use a different card.')
+          await handleStripeConfirmationResult(
+            stripeResult || { error: 'Payment form is not ready. Please refresh and try again.' },
+          )
+          return
         }
 
         throw new Error(
@@ -1502,6 +2442,14 @@ function OrderFlowInner({
       }
     } catch (error: any) {
       console.error('Payment error:', error)
+      if (isCheckoutRestartRequired(error)) {
+        const message =
+          String(error?.message || '').trim() ||
+          'This checkout link is invalid or expired. Please restart checkout to continue.'
+        setCheckoutFailure({ message })
+        toast.error(message)
+        return
+      }
       const code = String(error?.code || '').trim().toUpperCase()
       const isActionRequired = isInventoryUnavailable(error)
       const isSystem =
@@ -1532,475 +2480,756 @@ function OrderFlowInner({
   }
 
   return (
-    <div className="max-w-4xl mx-auto px-4 pb-4">
-      {/* Progress Bar */}
-      <div className="mb-2">
-        <div className="flex items-center justify-between text-xs">
-          <div className={`flex items-center ${step === 'shipping' ? 'text-blue-600' : 'text-gray-400'}`}>
-            <CreditCard className="w-4 h-4" />
-            <span className="ml-2 font-medium">Shipping</span>
-          </div>
-          <ChevronRight className="w-3 h-3 text-gray-400" />
-          <div className={`flex items-center ${step === 'payment' ? 'text-blue-600' : 'text-gray-400'}`}>
-            <CreditCard className="w-4 h-4" />
-            <span className="ml-2 font-medium">Payment</span>
-          </div>
-          <ChevronRight className="w-3 h-3 text-gray-400" />
-          <div className={`flex items-center ${step === 'confirm' ? 'text-blue-600' : 'text-gray-400'}`}>
-            <Check className="w-4 h-4" />
-            <span className="ml-2 font-medium">Confirm</span>
-          </div>
+    <div className="mx-auto max-w-4xl px-3 pb-3 sm:px-4 lg:max-w-6xl lg:px-5">
+      <div className="mb-4 border-b border-slate-200/80">
+        <div className="flex items-end gap-2 overflow-x-auto pb-0.5 lg:gap-4">
+          {CHECKOUT_STEPS.map((item, index) => {
+            const isActive = item.id === step
+            const isComplete = index < stepIndex
+
+            return (
+              <div key={item.id} className="flex min-w-fit items-center gap-2 lg:gap-3">
+                <div
+                  className={`relative pb-3 text-[0.95rem] font-semibold transition-colors md:text-[1.35rem] md:leading-none ${
+                    isActive
+                      ? 'text-slate-900'
+                      : isComplete
+                        ? 'text-blue-600'
+                        : 'text-slate-400'
+                  }`}
+                >
+                  <span>{item.label}</span>
+                  {isActive ? (
+                    <span className="absolute inset-x-0 -bottom-px h-0.5 rounded-full bg-blue-500" />
+                  ) : null}
+                </div>
+                {index < CHECKOUT_STEPS.length - 1 ? (
+                  <ChevronRight className="mb-3 h-4 w-4 flex-none text-slate-300" />
+                ) : null}
+              </div>
+            )
+          })}
         </div>
       </div>
 
+      {checkoutFailure ? (
+        <div className="mb-4 rounded-[22px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+          <p className="font-semibold text-amber-900">Checkout needs to be restarted</p>
+          <p className="mt-1 text-amber-800">{checkoutFailure.message}</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                if (onCancel) {
+                  onCancel()
+                  return
+                }
+                if (typeof window !== 'undefined' && window.history.length > 1) {
+                  router.back()
+                  return
+                }
+                router.push('/')
+              }}
+              className="rounded-[16px] bg-amber-700 px-4 py-2 text-sm font-medium text-white transition hover:bg-amber-800"
+            >
+              Restart checkout
+            </button>
+            <button
+              type="button"
+              onClick={() => setCheckoutFailure(null)}
+              className="rounded-[16px] border border-amber-300 bg-white px-4 py-2 text-sm font-medium text-amber-900 transition hover:bg-amber-100"
+            >
+              Stay here
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       {/* Step Content */}
       {step === 'shipping' && (
-        <div className="bg-white rounded-lg shadow-md p-6">
-          <h2 className="text-2xl font-bold mb-6">Shipping Information</h2>
-          
-          <form onSubmit={handleShippingSubmit} className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium mb-1">Full Name</label>
-                <input
-                  type="text"
-                  required
-                  value={shipping.name}
-                  onChange={(e) => setShipping({...shipping, name: e.target.value})}
-                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                />
+        <div className={cardClassName}>
+          <form onSubmit={handleShippingSubmit} className="space-y-6 lg:space-y-0">
+            <div className="lg:grid lg:grid-cols-[minmax(0,0.88fr)_minmax(0,1.12fr)] lg:gap-5">
+              <div className="space-y-4 lg:self-start lg:rounded-[24px] lg:border lg:border-slate-200 lg:bg-[linear-gradient(180deg,rgba(246,250,255,0.96),rgba(255,255,255,0.92))] lg:p-5 lg:shadow-[0_14px_30px_rgba(15,23,42,0.05)]">
+                <section className="space-y-3 sm:space-y-4">
+                  <div className="space-y-2">
+                    <h2 className="text-[1.45rem] font-semibold tracking-tight text-slate-900 md:text-[1.6rem]">
+                      Contact
+                    </h2>
+                    <p className={`${helperTextClassName} hidden sm:block`}>
+                      For order confirmation and shipping updates.
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="block text-[13px] font-semibold text-slate-900 sm:text-sm">Email</label>
+                    <input
+                      type="email"
+                      required
+                      autoComplete="email"
+                      value={shipping.email}
+                      onChange={(e) => setShipping({ ...shipping, email: e.target.value })}
+                      className={fieldClassName}
+                    />
+                    <p className={`${helperTextClassName} hidden sm:block`}>
+                      We only use this for your receipt, shipping updates, and secure sign-in.
+                    </p>
+                  </div>
+
+                  {!user && !skipEmailVerification && (
+                    <>
+                      <div className="space-y-2 rounded-[18px] border border-slate-200 bg-slate-50/80 p-3 sm:hidden">
+                        {authMethod === 'password' ? (
+                          <>
+                            <div className="flex items-center justify-between gap-2">
+                              <p className="text-xs font-medium text-slate-700">Sign in to continue</p>
+                              <button
+                                type="button"
+                                disabled={otpLoading}
+                                onClick={() => setAuthMethod('otp')}
+                                className="text-xs font-medium text-blue-600 disabled:opacity-60"
+                              >
+                                Use email code
+                              </button>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="password"
+                                placeholder="Password"
+                                value={loginPassword}
+                                onChange={(e) => setLoginPassword(e.target.value)}
+                                className={`${fieldClassName} min-w-0 text-sm`}
+                              />
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  void handlePasswordSignIn()
+                                }}
+                                className="shrink-0 rounded-[16px] bg-blue-600 px-3.5 py-2.5 text-sm font-medium text-white transition hover:bg-blue-700 disabled:opacity-60"
+                                disabled={otpLoading || !loginPassword || !shipping.email}
+                              >
+                                {otpLoading ? '...' : 'Sign in'}
+                              </button>
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <div className="flex items-center justify-between gap-2">
+                              <p className="text-xs font-medium text-slate-700">
+                                {otpSent ? 'Enter the 6-digit code' : 'Verify email to continue'}
+                              </p>
+                              <button
+                                type="button"
+                                disabled={otpLoading}
+                                onClick={() => setAuthMethod('password')}
+                                className="text-xs font-medium text-slate-500 disabled:opacity-60"
+                              >
+                                Password
+                              </button>
+                            </div>
+                            {otpSent ? (
+                              <div className="flex items-center gap-2">
+                                <input
+                                  placeholder="6-digit code"
+                                  value={otp}
+                                  onChange={(e) => setOtp(e.target.value)}
+                                  className={`${fieldClassName} min-w-0 text-sm`}
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    void handleVerifyOtp()
+                                  }}
+                                  className="shrink-0 rounded-[16px] bg-blue-600 px-3.5 py-2.5 text-sm font-medium text-white transition hover:bg-blue-700 disabled:opacity-60"
+                                  disabled={otpLoading || !otp || !shipping.email}
+                                >
+                                  Verify
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  void handleSendOtp()
+                                }}
+                                className="w-full rounded-[16px] border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-100 disabled:opacity-60"
+                                disabled={otpLoading || !shipping.email}
+                              >
+                                {otpLoading ? 'Sending...' : 'Send code'}
+                              </button>
+                            )}
+                          </>
+                        )}
+                        {verifiedEmail === shipping.email.trim() ? (
+                          <p className="text-xs text-green-600">Email verified.</p>
+                        ) : null}
+                      </div>
+
+                      <div className="hidden rounded-[20px] border border-slate-200 bg-slate-50/80 p-3.5 sm:block">
+                        <div className="flex flex-wrap gap-1.5 text-[11px] sm:text-xs">
+                          <button
+                            type="button"
+                            disabled={otpLoading}
+                            onClick={() => setAuthMethod('password')}
+                            className={`rounded-full border px-2.5 py-1 font-medium transition ${
+                              authMethod === 'password'
+                                ? 'border-blue-600 bg-blue-600 text-white'
+                                : 'border-slate-200 bg-white text-slate-700'
+                            } disabled:opacity-60`}
+                          >
+                            Password
+                          </button>
+                          <button
+                            type="button"
+                            disabled={otpLoading}
+                            onClick={() => setAuthMethod('otp')}
+                            className={`rounded-full border px-3 py-1.5 font-medium transition ${
+                              authMethod === 'otp'
+                                ? 'border-blue-600 bg-blue-600 text-white'
+                                : 'border-slate-200 bg-white text-slate-700'
+                            } disabled:opacity-60`}
+                          >
+                            Email code
+                          </button>
+                        </div>
+
+                        <div className="mt-2.5 space-y-2.5">
+                          {authMethod === 'password' ? (
+                            <div className="flex flex-col gap-2 sm:flex-row">
+                              <input
+                                type="password"
+                                placeholder="Password"
+                                value={loginPassword}
+                                onChange={(e) => setLoginPassword(e.target.value)}
+                                className={`${fieldClassName} text-sm`}
+                              />
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  void handlePasswordSignIn()
+                                }}
+                                className="rounded-[18px] bg-blue-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-blue-700 disabled:opacity-60"
+                                disabled={otpLoading || !loginPassword || !shipping.email}
+                              >
+                                {otpLoading ? 'Signing in...' : 'Sign in'}
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="space-y-2">
+                              <div className="flex flex-col gap-2 sm:flex-row">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    void handleSendOtp()
+                                  }}
+                                  className="rounded-[18px] border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-100 disabled:opacity-60"
+                                  disabled={otpLoading || !shipping.email}
+                                >
+                                  {otpLoading ? 'Sending...' : otpSent ? 'Resend code' : 'Send code'}
+                                </button>
+                                {!otpSent ? (
+                                  <p className="flex items-center text-xs text-slate-500">
+                                    Send a 6-digit code to verify this email.
+                                  </p>
+                                ) : null}
+                              </div>
+
+                              {otpSent ? (
+                                <div className="flex flex-col gap-2 sm:flex-row">
+                                  <input
+                                    placeholder="6-digit code"
+                                    value={otp}
+                                    onChange={(e) => setOtp(e.target.value)}
+                                    className={`${fieldClassName} text-sm`}
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      void handleVerifyOtp()
+                                    }}
+                                    className="rounded-[18px] bg-blue-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-blue-700 disabled:opacity-60"
+                                    disabled={otpLoading || !otp || !shipping.email}
+                                  >
+                                    Verify
+                                  </button>
+                                </div>
+                              ) : null}
+                            </div>
+                          )}
+                          {verifiedEmail === shipping.email.trim() ? (
+                            <p className="text-xs text-green-600">Email verified.</p>
+                          ) : null}
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </section>
+
+                <div className="hidden lg:block rounded-[20px] border border-blue-100/80 bg-gradient-to-br from-blue-50 via-white to-sky-50 p-4">
+                  <div className="flex items-start gap-3">
+                    <Info className="mt-0.5 h-4 w-4 flex-none text-blue-500" />
+                    <div className="space-y-1.5">
+                      <p className="text-[13px] font-semibold text-slate-900">Quotes use region fields, not street validation</p>
+                      <p className="text-[13px] leading-5 text-slate-600">
+                        Country, state or region, city, and postal code drive the estimate. Street address stays fully manual for delivery details.
+                      </p>
+                    </div>
+                  </div>
+                </div>
               </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Email</label>
-                <input
-                  type="email"
-                  required
-                  value={shipping.email}
-                  onChange={(e) => setShipping({...shipping, email: e.target.value})}
-                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                />
-                {!user && !skipEmailVerification && (
-                  <div className="mt-3 space-y-2">
-                    <div className="flex gap-2 text-xs">
-                      <button
-                        type="button"
-                        disabled={otpLoading}
-                        onClick={() => setAuthMethod('password')}
-                        className={`px-3 py-1.5 rounded-lg border ${
-                          authMethod === 'password'
-                            ? 'bg-blue-600 text-white border-blue-600'
-                            : 'bg-white text-gray-700 border-gray-200'
-                        } disabled:opacity-60`}
-                      >
-                        Password
-                      </button>
-                      <button
-                        type="button"
-                        disabled={otpLoading}
-                        onClick={() => setAuthMethod('otp')}
-                        className={`px-3 py-1.5 rounded-lg border ${
-                          authMethod === 'otp'
-                            ? 'bg-blue-600 text-white border-blue-600'
-                            : 'bg-white text-gray-700 border-gray-200'
-                        } disabled:opacity-60`}
-                      >
-                        Email code
-                      </button>
+
+              <div className="mt-4 space-y-4 lg:mt-0 lg:space-y-4 lg:rounded-[24px] lg:border lg:border-slate-200 lg:bg-white/92 lg:p-5 lg:shadow-[0_14px_30px_rgba(15,23,42,0.05)]">
+                <section className="space-y-3 sm:space-y-4 border-t border-slate-200 pt-4 sm:pt-5 lg:border-t-0 lg:pt-0">
+                  <div className="space-y-2">
+                    <h3 className="text-[1.45rem] font-semibold tracking-tight text-slate-900 md:text-[1.6rem]">
+                      Shipping address
+                    </h3>
+                    <p className={helperTextClassName}>
+                      <span className="sm:hidden">Quote uses country, region, city, and postal code.</span>
+                      <span className="hidden sm:inline">
+                        Shipping and tax estimates rely on country, region, city, and postal code. Street address is collected for delivery.
+                      </span>
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="mb-1.5 block text-[13px] font-semibold text-slate-900 sm:text-sm">Full name</label>
+                      <input
+                        type="text"
+                        required
+                        autoComplete="name"
+                        value={shipping.name}
+                        onChange={(e) => setShipping({ ...shipping, name: e.target.value })}
+                        onBlur={() => setShipping((prev) => ({ ...prev, name: collapseWhitespace(prev.name) }))}
+                        className={fieldClassName}
+                      />
                     </div>
 
-                    {authMethod === 'password' ? (
-                      <div className="flex flex-col sm:flex-row gap-2">
-                        <input
-                          type="password"
-                          placeholder="Password"
-                          value={loginPassword}
-                          onChange={(e) => setLoginPassword(e.target.value)}
-                          className="flex-1 rounded-lg border border-gray-200 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                        />
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            setOtpLoading(true)
-                            try {
-                              const data = await accountsLoginWithPassword(
-                                shipping.email.trim(),
-                                loginPassword,
-                              )
-                              setSession({
-                                user: (data as any).user,
-                                memberships: (data as any).memberships || [],
-                                active_merchant_id: (data as any).active_merchant_id,
-                              })
-                              setVerifiedEmail(shipping.email.trim())
-                              setLoginPassword('')
-                              toast.success('Signed in')
-                            } catch (err: any) {
-                              const code = err?.code
-                              if (code === 'NO_PASSWORD') {
-                                toast.error('No password is set. Use email code once, then set a password.')
-                                setAuthMethod('otp')
-                              } else if (code === 'INVALID_CREDENTIALS') {
-                                toast.error('Email or password is incorrect')
-                              } else {
-                                toast.error(err?.message || 'Sign in failed')
-                              }
-                            } finally {
-                              setOtpLoading(false)
-                            }
-                          }}
-                          className="px-3 py-2 rounded-lg bg-blue-600 text-white text-sm disabled:opacity-60"
-                          disabled={otpLoading || !loginPassword || !shipping.email}
+                    <div>
+                      <label className="mb-1.5 block text-[13px] font-semibold text-slate-900 sm:text-sm">
+                        <span className="sm:hidden">Country</span>
+                        <span className="hidden sm:inline">Country / Region</span>
+                      </label>
+                      <div className="relative">
+                        <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-lg">
+                          {getCountryFlagEmoji(shipping.country)}
+                        </span>
+                        <select
+                          value={shipping.country}
+                          autoComplete="country"
+                          onChange={(e) => setShipping({ ...shipping, country: e.target.value })}
+                          className={`${fieldClassName} appearance-none pl-12 pr-10`}
                         >
-                          {otpLoading ? 'Signing in...' : 'Sign in'}
-                        </button>
+                          {SHIPPING_COUNTRY_GROUPS.map((group) => (
+                            <optgroup key={group.label} label={group.label}>
+                              {group.countries.map((country) => (
+                                <option key={country.code} value={country.code}>
+                                  {country.name}
+                                </option>
+                              ))}
+                            </optgroup>
+                          ))}
+                        </select>
+                        <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                      </div>
+                    </div>
+
+                    <div className="relative col-span-2">
+                      <label className="mb-1.5 block text-[13px] font-semibold text-slate-900 sm:text-sm">Street address</label>
+                      <div>
+                        <input
+                          type="text"
+                          required
+                          autoComplete="address-line1"
+                          placeholder="Street address"
+                          value={shipping.address_line1}
+                          onChange={(e) => setShipping({ ...shipping, address_line1: e.target.value })}
+                          onBlur={() =>
+                            setShipping((prev) => ({
+                              ...prev,
+                              address_line1: collapseWhitespace(prev.address_line1),
+                            }))
+                          }
+                          className={fieldClassName}
+                        />
+                      </div>
+                    </div>
+
+                    {showAddressLine2Mobile || shipping.address_line2 ? (
+                      <div className="col-span-2">
+                        <label className="mb-1.5 block text-[13px] font-semibold text-slate-900 sm:text-sm">
+                          Apt, suite, etc. <span className="font-normal text-slate-400">(optional)</span>
+                        </label>
+                        <input
+                          type="text"
+                          autoComplete="address-line2"
+                          value={shipping.address_line2 || ''}
+                          onChange={(e) => setShipping({ ...shipping, address_line2: e.target.value })}
+                          onBlur={() =>
+                            setShipping((prev) => ({
+                              ...prev,
+                              address_line2: collapseWhitespace(prev.address_line2),
+                            }))
+                          }
+                          className={fieldClassName}
+                        />
                       </div>
                     ) : (
-                      <div className="flex flex-col sm:flex-row gap-2">
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            setOtpLoading(true)
-                            try {
-                              await accountsLogin(shipping.email.trim())
-                              setOtpSent(true)
-                              toast.success('Code sent to your email')
-                            } catch (err: any) {
-                              const code = err?.code
-                              if (code === 'INVALID_INPUT') toast.error('Please enter a valid email')
-                              else if (code === 'RATE_LIMITED')
-                                toast.error('Too many requests, please retry later')
-                              else toast.error(err?.message || 'Failed to send code')
-                            } finally {
-                              setOtpLoading(false)
+                      <>
+                        <div className="col-span-2 sm:hidden">
+                          <button
+                            type="button"
+                            onClick={() => setShowAddressLine2Mobile(true)}
+                            className="text-[13px] font-medium text-slate-500 transition hover:text-slate-700"
+                          >
+                            + Add apt, suite, etc. (optional)
+                          </button>
+                        </div>
+                        <div className="col-span-2 hidden sm:block">
+                          <label className="mb-1.5 block text-[13px] font-semibold text-slate-900 sm:text-sm">
+                            Apt, suite, etc. <span className="font-normal text-slate-400">(optional)</span>
+                          </label>
+                          <input
+                            type="text"
+                            autoComplete="address-line2"
+                            value={shipping.address_line2 || ''}
+                            onChange={(e) => setShipping({ ...shipping, address_line2: e.target.value })}
+                            onBlur={() =>
+                              setShipping((prev) => ({
+                                ...prev,
+                                address_line2: collapseWhitespace(prev.address_line2),
+                              }))
                             }
-                          }}
-                          className="px-3 py-2 rounded-lg bg-secondary hover:bg-secondary/80 text-sm"
-                          disabled={otpLoading || !shipping.email}
-                        >
-                          {otpLoading ? 'Sending...' : otpSent ? 'Resend code' : 'Send code'}
-                        </button>
+                            className={fieldClassName}
+                          />
+                        </div>
+                      </>
+                    )}
+
+                    <div className="col-span-2 grid grid-cols-[minmax(0,1.15fr)_minmax(0,0.7fr)_minmax(0,0.9fr)] gap-3">
+                      <div>
+                        <label className="mb-1.5 block text-[13px] font-semibold text-slate-900 sm:text-sm">City</label>
                         <input
-                          placeholder="6-digit code"
-                          value={otp}
-                          onChange={(e) => setOtp(e.target.value)}
-                          className="flex-1 rounded-lg border border-gray-200 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                          type="text"
+                          required
+                          autoComplete="address-level2"
+                          value={shipping.city}
+                          onChange={(e) => setShipping({ ...shipping, city: e.target.value })}
+                          onBlur={() => setShipping((prev) => ({ ...prev, city: collapseWhitespace(prev.city) }))}
+                          className={fieldClassName}
                         />
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            setOtpLoading(true)
-                            try {
-                              const data = await accountsVerify(shipping.email.trim(), otp.trim())
-                              setSession({
-                                user: (data as any).user,
-                                memberships: (data as any).memberships || [],
-                                active_merchant_id: (data as any).active_merchant_id,
-                              })
-                              setVerifiedEmail(shipping.email.trim())
-                              toast.success('Email verified and logged in')
-                            } catch (err: any) {
-                              const code = err?.code
-                              if (code === 'INVALID_OTP') toast.error('Code invalid or expired')
-                              else if (code === 'RATE_LIMITED')
-                                toast.error('Too many attempts, please retry later')
-                              else toast.error(err?.message || 'Verification failed')
-                            } finally {
-                              setOtpLoading(false)
-                            }
-                          }}
-                          className="px-3 py-2 rounded-lg bg-blue-600 text-white text-sm disabled:opacity-60"
-                          disabled={otpLoading || !otp || !shipping.email}
-                        >
-                          Verify
-                        </button>
                       </div>
-                    )}
-                    {verifiedEmail === shipping.email.trim() && (
-                      <p className="text-xs text-green-600">Email verified</p>
-                    )}
+                      <div>
+                        <label className="mb-1.5 block text-[13px] font-semibold text-slate-900 sm:text-sm">State</label>
+                        <input
+                          type="text"
+                          autoComplete="address-level1"
+                          value={shipping.state || ''}
+                          onChange={(e) => setShipping({ ...shipping, state: e.target.value })}
+                          onBlur={() =>
+                            setShipping((prev) => ({
+                              ...prev,
+                              state: collapseWhitespace(prev.state),
+                            }))
+                          }
+                          className={fieldClassName}
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-1.5 block text-[13px] font-semibold text-slate-900 sm:text-sm">
+                          <span className="sm:hidden">Postal</span>
+                          <span className="hidden sm:inline">Postal code</span>
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          autoComplete="postal-code"
+                          value={shipping.postal_code}
+                          onChange={(e) => setShipping({ ...shipping, postal_code: e.target.value })}
+                          onBlur={() =>
+                            setShipping((prev) => ({
+                              ...prev,
+                              postal_code: normalizePostalCodeValue(prev.postal_code),
+                            }))
+                          }
+                          className={fieldClassName}
+                        />
+                      </div>
+                    </div>
                   </div>
-                )}
+                </section>
+
+                <section className="space-y-3 pt-1 lg:pt-2">
+                  <button
+                    type="submit"
+                    className="w-full rounded-[20px] bg-gradient-to-r from-blue-500 to-blue-600 px-5 py-3 text-base font-semibold text-white shadow-[0_12px_24px_rgba(59,130,246,0.24)] transition hover:from-blue-600 hover:to-blue-700 disabled:cursor-not-allowed disabled:from-slate-300 disabled:to-slate-300"
+                    disabled={isProcessing}
+                  >
+                    {isProcessing ? 'Processing...' : 'Continue to payment'}
+                  </button>
+
+                  <div className="flex items-center justify-between gap-3 text-[13px] text-slate-500">
+                    <button
+                      type="button"
+                      onClick={() => onCancel?.()}
+                      className="font-medium text-slate-500 transition hover:text-slate-700 disabled:opacity-60"
+                      disabled={isProcessing}
+                    >
+                      Back
+                    </button>
+                    <div className="flex items-center gap-1.5">
+                      <Lock className="h-3.5 w-3.5" />
+                      <span>Secure checkout</span>
+                    </div>
+                  </div>
+                </section>
               </div>
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium mb-1">Address Line 1</label>
-              <input
-                type="text"
-                required
-                value={shipping.address_line1}
-                onChange={(e) => setShipping({...shipping, address_line1: e.target.value})}
-                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium mb-1">Address Line 2 (Optional)</label>
-              <input
-                type="text"
-                value={shipping.address_line2}
-                onChange={(e) => setShipping({...shipping, address_line2: e.target.value})}
-                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-            
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div>
-                <label className="block text-sm font-medium mb-1">City</label>
-                <input
-                  type="text"
-                  required
-                  value={shipping.city}
-                  onChange={(e) => setShipping({...shipping, city: e.target.value})}
-                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">State</label>
-                <input
-                  type="text"
-                  value={shipping.state || ''}
-                  onChange={(e) => setShipping({...shipping, state: e.target.value})}
-                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Postal Code</label>
-                <input
-                  type="text"
-                  required
-                  value={shipping.postal_code}
-                  onChange={(e) => setShipping({...shipping, postal_code: e.target.value})}
-                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Country</label>
-                <select
-                  value={shipping.country}
-                  onChange={(e) => setShipping({...shipping, country: e.target.value})}
-                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                >
-                  {SHIPPING_COUNTRY_GROUPS.map((group) => (
-                    <optgroup key={group.label} label={group.label}>
-                      {group.countries.map((country) => (
-                        <option key={country.code} value={country.code}>
-                          {country.name}
-                        </option>
-                      ))}
-                    </optgroup>
-                  ))}
-                </select>
-              </div>
-            </div>
-            
-            <div className="flex justify-between mt-6">
-              <button
-                type="button"
-                onClick={() => onCancel?.()}
-                className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-60"
-                disabled={isProcessing}
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed"
-                disabled={isProcessing}
-              >
-                {isProcessing ? 'Processing...' : 'Continue to Payment'}
-              </button>
             </div>
           </form>
         </div>
       )}
 
       {step === 'payment' && (
-        <div className="bg-white rounded-lg shadow-md p-6">
-          <h2 className="text-2xl font-bold mb-6">Payment Method</h2>
-          <div className="mb-3 text-sm text-muted-foreground">
-            <span>Payment provider: </span>
-            <span className="font-medium text-foreground">
-              {pspUsed === 'adyen'
-                ? 'Adyen (hosted card form)'
-                : 'Stripe (card payment)'}
-            </span>
-          </div>
-          {paymentInitLoading && (
-            <p className="mb-3 text-xs text-muted-foreground">
-              Preparing payment session…
-            </p>
-          )}
-          {paymentInitError && (
-            <p className="mb-3 text-xs text-red-600">
-              {paymentInitError}
-            </p>
-          )}
-          {hasQuote && (
-            <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
-              <div className="flex gap-2">
-                <Info className="mt-0.5 h-4 w-4 flex-none text-blue-700" />
-                <div className="space-y-1">
-                  <p>
-                    Prices shown and charged in{' '}
-                    <span className="font-medium">{String(currency).toUpperCase()}</span>.
-                  </p>
-                  <details className="text-xs text-blue-900/90">
-                    <summary className="cursor-pointer select-none">
-                      {itemCurrencies.length === 1 && itemCurrencies[0] !== String(currency).toUpperCase()
-                        ? 'Currency & conversion details'
-                        : 'Currency details'}
-                    </summary>
-                    <div className="mt-1 space-y-1">
-                      <p>Amounts are based on the merchant&apos;s store quote for your shipping address.</p>
-                      {itemCurrencies.length === 1 &&
-                        itemCurrencies[0] !== String(currency).toUpperCase() && (
-                          <p>
-                            This merchant lists items in{' '}
-                            <span className="font-medium">{itemCurrencies[0]}</span>; amounts are converted
-                            for checkout.
-                          </p>
-                        )}
-                      <p>
-                        Your bank may apply additional FX fees if your card/account uses a different currency.
-                      </p>
-                    </div>
-                  </details>
+        <div className={cardClassName}>
+          <div className="space-y-4 lg:grid lg:grid-cols-[minmax(0,1.1fr)_minmax(300px,360px)] lg:items-start lg:gap-5 lg:space-y-0">
+            <div className="space-y-3">
+              <div className="space-y-1.5">
+                <h2 className="text-[1.45rem] font-semibold tracking-tight text-slate-900 md:text-[1.6rem]">
+                  Payment Method
+                </h2>
+                <div className="text-[13px] text-slate-500">
+                  <span>Payment provider: </span>
+                  <span className="font-medium text-slate-900">
+                    {paymentProviderLabel}
+                  </span>
                 </div>
-              </div>
-            </div>
-          )}
-          
-          <div className="space-y-4">
-            <div className="border rounded-lg p-4">
-              <div className="flex items-center gap-2 mb-3">
-                <ShoppingCart className="w-5 h-5" />
-                <p className="font-medium">Items</p>
-              </div>
-              <div className="space-y-3">
-                {items.map((item, index) => (
-                  <div key={index} className="flex items-center justify-between">
-                    <div className="flex items-center">
-                      {item.image_url && (
-                        <Image
-                          src={item.image_url}
-                          alt={item.title}
-                          width={48}
-                          height={48}
-                          className="w-12 h-12 object-cover rounded mr-3"
-                        />
-                      )}
-                      <div>
-                        <p className="font-medium text-sm">{item.title}</p>
-                        <p className="text-xs text-gray-600">Qty: {item.quantity}</p>
-                      </div>
-                    </div>
-                    <p className="text-sm font-medium">
-                      {(() => {
-                        const variantId = getVariantIdForItem(item)
-                        const li = variantId ? quoteLineItemByVariantId.get(variantId) : null
-                        const unitPriceEffective = Number((li as any)?.unit_price_effective)
-                        const qty = Number((li as any)?.quantity ?? item.quantity)
-                        if (hasQuote && Number.isFinite(unitPriceEffective)) {
-                          return formatAmount(unitPriceEffective * (Number.isFinite(qty) ? qty : item.quantity))
-                        }
-                        // Fallback: best-effort estimate (legacy flows / quote failures).
-                        return formatAmount(item.unit_price * item.quantity)
-                      })()}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </div>
-            {deliveryOptions.length > 1 ? (
-              <div className="border rounded-lg p-4">
-                <label className="block text-sm font-medium mb-2">Shipping method</label>
-                <select
-                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                  disabled={quotePending || isProcessing}
-                  value={Math.max(0, deliveryOptions.findIndex((o) => JSON.stringify(o) === JSON.stringify(selectedDeliveryOption)))}
-                  onChange={async (e) => {
-                    const idx = Number(e.target.value) || 0
-                    const opt = deliveryOptions[idx]
-                    if (!opt) return
-                    try {
-                      await refreshQuoteWithRetry(opt)
-                    } catch (err: any) {
-                      console.error('refreshQuote failed', err)
-                      if (isInventoryUnavailable(err)) {
-                        if (onFailure) onFailure({ reason: 'action_required', stage: 'payment' })
-                        return
-                      }
-                      toast.error(err?.message || 'Failed to update shipping option')
-                    }
-                  }}
-                >
-                  {deliveryOptions.map((opt, idx) => {
-                    const label =
-                      opt?.title ||
-                      opt?.name ||
-                      opt?.label ||
-                      opt?.code ||
-                      opt?.id ||
-                      `Option ${idx + 1}`
-                    const price =
-                      opt?.price ??
-                      opt?.amount ??
-                      opt?.cost ??
-                      opt?.shipping_fee ??
-                      null
-                    const priceNum = price != null ? Number(price) : NaN
-                    const suffix = Number.isFinite(priceNum) ? ` (${formatAmount(priceNum)})` : ''
-                    return (
-                      <option key={String(opt?.id || idx)} value={idx}>
-                        {String(label)}{suffix}
-                      </option>
-                    )
-                  })}
-                </select>
-                {quotePending && (
-                  <p className="text-xs text-muted-foreground mt-2">Updating totals…</p>
+                {paymentInitLoading && (
+                  <p className="text-xs text-slate-500">
+                    Preparing payment session…
+                  </p>
                 )}
-              </div>
-            ) : null}
-            {paymentActionType === 'adyen_session' ? (
-              <div className="border rounded-lg p-4">
-                <p className="font-medium mb-2">Adyen payment</p>
-                <div ref={adyenContainerRef} className="mt-2" />
-                {!adyenMounted && (
-                  <p className="text-xs text-muted-foreground">
-                    The secure Adyen payment form is initializing…
+                {(pspUsed === 'stripe' || paymentActionType === 'stripe_client_secret') && !isExternalRedirectPayment && (
+                  <p className="text-xs text-slate-500">
+                    Available methods are decided by the merchant Stripe setup and the current payment context.
+                  </p>
+                )}
+                {paymentInitError && (
+                  <p className="text-xs text-red-600">
+                    {paymentInitError}
                   </p>
                 )}
               </div>
-            ) : (
-              <>
-                <div className="border rounded-lg p-4 cursor-pointer hover:border-blue-500 transition-colors">
-                  <div className="flex items-center">
-                    <input type="radio" name="payment" defaultChecked className="mr-3" />
-                    <CreditCard className="w-6 h-6 mr-3" />
-                    <div>
-                      <p className="font-medium">Credit/Debit Card</p>
-                      <p className="text-sm text-gray-600">Secure payment</p>
+
+              {hasQuote && (
+                <div className="rounded-[18px] border border-blue-200 bg-blue-50 p-3 text-[13px] text-blue-900">
+                  <div className="flex gap-2">
+                    <Info className="mt-0.5 h-4 w-4 flex-none text-blue-700" />
+                    <div className="space-y-1">
+                      <p>
+                        Prices shown and charged in{' '}
+                        <span className="font-medium">{String(currency).toUpperCase()}</span>.
+                      </p>
+                      <details className="text-xs text-blue-900/90">
+                        <summary className="cursor-pointer select-none">
+                          {itemCurrencies.length === 1 && itemCurrencies[0] !== String(currency).toUpperCase()
+                            ? 'Currency & conversion details'
+                            : 'Currency details'}
+                        </summary>
+                        <div className="mt-1 space-y-1">
+                          <p>Amounts are based on the merchant&apos;s store quote for your shipping address.</p>
+                          {itemCurrencies.length === 1 &&
+                            itemCurrencies[0] !== String(currency).toUpperCase() && (
+                              <p>
+                                This merchant lists items in{' '}
+                                <span className="font-medium">{itemCurrencies[0]}</span>; amounts are converted
+                                for checkout.
+                              </p>
+                            )}
+                          <p>
+                            Your bank may apply additional FX fees if your card/account uses a different currency.
+                          </p>
+                        </div>
+                      </details>
                     </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-3">
+                <div className="rounded-[20px] border border-slate-200 bg-white p-3 sm:p-4">
+                  <div className="mb-2.5 flex items-center gap-2">
+                    <ShoppingCart className="h-4 w-4 sm:h-5 sm:w-5" />
+                    <p className="text-sm font-medium sm:text-base">Items</p>
+                  </div>
+                  <div className="space-y-2.5">
+                    {items.map((item, index) => (
+                      <div key={index} className="flex items-center justify-between gap-3">
+                        <div className="flex min-w-0 items-center">
+                          {item.image_url && (
+                            <Image
+                              src={item.image_url}
+                              alt={item.title}
+                              width={40}
+                              height={40}
+                              className="mr-3 h-10 w-10 rounded object-cover"
+                            />
+                          )}
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-medium">{item.title}</p>
+                            <p className="text-xs text-slate-500">Qty: {item.quantity}</p>
+                          </div>
+                        </div>
+                        <p className="shrink-0 text-sm font-medium">
+                          {(() => {
+                            const variantId = getVariantIdForItem(item)
+                            const li = variantId ? quoteLineItemByVariantId.get(variantId) : null
+                            const unitPriceEffective = Number((li as any)?.unit_price_effective)
+                            const qty = Number((li as any)?.quantity ?? item.quantity)
+                            if (hasQuote && Number.isFinite(unitPriceEffective)) {
+                              return formatAmount(unitPriceEffective * (Number.isFinite(qty) ? qty : item.quantity))
+                            }
+                            return formatAmount(item.unit_price * item.quantity)
+                          })()}
+                        </p>
+                      </div>
+                    ))}
                   </div>
                 </div>
 
-                {publishableKey && (
-                  <div className="border rounded-lg p-4">
-                    <label className="text-sm font-medium text-gray-700">Card Details</label>
-                    <div className="mt-2 p-3 border rounded bg-gray-50">
-                      <CardElement options={{ hidePostalCode: true }} />
-                    </div>
-                    {cardError && <p className="text-sm text-red-600 mt-2">{cardError}</p>}
+                {deliveryOptions.length > 1 ? (
+                  <div className="rounded-[20px] border border-slate-200 bg-white p-3 sm:p-4">
+                    <label className="mb-1.5 block text-[13px] font-medium text-slate-900 sm:text-sm">
+                      Shipping method
+                    </label>
+                    <select
+                      className="w-full rounded-[16px] border border-slate-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-4 focus:ring-blue-100"
+                      disabled={quotePending || isProcessing}
+                      value={Math.max(
+                        0,
+                        deliveryOptions.findIndex(
+                          (o) => JSON.stringify(o) === JSON.stringify(selectedDeliveryOption),
+                        ),
+                      )}
+                      onChange={async (e) => {
+                        const idx = Number(e.target.value) || 0
+                        const opt = deliveryOptions[idx]
+                        if (!opt) return
+                        try {
+                          await refreshQuoteWithRetry(opt)
+                        } catch (err: any) {
+                          console.error('refreshQuote failed', err)
+                          if (isInventoryUnavailable(err)) {
+                            if (onFailure) onFailure({ reason: 'action_required', stage: 'payment' })
+                            return
+                          }
+                          toast.error(err?.message || 'Failed to update shipping option')
+                        }
+                      }}
+                    >
+                      {deliveryOptions.map((opt, idx) => {
+                        const label =
+                          opt?.title ||
+                          opt?.name ||
+                          opt?.label ||
+                          opt?.code ||
+                          opt?.id ||
+                          `Option ${idx + 1}`
+                        const price =
+                          opt?.price ??
+                          opt?.amount ??
+                          opt?.cost ??
+                          opt?.shipping_fee ??
+                          null
+                        const priceNum = price != null ? Number(price) : NaN
+                        const suffix = Number.isFinite(priceNum) ? ` (${formatAmount(priceNum)})` : ''
+                        return (
+                          <option key={String(opt?.id || idx)} value={idx}>
+                            {String(label)}
+                            {suffix}
+                          </option>
+                        )
+                      })}
+                    </select>
+                    {quotePending && (
+                      <p className="mt-2 text-xs text-slate-500">Updating totals…</p>
+                    )}
                   </div>
+                ) : null}
+
+                {paymentActionType === 'adyen_session' ? (
+                  <div className="rounded-[20px] border border-slate-200 bg-white p-3 sm:p-4">
+                    <p className="mb-2 text-sm font-medium sm:text-base">Adyen payment</p>
+                    <div ref={adyenContainerRef} className="mt-2" />
+                    {!adyenMounted && (
+                      <p className="text-xs text-slate-500">
+                        The secure Adyen payment form is initializing…
+                      </p>
+                    )}
+                  </div>
+                ) : paymentActionType === 'checkout_session' ? (
+                  <div className="rounded-[20px] border border-amber-200 bg-amber-50 p-3 sm:p-4">
+                    <p className="text-sm font-medium text-amber-900">
+                      Checkout.com embedded payment is not available in shopping UI yet.
+                    </p>
+                    <p className="mt-1 text-xs text-amber-800">
+                      Route this checkout to Stripe or Adyen, or use an internal canary path for PSP-only testing.
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    <div className="cursor-pointer rounded-[20px] border border-slate-200 bg-white p-3 transition-colors hover:border-blue-500 sm:p-4">
+                      <div className="flex items-center">
+                        <input type="radio" name="payment" defaultChecked className="mr-3" />
+                        <CreditCard className="mr-3 h-5 w-5 sm:h-6 sm:w-6" />
+                        <div>
+                          <p className="text-sm font-medium sm:text-base">Secure payment methods</p>
+                          <p className="text-xs text-slate-500 sm:text-sm">
+                            Cards, wallets, and other supported merchant payment methods
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {isExternalRedirectPayment ? (
+                      <div className="rounded-[20px] border border-slate-200 bg-white p-3 sm:p-4">
+                        <p className="text-sm font-medium text-slate-900">
+                          Continue to the merchant payment page
+                        </p>
+                        <p className="mt-1 text-xs text-slate-500">
+                          We will redirect you to finish payment on the merchant payment surface.
+                        </p>
+                      </div>
+                    ) : stripePublishableKey && stripeClientSecretForRender ? (
+                      <StripePaymentSection
+                        ref={stripePaymentSectionRef}
+                        clientSecret={stripeClientSecretForRender}
+                        publishableKey={stripePublishableKey}
+                        stripeAccount={stripeAccount}
+                        returnUrl={stripeReturnUrlForRender}
+                        shipping={shipping}
+                        onPaymentError={setCardError}
+                        onPaymentMethodChange={setStripeSelectedMethodType}
+                        onConfirmationResult={handleStripeConfirmationResult}
+                      />
+                    ) : paymentActionType === 'stripe_client_secret' || pspUsed === 'stripe' ? (
+                      <div className="rounded-[20px] border border-red-200 bg-red-50 p-3 sm:p-4">
+                        <p className="text-sm font-medium text-red-700">
+                          Stripe payment setup is incomplete for this merchant.
+                        </p>
+                        <p className="mt-1 text-xs text-red-600">
+                          Refresh the payment session or reconnect Stripe, then retry checkout.
+                        </p>
+                      </div>
+                    ) : null}
+                  </>
                 )}
-              </>
-            )}
-            
-            <div className="mt-6">
-              <h3 className="font-medium mb-4">Order Summary</h3>
-              <div className="bg-gray-50 rounded-lg p-4">
+              </div>
+            </div>
+
+            <div className="space-y-3 lg:sticky lg:top-4">
+              <div className="rounded-[20px] border border-slate-200 bg-slate-50/90 p-4">
+                <h3 className="mb-3 text-sm font-medium text-slate-900 sm:text-base">Order Summary</h3>
                 <div className="space-y-1 text-sm">
                   <div className="flex justify-between">
                     <span>Subtotal</span>
@@ -2020,13 +3249,13 @@ function OrderFlowInner({
                     <span>Tax</span>
                     <span>{formatAmount(tax)}</span>
                   </div>
-                  <div className="flex justify-between font-semibold text-base pt-1">
+                  <div className="flex justify-between pt-1 text-base font-semibold">
                     <span>Total</span>
                     <span>{formatAmount(total)}</span>
                   </div>
                 </div>
                 {discount_total > 0 && (quote?.promotion_lines?.length || 0) > 0 ? (
-                  <div className="mt-2 text-xs text-gray-600">
+                  <div className="mt-2 text-xs text-slate-600">
                     {(quote?.promotion_lines || [])
                       .map((p) => String(p?.label || '').trim())
                       .filter(Boolean)
@@ -2038,7 +3267,7 @@ function OrderFlowInner({
                       ))}
                   </div>
                 ) : null}
-                <div className="text-sm text-gray-600">
+                <div className="mt-3 text-[13px] leading-5 text-slate-500">
                   <p>Ship to: {shipping.name}</p>
                   <p>
                     {shipping.address_line1}, {shipping.city}
@@ -2046,34 +3275,30 @@ function OrderFlowInner({
                   </p>
                 </div>
               </div>
-            </div>
-            
-            <div className="flex justify-between mt-6">
-              <button
-                onClick={() => setStep('shipping')}
-                className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
-                disabled={isProcessing}
-              >
-                Back
-              </button>
-              <button
-                onClick={handlePayment}
-                disabled={isProcessing || paymentInitLoading}
-                className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
-              >
-                {isProcessing
-                  ? 'Processing...'
-                  : paymentInitLoading
-                    ? 'Preparing payment...'
-                    : `Pay ${formatAmount(total)}`}
-              </button>
+
+              <div className="flex items-center justify-between gap-3 lg:flex-col lg:items-stretch">
+                <button
+                  onClick={() => setStep('shipping')}
+                  className="rounded-[18px] border border-slate-300 px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                  disabled={isProcessing}
+                >
+                  Back
+                </button>
+                <button
+                  onClick={handlePayment}
+                  disabled={isProcessing || paymentInitLoading}
+                  className="rounded-[18px] bg-green-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:bg-slate-300 lg:w-full"
+                >
+                  {paymentButtonLabel}
+                </button>
+              </div>
             </div>
           </div>
         </div>
       )}
 
       {step === 'confirm' && (
-        <div className="bg-white rounded-lg shadow-md p-6 text-center">
+        <div className={`${cardClassName} text-center`}>
           <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
             <Check className="w-8 h-8 text-green-600" />
           </div>
@@ -2110,10 +3335,5 @@ function OrderFlowInner({
 }
 
 export default function OrderFlow(props: OrderFlowProps) {
-  // Always provide Elements context so useStripe/useElements hooks don't throw.
-  return (
-    <Elements stripe={stripePromise}>
-      <OrderFlowInner {...props} />
-    </Elements>
-  )
+  return <OrderFlowInner {...props} />
 }

@@ -1,8 +1,9 @@
 'use client';
 
-import { AnimatePresence, motion } from 'framer-motion';
-import { X } from 'lucide-react';
+import Image from 'next/image';
 import type { Variant } from '@/features/pdp/types';
+import { cn } from '@/lib/utils';
+import { ResponsiveSheet } from '@/features/pdp/components/ResponsiveSheet';
 
 function formatPrice(amount: number, currency: string) {
   const n = Number.isFinite(amount) ? amount : 0;
@@ -28,78 +29,54 @@ export function BeautyVariantSheet({
   onSelect: (variantId: string) => void;
 }) {
   return (
-    <AnimatePresence>
-      {open ? (
-        <>
-          <motion.div
-            className="fixed inset-0 z-[2147483647] bg-black/40 backdrop-blur-sm"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={onClose}
-          />
-          <motion.div
-            className="fixed bottom-0 left-0 right-0 z-[2147483647] h-[70vh] rounded-t-2xl bg-card border border-border shadow-2xl"
-            initial={{ y: '100%' }}
-            animate={{ y: 0 }}
-            exit={{ y: '100%' }}
-            transition={{ type: 'spring', damping: 30, stiffness: 320 }}
-          >
-            <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-              <div className="text-sm font-semibold">Select Shade ({variants.length})</div>
-              <button
-                onClick={onClose}
-                className="h-8 w-8 rounded-full flex items-center justify-center hover:bg-secondary transition-colors"
-                aria-label="Close"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-            <div className="overflow-y-auto py-2 space-y-1 px-4">
-              {variants.map((variant) => {
-                const isSelected = variant.variant_id === selectedVariantId;
-                const amount = variant.price?.current.amount ?? 0;
-                const currency = variant.price?.current.currency || 'USD';
-                return (
-                  <button
-                    key={variant.variant_id}
-                    onClick={() => {
-                      onSelect(variant.variant_id);
-                      onClose();
-                    }}
-                    className={`flex w-full items-center gap-2 rounded-md border px-2.5 py-1.5 text-left transition-colors ${
-                      isSelected
-                        ? 'border-primary bg-primary/10 ring-1 ring-primary/40'
-                        : 'border-border hover:border-primary/50'
-                    }`}
-                  >
-                    {variant.swatch?.hex ? (
-                      <span
-                        className="h-5 w-5 rounded-full ring-1 ring-border flex-shrink-0"
-                        style={{ backgroundColor: variant.swatch.hex }}
-                      />
-                    ) : (
-                      <span className="h-5 w-5 rounded-full bg-muted flex-shrink-0" />
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <div className="text-xs font-medium truncate">{variant.title}</div>
-                      {variant.beauty_meta ? (
-                        <div className="text-[10px] text-muted-foreground truncate">
-                          {[variant.beauty_meta.undertone, variant.beauty_meta.finish, variant.beauty_meta.coverage]
-                            .filter(Boolean)
-                            .join(' · ')}
-                        </div>
-                      ) : null}
-                    </div>
-                    <div className="text-xs font-medium">{formatPrice(amount, currency)}</div>
-                    {isSelected ? <span className="text-primary text-[10px] font-medium">✓</span> : null}
-                  </button>
-                );
-              })}
-            </div>
-          </motion.div>
-        </>
-      ) : null}
-    </AnimatePresence>
+    <ResponsiveSheet open={open} onClose={onClose} title={`Select Shade (${variants.length})`}>
+      <div className="py-2 space-y-1 px-4">
+        {variants.map((variant) => {
+          const isSelected = variant.variant_id === selectedVariantId;
+          const amount = variant.price?.current.amount ?? 0;
+          const currency = variant.price?.current.currency || 'USD';
+          return (
+            <button
+              key={variant.variant_id}
+              onClick={() => {
+                onSelect(variant.variant_id);
+                onClose();
+              }}
+              className={cn(
+                'flex w-full items-center gap-2 rounded-md border px-2.5 py-1.5 text-left transition-colors',
+                isSelected
+                  ? 'border-primary bg-primary/10 ring-1 ring-primary/40'
+                  : 'border-border hover:border-primary/50',
+              )}
+            >
+              {variant.swatch?.hex ? (
+                <span
+                  className="h-5 w-5 rounded-full ring-1 ring-border flex-shrink-0"
+                  style={{ backgroundColor: variant.swatch.hex }}
+                />
+              ) : variant.label_image_url ? (
+                <span className="relative h-5 w-5 rounded-full ring-1 ring-border flex-shrink-0 overflow-hidden">
+                  <Image src={variant.label_image_url} alt="" fill className="object-cover" sizes="20px" loading="lazy" />
+                </span>
+              ) : (
+                <span className="h-5 w-5 rounded-full bg-muted flex-shrink-0" />
+              )}
+              <div className="flex-1 min-w-0">
+                <div className="text-xs font-medium truncate">{variant.title}</div>
+                {variant.beauty_meta ? (
+                  <div className="text-[10px] text-muted-foreground truncate">
+                    {[variant.beauty_meta.undertone, variant.beauty_meta.finish, variant.beauty_meta.coverage]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </div>
+                ) : null}
+              </div>
+              <div className="text-xs font-medium">{formatPrice(amount, currency)}</div>
+              {isSelected ? <span className="text-primary text-[10px] font-medium">✓</span> : null}
+            </button>
+          );
+        })}
+      </div>
+    </ResponsiveSheet>
   );
 }

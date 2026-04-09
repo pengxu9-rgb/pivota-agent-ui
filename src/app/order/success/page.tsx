@@ -2,10 +2,15 @@
 
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { Check, Package, ArrowRight } from 'lucide-react'
+import { Check, Package, ArrowRight, LoaderCircle } from 'lucide-react'
+import { confirmOrderPayment, getOrderStatus } from '@/lib/api'
 import { resolveExternalAgentHomeUrl, safeReturnUrl, withReturnParams } from '@/lib/returnUrl'
 import { isAuroraEmbedMode, postRequestCloseToParent } from '@/lib/auroraEmbed'
-import { getCheckoutTokenFromBrowser } from '@/lib/checkoutToken'
+import { getCheckoutContextFromBrowser } from '@/lib/checkoutToken'
+import {
+  confirmPaymentWithRetry,
+  pollOrderStatusUntilSettled,
+} from '@/lib/checkoutFinalization'
 
 type BuyerVaultSnapshot = {
   email: string | null
@@ -60,6 +65,11 @@ function SuccessContent() {
     searchParams.get('return') ||
     searchParams.get('returnUrl') ||
     searchParams.get('return_url')
+  const checkoutTokenFromQuery =
+    (searchParams.get('checkout_token') || searchParams.get('checkoutToken') || '').trim() || null
+  const shouldFinalizeOnLoad = ['1', 'true', 'yes', 'on'].includes(
+    String(searchParams.get('finalizing') || '').trim().toLowerCase(),
+  )
   const returnUrl = safeReturnUrl(rawReturn)
   const entryParam = (searchParams.get('entry') || '').trim() || null
   const sourceParam =
@@ -76,6 +86,9 @@ function SuccessContent() {
   const isEmbedMode = useMemo(() => isAuroraEmbedMode(), [])
 
   const [checkoutToken, setCheckoutToken] = useState<string | null>(null)
+  const [finalizationState, setFinalizationState] = useState<'idle' | 'running' | 'delayed'>(
+    shouldFinalizeOnLoad ? 'running' : 'idle',
+  )
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'step_up' | 'error'>(
     'idle',
   )
@@ -84,10 +97,13 @@ function SuccessContent() {
   const [buyerVaultSnapshot, setBuyerVaultSnapshot] = useState<BuyerVaultSnapshot>(EMPTY_BUYER_VAULT_SNAPSHOT)
   const hasBuyerVaultPrefill = Boolean(buyerVaultSnapshot.email || buyerVaultSnapshot.hasAddress)
   const canSave = Boolean(checkoutToken || orderId || saveTokenFromUrl || hasBuyerVaultPrefill)
+  const isAwaitingConfirmedPayment = shouldFinalizeOnLoad && finalizationState !== 'idle'
 
   useEffect(() => {
-    setCheckoutToken(getCheckoutTokenFromBrowser())
-  }, [searchParams])
+    const rawSearch = searchParams.toString()
+    const context = getCheckoutContextFromBrowser(rawSearch ? `?${rawSearch}` : '')
+    setCheckoutToken(context.token)
+  }, [checkoutTokenFromQuery, searchParams])
 
   const loadBuyerVaultSnapshot = useCallback(async (): Promise<BuyerVaultSnapshot> => {
     try {
@@ -193,6 +209,78 @@ function SuccessContent() {
     })
   }, [saveTokenFromUrl, checkoutToken, orderId, saveStatus, attemptSave])
 
+  useEffect(() => {
+    if (!shouldFinalizeOnLoad || !orderId) return
+
+    let active = true
+    setFinalizationState('running')
+
+    const run = async () => {
+      const confirmation = await confirmPaymentWithRetry({
+        orderId,
+        confirmPayment: confirmOrderPayment,
+        maxAttempts: 1,
+        retryDelayMs: 220,
+      })
+
+      if (!active) return
+      if (confirmation.status === 'confirmed') {
+        setFinalizationState('idle')
+        return
+      }
+
+      const pollResult = await pollOrderStatusUntilSettled({
+        orderId,
+        getOrderStatus,
+        timeoutMs: 4000,
+        intervalMs: 500,
+      })
+
+      if (!active) return
+      setFinalizationState(pollResult.status === 'confirmed' ? 'idle' : 'delayed')
+    }
+
+    void run()
+
+    return () => {
+      active = false
+    }
+  }, [orderId, shouldFinalizeOnLoad])
+
+  useEffect(() => {
+    if (!shouldFinalizeOnLoad || !orderId || finalizationState !== 'delayed') return
+
+    let active = true
+
+    const runFollowUpPolling = async () => {
+      for (let attempt = 0; attempt < 8; attempt += 1) {
+        await new Promise<void>((resolve) => {
+          window.setTimeout(resolve, 1200)
+        })
+        if (!active) return
+
+        const pollResult = await pollOrderStatusUntilSettled({
+          orderId,
+          getOrderStatus,
+          timeoutMs: 2500,
+          intervalMs: 500,
+        })
+
+        if (!active) return
+        if (pollResult.status === 'confirmed') {
+          setFinalizationState('idle')
+          return
+        }
+      }
+    }
+
+    void runFollowUpPolling()
+
+    return () => {
+      active = false
+    }
+  }, [finalizationState, orderId, shouldFinalizeOnLoad])
+
   const continueShopping = () => {
     if (externalContinueUrl) {
       window.location.assign(externalContinueUrl)
@@ -214,14 +302,37 @@ function SuccessContent() {
   return (
     <main className="min-h-screen bg-gradient-to-br from-green-50 to-blue-100 flex items-center justify-center px-4 py-6">
       <div className="bg-white rounded-lg shadow-xl p-6 max-w-md w-full text-center">
-        <div className="w-14 h-14 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-          <Check className="w-7 h-7 text-green-600" />
+        <div
+          className={`w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4 ${
+            isAwaitingConfirmedPayment ? 'bg-blue-100' : 'bg-green-100'
+          }`}
+        >
+          {isAwaitingConfirmedPayment ? (
+            <LoaderCircle className="w-7 h-7 text-blue-600 animate-spin" />
+          ) : (
+            <Check className="w-7 h-7 text-green-600" />
+          )}
         </div>
 
-        <h1 className="text-2xl font-bold text-gray-800 mb-2">Order Successful!</h1>
+        <h1 className="text-2xl font-bold text-gray-800 mb-2">
+          {isAwaitingConfirmedPayment ? 'Confirming payment' : 'Order Successful!'}
+        </h1>
         <p className="text-sm text-gray-600 mb-5">
-          Thank you for shopping with Pivota. Your order has been confirmed.
+          {finalizationState === 'running'
+            ? 'Payment received. Confirming your order now.'
+            : finalizationState === 'delayed'
+              ? 'Payment received. Final confirmation is taking a little longer than usual.'
+              : 'Thank you for shopping with Pivota. Your order has been confirmed.'}
         </p>
+
+        {finalizationState === 'delayed' ? (
+          <div
+            className="mb-5 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-left text-amber-800"
+          >
+            <p className="text-sm font-medium">Still syncing payment status</p>
+            <p className="mt-1 text-xs">You can stay here. We&apos;ll update this page automatically.</p>
+          </div>
+        ) : null}
 
         {orderId && (
           <div className="bg-gray-50 rounded-lg p-3 mb-5">
@@ -303,9 +414,8 @@ function SuccessContent() {
             )}
 
             <div className="bg-indigo-50 border border-indigo-100 rounded-lg p-3">
-              <p className="text-xs text-gray-800 font-medium">Save for next time</p>
-              <p className="text-[11px] text-gray-600 mt-1">
-                Save your email and shipping address to your Pivota Buyer account so future checkouts can be auto-filled.
+              <p className="text-xs text-gray-800 font-medium">
+                Save address for next time so future checkouts can be auto-filled
               </p>
               <div className="mt-2.5">
                 {saveStatus === 'saved' ? (

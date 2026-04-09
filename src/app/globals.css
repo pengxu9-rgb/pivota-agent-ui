@@ -272,6 +272,20 @@
   }
 }
 
+@media (min-width: 1024px) {
+  .lovable-pdp {
+    --pdp-content-padding: 0;
+  }
+
+  .lovable-pdp .scrollbar-thin::-webkit-scrollbar {
+    width: 4px;
+  }
+
+  .lovable-pdp .scrollbar-thin::-webkit-scrollbar-thumb {
+    @apply bg-muted-foreground/20 rounded-full;
+  }
+}
+
 /* Scrollbar styles */
 ::-webkit-scrollbar {
   width: 8px;

@@ -71,6 +71,25 @@ function buildMinimalResponse() {
                   ],
                 },
               },
+              {
+                module_id: 'm_actives',
+                type: 'active_ingredients',
+                data: {
+                  title: 'Active ingredients',
+                  items: ['Niacinamide', 'Ceramide NP'],
+                  source_origin: 'retail_pdp',
+                  source_quality_status: 'captured',
+                },
+              },
+              {
+                module_id: 'm_how_to_use',
+                type: 'how_to_use',
+                data: {
+                  title: 'How to use',
+                  raw_text: 'Apply after cleansing.',
+                  steps: ['Apply after cleansing.'],
+                },
+              },
             ],
             actions: [],
           },
@@ -95,31 +114,19 @@ describe('mapPdpV2ToPdpPayload image normalization', () => {
     const payload = mapPdpV2ToPdpPayload(buildMinimalResponse());
     expect(payload).not.toBeNull();
 
-    expect(payload?.product.image_url).toBe(
-      '/api/image-proxy?url=https%3A%2F%2Fsdcdn.io%2Ftf%2Fproduct-main.png',
-    );
-    expect(payload?.product.variants?.[0]?.image_url).toBe(
-      '/api/image-proxy?url=https%3A%2F%2Fsdcdn.io%2Ftf%2Fvariant-main.png',
-    );
-    expect(payload?.product.variants?.[0]?.label_image_url).toBe(
-      '/api/image-proxy?url=https%3A%2F%2Fsdcdn.io%2Ftf%2Fswatch.png',
-    );
+    expect(payload?.product.image_url).toBe('https://sdcdn.io/tf/product-main.png');
+    expect(payload?.product.variants?.[0]?.image_url).toBe('https://sdcdn.io/tf/variant-main.png');
+    expect(payload?.product.variants?.[0]?.label_image_url).toBe('https://sdcdn.io/tf/swatch.png');
 
     const mediaGallery = payload?.modules.find((m) => m.type === 'media_gallery') as any;
-    expect(mediaGallery?.data?.items?.[0]?.url).toBe(
-      '/api/image-proxy?url=https%3A%2F%2Fsdcdn.io%2Ftf%2Fhero.png',
-    );
+    expect(mediaGallery?.data?.items?.[0]?.url).toBe('https://sdcdn.io/tf/hero.png');
     expect(mediaGallery?.data?.items?.[1]?.url).toBe('https://cdn.example.com/video.mp4');
 
     const recs = payload?.modules.find((m) => m.type === 'recommendations') as any;
-    expect(recs?.data?.items?.[0]?.image_url).toBe(
-      '/api/image-proxy?url=https%3A%2F%2Fsdcdn.io%2Ftf%2Frelated.png',
-    );
+    expect(recs?.data?.items?.[0]?.image_url).toBe('https://sdcdn.io/tf/related.png');
 
     const reviews = payload?.modules.find((m) => m.type === 'reviews_preview') as any;
-    expect(reviews?.data?.preview_items?.[0]?.media?.[0]?.url).toBe(
-      '/api/image-proxy?url=https%3A%2F%2Fsdcdn.io%2Ftf%2Freview.png',
-    );
+    expect(reviews?.data?.preview_items?.[0]?.media?.[0]?.url).toBe('https://sdcdn.io/tf/review.png');
   });
 
   it('does not double-wrap already proxied URLs', () => {
@@ -130,12 +137,57 @@ describe('mapPdpV2ToPdpPayload image normalization', () => {
       '/api/image-proxy?url=https%3A%2F%2Fsdcdn.io%2Ftf%2Falready-media.png';
 
     const payload = mapPdpV2ToPdpPayload(response);
-    expect(payload?.product.image_url).toBe(
-      '/api/image-proxy?url=https%3A%2F%2Fsdcdn.io%2Ftf%2Falready.png',
-    );
+    expect(payload?.product.image_url).toBe('https://sdcdn.io/tf/already.png');
     const mediaGallery = payload?.modules.find((m) => m.type === 'media_gallery') as any;
-    expect(mediaGallery?.data?.items?.[0]?.url).toBe(
-      '/api/image-proxy?url=https%3A%2F%2Fsdcdn.io%2Ftf%2Falready-media.png',
+    expect(mediaGallery?.data?.items?.[0]?.url).toBe('https://sdcdn.io/tf/already-media.png');
+  });
+
+  it('preserves additive structured PDP modules from canonical payload', () => {
+    const payload = mapPdpV2ToPdpPayload(buildMinimalResponse());
+    const activeIngredients = payload?.modules.find((module) => module.type === 'active_ingredients') as any;
+    const howToUse = payload?.modules.find((module) => module.type === 'how_to_use') as any;
+
+    expect(activeIngredients?.data?.items).toEqual(['Niacinamide', 'Ceramide NP']);
+    expect(activeIngredients?.data?.source_origin).toBe('retail_pdp');
+    expect(howToUse?.data?.steps).toEqual(['Apply after cleansing.']);
+  });
+
+  it('upserts structured modules when v2 returns them outside canonical payload', () => {
+    const response = buildMinimalResponse();
+    response.modules.push(
+      {
+        type: 'ingredients_inci',
+        data: {
+          title: 'Ingredients',
+          items: ['Water', 'Glycerin', 'Niacinamide'],
+        },
+      },
+      {
+        type: 'product_facts',
+        data: {
+          sections: [
+            {
+              heading: 'Clinical Results',
+              content_type: 'text',
+              content: 'Supports the skin barrier in 7 days.',
+            },
+          ],
+        },
+      },
+    );
+
+    const payload = mapPdpV2ToPdpPayload(response);
+    const ingredients = payload?.modules.find((module) => module.type === 'ingredients_inci') as any;
+    const facts = payload?.modules.find((module) => module.type === 'product_facts') as any;
+
+    expect(ingredients?.data?.items).toEqual(['Water', 'Glycerin', 'Niacinamide']);
+    expect(facts?.data?.sections).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          heading: 'Clinical Results',
+          content: 'Supports the skin barrier in 7 days.',
+        }),
+      ]),
     );
   });
 
@@ -256,14 +308,76 @@ describe('mapPdpV2ToPdpPayload image normalization', () => {
     const items = Array.isArray(mediaGallery?.data?.items) ? mediaGallery.data.items : [];
     const imageItems = items.filter((item: any) => item?.type === 'image');
 
-    expect(imageItems).toHaveLength(4);
+    expect(imageItems).toHaveLength(8);
     expect(
       imageItems.map((item: any) => unwrapProxyTarget(String(item?.url || ''))),
     ).toEqual([
-      'https://sdcdn.io/tf/tf_sku_T14Q01_3000x3000_0.png',
-      'https://sdcdn.io/tf/tf_sku_T14Q01_2000x2000_1.jpg',
-      'https://sdcdn.io/tf/tf_sku_T2TL01_2000x2000_0.png?width=650px&height=750px',
-      'https://sdcdn.io/tf/tf_sku_T14Z01_2000x2000_2.jpg?width=650px&height=750px',
+      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T14Q01_3000x3000_0.png',
+      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T14S01_3000x3000_0.jpg',
+      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T16S01_3000x3000_0.png',
+      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T14Q01_2000x2000_1.jpg',
+      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T13S01_2000x2000_1.png',
+      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T2TL01_2000x2000_0.png',
+      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T4DB01_US_3000x3000_0.png',
+      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T14Z01_2000x2000_2.jpg',
     ]);
+  });
+
+  it('upserts structured canonical PDP modules from the v2 response', () => {
+    const response = buildMinimalResponse();
+    response.modules.push(
+      {
+        type: 'active_ingredients',
+        data: {
+          title: 'Active Ingredients',
+          items: ['Niacinamide', 'Panthenol'],
+        },
+      },
+      {
+        type: 'ingredients_inci',
+        data: {
+          title: 'Ingredients (INCI)',
+          items: ['Water', 'Niacinamide'],
+        },
+      },
+      {
+        type: 'how_to_use',
+        data: {
+          title: 'How to Use',
+          steps: ['Apply after cleansing', 'Follow with moisturizer'],
+        },
+      },
+      {
+        type: 'product_details',
+        data: {
+          sections: [{ heading: 'Details', content_type: 'text', content: 'Barrier-support serum.' }],
+        },
+      },
+    );
+
+    const payload = mapPdpV2ToPdpPayload(response);
+
+    expect(payload?.modules.find((module) => module.type === 'active_ingredients')).toEqual(
+      expect.objectContaining({
+        title: 'Active Ingredients',
+        data: expect.objectContaining({
+          items: ['Niacinamide', 'Panthenol'],
+        }),
+      }),
+    );
+    expect(payload?.modules.find((module) => module.type === 'ingredients_inci')).toEqual(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          items: ['Water', 'Niacinamide'],
+        }),
+      }),
+    );
+    expect(payload?.modules.find((module) => module.type === 'how_to_use')).toEqual(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          steps: ['Apply after cleansing', 'Follow with moisturizer'],
+        }),
+      }),
+    );
   });
 });

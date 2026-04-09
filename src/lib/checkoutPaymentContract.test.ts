@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 
-import { resolveCheckoutPaymentContract } from './checkoutPaymentContract'
+import {
+  isBackendSettledPaymentStatus,
+  resolveCheckoutPaymentContract,
+} from './checkoutPaymentContract'
 
 describe('resolveCheckoutPaymentContract', () => {
   it('treats processing + stripe_client_secret as client-owned confirmation', () => {
@@ -40,7 +43,7 @@ describe('resolveCheckoutPaymentContract', () => {
     })
   })
 
-  it('treats processing without action as backend-owned confirmation', () => {
+  it('treats processing without action as backend-owned but not settled', () => {
     const contract = resolveCheckoutPaymentContract({
       paymentResponse: {
         status: 'processing',
@@ -52,6 +55,13 @@ describe('resolveCheckoutPaymentContract', () => {
       confirmationOwner: 'backend',
       requiresClientConfirmation: false,
     })
+  })
+
+  it('does not treat processing as a settled payment status', () => {
+    expect(isBackendSettledPaymentStatus('processing')).toBe(false)
+    expect(isBackendSettledPaymentStatus('paid')).toBe(true)
+    expect(isBackendSettledPaymentStatus('completed')).toBe(true)
+    expect(isBackendSettledPaymentStatus('succeeded')).toBe(true)
   })
 
   it('treats requires_action as client-owned confirmation', () => {

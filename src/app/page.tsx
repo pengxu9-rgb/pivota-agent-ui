@@ -14,7 +14,15 @@ import { useCartStore } from '@/store/cartStore';
 import { useAuthStore } from '@/store/authStore';
 import { useChatStore } from '@/store/chatStore';
 import { getAllowedParentOrigin, isAuroraEmbedMode, postRequestCloseToParent } from '@/lib/auroraEmbed';
-import { sendMessage, getAllProducts, type ProductResponse } from '@/lib/api';
+import {
+  sendMessage,
+  getShoppingDiscoveryFeed,
+  getBrowseHistory,
+  type DiscoveryRecentView,
+  type ProductResponse,
+} from '@/lib/api';
+import { mergeDiscoveryRecentViews, readLocalBrowseHistory } from '@/lib/browseHistoryStorage';
+import { buildProductHref } from '@/lib/productHref';
 import { appendCurrentPathAsReturn } from '@/lib/returnUrl';
 import { toast } from 'sonner';
 
@@ -104,6 +112,9 @@ function HomePageApp() {
   const [sidebarOpen, setSidebarOpen] = useState(false); // Mobile: closed by default, Desktop: always visible
   const [loading, setLoading] = useState(false);
   const [hotDeals, setHotDeals] = useState<ProductResponse[]>([]);
+  const [hotDealsStatus, setHotDealsStatus] = useState<'loading' | 'ready' | 'empty' | 'error'>('loading');
+  const [recentViews, setRecentViews] = useState<DiscoveryRecentView[]>([]);
+  const [recentViewsReady, setRecentViewsReady] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
   const { messages, addMessage, updateMessage, conversations, resetForGuest } = useChatStore();
@@ -114,19 +125,69 @@ function HomePageApp() {
   const itemCount = items.reduce((acc, item) => acc + item.quantity, 0);
   const hasUserMessages = messages.some(msg => msg.role === 'user');
 
+  useEffect(() => {
+    let cancelled = false;
+    const userId = user?.id || null;
+    const localRecentViews = mergeDiscoveryRecentViews({
+      localItems: readLocalBrowseHistory(50),
+      limit: 50,
+    }) as DiscoveryRecentView[];
+    if (!userId) {
+      setRecentViews(localRecentViews);
+      setRecentViewsReady(true);
+      return;
+    }
+
+    setRecentViewsReady(false);
+    getBrowseHistory(50)
+      .then((history) => {
+        if (!cancelled) {
+          setRecentViews(
+            mergeDiscoveryRecentViews({
+              accountItems: history.items || [],
+              localItems: readLocalBrowseHistory(50),
+              limit: 50,
+            }) as DiscoveryRecentView[],
+          );
+        }
+      })
+      .catch((error) => {
+        console.warn('Failed to load shopping behavior history:', error);
+        if (!cancelled) setRecentViews(localRecentViews);
+      })
+      .finally(() => {
+        if (!cancelled) setRecentViewsReady(true);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id]);
+
   // 加载Hot Deals商品
   useEffect(() => {
+    if (!recentViewsReady) return;
     const loadHotDeals = async () => {
+      setHotDealsStatus('loading');
       try {
-        const products = await getAllProducts(6);
-        setHotDeals(products);
+        const result = await getShoppingDiscoveryFeed({
+          surface: 'home_hot_deals',
+          limit: 6,
+          entry: 'plp',
+          catalog: 'promo_pool',
+          userId: user?.id || null,
+          recentViews,
+        });
+        setHotDeals(result.products);
+        setHotDealsStatus(result.products.length > 0 ? 'ready' : 'empty');
       } catch (error) {
         console.error('Failed to load hot deals:', error);
-        // Keep empty array if API fails
+        setHotDeals([]);
+        setHotDealsStatus('error');
       }
     };
-    loadHotDeals();
-  }, []);
+    void loadHotDeals();
+  }, [recentViews, recentViewsReady, user?.id]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -215,6 +276,7 @@ function HomePageApp() {
         {
           ...(evalMetadata ? { metadata: evalMetadata } : {}),
           pagination: { page: 1, limit: CHAT_RAIL_INITIAL_PAGE_SIZE },
+          userId: user?.id || null,
         },
       );
       const products = Array.isArray(searchResult?.products) ? searchResult.products : [];
@@ -280,6 +342,7 @@ function HomePageApp() {
             page: nextPage,
             limit: Math.max(CHAT_RAIL_PAGE_STEP, Number(paging.limit || CHAT_RAIL_INITIAL_PAGE_SIZE)),
           },
+          userId: user?.id || null,
         });
 
         const incoming = Array.isArray(result?.products) ? result.products : [];
@@ -309,7 +372,7 @@ function HomePageApp() {
         });
       }
     },
-    [messages, updateMessage],
+    [messages, updateMessage, user?.id],
   );
 
   const handleAddToCart = (product: any) => {
@@ -532,9 +595,7 @@ function HomePageApp() {
                   {hotDeals.length > 0 ? (
                     hotDeals.map((product) => {
                       const isExternal = Boolean(product.external_redirect_url);
-                      const cardHref = product.merchant_id
-                        ? `/products/${product.product_id}?merchant_id=${encodeURIComponent(product.merchant_id)}`
-                        : `/products/${product.product_id}`;
+                      const cardHref = buildProductHref(product.product_id, product.merchant_id);
                       return (
                       <Link
                         key={product.product_id}
@@ -564,8 +625,12 @@ function HomePageApp() {
                       </Link>
                       );
                     })
-                  ) : (
+                  ) : hotDealsStatus === 'loading' ? (
                     <p className="text-xs text-muted-foreground">Loading products...</p>
+                  ) : hotDealsStatus === 'error' ? (
+                    <p className="text-xs text-muted-foreground">Unable to load hot deals right now.</p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">No hot deals available right now.</p>
                   )}
                 </div>
               </div>

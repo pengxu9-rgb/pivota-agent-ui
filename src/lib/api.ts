@@ -1,7 +1,13 @@
 // Centralized API helpers for calling the Pivota Agent Gateway and Accounts API
 // All UI components should import functions from here instead of using fetch directly.
-import { getCheckoutTokenFromBrowser, persistCheckoutToken } from '@/lib/checkoutToken'
+import {
+  getCheckoutContextFromBrowser,
+  normalizeCheckoutSource,
+  persistCheckoutContext,
+} from '@/lib/checkoutToken'
 import { ensureAuroraSession, shouldUseAuroraAutoExchange } from '@/lib/auroraOrdersAuth'
+import { formatDescriptionText } from '@/features/pdp/utils/formatDescriptionText'
+import type { RecommendationsData } from '@/features/pdp/types'
 
 // Point to the public Agent Gateway by default; override via NEXT_PUBLIC_API_URL if needed.
 const API_BASE =
@@ -11,18 +17,20 @@ const SEARCH_LIMIT_MAX = Math.max(
   1,
   Math.min(Number(process.env.NEXT_PUBLIC_SEARCH_LIMIT_MAX || 200) || 200, 200),
 );
+const BROWSE_DISCOVERY_MIN_LIMIT = 12;
 
 // Accounts API is proxied through same-origin routes so auth cookies remain first-party.
 // This avoids third-party cookie issues (e.g. in-app browsers / iOS Safari) and reduces CORS risk.
 const ACCOUNTS_API_BASE = '/api/accounts';
 const ACCOUNTS_ROOT_API_BASE = '/api/accounts-root';
-const DIRECT_CHECKOUT_ENABLED =
-  String(process.env.NEXT_PUBLIC_ENABLE_DIRECT_CHECKOUT_INVOKE || '').trim().toLowerCase() === 'true';
-const DIRECT_CHECKOUT_INVOKE_URL = String(
-  process.env.NEXT_PUBLIC_DIRECT_CHECKOUT_INVOKE_URL ||
-    'https://pivota-agent-production.up.railway.app/agent/shop/v1/invoke',
-).trim();
-const CHECKOUT_DIRECT_OPS = new Set(['preview_quote', 'create_order', 'submit_payment']);
+const CHECKOUT_CONTEXTUAL_OPS = new Set([
+  'preview_quote',
+  'create_order',
+  'submit_payment',
+  'confirm_payment',
+  'get_order_status',
+]);
+type CanonicalCheckoutSource = 'creator_agent' | 'shopping_agent';
 
 function clampSearchLimit(value: unknown, fallback: number): number {
   const n = Number(value);
@@ -61,6 +69,9 @@ function friendlyMessageForCode(args: {
   }
   if (code === 'UPSTREAM_TIMEOUT') {
     return `The request timed out${opSuffix}. Please retry.`;
+  }
+  if (code === 'UPSTREAM_UNAVAILABLE') {
+    return `The upstream service is temporarily unavailable${opSuffix}. Please retry.`;
   }
   if (code === 'QUOTE_EXPIRED') {
     return `Your quote expired${opSuffix}. Please retry to refresh totals.`;
@@ -248,37 +259,35 @@ export type GetPdpV2Response = {
   missing?: Array<{ type: string; reason?: string }>;
 };
 
-export type FindSimilarProductsResponse = {
-  status?: string;
-  strategy?: string;
-  products?: Array<any>;
-  total?: number;
-  page?: number;
-  page_size?: number;
-  metadata?: {
-    similar_confidence?: 'high' | 'medium' | 'low' | string;
-    low_confidence?: boolean;
-    low_confidence_reason_codes?: string[];
-    retrieval_mix?: {
-      internal?: number;
-      external?: number;
-    };
-    base_semantic?: {
-      brand?: string | null;
-      vertical?: string | null;
-      inferred?: boolean;
-      signal_strength?: number;
-    };
-  };
-  debug?: any;
-  cache?: {
-    hit?: boolean;
-    age_ms?: number;
-    ttl_ms?: number;
-  };
-};
+export function normalizeProductDescriptionText(value: unknown): string {
+  const raw =
+    typeof value === 'string'
+      ? value
+      : typeof (value as any)?.text === 'string'
+        ? (value as any).text
+        : '';
+  if (!raw) return '';
 
-function normalizeProduct(
+  return raw
+    .replace(/<\s*br\s*\/?>/gi, '\n')
+    .replace(/<\s*li\b[^>]*>/gi, '\n- ')
+    .replace(/<\s*\/\s*(?:p|div|section|article|li|ul|ol|h[1-6])\s*>/gi, '\n')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/&#x27;/gi, "'")
+    .replace(/\r/g, '')
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/ *\n */g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+export function normalizeProduct(
   p: RealAPIProduct | ProductResponse,
 ): ProductResponse {
   const anyP = p as any;
@@ -395,10 +404,7 @@ function normalizeProduct(
     normalizedImage = '/placeholder.svg';
   }
 
-  const description =
-    typeof anyP.description === 'string'
-      ? anyP.description
-      : anyP.description?.text || '';
+  const description = normalizeProductDescriptionText(anyP.description);
 
   const images = Array.isArray(anyP.images)
     ? anyP.images
@@ -479,7 +485,8 @@ interface InvokeBody {
   metadata?: Record<string, any>;
 }
 
-const RECENT_QUERIES_STORAGE_KEY = 'pivota_recent_queries_v1';
+const RECENT_QUERIES_STORAGE_KEY_PREFIX = 'pivota_recent_queries_v1';
+const DEVICE_ID_STORAGE_KEY = 'pivota_shopping_device_id_v1';
 const MAX_RECENT_QUERIES = 8;
 const EVAL_META_STORAGE_KEY = 'pivota_eval_meta_v1';
 
@@ -489,6 +496,8 @@ type ShoppingScope = {
   region: string | null;
   language: string | null;
 };
+
+export type ShoppingDiscoverySurface = 'home_hot_deals' | 'browse_products';
 
 type ShoppingEvalMeta = {
   run_id?: string;
@@ -644,6 +653,7 @@ function inferShoppingEntryFromLocation(body: InvokeBody): ShoppingEntry {
 
   // Search / listing routes.
   if (pathname.startsWith('/search')) return 'search';
+  if (pathname.startsWith('/brands/')) return 'plp';
   if (
     pathname.startsWith('/category') ||
     pathname.startsWith('/collection') ||
@@ -663,26 +673,54 @@ function inferShoppingEntryFromLocation(body: InvokeBody): ShoppingEntry {
   return 'other';
 }
 
-function readRecentQueries(): string[] {
+function getOrCreateBehaviorDeviceId(): string {
+  if (typeof window === 'undefined') return 'server';
+  try {
+    const existing = window.localStorage.getItem(DEVICE_ID_STORAGE_KEY);
+    if (existing && existing.trim()) return existing.trim();
+    const generated =
+      typeof crypto !== 'undefined' && 'randomUUID' in crypto
+        ? crypto.randomUUID()
+        : `device_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+    window.localStorage.setItem(DEVICE_ID_STORAGE_KEY, generated);
+    return generated;
+  } catch {
+    return 'anonymous';
+  }
+}
+
+function getRecentQueriesStorageKey(userId?: string | null): string {
+  const normalizedUserId = String(userId || '').trim();
+  if (normalizedUserId) {
+    return `${RECENT_QUERIES_STORAGE_KEY_PREFIX}:user:${normalizedUserId}`;
+  }
+  return `${RECENT_QUERIES_STORAGE_KEY_PREFIX}:anon:${getOrCreateBehaviorDeviceId()}`;
+}
+
+function normalizeRecentQueries(input: unknown, limit = MAX_RECENT_QUERIES): string[] {
+  if (!Array.isArray(input)) return [];
+  return input
+    .map((v) => (typeof v === 'string' ? v.trim() : ''))
+    .filter(Boolean)
+    .slice(0, limit);
+}
+
+function readRecentQueries(userId?: string | null): string[] {
   if (typeof window === 'undefined') return [];
   try {
-    const raw = window.localStorage.getItem(RECENT_QUERIES_STORAGE_KEY);
+    const raw = window.localStorage.getItem(getRecentQueriesStorageKey(userId));
     const parsed = raw ? JSON.parse(raw) : [];
-    if (!Array.isArray(parsed)) return [];
-    return parsed
-      .map((v) => (typeof v === 'string' ? v.trim() : ''))
-      .filter(Boolean)
-      .slice(0, MAX_RECENT_QUERIES);
+    return normalizeRecentQueries(parsed);
   } catch {
     return [];
   }
 }
 
-function writeRecentQueries(queries: string[]) {
+function writeRecentQueries(queries: string[], userId?: string | null) {
   if (typeof window === 'undefined') return;
   try {
     window.localStorage.setItem(
-      RECENT_QUERIES_STORAGE_KEY,
+      getRecentQueriesStorageKey(userId),
       JSON.stringify(queries.slice(0, MAX_RECENT_QUERIES)),
     );
   } catch {
@@ -690,150 +728,117 @@ function writeRecentQueries(queries: string[]) {
   }
 }
 
-function rememberRecentQuery(query: string) {
+function rememberRecentQuery(query: string, userId?: string | null) {
   const q = String(query || '').trim();
   if (!q) return;
-  const existing = readRecentQueries();
+  const existing = readRecentQueries(userId);
   const next = [q, ...existing.filter((x) => x !== q)].slice(
     0,
     MAX_RECENT_QUERIES,
   );
-  writeRecentQueries(next);
+  writeRecentQueries(next, userId);
 }
 
-function getCheckoutToken(): string | null {
-  return getCheckoutTokenFromBrowser()
+function getCheckoutContext() {
+  return getCheckoutContextFromBrowser()
 }
 
-function isCheckoutDirectOperation(operation: unknown): boolean {
-  return CHECKOUT_DIRECT_OPS.has(String(operation || '').trim().toLowerCase());
+function isCheckoutContextualOperation(operation: unknown): boolean {
+  return CHECKOUT_CONTEXTUAL_OPS.has(String(operation || '').trim().toLowerCase())
 }
 
-function extractIntentItemsFromInvokeBody(body: InvokeBody): Array<Record<string, any>> {
-  const operation = String(body?.operation || '').trim().toLowerCase();
-  const payload = isPlainObject(body?.payload) ? (body.payload as Record<string, any>) : {};
+function getCanonicalCheckoutSource(raw: unknown): CanonicalCheckoutSource | null {
+  const normalized = normalizeCheckoutSource(raw)
+  if (normalized === 'creator_agent' || normalized === 'shopping_agent') {
+    return normalized
+  }
+  return null
+}
 
-  if (operation === 'preview_quote') {
-    const quote = isPlainObject(payload.quote) ? (payload.quote as Record<string, any>) : payload;
-    const merchantId = String(quote.merchant_id || '').trim();
-    const items = Array.isArray(quote.items) ? quote.items : [];
-    return items
-      .map((item) => {
-        const entry = isPlainObject(item) ? item : {};
-        const productId = String(entry.product_id || '').trim();
-        const merchant = String(entry.merchant_id || merchantId).trim();
-        const variantId = String(entry.variant_id || '').trim();
-        const sku = String(entry.sku || '').trim();
-        const quantityRaw = Number(entry.quantity);
-        const quantity = Number.isFinite(quantityRaw) && quantityRaw > 0 ? Math.floor(quantityRaw) : 1;
-        if (!productId || !merchant) return null;
-        return {
-          product_id: productId,
-          merchant_id: merchant,
-          ...(variantId ? { variant_id: variantId } : {}),
-          ...(sku ? { sku } : {}),
-          quantity,
-        };
-      })
-      .filter(Boolean) as Array<Record<string, any>>;
+function getDefaultGatewaySource(): string {
+  return getCanonicalCheckoutSource(process.env.NEXT_PUBLIC_GATEWAY_SOURCE || 'shopping_agent') || 'shopping_agent'
+}
+
+function resolveGatewaySource(args: {
+  operation: unknown
+  requestMetadata: Record<string, any>
+  checkoutContext: { token: string | null; source: string | null }
+}): string {
+  const explicitSource = getCanonicalCheckoutSource(args.requestMetadata?.source)
+  if (explicitSource) return explicitSource
+
+  if (isCheckoutContextualOperation(args.operation)) {
+    const checkoutSource = getCanonicalCheckoutSource(args.checkoutContext?.source)
+    if (checkoutSource) return checkoutSource
   }
 
-  if (operation === 'create_order') {
-    const order = isPlainObject(payload.order) ? (payload.order as Record<string, any>) : payload;
-    const merchantId = String(order.merchant_id || '').trim();
-    const items = Array.isArray(order.items) ? order.items : [];
-    return items
-      .map((item) => {
-        const entry = isPlainObject(item) ? item : {};
-        const productId = String(entry.product_id || '').trim();
-        const merchant = String(entry.merchant_id || merchantId).trim();
-        const variantId = String(entry.variant_id || '').trim();
-        const sku = String(entry.sku || '').trim();
-        const quantityRaw = Number(entry.quantity);
-        const quantity = Number.isFinite(quantityRaw) && quantityRaw > 0 ? Math.floor(quantityRaw) : 1;
-        if (!productId || !merchant) return null;
-        return {
-          product_id: productId,
-          merchant_id: merchant,
-          ...(variantId ? { variant_id: variantId } : {}),
-          ...(sku ? { sku } : {}),
-          quantity,
-        };
-      })
-      .filter(Boolean) as Array<Record<string, any>>;
-  }
-
-  return [];
+  return getDefaultGatewaySource()
 }
 
-async function mintCheckoutSessionToken(args: {
-  body: InvokeBody;
-  metadata: Record<string, any>;
-}): Promise<string | null> {
-  const intentItems = extractIntentItemsFromInvokeBody(args.body);
-  if (!intentItems.length) return null;
-  try {
-    const res = await fetch('/api/checkout/session', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        items: intentItems,
-        source: args.metadata?.source || 'shopping-agent-ui',
-        market: args.metadata?.market || args.body?.payload?.market || undefined,
-        locale: args.metadata?.locale || args.body?.payload?.locale || undefined,
-      }),
-    });
-    if (!res.ok) return null;
-    const json = await res.json().catch(() => null);
-    const token = String(json?.checkout_token || '').trim();
-    if (!token) return null;
-    persistCheckoutToken(token);
-    return token;
-  } catch {
-    return null;
+function buildCheckoutOrderMetadata(args: {
+  metadata?: Record<string, any>
+  resolvedSource: string
+}): Record<string, any> {
+  const metadata = isPlainObject(args.metadata) ? { ...args.metadata } : {}
+  const rawSource = String(metadata.source || '').trim()
+  const canonicalSource = getCanonicalCheckoutSource(rawSource)
+  const rawUiSource = String(metadata.ui_source || '').trim()
+  const uiSource = rawUiSource || (!canonicalSource && rawSource ? rawSource : '') || 'checkout_ui'
+
+  return {
+    ...metadata,
+    source: canonicalSource || args.resolvedSource,
+    ui_source: uiSource,
   }
 }
 
-async function callDirectCheckoutInvoke(args: {
-  requestBody: InvokeBody;
-  checkoutToken: string;
-  signal?: AbortSignal;
-}): Promise<{ fallbackToProxy: boolean; data?: any; error?: ApiError }> {
-  if (!DIRECT_CHECKOUT_INVOKE_URL) return { fallbackToProxy: true };
-  try {
-    const res = await fetch(DIRECT_CHECKOUT_INVOKE_URL, {
-      method: 'POST',
-      mode: 'cors',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Checkout-Token': args.checkoutToken,
-      },
-      signal: args.signal,
-      body: JSON.stringify(args.requestBody),
-    });
+function isCheckoutRestartRequiredError(args: {
+  code?: string | null
+  details?: any
+  message?: string | null
+}): boolean {
+  const normalizedCode = String(args.code || '').trim().toUpperCase()
+  if (
+    normalizedCode === 'CHECKOUT_RESTART_REQUIRED' ||
+    normalizedCode === 'CHECKOUT_CONTEXT_MISMATCH' ||
+    normalizedCode === 'CHECKOUT_TOKEN_INVALID' ||
+    normalizedCode === 'CHECKOUT_TOKEN_EXPIRED' ||
+    normalizedCode === 'INVALID_CHECKOUT_TOKEN' ||
+    normalizedCode === 'TOKEN_AGENT_MISMATCH' ||
+    normalizedCode === 'TOKEN_SOURCE_MISMATCH'
+  ) {
+    return true
+  }
 
-    if (!res.ok) {
-      if (res.status === 401 || res.status === 403) {
-        return { fallbackToProxy: true };
-      }
-      const errorData = await res.json().catch(() => ({}));
-      const err = new Error(
-        (errorData as any)?.message || `Gateway error: ${res.status} ${res.statusText}`,
-      ) as ApiError;
-      err.status = res.status;
-      err.detail = errorData;
-      err.code =
-        String((errorData as any)?.code || (errorData as any)?.error || '').trim() || undefined;
-      return { fallbackToProxy: false, error: err };
+  const detailText = (() => {
+    if (!args.details) return ''
+    if (typeof args.details === 'string') return args.details
+    try {
+      return JSON.stringify(args.details)
+    } catch {
+      return String(args.details)
     }
+  })()
+  const combined = `${String(args.message || '')} ${detailText}`.toLowerCase()
 
-    return {
-      fallbackToProxy: false,
-      data: await res.json(),
-    };
-  } catch {
-    return { fallbackToProxy: true };
+  return (
+    combined.includes('checkout token') &&
+    (combined.includes('mismatch') ||
+      combined.includes('invalid') ||
+      combined.includes('expired') ||
+      combined.includes('stale'))
+  ) || (
+    combined.includes('creator_agent') &&
+    combined.includes('shopping_agent') &&
+    combined.includes('mismatch')
+  )
+}
+
+function getCheckoutRestartMessage(source: string): string {
+  if (source === 'creator_agent') {
+    return 'This checkout link is invalid or expired. Please restart from the creator entrypoint to continue.'
   }
+  return 'This checkout link is invalid or expired. Please restart checkout to continue.'
 }
 
 type GatewayCallOptions = {
@@ -851,10 +856,8 @@ function resolveGatewayInvokeUrl(base: string): string {
 
 async function callGateway(body: InvokeBody, options: GatewayCallOptions = {}) {
   const url = resolveGatewayInvokeUrl(API_BASE);
-  let checkoutToken = getCheckoutToken();
-  // Lock the "shopping agent retrieval contract" for reproducible evaluation.
-  // Even if the backend doesn't use these fields yet, we always send them.
-  const gatewaySource = process.env.NEXT_PUBLIC_GATEWAY_SOURCE || 'shopping_agent';
+  const checkoutContext = getCheckoutContext()
+  let checkoutToken = checkoutContext.token
   const defaultScope = getDefaultShoppingScope();
   const requestMetadata = isPlainObject(body.metadata) ? body.metadata : {};
   const scopeOverride = isPlainObject(requestMetadata.scope) ? requestMetadata.scope : {};
@@ -872,6 +875,11 @@ async function callGateway(body: InvokeBody, options: GatewayCallOptions = {}) {
     evalFromRuntime || evalFromCaller
       ? ({ ...(evalFromRuntime || {}), ...(evalFromCaller || {}) } as ShoppingEvalMeta)
       : null;
+  const resolvedSource = resolveGatewaySource({
+    operation: body?.operation,
+    requestMetadata,
+    checkoutContext,
+  })
 
   const requestBody: InvokeBody = {
     ...body,
@@ -884,30 +892,13 @@ async function callGateway(body: InvokeBody, options: GatewayCallOptions = {}) {
       },
       entry: entryOverride || inferredEntry,
       ...(evalMerged ? { eval: evalMerged } : {}),
-      // Never allow callers to override the source in this UI.
-      source: gatewaySource,
+      ui_source: requestMetadata.ui_source || 'shopping-agent-ui',
+      source: resolvedSource,
     },
   };
 
   const operation = String(requestBody?.operation || '').trim().toLowerCase();
-  const shouldTryDirectCheckout = DIRECT_CHECKOUT_ENABLED && isCheckoutDirectOperation(operation);
-  if (shouldTryDirectCheckout && !checkoutToken) {
-    checkoutToken = await mintCheckoutSessionToken({
-      body: requestBody,
-      metadata: requestBody.metadata || {},
-    });
-  }
-  if (shouldTryDirectCheckout && checkoutToken) {
-    const directResult = await callDirectCheckoutInvoke({
-      requestBody,
-      checkoutToken,
-      signal: options.signal,
-    });
-    if (!directResult.fallbackToProxy) {
-      if (directResult.error) throw directResult.error;
-      return directResult.data;
-    }
-  }
+  void operation
 
   const res = await fetch(url, {
     method: 'POST',
@@ -979,6 +970,21 @@ async function callGateway(body: InvokeBody, options: GatewayCallOptions = {}) {
     });
     if (friendly) {
       err.message = friendly;
+    }
+
+    if (
+      isCheckoutRestartRequiredError({
+        code: err.code,
+        details,
+        message: messageCandidate,
+      })
+    ) {
+      err.code = 'CHECKOUT_RESTART_REQUIRED'
+      err.message = getCheckoutRestartMessage(resolvedSource)
+      persistCheckoutContext({
+        token: null,
+        source: normalizeCheckoutSource(checkoutContext.source) || resolvedSource,
+      })
     }
     throw err;
   }
@@ -1269,6 +1275,14 @@ async function callAccountsRoot(path: string, options: AccountsCallOptions = {})
   return callAccountsBase(ACCOUNTS_ROOT_API_BASE, path, options);
 }
 
+function isUnauthenticatedAccountsError(err: any): boolean {
+  return (
+    err?.status === 401 ||
+    err?.code === 'NOT_AUTHENTICATED' ||
+    err?.code === 'UNAUTHENTICATED'
+  );
+}
+
 export async function getPdpV2Personalization(args: {
   productId: string;
   productGroupId?: string | null;
@@ -1519,6 +1533,168 @@ export type SendMessageResult = {
   };
 };
 
+export type DiscoveryRecentView = {
+  merchant_id?: string | null;
+  product_id: string;
+  title?: string | null;
+  description?: string | null;
+  brand?: string | null;
+  category?: string | null;
+  product_type?: string | null;
+  viewed_at?: string | null;
+  history_source?: string | null;
+};
+
+export type BrandDiscoverySort = 'popular' | 'price_desc' | 'price_asc';
+
+export type BrandDiscoveryFacet = {
+  value: string;
+  label: string;
+  count: number;
+};
+
+export type BrandDiscoveryFacets = {
+  categories: BrandDiscoveryFacet[];
+};
+
+export type BrandDiscoveryFeedResult = {
+  products: ProductResponse[];
+  metadata: Record<string, any>;
+  facets: BrandDiscoveryFacets;
+  query_text: string;
+  page_info: {
+    page: number;
+    page_size: number;
+    total?: number;
+    has_more: boolean;
+  };
+};
+
+export type ShoppingDiscoveryFeedResult = {
+  products: ProductResponse[];
+  metadata: Record<string, any>;
+  page_info: {
+    page: number;
+    page_size: number;
+    total?: number;
+    has_more: boolean;
+  };
+};
+
+export type SimilarProductsMainlineResult = {
+  strategy: string;
+  items: RecommendationsData['items'];
+  metadata: RecommendationsData['metadata'] | null;
+  page_info: {
+    page: number;
+    page_size: number;
+    total?: number;
+    has_more: boolean;
+  };
+};
+
+function normalizeRecommendationItem(
+  input: any,
+  fallbackCurrency = 'USD',
+): RecommendationsData['items'][number] | null {
+  const productId = String(input?.product_id || input?.productId || input?.id || '').trim();
+  if (!productId) return null;
+
+  const merchantId = String(
+    input?.merchant_id || input?.merchantId || input?.merchant?.id || '',
+  ).trim();
+  const title = String(input?.title || input?.name || '').trim() || 'Untitled product';
+  const amount = Number(input?.price?.amount ?? input?.price_amount ?? input?.price ?? 0);
+  const currency = String(input?.price?.currency || input?.currency || '').trim() || fallbackCurrency;
+  const rating = Number(input?.rating);
+  const reviewCount = Number(input?.review_count ?? input?.reviewCount);
+
+  return {
+    product_id: productId,
+    title,
+    ...(merchantId ? { merchant_id: merchantId } : {}),
+    ...(typeof input?.image_url === 'string' && input.image_url.trim()
+      ? { image_url: input.image_url.trim() }
+      : {}),
+    ...(Number.isFinite(amount) && amount > 0 ? { price: { amount, currency } } : {}),
+    ...(Number.isFinite(rating) ? { rating } : {}),
+    ...(Number.isFinite(reviewCount) ? { review_count: Math.max(0, Math.round(reviewCount)) } : {}),
+  };
+}
+
+function normalizeRecommendationsMetadata(input: any): RecommendationsData['metadata'] | null {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return null;
+  const hasMore = typeof input.has_more === 'boolean' ? input.has_more : undefined;
+  const similarConfidence = String(input.similar_confidence || '').trim();
+  const lowConfidence = input.low_confidence === true;
+  const underfill = Number(input.underfill);
+  const retrievalMix = input.retrieval_mix;
+  const selectionMix = input.selection_mix;
+  const baseSemantic = input.base_semantic;
+  const lowConfidenceReasonCodes = Array.isArray(input.low_confidence_reason_codes)
+    ? input.low_confidence_reason_codes
+        .map((item: unknown) => String(item || '').trim())
+        .filter(Boolean)
+    : [];
+
+  return {
+    ...(typeof hasMore === 'boolean' ? { has_more: hasMore } : {}),
+    ...(similarConfidence ? { similar_confidence: similarConfidence } : {}),
+    ...(lowConfidence ? { low_confidence: true } : {}),
+    ...(lowConfidenceReasonCodes.length ? { low_confidence_reason_codes: lowConfidenceReasonCodes } : {}),
+    ...(Number.isFinite(underfill) ? { underfill: Math.max(0, Math.trunc(underfill)) } : {}),
+    ...(retrievalMix && typeof retrievalMix === 'object' ? { retrieval_mix: retrievalMix } : {}),
+    ...(selectionMix && typeof selectionMix === 'object' ? { selection_mix: selectionMix } : {}),
+    ...(baseSemantic && typeof baseSemantic === 'object' ? { base_semantic: baseSemantic } : {}),
+  };
+}
+
+function normalizeBrandDiscoveryFacet(input: any): BrandDiscoveryFacet | null {
+  const value = String(input?.value || input?.key || '').trim();
+  if (!value) return null;
+  const count = Number(input?.count);
+  return {
+    value,
+    label: String(input?.label || value).trim() || value,
+    count: Number.isFinite(count) && count >= 0 ? Math.floor(count) : 0,
+  };
+}
+
+function normalizeBrandDiscoveryFacets(metadata: Record<string, any>): BrandDiscoveryFacets {
+  const rawCategories = metadata?.facets?.categories;
+  return {
+    categories: Array.isArray(rawCategories)
+      ? rawCategories
+          .map((item) => normalizeBrandDiscoveryFacet(item))
+          .filter(Boolean) as BrandDiscoveryFacet[]
+      : [],
+  };
+}
+
+function normalizeDiscoveryRecentView(input: any): DiscoveryRecentView | null {
+  const productId = String(input?.product_id || input?.productId || '').trim();
+  if (!productId) return null;
+  return {
+    product_id: productId,
+    ...(input?.merchant_id != null || input?.merchantId != null
+      ? { merchant_id: String(input?.merchant_id || input?.merchantId || '').trim() || null }
+      : {}),
+    ...(input?.title ? { title: String(input.title).trim() } : {}),
+    ...(input?.description ? { description: String(input.description).trim() } : {}),
+    ...(input?.brand ? { brand: String(input.brand).trim() } : {}),
+    ...(input?.category ? { category: String(input.category).trim() } : {}),
+    ...(input?.product_type || input?.productType
+      ? { product_type: String(input?.product_type || input?.productType).trim() }
+      : {}),
+    ...(input?.viewed_at || input?.viewedAt
+      ? { viewed_at: String(input?.viewed_at || input?.viewedAt) }
+      : {}),
+    ...(input?.history_source || input?.historySource
+      ? { history_source: String(input?.history_source || input?.historySource).trim() }
+      : {}),
+  };
+}
+
 // Chat entrypoint: search products by free text query.
 export async function sendMessage(
   message: string,
@@ -1527,10 +1703,12 @@ export async function sendMessage(
     metadata?: Record<string, any>;
     signal?: AbortSignal;
     pagination?: { page?: number; limit?: number };
+    userId?: string | null;
   },
 ): Promise<SendMessageResult> {
   const query = message.trim();
-  const recentQueries = getEvalVariant() === 'A' ? [] : readRecentQueries();
+  const userId = String(options?.userId || '').trim() || null;
+  const recentQueries = getEvalVariant() === 'A' ? [] : readRecentQueries(userId);
   const requestedPage = Math.max(1, Math.floor(Number(options?.pagination?.page || 1) || 1));
   const requestedLimit = clampSearchLimit(options?.pagination?.limit, 24);
 
@@ -1545,6 +1723,7 @@ export async function sendMessage(
           limit: requestedLimit,
           page: requestedPage,
           allow_external_seed: true,
+          allow_stale_cache: false,
           external_seed_strategy: 'unified_relevance',
           ...(merchantIdOverride
             ? { merchant_id: merchantIdOverride, search_all_merchants: false }
@@ -1553,6 +1732,7 @@ export async function sendMessage(
         user: {
           // Provide lightweight context to stabilize intent/constraint extraction
           // across follow-up queries (aligned with creator-agent contract).
+          ...(userId ? { id: userId } : {}),
           recent_queries: recentQueries,
         },
       },
@@ -1596,7 +1776,7 @@ export async function sendMessage(
   const strictEmpty = Boolean(metadata?.strict_empty) || (query.length > 0 && products.length === 0);
 
   // Update the local recent query list after using the previous context.
-  rememberRecentQuery(query);
+  rememberRecentQuery(query, userId);
 
   return {
     products,
@@ -1612,26 +1792,305 @@ export async function sendMessage(
   };
 }
 
+export async function getBrandDiscoveryFeed(args: {
+  brandName: string;
+  query?: string;
+  category?: string;
+  sort?: BrandDiscoverySort;
+  page?: number;
+  limit?: number;
+  recentViews?: DiscoveryRecentView[];
+  recentQueries?: string[];
+  sourceProductRef?: {
+    product_id?: string | null;
+    merchant_id?: string | null;
+  };
+}): Promise<BrandDiscoveryFeedResult> {
+  const brandName = String(args.brandName || '').trim();
+  const queryText = String(args.query || '').trim();
+  const category = String(args.category || '').trim().toLowerCase();
+  const sort: BrandDiscoverySort =
+    args.sort === 'price_desc' || args.sort === 'price_asc' ? args.sort : 'popular';
+  const requestedPage = Math.max(1, Math.floor(Number(args.page || 1) || 1));
+  const requestedLimit = clampSearchLimit(args.limit, 24);
+  const recentViews = (Array.isArray(args.recentViews) ? args.recentViews : [])
+    .map((item) => normalizeDiscoveryRecentView(item))
+    .filter(Boolean)
+    .slice(0, 16) as DiscoveryRecentView[];
+  const recentQueries = (
+    Array.isArray(args.recentQueries) && args.recentQueries.length
+      ? args.recentQueries
+      : readRecentQueries()
+  )
+    .map((item) => String(item || '').trim())
+    .filter(Boolean)
+    .slice(0, MAX_RECENT_QUERIES);
+
+  if (!brandName) {
+    return {
+      products: [],
+      metadata: {
+        brand_scope_applied: [],
+        category_scope_applied: category ? [category] : [],
+        sort_applied: sort,
+        query_text: queryText,
+        has_more: false,
+        facets: {
+          categories: [],
+        },
+      },
+      facets: {
+        categories: [],
+      },
+      query_text: queryText,
+      page_info: {
+        page: requestedPage,
+        page_size: 0,
+        has_more: false,
+      },
+    };
+  }
+
+  const data = await callGateway({
+    operation: 'get_discovery_feed',
+    payload: {
+      surface: 'browse_products',
+      response_detail: 'card',
+      page: requestedPage,
+      limit: requestedLimit,
+      sort,
+      query: {
+        text: queryText,
+      },
+      scope: {
+        brand_names: [brandName],
+        ...(category ? { categories: [category] } : {}),
+      },
+      context: {
+        recent_views: recentViews,
+        recent_queries: recentQueries,
+        locale: getBrowserLanguage() || 'en-US',
+      },
+      ...(args.sourceProductRef?.product_id
+        ? {
+            source_product_ref: {
+              product_id: String(args.sourceProductRef.product_id).trim(),
+              ...(args.sourceProductRef.merchant_id
+                ? { merchant_id: String(args.sourceProductRef.merchant_id).trim() }
+                : {}),
+            },
+          }
+        : {}),
+    },
+  });
+
+  const products = ((data as any).products || []).map(
+    (p: RealAPIProduct | ProductResponse) => normalizeProduct(p),
+  );
+  const metadata =
+    data && typeof data === 'object' && data.metadata && typeof (data as any).metadata === 'object'
+      ? ((data as any).metadata as Record<string, any>)
+      : {};
+  const facets = normalizeBrandDiscoveryFacets(metadata);
+  const responsePageRaw = Number((data as any)?.page);
+  const responsePageSizeRaw = Number((data as any)?.page_size ?? (data as any)?.pageSize);
+  const responseTotalRaw = Number((data as any)?.total);
+  const page = Number.isFinite(responsePageRaw) && responsePageRaw > 0
+    ? Math.floor(responsePageRaw)
+    : requestedPage;
+  const pageSize = Number.isFinite(responsePageSizeRaw) && responsePageSizeRaw >= 0
+    ? Math.floor(responsePageSizeRaw)
+    : products.length;
+  const total =
+    Number.isFinite(responseTotalRaw) && responseTotalRaw >= 0
+      ? Math.floor(responseTotalRaw)
+      : undefined;
+  const hasMore =
+    typeof metadata.has_more === 'boolean'
+      ? metadata.has_more
+      : typeof total === 'number'
+        ? page * requestedLimit < total
+        : products.length >= requestedLimit;
+
+  return {
+    products,
+    metadata,
+    facets,
+    query_text: queryText,
+    page_info: {
+      page,
+      page_size: pageSize,
+      ...(typeof total === 'number' ? { total } : {}),
+      has_more: hasMore,
+    },
+  };
+}
+
+export async function getShoppingDiscoveryFeed(args: {
+  surface: ShoppingDiscoverySurface;
+  page?: number;
+  limit?: number;
+  entry?: ShoppingEntry;
+  catalog?: ShoppingScopeCatalog;
+  userId?: string | null;
+  recentViews?: DiscoveryRecentView[];
+  recentQueries?: string[];
+}): Promise<ShoppingDiscoveryFeedResult> {
+  const surface: ShoppingDiscoverySurface =
+    args.surface === 'home_hot_deals' ? 'home_hot_deals' : 'browse_products';
+  const requestedLimit = clampSearchLimit(args.limit, 20);
+  const requestedPage =
+    Number.isFinite(Number(args.page)) && Number(args.page)! > 0
+      ? Math.floor(Number(args.page))
+      : 1;
+  const entry =
+    args.entry && SHOPPING_ENTRY_VALUES.has(args.entry)
+      ? args.entry
+      : 'plp';
+  const catalog: ShoppingScopeCatalog =
+    args.catalog === 'promo_pool' || args.catalog === 'category' || args.catalog === 'global'
+      ? args.catalog
+      : surface === 'home_hot_deals'
+        ? 'promo_pool'
+        : 'global';
+  const userId = String(args.userId || '').trim() || null;
+  const recentViews = (Array.isArray(args.recentViews) ? args.recentViews : [])
+    .map((item) => normalizeDiscoveryRecentView(item))
+    .filter(Boolean)
+    .slice(0, 50) as DiscoveryRecentView[];
+  const recentQueries = normalizeRecentQueries(
+    Array.isArray(args.recentQueries) && args.recentQueries.length
+      ? args.recentQueries
+      : readRecentQueries(userId),
+  );
+
+  const data = await callGateway({
+    operation: 'get_discovery_feed',
+    payload: {
+      surface,
+      response_detail: 'card',
+      page: requestedPage,
+      limit: requestedLimit,
+      context: {
+        recent_views: recentViews,
+        recent_queries: recentQueries,
+        auth_state: userId ? 'authenticated' : 'anonymous',
+        locale: getBrowserLanguage() || 'en-US',
+      },
+    },
+    metadata: {
+      entry,
+      scope: {
+        catalog,
+      },
+    },
+  });
+
+  const products = ((data as any).products || []).map(
+    (p: RealAPIProduct | ProductResponse) => normalizeProduct(p),
+  );
+  const metadata =
+    data && typeof data === 'object' && data.metadata && typeof (data as any).metadata === 'object'
+      ? ((data as any).metadata as Record<string, any>)
+      : {};
+  const responsePageRaw = Number((data as any)?.page);
+  const responsePageSizeRaw = Number((data as any)?.page_size ?? (data as any)?.pageSize);
+  const responseTotalRaw = Number((data as any)?.total);
+  const responseHasMore = (data as any)?.has_more;
+  const responseHasMoreAlt = (data as any)?.hasMore;
+  const page = Number.isFinite(responsePageRaw) && responsePageRaw > 0
+    ? Math.floor(responsePageRaw)
+    : requestedPage;
+  const pageSize = Number.isFinite(responsePageSizeRaw) && responsePageSizeRaw >= 0
+    ? Math.floor(responsePageSizeRaw)
+    : products.length;
+  const total =
+    Number.isFinite(responseTotalRaw) && responseTotalRaw >= 0
+      ? Math.floor(responseTotalRaw)
+      : undefined;
+  const hasMore =
+    typeof metadata.has_more === 'boolean'
+      ? metadata.has_more
+      : typeof responseHasMore === 'boolean'
+        ? responseHasMore
+        : typeof responseHasMoreAlt === 'boolean'
+          ? responseHasMoreAlt
+          : typeof total === 'number'
+            ? page * requestedLimit < total
+            : products.length >= requestedLimit;
+
+  return {
+    products,
+    metadata,
+    page_info: {
+      page,
+      page_size: pageSize,
+      ...(typeof total === 'number' ? { total } : {}),
+      has_more: hasMore,
+    },
+  };
+}
+
 // Generic product list (Hot Deals, history, etc.)
 export async function getAllProducts(
   limit = 20,
   merchantIdOverride?: string,
-  options?: { page?: number },
+  options?: {
+    page?: number;
+    entry?: ShoppingEntry;
+    catalog?: ShoppingScopeCatalog;
+    userId?: string | null;
+    recentViews?: DiscoveryRecentView[];
+    recentQueries?: string[];
+  },
 ): Promise<ProductResponse[]> {
   const merchantId = String(merchantIdOverride || '').trim() || undefined;
-  const clampedLimit = clampSearchLimit(limit, 20);
+  const requestedLimit = clampSearchLimit(limit, 20);
   const page =
     Number.isFinite(Number(options?.page)) && Number(options?.page)! > 0
       ? Math.floor(Number(options?.page))
       : 1;
+  const entry =
+    options?.entry && SHOPPING_ENTRY_VALUES.has(options.entry)
+      ? options.entry
+      : 'plp';
+  const catalog: ShoppingScopeCatalog =
+    options?.catalog === 'promo_pool' || options?.catalog === 'category' || options?.catalog === 'global'
+      ? options.catalog
+      : 'global';
+  const userId = String(options?.userId || '').trim() || null;
+
+  if (!merchantId) {
+    const surface: ShoppingDiscoverySurface =
+      catalog === 'promo_pool' ? 'home_hot_deals' : 'browse_products';
+    const result = await getShoppingDiscoveryFeed({
+      surface,
+      page,
+      limit: requestedLimit,
+      entry,
+      catalog,
+      userId,
+      recentViews: options?.recentViews,
+      recentQueries: options?.recentQueries,
+    });
+    return result.products.slice(0, requestedLimit);
+  }
+
+  // Merchant-scoped empty browse still uses product search; generic rails above
+  // route through discovery so user behavior can influence the starting query.
+  const upstreamLimit =
+    !merchantId && entry === 'plp'
+      ? Math.max(requestedLimit, BROWSE_DISCOVERY_MIN_LIMIT)
+      : requestedLimit;
 
   const searchPayload = {
     search: {
       in_stock_only: false,
       query: '',
-      limit: clampedLimit,
+      limit: upstreamLimit,
       page,
       allow_external_seed: true,
+      allow_stale_cache: false,
       external_seed_strategy: 'unified_relevance',
       ...(merchantId
         ? { merchant_id: merchantId, search_all_merchants: false }
@@ -1642,12 +2101,90 @@ export async function getAllProducts(
   const data = await callGateway({
     operation: 'find_products_multi',
     payload: searchPayload as any,
+    metadata: {
+      entry,
+      scope: {
+        catalog,
+      },
+    },
   });
 
   const products = (data as any).products || [];
   return products.map((p: RealAPIProduct | ProductResponse) =>
     normalizeProduct(p),
+  ).slice(0, requestedLimit);
+}
+
+export async function getSimilarProductsMainline(args: {
+  product_id: string;
+  merchant_id?: string | null;
+  limit?: number;
+  exclude_items?: Array<{
+    product_id: string;
+    merchant_id?: string | null;
+  }>;
+  timeout_ms?: number;
+  cache_bypass?: boolean;
+}): Promise<SimilarProductsMainlineResult> {
+  const productId = String(args.product_id || '').trim();
+  if (!productId) {
+    throw new Error('product_id is required');
+  }
+
+  const limit = Math.max(1, Math.min(Number(args.limit || 6) || 6, 30));
+  const excludeItems = (Array.isArray(args.exclude_items) ? args.exclude_items : [])
+    .map((item) => {
+      const excludedProductId = String(item?.product_id || '').trim();
+      if (!excludedProductId) return null;
+      const excludedMerchantId = String(item?.merchant_id || '').trim();
+      return {
+        product_id: excludedProductId,
+        ...(excludedMerchantId ? { merchant_id: excludedMerchantId } : {}),
+      };
+    })
+    .filter(Boolean) as Array<{ product_id: string; merchant_id?: string }>;
+
+  const data = await callGatewayWithTimeout(
+    {
+      operation: 'find_similar_products',
+      payload: {
+        product_id: productId,
+        ...(args.merchant_id ? { merchant_id: String(args.merchant_id).trim() } : {}),
+        limit,
+        ...(excludeItems.length ? { exclude_items: excludeItems } : {}),
+        options: {
+          ...(args.cache_bypass ? { cache_bypass: true } : {}),
+        },
+      },
+    },
+    args.timeout_ms,
   );
+
+  const rawProducts = Array.isArray((data as any)?.products) ? (data as any).products : [];
+  const metadata = normalizeRecommendationsMetadata((data as any)?.metadata);
+  const pageRaw = Number((data as any)?.page);
+  const pageSizeRaw = Number((data as any)?.page_size);
+  const totalRaw = Number((data as any)?.total);
+  const responseHasMore =
+    typeof (data as any)?.has_more === 'boolean'
+      ? (data as any).has_more
+      : typeof metadata?.has_more === 'boolean'
+        ? metadata.has_more
+        : false;
+
+  return {
+    strategy: String((data as any)?.strategy || 'related_products').trim() || 'related_products',
+    items: rawProducts
+      .map((item: any) => normalizeRecommendationItem(item))
+      .filter(Boolean) as RecommendationsData['items'],
+    metadata,
+    page_info: {
+      page: Number.isFinite(pageRaw) && pageRaw > 0 ? Math.floor(pageRaw) : 1,
+      page_size: Number.isFinite(pageSizeRaw) && pageSizeRaw > 0 ? Math.floor(pageSizeRaw) : rawProducts.length,
+      ...(Number.isFinite(totalRaw) && totalRaw >= 0 ? { total: Math.floor(totalRaw) } : {}),
+      has_more: responseHasMore,
+    },
+  };
 }
 
 export async function resolveProductCandidates(args: {
@@ -1735,7 +2272,7 @@ export async function getPdpV2(args: {
 
   const include =
     args.include == null
-      ? ['offers', 'reviews_preview']
+      ? ['offers', 'variant_selector', 'active_ingredients', 'ingredients_inci', 'how_to_use', 'product_details', 'reviews_preview']
       : args.include;
 
   const data = await callGatewayWithTimeout(
@@ -1761,44 +2298,6 @@ export async function getPdpV2(args: {
   );
 
   return data as GetPdpV2Response;
-}
-
-export async function findSimilarProducts(args: {
-  product_id: string;
-  merchant_id?: string | null;
-  limit?: number;
-  timeout_ms?: number;
-  debug?: boolean;
-  cache_bypass?: boolean;
-}): Promise<FindSimilarProductsResponse> {
-  const productId = String(args.product_id || '').trim();
-  if (!productId) throw new Error('product_id is required');
-  const merchantId = args.merchant_id ? String(args.merchant_id).trim() : '';
-  const limit = Math.max(1, Math.floor(Number(args.limit || 6) || 6));
-
-  const data = await callGatewayWithTimeout(
-    {
-      operation: 'find_similar_products',
-      payload: {
-        similar: {
-          product_id: productId,
-          ...(merchantId ? { merchant_id: merchantId } : {}),
-          limit,
-        },
-        options: {
-          ...(args.debug ? { debug: true } : {}),
-          ...(args.cache_bypass ? { cache_bypass: true } : {}),
-        },
-        capabilities: {
-          client: 'shopping',
-          client_version: process.env.NEXT_PUBLIC_APP_VERSION || null,
-        },
-      },
-    },
-    args.timeout_ms,
-  );
-
-  return data as FindSimilarProductsResponse;
 }
 
 function _inferReviewSubjectFromProduct(product: ProductResponse): {
@@ -2015,10 +2514,22 @@ export async function createOrder(orderData: {
   selected_delivery_option?: any;
   metadata?: Record<string, any>;
 }) {
+  const checkoutContext = getCheckoutContext()
+  const resolvedSource = resolveGatewaySource({
+    operation: 'create_order',
+    requestMetadata: {},
+    checkoutContext,
+  })
   const data = await callGateway({
     operation: 'create_order',
     payload: {
-      order: orderData,
+      order: {
+        ...orderData,
+        metadata: buildCheckoutOrderMetadata({
+          metadata: orderData.metadata,
+          resolvedSource,
+        }),
+      },
     },
   });
 
@@ -2085,7 +2596,7 @@ export async function getOrderStatus(orderId: string) {
   const data = await callGateway({
     operation: 'get_order_status',
     payload: {
-      order: { order_id: orderId },
+      status: { order_id: orderId },
     },
   });
 
@@ -2273,49 +2784,64 @@ export async function recordBrowseHistoryEvent(
 ): Promise<BrowseHistoryItem | null> {
   const productId = String(payload.product_id || '').trim();
   if (!productId) return null;
-  const res = (await callAccounts('/browse-history/events', {
-    method: 'POST',
-    cache: 'no-store',
-    body: JSON.stringify({
-      product_id: productId,
-      merchant_id: payload.merchant_id == null ? null : String(payload.merchant_id).trim() || null,
-      title: payload.title == null ? null : String(payload.title),
-      price:
-        typeof payload.price === 'number' && Number.isFinite(payload.price)
-          ? payload.price
-          : null,
-      currency: payload.currency == null ? null : String(payload.currency),
-      image_url: payload.image_url == null ? null : String(payload.image_url),
-      description: payload.description == null ? null : String(payload.description),
-      viewed_at: payload.viewed_at == null ? null : String(payload.viewed_at),
-    }),
-  })) as any;
-  return (res?.item as BrowseHistoryItem) || null;
+  try {
+    const res = (await callAccounts('/browse-history/events', {
+      method: 'POST',
+      cache: 'no-store',
+      body: JSON.stringify({
+        product_id: productId,
+        merchant_id: payload.merchant_id == null ? null : String(payload.merchant_id).trim() || null,
+        title: payload.title == null ? null : String(payload.title),
+        price:
+          typeof payload.price === 'number' && Number.isFinite(payload.price)
+            ? payload.price
+            : null,
+        currency: payload.currency == null ? null : String(payload.currency),
+        image_url: payload.image_url == null ? null : String(payload.image_url),
+        description: payload.description == null ? null : String(payload.description),
+        viewed_at: payload.viewed_at == null ? null : String(payload.viewed_at),
+      }),
+    })) as any;
+    return (res?.item as BrowseHistoryItem) || null;
+  } catch (err: any) {
+    if (isUnauthenticatedAccountsError(err)) return null;
+    throw err;
+  }
 }
 
 export async function getBrowseHistory(limit = 50): Promise<BrowseHistoryListResult> {
   const normalizedLimit = Math.max(1, Math.min(Number(limit) || 50, 100));
   const params = new URLSearchParams({ limit: String(normalizedLimit) });
-  const res = (await callAccounts(`/browse-history?${params.toString()}`, {
-    cache: 'no-store',
-  })) as any;
-  return {
-    items: Array.isArray(res?.items) ? (res.items as BrowseHistoryItem[]) : [],
-    total: Number.isFinite(Number(res?.total))
-      ? Number(res.total)
-      : Array.isArray(res?.items)
-        ? res.items.length
-        : 0,
-  };
+  try {
+    const res = (await callAccounts(`/browse-history?${params.toString()}`, {
+      cache: 'no-store',
+    })) as any;
+    return {
+      items: Array.isArray(res?.items) ? (res.items as BrowseHistoryItem[]) : [],
+      total: Number.isFinite(Number(res?.total))
+        ? Number(res.total)
+        : Array.isArray(res?.items)
+          ? res.items.length
+          : 0,
+    };
+  } catch (err: any) {
+    if (isUnauthenticatedAccountsError(err)) return { items: [], total: 0 };
+    throw err;
+  }
 }
 
 export async function clearBrowseHistory(): Promise<{ status?: string; deleted?: number }> {
-  const res = (await callAccounts('/browse-history', {
-    method: 'DELETE',
-    cache: 'no-store',
-  })) as any;
-  return {
-    status: typeof res?.status === 'string' ? res.status : undefined,
-    deleted: Number.isFinite(Number(res?.deleted)) ? Number(res.deleted) : undefined,
-  };
+  try {
+    const res = (await callAccounts('/browse-history', {
+      method: 'DELETE',
+      cache: 'no-store',
+    })) as any;
+    return {
+      status: typeof res?.status === 'string' ? res.status : undefined,
+      deleted: Number.isFinite(Number(res?.deleted)) ? Number(res.deleted) : undefined,
+    };
+  } catch (err: any) {
+    if (isUnauthenticatedAccountsError(err)) return { status: 'unauthenticated', deleted: 0 };
+    throw err;
+  }
 }

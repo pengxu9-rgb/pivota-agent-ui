@@ -1,39 +1,55 @@
 'use client';
 
 import Image from 'next/image';
-import type { MediaGalleryData, Product, ProductDetailsData } from '@/features/pdp/types';
+import type {
+  ActiveIngredientsData,
+  HowToUseData,
+  IngredientsInciData,
+  MediaGalleryData,
+  Product,
+  ProductDetailsData,
+} from '@/features/pdp/types';
 import { DetailsAccordion } from '@/features/pdp/sections/DetailsAccordion';
+import { OverviewSection } from '@/features/pdp/sections/OverviewSection';
+import { StructuredDetailsBlocks } from '@/features/pdp/sections/StructuredDetailsBlocks';
 import {
   formatDescriptionText,
   isLikelyHeadingParagraph,
   splitParagraphs,
 } from '@/features/pdp/utils/formatDescriptionText';
+import { partitionDetailSections } from '@/features/pdp/utils/detailSections';
+import { buildOverviewContent } from '@/features/pdp/utils/overviewContent';
 
 export function BeautyDetailsSection({
   data,
   product,
   media,
+  activeIngredients,
+  ingredientsInci,
+  howToUse,
+  hideLowConfidenceActiveIngredients = false,
 }: {
-  data: ProductDetailsData;
+  data?: ProductDetailsData | null;
   product: Product;
   media?: MediaGalleryData | null;
+  activeIngredients?: ActiveIngredientsData | null;
+  ingredientsInci?: IngredientsInciData | null;
+  howToUse?: HowToUseData | null;
+  hideLowConfidenceActiveIngredients?: boolean;
 }) {
   const heroUrl = media?.items?.[0]?.url || product.image_url;
   const accentImages = media?.items?.slice(1, 3) || [];
-  const storySectionIndex = data.sections.findIndex((section) =>
-    /brand|story/i.test(section.heading),
-  );
-  const storySection =
-    storySectionIndex >= 0 ? data.sections[storySectionIndex] : undefined;
-  const remainingSections =
-    storySectionIndex >= 0
-      ? data.sections.filter((_, idx) => idx !== storySectionIndex)
-      : data.sections;
-  const formattedDescription =
-    formatDescriptionText(product.description) || formatDescriptionText(remainingSections?.[0]?.content);
-  const descriptionParagraphs = splitParagraphs(formattedDescription);
-  const introText =
-    descriptionParagraphs.find((p) => !isLikelyHeadingParagraph(p)) || descriptionParagraphs[0] || '';
+  const sections = Array.isArray(data?.sections) ? data.sections : [];
+  const {
+    overviewSection: overviewSourceSection,
+    supplementalSections: factsSections,
+    brandStorySection: storySection,
+  } = partitionDetailSections(sections);
+  const overviewContent = buildOverviewContent({
+    description: product.description,
+    section: overviewSourceSection,
+    hideStructuredDuplicates: true,
+  });
   const formattedBrandStory = formatDescriptionText(product.brand_story || storySection?.content);
   const brandStoryParagraphs = splitParagraphs(formattedBrandStory);
 
@@ -54,14 +70,7 @@ export function BeautyDetailsSection({
 
       <div className="px-3 py-6 text-center">
         <h2 className="text-xl font-serif tracking-wide">{product.title}</h2>
-        {product.subtitle ? (
-          <p className="mt-2 text-sm text-muted-foreground">{product.subtitle}</p>
-        ) : null}
-        {introText ? (
-          <p className="mt-4 text-sm text-muted-foreground leading-relaxed max-w-xs mx-auto whitespace-pre-line">
-            {introText}
-          </p>
-        ) : null}
+        {product.subtitle ? <p className="mt-2 text-sm text-muted-foreground">{product.subtitle}</p> : null}
       </div>
 
       {accentImages.length ? (
@@ -69,15 +78,32 @@ export function BeautyDetailsSection({
           <div className="grid grid-cols-2 gap-2 rounded-xl overflow-hidden">
             {accentImages.map((item, idx) => (
               <div key={`${item.url}-${idx}`} className="relative aspect-[3/4] bg-muted">
-                <Image src={item.url} alt="" fill className="object-cover" sizes="(max-width: 768px) 50vw, 320px" loading="lazy" />
+                <Image
+                  src={item.url}
+                  alt=""
+                  fill
+                  className="object-cover"
+                  sizes="(max-width: 768px) 50vw, 320px"
+                  loading="lazy"
+                />
               </div>
             ))}
           </div>
         </div>
       ) : null}
 
+      <div className="mx-3 space-y-3">
+        <OverviewSection content={overviewContent} />
+        <StructuredDetailsBlocks
+          activeIngredients={activeIngredients}
+          ingredientsInci={ingredientsInci}
+          howToUse={howToUse}
+          hideLowConfidenceActiveIngredients={hideLowConfidenceActiveIngredients}
+        />
+      </div>
+
       {formattedBrandStory ? (
-        <div className="px-3 py-6">
+        <div className="px-3 py-6 border-t border-muted/60">
           <h3 className="text-sm font-semibold mb-2">Brand Story</h3>
           {brandStoryParagraphs.length ? (
             <div className="space-y-2">
@@ -87,7 +113,10 @@ export function BeautyDetailsSection({
                     {paragraph}
                   </div>
                 ) : (
-                  <p key={`${paragraph}-${idx}`} className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line">
+                  <p
+                    key={`${paragraph}-${idx}`}
+                    className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line"
+                  >
                     {paragraph}
                   </p>
                 ),
@@ -99,9 +128,12 @@ export function BeautyDetailsSection({
         </div>
       ) : null}
 
-      <div className="mx-3">
-        <DetailsAccordion data={{ sections: remainingSections.length ? remainingSections : data.sections }} />
-      </div>
+      {factsSections.length ? (
+        <div className="mx-3 border-t border-muted/60 pt-5">
+          <h3 className="text-sm font-semibold mb-3">Product Information</h3>
+          <DetailsAccordion data={{ sections: factsSections }} />
+        </div>
+      ) : null}
     </div>
   );
 }

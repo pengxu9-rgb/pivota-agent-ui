@@ -8,6 +8,7 @@ import { GlassCard } from '@/components/ui/glass-card';
 import { Button } from '@/components/ui/button';
 import { useCartStore } from '@/store/cartStore';
 import { hideProductRouteLoading, showProductRouteLoading } from '@/lib/productRouteLoading';
+import { buildProductHref } from '@/lib/productHref';
 import { appendCurrentPathAsReturn } from '@/lib/returnUrl';
 import { toast } from 'sonner';
 
@@ -23,6 +24,7 @@ interface ProductCardProps {
   currency?: string;
   image: string;
   description?: string;
+  compact?: boolean;
   onBuy?: () => void;
   onAddToCart?: () => void;
 }
@@ -39,6 +41,7 @@ export default function ProductCard({
   currency,
   image,
   description,
+  compact = false,
   onBuy,
   onAddToCart,
 }: ProductCardProps) {
@@ -50,9 +53,7 @@ export default function ProductCard({
   const { addItem } = useCartStore();
   const isExternal = Boolean(external_redirect_url);
 
-  const href = merchant_id
-    ? `/products/${product_id}?merchant_id=${encodeURIComponent(merchant_id)}`
-    : `/products/${product_id}`;
+  const href = buildProductHref(product_id, merchant_id);
 
   const handleAddToCart = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -142,8 +143,16 @@ export default function ProductCard({
       className={isNavigating ? 'pointer-events-none' : ''}
       aria-disabled={isNavigating}
     >
-      <GlassCard className="relative p-0 overflow-hidden group hover:shadow-glass-hover transition-all duration-300 hover:scale-[1.02]">
-        <div className="relative aspect-[3/4] overflow-hidden bg-muted/30">
+      <GlassCard
+        className={`relative overflow-hidden group transition-all duration-300 hover:scale-[1.02] hover:shadow-glass-hover ${
+          compact ? 'h-full p-0' : 'p-0'
+        }`}
+      >
+        <div
+          className={`relative overflow-hidden bg-muted/30 ${
+            compact ? 'aspect-square' : 'aspect-[3/4]'
+          }`}
+        >
           <Image
             src={imageSrc}
             alt={title}
@@ -156,8 +165,12 @@ export default function ProductCard({
           />
         </div>
 
-        <div className="p-3 space-y-2">
-          <h3 className="font-medium text-sm line-clamp-2 group-hover:text-primary transition-colors">
+        <div className={compact ? 'space-y-1.5 p-2.5' : 'space-y-2 p-3'}>
+          <h3
+            className={`font-medium line-clamp-2 transition-colors group-hover:text-primary ${
+              compact ? 'text-xs leading-5' : 'text-sm'
+            }`}
+          >
             {title}
           </h3>
 
@@ -167,11 +180,13 @@ export default function ProductCard({
             </p>
           )}
 
-          {description && (
+          {!compact && description && (
             <p className="text-xs text-muted-foreground line-clamp-2">{description}</p>
           )}
 
-          <div className="text-lg font-bold text-primary">${price.toFixed(2)}</div>
+          <div className={compact ? 'text-base font-bold text-primary' : 'text-lg font-bold text-primary'}>
+            ${price.toFixed(2)}
+          </div>
 
           <div className="flex gap-2">
             {isExternal ? (
@@ -179,7 +194,7 @@ export default function ProductCard({
                 variant="gradient"
                 size="sm"
                 onClick={handleViewDetails}
-                className="flex-1"
+                className={`flex-1 ${compact ? 'px-2 text-xs' : ''}`}
               >
                 View details
               </Button>
@@ -189,7 +204,7 @@ export default function ProductCard({
                   variant="outline"
                   size="sm"
                   onClick={handleAddToCart}
-                  className="flex-1"
+                  className={`flex-1 ${compact ? 'px-2 text-xs' : ''}`}
                 >
                   Add to Cart
                 </Button>
@@ -198,7 +213,7 @@ export default function ProductCard({
                     variant="gradient"
                     size="sm"
                     onClick={handleBuyNow}
-                    className="flex-1"
+                    className={`flex-1 ${compact ? 'px-2 text-xs' : ''}`}
                   >
                     Buy Now
                   </Button>

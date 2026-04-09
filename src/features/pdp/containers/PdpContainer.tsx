@@ -15,6 +15,9 @@ import { ChevronLeft, Share2, Star } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import type {
+  ActiveIngredientsData,
+  HowToUseData,
+  IngredientsInciData,
   MediaGalleryData,
   MediaItem,
   Offer,
@@ -22,15 +25,15 @@ import type {
   PricePromoData,
   ProductDetailsData,
   ProductIntelData,
+  ProductFactsData,
   RecommendationsData,
   ReviewsPreviewData,
   Variant,
 } from '@/features/pdp/types';
 import {
-  findSimilarProducts,
+  getSimilarProductsMainline,
   listQuestions,
   postQuestion,
-  type FindSimilarProductsResponse,
   type QuestionListItem,
   type UgcCapabilities,
 } from '@/lib/api';
@@ -41,6 +44,7 @@ import {
   extractAttributeOptions,
   extractBeautyAttributes,
   findVariantByOptions,
+  getStaticSizeOption,
   getOptionValue,
 } from '@/features/pdp/utils/variantOptions';
 import { pdpTracking } from '@/features/pdp/tracking';
@@ -69,10 +73,19 @@ import { ModuleShell } from '@/features/pdp/components/ModuleShell';
 import { DEFAULT_UGC_SNAPSHOT, lockFirstUgcSource, mergeUgcItems } from '@/features/pdp/state/freezePolicy';
 import { getStableGalleryItems, resolveHeroMediaUrl } from '@/features/pdp/state/heroMedia';
 import { buildPdpViewModel } from '@/features/pdp/state/viewModel';
+import { buildBrandHref } from '@/lib/brandRoute';
 import { cn } from '@/lib/utils';
 import { resolveReviewGate, reviewGateMessage, reviewGateResultToReason } from '@/lib/reviewGate';
 import { postRequestCloseToParent } from '@/lib/auroraEmbed';
 import { isExternalAgentEntry, resolveExternalAgentHomeUrl, safeReturnUrl } from '@/lib/returnUrl';
+import { useIsDesktop } from '@/features/pdp/hooks/useIsDesktop';
+import { buildSimilarMainlineStatus } from '@/features/pdp/utils/similarHints';
+import {
+  chooseProductDetailsData,
+  sanitizeActiveIngredientsData,
+  sanitizeHowToUseData,
+  sanitizeIngredientsInciData,
+} from '@/features/pdp/utils/pdpDisplaySanitizers';
 
 function nonEmptyText(value: unknown, fallback: string): string {
   const text = String(value ?? '').trim();
@@ -82,6 +95,13 @@ function nonEmptyText(value: unknown, fallback: string): string {
 function getModuleData<T>(payload: PDPPayload, type: string): T | null {
   const m = payload.modules.find((x) => x.type === type);
   return (m?.data as T) ?? null;
+}
+
+function getRecommendationsModuleData(payload: PDPPayload): RecommendationsData | null {
+  const recommendationModule = payload.modules.find(
+    (module) => module?.type === 'recommendations' || module?.type === ('similar' as any),
+  );
+  return (recommendationModule?.data as RecommendationsData) ?? null;
 }
 
 function formatPrice(amount: number, currency: string) {
@@ -96,6 +116,41 @@ function formatPrice(amount: number, currency: string) {
 
 const SIMILAR_PAGE_STEP = 12;
 const SIMILAR_NO_GROWTH_STOP_THRESHOLD = 2;
+const SINGLE_VARIANT_PLACEHOLDER_TITLE = /^(default(?: title)?|variant \d+)$/i;
+const LOW_CONFIDENCE_ACTIVE_INGREDIENT_BEAUTY_HINT_RE =
+  /(beauty|makeup|cosmetic|palette|powder|eyeshadow|eye color|eye|quad|shadow|blush|bronzer|concealer|foundation|lip|lips|mascara|brow|skincare|serum|cream|creme|fragrance|perfume|parfum|eau de parfum)/i;
+
+function getSingleVariantSummaryLabel(variant: Variant | undefined): string {
+  const title = String(variant?.title || '').trim();
+  if (!title || SINGLE_VARIANT_PLACEHOLDER_TITLE.test(title)) return 'Default option';
+  return title;
+}
+
+function getCurrentRelativePath(): string | null {
+  if (typeof window === 'undefined') return null;
+  return `${window.location.pathname}${window.location.search}`;
+}
+
+export function isLikelyBeautyExternalSeedProduct(
+  product: PDPPayload['product'],
+  resolvedMode: 'beauty' | 'generic',
+): boolean {
+  if (resolvedMode === 'beauty') return true;
+  if (isBeautyProduct(product)) return true;
+
+  const beautyLikeText = [
+    product.title,
+    product.subtitle,
+    product.brand?.name,
+    Array.isArray(product.category_path) ? product.category_path.join(' ') : '',
+    Array.isArray(product.tags) ? product.tags.join(' ') : '',
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+
+  return LOW_CONFIDENCE_ACTIVE_INGREDIENT_BEAUTY_HINT_RE.test(beautyLikeText);
+}
 
 function buildRecommendationKey(item: { product_id?: string; merchant_id?: string }) {
   return `${String(item?.merchant_id || '').trim()}::${String(item?.product_id || '').trim()}`;
@@ -190,7 +245,6 @@ function StarRating({ value }: { value: number }) {
 }
 
 const SIMILAR_PAGE_SIZE = 6;
-const SIMILAR_VIEW_ALL_MIN = 12;
 const SIMILAR_MAX = 30;
 
 function toFiniteNumber(value: unknown): number | null {
@@ -260,17 +314,38 @@ function normalizeRecommendationItems(
     .filter(Boolean) as RecommendationsData['items'];
 }
 
+function buildRecommendationSemanticKey(
+  item: RecommendationsData['items'][number],
+): string {
+  const merchantId = String(item.merchant_id || '').trim();
+  const normalizedTitle = String(item.title || '')
+    .toLowerCase()
+    .replace(/&nbsp;/g, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/[^a-z0-9\s-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!normalizedTitle) return '';
+  return merchantId ? `${merchantId}:${normalizedTitle}` : normalizedTitle;
+}
+
 function mergeRecommendationItems(
   current: RecommendationsData['items'],
   incoming: RecommendationsData['items'],
 ): { items: RecommendationsData['items']; added: number } {
-  const seen = new Set<string>();
+  const seenProductKeys = new Set<string>();
+  const seenSemanticKeys = new Set<string>();
   const merged: RecommendationsData['items'] = [];
 
   const append = (item: RecommendationsData['items'][number]) => {
-    const key = `${String(item.merchant_id || '').trim()}:${String(item.product_id || '').trim()}`;
-    if (!item.product_id || seen.has(key)) return;
-    seen.add(key);
+    const productKey = `${String(item.merchant_id || '').trim()}:${String(item.product_id || '').trim()}`;
+    const semanticKey = buildRecommendationSemanticKey(item);
+    if (!item.product_id || seenProductKeys.has(productKey)) return;
+    if (semanticKey && seenSemanticKeys.has(semanticKey)) return;
+    seenProductKeys.add(productKey);
+    if (semanticKey) {
+      seenSemanticKeys.add(semanticKey);
+    }
     merged.push(item);
   };
 
@@ -280,14 +355,20 @@ function mergeRecommendationItems(
   return { items: merged, added: merged.length - before };
 }
 
+function dedupeRecommendationItems(
+  items: RecommendationsData['items'],
+): RecommendationsData['items'] {
+  return mergeRecommendationItems([], items).items;
+}
+
 function normalizeSimilarMetadata(
   metadata:
-    | FindSimilarProductsResponse['metadata']
     | RecommendationsData['metadata']
     | null
     | undefined,
 ): RecommendationsData['metadata'] | null {
   if (!metadata || typeof metadata !== 'object') return null;
+  const hasMore = (metadata as any).has_more;
   const similarConfidence = String((metadata as any).similar_confidence || '').trim();
   const lowConfidence = Boolean((metadata as any).low_confidence);
   const reasonCodesRaw = (metadata as any).low_confidence_reason_codes;
@@ -306,14 +387,88 @@ function normalizeSimilarMetadata(
             : {}),
         }
       : undefined;
+  const underfillRaw = Number((metadata as any).underfill);
+  const underfill = Number.isFinite(underfillRaw) ? Math.max(0, Math.trunc(underfillRaw)) : undefined;
+  const selectionMix = (metadata as any).selection_mix;
+  const normalizedSelectionMix =
+    selectionMix && typeof selectionMix === 'object'
+      ? {
+          ...(Number.isFinite(Number((selectionMix as any).same_brand_same_category))
+            ? { same_brand_same_category: Number((selectionMix as any).same_brand_same_category) }
+            : {}),
+          ...(Number.isFinite(Number((selectionMix as any).same_brand_other_category))
+            ? { same_brand_other_category: Number((selectionMix as any).same_brand_other_category) }
+            : {}),
+          ...(Number.isFinite(Number((selectionMix as any).other_brand_same_category))
+            ? { other_brand_same_category: Number((selectionMix as any).other_brand_same_category) }
+            : {}),
+          ...(Number.isFinite(Number((selectionMix as any).other_brand_same_vertical))
+            ? { other_brand_same_vertical: Number((selectionMix as any).other_brand_same_vertical) }
+            : {}),
+          ...(Number.isFinite(Number((selectionMix as any).semantic_peer))
+            ? { semantic_peer: Number((selectionMix as any).semantic_peer) }
+            : {}),
+        }
+      : undefined;
+  const baseSemantic = (metadata as any).base_semantic;
+  const normalizedBaseSemantic =
+    baseSemantic && typeof baseSemantic === 'object'
+      ? {
+          ...(typeof (baseSemantic as any).brand === 'string'
+            ? { brand: String((baseSemantic as any).brand).trim() || null }
+            : {}),
+          ...(typeof (baseSemantic as any).vertical === 'string'
+            ? { vertical: String((baseSemantic as any).vertical).trim() || null }
+            : {}),
+          ...(typeof (baseSemantic as any).inferred === 'boolean'
+            ? { inferred: (baseSemantic as any).inferred }
+            : {}),
+          ...(Number.isFinite(Number((baseSemantic as any).signal_strength))
+            ? { signal_strength: Number((baseSemantic as any).signal_strength) }
+            : {}),
+        }
+      : undefined;
 
   return {
+    ...(typeof hasMore === 'boolean' ? { has_more: hasMore } : {}),
     ...(similarConfidence ? { similar_confidence: similarConfidence } : {}),
     ...(lowConfidence ? { low_confidence: true } : {}),
     ...(reasonCodes.length ? { low_confidence_reason_codes: reasonCodes } : {}),
+    ...(underfill != null ? { underfill } : {}),
     ...(normalizedMix && (normalizedMix.internal != null || normalizedMix.external != null)
       ? { retrieval_mix: normalizedMix }
       : {}),
+    ...(normalizedSelectionMix && Object.keys(normalizedSelectionMix).length > 0
+      ? { selection_mix: normalizedSelectionMix }
+      : {}),
+    ...(normalizedBaseSemantic && Object.keys(normalizedBaseSemantic).length > 0
+      ? { base_semantic: normalizedBaseSemantic }
+      : {}),
+  };
+}
+
+function getInitialSimilarState(payload: PDPPayload): {
+  items: RecommendationsData['items'];
+  strategy: string;
+  metadata: RecommendationsData['metadata'] | null;
+  rawCount: number;
+} {
+  const payloadRecommendations = getRecommendationsModuleData(payload);
+  const recommendationCurrencyFallback =
+    payload.product.price?.current.currency || payload.product.price?.compare_at?.currency || 'USD';
+  const rawItems = normalizeRecommendationItems(
+    payloadRecommendations?.items || [],
+    recommendationCurrencyFallback,
+  );
+
+  return {
+    items: dedupeRecommendationItems(rawItems),
+    strategy:
+      typeof payloadRecommendations?.strategy === 'string' && payloadRecommendations.strategy.trim()
+        ? payloadRecommendations.strategy
+        : 'related_products',
+    metadata: normalizeSimilarMetadata(payloadRecommendations?.metadata),
+    rawCount: Array.isArray(payloadRecommendations?.items) ? payloadRecommendations.items.length : 0,
   };
 }
 
@@ -379,20 +534,13 @@ export function PdpContainer({
   const [ugcSnapshot, setUgcSnapshot] = useState(DEFAULT_UGC_SNAPSHOT);
   const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const router = useRouter();
+  const isDesktop = useIsDesktop();
   const [questionOpen, setQuestionOpen] = useState(false);
   const [questionText, setQuestionText] = useState('');
   const [questionSubmitting, setQuestionSubmitting] = useState(false);
   const [ugcQuestions, setUgcQuestions] = useState<QuestionListItem[]>([]);
   const questionsFetchedProductIdRef = useRef<string>('');
   const latestProductGroupIdRef = useRef<string | null>(null);
-  const [similarItems, setSimilarItems] = useState<RecommendationsData['items']>([]);
-  const [similarVisibleCount, setSimilarVisibleCount] = useState(SIMILAR_PAGE_SIZE);
-  const [similarHasMore, setSimilarHasMore] = useState(true);
-  const [similarLoadingMore, setSimilarLoadingMore] = useState(false);
-  const [similarSheetOpen, setSimilarSheetOpen] = useState(false);
-  const [similarStrategy, setSimilarStrategy] = useState('related_products');
-  const [similarMetadata, setSimilarMetadata] = useState<RecommendationsData['metadata'] | null>(null);
-  const similarResetProductIdRef = useRef<string>('');
 
   const variants = useMemo(() => payload.product.variants ?? [], [payload.product.variants]);
 
@@ -432,15 +580,59 @@ export function PdpContainer({
   const media = getModuleData<MediaGalleryData>(payload, 'media_gallery');
   const pricePromo = getModuleData<PricePromoData>(payload, 'price_promo');
   const productIntel = getModuleData<ProductIntelData>(payload, 'product_intel');
-  const details = getModuleData<ProductDetailsData>(payload, 'product_details');
+  const productFacts = getModuleData<ProductFactsData>(payload, 'product_facts');
+  const legacyDetails = getModuleData<ProductDetailsData>(payload, 'product_details');
+  const activeIngredients = sanitizeActiveIngredientsData(
+    getModuleData<ActiveIngredientsData>(payload, 'active_ingredients'),
+  );
+  const ingredientsInci = sanitizeIngredientsInciData(
+    getModuleData<IngredientsInciData>(payload, 'ingredients_inci'),
+  );
+  const howToUse = sanitizeHowToUseData(
+    getModuleData<HowToUseData>(payload, 'how_to_use'),
+  );
+  const details = chooseProductDetailsData({
+    productFacts,
+    legacyDetails,
+    hasStructuredBlocks: Boolean(activeIngredients || ingredientsInci || howToUse),
+  });
   const reviews = getModuleData<ReviewsPreviewData>(payload, 'reviews_preview');
-  const payloadRecommendations = getModuleData<RecommendationsData>(payload, 'recommendations');
+  const brandNameForCard = String(reviews?.brand_card?.name || payload.product.brand?.name || '').trim();
+  const payloadProductId = String(payload.product.product_id || '').trim();
+  const payloadRecommendations = getRecommendationsModuleData(payload);
+  const payloadRecommendationItemCount = Array.isArray(payloadRecommendations?.items)
+    ? payloadRecommendations.items.length
+    : 0;
   const recommendationCurrencyFallback =
     payload.product.price?.current.currency || payload.product.price?.compare_at?.currency || 'USD';
+  const initialSimilarState = getInitialSimilarState(payload);
   const promoDismissStorageKey = useMemo(
-    () => `pdp_promo_dismissed:${payload.product.product_id}`,
-    [payload.product.product_id],
+    () => `pdp_promo_dismissed:${payloadProductId}`,
+    [payloadProductId],
   );
+  const [currentRelativePath, setCurrentRelativePath] = useState<string | null>(null);
+  const brandHref = brandNameForCard
+    ? buildBrandHref({
+        brandName: brandNameForCard,
+        subtitle: reviews?.brand_card?.subtitle || null,
+        sourceProductId: payload.product.product_id,
+        sourceMerchantId: payload.product.merchant_id,
+        returnUrl: currentRelativePath,
+      })
+    : undefined;
+  const [similarItems, setSimilarItems] =
+    useState<RecommendationsData['items']>(initialSimilarState.items);
+  const [similarVisibleCount, setSimilarVisibleCount] = useState(SIMILAR_PAGE_SIZE);
+  const [similarHasMore, setSimilarHasMore] = useState(
+    Boolean(initialSimilarState.metadata?.has_more),
+  );
+  const [similarLoadingMore, setSimilarLoadingMore] = useState(false);
+  const [similarSheetOpen, setSimilarSheetOpen] = useState(false);
+  const [similarStrategy, setSimilarStrategy] = useState(initialSimilarState.strategy);
+  const [similarMetadata, setSimilarMetadata] =
+    useState<RecommendationsData['metadata'] | null>(initialSimilarState.metadata);
+  const similarResetProductIdRef = useRef<string>('');
+  const similarNoGrowthCountRef = useRef(0);
 
   const offers = useMemo(() => payload.offers ?? [], [payload.offers]);
   const internalFirstDefaultOfferId = useMemo(
@@ -479,6 +671,10 @@ export function PdpContainer({
     const envAllowed = String(process.env.NEXT_PUBLIC_PDP_DEBUG || '').trim() === '1';
     if (process.env.NODE_ENV === 'production' && !envAllowed) return false;
     return true;
+  }, []);
+
+  useEffect(() => {
+    setCurrentRelativePath(getCurrentRelativePath());
   }, []);
 
   useEffect(() => {
@@ -541,7 +737,12 @@ export function PdpContainer({
 
     return colorOptions.map((value) => byValue.get(value) || { value });
   }, [colorOptions, variants]);
-  const sizeOptions = useMemo(() => collectSizeOptions(variants), [variants]);
+  const rawSizeOptions = useMemo(() => collectSizeOptions(variants), [variants]);
+  const staticSizeOption = useMemo(() => getStaticSizeOption(variants), [variants]);
+  const sizeOptions = useMemo(
+    () => (staticSizeOption ? rawSizeOptions.filter((value) => value !== staticSizeOption) : rawSizeOptions),
+    [rawSizeOptions, staticSizeOption],
+  );
   const [selectedColor, setSelectedColor] = useState<string | null>(
     getOptionValue(selectedVariant, ['color', 'colour', 'shade', 'tone']) || null,
   );
@@ -574,31 +775,20 @@ export function PdpContainer({
   }, [payload.product.product_id]);
 
   useEffect(() => {
-    if (similarResetProductIdRef.current === payload.product.product_id) return;
-    similarResetProductIdRef.current = payload.product.product_id;
+    if (similarResetProductIdRef.current === payloadProductId) return;
+    similarResetProductIdRef.current = payloadProductId;
 
-    const initialItems = normalizeRecommendationItems(
-      payloadRecommendations?.items || [],
-      recommendationCurrencyFallback,
-    );
-    const initialStrategy =
-      typeof payloadRecommendations?.strategy === 'string' && payloadRecommendations.strategy.trim()
-        ? payloadRecommendations.strategy
-        : 'related_products';
-    const initialMetadata = normalizeSimilarMetadata(payloadRecommendations?.metadata);
-    setSimilarItems(initialItems);
-    setSimilarStrategy(initialStrategy);
-    setSimilarMetadata(initialMetadata);
+    setSimilarItems(initialSimilarState.items);
+    setSimilarStrategy(initialSimilarState.strategy);
+    setSimilarMetadata(initialSimilarState.metadata);
     setSimilarVisibleCount(SIMILAR_PAGE_SIZE);
-    setSimilarHasMore(initialItems.length < SIMILAR_MAX);
+    setSimilarHasMore(Boolean(initialSimilarState.metadata?.has_more));
     setSimilarLoadingMore(false);
     setSimilarSheetOpen(false);
+    similarNoGrowthCountRef.current = 0;
   }, [
-    payload.product.product_id,
-    payloadRecommendations?.items,
-    payloadRecommendations?.metadata,
-    payloadRecommendations?.strategy,
-    recommendationCurrencyFallback,
+    initialSimilarState,
+    payloadProductId,
   ]);
 
   useEffect(() => {
@@ -608,9 +798,6 @@ export function PdpContainer({
     );
     if (!incomingItems.length) return;
     setSimilarItems((prev) => mergeRecommendationItems(prev, incomingItems).items);
-    if (incomingItems.length >= SIMILAR_MAX) {
-      setSimilarHasMore(false);
-    }
     if (
       typeof payloadRecommendations?.strategy === 'string' &&
       payloadRecommendations.strategy.trim()
@@ -618,7 +805,12 @@ export function PdpContainer({
       setSimilarStrategy(payloadRecommendations.strategy);
     }
     const incomingMetadata = normalizeSimilarMetadata(payloadRecommendations?.metadata);
-    if (incomingMetadata) setSimilarMetadata(incomingMetadata);
+    if (incomingMetadata) {
+      setSimilarMetadata((prev) => ({ ...(prev || {}), ...incomingMetadata }));
+      if (typeof incomingMetadata.has_more === 'boolean') {
+        setSimilarHasMore(incomingMetadata.has_more);
+      }
+    }
   }, [
     payloadRecommendations?.items,
     payloadRecommendations?.metadata,
@@ -633,6 +825,10 @@ export function PdpContainer({
       items: similarItems,
     }),
     [payloadRecommendations?.strategy, similarItems, similarMetadata, similarStrategy],
+  );
+  const similarStatus = useMemo(
+    () => buildSimilarMainlineStatus(recommendations.metadata),
+    [recommendations.metadata],
   );
 
   useEffect(() => {
@@ -664,14 +860,17 @@ export function PdpContainer({
 
   const baseMediaItems = useMemo(() => media?.items ?? [], [media]);
   const galleryItems: MediaItem[] = useMemo(
-    () => getStableGalleryItems(baseMediaItems),
-    [baseMediaItems],
+    () => getStableGalleryItems({
+      items: baseMediaItems,
+      variants,
+      selectedVariantId,
+    }),
+    [baseMediaItems, selectedVariantId, variants],
   );
   const galleryData = useMemo(() => ({ items: galleryItems }), [galleryItems]);
 
   const heroUrl = resolveHeroMediaUrl({
     activeMediaIndex,
-    selectedVariantImageUrl: selectedVariant?.image_url || null,
     galleryItems,
     fallbackUrl: payload.product.image_url || '',
   });
@@ -819,7 +1018,7 @@ export function PdpContainer({
     similarItems.length,
   ]);
 
-  const showShades = resolvedMode === 'beauty' && variants.length > 1;
+  const showShades = resolvedMode === 'beauty' && variants.length > 0;
   const showSizeGuide = resolvedMode === 'generic' && !!payload.product.size_guide;
   const hasInsights = Boolean(productIntel?.product_intel_core);
   const showSizeHelper = useMemo(() => {
@@ -1099,6 +1298,30 @@ export function PdpContainer({
 
   const attributeOptions = extractAttributeOptions(selectedVariant);
   const beautyAttributes = extractBeautyAttributes(selectedVariant);
+  const hasDetailsSection = Boolean(
+    details ||
+      activeIngredients?.items?.length ||
+      ingredientsInci?.items?.length ||
+      howToUse?.steps?.length ||
+      activeIngredients?.raw_text ||
+      ingredientsInci?.raw_text ||
+      howToUse?.raw_text,
+  );
+  const isExternalSeedProduct =
+    String(payload.product.merchant_id || '').trim().toLowerCase() === 'external_seed';
+  const shouldHideLowConfidenceActiveIngredients =
+    isExternalSeedProduct &&
+    isLikelyBeautyExternalSeedProduct(payload.product, resolvedMode);
+  const singleVariantSummaryLabel = useMemo(
+    () => getSingleVariantSummaryLabel(selectedVariant),
+    [selectedVariant],
+  );
+  const showExternalSeedSingleVariantSummary =
+    isExternalSeedProduct &&
+    variants.length === 1 &&
+    !colorOptions.length &&
+    !sizeOptions.length &&
+    !attributeOptions.length;
   const compareAmount =
     pricePromo?.compare_at?.amount ??
     selectedVariant.price?.compare_at?.amount ??
@@ -1129,88 +1352,25 @@ export function PdpContainer({
     );
   }
   const showTrustBadges = resolvedMode === 'beauty' && trustBadges.length > 0;
+  const hasRightColumnSelectorSection =
+    resolvedMode === 'generic' &&
+    (
+      colorOptions.length > 0 ||
+      sizeOptions.length > 0 ||
+      (!sizeOptions.length && !colorOptions.length && variants.length > 1)
+    );
+  const hasRightColumnSupportInfo =
+    showTrustBadges || Boolean(effectiveShippingEta?.length || effectiveReturns?.return_window_days);
+  const isDesktopInfoSparse =
+    !hasRightColumnSelectorSection &&
+    !hasRightColumnSupportInfo &&
+    moduleStates.offers !== 'LOADING' &&
+    offers.length <= 1;
 
-  const productId = String(payload.product.product_id || '').trim();
+  const productId = payloadProductId;
   const productGroupId = String(payload.product_group_id || selectedOffer?.product_group_id || '').trim() || null;
   const merchantId = String(payload.product.merchant_id || '').trim() || null;
   latestProductGroupIdRef.current = productGroupId;
-
-  const loadMoreSimilarWithTarget = useCallback(
-    async (targetVisibleCount: number) => {
-      const safeTarget = Math.max(
-        SIMILAR_PAGE_SIZE,
-        Math.min(Math.floor(targetVisibleCount), SIMILAR_MAX),
-      );
-
-      if (safeTarget <= similarItems.length) {
-        setSimilarVisibleCount((prev) => Math.max(prev, safeTarget));
-        return true;
-      }
-      if (similarLoadingMore) return false;
-      if (!productId) return false;
-
-      setSimilarLoadingMore(true);
-      try {
-        const response = await findSimilarProducts({
-          product_id: productId,
-          ...(merchantId ? { merchant_id: merchantId } : {}),
-          limit: safeTarget,
-          timeout_ms: 3500,
-        });
-
-        const incomingItems = normalizeRecommendationItems(
-          response?.products || [],
-          recommendationCurrencyFallback,
-        );
-        const responseMetadata = normalizeSimilarMetadata(response?.metadata);
-
-        let mergedCount = similarItems.length;
-        let addedCount = 0;
-        setSimilarItems((prev) => {
-          const merged = mergeRecommendationItems(prev, incomingItems);
-          mergedCount = merged.items.length;
-          addedCount = merged.added;
-          return merged.items;
-        });
-
-        if (typeof response?.strategy === 'string' && response.strategy.trim()) {
-          setSimilarStrategy(response.strategy);
-        }
-        if (responseMetadata) {
-          setSimilarMetadata(responseMetadata);
-        }
-
-        setSimilarVisibleCount((prev) => Math.min(Math.max(prev, safeTarget), SIMILAR_MAX));
-
-        const totalRaw = toFiniteNumber(response?.total);
-        setSimilarHasMore(() => {
-          if (mergedCount >= SIMILAR_MAX) return false;
-          if (totalRaw != null) {
-            return mergedCount < Math.min(Math.max(0, Math.floor(totalRaw)), SIMILAR_MAX);
-          }
-          if (responseMetadata?.low_confidence === true) {
-            return false;
-          }
-          if (addedCount === 0) return false;
-          return true;
-        });
-
-        return true;
-      } catch {
-        toast.error('Unable to load more recommendations. Please try again.');
-        return false;
-      } finally {
-        setSimilarLoadingMore(false);
-      }
-    },
-    [
-      merchantId,
-      productId,
-      recommendationCurrencyFallback,
-      similarItems.length,
-      similarLoadingMore,
-    ],
-  );
 
   const handleOpenSimilarAll = useCallback(async () => {
     setSimilarSheetOpen(true);
@@ -1219,63 +1379,96 @@ export function PdpContainer({
       visible_count: Math.min(similarVisibleCount, similarItems.length),
       source: pdpViewModel.sourceLocks.similar ? 'locked' : 'live',
     });
+  }, [
+    pdpViewModel.sourceLocks.similar,
+    similarItems.length,
+    similarVisibleCount,
+  ]);
 
-    const target = Math.min(
-      Math.max(SIMILAR_VIEW_ALL_MIN, similarVisibleCount),
+  const loadMoreSimilarProducts = useCallback(async (entrySurface: 'grid' | 'similar_sheet') => {
+    const targetVisibleCount = Math.min(
+      Math.max(similarVisibleCount, Math.min(similarItems.length, SIMILAR_MAX)) + SIMILAR_PAGE_SIZE,
       SIMILAR_MAX,
     );
-    if (target > similarItems.length && similarHasMore) {
-      await loadMoreSimilarWithTarget(target);
+    pdpTracking.track('similar_load_more', {
+      loaded_count: similarItems.length,
+      visible_count: Math.min(similarVisibleCount, similarItems.length),
+      target_visible_count: targetVisibleCount,
+      source: pdpViewModel.sourceLocks.similar ? 'locked' : 'live',
+      entry_surface: entrySurface,
+    });
+
+    if (targetVisibleCount <= similarItems.length) {
+      setSimilarVisibleCount(targetVisibleCount);
+      return;
+    }
+
+    if (similarLoadingMore || !productId) return;
+
+    setSimilarLoadingMore(true);
+    try {
+      const result = await getSimilarProductsMainline({
+        product_id: productId,
+        ...(merchantId ? { merchant_id: merchantId } : {}),
+        limit: Math.min(SIMILAR_PAGE_SIZE, SIMILAR_MAX - similarItems.length),
+        exclude_items: similarItems.map((item) => ({
+          product_id: item.product_id,
+          ...(item.merchant_id ? { merchant_id: item.merchant_id } : {}),
+        })),
+        timeout_ms: 8000,
+      });
+
+      const incomingItems = normalizeRecommendationItems(
+        result.items,
+        recommendationCurrencyFallback,
+      );
+      const incomingMetadata = normalizeSimilarMetadata(result.metadata);
+      const merged = mergeRecommendationItems(similarItems, incomingItems);
+      const mergedLength = merged.items.length;
+      const addedCount = merged.added;
+
+      setSimilarItems(merged.items);
+
+      if (incomingMetadata) {
+        setSimilarMetadata((prev) => ({ ...(prev || {}), ...incomingMetadata }));
+      }
+
+      if (addedCount === 0) {
+        similarNoGrowthCountRef.current += 1;
+      } else {
+        similarNoGrowthCountRef.current = 0;
+      }
+
+      const stopForNoGrowth = similarNoGrowthCountRef.current >= SIMILAR_NO_GROWTH_STOP_THRESHOLD;
+      const upstreamHasMore =
+        typeof incomingMetadata?.has_more === 'boolean'
+          ? incomingMetadata.has_more
+          : result.page_info.has_more;
+
+      setSimilarHasMore(Boolean(upstreamHasMore) && !stopForNoGrowth && mergedLength < SIMILAR_MAX);
+      setSimilarVisibleCount(Math.min(targetVisibleCount, mergedLength));
+    } catch {
+      toast.message('Could not load more similar products right now.');
+    } finally {
+      setSimilarLoadingMore(false);
     }
   }, [
-    loadMoreSimilarWithTarget,
+    merchantId,
     pdpViewModel.sourceLocks.similar,
-    similarHasMore,
-    similarItems.length,
+    productId,
+    recommendationCurrencyFallback,
+    similarItems,
+    similarLoadingMore,
     similarVisibleCount,
   ]);
 
   const handleSimilarLoadMore = useCallback(async () => {
-    const target = Math.min(similarVisibleCount + SIMILAR_PAGE_SIZE, SIMILAR_MAX);
-    pdpTracking.track('similar_load_more', {
-      loaded_count: similarItems.length,
-      visible_count: Math.min(similarVisibleCount, similarItems.length),
-      target_visible_count: target,
-      source: pdpViewModel.sourceLocks.similar ? 'locked' : 'live',
-    });
-    if (target <= similarItems.length) {
-      setSimilarVisibleCount(target);
-      return;
-    }
-    if (!similarHasMore) return;
-    await loadMoreSimilarWithTarget(target);
-  }, [
-    loadMoreSimilarWithTarget,
-    pdpViewModel.sourceLocks.similar,
-    similarHasMore,
-    similarItems.length,
-    similarVisibleCount,
-  ]);
+    await loadMoreSimilarProducts('grid');
+  }, [loadMoreSimilarProducts]);
 
   const handleSimilarSheetLoadMore = useCallback(async () => {
-    const target = Math.min(similarItems.length + SIMILAR_PAGE_SIZE, SIMILAR_MAX);
-    pdpTracking.track('similar_load_more', {
-      loaded_count: similarItems.length,
-      visible_count: Math.min(similarVisibleCount, similarItems.length),
-      target_visible_count: target,
-      source: pdpViewModel.sourceLocks.similar ? 'locked' : 'live',
-      entry_surface: 'similar_sheet',
-    });
-    if (target <= similarItems.length) return;
-    if (!similarHasMore) return;
-    await loadMoreSimilarWithTarget(target);
-  }, [
-    loadMoreSimilarWithTarget,
-    pdpViewModel.sourceLocks.similar,
-    similarHasMore,
-    similarItems.length,
-    similarVisibleCount,
-  ]);
+    await loadMoreSimilarProducts('similar_sheet');
+  }, [loadMoreSimilarProducts]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1558,7 +1751,12 @@ export function PdpContainer({
   };
 
   return (
-    <div className="relative min-h-screen bg-background pb-[calc(120px+env(safe-area-inset-bottom,0px))] lovable-pdp">
+    <div
+      className={cn(
+        'relative min-h-screen bg-background lovable-pdp',
+        isDesktop ? 'pb-0' : 'pb-[calc(120px+env(safe-area-inset-bottom,0px))] lg:pb-0',
+      )}
+    >
       <div
         className={cn(
           'fixed left-0 right-0 z-50 transition-colors',
@@ -1566,7 +1764,7 @@ export function PdpContainer({
         )}
         style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
       >
-        <div className="mx-auto max-w-md flex items-center gap-2 h-11 px-3">
+        <div className="mx-auto max-w-md lg:max-w-6xl flex items-center gap-2 h-11 px-3">
           <button
             type="button"
             onClick={handleBack}
@@ -1604,7 +1802,7 @@ export function PdpContainer({
         </div>
         {navVisible ? (
           <div className="bg-white border-b border-border/60">
-            <div className="max-w-md mx-auto flex">
+            <div className="max-w-md lg:max-w-6xl mx-auto flex">
               {tabs.map((tab) => (
                 <button
                   key={tab.id}
@@ -1626,14 +1824,15 @@ export function PdpContainer({
         ) : null}
       </div>
 
-        <div className="mx-auto w-full max-w-md">
+        <div className="mx-auto w-full max-w-md lg:max-w-6xl">
         <div
           ref={(el) => {
             sectionRefs.current.product = el;
           }}
           style={{ scrollMarginTop }}
         >
-          <div className="pb-2">
+          <div className="pb-2 lg:grid lg:grid-cols-[1fr_420px] lg:gap-10">
+            <div className="lg:sticky lg:top-20 lg:self-start">
             <div className="relative">
               <MediaGallery
                 data={galleryData}
@@ -1663,7 +1862,7 @@ export function PdpContainer({
               />
             </div>
 
-            {resolvedMode === 'beauty' && variants.length > 1 ? (
+            {resolvedMode === 'beauty' && variants.length > 0 ? (
               <div className="border-b border-border bg-card py-1.5">
                 <div className="overflow-x-auto">
                   <div className="flex items-center gap-1.5 px-3">
@@ -1724,10 +1923,12 @@ export function PdpContainer({
                 </div>
               </div>
             ) : null}
+            </div>
 
-            <div className="px-3 py-1">
+            <div className="lg:pt-3">
+            <div className="px-3 py-1 lg:px-0">
               <div className="flex items-baseline gap-2 flex-wrap">
-                <span className="text-[26px] font-semibold text-foreground leading-none">{formatPrice(displayPriceAmount, displayCurrency)}</span>
+                <span className="text-[26px] font-semibold text-foreground leading-none lg:text-[30px]">{formatPrice(displayPriceAmount, displayCurrency)}</span>
                 {!isInStock ? (
                   <span className="rounded-full border border-red-200 bg-red-50 px-2 py-0.5 text-[10px] font-medium text-red-700">
                     Out of stock
@@ -1777,6 +1978,19 @@ export function PdpContainer({
               {variants.length > 1 ? (
                 <div className="mt-0.5 text-xs text-muted-foreground">
                   Selected: <span className="text-foreground">{selectedVariant?.title}</span>
+                </div>
+              ) : null}
+              {showExternalSeedSingleVariantSummary ? (
+                <div className="mt-2">
+                  <div className="flex items-center justify-between">
+                    <div className="text-xs font-semibold">Option</div>
+                    <div className="text-[11px] text-muted-foreground">Selected by default</div>
+                  </div>
+                  <div className="mt-1.5 flex flex-wrap gap-1.5">
+                    <span className="inline-flex min-h-10 items-center rounded-full border border-[color:var(--accent-600)] bg-[var(--accent-50)] px-3 text-xs font-semibold text-[color:var(--accent-800)]">
+                      {singleVariantSummaryLabel}
+                    </span>
+                  </div>
                 </div>
               ) : null}
 
@@ -1864,6 +2078,20 @@ export function PdpContainer({
                 </div>
               ) : null}
 
+              {resolvedMode === 'generic' && staticSizeOption ? (
+                <div className="mt-2">
+                  <div className="flex items-center justify-between">
+                    <div className="text-xs font-semibold">Size</div>
+                    <div className="text-[11px] text-muted-foreground">Same across all variants</div>
+                  </div>
+                  <div className="mt-1.5">
+                    <span className="inline-flex h-10 items-center rounded-full border border-border bg-card px-3 text-xs font-semibold text-foreground">
+                      {staticSizeOption}
+                    </span>
+                  </div>
+                </div>
+              ) : null}
+
               {resolvedMode === 'generic' && sizeOptions.length ? (
                 <div className="mt-2">
                   <div className="flex items-center justify-between">
@@ -1896,7 +2124,7 @@ export function PdpContainer({
                 </div>
               ) : null}
 
-              {resolvedMode === 'generic' && !sizeOptions.length && !colorOptions.length && variants.length > 1 ? (
+              {resolvedMode === 'generic' && !sizeOptions.length && !colorOptions.length && variants.length > 0 ? (
                 <div className="mt-2">
                   <VariantSelector
                     variants={variants}
@@ -1910,10 +2138,9 @@ export function PdpContainer({
                 </div>
               ) : null}
             </div>
-          </div>
 
           {showTrustBadges ? (
-            <div className="mx-3 mt-1.5 flex items-center gap-2 rounded-lg bg-muted/50 px-3 py-1.5 text-[10px]">
+            <div className="mx-3 lg:mx-0 mt-1.5 flex items-center gap-2 rounded-lg bg-muted/50 px-3 py-1.5 text-[10px]">
               {trustBadges.map((badge, idx) => (
                 <div key={`${badge}-${idx}`} className="flex items-center gap-2">
                   <span>{badge}</span>
@@ -1922,7 +2149,7 @@ export function PdpContainer({
               ))}
             </div>
           ) : (effectiveShippingEta?.length || effectiveReturns?.return_window_days) ? (
-            <div className="mx-3 rounded-lg bg-card border border-border px-3 py-1.5 text-xs text-muted-foreground flex flex-wrap gap-x-3 gap-y-1">
+            <div className="mx-3 lg:mx-0 rounded-lg bg-card border border-border px-3 py-1.5 text-xs text-muted-foreground flex flex-wrap gap-x-3 gap-y-1">
               {effectiveShippingEta?.length ? (
                 <span>
                   Shipping {effectiveShippingEta[0]}–{effectiveShippingEta[1]} days
@@ -1938,7 +2165,7 @@ export function PdpContainer({
 
           {moduleStates.offers === 'LOADING' ? (
             <div
-              className="mx-3 mt-2 rounded-lg border border-border bg-card px-3 py-3 space-y-2"
+              className="mx-3 lg:mx-0 mt-2 rounded-lg border border-border bg-card px-3 py-3 space-y-2"
               style={{ minHeight: pdpViewModel.heightSpec.offers }}
               data-module-state="loading"
             >
@@ -1946,6 +2173,79 @@ export function PdpContainer({
               <div className="h-3 w-full rounded bg-muted/20 animate-pulse" />
             </div>
           ) : null}
+
+          <div
+            className="hidden lg:block mt-6"
+            style={isDesktopInfoSparse ? { marginTop: 'max(10rem, calc(58vh - 14rem))' } : undefined}
+          >
+            <div className="rounded-2xl border border-border bg-white shadow-sm overflow-hidden">
+              {pricePromo?.promotions?.length && !promoDismissed ? (
+                <div className="flex items-center justify-between px-4 py-2 bg-primary/5 text-xs">
+                  <span className="flex items-center gap-2">
+                    <span className="text-primary">🎁</span>
+                    <span>{pricePromo.promotions[0].label}</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPromoDismissed(true);
+                      if (typeof window !== 'undefined') {
+                        window.sessionStorage.setItem(promoDismissStorageKey, '1');
+                      }
+                      pdpTracking.track('pdp_action_click', {
+                        action_type: 'dismiss_promotion',
+                      });
+                    }}
+                    className="text-muted-foreground"
+                    aria-label="Dismiss promotion"
+                  >
+                    ×
+                  </button>
+                </div>
+              ) : null}
+              <div className="flex items-center gap-3 px-4 py-3">
+                <div className="flex flex-1 gap-3">
+                  <Button
+                    variant="outline"
+                    className="flex-1 h-11 rounded-full font-semibold text-sm"
+                    disabled={!isInStock}
+                    onClick={() => {
+                      pdpTracking.track('pdp_action_click', { action_type: 'add_to_cart', variant_id: selectedVariant.variant_id });
+                      dispatchPdpAction('add_to_cart', {
+                        variant: selectedVariant,
+                        quantity: resolvedQuantity,
+                        merchant_id: effectiveMerchantId,
+                        product_id: effectiveProductId || undefined,
+                        offer_id: selectedOffer?.offer_id || undefined,
+                        onAddToCart,
+                      });
+                    }}
+                  >
+                    {actionsByType.add_to_cart || 'Add to Cart'}
+                  </Button>
+                  <Button
+                    className="flex-[1.5] h-11 rounded-full bg-primary hover:bg-primary/90 font-semibold text-sm"
+                    disabled={!isInStock}
+                    onClick={() => {
+                      pdpTracking.track('pdp_action_click', { action_type: 'buy_now', variant_id: selectedVariant.variant_id });
+                      dispatchPdpAction('buy_now', {
+                        variant: selectedVariant,
+                        quantity: resolvedQuantity,
+                        merchant_id: effectiveMerchantId,
+                        product_id: effectiveProductId || undefined,
+                        offer_id: selectedOffer?.offer_id || undefined,
+                        onBuyNow,
+                      });
+                    }}
+                  >
+                    {actionsByType.buy_now || 'Buy Now'}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+          </div>
+          </div>
 
           {resolvedMode === 'beauty' ? (
             <>
@@ -2115,6 +2415,7 @@ export function PdpContainer({
                 <BeautyReviewsSection
                   data={(reviewsForRender || reviews) as ReviewsPreviewData}
                   brandName={payload.product.brand?.name}
+                  brandHref={brandHref}
                   showEmpty
                   onWriteReview={() => {
                     handleWriteReview();
@@ -2246,7 +2547,7 @@ export function PdpContainer({
           </div>
         ) : null}
 
-        {details ? (
+        {hasDetailsSection ? (
           <div
             ref={(el) => {
               sectionRefs.current.details = el;
@@ -2255,13 +2556,29 @@ export function PdpContainer({
             style={{ scrollMarginTop }}
           >
             {resolvedMode === 'beauty' ? (
-              <BeautyDetailsSection data={details} product={payload.product} media={media} />
+              <BeautyDetailsSection
+                data={details}
+                product={payload.product}
+                media={media}
+                activeIngredients={activeIngredients}
+                ingredientsInci={ingredientsInci}
+                howToUse={howToUse}
+                hideLowConfidenceActiveIngredients={shouldHideLowConfidenceActiveIngredients}
+              />
             ) : resolvedMode === 'generic' ? (
-              <GenericDetailsSection data={details} product={payload.product} media={media} />
+              <GenericDetailsSection
+                data={details}
+                product={payload.product}
+                media={media}
+                activeIngredients={activeIngredients}
+                ingredientsInci={ingredientsInci}
+                howToUse={howToUse}
+                hideLowConfidenceActiveIngredients={shouldHideLowConfidenceActiveIngredients}
+              />
             ) : (
               <div className="px-4 py-4">
                 <h2 className="text-sm font-semibold mb-3">Details</h2>
-                <DetailsAccordion data={details} />
+                <DetailsAccordion data={details || { sections: [] }} />
               </div>
             )}
           </div>
@@ -2287,11 +2604,8 @@ export function PdpContainer({
                   visibleCount={similarVisibleCount}
                   canLoadMore={similarHasMore || similarVisibleCount < similarItems.length}
                   isLoadingMore={similarLoadingMore}
-                  lowConfidenceHint={
-                    recommendations.metadata?.low_confidence
-                      ? 'Showing the best matches available for now.'
-                      : null
-                  }
+                  statusNoteTitle={similarStatus?.title || null}
+                  statusNote={similarStatus?.body || null}
                   onLoadMore={() => {
                     pdpTracking.track('pdp_action_click', {
                       action_type: 'load_more_similar',
@@ -2327,7 +2641,7 @@ export function PdpContainer({
         ) : null}
       </div>
 
-      {mounted
+      {mounted && !isDesktop
         ? createPortal(
             <div className="fixed inset-x-0 bottom-0 z-[2147483646]">
               <div
@@ -2448,8 +2762,8 @@ export function PdpContainer({
         }}
       />
       {questionOpen ? (
-        <div className="fixed inset-0 z-[2147483647] flex items-end justify-center bg-black/40 px-3 py-6">
-          <div className="w-full max-w-md rounded-2xl bg-white p-4 shadow-xl">
+        <div className="fixed inset-0 z-[2147483647] flex items-end lg:items-center justify-center bg-black/40 px-3 py-6">
+          <div className="w-full max-w-md lg:max-w-lg rounded-2xl bg-white p-4 shadow-xl">
             <div className="flex items-center justify-between">
               <h3 className="text-base font-semibold">Ask a question</h3>
               <button
@@ -2521,6 +2835,8 @@ export function PdpContainer({
         open={similarSheetOpen}
         onClose={() => setSimilarSheetOpen(false)}
         items={similarItems}
+        statusNoteTitle={similarStatus?.title || null}
+        statusNote={similarStatus?.body || null}
         canLoadMore={similarHasMore}
         isLoadingMore={similarLoadingMore}
         onLoadMore={() => {
@@ -2555,7 +2871,7 @@ export function PdpContainer({
         }}
       />
       {offerDebugEnabled ? (
-        <details className="mx-auto max-w-md px-3 pb-2 text-xs text-muted-foreground">
+        <details className="mx-auto max-w-md lg:max-w-6xl px-3 pb-2 text-xs text-muted-foreground">
           <summary className="cursor-pointer select-none">Offer debug</summary>
           <div className="mt-2 rounded-xl border border-border bg-card/60 p-3 font-mono text-[11px] leading-relaxed">
             <div>selected_offer_id: {selectedOfferId || 'null'}</div>

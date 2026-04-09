@@ -7,12 +7,11 @@ import { useCartStore } from '@/store/cartStore';
 import { useAuthStore } from '@/store/authStore';
 import { hideProductRouteLoading } from '@/lib/productRouteLoading';
 import {
-  findSimilarProducts,
   getPdpV2,
   getPdpV2Personalization,
   getProductDetail,
   recordBrowseHistoryEvent,
-  resolveProductGroup,
+  resolveProductCandidates,
   type GetPdpV2Response,
   type ProductResponse,
   type UgcCapabilities,
@@ -30,13 +29,29 @@ import {
   safeReturnUrl,
 } from '@/lib/returnUrl';
 import {
+  buildProductHref,
+  inferCanonicalPdpMerchantId,
+  normalizeProductRouteMerchantId,
+} from '@/lib/productHref';
+import {
   DEFAULT_MODULE_SOURCE_LOCKS,
   upsertLockedModule,
 } from '@/features/pdp/state/freezePolicy';
+import { shouldAllowLegacyProductDetailBroadScan } from '@/lib/productDetailFallback';
+import {
+  mapResolvedOffersToSellerCandidates,
+} from '@/lib/pdpResolvedOffers';
+import {
+  pickHistoryImage,
+  upsertLocalBrowseHistory,
+} from '@/lib/browseHistoryStorage';
 
 interface Props {
   params: Promise<{ id: string }>;
 }
+
+const PDP_V2_SCOPED_TIMEOUT_MS = 9000;
+const PDP_V2_UNSCOPED_TIMEOUT_MS = 9000;
 
 function normalizeVariantOptionToken(value: string): string {
   return String(value || '')
@@ -48,13 +63,35 @@ function normalizeVariantOptionToken(value: string): string {
 function normalizeVariantOptionName(name: string): string {
   const normalized = normalizeVariantOptionToken(name);
   if (!normalized) return '';
-  if (normalized.includes('colour') || normalized.includes('color') || normalized.includes('shade') || normalized.includes('tone')) {
+  const hasColorToken =
+    normalized.includes('colour') ||
+    normalized.includes('color') ||
+    normalized.includes('shade') ||
+    normalized.includes('tone');
+  const hasSizeToken = normalized.includes('size') || normalized.includes('fit');
+  if (hasColorToken && hasSizeToken) {
+    return 'color_size';
+  }
+  if (hasColorToken) {
     return 'color';
   }
-  if (normalized.includes('size') || normalized.includes('fit')) {
+  if (hasSizeToken) {
     return 'size';
   }
   return normalized;
+}
+
+function parseCombinedColorSizeOptionValue(value: string): { color: string; size: string } | null {
+  const parts = String(value || '')
+    .trim()
+    .split(/\s*\/\s*/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (parts.length !== 2) return null;
+  const [color, size] = parts;
+  if (!color || !size) return null;
+  if (!/\d/.test(size) && !/\b(size|fit|pack|count)\b/i.test(size)) return null;
+  return { color, size };
 }
 
 function normalizeVariantOptionValue(value: string): string {
@@ -85,7 +122,16 @@ function getNormalizedVariantOptionValue(
   if (!wanted) return null;
   const match = options.find((opt) => normalizeVariantOptionName(opt?.name || '') === wanted);
   const value = normalizeVariantOptionValue(match?.value || '');
-  return value || null;
+  if (value) return value;
+
+  if (wanted === 'color' || wanted === 'size') {
+    const combined = options.find((opt) => normalizeVariantOptionName(opt?.name || '') === 'color_size');
+    const parsed = combined?.value ? parseCombinedColorSizeOptionValue(String(combined.value)) : null;
+    const fallback = wanted === 'color' ? parsed?.color : parsed?.size;
+    return fallback ? normalizeVariantOptionValue(fallback) : null;
+  }
+
+  return null;
 }
 
 function normalizeHttpUrl(value: unknown): string | null {
@@ -157,18 +203,75 @@ function getExternalRedirectUrlFromOffer(offer: unknown): string | null {
   return null;
 }
 
+function isRecommendationModuleType(type: unknown): boolean {
+  return type === 'recommendations' || type === 'similar';
+}
+
 function hasModule(response: PDPPayload | null, type: 'reviews_preview' | 'recommendations'): boolean {
   if (!response || !Array.isArray(response.modules)) return false;
+  if (type === 'recommendations') {
+    return response.modules.some((m) => isRecommendationModuleType(m?.type));
+  }
   return response.modules.some((m) => m?.type === type);
 }
 
 function hasRecommendationsItems(response: PDPPayload | null): boolean {
   if (!response || !Array.isArray(response.modules)) return false;
   return response.modules.some((m) => {
-    if (m?.type !== 'recommendations') return false;
+    if (!isRecommendationModuleType(m?.type)) return false;
     const items = (m as any)?.data?.items;
     return Array.isArray(items) && items.length > 0;
   });
+}
+
+const PDP_INITIAL_INCLUDE = [
+  'offers',
+  'variant_selector',
+  'product_intel',
+  'active_ingredients',
+  'ingredients_inci',
+  'how_to_use',
+  'product_details',
+] as const;
+
+function mapSellerCandidatesFromResolveCandidates(
+  resolved: Awaited<ReturnType<typeof resolveProductCandidates>>,
+): ProductResponse[] {
+  const offers = Array.isArray(resolved?.offers) ? resolved.offers : [];
+  return offers.reduce<ProductResponse[]>((candidates, offer) => {
+    const merchantId = String(offer?.merchant_id || '').trim();
+    const productId = String(offer?.product_id || '').trim();
+    if (!merchantId || !productId) return candidates;
+
+    const rawPrice = offer?.price;
+    const price =
+      typeof rawPrice === 'number'
+        ? rawPrice
+        : Number(rawPrice?.amount ?? 0) || 0;
+    const currency =
+      typeof rawPrice === 'object' && rawPrice
+        ? String(rawPrice.currency || 'USD').trim() || 'USD'
+        : 'USD';
+    const inventory = offer?.inventory;
+
+    candidates.push({
+      product_id: productId,
+      merchant_id: merchantId,
+      merchant_name: String(offer?.merchant_name || '').trim() || undefined,
+      title: 'Seller option',
+      description: '',
+      price,
+      currency,
+      image_url: '/placeholder.svg',
+      category: 'General',
+      in_stock:
+        typeof inventory?.in_stock === 'boolean'
+          ? inventory.in_stock
+          : (Number(inventory?.available_quantity || 0) || 0) > 0,
+    });
+
+    return candidates;
+  }, []);
 }
 
 function readApiErrorCode(err: unknown): string {
@@ -200,138 +303,6 @@ function isUnavailableModuleErrorCode(code: string): boolean {
     'FEATURE_DISABLED',
     'NOT_IMPLEMENTED',
   ]).has(code);
-}
-
-function toNumberOrNull(value: unknown): number | null {
-  if (typeof value === 'number' && Number.isFinite(value)) return value;
-  if (typeof value === 'string') {
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? parsed : null;
-  }
-  return null;
-}
-
-function toCurrencyOrDefault(value: unknown, fallback = 'USD'): string {
-  const text = typeof value === 'string' ? value.trim() : '';
-  return text || fallback;
-}
-
-function normalizeSimilarProduct(item: any): ProductResponse | null {
-  if (!item || typeof item !== 'object') return null;
-
-  const productId = String(
-    item.product_id || item.id || item.productRef?.product_id || item.product_ref?.product_id || '',
-  ).trim();
-  const merchantId = String(
-    item.merchant_id || item.merchantId || item.merchant?.id || item.productRef?.merchant_id || item.product_ref?.merchant_id || '',
-  ).trim();
-
-  if (!productId) return null;
-
-  const priceAmount =
-    toNumberOrNull(item.price?.amount) ??
-    toNumberOrNull(item.price_amount) ??
-    toNumberOrNull(item.price) ??
-    0;
-  const priceCurrency = toCurrencyOrDefault(item.price?.currency || item.currency, 'USD');
-
-  return {
-    product_id: productId,
-    merchant_id: merchantId || undefined,
-    merchant_name: typeof item.merchant_name === 'string' ? item.merchant_name : undefined,
-    title: String(item.title || item.name || 'Untitled product'),
-    description: typeof item.description === 'string' ? item.description : '',
-    price: priceAmount,
-    currency: priceCurrency,
-    image_url: typeof item.image_url === 'string' ? item.image_url : undefined,
-    category:
-      typeof item.category === 'string'
-        ? item.category
-        : typeof item.product_type === 'string'
-          ? item.product_type
-          : 'General',
-    in_stock:
-      typeof item.in_stock === 'boolean'
-        ? item.in_stock
-        : (toNumberOrNull(item.inventory_quantity) ?? 0) > 0,
-    product_type: typeof item.product_type === 'string' ? item.product_type : undefined,
-    platform:
-      typeof item.platform === 'string'
-        ? item.platform
-        : typeof item.productRef?.platform === 'string'
-          ? item.productRef.platform
-          : undefined,
-    platform_product_id:
-      typeof item.platform_product_id === 'string'
-        ? item.platform_product_id
-        : productId,
-    raw_detail: item,
-  };
-}
-
-const BROWSE_HISTORY_STORAGE_KEY = 'browse_history';
-const BROWSE_HISTORY_MAX_ITEMS = 100;
-
-type LocalBrowseHistoryItem = {
-  product_id: string;
-  merchant_id?: string;
-  title: string;
-  price: number;
-  image: string;
-  description?: string;
-  timestamp: number;
-};
-
-function normalizeHistoryImageCandidate(value: unknown): string | null {
-  if (typeof value !== 'string') return null;
-  const trimmed = value.trim();
-  if (!trimmed) return null;
-  if (/^https?:\/\//i.test(trimmed) || trimmed.startsWith('/')) return trimmed;
-  return null;
-}
-
-function pickHistoryImage(product: any): string {
-  const direct =
-    normalizeHistoryImageCandidate(product?.image_url) ||
-    normalizeHistoryImageCandidate(product?.imageUrl) ||
-    normalizeHistoryImageCandidate(product?.image);
-  if (direct) return direct;
-
-  const images = Array.isArray(product?.images) ? product.images : [];
-  for (const img of images) {
-    if (typeof img === 'string') {
-      const candidate = normalizeHistoryImageCandidate(img);
-      if (candidate) return candidate;
-      continue;
-    }
-    if (img && typeof img === 'object') {
-      const candidate =
-        normalizeHistoryImageCandidate((img as any).url) ||
-        normalizeHistoryImageCandidate((img as any).image_url) ||
-        normalizeHistoryImageCandidate((img as any).src);
-      if (candidate) return candidate;
-    }
-  }
-  return '/placeholder.svg';
-}
-
-function upsertLocalBrowseHistory(item: LocalBrowseHistoryItem) {
-  if (typeof window === 'undefined') return;
-  try {
-    const raw = window.localStorage.getItem(BROWSE_HISTORY_STORAGE_KEY);
-    const parsed = raw ? JSON.parse(raw) : [];
-    const list = Array.isArray(parsed) ? parsed : [];
-    const key = `${item.product_id}::${item.merchant_id || ''}`;
-    const deduped = list.filter((entry: any) => {
-      const productId = String(entry?.product_id || '').trim();
-      const merchantId = String(entry?.merchant_id || '').trim();
-      return `${productId}::${merchantId}` !== key;
-    });
-    const next = [item, ...deduped].slice(0, BROWSE_HISTORY_MAX_ITEMS);
-    window.localStorage.setItem(BROWSE_HISTORY_STORAGE_KEY, JSON.stringify(next));
-  } catch {
-    // ignore storage errors
-  }
 }
 
 function ProductDetailLoading({ label }: { label: string }) {
@@ -369,7 +340,13 @@ function ProductDetailLoading({ label }: { label: string }) {
 export default function ProductDetailPage({ params }: Props) {
   const { id } = use(params);
   const searchParams = useSearchParams();
-  const merchantIdParam = searchParams.get('merchant_id') || undefined;
+  const searchParamsString = searchParams.toString();
+  const rawMerchantIdParam = searchParams.get('merchant_id');
+  const merchantIdParam = normalizeProductRouteMerchantId(rawMerchantIdParam);
+  const entryPointParam =
+    searchParams.get('entry_point') ||
+    searchParams.get('entryPoint') ||
+    undefined;
   const pdpOverride = (searchParams.get('pdp') || '').toLowerCase();
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
@@ -384,8 +361,8 @@ export default function ProductDetailPage({ params }: Props) {
   const offerProductDetailCacheRef = useRef<Map<string, ProductResponse>>(new Map());
   const offersFetchKeyRef = useRef<string | null>(null);
   const reviewsSimilarFetchKeyRef = useRef<string | null>(null);
-  const legacySimilarFetchKeyRef = useRef<string | null>(null);
-  const browseHistoryRecordedRef = useRef<string | null>(null);
+  const localBrowseHistoryRecordedRef = useRef<string | null>(null);
+  const remoteBrowseHistoryRecordedRef = useRef<string | null>(null);
   const moduleSourceLocksRef = useRef({ ...DEFAULT_MODULE_SOURCE_LOCKS });
   const [ugcCapabilities, setUgcCapabilities] = useState<UgcCapabilities | null>({
     canUploadMedia: false,
@@ -399,6 +376,12 @@ export default function ProductDetailPage({ params }: Props) {
   });
 
   const { addItem, open } = useCartStore();
+  const allowLegacyBroadScan = shouldAllowLegacyProductDetailBroadScan({
+    productId: id,
+    merchantId: merchantIdParam,
+    entryPoint: entryPointParam,
+  });
+  const inferredMerchantId = inferCanonicalPdpMerchantId(id, merchantIdParam);
   const progressiveMerchantId = String(pdpPayload?.product?.merchant_id || '').trim();
   const progressiveProductId = String(pdpPayload?.product?.product_id || id || '').trim();
   const offersLoadState = pdpPayload?.x_offers_state;
@@ -411,6 +394,15 @@ export default function ProductDetailPage({ params }: Props) {
   }, [loading, error, pdpPayload]);
 
   useEffect(() => {
+    if (!rawMerchantIdParam) return;
+    if (merchantIdParam) return;
+    const nextParams = new URLSearchParams(searchParamsString);
+    nextParams.delete('merchant_id');
+    const nextQuery = nextParams.toString();
+    router.replace(`/products/${encodeURIComponent(id)}${nextQuery ? `?${nextQuery}` : ''}`);
+  }, [id, merchantIdParam, rawMerchantIdParam, router, searchParamsString]);
+
+  useEffect(() => {
     const product = (pdpPayload as any)?.product;
     if (!product) return;
 
@@ -418,8 +410,33 @@ export default function ProductDetailPage({ params }: Props) {
     if (!productId) return;
     const merchantId = String(product?.merchant_id || merchantIdParam || '').trim() || undefined;
     const recordKey = `${productId}::${merchantId || ''}`;
-    if (browseHistoryRecordedRef.current === recordKey) return;
-    browseHistoryRecordedRef.current = recordKey;
+    if (localBrowseHistoryRecordedRef.current !== recordKey) {
+      localBrowseHistoryRecordedRef.current = recordKey;
+
+      const nowMs = Date.now();
+      const rawPrice = product?.price;
+      const normalizedPrice =
+        typeof rawPrice === 'number'
+          ? rawPrice
+          : typeof rawPrice === 'string'
+            ? Number(rawPrice) || 0
+            : Number(rawPrice?.amount) || 0;
+      const title = String(product?.title || 'Untitled product').trim() || 'Untitled product';
+      const description = String(product?.description || '').trim() || undefined;
+      const imageUrl = pickHistoryImage(product);
+
+      upsertLocalBrowseHistory({
+        product_id: productId,
+        merchant_id: merchantId,
+        title,
+        price: normalizedPrice,
+        image: imageUrl,
+        description,
+        timestamp: nowMs,
+      });
+    }
+
+    if (!userId) return;
 
     const nowMs = Date.now();
     const rawPrice = product?.price;
@@ -434,16 +451,9 @@ export default function ProductDetailPage({ params }: Props) {
     const title = String(product?.title || 'Untitled product').trim() || 'Untitled product';
     const description = String(product?.description || '').trim() || undefined;
     const imageUrl = pickHistoryImage(product);
-
-    upsertLocalBrowseHistory({
-      product_id: productId,
-      merchant_id: merchantId,
-      title,
-      price: normalizedPrice,
-      image: imageUrl,
-      description,
-      timestamp: nowMs,
-    });
+    const remoteRecordKey = `${recordKey}::${userId}`;
+    if (remoteBrowseHistoryRecordedRef.current === remoteRecordKey) return;
+    remoteBrowseHistoryRecordedRef.current = remoteRecordKey;
 
     void recordBrowseHistoryEvent({
       product_id: productId,
@@ -457,15 +467,29 @@ export default function ProductDetailPage({ params }: Props) {
     }).catch(() => {
       // keep local history as fallback even when account history API is unavailable
     });
-  }, [pdpPayload, id, merchantIdParam]);
+  }, [pdpPayload, id, merchantIdParam, userId]);
 
   useEffect(() => {
     let cancelled = false;
-    const v2TimeoutMs = 9000;
-    const fallbackTimeoutMs = 9000;
+    const candidateTimeoutMs = 4500;
+    const v2TimeoutMs = merchantIdParam
+      ? PDP_V2_SCOPED_TIMEOUT_MS
+      : PDP_V2_UNSCOPED_TIMEOUT_MS;
 
     const loadProduct = async () => {
-      const explicitMerchantId = merchantIdParam ? String(merchantIdParam).trim() : null;
+      const explicitMerchantId = inferredMerchantId ? String(inferredMerchantId).trim() : null;
+      const candidateResolutionPromise = explicitMerchantId
+        ? Promise.resolve(null)
+        : Promise.resolve()
+            .then(() =>
+              resolveProductCandidates({
+                product_id: id,
+                limit: 12,
+                include_offers: true,
+                timeout_ms: candidateTimeoutMs,
+              }),
+            )
+            .catch(() => null);
 
       setLoading(true);
       setError(null);
@@ -474,7 +498,6 @@ export default function ProductDetailPage({ params }: Props) {
       setLoadedViaPdpV2(false);
       offersFetchKeyRef.current = null;
       reviewsSimilarFetchKeyRef.current = null;
-      legacySimilarFetchKeyRef.current = null;
       moduleSourceLocksRef.current = { ...DEFAULT_MODULE_SOURCE_LOCKS };
 
       try {
@@ -482,9 +505,7 @@ export default function ProductDetailPage({ params }: Props) {
         const v2 = await getPdpV2({
           product_id: id,
           ...(explicitMerchantId ? { merchant_id: explicitMerchantId } : {}),
-          // Keep first paint fast: fetch only core PDP data first.
-          // Reviews/similar are backfilled by progressive loaders below.
-          include: ['offers', 'product_intel'],
+          include: [...PDP_INITIAL_INCLUDE],
           timeout_ms: v2TimeoutMs,
         });
         if (cancelled) return;
@@ -495,12 +516,12 @@ export default function ProductDetailPage({ params }: Props) {
         const hasSimilarModule = hasModule(assembled, 'recommendations');
         const hasRecommendations = hasRecommendationsItems(assembled);
         const similarCount = Array.isArray(
-          (assembled.modules.find((m) => m?.type === 'recommendations') as any)?.data
+          (assembled.modules.find((m) => isRecommendationModuleType(m?.type)) as any)?.data
             ?.items,
         )
           ? (
               assembled.modules.find(
-                (m) => m?.type === 'recommendations',
+                (m) => isRecommendationModuleType(m?.type),
               ) as any
             ).data.items.length
           : 0;
@@ -546,89 +567,20 @@ export default function ProductDetailPage({ params }: Props) {
         setLoading(false);
         return;
       } catch (v2Err) {
-        // Fall back to legacy per-merchant product detail so PDP can still render.
-        try {
-          const resolvedGroup =
-            explicitMerchantId
-              ? await resolveProductGroup({
-                  product_id: id,
-                  merchant_id: explicitMerchantId,
-                  timeout_ms: 8000,
-                }).catch(() => null)
-              : await resolveProductGroup({
-                  product_id: id,
-                  timeout_ms: 8000,
-                }).catch(() => null);
-
-          if (cancelled) return;
-
-          const canonicalRef =
-            resolvedGroup?.canonical_product_ref?.merchant_id &&
-            resolvedGroup?.canonical_product_ref?.product_id
-              ? {
-                  merchant_id: String(resolvedGroup.canonical_product_ref.merchant_id),
-                  product_id: String(resolvedGroup.canonical_product_ref.product_id),
-                }
-              : null;
-
-          const targetMerchantId = canonicalRef?.merchant_id || explicitMerchantId || undefined;
-          const targetProductId = canonicalRef?.product_id || id;
-
-          const detail = await getProductDetail(targetProductId, targetMerchantId, {
-            useConfiguredMerchantId: false,
-            allowBroadScan: false,
-            timeout_ms: fallbackTimeoutMs,
-            throwOnError: true,
-            includeReviewSummary: true,
-          });
-
-          if (cancelled) return;
-
-          if (!detail) throw v2Err;
-
-          const legacyPayload = mapToPdpPayload({
-            product: detail,
-            rawDetail: detail.raw_detail,
-            relatedProducts: [],
-            recommendationsLoading: true,
-            entryPoint: 'product_detail',
-          });
-          setPdpPayload({
-            ...legacyPayload,
-            x_source_locks: {
-              reviews: false,
-              similar: false,
-              ugc: false,
-            },
-          });
-          pdpTracking.track('pdp_fallback_used', {
-            source: 'legacy_get_product_detail',
-            reason: 'get_pdp_v2_failed',
-          });
-          pdpTracking.track('pdp_core_ready', {
-            source: 'legacy_get_product_detail',
-          });
-          setLoadedViaPdpV2(false);
+        if (cancelled) return;
+        const candidateResolution = explicitMerchantId ? null : await candidateResolutionPromise;
+        const candidateSellerOptions = mapResolvedOffersToSellerCandidates(candidateResolution);
+        if (!explicitMerchantId && candidateSellerOptions.length > 1) {
+          setSellerCandidates(candidateSellerOptions);
           setLoading(false);
           return;
-        } catch (fallbackErr) {
-          if (cancelled) return;
-          if (
-            (fallbackErr as any)?.code === 'AMBIGUOUS_PRODUCT_ID' &&
-            Array.isArray((fallbackErr as any)?.candidates)
-          ) {
-            setSellerCandidates((fallbackErr as any).candidates as ProductResponse[]);
-            setLoading(false);
-            return;
-          }
-
-          const message =
-            (fallbackErr as Error)?.message ||
-            (v2Err as Error)?.message ||
-            'Failed to load product';
-          setError(message);
-          setLoading(false);
         }
+
+        const message =
+          (v2Err as Error)?.message ||
+          'Failed to load product';
+        setError(message);
+        setLoading(false);
       }
     };
 
@@ -636,7 +588,7 @@ export default function ProductDetailPage({ params }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [id, merchantIdParam, reloadKey]);
+  }, [allowLegacyBroadScan, id, inferredMerchantId, merchantIdParam, reloadKey]);
 
   useEffect(() => {
     let cancelled = false;
@@ -699,101 +651,6 @@ export default function ProductDetailPage({ params }: Props) {
   }, [
     loadedViaPdpV2,
     offersLoadState,
-    progressiveMerchantId,
-    progressiveProductId,
-  ]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const run = async () => {
-      if (loadedViaPdpV2) return;
-      if (similarLoadState !== 'loading') return;
-
-      const merchantId = progressiveMerchantId;
-      const productId = progressiveProductId;
-      if (!productId) return;
-
-      const key = `${merchantId || 'unknown'}:${productId}`;
-      if (legacySimilarFetchKeyRef.current === key) return;
-      legacySimilarFetchKeyRef.current = key;
-
-      try {
-        const similarResponse = await findSimilarProducts({
-          product_id: productId,
-          ...(merchantId ? { merchant_id: merchantId } : {}),
-          limit: 12,
-          timeout_ms: 3500,
-        });
-        if (cancelled) return;
-
-        const normalizedSimilar = Array.isArray(similarResponse?.products)
-          ? (similarResponse.products
-              .map((item: any) => normalizeSimilarProduct(item))
-              .filter(Boolean) as ProductResponse[])
-          : [];
-
-        const recommendationsModule: Module | null = normalizedSimilar.length
-          ? {
-              module_id: 'm_recs',
-              type: 'recommendations',
-              priority: 20,
-              data: {
-                strategy:
-                  typeof similarResponse?.strategy === 'string'
-                    ? similarResponse.strategy
-                    : 'related_products',
-                items: normalizedSimilar.map((item) => ({
-                  product_id: item.product_id,
-                  merchant_id: item.merchant_id,
-                  title: item.title,
-                  image_url: item.image_url,
-                  price: {
-                    amount: Number(item.price || 0) || 0,
-                    currency: String(item.currency || 'USD'),
-                  },
-                })),
-              },
-            }
-          : null;
-
-        setPdpPayload((prev) => {
-          if (!prev) return prev;
-          const baseModules = Array.isArray(prev.modules)
-            ? prev.modules.filter((module) => module?.type !== 'recommendations')
-            : [];
-          return {
-            ...prev,
-            modules: recommendationsModule
-              ? [...baseModules, recommendationsModule]
-              : baseModules,
-            x_recommendations_state: 'ready',
-            x_source_locks: {
-              ...(prev.x_source_locks || {}),
-              similar: false,
-            },
-          };
-        });
-      } catch {
-        if (cancelled) return;
-        setPdpPayload((prev) =>
-          prev
-            ? {
-                ...prev,
-                x_recommendations_state: 'ready',
-              }
-            : prev,
-        );
-      }
-    };
-
-    void run();
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    loadedViaPdpV2,
-    similarLoadState,
     progressiveMerchantId,
     progressiveProductId,
   ]);
@@ -865,9 +722,11 @@ export default function ProductDetailPage({ params }: Props) {
 
       try {
         const backfillStartedAt = Date.now();
-        const backfillBudgetMs = 5200;
+        // Similar sits below the fold, so it can afford a wider recovery budget than core PDP modules.
+        const backfillBudgetMs = 18000;
         const reviewsInitialTimeoutMs = 4200;
-        const similarInitialTimeoutMs = 2800;
+        const similarInitialTimeoutMs = 10500;
+        const similarRetryTimeoutMs = 6500;
         const deadlineAt = Date.now() + backfillBudgetMs;
         const remainingMs = () => deadlineAt - Date.now();
 
@@ -880,6 +739,9 @@ export default function ProductDetailPage({ params }: Props) {
         const fetchModuleWithBudget = async (
           modules: string[],
           timeoutCapMs: number,
+          options?: {
+            cacheBypass?: boolean;
+          },
         ): Promise<ModuleFetchResult> => {
           const remaining = remainingMs();
           if (cancelled || remaining <= 120) {
@@ -892,6 +754,7 @@ export default function ProductDetailPage({ params }: Props) {
               merchant_id: merchantId,
               include: modules,
               timeout_ms: timeoutMs,
+              ...(options?.cacheBypass ? { cache_bypass: true } : {}),
             });
             return { response, nonRetryable: false, code: '' };
           } catch (err) {
@@ -904,6 +767,9 @@ export default function ProductDetailPage({ params }: Props) {
           }
         };
 
+        const shouldRetryTimeout = (result: ModuleFetchResult) =>
+          !result.response && !result.nonRetryable && result.code === 'UPSTREAM_TIMEOUT';
+
         const extractModules = (payload: PDPPayload | null) => {
           const reviews =
             payload && Array.isArray(payload.modules)
@@ -911,7 +777,7 @@ export default function ProductDetailPage({ params }: Props) {
               : null;
           const recommendations =
             payload && Array.isArray(payload.modules)
-              ? (payload.modules.find((m) => m?.type === 'recommendations') as Module | undefined) || null
+              ? (payload.modules.find((m) => isRecommendationModuleType(m?.type)) as Module | undefined) || null
               : null;
           return { reviews, recommendations };
         };
@@ -924,6 +790,12 @@ export default function ProductDetailPage({ params }: Props) {
             ? fetchModuleWithBudget(['similar'], similarInitialTimeoutMs)
             : Promise.resolve({ response: null, nonRetryable: false, code: '' }),
         ]);
+
+        if (needSimilar && shouldRetryTimeout(similarOnlyV2) && remainingMs() > 500) {
+          similarOnlyV2 = await fetchModuleWithBudget(['similar'], similarRetryTimeoutMs, {
+            cacheBypass: true,
+          });
+        }
 
         if (cancelled) return;
 
@@ -949,41 +821,6 @@ export default function ProductDetailPage({ params }: Props) {
         const reviewModuleUnavailable =
           reviewOnlyV2.nonRetryable || isUnavailableModuleErrorCode(reviewOnlyV2.code);
 
-        if (
-          needReviews &&
-          !reviewsModule &&
-          !reviewModuleUnavailable &&
-          !cancelled &&
-          remainingMs() > 220
-        ) {
-          try {
-            const reviewFallbackDetail = await getProductDetail(productId, merchantId, {
-              useConfiguredMerchantId: false,
-              allowBroadScan: false,
-              timeout_ms: Math.max(600, Math.min(2000, remainingMs())),
-              throwOnError: false,
-              includeReviewSummary: true,
-            });
-            if (reviewFallbackDetail && !cancelled) {
-              const reviewFallbackPayload = mapToPdpPayload({
-                product: reviewFallbackDetail,
-                rawDetail: reviewFallbackDetail.raw_detail,
-                relatedProducts: [],
-                recommendationsLoading: false,
-                entryPoint: 'product_detail',
-              });
-              reviewsModule =
-                (reviewFallbackPayload.modules.find((m) => m?.type === 'reviews_preview') as Module | undefined) ||
-                reviewsModule;
-              if (reviewsModule) {
-                reviewsRequestSucceeded = true;
-              }
-            }
-          } catch {
-            // keep empty reviews fallback below
-          }
-        }
-
         const normalizedReviewsModule =
           needReviews && !reviewsModule
             ? buildEmptyReviewsModule()
@@ -992,6 +829,10 @@ export default function ProductDetailPage({ params }: Props) {
         const itemsCount = Array.isArray((recModule as any)?.data?.items)
           ? ((recModule as any).data.items as unknown[]).length
           : 0;
+        const similarState =
+          recModule || moduleSourceLocksRef.current.similar || similarRequestSucceeded
+            ? 'ready'
+            : 'error';
 
         setPdpPayload((prev) => {
           if (!prev) return prev;
@@ -1028,7 +869,7 @@ export default function ProductDetailPage({ params }: Props) {
             next = {
               ...next,
               modules: mergedSimilar.modules,
-              x_recommendations_state: 'ready',
+              x_recommendations_state: similarState,
               x_source_locks: {
                 ...(next.x_source_locks || {}),
                 similar: mergedSimilar.locked,
@@ -1082,7 +923,7 @@ export default function ProductDetailPage({ params }: Props) {
           if (needSimilar) {
             next = {
               ...next,
-              x_recommendations_state: 'ready',
+              x_recommendations_state: 'error',
             };
           }
           return next;
@@ -1286,7 +1127,7 @@ export default function ProductDetailPage({ params }: Props) {
 
         const detail = await getProductDetail(resolvedProductId, resolvedMerchantId, {
           useConfiguredMerchantId: false,
-          allowBroadScan: false,
+          allowBroadScan: allowLegacyBroadScan,
           throwOnError: false,
           timeout_ms: 8000,
         });
@@ -1413,7 +1254,7 @@ export default function ProductDetailPage({ params }: Props) {
 
         const detail = await getProductDetail(resolvedProductId, resolvedMerchantId, {
           useConfiguredMerchantId: false,
-          allowBroadScan: false,
+          allowBroadScan: allowLegacyBroadScan,
           throwOnError: false,
           timeout_ms: 8000,
         });
@@ -1579,7 +1420,7 @@ export default function ProductDetailPage({ params }: Props) {
                       product_id: id,
                       merchant_id: merchantId,
                     });
-                    router.push(`/products/${encodeURIComponent(id)}?merchant_id=${encodeURIComponent(merchantId)}`);
+                    router.push(buildProductHref(id, merchantId));
                   }}
                   disabled={!merchantId}
                 >

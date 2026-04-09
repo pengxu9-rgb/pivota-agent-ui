@@ -140,6 +140,10 @@ export type ModuleType =
   | 'price_promo'
   | 'product_intel'
   | 'trust_badges'
+  | 'active_ingredients'
+  | 'ingredients_inci'
+  | 'how_to_use'
+  | 'product_facts'
   | 'product_details'
   | 'reviews_preview'
   | 'recommendations'
@@ -291,6 +295,44 @@ export interface ProductIntelData {
   source_coverage?: Record<string, boolean>;
 }
 
+export interface ProductFactsData {
+  sections: DetailSection[];
+}
+
+export interface StructuredTextItem {
+  name?: string;
+  title?: string;
+  value?: string;
+  description?: string;
+  detail?: string;
+  benefit?: string;
+  concentration?: string;
+  inci_name?: string;
+}
+
+export interface ActiveIngredientsData {
+  title?: string;
+  items?: Array<string | StructuredTextItem>;
+  raw_text?: string;
+  source_origin?: string;
+  source_quality_status?: string;
+}
+
+export interface IngredientsInciData {
+  title?: string;
+  items?: Array<string | StructuredTextItem>;
+  raw_text?: string;
+  source_origin?: string;
+  source_quality_status?: string;
+}
+
+export interface HowToUseData {
+  title?: string;
+  steps?: string[];
+  raw_text?: string;
+  source_origin?: string;
+}
+
 export interface DetailSection {
   heading: string;
   content_type: 'text';
@@ -342,12 +384,27 @@ export interface ReviewsPreviewData {
 export interface RecommendationsData {
   strategy?: string;
   metadata?: {
+    has_more?: boolean;
     similar_confidence?: 'high' | 'medium' | 'low' | string;
     low_confidence?: boolean;
     low_confidence_reason_codes?: string[];
+    underfill?: number;
     retrieval_mix?: {
       internal?: number;
       external?: number;
+    };
+    selection_mix?: {
+      same_brand_same_category?: number;
+      same_brand_other_category?: number;
+      other_brand_same_category?: number;
+      other_brand_same_vertical?: number;
+      semantic_peer?: number;
+    };
+    base_semantic?: {
+      brand?: string | null;
+      vertical?: string | null;
+      inferred?: boolean;
+      signal_strength?: number;
     };
   };
   items: Array<{

@@ -38,6 +38,14 @@ const IMAGE_REMOTE_PATTERNS = [
   },
   {
     protocol: 'https',
+    hostname: 'sdcdn.io',
+  },
+  {
+    protocol: 'https',
+    hostname: 'assets.sdcdn.io',
+  },
+  {
+    protocol: 'https',
     hostname: 'static.wixstatic.com',
   },
   {

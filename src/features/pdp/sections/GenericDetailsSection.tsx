@@ -1,58 +1,62 @@
 'use client';
 
 import Image from 'next/image';
-import type { MediaGalleryData, Product, ProductDetailsData } from '@/features/pdp/types';
+import type {
+  ActiveIngredientsData,
+  HowToUseData,
+  IngredientsInciData,
+  MediaGalleryData,
+  Product,
+  ProductDetailsData,
+} from '@/features/pdp/types';
 import { DetailsAccordion } from '@/features/pdp/sections/DetailsAccordion';
-import {
-  formatDescriptionText,
-  isLikelyHeadingParagraph,
-  splitParagraphs,
-} from '@/features/pdp/utils/formatDescriptionText';
+import { OverviewSection } from '@/features/pdp/sections/OverviewSection';
+import { StructuredDetailsBlocks } from '@/features/pdp/sections/StructuredDetailsBlocks';
+import { partitionDetailSections } from '@/features/pdp/utils/detailSections';
+import { buildOverviewContent } from '@/features/pdp/utils/overviewContent';
 
 export function GenericDetailsSection({
   data,
   product,
   media,
+  activeIngredients,
+  ingredientsInci,
+  howToUse,
+  hideLowConfidenceActiveIngredients = false,
 }: {
-  data: ProductDetailsData;
+  data?: ProductDetailsData | null;
   product: Product;
   media?: MediaGalleryData | null;
+  activeIngredients?: ActiveIngredientsData | null;
+  ingredientsInci?: IngredientsInciData | null;
+  howToUse?: HowToUseData | null;
+  hideLowConfidenceActiveIngredients?: boolean;
 }) {
-  const primarySection = data.sections[0];
-  const secondarySections = data.sections.slice(1);
-  const description = formatDescriptionText(primarySection?.content || product.description);
-  const descriptionParagraphs = splitParagraphs(description);
+  const sections = Array.isArray(data?.sections) ? data.sections : [];
+  const {
+    overviewSection: primarySection,
+    supplementalSections: secondarySections,
+  } = partitionDetailSections(sections);
   const detailImages = (media?.items || []).slice(1, 3);
+  const overviewContent = buildOverviewContent({
+    description: product.description,
+    section: primarySection,
+    hideStructuredDuplicates: true,
+  });
+  const hasOverview = Boolean(
+    overviewContent?.summary ||
+      overviewContent?.highlights.length ||
+      overviewContent?.facts.length ||
+      overviewContent?.body.length,
+  );
 
   return (
     <div className="p-3">
       <h2 className="text-sm font-semibold mb-2">Product Details</h2>
-      <div className="mb-3">
-        <h3 className="text-sm font-semibold mb-1.5">{primarySection?.heading || 'Fabric & Care'}</h3>
-        {descriptionParagraphs.length ? (
-          <div className="space-y-2">
-            {descriptionParagraphs.map((paragraph, idx) =>
-              isLikelyHeadingParagraph(paragraph) ? (
-                <div key={`${paragraph}-${idx}`} className="text-xs font-semibold tracking-wide text-foreground">
-                  {paragraph}
-                </div>
-              ) : (
-                <p
-                  key={`${paragraph}-${idx}`}
-                  className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line"
-                >
-                  {paragraph}
-                </p>
-              ),
-            )}
-          </div>
-        ) : (
-          <p className="text-sm text-muted-foreground leading-relaxed">Details not available.</p>
-        )}
-      </div>
+      <OverviewSection content={overviewContent} />
 
       {detailImages.length ? (
-        <div className="space-y-2">
+        <div className="mt-3 space-y-2">
           {detailImages.map((item, idx) => (
             <Image
               key={`${item.url}-${idx}`}
@@ -68,10 +72,19 @@ export function GenericDetailsSection({
         </div>
       ) : null}
 
+      <StructuredDetailsBlocks
+        activeIngredients={activeIngredients}
+        ingredientsInci={ingredientsInci}
+        howToUse={howToUse}
+        hideLowConfidenceActiveIngredients={hideLowConfidenceActiveIngredients}
+      />
+
       {secondarySections.length ? (
         <div className="mt-3">
           <DetailsAccordion data={{ sections: secondarySections }} />
         </div>
+      ) : !hasOverview ? (
+        <p className="mt-3 text-sm text-muted-foreground leading-relaxed">Details not available.</p>
       ) : null}
     </div>
   );

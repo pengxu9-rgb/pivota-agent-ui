@@ -4,9 +4,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import OrderSuccessPage from './page';
 
+async function flushAsyncWork() {
+  await Promise.resolve();
+  await Promise.resolve();
+}
+
 const pushMock = vi.fn();
 const postRequestCloseToParentMock = vi.fn();
-const getCheckoutTokenFromBrowserMock = vi.fn();
+const getCheckoutContextFromBrowserMock = vi.fn();
+const confirmOrderPaymentMock = vi.fn();
+const getOrderStatusMock = vi.fn();
+const confirmPaymentWithRetryMock = vi.fn();
+const pollOrderStatusUntilSettledMock = vi.fn();
 const fetchMock = vi.fn();
 const assignMock = vi.fn();
 let embedModeValue = false;
@@ -27,18 +36,45 @@ vi.mock('@/lib/auroraEmbed', () => ({
 }));
 
 vi.mock('@/lib/checkoutToken', () => ({
-  getCheckoutTokenFromBrowser: () => getCheckoutTokenFromBrowserMock(),
+  getCheckoutContextFromBrowser: () => getCheckoutContextFromBrowserMock(),
+}));
+
+vi.mock('@/lib/api', () => ({
+  confirmOrderPayment: (...args: unknown[]) => confirmOrderPaymentMock(...args),
+  getOrderStatus: (...args: unknown[]) => getOrderStatusMock(...args),
+}));
+
+vi.mock('@/lib/checkoutFinalization', () => ({
+  confirmPaymentWithRetry: (...args: unknown[]) => confirmPaymentWithRetryMock(...args),
+  pollOrderStatusUntilSettled: (...args: unknown[]) => pollOrderStatusUntilSettledMock(...args),
 }));
 
 describe('Order success action layout', () => {
   beforeEach(() => {
+    vi.useRealTimers();
     searchParamsValue = 'orderId=ord_123';
     embedModeValue = false;
     pushMock.mockReset();
     postRequestCloseToParentMock.mockReset();
-    getCheckoutTokenFromBrowserMock.mockReset();
+    getCheckoutContextFromBrowserMock.mockReset();
+    confirmOrderPaymentMock.mockReset();
+    getOrderStatusMock.mockReset();
+    confirmPaymentWithRetryMock.mockReset();
+    pollOrderStatusUntilSettledMock.mockReset();
     fetchMock.mockReset();
-    getCheckoutTokenFromBrowserMock.mockReturnValue(null);
+    getCheckoutContextFromBrowserMock.mockReturnValue({ token: null, source: null });
+    confirmPaymentWithRetryMock.mockResolvedValue({
+      status: 'confirmed',
+      attempts: 1,
+      paymentStatus: 'paid',
+      lastError: null,
+    });
+    pollOrderStatusUntilSettledMock.mockResolvedValue({
+      status: 'confirmed',
+      polls: 1,
+      paymentStatus: 'paid',
+      lastError: null,
+    });
     fetchMock.mockResolvedValue({
       ok: false,
       json: async () => ({}),
@@ -68,7 +104,7 @@ describe('Order success action layout', () => {
     const trackButton = await screen.findByRole('button', { name: /track your order/i });
     const continueButton = screen.getByRole('button', { name: /continue shopping/i });
     const detailsSummary = screen.getByText(/order details & settings/i);
-    const visibleDetailsBody = screen.getByText(/save for next time/i);
+    const visibleDetailsBody = screen.getByText(/save address for next time/i);
 
     expect(trackButton).toBeInTheDocument();
     expect(continueButton).toBeInTheDocument();
@@ -84,7 +120,7 @@ describe('Order success action layout', () => {
 
     const returnButton = await screen.findByRole('button', { name: /return to previous page/i });
     const detailsSummary = screen.getByText(/order details & settings/i);
-    const visibleDetailsBody = screen.getByText(/save for next time/i);
+    const visibleDetailsBody = screen.getByText(/save address for next time/i);
 
     await waitFor(() => {
       expect(screen.queryByRole('button', { name: /track your order/i })).toBeNull();
@@ -131,5 +167,108 @@ describe('Order success action layout', () => {
     expect(historyBackSpy).toHaveBeenCalledTimes(1);
     expect(assignMock).not.toHaveBeenCalled();
     expect(pushMock).not.toHaveBeenCalled();
+  });
+
+  it('runs finalization recovery on success page when finalizing=1 is present', async () => {
+    searchParamsValue = 'orderId=ord_123&finalizing=1';
+    let resolvePoll: ((value: {
+      status: 'confirmed' | 'pending';
+      polls: number;
+      paymentStatus: string | null;
+      lastError: unknown | null;
+    }) => void) | null = null;
+    confirmPaymentWithRetryMock.mockResolvedValueOnce({
+      status: 'pending',
+      attempts: 1,
+      paymentStatus: null,
+      lastError: new Error('temporary'),
+    });
+    pollOrderStatusUntilSettledMock.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolvePoll = resolve;
+      }),
+    );
+
+    render(<OrderSuccessPage />);
+
+    expect(await screen.findByRole('heading', { name: /confirming payment/i })).toBeInTheDocument();
+    expect(await screen.findByText(/payment received\. confirming your order now/i)).toBeInTheDocument();
+    await waitFor(() => {
+      expect(confirmPaymentWithRetryMock).toHaveBeenCalledTimes(1);
+      expect(pollOrderStatusUntilSettledMock).toHaveBeenCalledTimes(1);
+    });
+    resolvePoll?.({
+      status: 'confirmed',
+      polls: 2,
+      paymentStatus: 'paid',
+      lastError: null,
+    });
+    await waitFor(() => {
+      expect(screen.queryByRole('heading', { name: /confirming payment/i })).toBeNull();
+      expect(screen.getByRole('heading', { name: /order successful/i })).toBeInTheDocument();
+      expect(screen.queryByText(/payment received\. confirming your order now/i)).toBeNull();
+    });
+  });
+
+  it('shows a non-blocking note when finalization stays pending', async () => {
+    searchParamsValue = 'orderId=ord_123&finalizing=1';
+    confirmPaymentWithRetryMock.mockResolvedValueOnce({
+      status: 'pending',
+      attempts: 1,
+      paymentStatus: null,
+      lastError: new Error('temporary'),
+    });
+    pollOrderStatusUntilSettledMock.mockResolvedValueOnce({
+      status: 'pending',
+      polls: 3,
+      paymentStatus: 'pending',
+      lastError: null,
+    });
+
+    render(<OrderSuccessPage />);
+
+    expect(await screen.findByText(/final confirmation is taking a little longer than usual/i)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /confirming payment/i })).toBeInTheDocument();
+    expect(await screen.findByText(/we'll update this page automatically/i)).toBeInTheDocument();
+    expect(confirmPaymentWithRetryMock).toHaveBeenCalledTimes(1);
+    expect(pollOrderStatusUntilSettledMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps polling after delayed finalization and exits confirming once status settles', async () => {
+    vi.useFakeTimers();
+    searchParamsValue = 'orderId=ord_123&finalizing=1';
+    confirmPaymentWithRetryMock.mockResolvedValueOnce({
+      status: 'pending',
+      attempts: 1,
+      paymentStatus: null,
+      lastError: new Error('temporary'),
+    });
+    pollOrderStatusUntilSettledMock
+      .mockResolvedValueOnce({
+        status: 'pending',
+        polls: 3,
+        paymentStatus: 'pending',
+        lastError: null,
+      })
+      .mockResolvedValueOnce({
+        status: 'confirmed',
+        polls: 1,
+        paymentStatus: 'paid',
+        lastError: null,
+      });
+
+    render(<OrderSuccessPage />);
+
+    await flushAsyncWork();
+
+    expect(screen.getByRole('heading', { name: /confirming payment/i })).toBeInTheDocument();
+    expect(screen.getByText(/final confirmation is taking a little longer than usual/i)).toBeInTheDocument();
+    expect(pollOrderStatusUntilSettledMock).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(1200);
+    await flushAsyncWork();
+
+    expect(pollOrderStatusUntilSettledMock).toHaveBeenCalledTimes(2);
+    expect(screen.getByRole('heading', { name: /order successful/i })).toBeInTheDocument();
   });
 });

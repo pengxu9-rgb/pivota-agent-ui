@@ -1,6 +1,6 @@
 /* eslint-disable @next/next/no-img-element */
 import React from 'react';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PdpContainer } from './PdpContainer';
 import type { PDPPayload } from '@/features/pdp/types';
@@ -44,6 +44,26 @@ vi.mock('sonner', () => ({
     error: vi.fn(),
   },
 }));
+
+function mockMatchMedia(matches: boolean) {
+  const matchMedia = vi.fn().mockImplementation((query: string) => ({
+    matches,
+    media: query,
+    onchange: null,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+  }));
+
+  vi.stubGlobal('matchMedia', matchMedia);
+  Object.defineProperty(window, 'matchMedia', {
+    configurable: true,
+    writable: true,
+    value: matchMedia,
+  });
+}
 
 const payload: PDPPayload = {
   schema_version: '1.0.0',
@@ -120,6 +140,12 @@ describe('PdpContainer gallery viewer wiring', () => {
   afterEach(() => {
     cleanup();
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+    Object.defineProperty(window, 'matchMedia', {
+      configurable: true,
+      writable: true,
+      value: undefined,
+    });
   });
 
   it('switches official hero image on thumbnail click without opening viewer', () => {
@@ -136,5 +162,172 @@ describe('PdpContainer gallery viewer wiring', () => {
     fireEvent.click(screen.getByLabelText('View media 2'));
     expect(screen.getByText('2/3')).toBeInTheDocument();
     expect(screen.queryByTestId('viewer-counter')).toBeNull();
+  });
+
+  it('removes the mobile CTA padding when the desktop media query matches', async () => {
+    mockMatchMedia(true);
+
+    render(
+      <PdpContainer
+        payload={payload}
+        mode="generic"
+        onAddToCart={() => {}}
+        onBuyNow={() => {}}
+      />,
+    );
+
+    await waitFor(() => {
+      const root = document.querySelector('.lovable-pdp') as HTMLElement | null;
+      expect(root).not.toBeNull();
+      expect(root?.className).toContain('pb-0');
+      expect(root?.className).not.toContain('pb-[calc(120px+env(safe-area-inset-bottom,0px))]');
+    });
+  });
+
+  it('shows a default-selected single option summary for external-seed products', () => {
+    const externalSeedPayload: PDPPayload = {
+      ...payload,
+      product: {
+        ...payload.product,
+        merchant_id: 'external_seed',
+        variants: [
+          {
+            ...payload.product.variants[0],
+            title: 'Black Mesh',
+          },
+        ],
+      },
+    };
+
+    render(
+      <PdpContainer
+        payload={externalSeedPayload}
+        mode="generic"
+        onAddToCart={() => {}}
+        onBuyNow={() => {}}
+      />,
+    );
+
+    expect(screen.getByText('Option')).toBeInTheDocument();
+    expect(screen.getByText('Selected by default')).toBeInTheDocument();
+    expect(screen.getAllByText('Black Mesh').length).toBeGreaterThan(0);
+  });
+
+  it('shows a fallback single option summary for placeholder external-seed variants', () => {
+    const externalSeedPayload: PDPPayload = {
+      ...payload,
+      product: {
+        ...payload.product,
+        merchant_id: 'external_seed',
+      },
+    };
+
+    render(
+      <PdpContainer
+        payload={externalSeedPayload}
+        mode="generic"
+        onAddToCart={() => {}}
+        onBuyNow={() => {}}
+      />,
+    );
+
+    expect(screen.getByText('Selected by default')).toBeInTheDocument();
+    expect(screen.getByText('Option')).toBeInTheDocument();
+    expect(screen.getAllByText('Default option').length).toBeGreaterThan(0);
+  });
+
+  it('renders structured PDP detail modules before generic product details', () => {
+    const structuredPayload: PDPPayload = {
+      ...payload,
+      modules: [
+        ...payload.modules,
+        {
+          module_id: 'm_active_ingredients',
+          type: 'active_ingredients',
+          priority: 40,
+          data: {
+            title: 'Active Ingredients',
+            items: ['Niacinamide'],
+          },
+        },
+        {
+          module_id: 'm_ingredients_inci',
+          type: 'ingredients_inci',
+          priority: 41,
+          data: {
+            title: 'Ingredients (INCI)',
+            items: ['Water', 'Niacinamide'],
+          },
+        },
+        {
+          module_id: 'm_how_to_use',
+          type: 'how_to_use',
+          priority: 42,
+          data: {
+            title: 'How to Use',
+            steps: ['Apply after cleansing', 'Use morning and night'],
+          },
+        },
+        {
+          module_id: 'm_details',
+          type: 'product_details',
+          priority: 45,
+          data: {
+            sections: [
+              {
+                heading: 'Details',
+                content_type: 'text',
+                content: 'Barrier-support serum for daily use.',
+              },
+            ],
+          },
+        },
+      ],
+    };
+
+    render(
+      <PdpContainer
+        payload={structuredPayload}
+        mode="generic"
+        onAddToCart={() => {}}
+        onBuyNow={() => {}}
+      />,
+    );
+
+    expect(screen.getByText('Active Ingredients')).toBeInTheDocument();
+    expect(screen.getAllByText('Niacinamide').length).toBeGreaterThan(0);
+    expect(screen.getByText('Ingredients (INCI)')).toBeInTheDocument();
+    expect(screen.getByText('How to Use')).toBeInTheDocument();
+    expect(screen.getByText('Product Details')).toBeInTheDocument();
+  });
+
+  it('shows the single option summary for beauty-mode external-seed products too', () => {
+    const externalSeedPayload: PDPPayload = {
+      ...payload,
+      product: {
+        ...payload.product,
+        merchant_id: 'external_seed',
+        title: 'PIXI BEAUTY Rose Ceramide Cream',
+        variants: [
+          {
+            ...payload.product.variants[0],
+            title: 'PIXI BEAUTY Rose Ceramide Cream',
+          },
+        ],
+      },
+    };
+
+    render(
+      <PdpContainer
+        payload={externalSeedPayload}
+        mode="beauty"
+        onAddToCart={() => {}}
+        onBuyNow={() => {}}
+      />,
+    );
+
+    expect(screen.getByText('Selected by default')).toBeInTheDocument();
+    expect(screen.getByText('Option')).toBeInTheDocument();
+    expect(screen.getAllByText('PIXI BEAUTY Rose Ceramide Cream').length).toBeGreaterThan(1);
   });
 });

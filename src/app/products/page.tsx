@@ -8,7 +8,15 @@ import ProductCard from '@/components/product/ProductCard';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useCartStore } from '@/store/cartStore';
-import { sendMessage, getAllProducts, type ProductResponse } from '@/lib/api';
+import { useAuthStore } from '@/store/authStore';
+import {
+  sendMessage,
+  getShoppingDiscoveryFeed,
+  getBrowseHistory,
+  type DiscoveryRecentView,
+  type ProductResponse,
+} from '@/lib/api';
+import { mergeDiscoveryRecentViews, readLocalBrowseHistory } from '@/lib/browseHistoryStorage';
 import { toast } from 'sonner';
 
 const TRENDING_TAGS = [
@@ -45,6 +53,8 @@ export default function ProductsPage() {
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
+  const [recentViews, setRecentViews] = useState<DiscoveryRecentView[]>([]);
+  const [recentViewsReady, setRecentViewsReady] = useState(false);
   const searchAbortRef = useRef<AbortController | null>(null);
   const searchDebounceRef = useRef<number | null>(null);
   const searchRequestSeqRef = useRef(0);
@@ -52,8 +62,48 @@ export default function ProductsPage() {
   const activeQueryRef = useRef('');
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
   const { items, open } = useCartStore();
+  const { user } = useAuthStore();
 
   const itemCount = items.reduce((acc, item) => acc + item.quantity, 0);
+
+  useEffect(() => {
+    let cancelled = false;
+    const userId = user?.id || null;
+    const localRecentViews = mergeDiscoveryRecentViews({
+      localItems: readLocalBrowseHistory(50),
+      limit: 50,
+    }) as DiscoveryRecentView[];
+    if (!userId) {
+      setRecentViews(localRecentViews);
+      setRecentViewsReady(true);
+      return;
+    }
+
+    setRecentViewsReady(false);
+    getBrowseHistory(50)
+      .then((history) => {
+        if (!cancelled) {
+          setRecentViews(
+            mergeDiscoveryRecentViews({
+              accountItems: history.items || [],
+              localItems: readLocalBrowseHistory(50),
+              limit: 50,
+            }) as DiscoveryRecentView[],
+          );
+        }
+      })
+      .catch((error) => {
+        console.warn('Failed to load shopping behavior history:', error);
+        if (!cancelled) setRecentViews(localRecentViews);
+      })
+      .finally(() => {
+        if (!cancelled) setRecentViewsReady(true);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id]);
 
   const executeSearchPage = useCallback(
     async (query: string, targetPage: number, options?: { append?: boolean }) => {
@@ -81,10 +131,15 @@ export default function ProductsPage() {
         let hasMoreFromResponse: boolean | undefined;
 
         if (!trimmed) {
-          fetchedProducts = await getAllProducts(GRID_INITIAL_PAGE_SIZE, undefined, {
+          const result = await getShoppingDiscoveryFeed({
+            surface: 'browse_products',
             page: targetPage,
+            limit: GRID_INITIAL_PAGE_SIZE,
+            userId: user?.id || null,
+            recentViews,
           });
-          hasMoreFromResponse = fetchedProducts.length >= GRID_INITIAL_PAGE_SIZE;
+          fetchedProducts = result.products;
+          hasMoreFromResponse = result.page_info.has_more;
         } else {
           const result = await sendMessage(trimmed, undefined, {
             signal: controller.signal,
@@ -92,6 +147,7 @@ export default function ProductsPage() {
               page: targetPage,
               limit: GRID_INITIAL_PAGE_SIZE,
             },
+            userId: user?.id || null,
           });
           fetchedProducts = Array.isArray(result?.products) ? result.products : [];
           hasMoreFromResponse = Boolean(result?.page_info?.has_more);
@@ -139,7 +195,7 @@ export default function ProductsPage() {
         }
       }
     },
-    [],
+    [recentViews, user?.id],
   );
 
   const executeSearch = useCallback(
@@ -173,13 +229,14 @@ export default function ProductsPage() {
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
+    if (!recentViewsReady) return;
     const q = new URLSearchParams(window.location.search).get('q')?.trim() || '';
     if (q) {
       handleSearch(q, { immediate: true });
       return;
     }
     void executeSearch('');
-  }, [executeSearch, handleSearch]);
+  }, [executeSearch, handleSearch, recentViewsReady]);
 
   const loadMore = useCallback(() => {
     if (loading || isLoadingMore || !hasMore) return;
