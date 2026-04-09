@@ -17,6 +17,7 @@ import {
   type ProductResponse,
 } from '@/lib/api';
 import { mergeDiscoveryRecentViews, readLocalBrowseHistory } from '@/lib/browseHistoryStorage';
+import { resolveProductCardPresentation } from '@/lib/productCardPresentation';
 import { toast } from 'sonner';
 
 const TRENDING_TAGS = [
@@ -401,30 +402,33 @@ export default function ProductsPage() {
                       (product as any).sku_id ||
                       '',
                   ).trim() || undefined;
+                const card = resolveProductCardPresentation(product);
 
-                  return (
-                    <motion.div
-                      key={buildProductKey(product)}
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, scale: 0.9 }}
-                      transition={{ delay: index * 0.05 }}
-                    >
-                      <ProductCard
-                        product_id={product.product_id}
-                        merchant_id={product.merchant_id}
-                        merchant_name={product.merchant_name}
-                        variant_id={variantId}
-                        sku={sku}
-                        external_redirect_url={product.external_redirect_url}
-                        title={product.title}
-                        price={product.price}
-                        currency={product.currency}
-                        image={product.image_url || '/placeholder.svg'}
-                        description={product.description}
-                      />
-                    </motion.div>
-                  );
+                return (
+                  <motion.div
+                    key={buildProductKey(product)}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.9 }}
+                    transition={{ delay: index * 0.05 }}
+                  >
+                    <ProductCard
+                      product_id={product.product_id}
+                      merchant_id={product.merchant_id}
+                      merchant_name={product.merchant_name}
+                      variant_id={variantId}
+                      sku={sku}
+                      external_redirect_url={product.external_redirect_url}
+                      title={card.title}
+                      subtitle={card.subtitle || undefined}
+                      badge={card.badge || undefined}
+                      price={product.price}
+                      currency={product.currency}
+                      image={product.image_url || '/placeholder.svg'}
+                      description={product.description}
+                    />
+                  </motion.div>
+                );
                 })}
               </AnimatePresence>
             </motion.div>

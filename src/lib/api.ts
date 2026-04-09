@@ -175,6 +175,20 @@ export interface ProductResponse {
   options?: any[] | null;
   product_options?: any[] | null;
   seller_feedback_summary?: any;
+  card_title?: string;
+  card_subtitle?: string;
+  card_badge?: string;
+  card_intro?: string;
+  market_signal_badges?: Array<{
+    badge_type?: string;
+    badge_label: string;
+  }>;
+  search_card?: {
+    title_candidate?: string;
+    compact_candidate?: string;
+    proof_badge_candidate?: string;
+    intro_candidate?: string;
+  };
 }
 
 export type ResolveProductCandidatesOffer = {
@@ -285,6 +299,40 @@ export function normalizeProductDescriptionText(value: unknown): string {
     .replace(/ *\n */g, '\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
+}
+
+function isRecord(value: unknown): value is Record<string, any> {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value));
+}
+
+function readFirstString(...values: unknown[]): string | undefined {
+  for (const value of values) {
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      if (trimmed) return trimmed;
+    }
+  }
+  return undefined;
+}
+
+function normalizeMarketSignalBadges(
+  value: unknown,
+): ProductResponse['market_signal_badges'] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const rows = value
+    .map((item) => {
+      const row = isRecord(item) ? item : null;
+      const badgeLabel = readFirstString(row?.badge_label, row?.label, item);
+      if (!badgeLabel) return null;
+      return {
+        ...(readFirstString(row?.badge_type, row?.type)
+          ? { badge_type: readFirstString(row?.badge_type, row?.type) }
+          : {}),
+        badge_label: badgeLabel,
+      };
+    })
+    .filter(Boolean) as Array<{ badge_type?: string; badge_label: string }>;
+  return rows.length ? rows : undefined;
 }
 
 export function normalizeProduct(
@@ -416,6 +464,48 @@ export function normalizeProduct(
   const variants = Array.isArray(anyP.variants) ? anyP.variants : undefined;
   const reviewSummary =
     anyP.review_summary || anyP.reviews_summary || anyP.reviews?.summary;
+  const rawDetail = isRecord(anyP.raw_detail) ? anyP.raw_detail : null;
+  const rawSearchCard =
+    (isRecord(anyP.search_card) ? anyP.search_card : null) ||
+    (isRecord(anyP.searchCard) ? anyP.searchCard : null) ||
+    (isRecord(anyP.card) ? anyP.card : null) ||
+    (isRecord(rawDetail?.search_card) ? rawDetail?.search_card : null) ||
+    (isRecord(rawDetail?.searchCard) ? rawDetail?.searchCard : null);
+  const marketSignalBadges =
+    normalizeMarketSignalBadges(anyP.market_signal_badges) ||
+    normalizeMarketSignalBadges(anyP.marketSignals) ||
+    normalizeMarketSignalBadges(anyP.product_intel?.market_signal_badges) ||
+    normalizeMarketSignalBadges(rawSearchCard?.market_signal_badges);
+  const cardTitle = readFirstString(
+    anyP.card_title,
+    anyP.cardTitle,
+    anyP.search_card_title_candidate,
+    rawSearchCard?.title_candidate,
+    rawSearchCard?.title,
+  );
+  const cardSubtitle = readFirstString(
+    anyP.card_subtitle,
+    anyP.cardSubtitle,
+    anyP.search_card_compact_candidate,
+    rawSearchCard?.compact_candidate,
+    rawSearchCard?.subtitle,
+    anyP.subtitle,
+    anyP.sub_title,
+  );
+  const cardBadge = readFirstString(
+    anyP.card_badge,
+    anyP.cardBadge,
+    anyP.search_card_proof_badge_candidate,
+    rawSearchCard?.proof_badge_candidate,
+    marketSignalBadges?.[0]?.badge_label,
+  );
+  const cardIntro = readFirstString(
+    anyP.card_intro,
+    anyP.cardIntro,
+    anyP.search_card_intro_candidate,
+    rawSearchCard?.intro_candidate,
+    rawSearchCard?.intro,
+  );
 
   return {
     product_id: anyP.product_id || anyP.id,
@@ -476,6 +566,44 @@ export function normalizeProduct(
     options: anyP.options ?? null,
     product_options: anyP.product_options ?? null,
     seller_feedback_summary: anyP.seller_feedback_summary,
+    ...(cardTitle ? { card_title: cardTitle } : {}),
+    ...(cardSubtitle ? { card_subtitle: cardSubtitle } : {}),
+    ...(cardBadge ? { card_badge: cardBadge } : {}),
+    ...(cardIntro ? { card_intro: cardIntro } : {}),
+    ...(marketSignalBadges ? { market_signal_badges: marketSignalBadges } : {}),
+    ...(rawSearchCard
+      ? {
+          search_card: {
+            ...(readFirstString(rawSearchCard?.title_candidate, rawSearchCard?.title)
+              ? {
+                  title_candidate: readFirstString(
+                    rawSearchCard?.title_candidate,
+                    rawSearchCard?.title,
+                  ),
+                }
+              : {}),
+            ...(readFirstString(rawSearchCard?.compact_candidate, rawSearchCard?.subtitle)
+              ? {
+                  compact_candidate: readFirstString(
+                    rawSearchCard?.compact_candidate,
+                    rawSearchCard?.subtitle,
+                  ),
+                }
+              : {}),
+            ...(readFirstString(rawSearchCard?.proof_badge_candidate)
+              ? { proof_badge_candidate: readFirstString(rawSearchCard?.proof_badge_candidate) }
+              : {}),
+            ...(readFirstString(rawSearchCard?.intro_candidate, rawSearchCard?.intro)
+              ? {
+                  intro_candidate: readFirstString(
+                    rawSearchCard?.intro_candidate,
+                    rawSearchCard?.intro,
+                  ),
+                }
+              : {}),
+          },
+        }
+      : {}),
   };
 }
 

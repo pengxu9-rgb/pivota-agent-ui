@@ -10,7 +10,6 @@ import {
   Search,
   ShoppingBag,
   SlidersHorizontal,
-  Star,
   X,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
@@ -23,6 +22,7 @@ import {
   type ProductResponse,
 } from '@/lib/api';
 import { normalizeBrandLabel } from '@/lib/brandRoute';
+import { resolveProductCardPresentation } from '@/lib/productCardPresentation';
 import { buildProductHref } from '@/lib/productHref';
 import { appendCurrentPathAsReturn, safeReturnUrl } from '@/lib/returnUrl';
 import { useAuthStore } from '@/store/authStore';
@@ -60,17 +60,6 @@ type BrandStory = {
   quote: string;
   author?: string;
 };
-
-type ProductCardMeta =
-  | {
-      kind: 'review';
-      rating: number | null;
-      reviewCount: number;
-    }
-  | {
-      kind: 'editorial';
-      label: string;
-    };
 
 function buildProductKey(product: ProductResponse): string {
   return `${String(product?.merchant_id || '').trim()}::${String(product?.product_id || '').trim()}`;
@@ -167,13 +156,6 @@ function formatPrice(price: number, currency = 'USD'): string {
   }
 }
 
-function formatCompactCount(count: number): string {
-  if (!Number.isFinite(count) || count <= 0) return '0';
-  if (count < 1000) return String(Math.floor(count));
-  const compact = count >= 10000 ? Math.round(count / 1000) : Math.round((count / 1000) * 10) / 10;
-  return `${compact}`.replace(/\.0$/, '') + 'k';
-}
-
 function getBrandInitials(brandName: string): string {
   const parts = String(brandName || '')
     .trim()
@@ -184,43 +166,12 @@ function getBrandInitials(brandName: string): string {
   return parts.map((part) => part.charAt(0).toUpperCase()).join('');
 }
 
-function getReviewMeta(product: ProductResponse) {
-  const summary = product?.review_summary && typeof product.review_summary === 'object'
-    ? product.review_summary
-    : null;
-  const scale = Number(summary?.scale || summary?.rating_scale || 5) || 5;
-  const rawRating = Number(summary?.rating || summary?.average_rating || summary?.avg_rating || 0) || 0;
-  const normalizedRating =
-    rawRating > 0 ? Math.min(5, scale === 5 ? rawRating : (rawRating / scale) * 5) : null;
-  const reviewCount =
-    Number(summary?.review_count || summary?.count || summary?.total_reviews || 0) || 0;
-  return {
-    rating: normalizedRating,
-    reviewCount,
-  };
-}
-
 function formatCategoryLabel(label: string): string {
   return label
     .replace(/[_-]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
     .replace(/\b\w/g, (match) => match.toUpperCase());
-}
-
-function toReadableLabel(value: string): string {
-  return value
-    .replace(/[_-]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function toTitleCase(value: string): string {
-  return toReadableLabel(value)
-    .split(' ')
-    .filter(Boolean)
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-    .join(' ');
 }
 
 function normalizeCategoryScopeValue(value: string | null | undefined): string | null {
@@ -341,87 +292,6 @@ function resolveCategoryChips(
     }));
 }
 
-function resolveProductBadge(product: ProductResponse): string | null {
-  const rawTags = Array.isArray(product.tags)
-    ? product.tags.map((tag) => String(tag || '').trim().toLowerCase())
-    : [];
-  const { rating, reviewCount } = getReviewMeta(product);
-
-  if (rawTags.some((tag) => /(best seller|bestseller|iconic|top rated|top-rated)/.test(tag))) {
-    return 'Bestseller';
-  }
-  if (rawTags.some((tag) => /(trending|viral|hot item|fan favorite|editor'?s pick)/.test(tag))) {
-    return 'Trending';
-  }
-  if ((rating || 0) >= 4.6 && reviewCount >= 25) return 'Bestseller';
-  return null;
-}
-
-function readConfiguredMerchSlot(product: ProductResponse): string | null {
-  const tags = Array.isArray(product.tags)
-    ? product.tags.map((tag) => String(tag || '').trim()).filter(Boolean)
-    : [];
-
-  for (const tag of tags) {
-    const match = tag.match(/^(?:editorial|callout|spotlight|merch|badge|featured)\s*:\s*(.+)$/i);
-    if (match?.[1]) return toTitleCase(match[1]).slice(0, 40);
-  }
-
-  const rawDetail = product.raw_detail && typeof product.raw_detail === 'object'
-    ? (product.raw_detail as Record<string, any>)
-    : null;
-  const attributes = product.attributes && typeof product.attributes === 'object'
-    ? (product.attributes as Record<string, any>)
-    : null;
-  const merchandising = rawDetail?.merchandising && typeof rawDetail.merchandising === 'object'
-    ? (rawDetail.merchandising as Record<string, any>)
-    : null;
-
-  const candidates = [
-    merchandising?.card_callout,
-    merchandising?.card_label,
-    merchandising?.editorial_badge,
-    merchandising?.badge,
-    attributes?.card_callout,
-    attributes?.card_label,
-    attributes?.editorial_badge,
-    attributes?.badge,
-    rawDetail?.card_callout,
-    rawDetail?.card_label,
-    rawDetail?.editorial_badge,
-    rawDetail?.badge,
-  ];
-
-  for (const candidate of candidates) {
-    const value = String(candidate || '').trim();
-    if (value) return toTitleCase(value).slice(0, 40);
-  }
-
-  return null;
-}
-
-function resolveProductCardMeta(product: ProductResponse): ProductCardMeta | null {
-  const { rating, reviewCount } = getReviewMeta(product);
-
-  if (reviewCount > 0) {
-    return {
-      kind: 'review',
-      rating,
-      reviewCount,
-    };
-  }
-
-  const configuredLabel = readConfiguredMerchSlot(product);
-  if (configuredLabel) {
-    return {
-      kind: 'editorial',
-      label: configuredLabel,
-    };
-  }
-
-  return null;
-}
-
 function resolveBrandCampaign(metadata: Record<string, any> | null | undefined): BrandCampaign | null {
   const candidate =
     metadata?.brand_campaign ||
@@ -487,8 +357,7 @@ function BrandProductCard({ product }: { product: ProductResponse }) {
 
   const href = buildProductHref(product.product_id, product.merchant_id);
   const hrefWithReturn = appendCurrentPathAsReturn(href);
-  const badge = resolveProductBadge(product);
-  const cardMeta = resolveProductCardMeta(product);
+  const card = resolveProductCardPresentation(product);
   const isDirectCartEligible =
     Boolean(product.merchant_id) &&
     product.merchant_id !== 'external_seed' &&
@@ -542,39 +411,23 @@ function BrandProductCard({ product }: { product: ProductResponse }) {
               }}
             />
 
-            {badge ? (
-              <span className="absolute left-2 top-2 rounded-md bg-white/96 px-1.5 py-0.5 text-[8.5px] font-semibold uppercase tracking-[0.12em] text-slate-700 shadow-sm">
-                {badge}
+            {card.badge ? (
+              <span className="absolute left-2 top-2 rounded-full bg-white/96 px-2 py-1 text-[10px] font-semibold tracking-[-0.01em] text-slate-700 shadow-sm">
+                {card.badge}
               </span>
             ) : null}
           </div>
 
           <div className="space-y-1 p-2.5 pr-10 sm:p-3 sm:pr-10">
-            {cardMeta ? (
-              cardMeta.kind === 'review' ? (
-                <div className="flex items-center gap-1 text-[10px] text-slate-500">
-                  {cardMeta.rating ? (
-                    <>
-                      <Star className="h-2.5 w-2.5 fill-[#f6c548] text-[#f6c548]" />
-                      <span className="font-semibold text-slate-700">{cardMeta.rating.toFixed(1)}</span>
-                    </>
-                  ) : null}
-                  <span className="text-[#8c96a8]">
-                    {cardMeta.rating
-                      ? `(${formatCompactCount(cardMeta.reviewCount)})`
-                      : `${formatCompactCount(cardMeta.reviewCount)} reviews`}
-                  </span>
-                </div>
-              ) : (
-                <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[#8a5cf6]">
-                  {cardMeta.label}
-                </p>
-              )
-            ) : null}
-
             <h3 className="min-h-[2.7rem] line-clamp-3 text-[12px] font-medium leading-[0.92rem] tracking-[-0.01em] text-[#202531] sm:text-[12.5px] sm:leading-[0.98rem]">
-              {product.title}
+              {card.title}
             </h3>
+
+            {card.subtitle ? (
+              <p className="line-clamp-1 text-[10.5px] text-[#667085] sm:text-[11px]">
+                {card.subtitle}
+              </p>
+            ) : null}
 
             <div>
               <p className="text-[14px] font-semibold tracking-[-0.015em] text-[#111827] sm:text-[14.5px]">
