@@ -7,7 +7,7 @@ vi.mock('@/features/pdp/hooks/useIsDesktop', () => ({
 }));
 
 describe('OfferSheet', () => {
-  it('prefers seller display fields over internal merchant ids', async () => {
+  it('uses real store fields instead of brand fields for internal marketplace offers', async () => {
     render(
       <OfferSheet
         open
@@ -16,6 +16,7 @@ describe('OfferSheet', () => {
             offer_id: 'of:internal_checkout:merch_efbc46b4619cfbdf:10008793153864',
             product_id: '10008793153864',
             merchant_id: 'merch_efbc46b4619cfbdf',
+            store_name: 'Pivota Market',
             vendor: 'KraveBeauty',
             price: { amount: 28, currency: 'EUR' },
           } as any,
@@ -26,7 +27,8 @@ describe('OfferSheet', () => {
       />,
     );
 
-    expect(await screen.findByText('KraveBeauty')).toBeInTheDocument();
+    expect(await screen.findByText('Pivota Market')).toBeInTheDocument();
+    expect(screen.queryByText('KraveBeauty')).not.toBeInTheDocument();
     expect(screen.queryByText('merch_efbc46b4619cfbdf')).not.toBeInTheDocument();
   });
 });

@@ -238,29 +238,23 @@ function normalizeOfferDisplayName(offer: unknown): any {
   if (!isRecord(offer)) return offer;
   const merchantId = String(offer.merchant_id || offer.merchantId || '').trim().toLowerCase();
   const rawCandidates = [
-    offer.merchant_name,
-    offer.merchantName,
+    offer.seller_of_record,
+    offer.sellerOfRecord,
     offer.seller_name,
     offer.sellerName,
     offer.store_name,
     offer.storeName,
-    offer.vendor_name,
-    offer.vendorName,
-    offer.vendor,
-    offer.brand_name,
-    offer.brandName,
-    isRecord(offer.brand) ? offer.brand.name : '',
-    offer.seller_of_record,
-    offer.sellerOfRecord,
+    offer.merchant_name,
+    offer.merchantName,
   ];
-  const displayName = rawCandidates
+  let displayName = rawCandidates
     .map((value) => String(value || '').trim())
     .find((value) => {
       if (!value) return false;
       const normalized = value.toLowerCase();
       if (merchantId && normalized === merchantId) return false;
       if (normalized === 'external_seed' || normalized === 'external seed') return false;
-      if (/^merch_[a-z0-9]+$/.test(normalized)) return false;
+      if (/^merch_[a-z0-9_]+$/.test(normalized)) return false;
       return true;
     });
   if (!displayName || displayName === offer.merchant_name) return offer;
