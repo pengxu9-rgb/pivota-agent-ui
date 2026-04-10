@@ -283,6 +283,22 @@ function buildExternalSeedMultiVariantOfferPayload(): PDPPayload {
         commerce_mode: 'links_out',
         checkout_handoff: 'redirect',
         merchant_checkout_url: 'https://kravebeauty.com/products/great-barrier-relief',
+        variants: [
+          {
+            variant_id: '13760798457931',
+            title: 'Standard - 45 mL',
+            options: [{ name: 'size', value: 'Standard - 45 mL' }],
+            price: { current: { amount: 28, currency: 'EUR' } },
+            availability: { in_stock: true, available_quantity: 9 },
+          },
+          {
+            variant_id: '40160623329355',
+            title: 'Jumbo - 100 mL',
+            options: [{ name: 'size', value: 'Jumbo - 100 mL' }],
+            price: { current: { amount: 50, currency: 'EUR' } },
+            availability: { in_stock: true, available_quantity: 9 },
+          },
+        ],
       },
     ],
     default_offer_id: 'offer_external_seed_default',
@@ -531,5 +547,14 @@ describe('PdpContainer structured PDP modules', () => {
 
     expect(screen.getAllByText('Jumbo - 100 mL').length).toBeGreaterThan(0);
     expect(screen.getAllByText('€40.00').length).toBeGreaterThan(0);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Other offers (1)' }));
+
+    const internalOffer = screen.getByRole('button', { name: /Pivota Market/ });
+    const externalOffer = screen.getByRole('button', { name: /KraveBeauty/ });
+    expect(internalOffer).toHaveTextContent('Item: €40.00');
+    expect(internalOffer).toHaveTextContent('Best price');
+    expect(externalOffer).toHaveTextContent('Item: €50.00');
+    expect(externalOffer).not.toHaveTextContent('Best price');
   });
 });

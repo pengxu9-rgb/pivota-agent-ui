@@ -73,7 +73,7 @@ import { ModuleShell } from '@/features/pdp/components/ModuleShell';
 import { DEFAULT_UGC_SNAPSHOT, lockFirstUgcSource, mergeUgcItems } from '@/features/pdp/state/freezePolicy';
 import { getStableGalleryItems, resolveHeroMediaUrl } from '@/features/pdp/state/heroMedia';
 import { buildPdpViewModel } from '@/features/pdp/state/viewModel';
-import { findMatchingOfferVariant } from '@/features/pdp/utils/offerVariantMatching';
+import { resolveOfferPricing } from '@/features/pdp/utils/offerVariantMatching';
 import { buildBrandHref } from '@/lib/brandRoute';
 import { cn } from '@/lib/utils';
 import { resolveReviewGate, reviewGateMessage, reviewGateResultToReason } from '@/lib/reviewGate';
@@ -736,6 +736,25 @@ export function PdpContainer({
       null
     );
   }, [offers, selectedOfferId, internalFirstDefaultOfferId]);
+  const variantAwareBestPriceOfferId = useMemo(() => {
+    if (!offers.length) return payload.best_price_offer_id;
+    const ranked = offers
+      .map((offer) => ({
+        offerId: offer.offer_id,
+        total: resolveOfferPricing(offer, selectedVariant).totalAmount,
+      }))
+      .filter(
+        (entry): entry is { offerId: string; total: number } =>
+          typeof entry.total === 'number' && Number.isFinite(entry.total),
+      )
+      .sort((a, b) => {
+        if (a.total !== b.total) return a.total - b.total;
+        if (a.offerId === payload.best_price_offer_id) return -1;
+        if (b.offerId === payload.best_price_offer_id) return 1;
+        return a.offerId.localeCompare(b.offerId);
+      });
+    return ranked[0]?.offerId || payload.best_price_offer_id;
+  }, [offers, payload.best_price_offer_id, selectedVariant]);
   const offerDebugEnabled = useMemo(() => {
     if (typeof window === 'undefined') return false;
     const params = new URLSearchParams(window.location.search);
@@ -960,30 +979,20 @@ export function PdpContainer({
     galleryItems,
     fallbackUrl: payload.product.image_url || '',
   });
-  const selectedOfferVariant = useMemo(
-    () => findMatchingOfferVariant(selectedOffer, selectedVariant),
+  const selectedOfferPricing = useMemo(
+    () => resolveOfferPricing(selectedOffer, selectedVariant),
     [selectedOffer, selectedVariant],
   );
+  const selectedOfferVariant = selectedOfferPricing.matchedVariant;
   const selectedVariantPriceAmount = selectedVariant.price?.current.amount;
   const baseCurrency =
     selectedVariant.price?.current.currency || payload.product.price?.current.currency || 'USD';
   const basePriceAmount =
     selectedVariant.price?.current.amount ?? payload.product.price?.current.amount ?? 0;
   const selectedOfferItemPrice = selectedOfferVariant?.price?.current.amount;
-  const offerCurrency =
-    selectedOfferVariant?.price?.current.currency || selectedOffer?.price?.currency || baseCurrency;
-  const offerShippingCost = Number(selectedOffer?.shipping?.cost?.amount) || 0;
-  const fallbackOfferItemPrice =
-    selectedOffer && typeof selectedOffer?.price?.amount === 'number'
-      ? selectedOffer.price.amount
-      : Number(selectedOffer?.price?.amount ?? 0);
-  const offerItemPrice =
-    typeof selectedOfferItemPrice === 'number' && Number.isFinite(selectedOfferItemPrice)
-      ? selectedOfferItemPrice
-      : Number.isFinite(fallbackOfferItemPrice)
-        ? fallbackOfferItemPrice
-        : null;
-  const offerTotalPrice = selectedOffer && offerItemPrice != null ? offerItemPrice + offerShippingCost : null;
+  const offerCurrency = selectedOfferPricing.currency || baseCurrency;
+  const offerItemPrice = selectedOfferPricing.itemAmount;
+  const offerTotalPrice = selectedOfferPricing.totalAmount;
   const shouldUseOfferVariantPrice =
     selectedOffer != null &&
     typeof selectedOfferItemPrice === 'number' &&
@@ -3051,7 +3060,8 @@ export function PdpContainer({
         offers={offers}
         selectedOfferId={selectedOfferId}
         defaultOfferId={payload.default_offer_id}
-        bestPriceOfferId={payload.best_price_offer_id}
+        bestPriceOfferId={variantAwareBestPriceOfferId}
+        selectedVariant={selectedVariant}
         onClose={() => setShowOfferSheet(false)}
         onSelect={(offerId) => {
           setSelectedOfferId(offerId);
@@ -3070,7 +3080,7 @@ export function PdpContainer({
           <div className="mt-2 rounded-xl border border-border bg-card/60 p-3 font-mono text-[11px] leading-relaxed">
             <div>selected_offer_id: {selectedOfferId || 'null'}</div>
             <div>default_offer_id: {payload.default_offer_id || 'null'}</div>
-            <div>best_price_offer_id: {payload.best_price_offer_id || 'null'}</div>
+            <div>best_price_offer_id: {variantAwareBestPriceOfferId || 'null'}</div>
             <div>
               product_group_id: {payload.product_group_id || selectedOffer?.product_group_id || 'null'}
             </div>

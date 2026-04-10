@@ -1,9 +1,10 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import type { Offer, Price } from '@/features/pdp/types';
+import type { Offer, Variant } from '@/features/pdp/types';
 import { cn } from '@/lib/utils';
 import { ResponsiveSheet } from '@/features/pdp/components/ResponsiveSheet';
+import { resolveOfferPricing } from '@/features/pdp/utils/offerVariantMatching';
 
 function formatPrice(amount: number, currency: string) {
   const n = Number.isFinite(amount) ? amount : 0;
@@ -13,12 +14,6 @@ function formatPrice(amount: number, currency: string) {
   } catch {
     return `${c} ${n.toFixed(2)}`;
   }
-}
-
-function totalPrice(price: Price, shippingCost?: Price): number {
-  const base = Number(price?.amount) || 0;
-  const ship = Number(shippingCost?.amount) || 0;
-  return base + ship;
 }
 
 function isInternalCheckoutOffer(offer: Offer): boolean {
@@ -61,6 +56,7 @@ export function OfferSheet({
   selectedOfferId,
   defaultOfferId,
   bestPriceOfferId,
+  selectedVariant,
   onSelect,
   onClose,
 }: {
@@ -69,6 +65,7 @@ export function OfferSheet({
   selectedOfferId: string | null;
   defaultOfferId?: string;
   bestPriceOfferId?: string;
+  selectedVariant?: Variant | null;
   onSelect: (offerId: string) => void;
   onClose: () => void;
 }) {
@@ -78,29 +75,69 @@ export function OfferSheet({
     setMounted(true);
   }, []);
 
+  const resolvedOffers = useMemo(
+    () =>
+      offers.map((offer) => ({
+        offer,
+        pricing: resolveOfferPricing(offer, selectedVariant),
+      })),
+    [offers, selectedVariant],
+  );
+
   const sortedOffers = useMemo(() => {
-    return [...offers].sort((a, b) => {
-      const aPriority = isInternalCheckoutOffer(a) ? 0 : 1;
-      const bPriority = isInternalCheckoutOffer(b) ? 0 : 1;
+    return [...resolvedOffers].sort((a, b) => {
+      const aPriority = isInternalCheckoutOffer(a.offer) ? 0 : 1;
+      const bPriority = isInternalCheckoutOffer(b.offer) ? 0 : 1;
       if (aPriority !== bPriority) return aPriority - bPriority;
-      const aTotal = totalPrice(a.price, a.shipping?.cost);
-      const bTotal = totalPrice(b.price, b.shipping?.cost);
+      const aTotal =
+        typeof a.pricing.totalAmount === 'number' && Number.isFinite(a.pricing.totalAmount)
+          ? a.pricing.totalAmount
+          : Number.POSITIVE_INFINITY;
+      const bTotal =
+        typeof b.pricing.totalAmount === 'number' && Number.isFinite(b.pricing.totalAmount)
+          ? b.pricing.totalAmount
+          : Number.POSITIVE_INFINITY;
       if (aTotal !== bTotal) return aTotal - bTotal;
-      return String(a.offer_id || '').localeCompare(String(b.offer_id || ''));
+      return String(a.offer.offer_id || '').localeCompare(String(b.offer.offer_id || ''));
     });
-  }, [offers]);
+  }, [resolvedOffers]);
+  const resolvedBestPriceOfferId = useMemo(() => {
+    const ranked = resolvedOffers
+      .map(({ offer, pricing }) => ({
+        offerId: offer.offer_id,
+        total: pricing.totalAmount,
+      }))
+      .filter(
+        (entry): entry is { offerId: string; total: number } =>
+          typeof entry.total === 'number' && Number.isFinite(entry.total),
+      )
+      .sort((a, b) => {
+        if (a.total !== b.total) return a.total - b.total;
+        if (a.offerId === bestPriceOfferId) return -1;
+        if (b.offerId === bestPriceOfferId) return 1;
+        return a.offerId.localeCompare(b.offerId);
+      });
+    return ranked[0]?.offerId || bestPriceOfferId;
+  }, [bestPriceOfferId, resolvedOffers]);
 
   if (!mounted) return null;
 
   return (
     <ResponsiveSheet open={open} onClose={onClose} title="Offers">
       <div className="px-4 py-4 space-y-3">
-        {sortedOffers.map((offer) => {
+        {sortedOffers.map(({ offer, pricing }) => {
           const isSelected = offer.offer_id === selectedOfferId;
           const isDefault = defaultOfferId && offer.offer_id === defaultOfferId;
-          const isBestPrice = bestPriceOfferId && offer.offer_id === bestPriceOfferId;
-          const total = totalPrice(offer.price, offer.shipping?.cost);
-          const currency = offer.price.currency || 'USD';
+          const isBestPrice = resolvedBestPriceOfferId && offer.offer_id === resolvedBestPriceOfferId;
+          const total =
+            typeof pricing.totalAmount === 'number' && Number.isFinite(pricing.totalAmount)
+              ? pricing.totalAmount
+              : 0;
+          const itemAmount =
+            typeof pricing.itemAmount === 'number' && Number.isFinite(pricing.itemAmount)
+              ? pricing.itemAmount
+              : 0;
+          const currency = pricing.currency || offer.price.currency || 'USD';
           const eta = offer.shipping?.eta_days_range;
           const returns = offer.returns;
           const sellerLabel = getSellerLabel(offer);
@@ -147,7 +184,10 @@ export function OfferSheet({
                   </div>
                   {offer.shipping?.cost ? (
                     <div className="mt-1 text-[11px] text-muted-foreground">
-                      Shipping: {formatPrice(Number(offer.shipping.cost.amount) || 0, offer.shipping.cost.currency || currency)}
+                      Shipping: {formatPrice(
+                        Number(offer.shipping.cost.amount) || 0,
+                        offer.shipping.cost.currency || currency,
+                      )}
                     </div>
                   ) : null}
                 </div>
@@ -155,7 +195,7 @@ export function OfferSheet({
                 <div className="text-right shrink-0">
                   <div className="text-sm font-semibold">{formatPrice(total, currency)}</div>
                   <div className="mt-1 text-[11px] text-muted-foreground">
-                    Item: {formatPrice(Number(offer.price.amount) || 0, currency)}
+                    Item: {formatPrice(itemAmount, currency)}
                   </div>
                 </div>
               </div>

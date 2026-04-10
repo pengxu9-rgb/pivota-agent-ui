@@ -140,6 +140,11 @@ function optionMapsEqual(a: Record<string, string>, b: Record<string, string>): 
   return aKeys.every((key) => b[key] === a[key]);
 }
 
+function normalizeAmount(value: unknown): number | null {
+  const amount = Number(value);
+  return Number.isFinite(amount) ? amount : null;
+}
+
 export function findMatchingOfferVariant(
   offer: Offer | null | undefined,
   targetVariant: Variant | null | undefined,
@@ -179,4 +184,35 @@ export function findMatchingOfferVariant(
   }
 
   return null;
+}
+
+export function resolveOfferPricing(
+  offer: Offer | null | undefined,
+  targetVariant: Variant | null | undefined,
+): {
+  matchedVariant: Variant | null;
+  itemAmount: number | null;
+  shippingAmount: number;
+  totalAmount: number | null;
+  currency: string;
+} {
+  const matchedVariant = findMatchingOfferVariant(offer, targetVariant);
+  const fallbackCurrency =
+    String(
+      matchedVariant?.price?.current.currency ||
+        offer?.price?.currency ||
+        targetVariant?.price?.current.currency ||
+        'USD',
+    ).trim() || 'USD';
+  const itemAmount =
+    normalizeAmount(matchedVariant?.price?.current.amount) ??
+    normalizeAmount(offer?.price?.amount);
+  const shippingAmount = normalizeAmount(offer?.shipping?.cost?.amount) ?? 0;
+  return {
+    matchedVariant,
+    itemAmount,
+    shippingAmount,
+    totalAmount: itemAmount == null ? null : itemAmount + shippingAmount,
+    currency: fallbackCurrency,
+  };
 }
