@@ -32,14 +32,12 @@ function getSellerLabel(offer: Offer): string {
   const merchantId = String(offer?.merchant_id || '').trim();
   const merchantIdLower = merchantId.toLowerCase();
   const rawCandidates = [
-    offer.seller_of_record,
-    (offer as any).sellerOfRecord,
-    (offer as any).seller_name,
-    (offer as any).sellerName,
     (offer as any).store_name,
     (offer as any).storeName,
     offer.merchant_name,
     (offer as any).merchantName,
+    (offer as any).seller_name,
+    (offer as any).sellerName,
   ];
   const displayName = rawCandidates
     .map((value) => String(value || '').trim())
@@ -47,7 +45,9 @@ function getSellerLabel(offer: Offer): string {
       if (!value) return false;
       const normalized = value.toLowerCase();
       if (merchantIdLower && normalized === merchantIdLower) return false;
-      if (normalized === 'external_seed' || normalized === 'external seed') return false;
+      if (['external_seed', 'external seed', 'merchant', 'seller', 'store'].includes(normalized)) {
+        return false;
+      }
       if (/^merch_[a-z0-9_]+$/.test(normalized)) return false;
       return true;
   });

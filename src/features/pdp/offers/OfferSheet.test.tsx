@@ -17,6 +17,7 @@ describe('OfferSheet', () => {
             product_id: '10008793153864',
             merchant_id: 'merch_efbc46b4619cfbdf',
             store_name: 'Pivota Market',
+            seller_of_record: 'merchant',
             vendor: 'KraveBeauty',
             price: { amount: 28, currency: 'EUR' },
           } as any,
@@ -29,6 +30,7 @@ describe('OfferSheet', () => {
 
     expect(await screen.findByText('Pivota Market')).toBeInTheDocument();
     expect(screen.queryByText('KraveBeauty')).not.toBeInTheDocument();
+    expect(screen.queryByText('merchant')).not.toBeInTheDocument();
     expect(screen.queryByText('merch_efbc46b4619cfbdf')).not.toBeInTheDocument();
   });
 });
