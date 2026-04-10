@@ -1,6 +1,6 @@
 /* eslint-disable @next/next/no-img-element */
 import React from 'react';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { PdpContainer } from './PdpContainer';
@@ -238,6 +238,94 @@ function buildGenericSingleVariantPayload(): PDPPayload {
   };
 }
 
+function buildExternalSeedMultiVariantOfferPayload(): PDPPayload {
+  return {
+    schema_version: '1.0.0',
+    page_type: 'product_detail',
+    tracking: {
+      page_request_id: 'pr_external_seed_multi_variant_offer',
+      entry_point: 'agent',
+    },
+    product: {
+      product_id: 'ext_krave_gbr',
+      merchant_id: 'external_seed',
+      title: 'Great Barrier Relief',
+      brand: { name: 'KraveBeauty' },
+      description: 'Barrier repair serum.',
+      default_variant_id: 'V_STD',
+      variants: [
+        {
+          variant_id: 'V_STD',
+          title: 'Standard - 45 mL',
+          options: [{ name: 'size', value: 'Standard - 45 mL' }],
+          price: { current: { amount: 28, currency: 'EUR' } },
+          availability: { in_stock: true, available_quantity: 9 },
+        },
+        {
+          variant_id: 'V_JUMBO',
+          title: 'Jumbo - 100 mL',
+          options: [{ name: 'size', value: 'Jumbo - 100 mL' }],
+          price: { current: { amount: 50, currency: 'EUR' } },
+          availability: { in_stock: true, available_quantity: 9 },
+        },
+      ],
+      price: { current: { amount: 28, currency: 'EUR' } },
+      availability: { in_stock: true, available_quantity: 9 },
+    },
+    offers: [
+      {
+        offer_id: 'offer_external_seed_default',
+        product_id: 'ext_krave_gbr',
+        merchant_id: 'external_seed',
+        merchant_name: 'KraveBeauty',
+        price: { amount: 28, currency: 'EUR' },
+        purchase_route: 'affiliate_outbound',
+        commerce_mode: 'links_out',
+        checkout_handoff: 'redirect',
+        merchant_checkout_url: 'https://kravebeauty.com/products/great-barrier-relief',
+      },
+    ],
+    default_offer_id: 'offer_external_seed_default',
+    modules: [
+      {
+        module_id: 'm_media',
+        type: 'media_gallery',
+        priority: 100,
+        data: {
+          items: [{ type: 'image', url: 'https://example.com/gbr.jpg' }],
+        },
+      },
+      {
+        module_id: 'm_price',
+        type: 'price_promo',
+        priority: 90,
+        data: {
+          price: { amount: 28, currency: 'EUR' },
+          promotions: [],
+        },
+      },
+      {
+        module_id: 'm_details',
+        type: 'product_details',
+        priority: 70,
+        data: {
+          sections: [
+            {
+              heading: 'Overview',
+              content_type: 'text',
+              content: 'Barrier repair serum.',
+            },
+          ],
+        },
+      },
+    ],
+    actions: [
+      { action_type: 'add_to_cart', label: 'Add to Cart', priority: 20, target: {} },
+      { action_type: 'buy_now', label: 'Buy Now', priority: 10, target: {} },
+    ],
+  };
+}
+
 describe('PdpContainer structured PDP modules', () => {
   afterEach(() => {
     cleanup();
@@ -368,5 +456,24 @@ describe('PdpContainer structured PDP modules', () => {
     expect(screen.getAllByText('Default option').length).toBeGreaterThan(0);
     expect(screen.getByText('Overview')).toBeInTheDocument();
     expect(screen.queryAllByText('Product Details')).toHaveLength(1);
+  });
+
+  it('keeps variant pricing visible for single-offer external-seed products', () => {
+    render(
+      <PdpContainer
+        payload={buildExternalSeedMultiVariantOfferPayload()}
+        mode="generic"
+        onAddToCart={() => {}}
+        onBuyNow={() => {}}
+      />,
+    );
+
+    expect(screen.getAllByText('€28.00').length).toBeGreaterThan(0);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Jumbo - 100 mL' }));
+
+    expect(screen.getByText('Selected:')).toBeInTheDocument();
+    expect(screen.getAllByText('Jumbo - 100 mL').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('€50.00').length).toBeGreaterThan(0);
   });
 });

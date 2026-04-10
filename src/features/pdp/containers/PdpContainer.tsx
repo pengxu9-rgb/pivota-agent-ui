@@ -919,6 +919,7 @@ export function PdpContainer({
     galleryItems,
     fallbackUrl: payload.product.image_url || '',
   });
+  const selectedVariantPriceAmount = selectedVariant.price?.current.amount;
   const baseCurrency =
     selectedVariant.price?.current.currency || payload.product.price?.current.currency || 'USD';
   const basePriceAmount =
@@ -926,8 +927,20 @@ export function PdpContainer({
   const offerCurrency = selectedOffer?.price?.currency || baseCurrency;
   const offerShippingCost = Number(selectedOffer?.shipping?.cost?.amount) || 0;
   const offerTotalPrice = selectedOffer ? (Number(selectedOffer.price.amount) || 0) + offerShippingCost : null;
-  const displayCurrency = selectedOffer ? offerCurrency : baseCurrency;
-  const displayPriceAmount = selectedOffer && offerTotalPrice != null ? offerTotalPrice : basePriceAmount;
+  const shouldPreferVariantDisplayPrice =
+    offers.length <= 1 &&
+    typeof selectedVariantPriceAmount === 'number' &&
+    Number.isFinite(selectedVariantPriceAmount);
+  const displayCurrency = shouldPreferVariantDisplayPrice
+    ? baseCurrency
+    : selectedOffer
+      ? offerCurrency
+      : baseCurrency;
+  const displayPriceAmount = shouldPreferVariantDisplayPrice
+    ? basePriceAmount
+    : selectedOffer && offerTotalPrice != null
+      ? offerTotalPrice
+      : basePriceAmount;
 
   const effectiveMerchantId = selectedOffer?.merchant_id || payload.product.merchant_id;
   const effectiveProductId = String(selectedOffer?.product_id || payload.product.product_id || '').trim();
