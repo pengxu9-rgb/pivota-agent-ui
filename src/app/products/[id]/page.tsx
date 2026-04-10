@@ -48,6 +48,8 @@ interface Props {
 
 const PDP_V2_SCOPED_TIMEOUT_MS = 9000;
 const PDP_V2_UNSCOPED_TIMEOUT_MS = 9000;
+const PDP_V2_CORE_ONLY_RETRY_TIMEOUT_MS = 3500;
+const PDP_CORE_ONLY_INCLUDE: string[] = [];
 
 function normalizeVariantOptionToken(value: string): string {
   return String(value || '')
@@ -298,6 +300,26 @@ function isUnavailableModuleErrorCode(code: string): boolean {
     'FEATURE_DISABLED',
     'NOT_IMPLEMENTED',
   ]).has(code);
+}
+
+function shouldRetryWithCoreOnlyPdp(err: unknown): boolean {
+  const code = readApiErrorCode(err);
+  if (isNonRetryablePdpError(err)) return false;
+  if (
+    new Set([
+      'UPSTREAM_TIMEOUT',
+      'TEMPORARY_UNAVAILABLE',
+      'SERVICE_UNAVAILABLE',
+      'GATEWAY_TIMEOUT',
+      'TOO_MANY_REQUESTS',
+      'BAD_GATEWAY',
+    ]).has(code)
+  ) {
+    return true;
+  }
+
+  const message = String((err as Error)?.message || '').toLowerCase();
+  return message.includes('timed out') || message.includes('timeout') || message.includes('temporarily unavailable');
 }
 
 const BROWSE_HISTORY_STORAGE_KEY = 'browse_history';
@@ -560,24 +582,17 @@ export default function ProductDetailPage({ params }: Props) {
       reviewsSimilarFetchKeyRef.current = null;
       moduleSourceLocksRef.current = { ...DEFAULT_MODULE_SOURCE_LOCKS };
 
-      try {
-        const v2StartedAt = Date.now();
-        const v2 = await getPdpV2({
-          product_id: id,
-          ...(explicitMerchantId ? { merchant_id: explicitMerchantId } : {}),
-          include: [...PDP_INITIAL_INCLUDE],
-          timeout_ms: v2TimeoutMs,
-        });
-        if (cancelled) return;
-        const assembled = mapPdpV2ToPdpPayload(v2);
-        if (!assembled) throw new Error('Invalid PDP response');
+      const commitLoadedPdp = (
+        assembled: PDPPayload,
+        source: 'get_pdp_v2' | 'get_pdp_v2_core_retry',
+        startedAt: number,
+      ) => {
         const hasOffers = Array.isArray((assembled as any).offers) && (assembled as any).offers.length > 0;
         const hasReviewsModule = hasModule(assembled, 'reviews_preview');
         const hasSimilarModule = hasModule(assembled, 'recommendations');
         const hasRecommendations = hasRecommendationsItems(assembled);
         const similarCount = Array.isArray(
-          (assembled.modules.find((m) => isRecommendationModuleType(m?.type)) as any)?.data
-            ?.items,
+          (assembled.modules.find((m) => isRecommendationModuleType(m?.type)) as any)?.data?.items,
         )
           ? (
               assembled.modules.find(
@@ -604,8 +619,8 @@ export default function ProductDetailPage({ params }: Props) {
           },
         });
         pdpTracking.track('pdp_core_ready', {
-          source: 'get_pdp_v2',
-          latency_ms: Date.now() - v2StartedAt,
+          source,
+          latency_ms: Date.now() - startedAt,
           has_offers: hasOffers,
           has_reviews_module: hasReviewsModule,
           has_similar_module: hasSimilarModule,
@@ -613,21 +628,67 @@ export default function ProductDetailPage({ params }: Props) {
         if (hasReviewsModule) {
           pdpTracking.track('pdp_module_ready', {
             module: 'reviews_preview',
-            source: 'get_pdp_v2',
+            source,
           });
         }
         if (hasRecommendations) {
           pdpTracking.track('pdp_module_ready', {
             module: 'similar',
-            source: 'get_pdp_v2',
+            source,
             count: similarCount,
           });
         }
         setLoadedViaPdpV2(true);
         setLoading(false);
+      };
+
+      const fetchMappedPdp = async (request: {
+        include: string[];
+        timeoutMs: number;
+        source: 'get_pdp_v2' | 'get_pdp_v2_core_retry';
+      }) => {
+        const startedAt = Date.now();
+        const v2 = await getPdpV2({
+          product_id: id,
+          ...(explicitMerchantId ? { merchant_id: explicitMerchantId } : {}),
+          include: request.include,
+          timeout_ms: request.timeoutMs,
+        });
+        if (cancelled) return;
+        const assembled = mapPdpV2ToPdpPayload(v2);
+        if (!assembled) throw new Error('Invalid PDP response');
+        commitLoadedPdp(assembled, request.source, startedAt);
+      };
+
+      try {
+        await fetchMappedPdp({
+          include: [...PDP_INITIAL_INCLUDE],
+          timeoutMs: v2TimeoutMs,
+          source: 'get_pdp_v2',
+        });
         return;
       } catch (v2Err) {
         if (cancelled) return;
+        let loadErr: unknown = v2Err;
+
+        if (shouldRetryWithCoreOnlyPdp(v2Err)) {
+          try {
+            await fetchMappedPdp({
+              include: [...PDP_CORE_ONLY_INCLUDE],
+              timeoutMs: PDP_V2_CORE_ONLY_RETRY_TIMEOUT_MS,
+              source: 'get_pdp_v2_core_retry',
+            });
+            pdpTracking.track('pdp_core_retry_recovered', {
+              initial_error_code: readApiErrorCode(v2Err) || null,
+              initial_error_message: (v2Err as Error)?.message || null,
+            });
+            return;
+          } catch (coreRetryErr) {
+            if (cancelled) return;
+            loadErr = coreRetryErr;
+          }
+        }
+
         const candidateResolution = explicitMerchantId ? null : await candidateResolutionPromise;
         const candidateSellerOptions = mapResolvedOffersToSellerCandidates(candidateResolution);
         if (!explicitMerchantId && candidateSellerOptions.length > 1) {
@@ -637,7 +698,7 @@ export default function ProductDetailPage({ params }: Props) {
         }
 
         const message =
-          (v2Err as Error)?.message ||
+          (loadErr as Error)?.message ||
           'Failed to load product';
         setError(message);
         setLoading(false);

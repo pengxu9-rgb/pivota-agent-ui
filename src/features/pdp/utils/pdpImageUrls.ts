@@ -18,6 +18,8 @@ const IMAGE_DEDUPE_IGNORED_QUERY_KEYS = new Set([
 const KNOWN_SDCND_FILENAME_ALIASES: Record<string, string> = {
   'tf_sku_t2ss02_3000x3000_0.png': 'tf_sku_T2SS02_3000x3000_1.png',
 };
+const TOM_FORD_SLOT_DEDUPE_RE =
+  /^(tfb?_sku_)(.+?)_(\d+x\d+)_([0-9]+[a-z]?)\.(avif|gif|jpe?g|png|webp)$/i;
 
 const DIRECT_REMOTE_IMAGE_HOSTS = [
   'cdn.shopify.com',
@@ -183,6 +185,15 @@ export function buildPdpImageDedupeKey(rawUrl: unknown): string | null {
 
   try {
     const parsed = absolute ? new URL(unwrapped) : new URL(unwrapped, 'http://localhost');
+    const filename = normalizeShopifyLikeFilename(parsed.pathname.split('/').pop() || '');
+    const tomFordSlotMatch = filename.match(TOM_FORD_SLOT_DEDUPE_RE);
+    if (absolute && tomFordSlotMatch) {
+      const dimensions = String(tomFordSlotMatch[3] || '').toLowerCase();
+      const slot = String(tomFordSlotMatch[4] || '').toLowerCase();
+      if (dimensions && slot) {
+        return `asset:tf_slot:${dimensions}_${slot}`;
+      }
+    }
     const normalizedSearch = new URLSearchParams();
     Array.from(parsed.searchParams.entries())
       .sort(([aKey, aValue], [bKey, bValue]) => {

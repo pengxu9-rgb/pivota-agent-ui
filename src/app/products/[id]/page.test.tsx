@@ -251,6 +251,42 @@ describe('ProductDetailPage canonical PDP loading', () => {
     expect(getProductDetailMock).not.toHaveBeenCalled();
   });
 
+  it('retries with a core-only get_pdp_v2 request after a timeout and renders the recovered PDP', async () => {
+    getPdpV2Mock
+      .mockRejectedValueOnce(Object.assign(new Error('The request timed out. Please retry.'), { code: 'UPSTREAM_TIMEOUT' }))
+      .mockResolvedValueOnce({ status: 'success', modules: [] });
+    resolveProductCandidatesMock.mockResolvedValue({ offers: [] });
+
+    renderPage();
+
+    await screen.findByTestId('generic-pdp');
+    expect(getPdpV2Mock).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        product_id: 'prod_1',
+        include: [
+          'offers',
+          'variant_selector',
+          'active_ingredients',
+          'ingredients_inci',
+          'how_to_use',
+          'product_details',
+        ],
+        timeout_ms: 9000,
+      }),
+    );
+    expect(getPdpV2Mock).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        product_id: 'prod_1',
+        include: [],
+        timeout_ms: 3500,
+      }),
+    );
+    expect(screen.queryByText('Failed to load product')).not.toBeInTheDocument();
+    expect(getProductDetailMock).not.toHaveBeenCalled();
+  });
+
   it('canonicalizes external_seed merchant routes back to the unscoped product URL', async () => {
     searchParamsValue = 'merchant_id=external_seed';
     getPdpV2Mock.mockResolvedValue({ status: 'success', modules: [] });

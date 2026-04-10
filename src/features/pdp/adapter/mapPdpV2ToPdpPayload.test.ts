@@ -110,35 +110,29 @@ function unwrapProxyTarget(url: string): string {
 }
 
 describe('mapPdpV2ToPdpPayload image normalization', () => {
-  it('proxies external image URLs in canonical payload and modules', () => {
+  it('normalizes external image URLs in canonical payload and modules', () => {
     const payload = mapPdpV2ToPdpPayload(buildMinimalResponse());
     expect(payload).not.toBeNull();
 
     expect(payload?.product.image_url).toBe(
-      '/api/image-proxy?url=https%3A%2F%2Fsdcdn.io%2Ftf%2Fproduct-main.png',
+      'https://sdcdn.io/tf/product-main.png',
     );
     expect(payload?.product.variants?.[0]?.image_url).toBe(
-      '/api/image-proxy?url=https%3A%2F%2Fsdcdn.io%2Ftf%2Fvariant-main.png',
+      'https://sdcdn.io/tf/variant-main.png',
     );
     expect(payload?.product.variants?.[0]?.label_image_url).toBe(
-      '/api/image-proxy?url=https%3A%2F%2Fsdcdn.io%2Ftf%2Fswatch.png',
+      'https://sdcdn.io/tf/swatch.png',
     );
 
     const mediaGallery = payload?.modules.find((m) => m.type === 'media_gallery') as any;
-    expect(mediaGallery?.data?.items?.[0]?.url).toBe(
-      '/api/image-proxy?url=https%3A%2F%2Fsdcdn.io%2Ftf%2Fhero.png',
-    );
+    expect(mediaGallery?.data?.items?.[0]?.url).toBe('https://sdcdn.io/tf/hero.png');
     expect(mediaGallery?.data?.items?.[1]?.url).toBe('https://cdn.example.com/video.mp4');
 
     const recs = payload?.modules.find((m) => m.type === 'recommendations') as any;
-    expect(recs?.data?.items?.[0]?.image_url).toBe(
-      '/api/image-proxy?url=https%3A%2F%2Fsdcdn.io%2Ftf%2Frelated.png',
-    );
+    expect(recs?.data?.items?.[0]?.image_url).toBe('https://sdcdn.io/tf/related.png');
 
     const reviews = payload?.modules.find((m) => m.type === 'reviews_preview') as any;
-    expect(reviews?.data?.preview_items?.[0]?.media?.[0]?.url).toBe(
-      '/api/image-proxy?url=https%3A%2F%2Fsdcdn.io%2Ftf%2Freview.png',
-    );
+    expect(reviews?.data?.preview_items?.[0]?.media?.[0]?.url).toBe('https://sdcdn.io/tf/review.png');
   });
 
   it('does not double-wrap already proxied URLs', () => {
@@ -150,11 +144,11 @@ describe('mapPdpV2ToPdpPayload image normalization', () => {
 
     const payload = mapPdpV2ToPdpPayload(response);
     expect(payload?.product.image_url).toBe(
-      '/api/image-proxy?url=https%3A%2F%2Fsdcdn.io%2Ftf%2Falready.png',
+      'https://sdcdn.io/tf/already.png',
     );
     const mediaGallery = payload?.modules.find((m) => m.type === 'media_gallery') as any;
     expect(mediaGallery?.data?.items?.[0]?.url).toBe(
-      '/api/image-proxy?url=https%3A%2F%2Fsdcdn.io%2Ftf%2Falready-media.png',
+      'https://sdcdn.io/tf/already-media.png',
     );
   });
 
@@ -205,6 +199,69 @@ describe('mapPdpV2ToPdpPayload image normalization', () => {
         }),
       ]),
     );
+  });
+
+  it('normalizes image-bearing modules returned outside canonical payload', () => {
+    const response = buildMinimalResponse();
+    response.modules.push(
+      {
+        type: 'media_gallery',
+        data: {
+          items: [
+            {
+              type: 'image',
+              url: 'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T1QT01_2000x2000_1_83740e89-85dd-4360-acb4-699df069e0f3.jpg?v=1774376799',
+            },
+          ],
+        },
+      },
+      {
+        type: 'reviews_preview',
+        data: {
+          preview_items: [
+            {
+              review_id: 'r-ext',
+              media: [
+                {
+                  type: 'image',
+                  url: 'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T1QT01_2000x2000_1_83740e89-85dd-4360-acb4-699df069e0f3.jpg?v=1774376799',
+                },
+              ],
+            },
+          ],
+        },
+      },
+      {
+        type: 'similar',
+        data: {
+          strategy: 'related_products',
+          items: [
+            {
+              product_id: 'ext_999',
+              merchant_id: 'external_seed',
+              title: 'Related quad',
+              image_url:
+                'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T1QS01_2000x2000_1.jpg?v=1774376799',
+            },
+          ],
+        },
+      },
+    );
+
+    const payload = mapPdpV2ToPdpPayload(response);
+    const mediaGallery = payload?.modules.find((module) => module.type === 'media_gallery') as any;
+    const reviews = payload?.modules.find((module) => module.type === 'reviews_preview') as any;
+    const recommendations = payload?.modules.find((module) => module.type === 'recommendations') as any;
+
+    expect(unwrapProxyTarget(String(mediaGallery?.data?.items?.[0]?.url || ''))).toBe(
+      'https://sdcdn.io/tf/tf_sku_T1QT01_2000x2000_1.jpg?height=1400px&width=1400px',
+    );
+    expect(
+      unwrapProxyTarget(String(reviews?.data?.preview_items?.[0]?.media?.[0]?.url || '')),
+    ).toBe('https://sdcdn.io/tf/tf_sku_T1QT01_2000x2000_1.jpg?height=1400px&width=1400px');
+    expect(
+      unwrapProxyTarget(String(recommendations?.data?.items?.[0]?.image_url || '')),
+    ).toBe('https://sdcdn.io/tf/tf_sku_T1QS01_2000x2000_1.jpg?height=1400px&width=1400px');
   });
 
   it('deduplicates official media image URLs while keeping videos', () => {
