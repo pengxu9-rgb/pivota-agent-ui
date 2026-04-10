@@ -297,6 +297,16 @@ function pickInternalFirstOfferId({
   return offers[0]?.offer_id || null;
 }
 
+function offerSupportsVariant(
+  offer: Offer | null | undefined,
+  variant: Variant | null | undefined,
+): boolean {
+  if (!offer || !variant) return true;
+  const rawVariants = Array.isArray((offer as any)?.variants) ? (offer as any).variants : [];
+  if (!rawVariants.length) return true;
+  return Boolean(resolveOfferPricing(offer, variant).matchedVariant);
+}
+
 function StarRating({ value }: { value: number }) {
   const rounded = Math.round(value);
   return (
@@ -736,6 +746,22 @@ export function PdpContainer({
       null
     );
   }, [offers, selectedOfferId, internalFirstDefaultOfferId]);
+  const variantAwareDefaultOfferId = useMemo(() => {
+    if (!offers.length) return payload.default_offer_id || internalFirstDefaultOfferId;
+    const variantEligibleOffers = offers.filter((offer) => offerSupportsVariant(offer, selectedVariant));
+    const candidateOffers = variantEligibleOffers.length ? variantEligibleOffers : offers;
+    return pickInternalFirstOfferId({
+      offers: candidateOffers,
+      merchantId: payload.product.merchant_id || null,
+      defaultOfferId: payload.default_offer_id || null,
+    });
+  }, [
+    offers,
+    internalFirstDefaultOfferId,
+    payload.default_offer_id,
+    payload.product.merchant_id,
+    selectedVariant,
+  ]);
   const variantAwareBestPriceOfferId = useMemo(() => {
     if (!offers.length) return payload.best_price_offer_id;
     const ranked = offers
@@ -776,6 +802,12 @@ export function PdpContainer({
   useEffect(() => {
     setSelectedOfferId(internalFirstDefaultOfferId);
   }, [payload.product.product_id, internalFirstDefaultOfferId]);
+
+  useEffect(() => {
+    if (!selectedOffer || offerSupportsVariant(selectedOffer, selectedVariant)) return;
+    if (!variantAwareDefaultOfferId || variantAwareDefaultOfferId === selectedOfferId) return;
+    setSelectedOfferId(variantAwareDefaultOfferId);
+  }, [selectedOffer, selectedOfferId, selectedVariant, variantAwareDefaultOfferId]);
 
   useEffect(() => {
     if (!offerDebugEnabled) return;
@@ -3059,7 +3091,7 @@ export function PdpContainer({
         open={showOfferSheet}
         offers={offers}
         selectedOfferId={selectedOfferId}
-        defaultOfferId={payload.default_offer_id}
+        defaultOfferId={variantAwareDefaultOfferId ?? undefined}
         bestPriceOfferId={variantAwareBestPriceOfferId}
         selectedVariant={selectedVariant}
         onClose={() => setShowOfferSheet(false)}
@@ -3079,7 +3111,7 @@ export function PdpContainer({
           <summary className="cursor-pointer select-none">Offer debug</summary>
           <div className="mt-2 rounded-xl border border-border bg-card/60 p-3 font-mono text-[11px] leading-relaxed">
             <div>selected_offer_id: {selectedOfferId || 'null'}</div>
-            <div>default_offer_id: {payload.default_offer_id || 'null'}</div>
+            <div>default_offer_id: {variantAwareDefaultOfferId || 'null'}</div>
             <div>best_price_offer_id: {variantAwareBestPriceOfferId || 'null'}</div>
             <div>
               product_group_id: {payload.product_group_id || selectedOffer?.product_group_id || 'null'}
