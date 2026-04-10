@@ -1,5 +1,6 @@
 const IMAGE_PROXY_PATH = '/api/image-proxy';
 const ABSOLUTE_HTTP_URL_RE = /^https?:\/\//i;
+const TOM_FORD_SHOPIFY_FILES_BASE = 'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/';
 const SHOPIFY_FILE_HASH_SUFFIX_RE =
   /^(.*?_[0-9]+)_(?:[0-9a-f]{8,}(?:-[0-9a-f]{4,}){2,}|[0-9a-f-]{16,})\.(avif|gif|jpe?g|png|webp)$/i;
 const IMAGE_DEDUPE_IGNORED_QUERY_KEYS = new Set([
@@ -18,6 +19,7 @@ const IMAGE_DEDUPE_IGNORED_QUERY_KEYS = new Set([
 const KNOWN_SDCND_FILENAME_ALIASES: Record<string, string> = {
   'tf_sku_t2ss02_3000x3000_0.png': 'tf_sku_T2SS02_3000x3000_1.png',
 };
+const TOM_FORD_ASSET_FILENAME_RE = /^tfb?_sku_/i;
 const TOM_FORD_SLOT_DEDUPE_RE =
   /^(tfb?_sku_)(.+?)_(\d+x\d+)_([0-9]+[a-z]?)\.(avif|gif|jpe?g|png|webp)$/i;
 
@@ -33,22 +35,26 @@ const DIRECT_REMOTE_IMAGE_HOSTS = [
   'pivota-agent-production.up.railway.app',
 ] as const;
 
-function rewriteKnownSdcdnMirror(parsed: URL): URL {
+function rewriteTomFordAssetHost(parsed: URL): URL {
   const next = new URL(parsed.toString());
   const filename = String(next.pathname.split('/').pop() || '').trim();
   if (!filename) return next;
 
-  if (
-    isKnownRemoteHost(next.hostname, ['cdn.shopify.com', 'shopifycdn.com']) &&
-    /^tf_/i.test(filename)
-  ) {
-    const mirror = new URL(`https://sdcdn.io/tf/${filename}`);
-    mirror.searchParams.set('height', '1400px');
-    mirror.searchParams.set('width', '1400px');
-    return mirror;
+  if (!TOM_FORD_ASSET_FILENAME_RE.test(filename)) {
+    return next;
   }
 
-  return next;
+  if (
+    isKnownRemoteHost(next.hostname, ['sdcdn.io', 'assets.sdcdn.io']) &&
+    next.pathname.toLowerCase().includes('/tf/')
+  ) {
+    next.searchParams.delete('width');
+    next.searchParams.delete('height');
+    next.searchParams.delete('w');
+    next.searchParams.delete('h');
+  }
+
+  return new URL(`${TOM_FORD_SHOPIFY_FILES_BASE}${filename}${next.search}`);
 }
 
 function isAbsoluteHttpUrl(value: string): boolean {
@@ -98,7 +104,7 @@ function normalizeImageAssetUrl(parsed: URL): URL {
     segments[lastIndex] = normalizeShopifyLikeFilename(segments[lastIndex] || '');
     next.pathname = segments.join('/');
   }
-  next = rewriteKnownSdcdnMirror(next);
+  next = rewriteTomFordAssetHost(next);
   return next;
 }
 

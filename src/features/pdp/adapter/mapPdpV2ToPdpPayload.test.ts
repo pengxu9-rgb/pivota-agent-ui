@@ -353,14 +353,14 @@ describe('mapPdpV2ToPdpPayload image normalization', () => {
     const recommendations = payload?.modules.find((module) => module.type === 'recommendations') as any;
 
     expect(unwrapProxyTarget(String(mediaGallery?.data?.items?.[0]?.url || ''))).toBe(
-      'https://sdcdn.io/tf/tf_sku_T1QT01_2000x2000_1.jpg?height=1400px&width=1400px',
+      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T1QT01_2000x2000_1.jpg',
     );
     expect(
       unwrapProxyTarget(String(reviews?.data?.preview_items?.[0]?.media?.[0]?.url || '')),
-    ).toBe('https://sdcdn.io/tf/tf_sku_T1QT01_2000x2000_1.jpg?height=1400px&width=1400px');
+    ).toBe('https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T1QT01_2000x2000_1.jpg');
     expect(
       unwrapProxyTarget(String(recommendations?.data?.items?.[0]?.image_url || '')),
-    ).toBe('https://sdcdn.io/tf/tf_sku_T1QS01_2000x2000_1.jpg?height=1400px&width=1400px');
+    ).toBe('https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T1QS01_2000x2000_1.jpg');
   });
 
   it('deduplicates official media image URLs while keeping videos', () => {
@@ -458,10 +458,10 @@ describe('mapPdpV2ToPdpPayload image normalization', () => {
     expect(
       imageItems.map((item: any) => unwrapProxyTarget(String(item?.url || ''))),
     ).toEqual([
-      'https://sdcdn.io/tf/tf_sku_T14Q01_3000x3000_0.png',
-      'https://sdcdn.io/tf/tf_sku_T14Q01_2000x2000_1.jpg',
-      'https://sdcdn.io/tf/tf_sku_T2TL01_2000x2000_0.png?width=650px&height=750px',
-      'https://sdcdn.io/tf/tf_sku_T14Z01_2000x2000_2.jpg?width=650px&height=750px',
+      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T14Q01_3000x3000_0.png',
+      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T14Q01_2000x2000_1.jpg',
+      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T2TL01_2000x2000_0.png',
+      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T14Z01_2000x2000_2.jpg',
     ]);
   });
 
