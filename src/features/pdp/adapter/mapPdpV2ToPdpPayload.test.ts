@@ -353,11 +353,13 @@ describe('mapPdpV2ToPdpPayload image normalization', () => {
     const recommendations = payload?.modules.find((module) => module.type === 'recommendations') as any;
 
     expect(unwrapProxyTarget(String(mediaGallery?.data?.items?.[0]?.url || ''))).toBe(
-      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T1QT01_2000x2000_1.jpg',
+      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T1QT01_2000x2000_1_83740e89-85dd-4360-acb4-699df069e0f3.jpg',
     );
     expect(
       unwrapProxyTarget(String(reviews?.data?.preview_items?.[0]?.media?.[0]?.url || '')),
-    ).toBe('https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T1QT01_2000x2000_1.jpg');
+    ).toBe(
+      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T1QT01_2000x2000_1_83740e89-85dd-4360-acb4-699df069e0f3.jpg',
+    );
     expect(
       unwrapProxyTarget(String(recommendations?.data?.items?.[0]?.image_url || '')),
     ).toBe('https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T1QS01_2000x2000_1.jpg');
