@@ -360,6 +360,7 @@ function BrandProductCard({ product }: { product: ProductResponse }) {
   const href = buildProductHref(product.product_id, product.merchant_id);
   const hrefWithReturn = appendCurrentPathAsReturn(href);
   const card = resolveProductCardPresentation(product);
+  const compactCopy = card.highlight || card.subtitle;
   const isIdentityGrouped =
     Boolean(product.sellable_item_group_id) ||
     product.canonical_scope === 'synthetic' ||
@@ -430,9 +431,9 @@ function BrandProductCard({ product }: { product: ProductResponse }) {
               {card.title}
             </h3>
 
-            {card.subtitle ? (
+            {compactCopy ? (
               <p className="line-clamp-1 text-[10.5px] text-[#667085] sm:text-[11px]">
-                {card.subtitle}
+                {compactCopy}
               </p>
             ) : null}
 

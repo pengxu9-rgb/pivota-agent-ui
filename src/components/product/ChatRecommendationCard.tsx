@@ -33,6 +33,7 @@ export function ChatRecommendationCard({ product, onAddToCart }: Props) {
   const resetTimerRef = useRef<number | null>(null);
 
   const href = buildProductHref(product.product_id, product.merchant_id);
+  const compactCopy = String(product.card_highlight || product.card_subtitle || '').trim();
 
   const handleCardClick = () => {
     if (isNavigatingRef.current) return;
@@ -147,7 +148,11 @@ export function ChatRecommendationCard({ product, onAddToCart }: Props) {
         <div className="line-clamp-2 text-[12px] font-semibold text-foreground group-hover:text-primary transition-colors">
           {product.title}
         </div>
-        {product.category ? (
+        {compactCopy ? (
+          <div className="mt-1 line-clamp-1 text-[10px] text-muted-foreground">
+            {compactCopy}
+          </div>
+        ) : product.category ? (
           <div className="mt-1 line-clamp-1 text-[10px] text-muted-foreground">
             {product.category}
           </div>
