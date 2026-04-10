@@ -132,6 +132,31 @@ function getCurrentRelativePath(): string | null {
   return `${window.location.pathname}${window.location.search}`;
 }
 
+function resolveDefaultReviewScope(reviews: ReviewsPreviewData | null): string | null {
+  if (!reviews) return null;
+  const tabs = Array.isArray(reviews.tabs) ? reviews.tabs : [];
+  const explicitDefault = tabs.find((tab) => tab.default && tab.id)?.id || null;
+  if (explicitDefault) return explicitDefault;
+  const aggregationScope = String(reviews.aggregation_scope || '').trim();
+  if (aggregationScope) return aggregationScope;
+  if (reviews.scoped_summaries?.product_line) return 'product_line';
+  if (reviews.scoped_summaries?.exact_item) return 'exact_item';
+  return null;
+}
+
+function buildReviewScopeLabel(scopeId: string | null, reviews: ReviewsPreviewData): string | undefined {
+  if (scopeId === 'exact_item') {
+    const count = Number(reviews.exact_item_review_count || reviews.review_count || 0) || 0;
+    return `Based on exact-item reviews (${count})`;
+  }
+  if (scopeId === 'product_line') {
+    const count =
+      Number(reviews.product_line_review_count || reviews.review_count || 0) || 0;
+    return `Based on product-line reviews (${count})`;
+  }
+  return reviews.scope_label;
+}
+
 export function isLikelyBeautyExternalSeedProduct(
   product: PDPPayload['product'],
   resolvedMode: 'beauty' | 'generic',
@@ -676,6 +701,8 @@ export function PdpContainer({
   const [similarStrategy, setSimilarStrategy] = useState(initialSimilarState.strategy);
   const [similarMetadata, setSimilarMetadata] =
     useState<RecommendationsData['metadata'] | null>(initialSimilarState.metadata);
+  const defaultReviewScope = useMemo(() => resolveDefaultReviewScope(reviews), [reviews]);
+  const [selectedReviewScope, setSelectedReviewScope] = useState<string | null>(defaultReviewScope);
   const similarResetProductIdRef = useRef<string>('');
   const similarNoGrowthCountRef = useRef(0);
 
@@ -721,6 +748,10 @@ export function PdpContainer({
   useEffect(() => {
     setCurrentRelativePath(getCurrentRelativePath());
   }, []);
+
+  useEffect(() => {
+    setSelectedReviewScope(defaultReviewScope);
+  }, [defaultReviewScope, payload.product.product_id]);
 
   useEffect(() => {
     setSelectedOfferId(internalFirstDefaultOfferId);
@@ -912,7 +943,16 @@ export function PdpContainer({
     }),
     [baseMediaItems, selectedVariantId, variants],
   );
-  const galleryData = useMemo(() => ({ items: galleryItems }), [galleryItems]);
+  const galleryPreviewItems = useMemo(() => media?.preview_items ?? [], [media]);
+  const galleryData = useMemo(
+    () => ({
+      items: galleryItems,
+      gallery_scope: media?.gallery_scope,
+      preview_scope: media?.preview_scope,
+      preview_items: galleryPreviewItems,
+    }),
+    [galleryItems, galleryPreviewItems, media?.gallery_scope, media?.preview_scope],
+  );
 
   const heroUrl = resolveHeroMediaUrl({
     activeMediaIndex,
@@ -1590,6 +1630,36 @@ export function PdpContainer({
     router.push(`/community/questions/${qid}?${params.toString()}`);
   };
 
+  const handleProductLinePreviewSelect = useCallback(
+    (item: MediaItem, index: number) => {
+      const nextProductId = String(item.product_id || '').trim();
+      if (!nextProductId) return;
+      const nextMerchantId = String(item.merchant_id || '').trim();
+      const currentProductId = String(payload.product.product_id || '').trim();
+      const currentMerchantId = String(payload.product.merchant_id || '').trim();
+      if (
+        nextProductId === currentProductId &&
+        (!nextMerchantId || nextMerchantId === currentMerchantId)
+      ) {
+        return;
+      }
+      const params = new URLSearchParams();
+      if (nextMerchantId) params.set('merchant_id', nextMerchantId);
+      if (currentRelativePath) params.set('return', currentRelativePath);
+      pdpTracking.track('pdp_gallery_click_thumbnail', {
+        source: 'product_line_preview',
+        index,
+        mode: 'preview_navigation',
+        target_product_id: nextProductId,
+        target_merchant_id: nextMerchantId || null,
+      });
+      router.push(
+        `/products/${encodeURIComponent(nextProductId)}${params.toString() ? `?${params.toString()}` : ''}`,
+      );
+    },
+    [currentRelativePath, payload.product.merchant_id, payload.product.product_id, router],
+  );
+
   const mergedQuestions = useMemo(() => {
     const seen = new Set<string>();
     const out: Array<{ question_id?: number; question: string; answer?: string; replies?: number }> = [];
@@ -1623,8 +1693,33 @@ export function PdpContainer({
 
   const reviewsForRender = useMemo(() => {
     if (!reviews) return null;
-    return { ...(reviews as any), questions: mergedQuestions } as ReviewsPreviewData;
-  }, [mergedQuestions, reviews]);
+    const scopedSummaries =
+      reviews.scoped_summaries && typeof reviews.scoped_summaries === 'object'
+        ? reviews.scoped_summaries
+        : null;
+    const activeScopeId =
+      selectedReviewScope && scopedSummaries?.[selectedReviewScope]
+        ? selectedReviewScope
+        : defaultReviewScope;
+    const activeSummary =
+      activeScopeId && scopedSummaries?.[activeScopeId]
+        ? scopedSummaries[activeScopeId]
+        : null;
+
+    return {
+      ...(reviews as any),
+      ...(activeSummary ? activeSummary : {}),
+      aggregation_scope: activeScopeId || reviews.aggregation_scope,
+      scope_label: buildReviewScopeLabel(activeScopeId, reviews),
+      tabs: Array.isArray(reviews.tabs)
+        ? reviews.tabs.map((tab) => ({
+            ...tab,
+            default: tab.id === activeScopeId,
+          }))
+        : reviews.tabs,
+      questions: mergedQuestions,
+    } as ReviewsPreviewData;
+  }, [defaultReviewScope, mergedQuestions, reviews, selectedReviewScope]);
 
   const canUploadMedia = Boolean(ugcCapabilities?.canUploadMedia);
   const canWriteReview = Boolean(ugcCapabilities?.canWriteReview);
@@ -1921,6 +2016,7 @@ export function PdpContainer({
                     direction,
                   });
                 }}
+                onSelectPreviewItem={handleProductLinePreviewSelect}
                 aspectClass={resolvedMode === 'generic' ? 'aspect-square' : 'aspect-[6/5]'}
                 fit={resolvedMode === 'generic' ? 'object-contain' : 'object-cover'}
               />
@@ -2478,6 +2574,13 @@ export function PdpContainer({
               {reviews ? (
                 <BeautyReviewsSection
                   data={(reviewsForRender || reviews) as ReviewsPreviewData}
+                  onSelectScope={(scopeId) => {
+                    setSelectedReviewScope(scopeId);
+                    pdpTracking.track('pdp_action_click', {
+                      action_type: 'select_review_scope',
+                      target: scopeId,
+                    });
+                  }}
                   brandName={payload.product.brand?.name}
                   brandHref={brandHref}
                   showEmpty

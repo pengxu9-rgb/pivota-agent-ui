@@ -22,42 +22,47 @@ function isRecord(value: unknown): value is Record<string, any> {
 function normalizeMediaGalleryModule(module: Module): Module {
   if (module?.type !== 'media_gallery' || !isRecord(module.data)) return module;
   const items = Array.isArray(module.data.items) ? module.data.items : [];
-  if (!items.length) return module;
+  const previewItems = Array.isArray(module.data.preview_items) ? module.data.preview_items : [];
+  if (!items.length && !previewItems.length) return module;
 
-  const seenImageKeys = new Set<string>();
-  const normalizedItems: unknown[] = [];
-  for (const item of items) {
-    if (!isRecord(item)) {
-      normalizedItems.push(item);
-      continue;
+  const normalizeItems = (input: unknown[]) => {
+    const seenImageKeys = new Set<string>();
+    const normalizedItems: unknown[] = [];
+    for (const item of input) {
+      if (!isRecord(item)) {
+        normalizedItems.push(item);
+        continue;
+      }
+      if (String(item.type || '').trim().toLowerCase() === 'video') {
+        normalizedItems.push(item);
+        continue;
+      }
+      const dedupeKey = buildPdpImageDedupeKey(item.url);
+      if (dedupeKey && seenImageKeys.has(dedupeKey)) {
+        continue;
+      }
+      if (dedupeKey) {
+        seenImageKeys.add(dedupeKey);
+      }
+      const normalizedUrl = normalizePdpImageUrl(item.url);
+      if (!normalizedUrl || normalizedUrl === item.url) {
+        normalizedItems.push(item);
+        continue;
+      }
+      normalizedItems.push({
+        ...item,
+        url: normalizedUrl,
+      });
     }
-    if (String(item.type || '').trim().toLowerCase() === 'video') {
-      normalizedItems.push(item);
-      continue;
-    }
-    const dedupeKey = buildPdpImageDedupeKey(item.url);
-    if (dedupeKey && seenImageKeys.has(dedupeKey)) {
-      continue;
-    }
-    if (dedupeKey) {
-      seenImageKeys.add(dedupeKey);
-    }
-    const normalizedUrl = normalizePdpImageUrl(item.url);
-    if (!normalizedUrl || normalizedUrl === item.url) {
-      normalizedItems.push(item);
-      continue;
-    }
-    normalizedItems.push({
-      ...item,
-      url: normalizedUrl,
-    });
-  }
+    return normalizedItems;
+  };
 
   return {
     ...module,
     data: {
       ...module.data,
-      items: normalizedItems,
+      items: normalizeItems(items),
+      ...(previewItems.length ? { preview_items: normalizeItems(previewItems) } : {}),
     },
   };
 }
@@ -68,7 +73,9 @@ function normalizeRecommendationsModule(module: Module): Module {
   if (!items.length) return module;
 
   const normalizedItems = items.map((item) => {
-    if (!isRecord(item)) return item;
+    if (!isRecord(item)) {
+      return item;
+    }
     const normalizedImage = normalizePdpImageUrl(item.image_url);
     if (!normalizedImage || normalizedImage === item.image_url) return item;
     return {
@@ -88,33 +95,53 @@ function normalizeRecommendationsModule(module: Module): Module {
 
 function normalizeReviewsModule(module: Module): Module {
   if (module?.type !== 'reviews_preview' || !isRecord(module.data)) return module;
-  const previewItems = Array.isArray(module.data.preview_items) ? module.data.preview_items : [];
-  if (!previewItems.length) return module;
-
-  const normalizedPreviewItems = previewItems.map((review) => {
-    if (!isRecord(review)) return review;
-    const mediaItems = Array.isArray(review.media) ? review.media : [];
-    if (!mediaItems.length) return review;
-    const normalizedMediaItems = mediaItems.map((media) => {
-      if (!isRecord(media)) return media;
-      const normalizedUrl = normalizePdpImageUrl(media.url);
-      if (!normalizedUrl || normalizedUrl === media.url) return media;
+  const normalizePreviewItems = (previewItems: unknown[]) =>
+    previewItems.map((review) => {
+      if (!isRecord(review)) return review;
+      const mediaItems = Array.isArray(review.media) ? review.media : [];
+      if (!mediaItems.length) return review;
+      const normalizedMediaItems = mediaItems.map((media) => {
+        if (!isRecord(media)) return media;
+        const normalizedUrl = normalizePdpImageUrl(media.url);
+        if (!normalizedUrl || normalizedUrl === media.url) return media;
+        return {
+          ...media,
+          url: normalizedUrl,
+        };
+      });
       return {
-        ...media,
-        url: normalizedUrl,
+        ...review,
+        media: normalizedMediaItems,
       };
     });
-    return {
-      ...review,
-      media: normalizedMediaItems,
-    };
-  });
+  const previewItems = Array.isArray(module.data.preview_items) ? module.data.preview_items : [];
+  const scopedSummaries =
+    isRecord(module.data.scoped_summaries) ? module.data.scoped_summaries : null;
+  if (!previewItems.length && !scopedSummaries) return module;
+
+  const normalizedScopedSummaries = scopedSummaries
+    ? Object.entries(scopedSummaries).reduce<Record<string, unknown>>((acc, [key, value]) => {
+        if (!isRecord(value)) {
+          acc[key] = value;
+          return acc;
+        }
+        const scopedPreviewItems = Array.isArray(value.preview_items) ? value.preview_items : [];
+        acc[key] = {
+          ...value,
+          ...(scopedPreviewItems.length
+            ? { preview_items: normalizePreviewItems(scopedPreviewItems) }
+            : {}),
+        };
+        return acc;
+      }, {})
+    : null;
 
   return {
     ...module,
     data: {
       ...module.data,
-      preview_items: normalizedPreviewItems,
+      ...(previewItems.length ? { preview_items: normalizePreviewItems(previewItems) } : {}),
+      ...(normalizedScopedSummaries ? { scoped_summaries: normalizedScopedSummaries } : {}),
     },
   };
 }
@@ -222,6 +249,26 @@ export function mapPdpV2ToPdpPayload(response: GetPdpV2Response): PDPPayload | n
   const productGroupId = canonicalGroupId || subjectGroupId;
   if (productGroupId) {
     next.product_group_id = productGroupId;
+  }
+  if (typeof canonicalData?.sellable_item_group_id === 'string' && canonicalData.sellable_item_group_id.trim()) {
+    next.sellable_item_group_id = canonicalData.sellable_item_group_id.trim();
+  }
+  if (typeof canonicalData?.product_line_id === 'string' && canonicalData.product_line_id.trim()) {
+    next.product_line_id = canonicalData.product_line_id.trim();
+  }
+  if (typeof canonicalData?.review_family_id === 'string' && canonicalData.review_family_id.trim()) {
+    next.review_family_id = canonicalData.review_family_id.trim();
+  }
+  if (Number.isFinite(Number(canonicalData?.identity_confidence))) {
+    next.identity_confidence = Number(canonicalData.identity_confidence);
+  }
+  if (Array.isArray(canonicalData?.match_basis)) {
+    next.match_basis = canonicalData.match_basis
+      .map((item: unknown) => String(item || '').trim())
+      .filter(Boolean);
+  }
+  if (typeof canonicalData?.canonical_scope === 'string' && canonicalData.canonical_scope.trim()) {
+    next.canonical_scope = canonicalData.canonical_scope.trim();
   }
 
   for (const moduleType of CANONICAL_PASSTHROUGH_MODULE_TYPES) {
