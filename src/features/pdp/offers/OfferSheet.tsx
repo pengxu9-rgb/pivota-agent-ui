@@ -28,6 +28,38 @@ function isInternalCheckoutOffer(offer: Offer): boolean {
   return merchantId !== 'external_seed';
 }
 
+function getSellerLabel(offer: Offer): string {
+  const merchantId = String(offer?.merchant_id || '').trim();
+  const merchantIdLower = merchantId.toLowerCase();
+  const rawCandidates = [
+    offer.merchant_name,
+    (offer as any).merchantName,
+    (offer as any).seller_name,
+    (offer as any).sellerName,
+    (offer as any).store_name,
+    (offer as any).storeName,
+    (offer as any).vendor_name,
+    (offer as any).vendorName,
+    (offer as any).vendor,
+    (offer as any).brand_name,
+    (offer as any).brandName,
+    (offer as any).brand?.name,
+    offer.seller_of_record,
+    (offer as any).sellerOfRecord,
+  ];
+  const displayName = rawCandidates
+    .map((value) => String(value || '').trim())
+    .find((value) => {
+      if (!value) return false;
+      const normalized = value.toLowerCase();
+      if (merchantIdLower && normalized === merchantIdLower) return false;
+      if (normalized === 'external_seed' || normalized === 'external seed') return false;
+      if (/^merch_[a-z0-9]+$/.test(normalized)) return false;
+      return true;
+    });
+  return displayName || merchantId || 'Unknown seller';
+}
+
 export function OfferSheet({
   open,
   offers,
@@ -76,7 +108,7 @@ export function OfferSheet({
           const currency = offer.price.currency || 'USD';
           const eta = offer.shipping?.eta_days_range;
           const returns = offer.returns;
-          const sellerLabel = offer.merchant_name || offer.merchant_id;
+          const sellerLabel = getSellerLabel(offer);
 
           return (
             <button

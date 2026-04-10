@@ -219,6 +219,57 @@ const CANONICAL_PASSTHROUGH_MODULE_TYPES: ReadonlyArray<Module['type']> = [
   'how_to_use',
 ];
 
+const RESPONSE_OWNED_MODULE_TYPES = new Set<string>([
+  'product_intel',
+  'recommendations',
+  'reviews_preview',
+  'similar',
+]);
+
+function sanitizeCanonicalModules(modules: unknown): Module[] {
+  if (!Array.isArray(modules)) return [];
+  return modules.filter((module) => {
+    if (!isRecord(module)) return true;
+    return !RESPONSE_OWNED_MODULE_TYPES.has(String(module.type || '').trim());
+  }) as Module[];
+}
+
+function normalizeOfferDisplayName(offer: unknown): any {
+  if (!isRecord(offer)) return offer;
+  const merchantId = String(offer.merchant_id || offer.merchantId || '').trim().toLowerCase();
+  const rawCandidates = [
+    offer.merchant_name,
+    offer.merchantName,
+    offer.seller_name,
+    offer.sellerName,
+    offer.store_name,
+    offer.storeName,
+    offer.vendor_name,
+    offer.vendorName,
+    offer.vendor,
+    offer.brand_name,
+    offer.brandName,
+    isRecord(offer.brand) ? offer.brand.name : '',
+    offer.seller_of_record,
+    offer.sellerOfRecord,
+  ];
+  const displayName = rawCandidates
+    .map((value) => String(value || '').trim())
+    .find((value) => {
+      if (!value) return false;
+      const normalized = value.toLowerCase();
+      if (merchantId && normalized === merchantId) return false;
+      if (normalized === 'external_seed' || normalized === 'external seed') return false;
+      if (/^merch_[a-z0-9]+$/.test(normalized)) return false;
+      return true;
+    });
+  if (!displayName || displayName === offer.merchant_name) return offer;
+  return {
+    ...offer,
+    merchant_name: displayName,
+  };
+}
+
 export function mapPdpV2ToPdpPayload(response: GetPdpV2Response): PDPPayload | null {
   if (!response || typeof response !== 'object') return null;
 
@@ -231,7 +282,7 @@ export function mapPdpV2ToPdpPayload(response: GetPdpV2Response): PDPPayload | n
   let next: PDPPayload = normalizePdpPayloadImages({
     ...base,
     product: { ...(base.product as any) },
-    modules: Array.isArray(base.modules) ? [...base.modules] : [],
+    modules: sanitizeCanonicalModules(base.modules),
     actions: Array.isArray(base.actions) ? [...base.actions] : [],
   });
 
@@ -291,7 +342,9 @@ export function mapPdpV2ToPdpPayload(response: GetPdpV2Response): PDPPayload | n
   const offersModule = getModule(response, 'offers');
   const offersData = isRecord(offersModule?.data) ? offersModule.data : null;
   if (offersData) {
-    const offers = Array.isArray(offersData.offers) ? offersData.offers : null;
+    const offers = Array.isArray(offersData.offers)
+      ? offersData.offers.map((offer: unknown) => normalizeOfferDisplayName(offer))
+      : null;
     next = {
       ...next,
       ...(offers ? { offers } : {}),

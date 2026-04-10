@@ -489,6 +489,68 @@ describe('ProductDetailPage canonical PDP loading', () => {
     );
   });
 
+  it('checks out internal offers with seller-specific selected variants', async () => {
+    mapPdpV2ToPdpPayloadMock.mockReturnValue({
+      ...canonicalPayload,
+      product: {
+        ...canonicalPayload.product,
+        product_id: 'ext_seed_1',
+        merchant_id: 'external_seed',
+        default_variant_id: 'ext_standard',
+        variants: [
+          {
+            variant_id: 'ext_standard',
+            title: 'Standard',
+            options: [{ name: 'Size', value: '45 mL' }],
+            price: { current: { amount: 28, currency: 'EUR' } },
+            availability: { in_stock: true, available_quantity: 5 },
+          },
+          {
+            variant_id: 'ext_jumbo',
+            title: 'Jumbo',
+            options: [{ name: 'Size', value: '100 mL' }],
+            price: { current: { amount: 50, currency: 'EUR' } },
+            availability: { in_stock: true, available_quantity: 5 },
+          },
+        ],
+      },
+      offers: [
+        {
+          offer_id: 'offer_internal',
+          product_id: 'prod_internal_1',
+          merchant_id: 'merch_internal',
+          price: { amount: 28, currency: 'EUR' },
+          purchase_route: 'internal_checkout',
+          commerce_mode: 'merchant_embedded_checkout',
+          checkout_handoff: 'embedded',
+          selected_variant_id: '52876964495688',
+          selected_options: [{ name: 'Size', value: '45 mL' }],
+        },
+      ],
+    });
+    getPdpV2Mock.mockResolvedValue({ status: 'success', modules: [] });
+
+    renderPage('ext_seed_1');
+
+    await screen.findByTestId('generic-pdp');
+    fireEvent.click(screen.getByRole('button', { name: 'Buy Now' }));
+
+    await waitFor(() => {
+      expect(pushMock).toHaveBeenCalledWith(expect.stringMatching(/^\/order\?/));
+    });
+    const pushedUrl = String(pushMock.mock.calls[0]?.[0] || '');
+    const params = new URLSearchParams(pushedUrl.split('?')[1] || '');
+    const items = JSON.parse(params.get('items') || '[]');
+    expect(items[0]).toEqual(
+      expect.objectContaining({
+        product_id: 'prod_internal_1',
+        merchant_id: 'merch_internal',
+        variant_id: '52876964495688',
+        selected_options: { Size: '45 mL' },
+      }),
+    );
+  });
+
   it('does not post remote browse history events for guests', async () => {
     getPdpV2Mock.mockResolvedValue({ status: 'success', modules: [] });
 
