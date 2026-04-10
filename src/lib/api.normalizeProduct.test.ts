@@ -32,7 +32,13 @@ describe('normalizeProduct', () => {
       search_card: {
         title_candidate: 'Olehenriksen Vitamin C Eye Stick',
         compact_candidate: 'Color-correcting eye stick',
+        highlight_candidate: 'Creator-noted brightening pick',
         proof_badge_candidate: 'Seen in 4 editor picks',
+      },
+      shopping_card: {
+        title: 'Olehenriksen Vitamin C Eye Stick',
+        subtitle: 'Color-correcting eye stick',
+        highlight: 'Creator-noted brightening pick',
       },
       market_signal_badges: [
         {
@@ -44,7 +50,10 @@ describe('normalizeProduct', () => {
 
     expect(normalized.card_title).toBe('Olehenriksen Vitamin C Eye Stick');
     expect(normalized.card_subtitle).toBe('Color-correcting eye stick');
+    expect(normalized.card_highlight).toBe('Creator-noted brightening pick');
     expect(normalized.card_badge).toBe('Seen in 4 editor picks');
+    expect(normalized.search_card?.highlight_candidate).toBe('Creator-noted brightening pick');
+    expect(normalized.shopping_card?.highlight).toBe('Creator-noted brightening pick');
     expect(normalized.market_signal_badges).toEqual([
       {
         badge_type: 'editorial_signal',

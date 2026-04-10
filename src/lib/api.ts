@@ -209,6 +209,7 @@ export interface ProductResponse {
   seller_feedback_summary?: any;
   card_title?: string;
   card_subtitle?: string;
+  card_highlight?: string;
   card_badge?: string;
   card_intro?: string;
   market_signal_badges?: Array<{
@@ -218,8 +219,17 @@ export interface ProductResponse {
   search_card?: {
     title_candidate?: string;
     compact_candidate?: string;
+    highlight_candidate?: string;
     proof_badge_candidate?: string;
     intro_candidate?: string;
+  };
+  shopping_card?: {
+    title?: string;
+    subtitle?: string;
+    highlight?: string;
+    proof_badge?: string;
+    intro?: string;
+    [key: string]: any;
   };
 }
 
@@ -503,17 +513,24 @@ export function normalizeProduct(
     (isRecord(anyP.card) ? anyP.card : null) ||
     (isRecord(rawDetail?.search_card) ? rawDetail?.search_card : null) ||
     (isRecord(rawDetail?.searchCard) ? rawDetail?.searchCard : null);
+  const rawShoppingCard =
+    (isRecord(anyP.shopping_card) ? anyP.shopping_card : null) ||
+    (isRecord(anyP.shoppingCard) ? anyP.shoppingCard : null) ||
+    (isRecord(rawDetail?.shopping_card) ? rawDetail?.shopping_card : null) ||
+    (isRecord(rawDetail?.shoppingCard) ? rawDetail?.shoppingCard : null);
   const marketSignalBadges =
     normalizeMarketSignalBadges(anyP.market_signal_badges) ||
     normalizeMarketSignalBadges(anyP.marketSignals) ||
     normalizeMarketSignalBadges(anyP.product_intel?.market_signal_badges) ||
-    normalizeMarketSignalBadges(rawSearchCard?.market_signal_badges);
+    normalizeMarketSignalBadges(rawSearchCard?.market_signal_badges) ||
+    normalizeMarketSignalBadges(rawShoppingCard?.market_signal_badges);
   const cardTitle = readFirstString(
     anyP.card_title,
     anyP.cardTitle,
     anyP.search_card_title_candidate,
     rawSearchCard?.title_candidate,
     rawSearchCard?.title,
+    rawShoppingCard?.title,
   );
   const cardSubtitle = readFirstString(
     anyP.card_subtitle,
@@ -521,14 +538,24 @@ export function normalizeProduct(
     anyP.search_card_compact_candidate,
     rawSearchCard?.compact_candidate,
     rawSearchCard?.subtitle,
+    rawShoppingCard?.subtitle,
     anyP.subtitle,
     anyP.sub_title,
+  );
+  const cardHighlight = readFirstString(
+    anyP.card_highlight,
+    anyP.cardHighlight,
+    anyP.search_card_highlight_candidate,
+    rawSearchCard?.highlight_candidate,
+    rawSearchCard?.highlight,
+    rawShoppingCard?.highlight,
   );
   const cardBadge = readFirstString(
     anyP.card_badge,
     anyP.cardBadge,
     anyP.search_card_proof_badge_candidate,
     rawSearchCard?.proof_badge_candidate,
+    rawShoppingCard?.proof_badge,
     marketSignalBadges?.[0]?.badge_label,
   );
   const cardIntro = readFirstString(
@@ -537,6 +564,7 @@ export function normalizeProduct(
     anyP.search_card_intro_candidate,
     rawSearchCard?.intro_candidate,
     rawSearchCard?.intro,
+    rawShoppingCard?.intro,
   );
 
   return {
@@ -624,6 +652,7 @@ export function normalizeProduct(
     seller_feedback_summary: anyP.seller_feedback_summary,
     ...(cardTitle ? { card_title: cardTitle } : {}),
     ...(cardSubtitle ? { card_subtitle: cardSubtitle } : {}),
+    ...(cardHighlight ? { card_highlight: cardHighlight } : {}),
     ...(cardBadge ? { card_badge: cardBadge } : {}),
     ...(cardIntro ? { card_intro: cardIntro } : {}),
     ...(marketSignalBadges ? { market_signal_badges: marketSignalBadges } : {}),
@@ -646,6 +675,14 @@ export function normalizeProduct(
                   ),
                 }
               : {}),
+            ...(readFirstString(rawSearchCard?.highlight_candidate, rawSearchCard?.highlight)
+              ? {
+                  highlight_candidate: readFirstString(
+                    rawSearchCard?.highlight_candidate,
+                    rawSearchCard?.highlight,
+                  ),
+                }
+              : {}),
             ...(readFirstString(rawSearchCard?.proof_badge_candidate)
               ? { proof_badge_candidate: readFirstString(rawSearchCard?.proof_badge_candidate) }
               : {}),
@@ -657,6 +694,23 @@ export function normalizeProduct(
                   ),
                 }
               : {}),
+          },
+        }
+      : {}),
+    ...(rawShoppingCard
+      ? {
+          shopping_card: {
+            ...(readFirstString(rawShoppingCard?.title) ? { title: readFirstString(rawShoppingCard?.title) } : {}),
+            ...(readFirstString(rawShoppingCard?.subtitle)
+              ? { subtitle: readFirstString(rawShoppingCard?.subtitle) }
+              : {}),
+            ...(readFirstString(rawShoppingCard?.highlight)
+              ? { highlight: readFirstString(rawShoppingCard?.highlight) }
+              : {}),
+            ...(readFirstString(rawShoppingCard?.proof_badge)
+              ? { proof_badge: readFirstString(rawShoppingCard?.proof_badge) }
+              : {}),
+            ...(readFirstString(rawShoppingCard?.intro) ? { intro: readFirstString(rawShoppingCard?.intro) } : {}),
           },
         }
       : {}),

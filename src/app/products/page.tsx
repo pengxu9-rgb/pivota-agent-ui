@@ -420,7 +420,7 @@ export default function ProductsPage() {
                       sku={sku}
                       external_redirect_url={product.external_redirect_url}
                       title={card.title}
-                      subtitle={card.subtitle || undefined}
+                      subtitle={card.highlight || card.subtitle || undefined}
                       badge={card.badge || undefined}
                       price={product.price}
                       currency={product.currency}

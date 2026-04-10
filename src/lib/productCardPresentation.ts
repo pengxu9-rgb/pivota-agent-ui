@@ -3,6 +3,7 @@ import type { ProductResponse } from '@/lib/api'
 export type ProductCardPresentation = {
   title: string
   subtitle: string | null
+  highlight: string | null
   badge: string | null
 }
 
@@ -128,6 +129,11 @@ export function resolveProductCardPresentation(product: ProductResponse): Produc
     product.card_subtitle,
     product.search_card?.compact_candidate,
   )
+  const explicitHighlight = readFirstString(
+    product.card_highlight,
+    product.shopping_card?.highlight,
+    product.search_card?.highlight_candidate,
+  )
   const explicitBadge = readFirstString(
     product.card_badge,
     product.search_card?.proof_badge_candidate,
@@ -137,6 +143,7 @@ export function resolveProductCardPresentation(product: ProductResponse): Produc
   return {
     title: explicitTitle || String(product.title || '').trim() || 'Untitled product',
     subtitle: explicitSubtitle || buildCategorySubtitle(product),
+    highlight: explicitHighlight,
     badge:
       explicitBadge ||
       buildReviewBadge(product) ||

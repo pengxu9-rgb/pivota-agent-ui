@@ -14,12 +14,14 @@ describe('resolveProductCardPresentation', () => {
       in_stock: true,
       card_title: 'Nike Air Max Running Shoes',
       card_subtitle: 'Men’s black air-cushion sneaker',
+      card_highlight: 'Celebrity-styled black sneaker',
       card_badge: 'Seen in 4 editor picks',
     } satisfies ProductResponse
 
     expect(resolveProductCardPresentation(product)).toEqual({
       title: 'Nike Air Max Running Shoes',
       subtitle: 'Men’s black air-cushion sneaker',
+      highlight: 'Celebrity-styled black sneaker',
       badge: 'Seen in 4 editor picks',
     })
   })
@@ -42,6 +44,7 @@ describe('resolveProductCardPresentation', () => {
     expect(resolveProductCardPresentation(product)).toEqual({
       title: 'Gloss Bomb',
       subtitle: 'Lip Gloss',
+      highlight: null,
       badge: '4.8★ (128)',
     })
   })
@@ -61,6 +64,7 @@ describe('resolveProductCardPresentation', () => {
     expect(resolveProductCardPresentation(product)).toEqual({
       title: 'Match Stix Skinstick',
       subtitle: 'Complexion',
+      highlight: null,
       badge: "Rihanna's Pick",
     })
   })
