@@ -212,6 +212,35 @@ function isExternalCtaTarget(args: {
   return source === 'external_seed' || source === 'external_product_seeds' || platform === 'external';
 }
 
+function normalizeOfferSelectedOptions(value: unknown): Variant['options'] | undefined {
+  if (Array.isArray(value)) {
+    const options = value
+      .map((item) => {
+        if (!item || typeof item !== 'object') return null;
+        const name = String((item as any).name || '').trim();
+        const optionValue = String((item as any).value || '').trim();
+        if (!name || !optionValue) return null;
+        return { name, value: optionValue };
+      })
+      .filter(Boolean) as NonNullable<Variant['options']>;
+    return options.length ? options : undefined;
+  }
+
+  if (value && typeof value === 'object') {
+    const options = Object.entries(value as Record<string, unknown>)
+      .map(([name, optionValue]) => {
+        const normalizedName = String(name || '').trim();
+        const normalizedValue = String(optionValue || '').trim();
+        if (!normalizedName || !normalizedValue) return null;
+        return { name: normalizedName, value: normalizedValue };
+      })
+      .filter(Boolean) as NonNullable<Variant['options']>;
+    return options.length ? options : undefined;
+  }
+
+  return undefined;
+}
+
 function resolveOfferVariantForCheckout(args: {
   variant: Variant;
   offer: any | null;
@@ -222,14 +251,32 @@ function resolveOfferVariantForCheckout(args: {
   const offerVariantId = String(
     args.offer?.variant_id ||
       args.offer?.variantId ||
+      args.offer?.selected_variant_id ||
+      args.offer?.selectedVariantId ||
+      args.offer?.platform_variant_id ||
+      args.offer?.platformVariantId ||
+      args.offer?.shopify_variant_id ||
+      args.offer?.shopifyVariantId ||
       args.offer?.sku_id ||
       args.offer?.skuId ||
       '',
   ).trim();
   if (offerVariantId) {
+    const offerSelectedOptions = normalizeOfferSelectedOptions(
+      args.offer?.selected_options ||
+        args.offer?.selectedOptions ||
+        args.offer?.variant_options ||
+        args.offer?.variantOptions ||
+        args.offer?.options,
+    );
+    const offerVariantTitle = String(
+      args.offer?.variant_title || args.offer?.variantTitle || '',
+    ).trim();
     return {
       ...args.variant,
       variant_id: offerVariantId,
+      ...(offerVariantTitle ? { title: offerVariantTitle } : {}),
+      ...(offerSelectedOptions ? { options: offerSelectedOptions } : {}),
       sku_id: String(args.offer?.sku_id || args.offer?.skuId || args.variant.sku_id || '').trim() || undefined,
     };
   }

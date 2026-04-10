@@ -163,20 +163,20 @@ describe('mapPdpV2ToPdpPayload image normalization', () => {
     expect(mediaGallery?.data?.items?.[1]?.url).toBe('https://cdn.example.com/video.mp4');
     expect(mediaGallery?.data?.preview_items?.[0]?.url).toBe('https://sdcdn.io/tf/preview.png');
 
-    const recs = payload?.modules.find((m) => m.type === 'recommendations') as any;
-    expect(recs?.data?.items?.[0]?.image_url).toBe('https://sdcdn.io/tf/related.png');
-
-    const reviews = payload?.modules.find((m) => m.type === 'reviews_preview') as any;
-    expect(reviews?.data?.preview_items?.[0]?.media?.[0]?.url).toBe('https://sdcdn.io/tf/review.png');
-    expect(
-      reviews?.data?.scoped_summaries?.exact_item?.preview_items?.[0]?.media?.[0]?.url,
-    ).toBe('https://sdcdn.io/tf/review-exact.png');
-    expect(reviews?.data?.aggregation_scope).toBe('product_line');
-    expect(reviews?.data?.tabs?.[0]?.label).toBe('Product line');
+    expect(payload?.modules.find((m) => m.type === 'recommendations')).toBeUndefined();
+    expect(payload?.modules.find((m) => m.type === 'reviews_preview')).toBeUndefined();
     expect(payload?.sellable_item_group_id).toBe('sig_krave_45');
     expect(payload?.product_line_id).toBe('pl_krave_gbr');
     expect(payload?.review_family_id).toBe('rf_krave_gbr');
     expect(payload?.canonical_scope).toBe('synthetic');
+  });
+
+  it('does not promote stale response-owned modules from canonical payload', () => {
+    const payload = mapPdpV2ToPdpPayload(buildMinimalResponse());
+
+    expect(payload?.modules.map((module) => module.type)).not.toContain('recommendations');
+    expect(payload?.modules.map((module) => module.type)).not.toContain('reviews_preview');
+    expect(payload?.x_recommendations_state).toBeUndefined();
   });
 
   it('does not double-wrap already proxied URLs', () => {
@@ -265,6 +265,28 @@ describe('mapPdpV2ToPdpPayload image normalization', () => {
     expect(intelModule).toBeTruthy();
     expect(intelModule?.title).toBe('Pivota Insights');
     expect(intelModule?.data?.product_intel_core?.best_for?.[0]?.label).toBe('Dullness');
+  });
+
+  it('normalizes offer display names from seller fields returned by PDP v2', () => {
+    const response = buildMinimalResponse();
+    response.modules.push({
+      type: 'offers',
+      data: {
+        offers: [
+          {
+            offer_id: 'of:internal_checkout:merch_efbc46b4619cfbdf:10008793153864',
+            product_id: '10008793153864',
+            merchant_id: 'merch_efbc46b4619cfbdf',
+            vendor: 'KraveBeauty',
+            price: { amount: 28, currency: 'EUR' },
+          },
+        ],
+      },
+    });
+
+    const payload = mapPdpV2ToPdpPayload(response);
+
+    expect(payload?.offers?.[0]?.merchant_name).toBe('KraveBeauty');
   });
 
   it('normalizes image-bearing modules returned outside canonical payload', () => {
