@@ -77,7 +77,12 @@ function isShopifyLikeAsset(parsed: URL): boolean {
   );
 }
 
-function normalizeShopifyLikeFilename(filename: string): string {
+function normalizeShopifyLikeFilename(
+  filename: string,
+  options?: {
+    stripHashSuffix?: boolean;
+  },
+): string {
   const trimmed = String(filename || '').trim();
   if (!trimmed) return trimmed;
   let decoded = trimmed;
@@ -88,9 +93,11 @@ function normalizeShopifyLikeFilename(filename: string): string {
   }
   const compacted = decoded.replace(/\s*_\s*/g, '_').trim();
   const aliased = KNOWN_SDCND_FILENAME_ALIASES[compacted.toLowerCase()] || compacted;
-  const hashed = aliased.match(SHOPIFY_FILE_HASH_SUFFIX_RE);
-  if (hashed) {
-    return `${hashed[1]}.${hashed[2]}`;
+  if (options?.stripHashSuffix) {
+    const hashed = aliased.match(SHOPIFY_FILE_HASH_SUFFIX_RE);
+    if (hashed) {
+      return `${hashed[1]}.${hashed[2]}`;
+    }
   }
   return aliased;
 }
@@ -191,7 +198,9 @@ export function buildPdpImageDedupeKey(rawUrl: unknown): string | null {
 
   try {
     const parsed = absolute ? new URL(unwrapped) : new URL(unwrapped, 'http://localhost');
-    const filename = normalizeShopifyLikeFilename(parsed.pathname.split('/').pop() || '');
+    const filename = normalizeShopifyLikeFilename(parsed.pathname.split('/').pop() || '', {
+      stripHashSuffix: true,
+    });
     const tomFordSlotMatch = filename.match(TOM_FORD_SLOT_DEDUPE_RE);
     if (absolute && tomFordSlotMatch) {
       const dimensions = String(tomFordSlotMatch[3] || '').toLowerCase();
