@@ -62,6 +62,20 @@ export interface Product {
   returns?: { return_window_days?: number; free_returns?: boolean };
   description?: string;
   merchant_id?: string;
+  source?: string;
+  commerce_mode?: string;
+  checkout_handoff?: string;
+  purchase_route?: string;
+  external_redirect_url?: string;
+  externalRedirectUrl?: string;
+  affiliate_url?: string;
+  external_url?: string;
+  redirect_url?: string;
+  url?: string;
+  canonical_url?: string;
+  destination_url?: string;
+  source_url?: string;
+  platform?: string;
 }
 
 export interface SizeGuide {
@@ -124,6 +138,32 @@ export interface Offer {
   };
   fulfillment_type?: 'platform' | 'merchant' | '3pl' | string;
   tier?: string;
+  commerce_mode?: string;
+  checkout_handoff?: string;
+  purchase_route?: string;
+  seller_of_record?: string;
+  merchant_checkout_url?: string;
+  checkout_url?: string;
+  purchase_url?: string;
+  external_redirect_url?: string;
+  externalRedirectUrl?: string;
+  affiliate_url?: string;
+  external_url?: string;
+  redirect_url?: string;
+  url?: string;
+  product_url?: string;
+  canonical_url?: string;
+  destination_url?: string;
+  source_url?: string;
+  variant_id?: string;
+  sku_id?: string;
+  action?: {
+    type?: string;
+    url?: string;
+    href?: string;
+    redirect_url?: string;
+    redirectUrl?: string;
+  } | Record<string, unknown>;
 }
 
 export interface Module {

@@ -1,5 +1,5 @@
 import React from 'react';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import ProductDetailPage from './page';
@@ -8,7 +8,6 @@ const pushMock = vi.fn();
 const replaceMock = vi.fn();
 const getPdpV2Mock = vi.fn();
 const getPdpV2PersonalizationMock = vi.fn();
-const getProductDetailMock = vi.fn();
 const resolveProductCandidatesMock = vi.fn();
 const recordBrowseHistoryEventMock = vi.fn();
 const mapPdpV2ToPdpPayloadMock = vi.fn();
@@ -64,7 +63,6 @@ vi.mock('@/lib/productRouteLoading', () => ({
 vi.mock('@/lib/api', () => ({
   getPdpV2: (...args: unknown[]) => getPdpV2Mock(...args),
   getPdpV2Personalization: (...args: unknown[]) => getPdpV2PersonalizationMock(...args),
-  getProductDetail: (...args: unknown[]) => getProductDetailMock(...args),
   recordBrowseHistoryEvent: (...args: unknown[]) => recordBrowseHistoryEventMock(...args),
   resolveProductCandidates: (...args: unknown[]) => resolveProductCandidatesMock(...args),
 }));
@@ -86,15 +84,50 @@ vi.mock('@/features/pdp/containers/BeautyPDPContainer', () => ({
 vi.mock('@/features/pdp/containers/GenericPDPContainer', () => ({
   GenericPDPContainer: ({
     payload,
+    onAddToCart,
+    onBuyNow,
   }: {
     payload: {
-      product: { title: string };
+      product: { title: string; merchant_id?: string; product_id?: string; variants?: any[] };
+      offers?: any[];
       modules?: Array<{ type?: string; data?: { items?: unknown[] } }>;
       x_recommendations_state?: string;
     };
+    onAddToCart: (args: any) => void;
+    onBuyNow: (args: any) => void;
   }) => (
     <div data-testid="generic-pdp">
       <div>{payload.product.title}</div>
+      <button
+        type="button"
+        onClick={() => {
+          const offer = payload.offers?.[0] || null;
+          onAddToCart({
+            variant: payload.product.variants?.[0] || { variant_id: 'variant_1', title: 'Default' },
+            quantity: 1,
+            merchant_id: offer?.merchant_id || payload.product.merchant_id,
+            product_id: offer?.product_id || payload.product.product_id,
+            offer_id: offer?.offer_id,
+          });
+        }}
+      >
+        Add to Cart
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          const offer = payload.offers?.[0] || null;
+          onBuyNow({
+            variant: payload.product.variants?.[0] || { variant_id: 'variant_1', title: 'Default' },
+            quantity: 1,
+            merchant_id: offer?.merchant_id || payload.product.merchant_id,
+            product_id: offer?.product_id || payload.product.product_id,
+            offer_id: offer?.offer_id,
+          });
+        }}
+      >
+        Buy Now
+      </button>
       <div data-testid="recommendations-count">
         {payload.modules?.find((module) => module.type === 'recommendations')?.data?.items?.length ?? 0}
       </div>
@@ -228,7 +261,6 @@ describe('ProductDetailPage canonical PDP loading', () => {
     replaceMock.mockReset();
     getPdpV2Mock.mockReset();
     getPdpV2PersonalizationMock.mockReset();
-    getProductDetailMock.mockReset();
     resolveProductCandidatesMock.mockReset();
     recordBrowseHistoryEventMock.mockReset();
     mapPdpV2ToPdpPayloadMock.mockReset();
@@ -298,7 +330,6 @@ describe('ProductDetailPage canonical PDP loading', () => {
     renderPage();
 
     await screen.findByText('Choose a seller');
-    expect(getProductDetailMock).not.toHaveBeenCalled();
     expect(screen.queryByTestId('generic-pdp')).not.toBeInTheDocument();
   });
 
@@ -309,7 +340,6 @@ describe('ProductDetailPage canonical PDP loading', () => {
     renderPage();
 
     await screen.findByText('Failed to load product');
-    expect(getProductDetailMock).not.toHaveBeenCalled();
   });
 
   it('retries with a core-only get_pdp_v2 request after a timeout and renders the recovered PDP', async () => {
@@ -346,7 +376,6 @@ describe('ProductDetailPage canonical PDP loading', () => {
       }),
     );
     expect(screen.queryByText('Failed to load product')).not.toBeInTheDocument();
-    expect(getProductDetailMock).not.toHaveBeenCalled();
   });
 
   it('canonicalizes external_seed merchant routes back to the unscoped product URL', async () => {
@@ -372,6 +401,92 @@ describe('ProductDetailPage canonical PDP loading', () => {
       }),
     );
     expect(resolveProductCandidatesMock).not.toHaveBeenCalled();
+  });
+
+  it('opens external seed merchant URLs from PDP v2 offer metadata', async () => {
+    const merchantUrl = 'https://merchant.example/products/ext-seed-1';
+    const openMock = vi.spyOn(window, 'open').mockImplementation(() => null);
+    mapPdpV2ToPdpPayloadMock.mockReturnValue({
+      ...canonicalPayload,
+      product: {
+        ...canonicalPayload.product,
+        product_id: 'ext_seed_1',
+        source: 'external_seed',
+        external_redirect_url: merchantUrl,
+      },
+      offers: [
+        {
+          ...canonicalPayload.offers[0],
+          product_id: 'ext_seed_1',
+          purchase_route: 'affiliate_outbound',
+          commerce_mode: 'links_out',
+          checkout_handoff: 'redirect',
+          external_redirect_url: merchantUrl,
+          merchant_checkout_url: merchantUrl,
+          url: merchantUrl,
+          action: {
+            type: 'redirect_url',
+            url: merchantUrl,
+          },
+        },
+      ],
+    });
+    getPdpV2Mock.mockResolvedValue({ status: 'success', modules: [] });
+
+    renderPage('ext_seed_1');
+
+    await screen.findByTestId('generic-pdp');
+    fireEvent.click(screen.getByRole('button', { name: 'Buy Now' }));
+
+    await waitFor(() => {
+      expect(openMock).toHaveBeenCalledWith(merchantUrl, '_blank', 'noopener,noreferrer');
+    });
+    expect(pushMock).not.toHaveBeenCalled();
+  });
+
+  it('keeps internal checkout offers on /order even when canonical product has an external URL', async () => {
+    const merchantUrl = 'https://merchant.example/products/ext-seed-1';
+    const openMock = vi.spyOn(window, 'open').mockImplementation(() => null);
+    mapPdpV2ToPdpPayloadMock.mockReturnValue({
+      ...canonicalPayload,
+      product: {
+        ...canonicalPayload.product,
+        product_id: 'ext_seed_1',
+        source: 'external_seed',
+        external_redirect_url: merchantUrl,
+      },
+      offers: [
+        {
+          offer_id: 'offer_internal',
+          product_id: 'prod_internal_1',
+          merchant_id: 'merch_internal',
+          price: { amount: 28, currency: 'USD' },
+          purchase_route: 'internal_checkout',
+          commerce_mode: 'merchant_embedded_checkout',
+          checkout_handoff: 'embedded',
+        },
+      ],
+    });
+    getPdpV2Mock.mockResolvedValue({ status: 'success', modules: [] });
+
+    renderPage('ext_seed_1');
+
+    await screen.findByTestId('generic-pdp');
+    fireEvent.click(screen.getByRole('button', { name: 'Buy Now' }));
+
+    await waitFor(() => {
+      expect(pushMock).toHaveBeenCalledWith(expect.stringMatching(/^\/order\?/));
+    });
+    expect(openMock).not.toHaveBeenCalled();
+    const pushedUrl = String(pushMock.mock.calls[0]?.[0] || '');
+    const params = new URLSearchParams(pushedUrl.split('?')[1] || '');
+    const items = JSON.parse(params.get('items') || '[]');
+    expect(items[0]).toEqual(
+      expect.objectContaining({
+        product_id: 'prod_internal_1',
+        merchant_id: 'merch_internal',
+      }),
+    );
   });
 
   it('does not post remote browse history events for guests', async () => {

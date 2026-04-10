@@ -9,14 +9,12 @@ import { hideProductRouteLoading } from '@/lib/productRouteLoading';
 import {
   getPdpV2,
   getPdpV2Personalization,
-  getProductDetail,
   recordBrowseHistoryEvent,
   resolveProductCandidates,
   type GetPdpV2Response,
   type ProductResponse,
   type UgcCapabilities,
 } from '@/lib/api';
-import { mapToPdpPayload } from '@/features/pdp/adapter/mapToPdpPayload';
 import { mapPdpV2ToPdpPayload } from '@/features/pdp/adapter/mapPdpV2ToPdpPayload';
 import { isBeautyProduct } from '@/features/pdp/utils/isBeautyProduct';
 import { BeautyPDPContainer } from '@/features/pdp/containers/BeautyPDPContainer';
@@ -37,7 +35,6 @@ import {
   DEFAULT_MODULE_SOURCE_LOCKS,
   upsertLockedModule,
 } from '@/features/pdp/state/freezePolicy';
-import { shouldAllowLegacyProductDetailBroadScan } from '@/lib/productDetailFallback';
 import {
   mapResolvedOffersToSellerCandidates,
 } from '@/lib/pdpResolvedOffers';
@@ -54,87 +51,6 @@ const PDP_V2_SCOPED_TIMEOUT_MS = 9000;
 const PDP_V2_UNSCOPED_TIMEOUT_MS = 9000;
 const PDP_V2_CORE_ONLY_RETRY_TIMEOUT_MS = 3500;
 const PDP_CORE_ONLY_INCLUDE: string[] = [];
-
-function normalizeVariantOptionToken(value: string): string {
-  return String(value || '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, ' ')
-    .trim();
-}
-
-function normalizeVariantOptionName(name: string): string {
-  const normalized = normalizeVariantOptionToken(name);
-  if (!normalized) return '';
-  const hasColorToken =
-    normalized.includes('colour') ||
-    normalized.includes('color') ||
-    normalized.includes('shade') ||
-    normalized.includes('tone');
-  const hasSizeToken = normalized.includes('size') || normalized.includes('fit');
-  if (hasColorToken && hasSizeToken) {
-    return 'color_size';
-  }
-  if (hasColorToken) {
-    return 'color';
-  }
-  if (hasSizeToken) {
-    return 'size';
-  }
-  return normalized;
-}
-
-function parseCombinedColorSizeOptionValue(value: string): { color: string; size: string } | null {
-  const parts = String(value || '')
-    .trim()
-    .split(/\s*\/\s*/)
-    .map((part) => part.trim())
-    .filter(Boolean);
-  if (parts.length !== 2) return null;
-  const [color, size] = parts;
-  if (!color || !size) return null;
-  if (!/\d/.test(size) && !/\b(size|fit|pack|count)\b/i.test(size)) return null;
-  return { color, size };
-}
-
-function normalizeVariantOptionValue(value: string): string {
-  return String(value || '').trim().replace(/\s+/g, ' ').toLowerCase();
-}
-
-function variantOptionSignature(options?: Array<{ name: string; value: string }>): string {
-  if (!Array.isArray(options) || options.length === 0) return '';
-  const pairs = options
-    .map((opt) => {
-      const key = normalizeVariantOptionName(opt?.name || '');
-      const val = normalizeVariantOptionValue(opt?.value || '');
-      if (!key || !val) return null;
-      return [key, val] as const;
-    })
-    .filter(Boolean) as Array<readonly [string, string]>;
-  if (!pairs.length) return '';
-  pairs.sort((a, b) => a[0].localeCompare(b[0]) || a[1].localeCompare(b[1]));
-  return pairs.map(([k, v]) => `${k}=${v}`).join('|');
-}
-
-function getNormalizedVariantOptionValue(
-  options: Array<{ name: string; value: string }> | undefined,
-  normalizedKey: string,
-): string | null {
-  if (!Array.isArray(options) || !options.length) return null;
-  const wanted = String(normalizedKey || '').trim().toLowerCase();
-  if (!wanted) return null;
-  const match = options.find((opt) => normalizeVariantOptionName(opt?.name || '') === wanted);
-  const value = normalizeVariantOptionValue(match?.value || '');
-  if (value) return value;
-
-  if (wanted === 'color' || wanted === 'size') {
-    const combined = options.find((opt) => normalizeVariantOptionName(opt?.name || '') === 'color_size');
-    const parsed = combined?.value ? parseCombinedColorSizeOptionValue(String(combined.value)) : null;
-    const fallback = wanted === 'color' ? parsed?.color : parsed?.size;
-    return fallback ? normalizeVariantOptionValue(fallback) : null;
-  }
-
-  return null;
-}
 
 function normalizeHttpUrl(value: unknown): string | null {
   if (typeof value !== 'string') return null;
@@ -190,17 +106,144 @@ function getExternalRedirectUrlFromOffer(offer: unknown): string | null {
   const direct =
     normalizeHttpUrl(typed.external_redirect_url) ||
     normalizeHttpUrl(typed.externalRedirectUrl) ||
+    normalizeHttpUrl(typed.affiliate_url) ||
+    normalizeHttpUrl(typed.affiliateUrl) ||
+    normalizeHttpUrl(typed.external_url) ||
+    normalizeHttpUrl(typed.externalUrl) ||
     normalizeHttpUrl(typed.redirect_url) ||
     normalizeHttpUrl(typed.redirectUrl);
   if (direct) return direct;
   const action = typed.action;
   if (action && typeof action === 'object') {
-    return (
+    const actionUrl =
       normalizeHttpUrl((action as any).redirect_url) ||
       normalizeHttpUrl((action as any).redirectUrl) ||
       normalizeHttpUrl((action as any).url) ||
-      normalizeHttpUrl((action as any).href)
-    );
+      normalizeHttpUrl((action as any).href);
+    if (actionUrl) return actionUrl;
+  }
+  if (!isExternalOfferRoute(typed)) return null;
+  return (
+    normalizeHttpUrl(typed.merchant_checkout_url) ||
+    normalizeHttpUrl(typed.merchantCheckoutUrl) ||
+    normalizeHttpUrl(typed.checkout_url) ||
+    normalizeHttpUrl(typed.checkoutUrl) ||
+    normalizeHttpUrl(typed.purchase_url) ||
+    normalizeHttpUrl(typed.purchaseUrl) ||
+    normalizeHttpUrl(typed.url) ||
+    normalizeHttpUrl(typed.product_url) ||
+    normalizeHttpUrl(typed.productUrl) ||
+    normalizeHttpUrl(typed.destination_url) ||
+    normalizeHttpUrl(typed.destinationUrl) ||
+    normalizeHttpUrl(typed.canonical_url) ||
+    normalizeHttpUrl(typed.canonicalUrl) ||
+    normalizeHttpUrl(typed.source_url) ||
+    normalizeHttpUrl(typed.sourceUrl)
+  );
+}
+
+function getExternalRedirectUrlFromProduct(product: unknown): string | null {
+  if (!product || typeof product !== 'object') return null;
+  const typed = product as any;
+  const direct =
+    normalizeHttpUrl(typed.external_redirect_url) ||
+    normalizeHttpUrl(typed.externalRedirectUrl) ||
+    normalizeHttpUrl(typed.affiliate_url) ||
+    normalizeHttpUrl(typed.affiliateUrl) ||
+    normalizeHttpUrl(typed.external_url) ||
+    normalizeHttpUrl(typed.externalUrl) ||
+    normalizeHttpUrl(typed.redirect_url) ||
+    normalizeHttpUrl(typed.redirectUrl);
+  if (direct) return direct;
+
+  const merchantId = String(typed.merchant_id || typed.merchantId || '').trim().toLowerCase();
+  const source = String(typed.source || typed.product_source || typed.productSource || '').trim().toLowerCase();
+  const platform = String(typed.platform || '').trim().toLowerCase();
+  const purchaseRoute = String(typed.purchase_route || typed.purchaseRoute || '').trim().toLowerCase();
+  const commerceMode = String(typed.commerce_mode || typed.commerceMode || '').trim().toLowerCase();
+  const isExternalSeed =
+    merchantId === 'external_seed' ||
+    source === 'external_seed' ||
+    source === 'external_product_seeds' ||
+    platform === 'external' ||
+    ['affiliate_outbound', 'merchant_site', 'external_redirect', 'links_out'].includes(purchaseRoute) ||
+    ['links_out', 'affiliate_outbound', 'merchant_site'].includes(commerceMode);
+  if (!isExternalSeed) return null;
+  return (
+    normalizeHttpUrl(typed.destination_url) ||
+    normalizeHttpUrl(typed.destinationUrl) ||
+    normalizeHttpUrl(typed.canonical_url) ||
+    normalizeHttpUrl(typed.canonicalUrl) ||
+    normalizeHttpUrl(typed.source_url) ||
+    normalizeHttpUrl(typed.sourceUrl) ||
+    normalizeHttpUrl(typed.url) ||
+    normalizeHttpUrl(typed.product_url) ||
+    normalizeHttpUrl(typed.productUrl)
+  );
+}
+
+function isExternalOfferRoute(offer: unknown): boolean {
+  if (!offer || typeof offer !== 'object') return false;
+  const typed = offer as any;
+  const purchaseRoute = String(typed.purchase_route || typed.purchaseRoute || '').trim().toLowerCase();
+  const commerceMode = String(typed.commerce_mode || typed.commerceMode || '').trim().toLowerCase();
+  const checkoutHandoff = String(typed.checkout_handoff || typed.checkoutHandoff || '').trim().toLowerCase();
+  return (
+    ['affiliate_outbound', 'merchant_site', 'external_redirect', 'links_out'].includes(purchaseRoute) ||
+    ['links_out', 'affiliate_outbound', 'merchant_site'].includes(commerceMode) ||
+    checkoutHandoff === 'redirect'
+  );
+}
+
+function isExternalCtaTarget(args: {
+  offer: unknown;
+  product: unknown;
+  merchantId: string;
+  redirectUrl: string | null;
+}): boolean {
+  if (args.redirectUrl) return true;
+  if (isExternalOfferRoute(args.offer)) return true;
+  const merchantId = String(args.merchantId || '').trim().toLowerCase();
+  if (merchantId === 'external_seed') return true;
+  const product = args.product && typeof args.product === 'object' ? (args.product as any) : null;
+  if (!product) return false;
+  const source = String(product.source || product.product_source || product.productSource || '').trim().toLowerCase();
+  const platform = String(product.platform || '').trim().toLowerCase();
+  return source === 'external_seed' || source === 'external_product_seeds' || platform === 'external';
+}
+
+function resolveOfferVariantForCheckout(args: {
+  variant: Variant;
+  offer: any | null;
+  product: PDPPayload['product'];
+  merchantId: string;
+  productId: string;
+}): Variant | null {
+  const offerVariantId = String(
+    args.offer?.variant_id ||
+      args.offer?.variantId ||
+      args.offer?.sku_id ||
+      args.offer?.skuId ||
+      '',
+  ).trim();
+  if (offerVariantId) {
+    return {
+      ...args.variant,
+      variant_id: offerVariantId,
+      sku_id: String(args.offer?.sku_id || args.offer?.skuId || args.variant.sku_id || '').trim() || undefined,
+    };
+  }
+
+  const sameMerchant = args.merchantId === String(args.product.merchant_id || '').trim();
+  const sameProduct = args.productId === String(args.product.product_id || '').trim();
+  if (sameMerchant && sameProduct) return args.variant;
+
+  const variants = Array.isArray(args.product.variants) ? args.product.variants : [];
+  if (variants.length <= 1) {
+    return {
+      ...args.variant,
+      variant_id: args.productId || args.variant.variant_id,
+    };
   }
   return null;
 }
@@ -364,10 +407,6 @@ export default function ProductDetailPage({ params }: Props) {
   const searchParamsString = searchParams.toString();
   const rawMerchantIdParam = searchParams.get('merchant_id');
   const merchantIdParam = normalizeProductRouteMerchantId(rawMerchantIdParam);
-  const entryPointParam =
-    searchParams.get('entry_point') ||
-    searchParams.get('entryPoint') ||
-    undefined;
   const pdpOverride = (searchParams.get('pdp') || '').toLowerCase();
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
@@ -379,7 +418,6 @@ export default function ProductDetailPage({ params }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [loadedViaPdpV2, setLoadedViaPdpV2] = useState(false);
-  const offerProductDetailCacheRef = useRef<Map<string, ProductResponse>>(new Map());
   const offersFetchKeyRef = useRef<string | null>(null);
   const reviewsSimilarFetchKeyRef = useRef<string | null>(null);
   const localBrowseHistoryRecordedRef = useRef<string | null>(null);
@@ -397,11 +435,6 @@ export default function ProductDetailPage({ params }: Props) {
   });
 
   const { addItem, open } = useCartStore();
-  const allowLegacyBroadScan = shouldAllowLegacyProductDetailBroadScan({
-    productId: id,
-    merchantId: merchantIdParam,
-    entryPoint: entryPointParam,
-  });
   const inferredMerchantId = inferCanonicalPdpMerchantId(id, merchantIdParam);
   const progressiveMerchantId = String(pdpPayload?.product?.merchant_id || '').trim();
   const progressiveProductId = String(pdpPayload?.product?.product_id || id || '').trim();
@@ -648,7 +681,7 @@ export default function ProductDetailPage({ params }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [allowLegacyBroadScan, id, inferredMerchantId, merchantIdParam, reloadKey]);
+  }, [id, inferredMerchantId, merchantIdParam, reloadKey]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1075,69 +1108,6 @@ export default function ProductDetailPage({ params }: Props) {
     return isBeautyProduct(pdpPayload.product) ? 'beauty' : 'generic';
   }, [pdpOverride, pdpPayload]);
 
-  const resolveVariantForPurchase = async (args: {
-    merchant_id: string;
-    product_id: string;
-    desired_variant: Variant;
-  }): Promise<Variant | null> => {
-    try {
-      const merchantId = String(args.merchant_id || '').trim();
-      const productId = String(args.product_id || '').trim();
-      if (!merchantId || !productId) return null;
-
-      const cacheKey = `${merchantId}:${productId}`;
-      let detail = offerProductDetailCacheRef.current.get(cacheKey) || null;
-      if (!detail) {
-        detail = await getProductDetail(productId, merchantId, {
-          useConfiguredMerchantId: false,
-          allowBroadScan: false,
-          throwOnError: false,
-        });
-        if (detail) {
-          offerProductDetailCacheRef.current.set(cacheKey, detail);
-        }
-      }
-      if (!detail) return null;
-
-      const detailPayload = mapToPdpPayload({
-        product: detail,
-        rawDetail: detail.raw_detail,
-        relatedProducts: [],
-        recommendationsLoading: false,
-        entryPoint: 'product_detail',
-      });
-      const variants = Array.isArray(detailPayload?.product?.variants)
-        ? detailPayload.product.variants
-        : [];
-      if (!variants.length) return null;
-
-      const desiredSig = variantOptionSignature(args.desired_variant.options);
-      if (desiredSig) {
-        const exact = variants.find((v) => variantOptionSignature(v.options) === desiredSig) || null;
-        if (exact) return exact;
-      }
-
-      const desiredColor = getNormalizedVariantOptionValue(args.desired_variant.options, 'color');
-      const desiredSize = getNormalizedVariantOptionValue(args.desired_variant.options, 'size');
-      if (desiredColor || desiredSize) {
-        const partial =
-          variants.find((v) => {
-            const color = getNormalizedVariantOptionValue(v.options, 'color');
-            const size = getNormalizedVariantOptionValue(v.options, 'size');
-            const colorMatch = desiredColor ? color === desiredColor : true;
-            const sizeMatch = desiredSize ? size === desiredSize : true;
-            return colorMatch && sizeMatch;
-          }) || null;
-        if (partial) return partial;
-      }
-
-      if (variants.length === 1) return variants[0];
-      return null;
-    } catch {
-      return null;
-    }
-  };
-
   const handleAddToCart = ({
     variant,
     quantity,
@@ -1154,7 +1124,7 @@ export default function ProductDetailPage({ params }: Props) {
     if (!pdpPayload) return;
     void (async () => {
       const resolvedMerchantId =
-        String(merchant_id || pdpPayload.product.merchant_id || '').trim() || pdpPayload.product.merchant_id;
+        String(merchant_id || pdpPayload.product.merchant_id || '').trim();
       const resolvedProductId =
         String(product_id || '').trim() || String(pdpPayload.product.product_id || '').trim();
 
@@ -1171,46 +1141,49 @@ export default function ProductDetailPage({ params }: Props) {
           ? offers.find((o) => String(o?.offer_id || o?.offerId || '').trim() === String(offer_id))
           : null;
       const offerRedirectUrl = offer ? getExternalRedirectUrlFromOffer(offer) : null;
-      const payloadRedirectUrl = normalizeHttpUrl((pdpPayload as any)?.product?.external_redirect_url);
-      const isExternal =
-        Boolean(offerRedirectUrl || payloadRedirectUrl) ||
-        resolvedMerchantId === 'external_seed' ||
-        String((pdpPayload as any)?.product?.source || '').trim() === 'external_seed';
+      const offerIsExternal = offer
+        ? isExternalCtaTarget({
+            offer,
+            product: null,
+            merchantId: resolvedMerchantId,
+            redirectUrl: offerRedirectUrl,
+          })
+        : false;
+      const payloadRedirectUrl =
+        !offer || offerIsExternal ? getExternalRedirectUrlFromProduct(pdpPayload.product) : null;
+      const redirectUrl = offerRedirectUrl || payloadRedirectUrl;
+      const isExternal = offer
+        ? isExternalCtaTarget({
+            offer,
+            product: null,
+            merchantId: resolvedMerchantId,
+            redirectUrl,
+          })
+        : isExternalCtaTarget({
+            offer,
+            product: pdpPayload.product,
+            merchantId: resolvedMerchantId,
+            redirectUrl,
+          });
 
       if (isExternal) {
-        const redirectUrl = offerRedirectUrl || payloadRedirectUrl;
         if (redirectUrl) {
           toast.success(buildExternalRedirectNotice(redirectUrl));
           window.open(redirectUrl, '_blank', 'noopener,noreferrer');
           return;
         }
 
-        const detail = await getProductDetail(resolvedProductId, resolvedMerchantId, {
-          useConfiguredMerchantId: false,
-          allowBroadScan: allowLegacyBroadScan,
-          throwOnError: false,
-          timeout_ms: 8000,
-        });
-        const detailRedirectUrl = normalizeHttpUrl(detail?.external_redirect_url);
-        if (detailRedirectUrl) {
-          toast.success(buildExternalRedirectNotice(detailRedirectUrl));
-          window.open(detailRedirectUrl, '_blank', 'noopener,noreferrer');
-        } else {
-          toast.error('This item is only available on an external site.');
-        }
+        toast.error('Merchant link is unavailable for this seller.');
         return;
       }
 
-      const needsVariantMapping =
-        resolvedMerchantId !== String(pdpPayload.product.merchant_id || '').trim() ||
-        resolvedProductId !== String(pdpPayload.product.product_id || '').trim();
-      const purchaseVariant = needsVariantMapping
-        ? await resolveVariantForPurchase({
-            merchant_id: resolvedMerchantId,
-            product_id: resolvedProductId,
-            desired_variant: variant,
-          })
-        : variant;
+      const purchaseVariant = resolveOfferVariantForCheckout({
+        variant,
+        offer,
+        product: pdpPayload.product,
+        merchantId: resolvedMerchantId,
+        productId: resolvedProductId,
+      });
 
       if (!purchaseVariant) {
         toast.error('This seller doesn’t have the selected options. Try another offer.');
@@ -1280,7 +1253,7 @@ export default function ProductDetailPage({ params }: Props) {
     if (!pdpPayload) return;
     void (async () => {
       const resolvedMerchantId =
-        String(merchant_id || pdpPayload.product.merchant_id || '').trim() || pdpPayload.product.merchant_id;
+        String(merchant_id || pdpPayload.product.merchant_id || '').trim();
       const resolvedProductId =
         String(product_id || '').trim() || String(pdpPayload.product.product_id || '').trim();
 
@@ -1293,38 +1266,39 @@ export default function ProductDetailPage({ params }: Props) {
           : null;
 
       const offerRedirectUrl = offer ? getExternalRedirectUrlFromOffer(offer) : null;
-      const payloadRedirectUrl = normalizeHttpUrl((pdpPayload as any)?.product?.external_redirect_url);
-      const isExternal =
-        Boolean(offerRedirectUrl || payloadRedirectUrl) ||
-        resolvedMerchantId === 'external_seed' ||
-        String((pdpPayload as any)?.product?.source || '').trim() === 'external_seed';
+      const offerIsExternal = offer
+        ? isExternalCtaTarget({
+            offer,
+            product: null,
+            merchantId: resolvedMerchantId,
+            redirectUrl: offerRedirectUrl,
+          })
+        : false;
+      const payloadRedirectUrl =
+        !offer || offerIsExternal ? getExternalRedirectUrlFromProduct(pdpPayload.product) : null;
+      const redirectUrl = offerRedirectUrl || payloadRedirectUrl;
+      const isExternal = offer
+        ? isExternalCtaTarget({
+            offer,
+            product: null,
+            merchantId: resolvedMerchantId,
+            redirectUrl,
+          })
+        : isExternalCtaTarget({
+            offer,
+            product: pdpPayload.product,
+            merchantId: resolvedMerchantId,
+            redirectUrl,
+          });
 
       if (isExternal) {
-        const redirectUrl = offerRedirectUrl || payloadRedirectUrl;
         if (redirectUrl) {
           toast.success(buildExternalRedirectNotice(redirectUrl));
           window.open(redirectUrl, '_blank', 'noopener,noreferrer');
           return;
         }
 
-        if (!resolvedMerchantId || !resolvedProductId) {
-          toast.error('This item is only available on an external site.');
-          return;
-        }
-
-        const detail = await getProductDetail(resolvedProductId, resolvedMerchantId, {
-          useConfiguredMerchantId: false,
-          allowBroadScan: allowLegacyBroadScan,
-          throwOnError: false,
-          timeout_ms: 8000,
-        });
-        const detailRedirectUrl = normalizeHttpUrl(detail?.external_redirect_url);
-        if (detailRedirectUrl) {
-          toast.success(buildExternalRedirectNotice(detailRedirectUrl));
-          window.open(detailRedirectUrl, '_blank', 'noopener,noreferrer');
-        } else {
-          toast.error('This item is only available on an external site.');
-        }
+        toast.error('Merchant link is unavailable for this seller.');
         return;
       }
 
@@ -1333,16 +1307,13 @@ export default function ProductDetailPage({ params }: Props) {
         return;
       }
 
-      const needsVariantMapping =
-        resolvedMerchantId !== String(pdpPayload.product.merchant_id || '').trim() ||
-        resolvedProductId !== String(pdpPayload.product.product_id || '').trim();
-      const purchaseVariant = needsVariantMapping
-        ? await resolveVariantForPurchase({
-            merchant_id: resolvedMerchantId,
-            product_id: resolvedProductId,
-            desired_variant: variant,
-          })
-        : variant;
+      const purchaseVariant = resolveOfferVariantForCheckout({
+        variant,
+        offer,
+        product: pdpPayload.product,
+        merchantId: resolvedMerchantId,
+        productId: resolvedProductId,
+      });
 
       if (!purchaseVariant) {
         toast.error('This seller doesn’t have the selected options. Try another offer.');

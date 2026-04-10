@@ -138,8 +138,20 @@ export interface ProductResponse {
   merchant_id?: string;
   merchant_name?: string;
   external_redirect_url?: string;
+  externalRedirectUrl?: string;
+  affiliate_url?: string;
+  external_url?: string;
+  redirect_url?: string;
+  url?: string;
+  product_url?: string;
+  canonical_url?: string;
+  destination_url?: string;
+  source_url?: string;
   external_seed_id?: string;
   source?: string;
+  commerce_mode?: string;
+  checkout_handoff?: string;
+  purchase_route?: string;
   disclosure_text?: string;
   platform?: string;
   platform_product_id?: string;
@@ -2489,13 +2501,13 @@ export async function getProductDetail(
     includeReviewSummary?: boolean;
   },
 ): Promise<ProductResponse | null> {
-  const allowBroadScan = options?.allowBroadScan !== false;
+  const allowBroadScan = options?.allowBroadScan === true;
   const timeoutMs = options?.timeout_ms;
   const useConfiguredMerchantId = options?.useConfiguredMerchantId !== false;
   const throwOnError = options?.throwOnError === true;
   const includeReviewSummary = options?.includeReviewSummary === true;
 
-  // Try to resolve merchant_id, fallback to cross-merchant search if missing.
+  // Try to resolve merchant_id, then use identifier search. Broad catalog scans are opt-in only.
   let merchantId: string | undefined = merchantIdOverride;
   if (!merchantId && useConfiguredMerchantId) {
     try {

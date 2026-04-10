@@ -212,6 +212,34 @@ function mergeUniqueRecommendations(
 }
 
 function isInternalCheckoutOffer(offer: Offer | null | undefined): boolean {
+  const purchaseRoute = String(offer?.purchase_route || '').trim().toLowerCase();
+  const commerceMode = String(offer?.commerce_mode || '').trim().toLowerCase();
+  const checkoutHandoff = String(offer?.checkout_handoff || '').trim().toLowerCase();
+  const hasOutboundUrl = Boolean(
+    offer?.external_redirect_url ||
+      offer?.externalRedirectUrl ||
+      offer?.affiliate_url ||
+      offer?.external_url ||
+      offer?.redirect_url ||
+      offer?.url,
+  );
+  if (
+    ['affiliate_outbound', 'merchant_site', 'external_redirect', 'links_out'].includes(purchaseRoute) ||
+    ['links_out', 'affiliate_outbound', 'merchant_site'].includes(commerceMode) ||
+    checkoutHandoff === 'redirect' ||
+    hasOutboundUrl
+  ) {
+    return false;
+  }
+  if (
+    purchaseRoute === 'internal_checkout' ||
+    commerceMode === 'merchant_embedded_checkout' ||
+    checkoutHandoff === 'embedded' ||
+    offer?.checkout_url ||
+    offer?.purchase_url
+  ) {
+    return true;
+  }
   const offerId = String(offer?.offer_id || '').trim().toLowerCase();
   if (offerId.startsWith('of:internal_checkout:')) return true;
   const merchantId = String(offer?.merchant_id || '').trim().toLowerCase();
