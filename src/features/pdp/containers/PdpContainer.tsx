@@ -1918,17 +1918,17 @@ export function PdpContainer({
     >
       <div
         className={cn(
-          'fixed left-0 right-0 z-50 transition-colors',
+          'fixed left-0 right-0 z-50 pointer-events-none transition-colors',
           navVisible ? 'bg-gradient-to-b from-white via-white to-white/95 shadow-sm' : 'bg-transparent',
         )}
         style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
       >
-        <div className="mx-auto max-w-md lg:max-w-6xl flex items-center gap-2 h-11 px-3">
+        <div className="mx-auto max-w-md lg:max-w-6xl flex items-center gap-2 h-11 px-3 pointer-events-none">
           <button
             type="button"
             onClick={handleBack}
             className={cn(
-              'h-9 w-9 rounded-full border border-border flex items-center justify-center',
+              'h-9 w-9 rounded-full border border-border flex items-center justify-center pointer-events-auto',
               navVisible ? 'bg-white' : 'bg-white/90',
             )}
             aria-label="Go back"
@@ -1936,7 +1936,7 @@ export function PdpContainer({
             <ChevronLeft className="h-4 w-4 text-foreground" />
           </button>
           {navVisible ? (
-            <form className="flex-1" onSubmit={handleSearchSubmit}>
+            <form className="flex-1 pointer-events-auto" onSubmit={handleSearchSubmit}>
               <input
                 type="search"
                 value={searchQuery}
@@ -1951,7 +1951,7 @@ export function PdpContainer({
             type="button"
             onClick={handleShare}
             className={cn(
-              'h-9 w-9 rounded-full border border-border flex items-center justify-center ml-auto',
+              'h-9 w-9 rounded-full border border-border flex items-center justify-center ml-auto pointer-events-auto',
               navVisible ? 'bg-white' : 'bg-white/90',
             )}
             aria-label="Share"
@@ -1960,7 +1960,7 @@ export function PdpContainer({
           </button>
         </div>
         {navVisible ? (
-          <div className="bg-white border-b border-border/60">
+          <div className="bg-white border-b border-border/60 pointer-events-auto">
             <div className="max-w-md lg:max-w-6xl mx-auto flex">
               {tabs.map((tab) => (
                 <button

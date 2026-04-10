@@ -267,7 +267,7 @@ describe('mapPdpV2ToPdpPayload image normalization', () => {
     expect(intelModule?.data?.product_intel_core?.best_for?.[0]?.label).toBe('Dullness');
   });
 
-  it('normalizes offer display names from seller fields returned by PDP v2', () => {
+  it('normalizes seller display names from real store fields returned by PDP v2', () => {
     const response = buildMinimalResponse();
     response.modules.push({
       type: 'offers',
@@ -277,6 +277,14 @@ describe('mapPdpV2ToPdpPayload image normalization', () => {
             offer_id: 'of:internal_checkout:merch_efbc46b4619cfbdf:10008793153864',
             product_id: '10008793153864',
             merchant_id: 'merch_efbc46b4619cfbdf',
+            store_name: 'Pivota Market',
+            vendor: 'KraveBeauty',
+            price: { amount: 28, currency: 'EUR' },
+          },
+          {
+            offer_id: 'of:internal_checkout:merch_missing:missing',
+            product_id: 'missing',
+            merchant_id: 'merch_missing',
             vendor: 'KraveBeauty',
             price: { amount: 28, currency: 'EUR' },
           },
@@ -286,7 +294,8 @@ describe('mapPdpV2ToPdpPayload image normalization', () => {
 
     const payload = mapPdpV2ToPdpPayload(response);
 
-    expect(payload?.offers?.[0]?.merchant_name).toBe('KraveBeauty');
+    expect(payload?.offers?.[0]?.merchant_name).toBe('Pivota Market');
+    expect(payload?.offers?.[1]?.merchant_name).toBeUndefined();
   });
 
   it('normalizes image-bearing modules returned outside canonical payload', () => {
