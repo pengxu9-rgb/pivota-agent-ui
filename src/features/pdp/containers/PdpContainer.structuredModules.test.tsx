@@ -326,6 +326,44 @@ function buildExternalSeedMultiVariantOfferPayload(): PDPPayload {
   };
 }
 
+function buildMultiOfferVariantPricingPayload(): PDPPayload {
+  const payload = buildExternalSeedMultiVariantOfferPayload();
+  return {
+    ...payload,
+    offers: [
+      {
+        offer_id: 'offer_internal_pivota_market',
+        product_id: 'shopify_gbr',
+        merchant_id: 'merch_efbc46b4619cfbdf',
+        merchant_name: 'Pivota Market',
+        price: { amount: 28, currency: 'EUR' },
+        purchase_route: 'internal_checkout',
+        commerce_mode: 'merchant_embedded_checkout',
+        checkout_handoff: 'embedded',
+        variants: [
+          {
+            variant_id: 'SHOP_STD',
+            title: 'Standard - 45 mL',
+            options: [{ name: 'size', value: 'Standard - 45 mL' }],
+            price: { current: { amount: 28, currency: 'EUR' } },
+            availability: { in_stock: true, available_quantity: 9 },
+          },
+          {
+            variant_id: 'SHOP_JUMBO',
+            title: 'Jumbo - 100 mL',
+            options: [{ name: 'size', value: 'Jumbo - 100 mL' }],
+            price: { current: { amount: 40, currency: 'EUR' } },
+            availability: { in_stock: true, available_quantity: 9 },
+          },
+        ],
+      },
+      ...(payload.offers || []),
+    ],
+    default_offer_id: 'offer_internal_pivota_market',
+    best_price_offer_id: 'offer_internal_pivota_market',
+  };
+}
+
 describe('PdpContainer structured PDP modules', () => {
   afterEach(() => {
     cleanup();
@@ -475,5 +513,23 @@ describe('PdpContainer structured PDP modules', () => {
     expect(screen.getByText('Selected:')).toBeInTheDocument();
     expect(screen.getAllByText('Jumbo - 100 mL').length).toBeGreaterThan(0);
     expect(screen.getAllByText('€50.00').length).toBeGreaterThan(0);
+  });
+
+  it('uses the selected seller variant price when multiple offers coexist', () => {
+    render(
+      <PdpContainer
+        payload={buildMultiOfferVariantPricingPayload()}
+        mode="generic"
+        onAddToCart={() => {}}
+        onBuyNow={() => {}}
+      />,
+    );
+
+    expect(screen.getAllByText('€28.00').length).toBeGreaterThan(0);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Jumbo - 100 mL' }));
+
+    expect(screen.getAllByText('Jumbo - 100 mL').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('€40.00').length).toBeGreaterThan(0);
   });
 });

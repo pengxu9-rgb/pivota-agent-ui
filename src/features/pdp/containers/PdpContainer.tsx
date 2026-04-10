@@ -73,6 +73,7 @@ import { ModuleShell } from '@/features/pdp/components/ModuleShell';
 import { DEFAULT_UGC_SNAPSHOT, lockFirstUgcSource, mergeUgcItems } from '@/features/pdp/state/freezePolicy';
 import { getStableGalleryItems, resolveHeroMediaUrl } from '@/features/pdp/state/heroMedia';
 import { buildPdpViewModel } from '@/features/pdp/state/viewModel';
+import { findMatchingOfferVariant } from '@/features/pdp/utils/offerVariantMatching';
 import { buildBrandHref } from '@/lib/brandRoute';
 import { cn } from '@/lib/utils';
 import { resolveReviewGate, reviewGateMessage, reviewGateResultToReason } from '@/lib/reviewGate';
@@ -959,28 +960,52 @@ export function PdpContainer({
     galleryItems,
     fallbackUrl: payload.product.image_url || '',
   });
+  const selectedOfferVariant = useMemo(
+    () => findMatchingOfferVariant(selectedOffer, selectedVariant),
+    [selectedOffer, selectedVariant],
+  );
   const selectedVariantPriceAmount = selectedVariant.price?.current.amount;
   const baseCurrency =
     selectedVariant.price?.current.currency || payload.product.price?.current.currency || 'USD';
   const basePriceAmount =
     selectedVariant.price?.current.amount ?? payload.product.price?.current.amount ?? 0;
-  const offerCurrency = selectedOffer?.price?.currency || baseCurrency;
+  const selectedOfferItemPrice = selectedOfferVariant?.price?.current.amount;
+  const offerCurrency =
+    selectedOfferVariant?.price?.current.currency || selectedOffer?.price?.currency || baseCurrency;
   const offerShippingCost = Number(selectedOffer?.shipping?.cost?.amount) || 0;
-  const offerTotalPrice = selectedOffer ? (Number(selectedOffer.price.amount) || 0) + offerShippingCost : null;
-  const shouldPreferVariantDisplayPrice =
-    offers.length <= 1 &&
+  const fallbackOfferItemPrice =
+    selectedOffer && typeof selectedOffer?.price?.amount === 'number'
+      ? selectedOffer.price.amount
+      : Number(selectedOffer?.price?.amount ?? 0);
+  const offerItemPrice =
+    typeof selectedOfferItemPrice === 'number' && Number.isFinite(selectedOfferItemPrice)
+      ? selectedOfferItemPrice
+      : Number.isFinite(fallbackOfferItemPrice)
+        ? fallbackOfferItemPrice
+        : null;
+  const offerTotalPrice = selectedOffer && offerItemPrice != null ? offerItemPrice + offerShippingCost : null;
+  const shouldUseOfferVariantPrice =
+    selectedOffer != null &&
+    typeof selectedOfferItemPrice === 'number' &&
+    Number.isFinite(selectedOfferItemPrice);
+  const shouldUseBaseVariantPrice =
+    !shouldUseOfferVariantPrice &&
     typeof selectedVariantPriceAmount === 'number' &&
     Number.isFinite(selectedVariantPriceAmount);
-  const displayCurrency = shouldPreferVariantDisplayPrice
-    ? baseCurrency
-    : selectedOffer
-      ? offerCurrency
-      : baseCurrency;
-  const displayPriceAmount = shouldPreferVariantDisplayPrice
-    ? basePriceAmount
-    : selectedOffer && offerTotalPrice != null
-      ? offerTotalPrice
-      : basePriceAmount;
+  const displayCurrency = shouldUseOfferVariantPrice
+    ? offerCurrency
+    : shouldUseBaseVariantPrice
+      ? baseCurrency
+      : selectedOffer
+        ? offerCurrency
+        : baseCurrency;
+  const displayPriceAmount = shouldUseOfferVariantPrice
+    ? offerTotalPrice ?? basePriceAmount
+    : shouldUseBaseVariantPrice
+      ? basePriceAmount
+      : selectedOffer && offerTotalPrice != null
+        ? offerTotalPrice
+        : basePriceAmount;
 
   const effectiveMerchantId = selectedOffer?.merchant_id || payload.product.merchant_id;
   const effectiveProductId = String(selectedOffer?.product_id || payload.product.product_id || '').trim();

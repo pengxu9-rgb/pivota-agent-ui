@@ -21,6 +21,7 @@ import { BeautyPDPContainer } from '@/features/pdp/containers/BeautyPDPContainer
 import { GenericPDPContainer } from '@/features/pdp/containers/GenericPDPContainer';
 import type { Module, PDPPayload, Variant } from '@/features/pdp/types';
 import { pdpTracking } from '@/features/pdp/tracking';
+import { findMatchingOfferVariant } from '@/features/pdp/utils/offerVariantMatching';
 import {
   isExternalAgentEntry,
   resolveExternalAgentHomeUrl,
@@ -248,6 +249,11 @@ function resolveOfferVariantForCheckout(args: {
   merchantId: string;
   productId: string;
 }): Variant | null {
+  const matchedOfferVariant = findMatchingOfferVariant(args.offer, args.variant);
+  if (matchedOfferVariant) {
+    return matchedOfferVariant;
+  }
+
   const offerVariantId = String(
     args.offer?.variant_id ||
       args.offer?.variantId ||
@@ -1243,11 +1249,18 @@ export default function ProductDetailPage({ params }: Props) {
           : undefined;
 
       const offerItemPrice = offer
-        ? Number(offer?.price?.amount ?? offer?.price_amount ?? offer?.price ?? 0)
+        ? Number(
+            purchaseVariant.price?.current.amount ??
+              offer?.price?.amount ??
+              offer?.price_amount ??
+              offer?.price ??
+              0,
+          )
         : undefined;
       const offerCurrency = offer
         ? String(
-            offer?.price?.currency ||
+            purchaseVariant.price?.current.currency ||
+              offer?.price?.currency ||
               offer?.currency ||
               pdpPayload.product.price?.current.currency ||
               'USD',
@@ -1373,7 +1386,13 @@ export default function ProductDetailPage({ params }: Props) {
           : undefined;
 
       const offerItemPrice = offer
-        ? Number(offer?.price?.amount ?? offer?.price_amount ?? offer?.price ?? 0)
+        ? Number(
+            purchaseVariant.price?.current.amount ??
+              offer?.price?.amount ??
+              offer?.price_amount ??
+              offer?.price ??
+              0,
+          )
         : undefined;
 
       const checkoutItems = [
@@ -1388,7 +1407,8 @@ export default function ProductDetailPage({ params }: Props) {
               : purchaseVariant.price?.current.amount ?? pdpPayload.product.price?.current.amount ?? 0,
           currency:
             String(
-              offer?.price?.currency ||
+              purchaseVariant.price?.current.currency ||
+                offer?.price?.currency ||
                 offer?.currency ||
                 purchaseVariant.price?.current.currency ||
                 pdpPayload.product.price?.current.currency ||
