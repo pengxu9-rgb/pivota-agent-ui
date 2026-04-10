@@ -22,13 +22,17 @@ describe('normalizePdpImageUrl', () => {
     );
   });
 
-  it('canonicalizes Tom Ford sdcdn SKU assets onto official Shopify files URLs', () => {
+  it('keeps Tom Ford sdcdn SKU assets on sdcdn instead of rewriting them to Shopify', () => {
     expect(
       normalizePdpImageUrl(
         'https://sdcdn.io/tf/tf_sku_TC7Y09_3000x3000_4.jpg?height=1400px&width=1400px',
       ),
-    ).toBe(
-      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_TC7Y09_3000x3000_4.jpg',
-    );
+    ).toBe('https://sdcdn.io/tf/tf_sku_TC7Y09_3000x3000_4.jpg');
+  });
+
+  it('does not rewrite Tom Ford sdcdn regional assets that are absent from Shopify files', () => {
+    expect(
+      normalizePdpImageUrl('https://sdcdn.io/tf/tf_sku_TE1634_NA_3000x3000_0.png'),
+    ).toBe('https://sdcdn.io/tf/tf_sku_TE1634_NA_3000x3000_0.png');
   });
 });

@@ -460,10 +460,10 @@ describe('mapPdpV2ToPdpPayload image normalization', () => {
     expect(
       imageItems.map((item: any) => unwrapProxyTarget(String(item?.url || ''))),
     ).toEqual([
-      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T14Q01_3000x3000_0.png',
-      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T14Q01_2000x2000_1.jpg',
-      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T2TL01_2000x2000_0.png',
-      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T14Z01_2000x2000_2.jpg',
+      'https://sdcdn.io/tf/tf_sku_T14Q01_3000x3000_0.png',
+      'https://sdcdn.io/tf/tf_sku_T14Q01_2000x2000_1.jpg',
+      'https://sdcdn.io/tf/tf_sku_T2TL01_2000x2000_0.png',
+      'https://sdcdn.io/tf/tf_sku_T14Z01_2000x2000_2.jpg',
     ]);
   });
 

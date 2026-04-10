@@ -52,6 +52,7 @@ function rewriteTomFordAssetHost(parsed: URL): URL {
     next.searchParams.delete('height');
     next.searchParams.delete('w');
     next.searchParams.delete('h');
+    return next;
   }
 
   return new URL(`${TOM_FORD_SHOPIFY_FILES_BASE}${filename}${next.search}`);
