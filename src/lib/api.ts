@@ -165,6 +165,26 @@ export interface ProductResponse {
     variant_id?: string;
     sku_id?: string;
   };
+  sellable_item_group_id?: string;
+  product_line_id?: string;
+  review_family_id?: string;
+  identity_confidence?: number;
+  match_basis?: string[];
+  canonical_scope?: string;
+  identity_graph?: {
+    source_listing_ref?: string;
+    sellable_item_group_id?: string;
+    product_line_id?: string | null;
+    review_family_id?: string | null;
+    grouped_candidate_count?: number;
+  };
+  group_members?: Array<{
+    merchant_id?: string;
+    product_id?: string;
+    source_kind?: string;
+    source_tier?: string;
+    source_listing_ref?: string;
+  }>;
   title: string;
   description: string;
   price: number;
@@ -550,6 +570,30 @@ export function normalizeProduct(
       undefined,
     sku: anyP.sku || anyP.sku_id || anyP.skuId || undefined,
     product_ref: anyP.product_ref || anyP.productRef || undefined,
+    sellable_item_group_id: anyP.sellable_item_group_id || anyP.sellableItemGroupId || undefined,
+    product_line_id: anyP.product_line_id || anyP.productLineId || undefined,
+    review_family_id: anyP.review_family_id || anyP.reviewFamilyId || undefined,
+    identity_confidence:
+      Number.isFinite(Number(anyP.identity_confidence ?? anyP.identityConfidence))
+        ? Number(anyP.identity_confidence ?? anyP.identityConfidence)
+        : undefined,
+    match_basis: Array.isArray(anyP.match_basis)
+      ? anyP.match_basis.map((item: unknown) => String(item || '').trim()).filter(Boolean)
+      : Array.isArray(anyP.matchBasis)
+        ? anyP.matchBasis.map((item: unknown) => String(item || '').trim()).filter(Boolean)
+        : undefined,
+    canonical_scope: anyP.canonical_scope || anyP.canonicalScope || undefined,
+    identity_graph:
+      anyP.identity_graph && typeof anyP.identity_graph === 'object'
+        ? anyP.identity_graph
+        : anyP.identityGraph && typeof anyP.identityGraph === 'object'
+          ? anyP.identityGraph
+          : undefined,
+    group_members: Array.isArray(anyP.group_members)
+      ? anyP.group_members
+      : Array.isArray(anyP.groupMembers)
+        ? anyP.groupMembers
+        : undefined,
     title: anyP.title || anyP.name || 'Untitled product',
     description,
     price: normalizedPrice,
