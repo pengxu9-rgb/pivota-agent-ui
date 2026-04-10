@@ -8,6 +8,12 @@ function buildMinimalResponse() {
       {
         type: 'canonical',
         data: {
+          sellable_item_group_id: 'sig_krave_45',
+          product_line_id: 'pl_krave_gbr',
+          review_family_id: 'rf_krave_gbr',
+          identity_confidence: 0.94,
+          match_basis: ['official_url:https://kravebeauty.com/products/great-barrier-relief'],
+          canonical_scope: 'synthetic',
           pdp_payload: {
             product: {
               product_id: 'ext_123',
@@ -38,6 +44,14 @@ function buildMinimalResponse() {
                       url: 'https://cdn.example.com/video.mp4',
                     },
                   ],
+                  gallery_scope: 'exact_item',
+                  preview_scope: 'product_line',
+                  preview_items: [
+                    {
+                      type: 'image',
+                      url: 'https://sdcdn.io/tf/preview.png',
+                    },
+                  ],
                 },
               },
               {
@@ -58,6 +72,14 @@ function buildMinimalResponse() {
                 module_id: 'm_reviews',
                 type: 'reviews_preview',
                 data: {
+                  aggregation_scope: 'product_line',
+                  exact_item_review_count: 12,
+                  product_line_review_count: 42,
+                  scope_label: 'Based on product-line reviews (42)',
+                  tabs: [
+                    { id: 'product_line', label: 'Product line', count: 42, default: true },
+                    { id: 'exact_item', label: 'Exact item', count: 12, default: false },
+                  ],
                   preview_items: [
                     {
                       review_id: 'r1',
@@ -121,12 +143,19 @@ describe('mapPdpV2ToPdpPayload image normalization', () => {
     const mediaGallery = payload?.modules.find((m) => m.type === 'media_gallery') as any;
     expect(mediaGallery?.data?.items?.[0]?.url).toBe('https://sdcdn.io/tf/hero.png');
     expect(mediaGallery?.data?.items?.[1]?.url).toBe('https://cdn.example.com/video.mp4');
+    expect(mediaGallery?.data?.preview_items?.[0]?.url).toBe('https://sdcdn.io/tf/preview.png');
 
     const recs = payload?.modules.find((m) => m.type === 'recommendations') as any;
     expect(recs?.data?.items?.[0]?.image_url).toBe('https://sdcdn.io/tf/related.png');
 
     const reviews = payload?.modules.find((m) => m.type === 'reviews_preview') as any;
     expect(reviews?.data?.preview_items?.[0]?.media?.[0]?.url).toBe('https://sdcdn.io/tf/review.png');
+    expect(reviews?.data?.aggregation_scope).toBe('product_line');
+    expect(reviews?.data?.tabs?.[0]?.label).toBe('Product line');
+    expect(payload?.sellable_item_group_id).toBe('sig_krave_45');
+    expect(payload?.product_line_id).toBe('pl_krave_gbr');
+    expect(payload?.review_family_id).toBe('rf_krave_gbr');
+    expect(payload?.canonical_scope).toBe('synthetic');
   });
 
   it('does not double-wrap already proxied URLs', () => {

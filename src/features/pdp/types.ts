@@ -4,6 +4,12 @@ export interface PDPPayload {
   tracking: PageTracking;
   product: Product;
   product_group_id?: string;
+  sellable_item_group_id?: string;
+  product_line_id?: string;
+  review_family_id?: string;
+  identity_confidence?: number;
+  match_basis?: string[];
+  canonical_scope?: 'synthetic' | string;
   offers?: Offer[];
   offers_count?: number;
   default_offer_id?: string;
@@ -206,15 +212,23 @@ export interface ActionTarget {
 
 export interface MediaGalleryData {
   items: MediaItem[];
+  gallery_scope?: 'exact_item' | string;
+  preview_scope?: 'product_line' | string;
+  preview_items?: MediaItem[];
 }
 
 export interface MediaItem {
   type: 'image' | 'video';
   url: string;
   source?: string;
+  source_scope?: string;
+  source_tier?: string;
+  source_kind?: string;
   alt_text?: string;
   thumbnail_url?: string;
   duration_ms?: number;
+  merchant_id?: string;
+  product_id?: string;
 }
 
 export interface PricePromoData {
@@ -384,6 +398,10 @@ export interface ReviewsPreviewData {
   scale: number;
   rating: number;
   review_count: number;
+  aggregation_scope?: 'product_line' | 'exact_item' | string;
+  exact_item_review_count?: number;
+  product_line_review_count?: number;
+  scope_label?: string;
   star_distribution?: Array<{
     stars: number;
     count?: number;
@@ -414,6 +432,17 @@ export interface ReviewsPreviewData {
     title?: string;
     text_snippet: string;
     media?: MediaItem[];
+  }>;
+  filters?: Array<{
+    id: string;
+    label: string;
+    count?: number;
+  }>;
+  tabs?: Array<{
+    id: string;
+    label: string;
+    count?: number;
+    default?: boolean;
   }>;
   entry_points?: {
     open_reviews?: { action_type: 'open_embed'; label: string; target: ActionTarget };

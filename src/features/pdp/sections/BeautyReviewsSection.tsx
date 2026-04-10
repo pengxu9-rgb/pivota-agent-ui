@@ -69,6 +69,7 @@ export function BeautyReviewsSection({
       return { ...item, percent };
     })
     .sort((a, b) => (b.stars || 0) - (a.stars || 0));
+  const scopeTabs = Array.isArray(data.tabs) ? data.tabs.filter((tab) => tab?.id && tab?.label) : [];
 
   return (
     <div className="py-4">
@@ -89,6 +90,29 @@ export function BeautyReviewsSection({
             </button>
           ) : null}
         </div>
+
+        {data.scope_label ? (
+          <p className="mb-2 text-[11px] text-muted-foreground">{data.scope_label}</p>
+        ) : null}
+
+        {scopeTabs.length ? (
+          <div className="mb-3 flex flex-wrap gap-2">
+            {scopeTabs.map((tab) => (
+              <span
+                key={tab.id}
+                className={cn(
+                  'rounded-full border px-2.5 py-1 text-[11px]',
+                  tab.default
+                    ? 'border-foreground/20 bg-foreground/5 text-foreground'
+                    : 'border-border text-muted-foreground',
+                )}
+              >
+                {tab.label}
+                {typeof tab.count === 'number' ? ` (${tab.count})` : ''}
+              </span>
+            ))}
+          </div>
+        ) : null}
 
         {hasSummary ? (
           <div className="flex gap-4">
