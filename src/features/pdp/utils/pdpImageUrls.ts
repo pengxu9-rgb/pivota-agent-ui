@@ -18,7 +18,8 @@ const IMAGE_DEDUPE_IGNORED_QUERY_KEYS = new Set([
 const KNOWN_SDCND_FILENAME_ALIASES: Record<string, string> = {
   'tf_sku_t2ss02_3000x3000_0.png': 'tf_sku_T2SS02_3000x3000_1.png',
 };
-const TOM_FORD_SHOPIFY_FILES_PREFIX = '/s/files/1/0761/9690/5173/files/';
+const TOM_FORD_SLOT_DEDUPE_RE =
+  /^(tfb?_sku_)(.+?)_(\d+x\d+)_([0-9]+[a-z]?)\.(avif|gif|jpe?g|png|webp)$/i;
 
 const DIRECT_REMOTE_IMAGE_HOSTS = [
   'cdn.shopify.com',
@@ -32,15 +33,19 @@ const DIRECT_REMOTE_IMAGE_HOSTS = [
   'pivota-agent-production.up.railway.app',
 ] as const;
 
-function rewriteTomFordAssetToOfficialShopify(parsed: URL): URL {
+function rewriteKnownSdcdnMirror(parsed: URL): URL {
   const next = new URL(parsed.toString());
-  const filename = normalizeShopifyLikeFilename(String(next.pathname.split('/').pop() || '').trim(), {
-    stripHash: false,
-  });
+  const filename = String(next.pathname.split('/').pop() || '').trim();
   if (!filename) return next;
 
-  if (/^tfb?_sku_/i.test(filename)) {
-    return new URL(`https://cdn.shopify.com${TOM_FORD_SHOPIFY_FILES_PREFIX}${filename}`);
+  if (
+    isKnownRemoteHost(next.hostname, ['cdn.shopify.com', 'shopifycdn.com']) &&
+    /^tf_/i.test(filename)
+  ) {
+    const mirror = new URL(`https://sdcdn.io/tf/${filename}`);
+    mirror.searchParams.set('height', '1400px');
+    mirror.searchParams.set('width', '1400px');
+    return mirror;
   }
 
   return next;
@@ -66,8 +71,7 @@ function isShopifyLikeAsset(parsed: URL): boolean {
   );
 }
 
-function normalizeShopifyLikeFilename(filename: string, options: { stripHash?: boolean } = {}): string {
-  const stripHash = options.stripHash === true;
+function normalizeShopifyLikeFilename(filename: string): string {
   const trimmed = String(filename || '').trim();
   if (!trimmed) return trimmed;
   let decoded = trimmed;
@@ -78,9 +82,6 @@ function normalizeShopifyLikeFilename(filename: string, options: { stripHash?: b
   }
   const compacted = decoded.replace(/\s*_\s*/g, '_').trim();
   const aliased = KNOWN_SDCND_FILENAME_ALIASES[compacted.toLowerCase()] || compacted;
-  if (!stripHash) {
-    return aliased;
-  }
   const hashed = aliased.match(SHOPIFY_FILE_HASH_SUFFIX_RE);
   if (hashed) {
     return `${hashed[1]}.${hashed[2]}`;
@@ -94,12 +95,10 @@ function normalizeImageAssetUrl(parsed: URL): URL {
     next.searchParams.delete('v');
     const segments = next.pathname.split('/');
     const lastIndex = segments.length - 1;
-    segments[lastIndex] = normalizeShopifyLikeFilename(segments[lastIndex] || '', {
-      stripHash: false,
-    });
+    segments[lastIndex] = normalizeShopifyLikeFilename(segments[lastIndex] || '');
     next.pathname = segments.join('/');
   }
-  next = rewriteTomFordAssetToOfficialShopify(next);
+  next = rewriteKnownSdcdnMirror(next);
   return next;
 }
 
@@ -186,14 +185,16 @@ export function buildPdpImageDedupeKey(rawUrl: unknown): string | null {
 
   try {
     const parsed = absolute ? new URL(unwrapped) : new URL(unwrapped, 'http://localhost');
+    const filename = normalizeShopifyLikeFilename(parsed.pathname.split('/').pop() || '');
+    const tomFordSlotMatch = filename.match(TOM_FORD_SLOT_DEDUPE_RE);
+    if (absolute && tomFordSlotMatch) {
+      const dimensions = String(tomFordSlotMatch[3] || '').toLowerCase();
+      const slot = String(tomFordSlotMatch[4] || '').toLowerCase();
+      if (dimensions && slot) {
+        return `asset:tf_slot:${dimensions}_${slot}`;
+      }
+    }
     const normalizedSearch = new URLSearchParams();
-    const dedupePathname =
-      absolute && isShopifyLikeAsset(parsed)
-        ? `${parsed.pathname.split('/').slice(0, -1).join('/')}/${normalizeShopifyLikeFilename(
-            parsed.pathname.split('/').pop() || '',
-            { stripHash: true },
-          )}`
-        : parsed.pathname;
     Array.from(parsed.searchParams.entries())
       .sort(([aKey, aValue], [bKey, bValue]) => {
         if (aKey === bKey) return aValue.localeCompare(bValue);
@@ -205,7 +206,7 @@ export function buildPdpImageDedupeKey(rawUrl: unknown): string | null {
       });
 
     if (absolute) {
-      return `${parsed.protocol}//${parsed.host}${dedupePathname}${
+      return `${parsed.protocol}//${parsed.host}${parsed.pathname}${
         normalizedSearch.toString() ? `?${normalizedSearch.toString()}` : ''
       }`;
     }

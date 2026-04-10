@@ -1,6 +1,7 @@
 export type PdpTrackingEvent =
   | 'pdp_view'
   | 'pdp_core_ready'
+  | 'pdp_core_retry_recovered'
   | 'pdp_module_impression'
   | 'pdp_module_ready'
   | 'pdp_fallback_used'

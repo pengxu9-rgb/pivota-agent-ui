@@ -119,6 +119,10 @@ function normalizeReviewsModule(module: Module): Module {
   };
 }
 
+function normalizeImageBearingModule(module: Module): Module {
+  return normalizeReviewsModule(normalizeRecommendationsModule(normalizeMediaGalleryModule(module)));
+}
+
 function normalizePdpPayloadImages(payload: PDPPayload): PDPPayload {
   const product = isRecord(payload.product) ? (payload.product as Record<string, any>) : null;
   const normalizedProduct = product
@@ -153,9 +157,7 @@ function normalizePdpPayloadImages(payload: PDPPayload): PDPPayload {
     : payload.product;
 
   const modules = Array.isArray(payload.modules)
-    ? payload.modules.map((module) =>
-        normalizeReviewsModule(normalizeRecommendationsModule(normalizeMediaGalleryModule(module))),
-      )
+    ? payload.modules.map((module) => normalizeImageBearingModule(module))
     : payload.modules;
 
   return {
@@ -225,7 +227,7 @@ export function mapPdpV2ToPdpPayload(response: GetPdpV2Response): PDPPayload | n
   for (const moduleType of CANONICAL_PASSTHROUGH_MODULE_TYPES) {
     const moduleEntry = getModule(response, moduleType);
     if (!isRecord(moduleEntry?.data)) continue;
-    next = upsertPayloadModule(next, {
+    next = upsertPayloadModule(next, normalizeImageBearingModule({
       module_id:
         typeof moduleEntry.module_id === 'string' && moduleEntry.module_id.trim()
           ? moduleEntry.module_id
@@ -236,7 +238,7 @@ export function mapPdpV2ToPdpPayload(response: GetPdpV2Response): PDPPayload | n
         ? { title: moduleEntry.title }
         : {}),
       data: moduleEntry.data,
-    });
+    }));
   }
 
   const offersModule = getModule(response, 'offers');
@@ -322,7 +324,7 @@ export function mapPdpV2ToPdpPayload(response: GetPdpV2Response): PDPPayload | n
     const responseModule = getModule(response, moduleSpec.responseType);
     const responseData = isRecord(responseModule?.data) ? responseModule.data : null;
     if (!responseData) continue;
-    next = upsertPayloadModule(next, {
+    next = upsertPayloadModule(next, normalizeImageBearingModule({
       module_id: moduleSpec.module_id,
       type: moduleSpec.type,
       priority: moduleSpec.priority,
@@ -333,19 +335,19 @@ export function mapPdpV2ToPdpPayload(response: GetPdpV2Response): PDPPayload | n
         | HowToUseData
         | ProductDetailsData
         | Record<string, unknown>,
-    });
+    }));
   }
 
   const reviewsModule = getModule(response, 'reviews_preview');
   const reviewsData = isRecord(reviewsModule?.data) ? (reviewsModule.data as ReviewsPreviewData) : null;
   if (reviewsData) {
-    next = upsertPayloadModule(next, {
+    next = upsertPayloadModule(next, normalizeImageBearingModule({
       module_id: 'reviews_preview',
       type: 'reviews_preview',
       priority: 50,
       title: 'Reviews',
       data: reviewsData,
-    });
+    }));
   } else if (reviewsModule) {
     // If the server returned the module but data is unavailable, keep a stable UI section.
     next = upsertPayloadModule(next, {
@@ -364,13 +366,13 @@ export function mapPdpV2ToPdpPayload(response: GetPdpV2Response): PDPPayload | n
   const similarModule = getModule(response, 'similar');
   const similarData = isRecord(similarModule?.data) ? (similarModule.data as RecommendationsData) : null;
   if (similarData) {
-    next = upsertPayloadModule(next, {
+    next = upsertPayloadModule(next, normalizeImageBearingModule({
       module_id: 'recommendations',
       type: 'recommendations',
       priority: 90,
       title: 'Similar',
       data: similarData,
-    });
+    }));
     next.x_recommendations_state = 'ready';
   } else if (similarModule) {
     // The caller explicitly requested Similar; render an empty section instead of hiding it.
