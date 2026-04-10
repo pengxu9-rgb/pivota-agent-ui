@@ -129,6 +129,7 @@ export interface Offer {
   merchant_id: string;
   merchant_name?: string;
   price: Price;
+  variants?: Variant[];
   shipping?: {
     eta_days_range?: [number, number];
     cost?: Price;
