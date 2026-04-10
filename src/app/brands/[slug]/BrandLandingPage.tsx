@@ -62,6 +62,8 @@ type BrandStory = {
 };
 
 function buildProductKey(product: ProductResponse): string {
+  const sellableGroupId = String(product?.sellable_item_group_id || '').trim();
+  if (sellableGroupId) return `sellable_item_group::${sellableGroupId}`;
   return `${String(product?.merchant_id || '').trim()}::${String(product?.product_id || '').trim()}`;
 }
 
@@ -358,7 +360,12 @@ function BrandProductCard({ product }: { product: ProductResponse }) {
   const href = buildProductHref(product.product_id, product.merchant_id);
   const hrefWithReturn = appendCurrentPathAsReturn(href);
   const card = resolveProductCardPresentation(product);
+  const isIdentityGrouped =
+    Boolean(product.sellable_item_group_id) ||
+    product.canonical_scope === 'synthetic' ||
+    (Array.isArray(product.group_members) && product.group_members.length > 1);
   const isDirectCartEligible =
+    !isIdentityGrouped &&
     Boolean(product.merchant_id) &&
     product.merchant_id !== 'external_seed' &&
     !product.external_redirect_url;
@@ -497,7 +504,9 @@ export function BrandLandingPage({
   const openCart = useCartStore((state) => state.open);
 
   const hasInitialFeed = Boolean(initialFeed);
-  const [products, setProducts] = useState<ProductResponse[]>(() => initialFeed?.products || []);
+  const [products, setProducts] = useState<ProductResponse[]>(() =>
+    mergeUniqueProducts([], initialFeed?.products || []).merged,
+  );
   const [feedMetadata, setFeedMetadata] = useState<Record<string, any>>(
     () => initialFeed?.metadata || {},
   );
@@ -687,7 +696,7 @@ export function BrandLandingPage({
     })
       .then((result) => {
         if (cancelled || requestSeq !== requestSeqRef.current) return;
-        setProducts(result.products);
+        setProducts(mergeUniqueProducts([], result.products).merged);
         setFeedMetadata(result.metadata || {});
         setTotal(result.page_info.total);
         setHasMore(Boolean(result.page_info.has_more));

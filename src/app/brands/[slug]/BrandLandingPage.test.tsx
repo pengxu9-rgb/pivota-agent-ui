@@ -208,6 +208,70 @@ describe('BrandLandingPage', () => {
     );
   });
 
+  it('dedupes identity-grouped products and routes grouped quick actions through PDP', async () => {
+    window.history.replaceState({}, '', '/brands/kravebeauty');
+
+    render(
+      <BrandLandingPage
+        slug="kravebeauty"
+        initialBrandName="KraveBeauty"
+        initialFeed={{
+          products: [
+            {
+              product_id: 'internal_gbr',
+              merchant_id: 'merch_krave',
+              title: 'Internal Great Barrier Relief',
+              description: 'Internal listing',
+              category: 'serum',
+              price: 28,
+              currency: 'EUR',
+              image_url: 'https://example.com/internal.jpg',
+              in_stock: true,
+              sellable_item_group_id: 'sig_krave_gbr_45ml',
+              canonical_scope: 'synthetic',
+              group_members: [
+                { merchant_id: 'merch_krave', product_id: 'internal_gbr' },
+                { merchant_id: 'external_seed', product_id: 'external_gbr' },
+              ],
+            },
+            {
+              product_id: 'external_gbr',
+              merchant_id: 'external_seed',
+              title: 'Great Barrier Relief',
+              description: 'Official listing',
+              category: 'serum',
+              price: 28,
+              currency: 'EUR',
+              image_url: 'https://example.com/external.jpg',
+              in_stock: true,
+              sellable_item_group_id: 'sig_krave_gbr_45ml',
+              canonical_scope: 'synthetic',
+              group_members: [
+                { merchant_id: 'merch_krave', product_id: 'internal_gbr' },
+                { merchant_id: 'external_seed', product_id: 'external_gbr' },
+              ],
+            },
+          ],
+          metadata: { has_more: false },
+          facets: { categories: [] },
+          query_text: '',
+          page_info: { page: 1, page_size: 2, total: 2, has_more: false },
+        }}
+      />,
+    );
+
+    expect(screen.getByText('Great Barrier Relief')).toBeInTheDocument();
+    expect(screen.queryByText('Internal Great Barrier Relief')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'View details for Great Barrier Relief' }));
+
+    expect(addItemMock).not.toHaveBeenCalled();
+    expect(openCartMock).not.toHaveBeenCalled();
+    expect(pushMock).toHaveBeenCalledWith(
+      '/products/external_gbr?return=%2Fbrands%2Fkravebeauty',
+    );
+  });
+
   it('renders an initial server-fed brand result without re-fetching on mount', async () => {
     render(
       <BrandLandingPage
