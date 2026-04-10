@@ -5,6 +5,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PdpContainer } from './PdpContainer';
 import type { PDPPayload } from '@/features/pdp/types';
 
+const pushMock = vi.fn();
+
 vi.mock('next/image', () => ({
   default: (
     props: React.ImgHTMLAttributes<HTMLImageElement> & {
@@ -28,7 +30,7 @@ vi.mock('next/image', () => ({
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({
-    push: vi.fn(),
+    push: pushMock,
   }),
 }));
 
@@ -141,6 +143,7 @@ describe('PdpContainer gallery viewer wiring', () => {
     cleanup();
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
+    pushMock.mockReset();
     Object.defineProperty(window, 'matchMedia', {
       configurable: true,
       writable: true,
@@ -234,6 +237,107 @@ describe('PdpContainer gallery viewer wiring', () => {
     expect(screen.getByText('Selected by default')).toBeInTheDocument();
     expect(screen.getByText('Option')).toBeInTheDocument();
     expect(screen.getAllByText('Default option').length).toBeGreaterThan(0);
+  });
+
+  it('navigates to a product-line sibling PDP from the preview rail', () => {
+    const previewPayload: PDPPayload = {
+      ...payload,
+      modules: [
+        {
+          ...payload.modules[0],
+          data: {
+            items: [
+              { type: 'image', url: 'https://example.com/1.jpg' },
+              { type: 'image', url: 'https://example.com/2.jpg' },
+            ],
+            preview_scope: 'product_line',
+            preview_items: [
+              {
+                type: 'image',
+                url: 'https://example.com/sibling.jpg',
+                alt_text: 'Jumbo - 100 mL',
+                merchant_id: 'external_seed',
+                product_id: 'ext_krave_gbr_100',
+              },
+            ],
+          },
+        },
+        ...payload.modules.slice(1),
+      ],
+    };
+
+    window.history.replaceState(null, '', '/products/P001?merchant_id=merch_test');
+
+    render(
+      <PdpContainer
+        payload={previewPayload}
+        mode="generic"
+        onAddToCart={() => {}}
+        onBuyNow={() => {}}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'View product-line item 1' }));
+    expect(pushMock).toHaveBeenCalledWith(
+      '/products/ext_krave_gbr_100?merchant_id=external_seed&return=%2Fproducts%2FP001%3Fmerchant_id%3Dmerch_test',
+    );
+  });
+
+  it('switches review summary when selecting the exact-item review scope', () => {
+    const scopedPayload: PDPPayload = {
+      ...payload,
+      modules: payload.modules.map((module) =>
+        module.type === 'reviews_preview'
+          ? {
+              ...module,
+              data: {
+                scale: 5,
+                rating: 4.7,
+                review_count: 42,
+                aggregation_scope: 'product_line',
+                exact_item_review_count: 12,
+                product_line_review_count: 42,
+                scope_label: 'Based on product-line reviews (42)',
+                tabs: [
+                  { id: 'product_line', label: 'Product line', count: 42, default: true },
+                  { id: 'exact_item', label: 'Exact item', count: 12, default: false },
+                ],
+                scoped_summaries: {
+                  product_line: {
+                    scale: 5,
+                    rating: 4.7,
+                    review_count: 42,
+                    scope_label: 'Based on product-line reviews (42)',
+                    preview_items: [],
+                  },
+                  exact_item: {
+                    scale: 5,
+                    rating: 4.1,
+                    review_count: 12,
+                    scope_label: 'Based on exact-item reviews (12)',
+                    preview_items: [],
+                  },
+                },
+                preview_items: [],
+              },
+            }
+          : module,
+      ),
+    };
+
+    render(
+      <PdpContainer
+        payload={scopedPayload}
+        mode="generic"
+        onAddToCart={() => {}}
+        onBuyNow={() => {}}
+      />,
+    );
+
+    expect(screen.getByText('Based on product-line reviews (42)')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Exact item (12)' }));
+    expect(screen.getByText('Based on exact-item reviews (12)')).toBeInTheDocument();
+    expect(screen.getByText('Reviews (12)')).toBeInTheDocument();
   });
 
   it('renders structured PDP detail modules before generic product details', () => {

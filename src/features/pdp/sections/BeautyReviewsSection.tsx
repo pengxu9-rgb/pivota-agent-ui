@@ -25,6 +25,7 @@ function StarRating({ value }: { value: number }) {
 
 export function BeautyReviewsSection({
   data,
+  onSelectScope,
   onWriteReview,
   onSeeAll,
   onAskQuestion,
@@ -41,6 +42,7 @@ export function BeautyReviewsSection({
   openQuestionsLabel = 'View all',
 }: {
   data: ReviewsPreviewData;
+  onSelectScope?: (scopeId: string) => void;
   onWriteReview?: () => void;
   onSeeAll?: () => void;
   onAskQuestion?: () => void;
@@ -98,18 +100,22 @@ export function BeautyReviewsSection({
         {scopeTabs.length ? (
           <div className="mb-3 flex flex-wrap gap-2">
             {scopeTabs.map((tab) => (
-              <span
+              <button
                 key={tab.id}
+                type="button"
+                onClick={() => onSelectScope?.(tab.id)}
+                disabled={!onSelectScope || tab.default === true}
+                aria-pressed={tab.default === true}
                 className={cn(
-                  'rounded-full border px-2.5 py-1 text-[11px]',
+                  'rounded-full border px-2.5 py-1 text-[11px] transition-colors',
                   tab.default
                     ? 'border-foreground/20 bg-foreground/5 text-foreground'
-                    : 'border-border text-muted-foreground',
+                    : 'border-border text-muted-foreground hover:border-primary/30 hover:text-foreground',
                 )}
               >
                 {tab.label}
                 {typeof tab.count === 'number' ? ` (${tab.count})` : ''}
-              </span>
+              </button>
             ))}
           </div>
         ) : null}

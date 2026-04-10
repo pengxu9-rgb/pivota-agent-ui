@@ -80,6 +80,24 @@ function buildMinimalResponse() {
                     { id: 'product_line', label: 'Product line', count: 42, default: true },
                     { id: 'exact_item', label: 'Exact item', count: 12, default: false },
                   ],
+                  scoped_summaries: {
+                    exact_item: {
+                      scale: 5,
+                      rating: 4.5,
+                      review_count: 12,
+                      preview_items: [
+                        {
+                          review_id: 'r-exact-1',
+                          media: [
+                            {
+                              type: 'image',
+                              url: 'https://sdcdn.io/tf/review-exact.png',
+                            },
+                          ],
+                        },
+                      ],
+                    },
+                  },
                   preview_items: [
                     {
                       review_id: 'r1',
@@ -150,6 +168,9 @@ describe('mapPdpV2ToPdpPayload image normalization', () => {
 
     const reviews = payload?.modules.find((m) => m.type === 'reviews_preview') as any;
     expect(reviews?.data?.preview_items?.[0]?.media?.[0]?.url).toBe('https://sdcdn.io/tf/review.png');
+    expect(
+      reviews?.data?.scoped_summaries?.exact_item?.preview_items?.[0]?.media?.[0]?.url,
+    ).toBe('https://sdcdn.io/tf/review-exact.png');
     expect(reviews?.data?.aggregation_scope).toBe('product_line');
     expect(reviews?.data?.tabs?.[0]?.label).toBe('Product line');
     expect(payload?.sellable_item_group_id).toBe('sig_krave_45');

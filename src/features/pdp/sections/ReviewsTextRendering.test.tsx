@@ -1,5 +1,5 @@
 import React from 'react';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { BeautyReviewsSection } from './BeautyReviewsSection';
@@ -115,5 +115,26 @@ describe('Reviews text rendering', () => {
     expect(screen.getByText('Based on product-line reviews (42)')).toBeInTheDocument();
     expect(screen.getByText('Product line (42)')).toBeInTheDocument();
     expect(screen.getByText('Exact item (12)')).toBeInTheDocument();
+  });
+
+  it('invokes scope selection when a non-default review scope tab is clicked', () => {
+    const onSelectScope = vi.fn();
+
+    render(
+      <BeautyReviewsSection
+        data={{
+          ...baseReviewsData,
+          scope_label: 'Based on product-line reviews (42)',
+          tabs: [
+            { id: 'product_line', label: 'Product line', count: 42, default: true },
+            { id: 'exact_item', label: 'Exact item', count: 12, default: false },
+          ],
+        }}
+        onSelectScope={onSelectScope}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Exact item (12)' }));
+    expect(onSelectScope).toHaveBeenCalledWith('exact_item');
   });
 });

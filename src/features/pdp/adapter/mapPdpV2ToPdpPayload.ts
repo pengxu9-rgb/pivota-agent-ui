@@ -95,33 +95,53 @@ function normalizeRecommendationsModule(module: Module): Module {
 
 function normalizeReviewsModule(module: Module): Module {
   if (module?.type !== 'reviews_preview' || !isRecord(module.data)) return module;
-  const previewItems = Array.isArray(module.data.preview_items) ? module.data.preview_items : [];
-  if (!previewItems.length) return module;
-
-  const normalizedPreviewItems = previewItems.map((review) => {
-    if (!isRecord(review)) return review;
-    const mediaItems = Array.isArray(review.media) ? review.media : [];
-    if (!mediaItems.length) return review;
-    const normalizedMediaItems = mediaItems.map((media) => {
-      if (!isRecord(media)) return media;
-      const normalizedUrl = normalizePdpImageUrl(media.url);
-      if (!normalizedUrl || normalizedUrl === media.url) return media;
+  const normalizePreviewItems = (previewItems: unknown[]) =>
+    previewItems.map((review) => {
+      if (!isRecord(review)) return review;
+      const mediaItems = Array.isArray(review.media) ? review.media : [];
+      if (!mediaItems.length) return review;
+      const normalizedMediaItems = mediaItems.map((media) => {
+        if (!isRecord(media)) return media;
+        const normalizedUrl = normalizePdpImageUrl(media.url);
+        if (!normalizedUrl || normalizedUrl === media.url) return media;
+        return {
+          ...media,
+          url: normalizedUrl,
+        };
+      });
       return {
-        ...media,
-        url: normalizedUrl,
+        ...review,
+        media: normalizedMediaItems,
       };
     });
-    return {
-      ...review,
-      media: normalizedMediaItems,
-    };
-  });
+  const previewItems = Array.isArray(module.data.preview_items) ? module.data.preview_items : [];
+  const scopedSummaries =
+    isRecord(module.data.scoped_summaries) ? module.data.scoped_summaries : null;
+  if (!previewItems.length && !scopedSummaries) return module;
+
+  const normalizedScopedSummaries = scopedSummaries
+    ? Object.entries(scopedSummaries).reduce<Record<string, unknown>>((acc, [key, value]) => {
+        if (!isRecord(value)) {
+          acc[key] = value;
+          return acc;
+        }
+        const scopedPreviewItems = Array.isArray(value.preview_items) ? value.preview_items : [];
+        acc[key] = {
+          ...value,
+          ...(scopedPreviewItems.length
+            ? { preview_items: normalizePreviewItems(scopedPreviewItems) }
+            : {}),
+        };
+        return acc;
+      }, {})
+    : null;
 
   return {
     ...module,
     data: {
       ...module.data,
-      preview_items: normalizedPreviewItems,
+      ...(previewItems.length ? { preview_items: normalizePreviewItems(previewItems) } : {}),
+      ...(normalizedScopedSummaries ? { scoped_summaries: normalizedScopedSummaries } : {}),
     },
   };
 }

@@ -444,6 +444,28 @@ export interface ReviewsPreviewData {
     count?: number;
     default?: boolean;
   }>;
+  scoped_summaries?: Record<
+    string,
+    {
+      scale: number;
+      rating: number;
+      review_count: number;
+      scope_label?: string;
+      star_distribution?: Array<{
+        stars: number;
+        count?: number;
+        percent?: number;
+      }>;
+      preview_items?: Array<{
+        review_id: string;
+        rating: number;
+        author_label?: string;
+        title?: string;
+        text_snippet: string;
+        media?: MediaItem[];
+      }>;
+    }
+  >;
   entry_points?: {
     open_reviews?: { action_type: 'open_embed'; label: string; target: ActionTarget };
     write_review?: { action_type: 'open_embed'; label: string; target: ActionTarget };
