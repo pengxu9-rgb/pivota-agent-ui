@@ -1,5 +1,5 @@
 import React from 'react';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { StructuredDetailsBlocks } from './StructuredDetailsBlocks';
 
@@ -25,10 +25,11 @@ describe('StructuredDetailsBlocks', () => {
 
     expect(screen.queryByText('Active Ingredients')).not.toBeInTheDocument();
     expect(screen.getByText('Ingredients')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Show full INCI' }));
     expect(screen.getByText('Zinc Stearate')).toBeInTheDocument();
   });
 
-  it('renders ingredient items as a readable list and cleans malformed how-to-use steps', () => {
+  it('renders ingredients as a collapsed INCI preview and expands on demand', () => {
     render(
       <StructuredDetailsBlocks
         ingredientsInci={{
@@ -51,12 +52,18 @@ describe('StructuredDetailsBlocks', () => {
       />,
     );
 
-    expect(screen.getByText('Talc')).toBeInTheDocument();
-    expect(screen.getByText('Mica')).toBeInTheDocument();
-    expect(screen.getByText('Dimethicone')).toBeInTheDocument();
-    expect(screen.getByText('Yellow 5 Lake (CI 19140)')).toBeInTheDocument();
+    expect(screen.getByText(/Talc/)).toBeInTheDocument();
+    expect(screen.getByText(/Mica/)).toBeInTheDocument();
+    expect(screen.getByText(/Dimethicone/)).toBeInTheDocument();
+    expect(screen.queryByText('Yellow 5 Lake (CI 19140)')).not.toBeInTheDocument();
     expect(screen.queryByText(/Key Ingredients Ingredients/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Please be aware that ingredient lists/i)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Show full INCI' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show full INCI' }));
+
+    expect(screen.getByRole('button', { name: 'Hide full INCI' })).toBeInTheDocument();
+    expect(screen.getByText(/Yellow 5 Lake \(CI 19140\)/)).toBeInTheDocument();
     expect(screen.queryByText('-')).not.toBeInTheDocument();
     expect(screen.getByText('Apply dry for soft definition.')).toBeInTheDocument();
     expect(screen.getByText('Blend edges')).toBeInTheDocument();
@@ -79,7 +86,7 @@ describe('StructuredDetailsBlocks', () => {
       />,
     );
 
-    expect(screen.getByText('Iron Oxides (CI 77491 / 77492 / 77499)')).toBeInTheDocument();
+    expect(screen.getByText(/Iron Oxides \(CI 77491 \/ 77492 \/ 77499\)/)).toBeInTheDocument();
     expect(screen.queryByText('Iron Oxides (ci 77491)')).not.toBeInTheDocument();
     expect(screen.queryByText('Iron Oxides (ci 77492)')).not.toBeInTheDocument();
     expect(screen.queryByText('Iron Oxides (ci 77499)')).not.toBeInTheDocument();
@@ -100,7 +107,7 @@ describe('StructuredDetailsBlocks', () => {
       />,
     );
 
-    expect(screen.getByText('Iron Oxides (CI 77491 / 77492 / 77499)')).toBeInTheDocument();
+    expect(screen.getByText(/Iron Oxides \(CI 77491 \/ 77492 \/ 77499\)/)).toBeInTheDocument();
     expect(screen.queryByText('Iron Oxides (CI 77491)')).not.toBeInTheDocument();
     expect(screen.queryByText('Iron Oxides (CI 77492)')).not.toBeInTheDocument();
     expect(screen.queryByText('Iron Oxides (CI 77499)')).not.toBeInTheDocument();
@@ -134,10 +141,10 @@ describe('StructuredDetailsBlocks', () => {
       />,
     );
 
-    expect(screen.getByText('Water (Aqua/Eau)')).toBeInTheDocument();
-    expect(screen.getByText('1,2-Hexanediol')).toBeInTheDocument();
+    expect(screen.getByText(/Water \(Aqua\/Eau\)/)).toBeInTheDocument();
+    expect(screen.getByText(/1,2-Hexanediol/)).toBeInTheDocument();
     expect(screen.queryByText(/^Hexanediol$/)).not.toBeInTheDocument();
-    expect(screen.getByText('Caprylic/Capric Triglyceride')).toBeInTheDocument();
+    expect(screen.getByText(/Caprylic\/Capric Triglyceride/)).toBeInTheDocument();
     expect(screen.queryByText(/PETA-certified vegan/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Patch test/i)).not.toBeInTheDocument();
     expect(screen.queryByText('How to Use')).not.toBeInTheDocument();

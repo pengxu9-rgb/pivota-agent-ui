@@ -399,9 +399,10 @@ describe('PdpContainer structured PDP modules', () => {
     expect(screen.getByText('Active ingredients')).toBeInTheDocument();
     expect(screen.getAllByText('Ceramide NP').length).toBeGreaterThan(0);
     expect(screen.getByText('Ingredients')).toBeInTheDocument();
-    expect(screen.getByText('Water')).toBeInTheDocument();
-    expect(screen.getAllByText('Glycerin').length).toBeGreaterThan(0);
-    expect(screen.getByText('Cholesterol')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Show full INCI' })).not.toBeInTheDocument();
+    expect(screen.getByText(/Water/)).toBeInTheDocument();
+    expect(screen.getAllByText(/Glycerin/).length).toBeGreaterThan(0);
+    expect(screen.getByText(/Cholesterol/)).toBeInTheDocument();
     expect(screen.getByText('How to use')).toBeInTheDocument();
     expect(screen.getByText('Apply after cleansing.')).toBeInTheDocument();
     expect(screen.getByText('Brand Story')).toBeInTheDocument();
