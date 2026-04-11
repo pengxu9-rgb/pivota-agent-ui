@@ -193,12 +193,25 @@ function getStripePromiseForKey(
   return stripePromiseCache.get(cacheKey) || Promise.resolve(null)
 }
 
+export function clearStripePromiseCacheForTests() {
+  stripePromiseCache.clear()
+}
+
 function readPublicKey(value: unknown): string | null {
   if (typeof value === 'string') {
     const trimmed = value.trim()
     return trimmed || null
   }
   return null
+}
+
+export function prewarmStripeRuntime(
+  publishableKey: string | null | undefined,
+  stripeAccount: string | null = null,
+): Promise<Stripe | null> | null {
+  const normalizedPublishableKey = readPublicKey(publishableKey)
+  if (!normalizedPublishableKey) return null
+  return getStripePromiseForKey(normalizedPublishableKey, stripeAccount).catch(() => null)
 }
 
 export function resolveStripePublishableKey(paymentResponse: any, fallbackAction: any = null): string | null {
@@ -1054,8 +1067,11 @@ function OrderFlowInner({
       setStripeSelectedMethodType(null)
       return
     }
-    setStripePublishableKey(resolveStripePublishableKey(paymentResponse, action) || '')
-    setStripeAccount(resolveStripeAccount(paymentResponse, action))
+    const resolvedPublishableKey = resolveStripePublishableKey(paymentResponse, action) || ''
+    const resolvedStripeAccount = resolveStripeAccount(paymentResponse, action)
+    setStripePublishableKey(resolvedPublishableKey)
+    setStripeAccount(resolvedStripeAccount)
+    void prewarmStripeRuntime(resolvedPublishableKey, resolvedStripeAccount)
   }
 
   const formatAmount = (amount: number) => {
@@ -2154,6 +2170,7 @@ function OrderFlowInner({
       return
     }
     try {
+      void prewarmStripeRuntime(stripePublishableKey || DEFAULT_STRIPE_PUBLISHABLE_KEY, stripeAccount)
       setCheckoutFailure(null)
       setIsProcessing(true)
       // Reset any existing order if shipping changes.
