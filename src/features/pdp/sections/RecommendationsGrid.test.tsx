@@ -172,4 +172,36 @@ describe('RecommendationsGrid', () => {
     expect(screen.getAllByText('4.8★ (1.2k)').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Barrier-repair serum step').length).toBeGreaterThan(0);
   });
+
+  it('renders subtitle plus supporting highlight and suppresses generic same-brand badges', () => {
+    render(
+      <RecommendationsGrid
+        data={{
+          strategy: 'related_products',
+          items: [
+            {
+              product_id: 'prod_focus',
+              merchant_id: 'external_seed',
+              title: 'Pore Refiner',
+              image_url: 'https://example.com/pore-refiner.jpg',
+              price: { amount: 32, currency: 'USD' },
+              category: 'treatment serum',
+              description:
+                'A clarifying treatment that helps smooth texture and visibly minimize the look of pores.',
+              reason: 'same_brand_same_category',
+            },
+          ],
+        }}
+        visibleCount={1}
+      />,
+    );
+
+    expect(screen.getByText('Treatment Serum')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'A clarifying treatment that helps smooth texture and visibly minimize the look of pores.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Same brand')).toBeNull();
+  });
 });

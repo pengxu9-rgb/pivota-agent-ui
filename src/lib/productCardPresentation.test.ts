@@ -97,4 +97,31 @@ describe('resolveProductCardPresentation', () => {
       badge: '2 sizes',
     })
   })
+
+  it('can keep category context while surfacing a compact benefit line for recommendation cards', () => {
+    const product = {
+      product_id: 'prod_5',
+      title: 'Pore Refiner',
+      description:
+        'A clarifying treatment that helps smooth texture and visibly minimize the look of pores.',
+      price: 30,
+      currency: 'USD',
+      in_stock: true,
+      category: 'treatment serum',
+      reason: 'same_brand_same_category',
+    } satisfies ProductResponse & { reason: string }
+
+    expect(
+      resolveProductCardPresentation(product, {
+        allowDescriptionAlongsideSubtitle: true,
+        suppressGenericReasonBadges: true,
+      }),
+    ).toEqual({
+      title: 'Pore Refiner',
+      subtitle: 'Treatment Serum',
+      highlight:
+        'A clarifying treatment that helps smooth texture and visibly minimize the look of pores.',
+      badge: null,
+    })
+  })
 })

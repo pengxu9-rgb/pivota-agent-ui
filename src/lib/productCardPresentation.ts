@@ -7,6 +7,11 @@ export type ProductCardPresentation = {
   badge: string | null
 }
 
+export type ProductCardPresentationOptions = {
+  allowDescriptionAlongsideSubtitle?: boolean
+  suppressGenericReasonBadges?: boolean
+}
+
 function formatCompactCount(count: number): string {
   if (!Number.isFinite(count) || count <= 0) return '0'
   if (count >= 1000000) return `${(count / 1000000).toFixed(count >= 10000000 ? 0 : 1)}m`
@@ -94,11 +99,25 @@ function buildVariantBadge(product: ProductResponse): string | null {
   return `${rawCount} options`
 }
 
-function buildReasonBadge(product: ProductResponse): string | null {
+function buildReasonBadge(
+  product: ProductResponse,
+  options: {
+    hasSubtitle?: boolean
+    suppressGenericReasonBadges?: boolean
+  } = {},
+): string | null {
   const reason = readFirstString((product as any).reason)
   if (!reason) return null
-  if (reason.includes('same_brand')) return 'Same brand'
-  if (reason.includes('same_category')) return 'Same category'
+  if (reason.includes('same_brand')) {
+    return options.suppressGenericReasonBadges ? null : 'Same brand'
+  }
+  if (reason.includes('same_category')) {
+    if (options.suppressGenericReasonBadges || options.hasSubtitle) return null
+    return 'Same category'
+  }
+  if (reason.includes('same_vertical')) {
+    return options.suppressGenericReasonBadges ? null : 'Same routine'
+  }
   if (reason.includes('semantic_peer')) return 'Similar pick'
   return null
 }
@@ -167,7 +186,10 @@ function readBadgeFromTags(product: ProductResponse): string | null {
   return null
 }
 
-export function resolveProductCardPresentation(product: ProductResponse): ProductCardPresentation {
+export function resolveProductCardPresentation(
+  product: ProductResponse,
+  options: ProductCardPresentationOptions = {},
+): ProductCardPresentation {
   const explicitTitle = readFirstString(
     product.card_title,
     product.search_card?.title_candidate,
@@ -187,8 +209,16 @@ export function resolveProductCardPresentation(product: ProductResponse): Produc
     product.market_signal_badges?.[0]?.badge_label,
   )
   const resolvedSubtitle = explicitSubtitle || buildCategorySubtitle(product)
+  const descriptionHighlight = buildDescriptionHighlight(product)
   const resolvedHighlight =
-    explicitHighlight || (!resolvedSubtitle ? buildDescriptionHighlight(product) : null)
+    explicitHighlight ||
+    (options.allowDescriptionAlongsideSubtitle
+      ? descriptionHighlight && descriptionHighlight !== resolvedSubtitle
+        ? descriptionHighlight
+        : null
+      : !resolvedSubtitle
+        ? descriptionHighlight
+        : null)
 
   return {
     title: explicitTitle || String(product.title || '').trim() || 'Untitled product',
@@ -200,6 +230,9 @@ export function resolveProductCardPresentation(product: ProductResponse): Produc
       readConfiguredBadge(product) ||
       readBadgeFromTags(product) ||
       buildVariantBadge(product) ||
-      buildReasonBadge(product),
+      buildReasonBadge(product, {
+        hasSubtitle: Boolean(resolvedSubtitle),
+        suppressGenericReasonBadges: options.suppressGenericReasonBadges,
+      }),
   }
 }
