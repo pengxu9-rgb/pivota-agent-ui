@@ -1,13 +1,28 @@
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+const { loadStripeMock } = vi.hoisted(() => ({
+  loadStripeMock: vi.fn(() => Promise.resolve(null)),
+}))
+
+vi.mock('@stripe/stripe-js', () => ({
+  loadStripe: loadStripeMock,
+}))
 
 import {
+  clearStripePromiseCacheForTests,
   hasAvailableStripeExpressWallets,
+  prewarmStripeRuntime,
   resolveCheckoutPaymentMethodHint,
   resolveStripeAccount,
   resolveStripePaymentMethodOrder,
   resolveStripePublishableKey,
   shouldHydrateCreatedOrderPaymentSurface,
 } from './OrderFlow'
+
+beforeEach(() => {
+  clearStripePromiseCacheForTests()
+  loadStripeMock.mockClear()
+})
 
 describe('resolveStripePublishableKey', () => {
   it('prefers explicit payment action public key from the backend contract', () => {
@@ -86,5 +101,28 @@ describe('resolveStripePublishableKey', () => {
     expect(hasAvailableStripeExpressWallets({ applePay: false, googlePay: false })).toBe(false)
     expect(hasAvailableStripeExpressWallets({ applePay: true, googlePay: false })).toBe(true)
     expect(hasAvailableStripeExpressWallets({ applePay: false, googlePay: true })).toBe(true)
+  })
+
+  it('prewarms stripe runtime only once for the same publishable key and account pair', async () => {
+    await Promise.all([
+      prewarmStripeRuntime('pk_live_cached'),
+      prewarmStripeRuntime('pk_live_cached'),
+    ])
+
+    expect(loadStripeMock).toHaveBeenCalledTimes(1)
+    expect(loadStripeMock).toHaveBeenCalledWith('pk_live_cached', undefined)
+  })
+
+  it('keeps a separate stripe runtime cache per connected account', async () => {
+    await prewarmStripeRuntime('pk_live_platform', 'acct_live_one')
+    await prewarmStripeRuntime('pk_live_platform', 'acct_live_two')
+
+    expect(loadStripeMock).toHaveBeenCalledTimes(2)
+    expect(loadStripeMock).toHaveBeenNthCalledWith(1, 'pk_live_platform', {
+      stripeAccount: 'acct_live_one',
+    })
+    expect(loadStripeMock).toHaveBeenNthCalledWith(2, 'pk_live_platform', {
+      stripeAccount: 'acct_live_two',
+    })
   })
 })

@@ -27,6 +27,12 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <head>
         <link rel="manifest" href="/manifest.json" />
+        <link rel="dns-prefetch" href="https://js.stripe.com" />
+        <link rel="preconnect" href="https://js.stripe.com" crossOrigin="" />
+        <link rel="dns-prefetch" href="https://m.stripe.network" />
+        <link rel="preconnect" href="https://m.stripe.network" crossOrigin="" />
+        <link rel="dns-prefetch" href="https://r.stripe.com" />
+        <link rel="preconnect" href="https://r.stripe.com" crossOrigin="" />
       </head>
       <body className="antialiased font-sans">
         <ThemeProvider defaultTheme="light" storageKey="pivota-ui-theme">
