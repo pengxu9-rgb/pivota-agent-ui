@@ -70,8 +70,12 @@ export function RecommendationsGrid({
       </div>
       <div className="grid grid-cols-2 gap-3 px-3.5 sm:px-4 lg:grid-cols-4">
         {visibleItems.map((p, idx) => {
-          const card = resolveProductCardPresentation(p as any);
-          const compactCopy = card.highlight || card.subtitle;
+          const card = resolveProductCardPresentation(p as any, {
+            allowDescriptionAlongsideSubtitle: true,
+            suppressGenericReasonBadges: true,
+          });
+          const subtitle = card.subtitle;
+          const highlight = card.highlight;
           const baseHref = buildProductHref(p.product_id, p.merchant_id);
           const handleClick = (event: MouseEvent<HTMLAnchorElement>) => {
             onItemClick?.(p, idx);
@@ -123,9 +127,14 @@ export function RecommendationsGrid({
                     ) : null}
                   </div>
                 ) : null}
-                {compactCopy ? (
-                  <p className="mt-2 line-clamp-2 text-[11px] leading-4 text-muted-foreground">
-                    {compactCopy}
+                {subtitle ? (
+                  <p className="mt-2 line-clamp-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground/85">
+                    {subtitle}
+                  </p>
+                ) : null}
+                {highlight ? (
+                  <p className="mt-1 line-clamp-2 text-[11px] leading-4 text-muted-foreground">
+                    {highlight}
                   </p>
                 ) : null}
                 {p.price ? (
