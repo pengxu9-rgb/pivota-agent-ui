@@ -188,8 +188,8 @@ export function PivotaInsightsSection({ data }: { data: ProductIntelData }) {
     .slice(0, 2);
 
   return (
-    <section id="pivota-insights" className="bg-[#fcfaf6] px-3.5 py-4 sm:px-4">
-      <div className="rounded-[24px] border border-[#e7dfd2] bg-white px-4 py-3.5 shadow-sm">
+    <section id="pivota-insights" className="bg-[#fcfaf6] px-2.5 py-4 sm:px-3">
+      <div className="rounded-[24px] border border-[#e7dfd2] bg-white px-3 py-3 shadow-sm sm:px-3.5">
         <div className="flex items-start justify-between gap-3">
           <div>
             <h2 className="text-base font-semibold text-foreground">{data.display_name || 'Pivota Insights'}</h2>

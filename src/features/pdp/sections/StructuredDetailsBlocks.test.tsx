@@ -1,5 +1,5 @@
 import React from 'react';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { StructuredDetailsBlocks } from './StructuredDetailsBlocks';
 
@@ -51,10 +51,10 @@ describe('StructuredDetailsBlocks', () => {
       />,
     );
 
-    expect(screen.getByText('Talc')).toBeInTheDocument();
-    expect(screen.getByText('Mica')).toBeInTheDocument();
-    expect(screen.getByText('Dimethicone')).toBeInTheDocument();
-    expect(screen.getByText('Yellow 5 Lake (CI 19140)')).toBeInTheDocument();
+    expect(screen.getByText(/Talc/)).toBeInTheDocument();
+    expect(screen.getByText(/Mica/)).toBeInTheDocument();
+    expect(screen.getByText(/Dimethicone/)).toBeInTheDocument();
+    expect(screen.getByText(/Yellow 5 Lake \(CI 19140\)/)).toBeInTheDocument();
     expect(screen.queryByText(/Key Ingredients Ingredients/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Please be aware that ingredient lists/i)).not.toBeInTheDocument();
     expect(screen.queryByText('-')).not.toBeInTheDocument();
@@ -134,12 +134,39 @@ describe('StructuredDetailsBlocks', () => {
       />,
     );
 
-    expect(screen.getByText('Water (Aqua/Eau)')).toBeInTheDocument();
-    expect(screen.getByText('1,2-Hexanediol')).toBeInTheDocument();
+    expect(screen.getByText(/Water \(Aqua\/Eau\)/)).toBeInTheDocument();
+    expect(screen.getByText(/1,2-Hexanediol/)).toBeInTheDocument();
     expect(screen.queryByText(/^Hexanediol$/)).not.toBeInTheDocument();
-    expect(screen.getByText('Caprylic/Capric Triglyceride')).toBeInTheDocument();
+    expect(screen.getByText(/Caprylic\/Capric Triglyceride/)).toBeInTheDocument();
     expect(screen.queryByText(/PETA-certified vegan/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Patch test/i)).not.toBeInTheDocument();
     expect(screen.queryByText('How to Use')).not.toBeInTheDocument();
+  });
+
+  it('collapses long INCI content by default and expands on demand', () => {
+    render(
+      <StructuredDetailsBlocks
+        ingredientsInci={{
+          title: 'Ingredients',
+          items: [
+            'Water (Aqua/Eau)',
+            'Propanediol',
+            'Calophyllum Inophyllum (Tamanu) Seed Oil',
+            'Dipropylene Glycol',
+            'Niacinamide',
+            'Carthamus Tinctorius (Safflower) Seed Oil',
+            'Cetearyl Olivate',
+            'Polysorbate 60',
+            'Glyceryl Oleate',
+            'Octyldodecanol',
+          ],
+        }}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: 'Show full INCI' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Show full INCI' }));
+    expect(screen.getByRole('button', { name: 'Hide full INCI' })).toBeInTheDocument();
+    expect(screen.getByText(/Calophyllum Inophyllum \(Tamanu\) Seed Oil/)).toBeInTheDocument();
   });
 });

@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import type {
   ActiveIngredientsData,
   HowToUseData,
@@ -347,6 +348,7 @@ export function StructuredDetailsBlocks({
   const activeIngredientItems = getStructuredItems(activeIngredients?.items);
   const normalizedHowToUseRawText = String(howToUse?.raw_text || '').trim();
   const howToUseItems = sanitizeHowToUseItems(howToUse?.steps, normalizedHowToUseRawText);
+  const [isIngredientsExpanded, setIsIngredientsExpanded] = useState(false);
   const normalizedIngredientsRawText = normalizeIngredientsRawText(
     String(ingredientsInci?.raw_text || ''),
     Boolean(activeIngredientItems.length || String(activeIngredients?.raw_text || '').trim()),
@@ -374,6 +376,9 @@ export function StructuredDetailsBlocks({
     hideLowConfidenceActiveIngredients &&
     activeIngredientItems.length <= 1 &&
     (ingredientsInciItems.length >= 4 || normalizedIngredientsRawText.length >= 80);
+  const ingredientsInlineText = ingredientsInciItems.join(', ');
+  const shouldCollapseIngredients =
+    ingredientsInciItems.length >= 8 || normalizedIngredientsRawText.length >= 220 || ingredientsInlineText.length >= 220;
   const hasActiveIngredients = !shouldHideActiveIngredients && Boolean(
     activeIngredientItems.length || String(activeIngredients?.raw_text || '').trim(),
   );
@@ -427,15 +432,52 @@ export function StructuredDetailsBlocks({
             Full ingredient list (INCI) when available.
           </p>
           {ingredientsInciItems.length ? (
-            <ul className="mt-3 space-y-2 pl-4 text-sm text-muted-foreground list-disc">
-              {ingredientsInciItems.map((item, idx) => (
-                <li key={`ingredients-inci-${idx}`}>{item}</li>
-              ))}
-            </ul>
+            <div className="mt-3 rounded-2xl border border-border/80 bg-background/75 px-3 py-3">
+              <p
+                className={
+                  shouldCollapseIngredients && !isIngredientsExpanded
+                    ? 'line-clamp-4 text-sm leading-7 text-muted-foreground'
+                    : 'text-sm leading-7 text-muted-foreground'
+                }
+              >
+                {ingredientsInciItems.map((item, idx) => (
+                  <span key={`ingredients-inci-${idx}`}>
+                    {item}
+                    {idx < ingredientsInciItems.length - 1 ? ', ' : ''}
+                  </span>
+                ))}
+              </p>
+              {shouldCollapseIngredients ? (
+                <button
+                  type="button"
+                  onClick={() => setIsIngredientsExpanded((value) => !value)}
+                  className="mt-3 text-xs font-medium text-primary hover:underline"
+                >
+                  {isIngredientsExpanded ? 'Hide full INCI' : 'Show full INCI'}
+                </button>
+              ) : null}
+            </div>
           ) : null}
           {!ingredientsInciItems.length && normalizedIngredientsRawText ? (
-            <div className="mt-3">
-              <StructuredText text={normalizedIngredientsRawText} />
+            <div className="mt-3 rounded-2xl border border-border/80 bg-background/75 px-3 py-3">
+              <p
+                className={
+                  shouldCollapseIngredients && !isIngredientsExpanded
+                    ? 'line-clamp-4 text-sm leading-7 text-muted-foreground'
+                    : 'text-sm leading-7 text-muted-foreground whitespace-pre-line'
+                }
+              >
+                {normalizedIngredientsRawText}
+              </p>
+              {shouldCollapseIngredients ? (
+                <button
+                  type="button"
+                  onClick={() => setIsIngredientsExpanded((value) => !value)}
+                  className="mt-3 text-xs font-medium text-primary hover:underline"
+                >
+                  {isIngredientsExpanded ? 'Hide full INCI' : 'Show full INCI'}
+                </button>
+              ) : null}
             </div>
           ) : null}
         </div>

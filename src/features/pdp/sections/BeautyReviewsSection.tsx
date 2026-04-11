@@ -83,9 +83,7 @@ export function BeautyReviewsSection({
     .sort((a, b) => (b.stars || 0) - (a.stars || 0));
   const scopeTabs = Array.isArray(data.tabs) ? data.tabs.filter((tab) => tab?.id && tab?.label) : [];
   const resolvedBrandName = String(data.brand_card?.name || brandName || '').trim();
-  const resolvedBrandSubtitle = String(data.brand_card?.subtitle || '').trim();
   const brandMonogram = getBrandMonogram(resolvedBrandName);
-  const brandSupportCopy = resolvedBrandSubtitle || 'Browse the full collection and brand context.';
 
   return (
     <div className="py-4">
@@ -322,17 +320,10 @@ export function BeautyReviewsSection({
               {brandMonogram}
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                Brand page
-              </p>
-              <p className="mt-1 truncate text-sm font-semibold text-foreground">{resolvedBrandName}</p>
-              <p className="mt-1 text-xs leading-5 text-muted-foreground">{brandSupportCopy}</p>
-              <p className="mt-2 text-[11px] font-medium text-foreground/80">Explore the full collection</p>
+              <p className="truncate text-sm font-semibold text-foreground">{resolvedBrandName}</p>
+              <p className="mt-1 text-[12px] text-muted-foreground">Explore the full collection</p>
             </div>
-            <span className="inline-flex items-center gap-1 rounded-full border border-border/80 bg-white/85 px-2.5 py-1 text-[11px] font-medium text-foreground/80">
-              Open
-              <ChevronRight className="h-4 w-4 text-muted-foreground" />
-            </span>
+            <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
           </Link>
         ) : (
           <div className="mt-4 mx-2.5 flex items-center gap-3 rounded-[20px] border border-border/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(248,246,242,0.98))] px-3.5 py-3 sm:mx-3">
@@ -340,12 +331,10 @@ export function BeautyReviewsSection({
               {brandMonogram}
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                Brand
-              </p>
-              <p className="mt-1 truncate text-sm font-semibold text-foreground">{resolvedBrandName}</p>
-              <p className="mt-1 text-xs leading-5 text-muted-foreground">{brandSupportCopy}</p>
+              <p className="truncate text-sm font-semibold text-foreground">{resolvedBrandName}</p>
+              <p className="mt-1 text-[12px] text-muted-foreground">Explore the full collection</p>
             </div>
+            <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
           </div>
         )
       ) : null}
