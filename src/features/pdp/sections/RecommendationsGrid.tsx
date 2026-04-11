@@ -8,6 +8,7 @@ import { Star, ChevronRight } from 'lucide-react';
 import type { RecommendationsData } from '@/features/pdp/types';
 import { optimizePdpImageUrl } from '@/features/pdp/utils/pdpImageUrls';
 import { buildProductHref } from '@/lib/productHref';
+import { resolveProductCardPresentation } from '@/lib/productCardPresentation';
 import { appendCurrentPathAsReturn } from '@/lib/returnUrl';
 
 function formatPrice(amount: number, currency: string) {
@@ -69,6 +70,8 @@ export function RecommendationsGrid({
       </div>
       <div className="grid grid-cols-2 gap-3 px-3.5 sm:px-4 lg:grid-cols-4">
         {visibleItems.map((p, idx) => {
+          const card = resolveProductCardPresentation(p as any);
+          const compactCopy = card.highlight || card.subtitle;
           const baseHref = buildProductHref(p.product_id, p.merchant_id);
           const handleClick = (event: MouseEvent<HTMLAnchorElement>) => {
             onItemClick?.(p, idx);
@@ -105,8 +108,14 @@ export function RecommendationsGrid({
               </div>
               <div className="p-3">
                 <div className="text-sm font-medium line-clamp-2 min-h-[2.5rem]">{p.title}</div>
-                {p.rating ? (
-                  <div className="flex items-center gap-1 mt-2">
+                {card.badge ? (
+                  <div className="mt-2">
+                    <span className="inline-flex rounded-full bg-muted px-2 py-1 text-[10px] font-semibold tracking-[-0.01em] text-foreground/80">
+                      {card.badge}
+                    </span>
+                  </div>
+                ) : p.rating ? (
+                  <div className="mt-2 flex items-center gap-1">
                     <Star className="h-3 w-3 fill-gold text-gold" />
                     <span className="text-xs">{p.rating.toFixed(1)}</span>
                     {p.review_count ? (
@@ -114,8 +123,13 @@ export function RecommendationsGrid({
                     ) : null}
                   </div>
                 ) : null}
+                {compactCopy ? (
+                  <p className="mt-2 line-clamp-2 text-[11px] leading-4 text-muted-foreground">
+                    {compactCopy}
+                  </p>
+                ) : null}
                 {p.price ? (
-                  <div className="mt-2 text-sm font-bold">
+                  <div className="mt-2.5 text-sm font-bold">
                     {formatPrice(p.price.amount, p.price.currency)}
                   </div>
                 ) : null}

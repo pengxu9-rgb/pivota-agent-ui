@@ -111,6 +111,8 @@ describe('RecommendationsGrid', () => {
       title: `Product ${idx + 1}`,
       image_url: `https://example.com/p_${idx + 1}.jpg`,
       price: { amount: 99 + idx, currency: 'USD' },
+      card_highlight: idx === 0 ? 'Barrier-repair serum step' : undefined,
+      card_badge: idx === 0 ? '4.8★ (1.2k)' : undefined,
     })),
   };
 
@@ -166,5 +168,12 @@ describe('RecommendationsGrid', () => {
         'Exact like-for-like matches were limited, so this section stays on the mainline instead of being padded with fallback results.',
       ),
     ).toBeInTheDocument();
+  });
+
+  it('surfaces compact highlight copy and badge metadata when available', () => {
+    render(<RecommendationsGrid data={data} visibleCount={2} />);
+
+    expect(screen.getAllByText('4.8★ (1.2k)').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Barrier-repair serum step').length).toBeGreaterThan(0);
   });
 });

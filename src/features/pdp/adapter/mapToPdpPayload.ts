@@ -783,9 +783,22 @@ export function mapToPdpPayload(args: {
     items: relatedProducts.map((p) => ({
       product_id: p.product_id,
       merchant_id: p.merchant_id,
+      merchant_name: p.merchant_name,
       title: p.title,
       image_url: p.image_url,
       price: { amount: Number(p.price) || 0, currency: p.currency || currency },
+      ...(p.product_type ? { product_type: p.product_type } : {}),
+      ...(p.category ? { category: p.category } : {}),
+      ...(p.department ? { department: p.department } : {}),
+      ...(Array.isArray(p.tags) ? { tags: p.tags } : {}),
+      ...(p.card_title ? { card_title: p.card_title } : {}),
+      ...(p.card_subtitle ? { card_subtitle: p.card_subtitle } : {}),
+      ...(p.card_highlight ? { card_highlight: p.card_highlight } : {}),
+      ...(p.card_badge ? { card_badge: p.card_badge } : {}),
+      ...(p.search_card ? { search_card: p.search_card } : {}),
+      ...(p.shopping_card ? { shopping_card: p.shopping_card } : {}),
+      ...(Array.isArray(p.market_signal_badges) ? { market_signal_badges: p.market_signal_badges } : {}),
+      ...(p.review_summary ? { review_summary: p.review_summary } : {}),
     })),
   };
 
