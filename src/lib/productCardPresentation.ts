@@ -52,8 +52,55 @@ function buildCategorySubtitle(product: ProductResponse): string | null {
   const raw = readFirstString(product.product_type, product.category, product.department)
   if (!raw) return null
   const formatted = formatCategoryLabel(raw)
-  if (!formatted || /^general$/i.test(formatted)) return null
+  if (!formatted || /^(general|external)$/i.test(formatted)) return null
   return formatted.slice(0, 48)
+}
+
+function buildDescriptionHighlight(product: ProductResponse): string | null {
+  const raw = readFirstString(
+    (product as any).card_intro,
+    product.description,
+    (product as any).raw_detail?.seed_data?.derived?.recall?.retrieval_summary,
+    (product as any).raw_detail?.seed_data?.snapshot?.description,
+  )
+  if (!raw) return null
+
+  const normalized = raw.replace(/\s+/g, ' ').trim()
+  if (!normalized) return null
+
+  const firstSentence = normalized.split(/(?<=[.!?])\s+/)[0]?.trim() || normalized
+  const candidate = firstSentence.length >= 28 ? firstSentence : normalized
+  if (!candidate) return null
+  return candidate
+}
+
+function buildVariantBadge(product: ProductResponse): string | null {
+  const rawCount = Number(
+    (product as any).variant_count ||
+      (Array.isArray((product as any).variants) ? (product as any).variants.length : 0),
+  )
+  if (!Number.isFinite(rawCount) || rawCount < 2 || rawCount > 6) return null
+
+  const optionName = readFirstString(
+    (product as any).raw_detail?.seed_data?.snapshot?.variants?.[0]?.option_name,
+    (product as any).variants?.[0]?.option_name,
+  )
+  if (optionName && /shade|color/i.test(optionName)) {
+    return `${rawCount} shades`
+  }
+  if (optionName && /size|volume/i.test(optionName)) {
+    return `${rawCount} sizes`
+  }
+  return `${rawCount} options`
+}
+
+function buildReasonBadge(product: ProductResponse): string | null {
+  const reason = readFirstString((product as any).reason)
+  if (!reason) return null
+  if (reason.includes('same_brand')) return 'Same brand'
+  if (reason.includes('same_category')) return 'Same category'
+  if (reason.includes('semantic_peer')) return 'Similar pick'
+  return null
 }
 
 function buildReviewBadge(product: ProductResponse): string | null {
@@ -139,15 +186,20 @@ export function resolveProductCardPresentation(product: ProductResponse): Produc
     product.search_card?.proof_badge_candidate,
     product.market_signal_badges?.[0]?.badge_label,
   )
+  const resolvedSubtitle = explicitSubtitle || buildCategorySubtitle(product)
+  const resolvedHighlight =
+    explicitHighlight || (!resolvedSubtitle ? buildDescriptionHighlight(product) : null)
 
   return {
     title: explicitTitle || String(product.title || '').trim() || 'Untitled product',
-    subtitle: explicitSubtitle || buildCategorySubtitle(product),
-    highlight: explicitHighlight,
+    subtitle: resolvedSubtitle,
+    highlight: resolvedHighlight,
     badge:
       explicitBadge ||
       buildReviewBadge(product) ||
       readConfiguredBadge(product) ||
-      readBadgeFromTags(product),
+      readBadgeFromTags(product) ||
+      buildVariantBadge(product) ||
+      buildReasonBadge(product),
   }
 }

@@ -502,12 +502,17 @@ export interface RecommendationsData {
   items: Array<{
     product_id: string;
     title: string;
+    description?: string;
+    brand?: string;
     image_url?: string;
     price?: Price;
     rating?: number;
     review_count?: number;
     merchant_id?: string;
     merchant_name?: string;
+    variant_count?: number;
+    source?: string;
+    reason?: string;
     product_type?: string;
     category?: string;
     department?: string;

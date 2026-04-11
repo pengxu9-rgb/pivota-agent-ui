@@ -31,6 +31,7 @@ import type {
   Variant,
 } from '@/features/pdp/types';
 import {
+  getProductDetailExact,
   getSimilarProductsMainline,
   listQuestions,
   postQuestion,
@@ -370,11 +371,112 @@ function normalizeRecommendationItems(
       const rating = toFiniteNumber(source.rating);
       const reviewCount =
         toFiniteNumber(source.review_count) ?? toFiniteNumber(source.reviewCount);
+      const variantCount =
+        toFiniteNumber(source.variant_count) ??
+        toFiniteNumber(source.variantCount) ??
+        (Array.isArray(source.variants) ? source.variants.length : null);
+      const rawProductType = String(source.product_type || source.productType || '').trim();
+      const rawCategory = String(source.category || '').trim();
+      const rawDepartment = String(source.department || '').trim();
+      const cardTitle = String(source.card_title || source.cardTitle || '').trim();
+      const cardSubtitle = String(source.card_subtitle || source.cardSubtitle || '').trim();
+      const cardHighlight = String(source.card_highlight || source.cardHighlight || '').trim();
+      const cardBadge = String(source.card_badge || source.cardBadge || '').trim();
+      const description = String(source.description || '').trim();
+      const brand = String(
+        source.brand ||
+          (source.brand as any)?.name ||
+          '',
+      ).trim();
+      const sourceKind = String(source.source || '').trim();
+      const reason = String(source.reason || '').trim();
+      const tags = Array.isArray(source.tags)
+        ? source.tags.map((value) => String(value || '').trim()).filter(Boolean)
+        : [];
+      const marketSignalBadges = Array.isArray(source.market_signal_badges)
+        ? source.market_signal_badges
+            .map((badge) => {
+              if (!badge || typeof badge !== 'object') return null;
+              const badgeLabel = String((badge as any).badge_label || '').trim();
+              if (!badgeLabel) return null;
+              return {
+                ...(typeof (badge as any).badge_type === 'string' && (badge as any).badge_type.trim()
+                  ? { badge_type: String((badge as any).badge_type).trim() }
+                  : {}),
+                badge_label: badgeLabel,
+              };
+            })
+            .filter(Boolean) as NonNullable<RecommendationsData['items'][number]['market_signal_badges']>
+        : [];
+      const searchCard =
+        source.search_card && typeof source.search_card === 'object'
+          ? {
+              ...(typeof (source.search_card as any).title_candidate === 'string' &&
+              (source.search_card as any).title_candidate.trim()
+                ? { title_candidate: String((source.search_card as any).title_candidate).trim() }
+                : {}),
+              ...(typeof (source.search_card as any).compact_candidate === 'string' &&
+              (source.search_card as any).compact_candidate.trim()
+                ? { compact_candidate: String((source.search_card as any).compact_candidate).trim() }
+                : {}),
+              ...(typeof (source.search_card as any).highlight_candidate === 'string' &&
+              (source.search_card as any).highlight_candidate.trim()
+                ? { highlight_candidate: String((source.search_card as any).highlight_candidate).trim() }
+                : {}),
+              ...(typeof (source.search_card as any).proof_badge_candidate === 'string' &&
+              (source.search_card as any).proof_badge_candidate.trim()
+                ? { proof_badge_candidate: String((source.search_card as any).proof_badge_candidate).trim() }
+                : {}),
+            }
+          : null;
+      const shoppingCard =
+        source.shopping_card && typeof source.shopping_card === 'object'
+          ? {
+              ...(typeof (source.shopping_card as any).highlight === 'string' &&
+              (source.shopping_card as any).highlight.trim()
+                ? { highlight: String((source.shopping_card as any).highlight).trim() }
+                : {}),
+            }
+          : null;
+      const reviewSummary =
+        source.review_summary && typeof source.review_summary === 'object'
+          ? {
+              ...(toFiniteNumber((source.review_summary as any).rating) != null
+                ? { rating: Number((source.review_summary as any).rating) }
+                : {}),
+              ...(toFiniteNumber((source.review_summary as any).average_rating) != null
+                ? { average_rating: Number((source.review_summary as any).average_rating) }
+                : {}),
+              ...(toFiniteNumber((source.review_summary as any).avg_rating) != null
+                ? { avg_rating: Number((source.review_summary as any).avg_rating) }
+                : {}),
+              ...(toFiniteNumber((source.review_summary as any).scale) != null
+                ? { scale: Number((source.review_summary as any).scale) }
+                : {}),
+              ...(toFiniteNumber((source.review_summary as any).rating_scale) != null
+                ? { rating_scale: Number((source.review_summary as any).rating_scale) }
+                : {}),
+              ...(toFiniteNumber((source.review_summary as any).review_count) != null
+                ? { review_count: Number((source.review_summary as any).review_count) }
+                : {}),
+              ...(toFiniteNumber((source.review_summary as any).count) != null
+                ? { count: Number((source.review_summary as any).count) }
+                : {}),
+              ...(toFiniteNumber((source.review_summary as any).total_reviews) != null
+                ? { total_reviews: Number((source.review_summary as any).total_reviews) }
+                : {}),
+            }
+          : null;
 
       return {
         product_id: productId,
         title: String(source.title || source.name || 'Untitled product'),
+        ...(description ? { description } : {}),
+        ...(brand ? { brand } : {}),
         ...(merchantId ? { merchant_id: merchantId } : {}),
+        ...(typeof source.merchant_name === 'string' && source.merchant_name.trim()
+          ? { merchant_name: source.merchant_name.trim() }
+          : {}),
         ...(typeof source.image_url === 'string' ? { image_url: source.image_url } : {}),
         ...(priceAmount > 0
           ? {
@@ -386,9 +488,109 @@ function normalizeRecommendationItems(
           : {}),
         ...(rating != null ? { rating } : {}),
         ...(reviewCount != null ? { review_count: Math.max(0, Math.round(reviewCount)) } : {}),
+        ...(variantCount != null ? { variant_count: Math.max(0, Math.trunc(variantCount)) } : {}),
+        ...(sourceKind ? { source: sourceKind } : {}),
+        ...(reason ? { reason } : {}),
+        ...(rawProductType ? { product_type: rawProductType } : {}),
+        ...(rawCategory ? { category: rawCategory } : {}),
+        ...(rawDepartment ? { department: rawDepartment } : {}),
+        ...(tags.length ? { tags } : {}),
+        ...(cardTitle ? { card_title: cardTitle } : {}),
+        ...(cardSubtitle ? { card_subtitle: cardSubtitle } : {}),
+        ...(cardHighlight ? { card_highlight: cardHighlight } : {}),
+        ...(cardBadge ? { card_badge: cardBadge } : {}),
+        ...(searchCard && Object.keys(searchCard).length ? { search_card: searchCard } : {}),
+        ...(shoppingCard && Object.keys(shoppingCard).length ? { shopping_card: shoppingCard } : {}),
+        ...(marketSignalBadges.length ? { market_signal_badges: marketSignalBadges } : {}),
+        ...(reviewSummary && Object.keys(reviewSummary).length ? { review_summary: reviewSummary } : {}),
       } satisfies RecommendationsData['items'][number];
     })
     .filter(Boolean) as RecommendationsData['items'];
+}
+
+function mergeRecommendationItemData(
+  current: RecommendationsData['items'][number],
+  incoming: RecommendationsData['items'][number],
+): RecommendationsData['items'][number] {
+  return {
+    ...current,
+    ...incoming,
+    title: incoming.title || current.title,
+    ...(incoming.description || current.description
+      ? { description: incoming.description || current.description }
+      : {}),
+    ...(incoming.brand || current.brand ? { brand: incoming.brand || current.brand } : {}),
+    ...(incoming.image_url || current.image_url
+      ? { image_url: incoming.image_url || current.image_url }
+      : {}),
+    ...(incoming.price || current.price ? { price: incoming.price || current.price } : {}),
+    ...((incoming.rating ?? current.rating) != null ? { rating: incoming.rating ?? current.rating } : {}),
+    ...((incoming.review_count ?? current.review_count) != null
+      ? { review_count: incoming.review_count ?? current.review_count }
+      : {}),
+    ...(incoming.merchant_id || current.merchant_id
+      ? { merchant_id: incoming.merchant_id || current.merchant_id }
+      : {}),
+    ...(incoming.merchant_name || current.merchant_name
+      ? { merchant_name: incoming.merchant_name || current.merchant_name }
+      : {}),
+    ...((incoming.variant_count ?? current.variant_count) != null
+      ? { variant_count: incoming.variant_count ?? current.variant_count }
+      : {}),
+    ...(incoming.source || current.source ? { source: incoming.source || current.source } : {}),
+    ...(incoming.reason || current.reason ? { reason: incoming.reason || current.reason } : {}),
+    ...(incoming.product_type || current.product_type
+      ? { product_type: incoming.product_type || current.product_type }
+      : {}),
+    ...(incoming.category || current.category ? { category: incoming.category || current.category } : {}),
+    ...(incoming.department || current.department
+      ? { department: incoming.department || current.department }
+      : {}),
+    ...(incoming.tags?.length || current.tags?.length ? { tags: incoming.tags?.length ? incoming.tags : current.tags } : {}),
+    ...(incoming.card_title || current.card_title
+      ? { card_title: incoming.card_title || current.card_title }
+      : {}),
+    ...(incoming.card_subtitle || current.card_subtitle
+      ? { card_subtitle: incoming.card_subtitle || current.card_subtitle }
+      : {}),
+    ...(incoming.card_highlight || current.card_highlight
+      ? { card_highlight: incoming.card_highlight || current.card_highlight }
+      : {}),
+    ...(incoming.card_badge || current.card_badge
+      ? { card_badge: incoming.card_badge || current.card_badge }
+      : {}),
+    ...(incoming.search_card || current.search_card
+      ? {
+          search_card: {
+            ...(current.search_card || {}),
+            ...(incoming.search_card || {}),
+          },
+        }
+      : {}),
+    ...(incoming.shopping_card || current.shopping_card
+      ? {
+          shopping_card: {
+            ...(current.shopping_card || {}),
+            ...(incoming.shopping_card || {}),
+          },
+        }
+      : {}),
+    ...(incoming.market_signal_badges?.length || current.market_signal_badges?.length
+      ? {
+          market_signal_badges: incoming.market_signal_badges?.length
+            ? incoming.market_signal_badges
+            : current.market_signal_badges,
+        }
+      : {}),
+    ...(incoming.review_summary || current.review_summary
+      ? {
+          review_summary: {
+            ...(current.review_summary || {}),
+            ...(incoming.review_summary || {}),
+          },
+        }
+      : {}),
+  };
 }
 
 function buildRecommendationSemanticKey(
@@ -413,13 +615,21 @@ function mergeRecommendationItems(
   const seenProductKeys = new Set<string>();
   const seenSemanticKeys = new Set<string>();
   const merged: RecommendationsData['items'] = [];
+  const productKeyToIndex = new Map<string, number>();
 
   const append = (item: RecommendationsData['items'][number]) => {
     const productKey = `${String(item.merchant_id || '').trim()}:${String(item.product_id || '').trim()}`;
     const semanticKey = buildRecommendationSemanticKey(item);
-    if (!item.product_id || seenProductKeys.has(productKey)) return;
+    if (!item.product_id) return;
+    if (seenProductKeys.has(productKey)) {
+      const existingIndex = productKeyToIndex.get(productKey);
+      if (existingIndex == null) return;
+      merged[existingIndex] = mergeRecommendationItemData(merged[existingIndex], item);
+      return;
+    }
     if (semanticKey && seenSemanticKeys.has(semanticKey)) return;
     seenProductKeys.add(productKey);
+    productKeyToIndex.set(productKey, merged.length);
     if (semanticKey) {
       seenSemanticKeys.add(semanticKey);
     }
@@ -436,6 +646,27 @@ function dedupeRecommendationItems(
   items: RecommendationsData['items'],
 ): RecommendationsData['items'] {
   return mergeRecommendationItems([], items).items;
+}
+
+function buildRecommendationProductKey(
+  item: RecommendationsData['items'][number],
+): string {
+  return `${String(item.merchant_id || '').trim()}:${String(item.product_id || '').trim()}`;
+}
+
+function needsRecommendationEnrichment(
+  item: RecommendationsData['items'][number],
+): boolean {
+  if (!item.product_id || !item.merchant_id) return false;
+  if (item.card_highlight || item.card_subtitle || item.description) return false;
+  if (
+    item.search_card?.highlight_candidate ||
+    item.search_card?.compact_candidate ||
+    item.shopping_card?.highlight
+  ) {
+    return false;
+  }
+  return true;
 }
 
 function normalizeSimilarMetadata(
@@ -588,6 +819,7 @@ export function PdpContainer({
   const recentPurchasesTracked = useRef(false);
   const ugcTracked = useRef(false);
   const similarTracked = useRef(false);
+  const similarEnrichmentRequestedRef = useRef<Set<string>>(new Set());
   const [activeTab, setActiveTab] = useState('product');
   const [showShadeSheet, setShowShadeSheet] = useState(false);
   const [showColorSheet, setShowColorSheet] = useState(false);
@@ -900,6 +1132,7 @@ export function PdpContainer({
     recentPurchasesTracked.current = false;
     ugcTracked.current = false;
     similarTracked.current = false;
+    similarEnrichmentRequestedRef.current.clear();
   }, [payload.product.product_id]);
 
   useEffect(() => {
@@ -944,6 +1177,56 @@ export function PdpContainer({
     payloadRecommendations?.metadata,
     payloadRecommendations?.strategy,
     recommendationCurrencyFallback,
+  ]);
+
+  useEffect(() => {
+    const candidates = similarItems
+      .slice(0, Math.max(similarVisibleCount, SIMILAR_PAGE_SIZE))
+      .filter((item) => needsRecommendationEnrichment(item))
+      .filter((item) => !similarEnrichmentRequestedRef.current.has(buildRecommendationProductKey(item)));
+
+    if (!candidates.length) return;
+
+    candidates.forEach((item) => {
+      similarEnrichmentRequestedRef.current.add(buildRecommendationProductKey(item));
+    });
+
+    let cancelled = false;
+
+    void Promise.all(
+      candidates.map(async (item) => {
+        if (!item.merchant_id) return null;
+        const detail = await getProductDetailExact({
+          product_id: item.product_id,
+          merchant_id: item.merchant_id,
+          timeout_ms: 4500,
+        });
+        if (!detail) return null;
+        const normalized = normalizeRecommendationItems(
+          [
+            {
+              ...detail,
+              variant_count: Array.isArray(detail.variants) ? detail.variants.length : undefined,
+            },
+          ],
+          recommendationCurrencyFallback,
+        );
+        return normalized[0] || null;
+      }),
+    ).then((results) => {
+      if (cancelled) return;
+      const enrichedItems = results.filter(Boolean) as RecommendationsData['items'];
+      if (!enrichedItems.length) return;
+      setSimilarItems((prev) => mergeRecommendationItems(prev, enrichedItems).items);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    recommendationCurrencyFallback,
+    similarItems,
+    similarVisibleCount,
   ]);
 
   const recommendations = useMemo<RecommendationsData>(

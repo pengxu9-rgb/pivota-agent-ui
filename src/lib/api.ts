@@ -2440,6 +2440,53 @@ export async function getSimilarProductsMainline(args: {
   };
 }
 
+export async function getProductDetailExact(args: {
+  product_id: string;
+  merchant_id: string;
+  timeout_ms?: number;
+}): Promise<ProductResponse | null> {
+  const productId = String(args.product_id || '').trim();
+  const merchantId = String(args.merchant_id || '').trim();
+  if (!productId || !merchantId) return null;
+
+  try {
+    const data = await callGatewayWithTimeout(
+      {
+        operation: 'get_product_detail',
+        payload: {
+          product: {
+            merchant_id: merchantId,
+            product_id: productId,
+          },
+        },
+      },
+      args.timeout_ms,
+    );
+
+    const product = (data as any)?.product;
+    if (!product) return null;
+
+    const enriched = {
+      ...product,
+      ...(typeof (data as any).product_group_id === 'string'
+        ? { product_group_id: (data as any).product_group_id }
+        : {}),
+      ...(Array.isArray((data as any).offers) ? { offers: (data as any).offers } : {}),
+      ...((data as any).offers_count != null ? { offers_count: (data as any).offers_count } : {}),
+      ...(typeof (data as any).default_offer_id === 'string'
+        ? { default_offer_id: (data as any).default_offer_id }
+        : {}),
+      ...(typeof (data as any).best_price_offer_id === 'string'
+        ? { best_price_offer_id: (data as any).best_price_offer_id }
+        : {}),
+    };
+
+    return normalizeProduct(enriched) as ProductResponse;
+  } catch {
+    return null;
+  }
+}
+
 export async function resolveProductCandidates(args: {
   product_id: string;
   merchant_id?: string | null;
