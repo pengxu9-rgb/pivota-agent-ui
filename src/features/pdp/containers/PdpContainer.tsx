@@ -1957,7 +1957,7 @@ export function PdpContainer({
         )}
         style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
       >
-        <div className="mx-auto max-w-md lg:max-w-6xl flex items-center gap-2 h-11 px-3 pointer-events-none">
+        <div className="mx-auto flex h-11 max-w-md items-center gap-2 px-2.5 pointer-events-none sm:px-3 lg:max-w-6xl">
           <button
             type="button"
             onClick={handleBack}
@@ -2059,7 +2059,7 @@ export function PdpContainer({
             {resolvedMode === 'beauty' && variants.length > 0 ? (
               <div className="border-b border-border bg-card py-1.5">
                 <div className="overflow-x-auto">
-                  <div className="flex items-center gap-1.5 px-3">
+                  <div className="flex items-center gap-1.5 px-2.5 sm:px-3">
                     {variants.slice(0, 4).map((variant) => {
                       const isSelected = variant.variant_id === selectedVariant.variant_id;
                       return (
@@ -2120,7 +2120,7 @@ export function PdpContainer({
             </div>
 
             <div className="lg:pt-3">
-            <div className="px-3 py-1 lg:px-0">
+            <div className="px-2.5 py-1 sm:px-3 lg:px-0">
               <div className="flex items-baseline gap-2 flex-wrap">
                 <span className="text-[26px] font-semibold text-foreground leading-none lg:text-[30px]">{formatPrice(displayPriceAmount, displayCurrency)}</span>
                 {!isInStock ? (
@@ -2334,7 +2334,7 @@ export function PdpContainer({
             </div>
 
           {showTrustBadges ? (
-            <div className="mx-3 lg:mx-0 mt-1.5 flex items-center gap-2 rounded-lg bg-muted/50 px-3 py-1.5 text-[10px]">
+            <div className="mx-2.5 mt-1.5 flex items-center gap-2 rounded-lg bg-muted/50 px-3 py-1.5 text-[10px] sm:mx-3 lg:mx-0">
               {trustBadges.map((badge, idx) => (
                 <div key={`${badge}-${idx}`} className="flex items-center gap-2">
                   <span>{badge}</span>
@@ -2343,7 +2343,7 @@ export function PdpContainer({
               ))}
             </div>
           ) : (effectiveShippingEta?.length || effectiveReturns?.return_window_days) ? (
-            <div className="mx-3 lg:mx-0 rounded-lg bg-card border border-border px-3 py-1.5 text-xs text-muted-foreground flex flex-wrap gap-x-3 gap-y-1">
+            <div className="mx-2.5 rounded-lg border border-border bg-card px-3 py-1.5 text-xs text-muted-foreground flex flex-wrap gap-x-3 gap-y-1 sm:mx-3 lg:mx-0">
               {effectiveShippingEta?.length ? (
                 <span>
                   Shipping {effectiveShippingEta[0]}–{effectiveShippingEta[1]} days
@@ -2359,7 +2359,7 @@ export function PdpContainer({
 
           {moduleStates.offers === 'LOADING' ? (
             <div
-              className="mx-3 lg:mx-0 mt-2 rounded-lg border border-border bg-card px-3 py-3 space-y-2"
+              className="mx-2.5 mt-2 space-y-2 rounded-lg border border-border bg-card px-3 py-3 sm:mx-3 lg:mx-0"
               style={{ minHeight: pdpViewModel.heightSpec.offers }}
               data-module-state="loading"
             >
@@ -2453,7 +2453,7 @@ export function PdpContainer({
                 state={moduleStates.ugc_preview}
                 height={pdpViewModel.heightSpec.ugc_preview}
                 skeleton={(
-                  <div className="mt-4 px-3">
+                  <div className="mt-4 px-2.5 sm:px-3">
                     <div className="h-4 w-32 rounded bg-muted/20 animate-pulse" />
                     <div className="mt-2 grid grid-cols-3 gap-1">
                       {Array.from({ length: 9 }).map((_, idx) => (
@@ -2510,7 +2510,7 @@ export function PdpContainer({
                 state={moduleStates.ugc_preview}
                 height={pdpViewModel.heightSpec.ugc_preview}
                 skeleton={(
-                  <div className="mt-4 px-3">
+                  <div className="mt-4 px-2.5 sm:px-3">
                     <div className="h-4 w-32 rounded bg-muted/20 animate-pulse" />
                     <div className="mt-2 grid grid-cols-3 gap-1">
                       {Array.from({ length: 9 }).map((_, idx) => (
@@ -2583,7 +2583,7 @@ export function PdpContainer({
               state={moduleStates.reviews_preview}
               height={pdpViewModel.heightSpec.reviews_preview}
               skeleton={(
-                <div className="px-4 py-5">
+                <div className="px-3.5 py-5 sm:px-4">
                   <div className="rounded-2xl border border-border bg-white p-4 shadow-sm">
                     <div className="flex items-start gap-4">
                       <div className="w-24">
@@ -2648,7 +2648,7 @@ export function PdpContainer({
                   }}
                 />
               ) : moduleStates.reviews_preview === 'ERROR' ? (
-                <div className="px-4 py-4 text-sm text-muted-foreground">
+                <div className="px-3.5 py-4 text-sm text-muted-foreground sm:px-4">
                   Reviews are temporarily unavailable.
                 </div>
               ) : null}
@@ -2678,7 +2678,7 @@ export function PdpContainer({
                 onShareCtaClick={handleUploadMedia}
               />
             ) : (
-              <div className="px-4 py-4">
+              <div className="px-3.5 py-4 sm:px-4">
                 <h2 className="text-sm font-semibold mb-2">Shades</h2>
                 <div className="grid grid-cols-3 gap-3">
                   {variants.map((variant) => {
@@ -2723,7 +2723,7 @@ export function PdpContainer({
             {resolvedMode === 'generic' ? (
               <GenericSizeGuide sizeGuide={payload.product.size_guide} />
             ) : (
-              <div className="px-4 py-3">
+              <div className="px-3.5 py-3 sm:px-4">
                 <h2 className="text-sm font-semibold mb-2">Size Guide</h2>
                 <div className="flex flex-wrap gap-2">
                   {sizeOptions.map((size) => {
@@ -2779,7 +2779,7 @@ export function PdpContainer({
                 suppressOverview={suppressOverviewInDetails}
               />
             ) : (
-              <div className="px-4 py-4">
+              <div className="px-3.5 py-4 sm:px-4">
                 <h2 className="text-sm font-semibold mb-3">Details</h2>
                 <DetailsAccordion data={details || { sections: [] }} />
               </div>
@@ -2798,7 +2798,7 @@ export function PdpContainer({
             <ModuleShell
               state={moduleStates.similar}
               height={pdpViewModel.heightSpec.similar}
-              className="px-3 py-3"
+              className="px-0 py-3"
               skeleton={<RecommendationsSkeleton />}
             >
               {hasRecommendationItems ? (
@@ -2831,11 +2831,11 @@ export function PdpContainer({
                   }}
                 />
               ) : moduleStates.similar === 'ERROR' ? (
-                <div className="rounded-xl border border-border bg-white/90 px-4 py-4 text-sm text-muted-foreground">
+                <div className="rounded-xl border border-border bg-white/90 px-3.5 py-4 text-sm text-muted-foreground sm:px-4">
                   Similar products are temporarily unavailable.
                 </div>
               ) : moduleStates.similar === 'EMPTY' ? (
-                <div className="rounded-xl border border-border bg-white/90 px-4 py-4 text-sm text-muted-foreground">
+                <div className="rounded-xl border border-border bg-white/90 px-3.5 py-4 text-sm text-muted-foreground sm:px-4">
                   No similar products yet.
                 </div>
               ) : null}
@@ -2848,7 +2848,7 @@ export function PdpContainer({
         ? createPortal(
             <div className="fixed inset-x-0 bottom-0 z-[2147483646]">
               <div
-                className="mx-auto max-w-md px-3"
+                className="mx-auto max-w-md px-2.5 sm:px-3"
                 style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
               >
                 <div className="rounded-2xl border border-border bg-white shadow-[0_-10px_24px_rgba(0,0,0,0.12)] overflow-hidden mb-2">

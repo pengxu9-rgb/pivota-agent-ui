@@ -53,7 +53,7 @@ export function GenericDetailsSection({
   );
 
   return (
-    <div className="p-3">
+    <div className="px-2.5 py-3 sm:p-3">
       <h2 className="text-sm font-semibold mb-2">Product Details</h2>
       {!suppressOverview ? <OverviewSection content={overviewContent} /> : null}
 

@@ -23,6 +23,16 @@ function StarRating({ value }: { value: number }) {
   );
 }
 
+function getBrandMonogram(value: string): string {
+  const parts = String(value || '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2);
+  if (!parts.length) return 'BR';
+  return parts.map((part) => part.charAt(0).toUpperCase()).join('');
+}
+
 export function BeautyReviewsSection({
   data,
   onSelectScope,
@@ -72,10 +82,14 @@ export function BeautyReviewsSection({
     })
     .sort((a, b) => (b.stars || 0) - (a.stars || 0));
   const scopeTabs = Array.isArray(data.tabs) ? data.tabs.filter((tab) => tab?.id && tab?.label) : [];
+  const resolvedBrandName = String(data.brand_card?.name || brandName || '').trim();
+  const resolvedBrandSubtitle = String(data.brand_card?.subtitle || '').trim();
+  const brandMonogram = getBrandMonogram(resolvedBrandName);
+  const brandSupportCopy = resolvedBrandSubtitle || 'Browse the full collection and brand context.';
 
   return (
     <div className="py-4">
-      <div className="mx-3 rounded-2xl bg-card border border-border p-3">
+      <div className="mx-2.5 rounded-2xl border border-border bg-card p-3 sm:mx-3">
         <div className="flex items-center justify-between mb-2">
           <h3 className="text-sm font-semibold">Reviews ({data.review_count})</h3>
           {onWriteReview ? (
@@ -169,7 +183,7 @@ export function BeautyReviewsSection({
 
       {data.filter_chips?.length || showEmpty ? (
         <div className="overflow-x-auto mt-3">
-          <div className="flex gap-2 px-3">
+          <div className="flex gap-2 px-2.5 sm:px-3">
             {data.filter_chips?.map((chip) => (
               <button
                 key={chip.label}
@@ -191,7 +205,7 @@ export function BeautyReviewsSection({
       ) : null}
 
       {data.preview_items?.length ? (
-        <div className="mt-3 space-y-3 px-3">
+        <div className="mt-3 space-y-3 px-2.5 sm:px-3">
           {data.preview_items.slice(0, 3).map((review) => (
             <div key={review.review_id} className="flex gap-3 pb-3 border-b border-border last:border-0">
               <div className="flex-1">
@@ -228,7 +242,7 @@ export function BeautyReviewsSection({
       ) : null}
 
       {data.questions?.length || showEmpty ? (
-        <div className="mt-3 px-3">
+        <div className="mt-3 px-2.5 sm:px-3">
           <div className="flex items-center justify-between mb-2">
             <h3 className="text-sm font-semibold">Questions</h3>
             {onAskQuestion ? (
@@ -297,36 +311,41 @@ export function BeautyReviewsSection({
         </div>
       ) : null}
 
-      {(data.brand_card?.name || brandName) ? (
+      {resolvedBrandName ? (
         brandHref ? (
           <Link
             href={brandHref}
             prefetch={false}
-            className="mt-4 mx-3 flex items-center gap-3 rounded-xl bg-card border border-border p-3 transition-colors hover:border-primary/50"
+            className="mt-4 mx-2.5 flex items-center gap-3 rounded-[20px] border border-border/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(248,246,242,0.98))] px-3.5 py-3 transition-colors hover:border-primary/40 hover:bg-[linear-gradient(180deg,rgba(255,255,255,1),rgba(250,248,244,1))] sm:mx-3"
           >
-            <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center text-[10px] font-bold tracking-tight">
-              {(data.brand_card?.name || brandName || '').slice(0, 12).toUpperCase()}
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-border/80 bg-white/90 text-[11px] font-semibold tracking-[0.18em] text-foreground shadow-sm">
+              {brandMonogram}
             </div>
-            <div className="flex-1">
-              <p className="font-semibold">{data.brand_card?.name || brandName}</p>
-              {data.brand_card?.subtitle ? (
-                <p className="text-xs text-muted-foreground">{data.brand_card.subtitle}</p>
-              ) : null}
+            <div className="min-w-0 flex-1">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                Brand page
+              </p>
+              <p className="mt-1 truncate text-sm font-semibold text-foreground">{resolvedBrandName}</p>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">{brandSupportCopy}</p>
+              <p className="mt-2 text-[11px] font-medium text-foreground/80">Explore the full collection</p>
             </div>
-            <ChevronRight className="h-5 w-5 text-muted-foreground" />
+            <span className="inline-flex items-center gap-1 rounded-full border border-border/80 bg-white/85 px-2.5 py-1 text-[11px] font-medium text-foreground/80">
+              Open
+              <ChevronRight className="h-4 w-4 text-muted-foreground" />
+            </span>
           </Link>
         ) : (
-          <div className="mt-4 mx-3 flex items-center gap-3 rounded-xl bg-card border border-border p-3">
-            <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center text-[10px] font-bold tracking-tight">
-              {(data.brand_card?.name || brandName || '').slice(0, 12).toUpperCase()}
+          <div className="mt-4 mx-2.5 flex items-center gap-3 rounded-[20px] border border-border/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(248,246,242,0.98))] px-3.5 py-3 sm:mx-3">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-border/80 bg-white/90 text-[11px] font-semibold tracking-[0.18em] text-foreground shadow-sm">
+              {brandMonogram}
             </div>
-            <div className="flex-1">
-              <p className="font-semibold">{data.brand_card?.name || brandName}</p>
-              {data.brand_card?.subtitle ? (
-                <p className="text-xs text-muted-foreground">{data.brand_card.subtitle}</p>
-              ) : null}
+            <div className="min-w-0 flex-1">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                Brand
+              </p>
+              <p className="mt-1 truncate text-sm font-semibold text-foreground">{resolvedBrandName}</p>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">{brandSupportCopy}</p>
             </div>
-            <ChevronRight className="h-5 w-5 text-muted-foreground" />
           </div>
         )
       ) : null}

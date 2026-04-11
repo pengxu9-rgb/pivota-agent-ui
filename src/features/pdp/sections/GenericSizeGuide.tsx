@@ -8,7 +8,7 @@ export function GenericSizeGuide({ sizeGuide }: { sizeGuide?: SizeGuide }) {
   }
 
   return (
-    <div className="p-3">
+    <div className="px-2.5 py-3 sm:p-3">
       <h2 className="text-sm font-semibold mb-2">Size Guide</h2>
       <div className="overflow-x-auto">
         <table className="w-full text-xs border border-border rounded-lg overflow-hidden">

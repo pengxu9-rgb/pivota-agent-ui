@@ -55,7 +55,7 @@ export function RecommendationsGrid({
   const showLoadMore = Boolean(onLoadMore) && (canLoadMore || isLoadingMore);
   return (
     <div className="py-6">
-      <div className="px-4 flex items-center justify-between mb-3">
+      <div className="mb-3 flex items-center justify-between px-3.5 sm:px-4">
         <h3 className="text-sm font-semibold">You May Also Like</h3>
         {onOpenAll ? (
           <button
@@ -67,7 +67,7 @@ export function RecommendationsGrid({
           </button>
         ) : null}
       </div>
-      <div className="px-4 grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 gap-3 px-3.5 sm:px-4 lg:grid-cols-4">
         {visibleItems.map((p, idx) => {
           const baseHref = buildProductHref(p.product_id, p.merchant_id);
           const handleClick = (event: MouseEvent<HTMLAnchorElement>) => {
@@ -125,7 +125,7 @@ export function RecommendationsGrid({
         })}
       </div>
       {statusNote ? (
-        <div className="px-4 mt-3">
+        <div className="mt-3 px-3.5 sm:px-4">
           <div className="rounded-xl border border-border bg-background/70 px-3 py-3">
             {statusNoteTitle ? (
               <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-foreground/80">
@@ -155,11 +155,11 @@ export function RecommendationsGrid({
 export function RecommendationsSkeleton() {
   return (
     <div className="py-6">
-      <div className="px-4 flex items-center justify-between mb-3">
+      <div className="mb-3 flex items-center justify-between px-3.5 sm:px-4">
         <div className="h-4 w-32 rounded bg-muted/30 animate-pulse" />
         <div className="h-3 w-12 rounded bg-muted/20 animate-pulse" />
       </div>
-      <div className="px-4 grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 gap-3 px-3.5 sm:px-4 lg:grid-cols-4">
         {Array.from({ length: 4 }).map((_, idx) => (
           <div
             key={idx}

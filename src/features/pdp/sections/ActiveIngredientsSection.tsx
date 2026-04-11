@@ -25,7 +25,7 @@ export function ActiveIngredientsSection({ data }: { data: ActiveIngredientsData
   if (!items.length && !data.raw_text) return null;
 
   return (
-    <div className="px-3 py-5 border-t border-muted/60">
+    <div className="border-t border-muted/60 px-2.5 py-5 sm:px-3">
       <div className="flex items-center justify-between gap-3">
         <h3 className="text-sm font-semibold">{data.title || 'Active ingredients'}</h3>
         <PdpSourceBadge
