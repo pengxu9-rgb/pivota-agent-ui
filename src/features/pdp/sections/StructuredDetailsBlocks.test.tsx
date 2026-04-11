@@ -149,4 +149,31 @@ describe('StructuredDetailsBlocks', () => {
     expect(screen.queryByText(/Patch test/i)).not.toBeInTheDocument();
     expect(screen.queryByText('How to Use')).not.toBeInTheDocument();
   });
+
+  it('collapses long INCI content by default and expands on demand', () => {
+    render(
+      <StructuredDetailsBlocks
+        ingredientsInci={{
+          title: 'Ingredients',
+          items: [
+            'Water (Aqua/Eau)',
+            'Propanediol',
+            'Calophyllum Inophyllum (Tamanu) Seed Oil',
+            'Dipropylene Glycol',
+            'Niacinamide',
+            'Carthamus Tinctorius (Safflower) Seed Oil',
+            'Cetearyl Olivate',
+            'Polysorbate 60',
+            'Glyceryl Oleate',
+            'Octyldodecanol',
+          ],
+        }}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: 'Show full INCI' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Show full INCI' }));
+    expect(screen.getByRole('button', { name: 'Hide full INCI' })).toBeInTheDocument();
+    expect(screen.getAllByText(/Calophyllum Inophyllum \(Tamanu\) Seed Oil/).length).toBeGreaterThan(0);
+  });
 });

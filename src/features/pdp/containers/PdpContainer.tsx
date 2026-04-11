@@ -31,6 +31,7 @@ import type {
   Variant,
 } from '@/features/pdp/types';
 import {
+  getProductDetailExact,
   getSimilarProductsMainline,
   listQuestions,
   postQuestion,
@@ -370,11 +371,112 @@ function normalizeRecommendationItems(
       const rating = toFiniteNumber(source.rating);
       const reviewCount =
         toFiniteNumber(source.review_count) ?? toFiniteNumber(source.reviewCount);
+      const variantCount =
+        toFiniteNumber(source.variant_count) ??
+        toFiniteNumber(source.variantCount) ??
+        (Array.isArray(source.variants) ? source.variants.length : null);
+      const rawProductType = String(source.product_type || source.productType || '').trim();
+      const rawCategory = String(source.category || '').trim();
+      const rawDepartment = String(source.department || '').trim();
+      const cardTitle = String(source.card_title || source.cardTitle || '').trim();
+      const cardSubtitle = String(source.card_subtitle || source.cardSubtitle || '').trim();
+      const cardHighlight = String(source.card_highlight || source.cardHighlight || '').trim();
+      const cardBadge = String(source.card_badge || source.cardBadge || '').trim();
+      const description = String(source.description || '').trim();
+      const brand = String(
+        source.brand ||
+          (source.brand as any)?.name ||
+          '',
+      ).trim();
+      const sourceKind = String(source.source || '').trim();
+      const reason = String(source.reason || '').trim();
+      const tags = Array.isArray(source.tags)
+        ? source.tags.map((value) => String(value || '').trim()).filter(Boolean)
+        : [];
+      const marketSignalBadges = Array.isArray(source.market_signal_badges)
+        ? source.market_signal_badges
+            .map((badge) => {
+              if (!badge || typeof badge !== 'object') return null;
+              const badgeLabel = String((badge as any).badge_label || '').trim();
+              if (!badgeLabel) return null;
+              return {
+                ...(typeof (badge as any).badge_type === 'string' && (badge as any).badge_type.trim()
+                  ? { badge_type: String((badge as any).badge_type).trim() }
+                  : {}),
+                badge_label: badgeLabel,
+              };
+            })
+            .filter(Boolean) as NonNullable<RecommendationsData['items'][number]['market_signal_badges']>
+        : [];
+      const searchCard =
+        source.search_card && typeof source.search_card === 'object'
+          ? {
+              ...(typeof (source.search_card as any).title_candidate === 'string' &&
+              (source.search_card as any).title_candidate.trim()
+                ? { title_candidate: String((source.search_card as any).title_candidate).trim() }
+                : {}),
+              ...(typeof (source.search_card as any).compact_candidate === 'string' &&
+              (source.search_card as any).compact_candidate.trim()
+                ? { compact_candidate: String((source.search_card as any).compact_candidate).trim() }
+                : {}),
+              ...(typeof (source.search_card as any).highlight_candidate === 'string' &&
+              (source.search_card as any).highlight_candidate.trim()
+                ? { highlight_candidate: String((source.search_card as any).highlight_candidate).trim() }
+                : {}),
+              ...(typeof (source.search_card as any).proof_badge_candidate === 'string' &&
+              (source.search_card as any).proof_badge_candidate.trim()
+                ? { proof_badge_candidate: String((source.search_card as any).proof_badge_candidate).trim() }
+                : {}),
+            }
+          : null;
+      const shoppingCard =
+        source.shopping_card && typeof source.shopping_card === 'object'
+          ? {
+              ...(typeof (source.shopping_card as any).highlight === 'string' &&
+              (source.shopping_card as any).highlight.trim()
+                ? { highlight: String((source.shopping_card as any).highlight).trim() }
+                : {}),
+            }
+          : null;
+      const reviewSummary =
+        source.review_summary && typeof source.review_summary === 'object'
+          ? {
+              ...(toFiniteNumber((source.review_summary as any).rating) != null
+                ? { rating: Number((source.review_summary as any).rating) }
+                : {}),
+              ...(toFiniteNumber((source.review_summary as any).average_rating) != null
+                ? { average_rating: Number((source.review_summary as any).average_rating) }
+                : {}),
+              ...(toFiniteNumber((source.review_summary as any).avg_rating) != null
+                ? { avg_rating: Number((source.review_summary as any).avg_rating) }
+                : {}),
+              ...(toFiniteNumber((source.review_summary as any).scale) != null
+                ? { scale: Number((source.review_summary as any).scale) }
+                : {}),
+              ...(toFiniteNumber((source.review_summary as any).rating_scale) != null
+                ? { rating_scale: Number((source.review_summary as any).rating_scale) }
+                : {}),
+              ...(toFiniteNumber((source.review_summary as any).review_count) != null
+                ? { review_count: Number((source.review_summary as any).review_count) }
+                : {}),
+              ...(toFiniteNumber((source.review_summary as any).count) != null
+                ? { count: Number((source.review_summary as any).count) }
+                : {}),
+              ...(toFiniteNumber((source.review_summary as any).total_reviews) != null
+                ? { total_reviews: Number((source.review_summary as any).total_reviews) }
+                : {}),
+            }
+          : null;
 
       return {
         product_id: productId,
         title: String(source.title || source.name || 'Untitled product'),
+        ...(description ? { description } : {}),
+        ...(brand ? { brand } : {}),
         ...(merchantId ? { merchant_id: merchantId } : {}),
+        ...(typeof source.merchant_name === 'string' && source.merchant_name.trim()
+          ? { merchant_name: source.merchant_name.trim() }
+          : {}),
         ...(typeof source.image_url === 'string' ? { image_url: source.image_url } : {}),
         ...(priceAmount > 0
           ? {
@@ -386,9 +488,109 @@ function normalizeRecommendationItems(
           : {}),
         ...(rating != null ? { rating } : {}),
         ...(reviewCount != null ? { review_count: Math.max(0, Math.round(reviewCount)) } : {}),
+        ...(variantCount != null ? { variant_count: Math.max(0, Math.trunc(variantCount)) } : {}),
+        ...(sourceKind ? { source: sourceKind } : {}),
+        ...(reason ? { reason } : {}),
+        ...(rawProductType ? { product_type: rawProductType } : {}),
+        ...(rawCategory ? { category: rawCategory } : {}),
+        ...(rawDepartment ? { department: rawDepartment } : {}),
+        ...(tags.length ? { tags } : {}),
+        ...(cardTitle ? { card_title: cardTitle } : {}),
+        ...(cardSubtitle ? { card_subtitle: cardSubtitle } : {}),
+        ...(cardHighlight ? { card_highlight: cardHighlight } : {}),
+        ...(cardBadge ? { card_badge: cardBadge } : {}),
+        ...(searchCard && Object.keys(searchCard).length ? { search_card: searchCard } : {}),
+        ...(shoppingCard && Object.keys(shoppingCard).length ? { shopping_card: shoppingCard } : {}),
+        ...(marketSignalBadges.length ? { market_signal_badges: marketSignalBadges } : {}),
+        ...(reviewSummary && Object.keys(reviewSummary).length ? { review_summary: reviewSummary } : {}),
       } satisfies RecommendationsData['items'][number];
     })
     .filter(Boolean) as RecommendationsData['items'];
+}
+
+function mergeRecommendationItemData(
+  current: RecommendationsData['items'][number],
+  incoming: RecommendationsData['items'][number],
+): RecommendationsData['items'][number] {
+  return {
+    ...current,
+    ...incoming,
+    title: incoming.title || current.title,
+    ...(incoming.description || current.description
+      ? { description: incoming.description || current.description }
+      : {}),
+    ...(incoming.brand || current.brand ? { brand: incoming.brand || current.brand } : {}),
+    ...(incoming.image_url || current.image_url
+      ? { image_url: incoming.image_url || current.image_url }
+      : {}),
+    ...(incoming.price || current.price ? { price: incoming.price || current.price } : {}),
+    ...((incoming.rating ?? current.rating) != null ? { rating: incoming.rating ?? current.rating } : {}),
+    ...((incoming.review_count ?? current.review_count) != null
+      ? { review_count: incoming.review_count ?? current.review_count }
+      : {}),
+    ...(incoming.merchant_id || current.merchant_id
+      ? { merchant_id: incoming.merchant_id || current.merchant_id }
+      : {}),
+    ...(incoming.merchant_name || current.merchant_name
+      ? { merchant_name: incoming.merchant_name || current.merchant_name }
+      : {}),
+    ...((incoming.variant_count ?? current.variant_count) != null
+      ? { variant_count: incoming.variant_count ?? current.variant_count }
+      : {}),
+    ...(incoming.source || current.source ? { source: incoming.source || current.source } : {}),
+    ...(incoming.reason || current.reason ? { reason: incoming.reason || current.reason } : {}),
+    ...(incoming.product_type || current.product_type
+      ? { product_type: incoming.product_type || current.product_type }
+      : {}),
+    ...(incoming.category || current.category ? { category: incoming.category || current.category } : {}),
+    ...(incoming.department || current.department
+      ? { department: incoming.department || current.department }
+      : {}),
+    ...(incoming.tags?.length || current.tags?.length ? { tags: incoming.tags?.length ? incoming.tags : current.tags } : {}),
+    ...(incoming.card_title || current.card_title
+      ? { card_title: incoming.card_title || current.card_title }
+      : {}),
+    ...(incoming.card_subtitle || current.card_subtitle
+      ? { card_subtitle: incoming.card_subtitle || current.card_subtitle }
+      : {}),
+    ...(incoming.card_highlight || current.card_highlight
+      ? { card_highlight: incoming.card_highlight || current.card_highlight }
+      : {}),
+    ...(incoming.card_badge || current.card_badge
+      ? { card_badge: incoming.card_badge || current.card_badge }
+      : {}),
+    ...(incoming.search_card || current.search_card
+      ? {
+          search_card: {
+            ...(current.search_card || {}),
+            ...(incoming.search_card || {}),
+          },
+        }
+      : {}),
+    ...(incoming.shopping_card || current.shopping_card
+      ? {
+          shopping_card: {
+            ...(current.shopping_card || {}),
+            ...(incoming.shopping_card || {}),
+          },
+        }
+      : {}),
+    ...(incoming.market_signal_badges?.length || current.market_signal_badges?.length
+      ? {
+          market_signal_badges: incoming.market_signal_badges?.length
+            ? incoming.market_signal_badges
+            : current.market_signal_badges,
+        }
+      : {}),
+    ...(incoming.review_summary || current.review_summary
+      ? {
+          review_summary: {
+            ...(current.review_summary || {}),
+            ...(incoming.review_summary || {}),
+          },
+        }
+      : {}),
+  };
 }
 
 function buildRecommendationSemanticKey(
@@ -413,13 +615,21 @@ function mergeRecommendationItems(
   const seenProductKeys = new Set<string>();
   const seenSemanticKeys = new Set<string>();
   const merged: RecommendationsData['items'] = [];
+  const productKeyToIndex = new Map<string, number>();
 
   const append = (item: RecommendationsData['items'][number]) => {
     const productKey = `${String(item.merchant_id || '').trim()}:${String(item.product_id || '').trim()}`;
     const semanticKey = buildRecommendationSemanticKey(item);
-    if (!item.product_id || seenProductKeys.has(productKey)) return;
+    if (!item.product_id) return;
+    if (seenProductKeys.has(productKey)) {
+      const existingIndex = productKeyToIndex.get(productKey);
+      if (existingIndex == null) return;
+      merged[existingIndex] = mergeRecommendationItemData(merged[existingIndex], item);
+      return;
+    }
     if (semanticKey && seenSemanticKeys.has(semanticKey)) return;
     seenProductKeys.add(productKey);
+    productKeyToIndex.set(productKey, merged.length);
     if (semanticKey) {
       seenSemanticKeys.add(semanticKey);
     }
@@ -436,6 +646,27 @@ function dedupeRecommendationItems(
   items: RecommendationsData['items'],
 ): RecommendationsData['items'] {
   return mergeRecommendationItems([], items).items;
+}
+
+function buildRecommendationProductKey(
+  item: RecommendationsData['items'][number],
+): string {
+  return `${String(item.merchant_id || '').trim()}:${String(item.product_id || '').trim()}`;
+}
+
+function needsRecommendationEnrichment(
+  item: RecommendationsData['items'][number],
+): boolean {
+  if (!item.product_id || !item.merchant_id) return false;
+  if (item.card_highlight || item.card_subtitle || item.description) return false;
+  if (
+    item.search_card?.highlight_candidate ||
+    item.search_card?.compact_candidate ||
+    item.shopping_card?.highlight
+  ) {
+    return false;
+  }
+  return true;
 }
 
 function normalizeSimilarMetadata(
@@ -588,6 +819,7 @@ export function PdpContainer({
   const recentPurchasesTracked = useRef(false);
   const ugcTracked = useRef(false);
   const similarTracked = useRef(false);
+  const similarEnrichmentRequestedRef = useRef<Set<string>>(new Set());
   const [activeTab, setActiveTab] = useState('product');
   const [showShadeSheet, setShowShadeSheet] = useState(false);
   const [showColorSheet, setShowColorSheet] = useState(false);
@@ -900,6 +1132,7 @@ export function PdpContainer({
     recentPurchasesTracked.current = false;
     ugcTracked.current = false;
     similarTracked.current = false;
+    similarEnrichmentRequestedRef.current.clear();
   }, [payload.product.product_id]);
 
   useEffect(() => {
@@ -944,6 +1177,56 @@ export function PdpContainer({
     payloadRecommendations?.metadata,
     payloadRecommendations?.strategy,
     recommendationCurrencyFallback,
+  ]);
+
+  useEffect(() => {
+    const candidates = similarItems
+      .slice(0, Math.max(similarVisibleCount, SIMILAR_PAGE_SIZE))
+      .filter((item) => needsRecommendationEnrichment(item))
+      .filter((item) => !similarEnrichmentRequestedRef.current.has(buildRecommendationProductKey(item)));
+
+    if (!candidates.length) return;
+
+    candidates.forEach((item) => {
+      similarEnrichmentRequestedRef.current.add(buildRecommendationProductKey(item));
+    });
+
+    let cancelled = false;
+
+    void Promise.all(
+      candidates.map(async (item) => {
+        if (!item.merchant_id) return null;
+        const detail = await getProductDetailExact({
+          product_id: item.product_id,
+          merchant_id: item.merchant_id,
+          timeout_ms: 4500,
+        });
+        if (!detail) return null;
+        const normalized = normalizeRecommendationItems(
+          [
+            {
+              ...detail,
+              variant_count: Array.isArray(detail.variants) ? detail.variants.length : undefined,
+            },
+          ],
+          recommendationCurrencyFallback,
+        );
+        return normalized[0] || null;
+      }),
+    ).then((results) => {
+      if (cancelled) return;
+      const enrichedItems = results.filter(Boolean) as RecommendationsData['items'];
+      if (!enrichedItems.length) return;
+      setSimilarItems((prev) => mergeRecommendationItems(prev, enrichedItems).items);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    recommendationCurrencyFallback,
+    similarItems,
+    similarVisibleCount,
   ]);
 
   const recommendations = useMemo<RecommendationsData>(
@@ -1989,7 +2272,7 @@ export function PdpContainer({
         )}
         style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
       >
-        <div className="mx-auto max-w-md lg:max-w-6xl flex items-center gap-2 h-11 px-3 pointer-events-none">
+        <div className="mx-auto flex h-11 max-w-md items-center gap-2 px-2.5 pointer-events-none sm:px-3 lg:max-w-6xl">
           <button
             type="button"
             onClick={handleBack}
@@ -2091,7 +2374,7 @@ export function PdpContainer({
             {resolvedMode === 'beauty' && variants.length > 0 ? (
               <div className="border-b border-border bg-card py-1.5">
                 <div className="overflow-x-auto">
-                  <div className="flex items-center gap-1.5 px-3">
+                  <div className="flex items-center gap-1.5 px-2.5 sm:px-3">
                     {variants.slice(0, 4).map((variant) => {
                       const isSelected = variant.variant_id === selectedVariant.variant_id;
                       return (
@@ -2152,7 +2435,7 @@ export function PdpContainer({
             </div>
 
             <div className="lg:pt-3">
-            <div className="px-3 py-1 lg:px-0">
+            <div className="px-2.5 py-1 sm:px-3 lg:px-0">
               <div className="flex items-baseline gap-2 flex-wrap">
                 <span className="text-[26px] font-semibold text-foreground leading-none lg:text-[30px]">{formatPrice(displayPriceAmount, displayCurrency)}</span>
                 {!isInStock ? (
@@ -2366,7 +2649,7 @@ export function PdpContainer({
             </div>
 
           {showTrustBadges ? (
-            <div className="mx-3 lg:mx-0 mt-1.5 flex items-center gap-2 rounded-lg bg-muted/50 px-3 py-1.5 text-[10px]">
+            <div className="mx-2.5 mt-1.5 flex items-center gap-2 rounded-lg bg-muted/50 px-3 py-1.5 text-[10px] sm:mx-3 lg:mx-0">
               {trustBadges.map((badge, idx) => (
                 <div key={`${badge}-${idx}`} className="flex items-center gap-2">
                   <span>{badge}</span>
@@ -2375,7 +2658,7 @@ export function PdpContainer({
               ))}
             </div>
           ) : (effectiveShippingEta?.length || effectiveReturns?.return_window_days) ? (
-            <div className="mx-3 lg:mx-0 rounded-lg bg-card border border-border px-3 py-1.5 text-xs text-muted-foreground flex flex-wrap gap-x-3 gap-y-1">
+            <div className="mx-2.5 rounded-lg border border-border bg-card px-3 py-1.5 text-xs text-muted-foreground flex flex-wrap gap-x-3 gap-y-1 sm:mx-3 lg:mx-0">
               {effectiveShippingEta?.length ? (
                 <span>
                   Shipping {effectiveShippingEta[0]}–{effectiveShippingEta[1]} days
@@ -2391,7 +2674,7 @@ export function PdpContainer({
 
           {moduleStates.offers === 'LOADING' ? (
             <div
-              className="mx-3 lg:mx-0 mt-2 rounded-lg border border-border bg-card px-3 py-3 space-y-2"
+              className="mx-2.5 mt-2 space-y-2 rounded-lg border border-border bg-card px-3 py-3 sm:mx-3 lg:mx-0"
               style={{ minHeight: pdpViewModel.heightSpec.offers }}
               data-module-state="loading"
             >
@@ -2485,7 +2768,7 @@ export function PdpContainer({
                 state={moduleStates.ugc_preview}
                 height={pdpViewModel.heightSpec.ugc_preview}
                 skeleton={(
-                  <div className="mt-4 px-3">
+                  <div className="mt-4 px-2.5 sm:px-3">
                     <div className="h-4 w-32 rounded bg-muted/20 animate-pulse" />
                     <div className="mt-2 grid grid-cols-3 gap-1">
                       {Array.from({ length: 9 }).map((_, idx) => (
@@ -2542,7 +2825,7 @@ export function PdpContainer({
                 state={moduleStates.ugc_preview}
                 height={pdpViewModel.heightSpec.ugc_preview}
                 skeleton={(
-                  <div className="mt-4 px-3">
+                  <div className="mt-4 px-2.5 sm:px-3">
                     <div className="h-4 w-32 rounded bg-muted/20 animate-pulse" />
                     <div className="mt-2 grid grid-cols-3 gap-1">
                       {Array.from({ length: 9 }).map((_, idx) => (
@@ -2615,7 +2898,7 @@ export function PdpContainer({
               state={moduleStates.reviews_preview}
               height={pdpViewModel.heightSpec.reviews_preview}
               skeleton={(
-                <div className="px-4 py-5">
+                <div className="px-3.5 py-5 sm:px-4">
                   <div className="rounded-2xl border border-border bg-white p-4 shadow-sm">
                     <div className="flex items-start gap-4">
                       <div className="w-24">
@@ -2680,7 +2963,7 @@ export function PdpContainer({
                   }}
                 />
               ) : moduleStates.reviews_preview === 'ERROR' ? (
-                <div className="px-4 py-4 text-sm text-muted-foreground">
+                <div className="px-3.5 py-4 text-sm text-muted-foreground sm:px-4">
                   Reviews are temporarily unavailable.
                 </div>
               ) : null}
@@ -2710,7 +2993,7 @@ export function PdpContainer({
                 onShareCtaClick={handleUploadMedia}
               />
             ) : (
-              <div className="px-4 py-4">
+              <div className="px-3.5 py-4 sm:px-4">
                 <h2 className="text-sm font-semibold mb-2">Shades</h2>
                 <div className="grid grid-cols-3 gap-3">
                   {variants.map((variant) => {
@@ -2755,7 +3038,7 @@ export function PdpContainer({
             {resolvedMode === 'generic' ? (
               <GenericSizeGuide sizeGuide={payload.product.size_guide} />
             ) : (
-              <div className="px-4 py-3">
+              <div className="px-3.5 py-3 sm:px-4">
                 <h2 className="text-sm font-semibold mb-2">Size Guide</h2>
                 <div className="flex flex-wrap gap-2">
                   {sizeOptions.map((size) => {
@@ -2811,7 +3094,7 @@ export function PdpContainer({
                 suppressOverview={suppressOverviewInDetails}
               />
             ) : (
-              <div className="px-4 py-4">
+              <div className="px-3.5 py-4 sm:px-4">
                 <h2 className="text-sm font-semibold mb-3">Details</h2>
                 <DetailsAccordion data={details || { sections: [] }} />
               </div>
@@ -2830,7 +3113,7 @@ export function PdpContainer({
             <ModuleShell
               state={moduleStates.similar}
               height={pdpViewModel.heightSpec.similar}
-              className="px-3 py-3"
+              className="px-0 py-3"
               skeleton={<RecommendationsSkeleton />}
             >
               {hasRecommendationItems ? (
@@ -2863,11 +3146,11 @@ export function PdpContainer({
                   }}
                 />
               ) : moduleStates.similar === 'ERROR' ? (
-                <div className="rounded-xl border border-border bg-white/90 px-4 py-4 text-sm text-muted-foreground">
+                <div className="rounded-xl border border-border bg-white/90 px-3.5 py-4 text-sm text-muted-foreground sm:px-4">
                   Similar products are temporarily unavailable.
                 </div>
               ) : moduleStates.similar === 'EMPTY' ? (
-                <div className="rounded-xl border border-border bg-white/90 px-4 py-4 text-sm text-muted-foreground">
+                <div className="rounded-xl border border-border bg-white/90 px-3.5 py-4 text-sm text-muted-foreground sm:px-4">
                   No similar products yet.
                 </div>
               ) : null}
@@ -2880,7 +3163,7 @@ export function PdpContainer({
         ? createPortal(
             <div className="fixed inset-x-0 bottom-0 z-[2147483646]">
               <div
-                className="mx-auto max-w-md px-3"
+                className="mx-auto max-w-md px-2.5 sm:px-3"
                 style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
               >
                 <div className="rounded-2xl border border-border bg-white shadow-[0_-10px_24px_rgba(0,0,0,0.12)] overflow-hidden mb-2">

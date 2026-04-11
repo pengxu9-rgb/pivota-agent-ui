@@ -40,7 +40,7 @@ export function GenericRecentPurchases({
     : null;
 
   return (
-    <div className="mt-3 mx-3 border border-border rounded-lg overflow-hidden bg-card">
+    <div className="mt-3 mx-2.5 overflow-hidden rounded-lg border border-border bg-card sm:mx-3">
       <div className="flex items-center justify-between px-3 py-1.5 border-b border-border">
         <h3 className="text-sm font-semibold">
           Recent Purchases ({displayCount})

@@ -1,7 +1,6 @@
 'use client';
 
 import { useId, useState } from 'react';
-
 import type {
   ActiveIngredientsData,
   HowToUseData,
@@ -391,6 +390,9 @@ export function StructuredDetailsBlocks({
     hideLowConfidenceActiveIngredients &&
     activeIngredientItems.length <= 1 &&
     (ingredientsInciItems.length >= 4 || normalizedIngredientsRawText.length >= 80);
+  const ingredientsInlineText = ingredientsInciItems.join(', ');
+  const shouldCollapseIngredients =
+    ingredientsInciItems.length >= 8 || normalizedIngredientsRawText.length >= 220 || ingredientsInlineText.length >= 220;
   const hasActiveIngredients = !shouldHideActiveIngredients && Boolean(
     activeIngredientItems.length || String(activeIngredients?.raw_text || '').trim(),
   );

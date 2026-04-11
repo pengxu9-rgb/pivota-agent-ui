@@ -95,7 +95,8 @@ describe('Reviews text rendering', () => {
 
     const link = screen.getByRole('link', { name: /Tom Ford Beauty/i });
     expect(link).toHaveAttribute('href', '/brands/tom-ford?name=Tom%20Ford');
-    expect(screen.getByText('Fragrance and makeup')).toBeInTheDocument();
+    expect(screen.getByText('Explore the full collection')).toBeInTheDocument();
+    expect(screen.queryByText('Fragrance and makeup')).not.toBeInTheDocument();
   });
 
   it('renders review scope label and tabs when product-line aggregation is present', () => {

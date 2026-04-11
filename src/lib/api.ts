@@ -1838,25 +1838,40 @@ function normalizeRecommendationItem(
   const productId = String(input?.product_id || input?.productId || input?.id || '').trim();
   if (!productId) return null;
 
-  const merchantId = String(
-    input?.merchant_id || input?.merchantId || input?.merchant?.id || '',
-  ).trim();
-  const title = String(input?.title || input?.name || '').trim() || 'Untitled product';
-  const amount = Number(input?.price?.amount ?? input?.price_amount ?? input?.price ?? 0);
-  const currency = String(input?.price?.currency || input?.currency || '').trim() || fallbackCurrency;
+  const normalized = normalizeProduct({
+    ...input,
+    product_id: productId,
+    price: input?.price ?? input?.price_amount ?? input?.price ?? 0,
+    currency: String(input?.price?.currency || input?.currency || '').trim() || fallbackCurrency,
+  } as ProductResponse);
+  const amount = Number(normalized.price || 0);
+  const currency = String(normalized.currency || '').trim() || fallbackCurrency;
   const rating = Number(input?.rating);
   const reviewCount = Number(input?.review_count ?? input?.reviewCount);
 
   return {
-    product_id: productId,
-    title,
-    ...(merchantId ? { merchant_id: merchantId } : {}),
-    ...(typeof input?.image_url === 'string' && input.image_url.trim()
-      ? { image_url: input.image_url.trim() }
-      : {}),
+    product_id: normalized.product_id,
+    title: normalized.title,
+    ...(normalized.merchant_id ? { merchant_id: normalized.merchant_id } : {}),
+    ...(normalized.merchant_name ? { merchant_name: normalized.merchant_name } : {}),
+    ...(normalized.image_url ? { image_url: normalized.image_url } : {}),
     ...(Number.isFinite(amount) && amount > 0 ? { price: { amount, currency } } : {}),
     ...(Number.isFinite(rating) ? { rating } : {}),
     ...(Number.isFinite(reviewCount) ? { review_count: Math.max(0, Math.round(reviewCount)) } : {}),
+    ...(normalized.product_type ? { product_type: normalized.product_type } : {}),
+    ...(normalized.category ? { category: normalized.category } : {}),
+    ...(normalized.department ? { department: normalized.department } : {}),
+    ...(Array.isArray(normalized.tags) ? { tags: normalized.tags } : {}),
+    ...(normalized.review_summary ? { review_summary: normalized.review_summary } : {}),
+    ...(normalized.card_title ? { card_title: normalized.card_title } : {}),
+    ...(normalized.card_subtitle ? { card_subtitle: normalized.card_subtitle } : {}),
+    ...(normalized.card_highlight ? { card_highlight: normalized.card_highlight } : {}),
+    ...(normalized.card_badge ? { card_badge: normalized.card_badge } : {}),
+    ...(normalized.search_card ? { search_card: normalized.search_card } : {}),
+    ...(normalized.shopping_card ? { shopping_card: normalized.shopping_card } : {}),
+    ...(Array.isArray(normalized.market_signal_badges)
+      ? { market_signal_badges: normalized.market_signal_badges }
+      : {}),
   };
 }
 
@@ -2423,6 +2438,53 @@ export async function getSimilarProductsMainline(args: {
       has_more: responseHasMore,
     },
   };
+}
+
+export async function getProductDetailExact(args: {
+  product_id: string;
+  merchant_id: string;
+  timeout_ms?: number;
+}): Promise<ProductResponse | null> {
+  const productId = String(args.product_id || '').trim();
+  const merchantId = String(args.merchant_id || '').trim();
+  if (!productId || !merchantId) return null;
+
+  try {
+    const data = await callGatewayWithTimeout(
+      {
+        operation: 'get_product_detail',
+        payload: {
+          product: {
+            merchant_id: merchantId,
+            product_id: productId,
+          },
+        },
+      },
+      args.timeout_ms,
+    );
+
+    const product = (data as any)?.product;
+    if (!product) return null;
+
+    const enriched = {
+      ...product,
+      ...(typeof (data as any).product_group_id === 'string'
+        ? { product_group_id: (data as any).product_group_id }
+        : {}),
+      ...(Array.isArray((data as any).offers) ? { offers: (data as any).offers } : {}),
+      ...((data as any).offers_count != null ? { offers_count: (data as any).offers_count } : {}),
+      ...(typeof (data as any).default_offer_id === 'string'
+        ? { default_offer_id: (data as any).default_offer_id }
+        : {}),
+      ...(typeof (data as any).best_price_offer_id === 'string'
+        ? { best_price_offer_id: (data as any).best_price_offer_id }
+        : {}),
+    };
+
+    return normalizeProduct(enriched) as ProductResponse;
+  } catch {
+    return null;
+  }
 }
 
 export async function resolveProductCandidates(args: {

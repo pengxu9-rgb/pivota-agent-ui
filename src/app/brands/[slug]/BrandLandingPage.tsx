@@ -805,7 +805,7 @@ export function BrandLandingPage({
           isScrolled ? 'shadow-sm' : ''
         }`}
       >
-        <div className="mx-auto flex h-11 max-w-6xl items-center justify-between px-4 sm:h-12 sm:px-6 lg:px-8">
+        <div className="mx-auto flex h-11 max-w-6xl items-center justify-between px-3.5 sm:h-12 sm:px-6 lg:px-8">
           <a
             href={returnHref}
             className="inline-flex h-8 w-8 items-center justify-center rounded-full text-slate-600 transition hover:text-slate-950"
@@ -844,7 +844,7 @@ export function BrandLandingPage({
         </div>
 
         {isSearchOpen ? (
-          <div className="border-t border-[#f1ebe3] bg-white px-4 py-3 sm:px-6 lg:px-8">
+          <div className="border-t border-[#f1ebe3] bg-white px-3.5 py-3 sm:px-6 lg:px-8">
             <form
               className="mx-auto flex max-w-6xl items-center gap-2"
               onSubmit={(event) => {
@@ -874,7 +874,7 @@ export function BrandLandingPage({
 
       </header>
 
-      <main className="relative mx-auto max-w-6xl px-4 pb-14 pt-3 sm:px-6 lg:px-8">
+      <main className="relative mx-auto max-w-6xl px-3.5 pb-14 pt-3 sm:px-6 lg:px-8">
         <motion.section
           initial={{ opacity: 0, y: 18 }}
           animate={{ opacity: 1, y: 0 }}
@@ -919,7 +919,7 @@ export function BrandLandingPage({
             </div>
           </section>
 
-          <section className="sticky top-11 z-40 -mx-4 border-y border-[#f1ebe3] bg-white/96 px-4 py-2 backdrop-blur sm:top-12 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
+          <section className="sticky top-11 z-40 -mx-3.5 border-y border-[#f1ebe3] bg-white/96 px-3.5 py-2 backdrop-blur sm:top-12 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
             <div className="mx-auto flex max-w-6xl items-center gap-2">
               <button
                 type="button"

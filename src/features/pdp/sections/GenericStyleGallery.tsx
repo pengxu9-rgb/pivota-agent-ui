@@ -27,7 +27,7 @@ export function GenericStyleGallery({
   if (!items.length && !showEmpty) return null;
 
   return (
-    <div className="mt-4 px-3">
+    <div className="mt-4 px-2.5 sm:px-3">
       <div className="flex items-center justify-between mb-2">
         <h3 className="text-sm font-semibold">
           {title}

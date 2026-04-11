@@ -502,10 +502,47 @@ export interface RecommendationsData {
   items: Array<{
     product_id: string;
     title: string;
+    description?: string;
+    brand?: string;
     image_url?: string;
     price?: Price;
     rating?: number;
     review_count?: number;
     merchant_id?: string;
+    merchant_name?: string;
+    variant_count?: number;
+    source?: string;
+    reason?: string;
+    product_type?: string;
+    category?: string;
+    department?: string;
+    tags?: string[];
+    card_title?: string;
+    card_subtitle?: string;
+    card_highlight?: string;
+    card_badge?: string;
+    search_card?: {
+      title_candidate?: string;
+      compact_candidate?: string;
+      highlight_candidate?: string;
+      proof_badge_candidate?: string;
+    };
+    shopping_card?: {
+      highlight?: string;
+    };
+    market_signal_badges?: Array<{
+      badge_type?: string;
+      badge_label: string;
+    }>;
+    review_summary?: {
+      rating?: number;
+      average_rating?: number;
+      avg_rating?: number;
+      scale?: number;
+      rating_scale?: number;
+      review_count?: number;
+      count?: number;
+      total_reviews?: number;
+    };
   }>;
 }

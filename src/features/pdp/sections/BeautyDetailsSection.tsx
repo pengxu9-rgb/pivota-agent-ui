@@ -70,13 +70,13 @@ export function BeautyDetailsSection({
         </div>
       ) : null}
 
-      <div className="px-3 py-6 text-center">
+      <div className="px-2.5 py-6 text-center sm:px-3">
         <h2 className="text-xl font-serif tracking-wide">{product.title}</h2>
         {product.subtitle ? <p className="mt-2 text-sm text-muted-foreground">{product.subtitle}</p> : null}
       </div>
 
       {accentImages.length ? (
-        <div className="px-3 space-y-6">
+        <div className="space-y-6 px-2.5 sm:px-3">
           <div className="grid grid-cols-2 gap-2 rounded-xl overflow-hidden">
             {accentImages.map((item, idx) => (
               <div key={`${item.url}-${idx}`} className="relative aspect-[3/4] bg-muted">
@@ -94,7 +94,7 @@ export function BeautyDetailsSection({
         </div>
       ) : null}
 
-      <div className="mx-3 space-y-3">
+      <div className="mx-2.5 space-y-3 sm:mx-3">
         {!suppressOverview ? <OverviewSection content={overviewContent} /> : null}
         <StructuredDetailsBlocks
           activeIngredients={activeIngredients}
@@ -105,7 +105,7 @@ export function BeautyDetailsSection({
       </div>
 
       {formattedBrandStory ? (
-        <div className="px-3 py-6 border-t border-muted/60">
+        <div className="border-t border-muted/60 px-2.5 py-6 sm:px-3">
           <h3 className="text-sm font-semibold mb-2">Brand Story</h3>
           {brandStoryParagraphs.length ? (
             <div className="space-y-2">
@@ -131,7 +131,7 @@ export function BeautyDetailsSection({
       ) : null}
 
       {factsSections.length ? (
-        <div className="mx-3 border-t border-muted/60 pt-5">
+        <div className="mx-2.5 border-t border-muted/60 pt-5 sm:mx-3">
           <h3 className="text-sm font-semibold mb-3">Product Information</h3>
           <DetailsAccordion data={{ sections: factsSections }} />
         </div>

@@ -68,4 +68,33 @@ describe('resolveProductCardPresentation', () => {
       badge: "Rihanna's Pick",
     })
   })
+
+  it('falls back to compact description copy and variant-count badge for minimally structured products', () => {
+    const product = {
+      product_id: 'prod_4',
+      title: 'Oat So Simple Water Cream',
+      description:
+        'A lightweight moisturizer formulated with Oat Extract that effectively soothes and hydrates skin with less than 10 ingredients.',
+      price: 28,
+      currency: 'EUR',
+      in_stock: true,
+      product_type: 'external',
+      variant_count: 2,
+      raw_detail: {
+        seed_data: {
+          snapshot: {
+            variants: [{ option_name: 'Size' }],
+          },
+        },
+      },
+    } satisfies ProductResponse & { variant_count: number }
+
+    expect(resolveProductCardPresentation(product)).toEqual({
+      title: 'Oat So Simple Water Cream',
+      subtitle: null,
+      highlight:
+        'A lightweight moisturizer formulated with Oat Extract that effectively soothes and hydrates skin with less than 10 ingredients.',
+      badge: '2 sizes',
+    })
+  })
 })
