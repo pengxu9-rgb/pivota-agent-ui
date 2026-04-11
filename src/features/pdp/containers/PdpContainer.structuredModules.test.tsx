@@ -375,8 +375,8 @@ function buildMultiOfferVariantPricingPayload(): PDPPayload {
       },
       ...(payload.offers || []),
     ],
-    default_offer_id: 'offer_internal_pivota_market',
-    best_price_offer_id: 'offer_internal_pivota_market',
+    default_offer_id: 'offer_external_seed_default',
+    best_price_offer_id: 'offer_external_seed_default',
   };
 }
 
@@ -399,9 +399,10 @@ describe('PdpContainer structured PDP modules', () => {
     expect(screen.getByText('Active ingredients')).toBeInTheDocument();
     expect(screen.getAllByText('Ceramide NP').length).toBeGreaterThan(0);
     expect(screen.getByText('Ingredients')).toBeInTheDocument();
-    expect(screen.getByText('Water')).toBeInTheDocument();
-    expect(screen.getAllByText('Glycerin').length).toBeGreaterThan(0);
-    expect(screen.getByText('Cholesterol')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Show full INCI' })).not.toBeInTheDocument();
+    expect(screen.getByText(/Water/)).toBeInTheDocument();
+    expect(screen.getAllByText(/Glycerin/).length).toBeGreaterThan(0);
+    expect(screen.getByText(/Cholesterol/)).toBeInTheDocument();
     expect(screen.getByText('How to use')).toBeInTheDocument();
     expect(screen.getByText('Apply after cleansing.')).toBeInTheDocument();
     expect(screen.getByText('Brand Story')).toBeInTheDocument();
@@ -553,8 +554,10 @@ describe('PdpContainer structured PDP modules', () => {
     const internalOffer = screen.getByRole('button', { name: /Pivota Market/ });
     const externalOffer = screen.getByRole('button', { name: /KraveBeauty/ });
     expect(internalOffer).toHaveTextContent('Item: €40.00');
+    expect(internalOffer).toHaveTextContent('Recommended');
     expect(internalOffer).toHaveTextContent('Best price');
     expect(externalOffer).toHaveTextContent('Item: €50.00');
+    expect(externalOffer).not.toHaveTextContent('Recommended');
     expect(externalOffer).not.toHaveTextContent('Best price');
   });
 });

@@ -25,10 +25,11 @@ describe('StructuredDetailsBlocks', () => {
 
     expect(screen.queryByText('Active Ingredients')).not.toBeInTheDocument();
     expect(screen.getByText('Ingredients')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Show full INCI' }));
     expect(screen.getByText('Zinc Stearate')).toBeInTheDocument();
   });
 
-  it('renders ingredient items as a readable list and cleans malformed how-to-use steps', () => {
+  it('renders ingredients as a collapsed INCI preview and expands on demand', () => {
     render(
       <StructuredDetailsBlocks
         ingredientsInci={{
@@ -54,9 +55,15 @@ describe('StructuredDetailsBlocks', () => {
     expect(screen.getByText(/Talc/)).toBeInTheDocument();
     expect(screen.getByText(/Mica/)).toBeInTheDocument();
     expect(screen.getByText(/Dimethicone/)).toBeInTheDocument();
-    expect(screen.getByText(/Yellow 5 Lake \(CI 19140\)/)).toBeInTheDocument();
+    expect(screen.queryByText('Yellow 5 Lake (CI 19140)')).not.toBeInTheDocument();
     expect(screen.queryByText(/Key Ingredients Ingredients/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Please be aware that ingredient lists/i)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Show full INCI' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show full INCI' }));
+
+    expect(screen.getByRole('button', { name: 'Hide full INCI' })).toBeInTheDocument();
+    expect(screen.getByText(/Yellow 5 Lake \(CI 19140\)/)).toBeInTheDocument();
     expect(screen.queryByText('-')).not.toBeInTheDocument();
     expect(screen.getByText('Apply dry for soft definition.')).toBeInTheDocument();
     expect(screen.getByText('Blend edges')).toBeInTheDocument();
@@ -79,7 +86,7 @@ describe('StructuredDetailsBlocks', () => {
       />,
     );
 
-    expect(screen.getByText('Iron Oxides (CI 77491 / 77492 / 77499)')).toBeInTheDocument();
+    expect(screen.getByText(/Iron Oxides \(CI 77491 \/ 77492 \/ 77499\)/)).toBeInTheDocument();
     expect(screen.queryByText('Iron Oxides (ci 77491)')).not.toBeInTheDocument();
     expect(screen.queryByText('Iron Oxides (ci 77492)')).not.toBeInTheDocument();
     expect(screen.queryByText('Iron Oxides (ci 77499)')).not.toBeInTheDocument();
@@ -100,7 +107,7 @@ describe('StructuredDetailsBlocks', () => {
       />,
     );
 
-    expect(screen.getByText('Iron Oxides (CI 77491 / 77492 / 77499)')).toBeInTheDocument();
+    expect(screen.getByText(/Iron Oxides \(CI 77491 \/ 77492 \/ 77499\)/)).toBeInTheDocument();
     expect(screen.queryByText('Iron Oxides (CI 77491)')).not.toBeInTheDocument();
     expect(screen.queryByText('Iron Oxides (CI 77492)')).not.toBeInTheDocument();
     expect(screen.queryByText('Iron Oxides (CI 77499)')).not.toBeInTheDocument();
@@ -167,6 +174,6 @@ describe('StructuredDetailsBlocks', () => {
     expect(screen.getByRole('button', { name: 'Show full INCI' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Show full INCI' }));
     expect(screen.getByRole('button', { name: 'Hide full INCI' })).toBeInTheDocument();
-    expect(screen.getByText(/Calophyllum Inophyllum \(Tamanu\) Seed Oil/)).toBeInTheDocument();
+    expect(screen.getAllByText(/Calophyllum Inophyllum \(Tamanu\) Seed Oil/).length).toBeGreaterThan(0);
   });
 });

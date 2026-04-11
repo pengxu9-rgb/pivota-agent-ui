@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import type {
   ActiveIngredientsData,
   HowToUseData,
@@ -18,6 +18,7 @@ const HOW_TO_USE_NOISE_RE =
   /\b(shop now|pair with|our story|product philosophy|sustainability|inclusivity pledge|faq|question(?:s)?|about)\b/i;
 const HOW_TO_USE_ACTION_RE =
   /\b(apply|use|massage|dispense|lather|rinse|pat|layer|follow|start|finish|take|swipe|smooth|spray|press|cleanse|shake|wet|dry|leave|reapply|mix|blend|deepen|define|buff|morning|night|am|pm)\b/i;
+const INCI_PREVIEW_LIMIT = 4;
 
 function getStructuredItemLabel(item: unknown): string {
   if (typeof item === 'string') return item.trim();
@@ -253,6 +254,18 @@ function normalizeIngredientListItem(item: string): string {
     .trim();
 }
 
+function buildIngredientsPreviewText(items: string[], rawText: string): string {
+  if (items.length) {
+    const previewItems = items.slice(0, INCI_PREVIEW_LIMIT);
+    const hiddenCount = Math.max(0, items.length - previewItems.length);
+    return `${previewItems.join(' · ')}${hiddenCount ? ` · +${hiddenCount} more` : ''}`;
+  }
+  const normalized = String(rawText || '').replace(/\s+/g, ' ').trim();
+  if (!normalized) return '';
+  if (normalized.length <= 180) return normalized;
+  return `${normalized.slice(0, 177).trimEnd()}…`;
+}
+
 function splitHowToUseFragments(text: string): string[] {
   const normalized = formatDescriptionText(text)
     .replace(/\r/g, '\n')
@@ -345,10 +358,11 @@ export function StructuredDetailsBlocks({
   howToUse?: HowToUseData | null;
   hideLowConfidenceActiveIngredients?: boolean;
 }) {
+  const [isInciExpanded, setIsInciExpanded] = useState(false);
+  const inciContentId = useId();
   const activeIngredientItems = getStructuredItems(activeIngredients?.items);
   const normalizedHowToUseRawText = String(howToUse?.raw_text || '').trim();
   const howToUseItems = sanitizeHowToUseItems(howToUse?.steps, normalizedHowToUseRawText);
-  const [isIngredientsExpanded, setIsIngredientsExpanded] = useState(false);
   const normalizedIngredientsRawText = normalizeIngredientsRawText(
     String(ingredientsInci?.raw_text || ''),
     Boolean(activeIngredientItems.length || String(activeIngredients?.raw_text || '').trim()),
@@ -382,6 +396,13 @@ export function StructuredDetailsBlocks({
   const hasActiveIngredients = !shouldHideActiveIngredients && Boolean(
     activeIngredientItems.length || String(activeIngredients?.raw_text || '').trim(),
   );
+  const ingredientsPreviewText = buildIngredientsPreviewText(
+    ingredientsInciItems,
+    normalizedIngredientsRawText,
+  );
+  const hasExpandableIngredients =
+    ingredientsInciItems.length > INCI_PREVIEW_LIMIT ||
+    (!ingredientsInciItems.length && normalizedIngredientsRawText.length > ingredientsPreviewText.length);
 
   const hasContent = Boolean(
     hasActiveIngredients ||
@@ -429,54 +450,50 @@ export function StructuredDetailsBlocks({
             sourceOrigin={ingredientsInci?.source_origin}
           />
           <p className="mt-1 text-xs text-muted-foreground">
-            Full ingredient list (INCI) when available.
+            Full formula list. Expand only when you need the complete INCI.
           </p>
-          {ingredientsInciItems.length ? (
-            <div className="mt-3 rounded-2xl border border-border/80 bg-background/75 px-3 py-3">
-              <p
-                className={
-                  shouldCollapseIngredients && !isIngredientsExpanded
-                    ? 'line-clamp-4 text-sm leading-7 text-muted-foreground'
-                    : 'text-sm leading-7 text-muted-foreground'
-                }
-              >
-                {ingredientsInciItems.map((item, idx) => (
-                  <span key={`ingredients-inci-${idx}`}>
-                    {item}
-                    {idx < ingredientsInciItems.length - 1 ? ', ' : ''}
-                  </span>
-                ))}
+          {ingredientsPreviewText ? (
+            <div className="mt-3 rounded-lg border border-border/60 bg-background/60 px-3 py-3">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-foreground/80">
+                  {ingredientsInciItems.length
+                    ? `${ingredientsInciItems.length} listed`
+                    : 'Full formula'}
+                </span>
+                {hasExpandableIngredients ? (
+                  <button
+                    type="button"
+                    aria-expanded={isInciExpanded}
+                    aria-controls={inciContentId}
+                    onClick={() => setIsInciExpanded((current) => !current)}
+                    className="text-xs font-medium text-foreground/80 underline decoration-border underline-offset-4 hover:text-foreground"
+                  >
+                    {isInciExpanded ? 'Hide full INCI' : 'Show full INCI'}
+                  </button>
+                ) : null}
+              </div>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                {ingredientsPreviewText}
               </p>
-              {shouldCollapseIngredients ? (
-                <button
-                  type="button"
-                  onClick={() => setIsIngredientsExpanded((value) => !value)}
-                  className="mt-3 text-xs font-medium text-primary hover:underline"
-                >
-                  {isIngredientsExpanded ? 'Hide full INCI' : 'Show full INCI'}
-                </button>
-              ) : null}
             </div>
           ) : null}
-          {!ingredientsInciItems.length && normalizedIngredientsRawText ? (
-            <div className="mt-3 rounded-2xl border border-border/80 bg-background/75 px-3 py-3">
-              <p
-                className={
-                  shouldCollapseIngredients && !isIngredientsExpanded
-                    ? 'line-clamp-4 text-sm leading-7 text-muted-foreground'
-                    : 'text-sm leading-7 text-muted-foreground whitespace-pre-line'
-                }
-              >
-                {normalizedIngredientsRawText}
-              </p>
-              {shouldCollapseIngredients ? (
-                <button
-                  type="button"
-                  onClick={() => setIsIngredientsExpanded((value) => !value)}
-                  className="mt-3 text-xs font-medium text-primary hover:underline"
-                >
-                  {isIngredientsExpanded ? 'Hide full INCI' : 'Show full INCI'}
-                </button>
+          {isInciExpanded ? (
+            <div
+              id={inciContentId}
+              className="mt-3 rounded-lg border border-border/60 bg-background/40 px-3 py-3"
+            >
+              {ingredientsInciItems.length ? (
+                <div className="text-sm leading-7 text-muted-foreground">
+                  {ingredientsInciItems.map((item, idx) => (
+                    <span key={`ingredients-inci-${idx}`}>
+                      {idx > 0 ? <span className="px-1.5 text-border">•</span> : null}
+                      <span>{item}</span>
+                    </span>
+                  ))}
+                </div>
+              ) : null}
+              {!ingredientsInciItems.length && normalizedIngredientsRawText ? (
+                <StructuredText text={normalizedIngredientsRawText} />
               ) : null}
             </div>
           ) : null}

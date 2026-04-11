@@ -61,7 +61,7 @@ describe('optimizeRecommendationImageUrl', () => {
     expect(out).toBe('/images/local-product.jpg');
   });
 
-  it('removes stale Shopify version params and asset hash suffixes', () => {
+  it('removes stale Shopify version params while preserving valid Shopify asset hash suffixes', () => {
     const out = optimizeRecommendationImageUrl(
       'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T1QT01_3000x3000_0_1cb1287f-acde-4d9e-8c24-aa58cf23e5d7.png?v=1774376799',
       360,
@@ -86,19 +86,15 @@ describe('optimizeRecommendationImageUrl', () => {
       'https://sdcdn.io/tf/tf_sku_T2SS02%20_3000x3000_1.png?width=650px&height=750px',
       360,
     );
-    expect(out).toBe(
-      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T2SS02_3000x3000_1.png?width=360',
-    );
+    expect(out).toBe('https://sdcdn.io/tf/tf_sku_T2SS02_3000x3000_1.png?width=360');
   });
 
-  it('remaps known missing Tom Ford assets onto existing Shopify siblings', () => {
+  it('remaps known missing Tom Ford sdcdn assets onto existing sdcdn siblings', () => {
     const out = optimizeRecommendationImageUrl(
       'https://sdcdn.io/tf/tf_sku_T2SS02%20_3000x3000_0.png?width=650px&height=750px',
       360,
     );
-    expect(out).toBe(
-      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T2SS02_3000x3000_1.png?width=360',
-    );
+    expect(out).toBe('https://sdcdn.io/tf/tf_sku_T2SS02_3000x3000_1.png?width=360');
   });
 });
 
