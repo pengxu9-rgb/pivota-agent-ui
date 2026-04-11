@@ -8,6 +8,7 @@ import type { PDPPayload } from '@/features/pdp/types';
 const routerPushMock = vi.fn();
 const getSimilarProductsMainlineMock = vi.fn();
 const getProductDetailExactMock = vi.fn();
+const getPdpV2Mock = vi.fn();
 const toastMessageMock = vi.fn();
 const toastSuccessMock = vi.fn();
 const toastErrorMock = vi.fn();
@@ -77,6 +78,7 @@ vi.mock('@/lib/api', () => ({
   postQuestion: vi.fn(async () => ({ question_id: 1 })),
   getSimilarProductsMainline: (...args: unknown[]) => getSimilarProductsMainlineMock(...args),
   getProductDetailExact: (...args: unknown[]) => getProductDetailExactMock(...args),
+  getPdpV2: (...args: unknown[]) => getPdpV2Mock(...args),
 }));
 
 vi.mock('sonner', () => ({
@@ -175,6 +177,7 @@ describe('PdpContainer recommendations interactions', () => {
     routerPushMock.mockReset();
     getSimilarProductsMainlineMock.mockReset();
     getProductDetailExactMock.mockReset();
+    getPdpV2Mock.mockReset();
     toastMessageMock.mockReset();
     toastSuccessMock.mockReset();
     toastErrorMock.mockReset();
@@ -401,6 +404,140 @@ describe('PdpContainer recommendations interactions', () => {
         'noopener,noreferrer',
       );
     });
+  });
+
+  it('enriches placeholder external-seed variants from exact pdp v2 before opening the quick-action sheet', async () => {
+    getProductDetailExactMock.mockResolvedValue({
+      product_id: 'prod_1',
+      merchant_id: 'external_seed',
+      title: 'Oil La La',
+      description: 'Placeholder detail',
+      price: 28,
+      currency: 'USD',
+      image_url: 'https://example.com/oil-la-la.jpg',
+      in_stock: true,
+      destination_url: 'https://merchant.example.com/products/oil-la-la',
+      variants: [
+        {
+          variant_id: 'variant_1',
+          title: 'Variant 1',
+          price: { current: { amount: 28, currency: 'USD' } },
+          availability: { in_stock: true, available_quantity: 9 },
+        },
+        {
+          variant_id: 'variant_2',
+          title: 'Variant 2',
+          price: { current: { amount: 52, currency: 'USD' } },
+          availability: { in_stock: true, available_quantity: 4 },
+        },
+      ],
+    });
+    getPdpV2Mock.mockResolvedValue({
+      subject: {
+        type: 'product',
+        id: 'prod_1',
+      },
+      modules: [
+        {
+          type: 'canonical',
+          data: {
+            pdp_payload: {
+              schema_version: '1.0.0',
+              page_type: 'product_detail',
+              tracking: {
+                page_request_id: 'pdp_quick_action',
+                entry_point: 'agent',
+              },
+              product: {
+                product_id: 'prod_1',
+                merchant_id: 'external_seed',
+                title: 'Oil La La',
+                image_url: 'https://example.com/oil-la-la.jpg',
+                destination_url: 'https://merchant.example.com/products/oil-la-la',
+                default_variant_id: 'variant_1',
+                variants: [
+                  {
+                    variant_id: 'variant_1',
+                    title: '1 Pack - 45 mL',
+                    options: [{ name: 'Pack size', value: '1 Pack - 45 mL' }],
+                    price: { current: { amount: 28, currency: 'USD' } },
+                    availability: { in_stock: true, available_quantity: 9 },
+                  },
+                  {
+                    variant_id: 'variant_2',
+                    title: '2 Pack - 2x45 mL',
+                    options: [{ name: 'Pack size', value: '2 Pack - 2x45 mL' }],
+                    price: { current: { amount: 52, currency: 'USD' } },
+                    availability: { in_stock: true, available_quantity: 4 },
+                  },
+                ],
+                price: { current: { amount: 28, currency: 'USD' } },
+                availability: { in_stock: true, available_quantity: 9 },
+                source: 'external_seed',
+              },
+              modules: [],
+              actions: [],
+            },
+            product_group_id: 'pg_oil_lala',
+          },
+        },
+        {
+          type: 'offers',
+          data: {
+            offers: [
+              {
+                offer_id: 'offer_external',
+                merchant_id: 'external_seed',
+                merchant_name: 'KraveBeauty',
+                product_id: 'prod_1',
+                price: { amount: 28, currency: 'USD' },
+                external_redirect_url: 'https://merchant.example.com/products/oil-la-la',
+                variants: [
+                  {
+                    variant_id: 'variant_1',
+                    title: '1 Pack - 45 mL',
+                    options: [{ name: 'Pack size', value: '1 Pack - 45 mL' }],
+                  },
+                  {
+                    variant_id: 'variant_2',
+                    title: '2 Pack - 2x45 mL',
+                    options: [{ name: 'Pack size', value: '2 Pack - 2x45 mL' }],
+                  },
+                ],
+              },
+            ],
+            offers_count: 1,
+            default_offer_id: 'offer_external',
+          },
+        },
+      ],
+    });
+
+    render(
+      <PdpContainer
+        payload={buildPayload({ items: buildSimilar(1, 'external_seed') })}
+        mode="generic"
+        onAddToCart={() => {}}
+        onBuyNow={() => {}}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /open product 1/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText('1 Pack - 45 mL')).toBeInTheDocument();
+      expect(screen.getByText('2 Pack - 2x45 mL')).toBeInTheDocument();
+    });
+
+    expect(screen.queryByText('Option 1')).toBeNull();
+    expect(screen.queryByText('Option 2')).toBeNull();
+    expect(getPdpV2Mock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        product_id: 'prod_1',
+        merchant_id: 'external_seed',
+        include: ['offers', 'variant_selector'],
+      }),
+    );
   });
 
   it('falls back to the full PDP when exact detail lookup fails', async () => {
