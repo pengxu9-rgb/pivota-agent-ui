@@ -367,7 +367,6 @@ export function BrandLandingPage({
   );
   const [isSearchOpen, setIsSearchOpen] = useState(Boolean(initialQuery));
   const [isFilterOpen, setIsFilterOpen] = useState(false);
-  const [isScrolled, setIsScrolled] = useState(false);
   const [loading, setLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
@@ -450,15 +449,6 @@ export function BrandLandingPage({
   useEffect(() => {
     recentViewsRef.current = recentViews;
   }, [recentViews]);
-
-  useEffect(() => {
-    const handleScroll = () => {
-      setIsScrolled(window.scrollY > 6);
-    };
-    handleScroll();
-    window.addEventListener('scroll', handleScroll, { passive: true });
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, []);
 
   useEffect(() => {
     if (!isSearchOpen) return;
@@ -648,81 +638,8 @@ export function BrandLandingPage({
         aria-hidden
         className="pointer-events-none absolute inset-x-0 top-0 h-[220px] bg-[radial-gradient(circle_at_top,_rgba(117,146,255,0.14),_rgba(255,255,255,0)_58%),radial-gradient(circle_at_90%_8%,_rgba(216,127,255,0.12),_rgba(255,255,255,0)_34%)]"
       />
-      <header
-        className={`sticky top-0 z-50 border-b border-[#eee7dd] bg-white/95 backdrop-blur transition-shadow ${
-          isScrolled ? 'shadow-sm' : ''
-        }`}
-      >
-        <div className="mx-auto flex h-11 max-w-6xl items-center justify-between px-3.5 sm:h-12 sm:px-6 lg:px-8">
-          <a
-            href={returnHref}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-full text-slate-600 transition hover:text-slate-950"
-            aria-label="Back"
-          >
-            <ArrowLeft className="h-3.5 w-3.5" strokeWidth={2.2} />
-          </a>
 
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                setIsSearchOpen((current) => !current);
-                setIsFilterOpen(false);
-              }}
-              className="inline-flex h-8 w-8 items-center justify-center rounded-full text-slate-600 transition hover:text-slate-950"
-              aria-label={isSearchOpen ? 'Close brand search' : 'Open brand search'}
-            >
-              {isSearchOpen ? <X className="h-3.25 w-3.25" /> : <Search className="h-3.25 w-3.25" />}
-            </button>
-
-            <button
-              type="button"
-              onClick={openCart}
-              className="relative inline-flex h-8 w-8 items-center justify-center rounded-full text-slate-600 transition hover:text-slate-950"
-              aria-label="Open cart"
-            >
-              <ShoppingBag className="h-3.25 w-3.25" />
-              {cartItemCount > 0 ? (
-                <span className="absolute -right-0.5 -top-0.5 inline-flex min-h-4 min-w-4 items-center justify-center rounded-full bg-[#c16cf3] px-1 text-[9px] font-semibold text-white">
-                  {cartItemCount > 99 ? '99+' : cartItemCount}
-                </span>
-              ) : null}
-            </button>
-          </div>
-        </div>
-
-        {isSearchOpen ? (
-          <div className="border-t border-[#f1ebe3] bg-white px-3.5 py-3 sm:px-6 lg:px-8">
-            <form
-              className="mx-auto flex max-w-6xl items-center gap-2"
-              onSubmit={(event) => {
-                event.preventDefault();
-                setActiveQuery(queryDraft.trim());
-              }}
-            >
-              <div className="flex h-10 flex-1 items-center gap-2 rounded-full border border-[#ece5dd] bg-[#fcfbf9] px-4 shadow-sm">
-                <Search className="h-3.5 w-3.5 text-slate-400" />
-                <input
-                  ref={searchInputRef}
-                  value={queryDraft}
-                  onChange={(event) => setQueryDraft(event.target.value)}
-                  placeholder={`Search ${brandName} products`}
-                  className="w-full bg-transparent text-[13px] text-slate-900 outline-none placeholder:text-slate-400"
-                />
-              </div>
-              <button
-                type="submit"
-                className="inline-flex h-10 items-center justify-center rounded-full bg-[#1f2937] px-4 text-[13px] font-medium text-white transition hover:bg-[#111827]"
-              >
-                Search
-              </button>
-            </form>
-          </div>
-        ) : null}
-
-      </header>
-
-      <main className="relative mx-auto max-w-6xl px-3.5 pb-14 pt-3 sm:px-6 lg:px-8">
+      <main className="relative mx-auto max-w-6xl px-3.5 pb-14 pt-4 sm:px-6 sm:pt-5 lg:px-8">
         <motion.section
           initial={{ opacity: 0, y: 18 }}
           animate={{ opacity: 1, y: 0 }}
@@ -733,9 +650,18 @@ export function BrandLandingPage({
               <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#98a2b3]">
                 Official Brand
               </p>
-              <h1 className="text-[1.6rem] font-semibold tracking-[-0.045em] text-[#111827] sm:text-[1.95rem]">
-                {brandName || 'Brand'}
-              </h1>
+              <div className="flex items-center gap-2">
+                <a
+                  href={returnHref}
+                  className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[#ece5dd] bg-white text-slate-600 shadow-[0_6px_16px_rgba(15,23,42,0.05)] transition hover:border-[#ddd3c8] hover:text-slate-950"
+                  aria-label="Back"
+                >
+                  <ArrowLeft className="h-3.5 w-3.5" strokeWidth={2.2} />
+                </a>
+                <h1 className="text-[1.6rem] font-semibold tracking-[-0.045em] text-[#111827] sm:text-[1.95rem]">
+                  {brandName || 'Brand'}
+                </h1>
+              </div>
               <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] leading-none text-[#667085]">
                 {typeof displayTotal === 'number' ? (
                   <p>{displayTotal} products across sellers</p>
@@ -756,18 +682,75 @@ export function BrandLandingPage({
               ) : null}
             </div>
 
-            <div className="relative mt-1 h-12 w-12 shrink-0 overflow-hidden rounded-full border border-[#e5e7eb] bg-[#dfe8db] shadow-[0_6px_14px_rgba(15,23,42,0.06)] sm:h-14 sm:w-14">
-              {brandAvatarUrl ? (
-                <Image src={brandAvatarUrl} alt={brandName} fill unoptimized className="object-cover" />
-              ) : (
-                <div className="flex h-full w-full items-center justify-center text-sm font-semibold text-[#334155]">
-                  {getBrandInitials(brandName)}
-                </div>
-              )}
+            <div className="flex shrink-0 items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsSearchOpen((current) => !current);
+                  setIsFilterOpen(false);
+                }}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[#ece5dd] bg-white text-slate-600 shadow-[0_6px_16px_rgba(15,23,42,0.05)] transition hover:border-[#ddd3c8] hover:text-slate-950 sm:h-10 sm:w-10"
+                aria-label={isSearchOpen ? 'Close brand search' : 'Open brand search'}
+              >
+                {isSearchOpen ? <X className="h-3.5 w-3.5" /> : <Search className="h-3.5 w-3.5" />}
+              </button>
+
+              <button
+                type="button"
+                onClick={openCart}
+                className="relative inline-flex h-9 w-9 items-center justify-center rounded-full border border-[#ece5dd] bg-white text-slate-600 shadow-[0_6px_16px_rgba(15,23,42,0.05)] transition hover:border-[#ddd3c8] hover:text-slate-950 sm:h-10 sm:w-10"
+                aria-label="Open cart"
+              >
+                <ShoppingBag className="h-4 w-4" />
+                {cartItemCount > 0 ? (
+                  <span className="absolute -right-0.5 -top-0.5 inline-flex min-h-4 min-w-4 items-center justify-center rounded-full bg-[#c16cf3] px-1 text-[9px] font-semibold text-white">
+                    {cartItemCount > 99 ? '99+' : cartItemCount}
+                  </span>
+                ) : null}
+              </button>
+
+              <div className="relative h-11 w-11 overflow-hidden rounded-full border border-[#e5e7eb] bg-[#dfe8db] shadow-[0_6px_14px_rgba(15,23,42,0.06)] sm:h-12 sm:w-12">
+                {brandAvatarUrl ? (
+                  <Image src={brandAvatarUrl} alt={brandName} fill unoptimized className="object-cover" />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center text-sm font-semibold text-[#334155]">
+                    {getBrandInitials(brandName)}
+                  </div>
+                )}
+              </div>
             </div>
           </section>
 
-          <section className="sticky top-11 z-40 -mx-3.5 border-y border-[#f1ebe3] bg-white/96 px-3.5 py-2 backdrop-blur sm:top-12 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
+          {isSearchOpen ? (
+            <section className="rounded-[22px] border border-[#efe7dc] bg-white px-3 py-3 shadow-[0_10px_28px_rgba(15,23,42,0.05)] sm:px-4">
+              <form
+                className="flex items-center gap-2"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  setActiveQuery(queryDraft.trim());
+                }}
+              >
+                <div className="flex h-10 flex-1 items-center gap-2 rounded-full border border-[#ece5dd] bg-[#fcfbf9] px-4 shadow-sm">
+                  <Search className="h-3.5 w-3.5 text-slate-400" />
+                  <input
+                    ref={searchInputRef}
+                    value={queryDraft}
+                    onChange={(event) => setQueryDraft(event.target.value)}
+                    placeholder={`Search ${brandName} products`}
+                    className="w-full bg-transparent text-[13px] text-slate-900 outline-none placeholder:text-slate-400"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  className="inline-flex h-10 items-center justify-center rounded-full bg-[#1f2937] px-4 text-[13px] font-medium text-white transition hover:bg-[#111827]"
+                >
+                  Search
+                </button>
+              </form>
+            </section>
+          ) : null}
+
+          <section className="sticky top-0 z-40 -mx-3.5 border-y border-[#f1ebe3] bg-white/96 px-3.5 py-2 backdrop-blur sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
             <div className="mx-auto flex max-w-6xl items-center gap-2">
               <button
                 type="button"
