@@ -32,6 +32,7 @@ import type {
 } from '@/features/pdp/types';
 import {
   getProductDetailExact,
+  getPdpV2,
   getSimilarProductsMainline,
   listQuestions,
   postQuestion,
@@ -39,6 +40,7 @@ import {
   type ProductResponse,
   type UgcCapabilities,
 } from '@/lib/api';
+import { mapPdpV2ToPdpPayload } from '@/features/pdp/adapter/mapPdpV2ToPdpPayload';
 import { isBeautyProduct } from '@/features/pdp/utils/isBeautyProduct';
 import {
   collectColorOptions,
@@ -98,6 +100,7 @@ import {
   sanitizeHowToUseData,
   sanitizeIngredientsInciData,
 } from '@/features/pdp/utils/pdpDisplaySanitizers';
+import { isPlaceholderVariantTitle } from '@/features/pdp/utils/variantLabels';
 
 function nonEmptyText(value: unknown, fallback: string): string {
   const text = String(value ?? '').trim();
@@ -327,6 +330,151 @@ function getInitialVariantIdFromDetail(detail: ProductResponse, variants: Varian
     .map((value) => String(value || '').trim())
     .filter(Boolean);
   return candidateIds.find((candidateId) => variants.some((variant) => variant.variant_id === candidateId)) || variants[0]?.variant_id || '';
+}
+
+function getSimilarRawVariants(detail: ProductResponse): any[] {
+  if (Array.isArray((detail.raw_detail as any)?.variants)) {
+    return (detail.raw_detail as any).variants;
+  }
+  return Array.isArray(detail.variants) ? detail.variants : [];
+}
+
+function hasVariantOptions(variant: any): boolean {
+  if (Array.isArray(variant?.options)) return variant.options.length > 0;
+  if (variant?.options && typeof variant.options === 'object') {
+    return Object.keys(variant.options).length > 0;
+  }
+  return false;
+}
+
+function needsSimilarDetailPdpEnrichment(detail: ProductResponse): boolean {
+  const rawVariants = getSimilarRawVariants(detail);
+  if (rawVariants.length <= 1) return false;
+
+  return rawVariants.every((variant) => {
+    const title = String(
+      variant?.title || variant?.name || variant?.option_title || variant?.sku_name || '',
+    ).trim();
+    return isPlaceholderVariantTitle(title) && !hasVariantOptions(variant);
+  });
+}
+
+function mergeSimilarDetailWithPdpPayload(
+  detail: ProductResponse,
+  nextPayload: PDPPayload | null,
+): ProductResponse {
+  if (!nextPayload) return detail;
+
+  const payloadProduct = nextPayload.product;
+  const payloadVariants = Array.isArray(payloadProduct.variants) ? payloadProduct.variants : [];
+  const payloadOffers = Array.isArray(nextPayload.offers) ? nextPayload.offers : [];
+  const rawDetailBase =
+    detail.raw_detail && typeof detail.raw_detail === 'object' ? detail.raw_detail : {};
+  const payloadAmount = payloadProduct.price?.current?.amount;
+  const payloadCurrency = payloadProduct.price?.current?.currency;
+  const payloadMerchantName =
+    payloadOffers
+      .map((offer) => String(offer?.merchant_name || '').trim())
+      .find(Boolean) || detail.merchant_name;
+
+  return {
+    ...detail,
+    product_group_id: nextPayload.product_group_id || detail.product_group_id,
+    merchant_id: payloadProduct.merchant_id || detail.merchant_id,
+    merchant_name: payloadMerchantName,
+    sellable_item_group_id: nextPayload.sellable_item_group_id || detail.sellable_item_group_id,
+    product_line_id: nextPayload.product_line_id || detail.product_line_id,
+    review_family_id: nextPayload.review_family_id || detail.review_family_id,
+    identity_confidence:
+      nextPayload.identity_confidence != null
+        ? nextPayload.identity_confidence
+        : detail.identity_confidence,
+    match_basis:
+      Array.isArray(nextPayload.match_basis) && nextPayload.match_basis.length
+        ? nextPayload.match_basis
+        : detail.match_basis,
+    canonical_scope: nextPayload.canonical_scope || detail.canonical_scope,
+    title: payloadProduct.title || detail.title,
+    description: payloadProduct.description || detail.description,
+    price:
+      Number.isFinite(Number(payloadAmount)) && payloadAmount != null
+        ? Number(payloadAmount)
+        : detail.price,
+    currency: payloadCurrency || detail.currency,
+    image_url: payloadProduct.image_url || detail.image_url,
+    in_stock:
+      typeof payloadProduct.availability?.in_stock === 'boolean'
+        ? payloadProduct.availability.in_stock
+        : detail.in_stock,
+    source: payloadProduct.source || detail.source,
+    commerce_mode: payloadProduct.commerce_mode || detail.commerce_mode,
+    checkout_handoff: payloadProduct.checkout_handoff || detail.checkout_handoff,
+    purchase_route: payloadProduct.purchase_route || detail.purchase_route,
+    external_redirect_url: payloadProduct.external_redirect_url || detail.external_redirect_url,
+    externalRedirectUrl: payloadProduct.externalRedirectUrl || detail.externalRedirectUrl,
+    affiliate_url: payloadProduct.affiliate_url || detail.affiliate_url,
+    external_url: payloadProduct.external_url || detail.external_url,
+    redirect_url: payloadProduct.redirect_url || detail.redirect_url,
+    url: payloadProduct.url || detail.url,
+    canonical_url: payloadProduct.canonical_url || detail.canonical_url,
+    destination_url: payloadProduct.destination_url || detail.destination_url,
+    source_url: payloadProduct.source_url || detail.source_url,
+    platform: payloadProduct.platform || detail.platform,
+    variants: payloadVariants.length ? payloadVariants : detail.variants,
+    offers: payloadOffers.length ? payloadOffers : detail.offers,
+    offers_count:
+      nextPayload.offers_count != null
+        ? nextPayload.offers_count
+        : payloadOffers.length
+          ? payloadOffers.length
+          : detail.offers_count,
+    default_offer_id: nextPayload.default_offer_id || detail.default_offer_id,
+    best_price_offer_id: nextPayload.best_price_offer_id || detail.best_price_offer_id,
+    raw_detail: {
+      ...rawDetailBase,
+      ...(payloadProduct.default_variant_id
+        ? { default_variant_id: payloadProduct.default_variant_id }
+        : {}),
+      ...(payloadVariants.length ? { variants: payloadVariants } : {}),
+      ...(payloadOffers.length ? { offers: payloadOffers } : {}),
+    },
+  };
+}
+
+async function fetchSimilarExactDetail(args: {
+  product_id: string;
+  merchant_id?: string | null;
+  timeout_ms?: number;
+}): Promise<ProductResponse | null> {
+  const merchantId = String(args.merchant_id || '').trim();
+  const productId = String(args.product_id || '').trim();
+  if (!merchantId || !productId) return null;
+
+  let detail = await getProductDetailExact({
+    product_id: productId,
+    merchant_id: merchantId,
+    timeout_ms: args.timeout_ms,
+  });
+  if (!detail) return null;
+
+  if (needsSimilarDetailPdpEnrichment(detail)) {
+    try {
+      const exactPdp = await getPdpV2({
+        product_id: productId,
+        merchant_id: merchantId,
+        include: ['offers', 'variant_selector'],
+        timeout_ms: args.timeout_ms,
+      });
+      detail = mergeSimilarDetailWithPdpPayload(
+        detail,
+        mapPdpV2ToPdpPayload(exactPdp),
+      );
+    } catch {
+      // Keep the exact product-detail result when PDP enrichment fails.
+    }
+  }
+
+  return detail;
 }
 
 function getDisplayMerchantName(offer: Offer | null | undefined, detail: ProductResponse | null | undefined): string | null {
@@ -1252,18 +1400,18 @@ export function PdpContainer({
 
     void Promise.all(
       candidates.map(async (item) => {
-        if (!item.merchant_id) return null;
-        const detail = await getProductDetailExact({
+        const detail = await fetchSimilarExactDetail({
           product_id: item.product_id,
           merchant_id: item.merchant_id,
           timeout_ms: 4500,
         });
         if (!detail) return null;
+        const resolvedVariants = buildProductVariants(detail, detail.raw_detail);
         const normalized = normalizeRecommendationItems(
           [
             {
               ...detail,
-              variant_count: Array.isArray(detail.variants) ? detail.variants.length : undefined,
+              variant_count: resolvedVariants.length || undefined,
             },
           ],
           recommendationCurrencyFallback,
@@ -1960,7 +2108,7 @@ export function PdpContainer({
       const cached = similarDetailCache[key];
       if (cached) return cached;
       if (!item.merchant_id) return null;
-      const detail = await getProductDetailExact({
+      const detail = await fetchSimilarExactDetail({
         product_id: item.product_id,
         merchant_id: item.merchant_id,
         timeout_ms: 4500,
@@ -1968,11 +2116,12 @@ export function PdpContainer({
       if (!detail) return null;
 
       setSimilarDetailCache((prev) => ({ ...prev, [key]: detail }));
+      const resolvedVariants = buildProductVariants(detail, detail.raw_detail);
       const normalized = normalizeRecommendationItems(
         [
           {
             ...detail,
-            variant_count: Array.isArray(detail.variants) ? detail.variants.length : undefined,
+            variant_count: resolvedVariants.length || undefined,
           },
         ],
         recommendationCurrencyFallback,
