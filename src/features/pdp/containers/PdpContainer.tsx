@@ -441,6 +441,42 @@ function mergeSimilarDetailWithPdpPayload(
   };
 }
 
+async function fetchSimilarExactDetail(args: {
+  product_id: string;
+  merchant_id?: string | null;
+  timeout_ms?: number;
+}): Promise<ProductResponse | null> {
+  const merchantId = String(args.merchant_id || '').trim();
+  const productId = String(args.product_id || '').trim();
+  if (!merchantId || !productId) return null;
+
+  let detail = await getProductDetailExact({
+    product_id: productId,
+    merchant_id: merchantId,
+    timeout_ms: args.timeout_ms,
+  });
+  if (!detail) return null;
+
+  if (needsSimilarDetailPdpEnrichment(detail)) {
+    try {
+      const exactPdp = await getPdpV2({
+        product_id: productId,
+        merchant_id: merchantId,
+        include: ['offers', 'variant_selector'],
+        timeout_ms: args.timeout_ms,
+      });
+      detail = mergeSimilarDetailWithPdpPayload(
+        detail,
+        mapPdpV2ToPdpPayload(exactPdp),
+      );
+    } catch {
+      // Keep the exact product-detail result when PDP enrichment fails.
+    }
+  }
+
+  return detail;
+}
+
 function getDisplayMerchantName(offer: Offer | null | undefined, detail: ProductResponse | null | undefined): string | null {
   const candidates = [
     offer?.merchant_name,
@@ -1364,18 +1400,18 @@ export function PdpContainer({
 
     void Promise.all(
       candidates.map(async (item) => {
-        if (!item.merchant_id) return null;
-        const detail = await getProductDetailExact({
+        const detail = await fetchSimilarExactDetail({
           product_id: item.product_id,
           merchant_id: item.merchant_id,
           timeout_ms: 4500,
         });
         if (!detail) return null;
+        const resolvedVariants = buildProductVariants(detail, detail.raw_detail);
         const normalized = normalizeRecommendationItems(
           [
             {
               ...detail,
-              variant_count: Array.isArray(detail.variants) ? detail.variants.length : undefined,
+              variant_count: resolvedVariants.length || undefined,
             },
           ],
           recommendationCurrencyFallback,
@@ -2072,29 +2108,12 @@ export function PdpContainer({
       const cached = similarDetailCache[key];
       if (cached) return cached;
       if (!item.merchant_id) return null;
-      let detail = await getProductDetailExact({
+      const detail = await fetchSimilarExactDetail({
         product_id: item.product_id,
         merchant_id: item.merchant_id,
         timeout_ms: 4500,
       });
       if (!detail) return null;
-
-      if (needsSimilarDetailPdpEnrichment(detail)) {
-        try {
-          const exactPdp = await getPdpV2({
-            product_id: item.product_id,
-            merchant_id: item.merchant_id,
-            include: ['offers', 'variant_selector'],
-            timeout_ms: 4500,
-          });
-          detail = mergeSimilarDetailWithPdpPayload(
-            detail,
-            mapPdpV2ToPdpPayload(exactPdp),
-          );
-        } catch {
-          // Keep the exact product-detail result when PDP enrichment fails.
-        }
-      }
 
       setSimilarDetailCache((prev) => ({ ...prev, [key]: detail }));
       const resolvedVariants = buildProductVariants(detail, detail.raw_detail);
