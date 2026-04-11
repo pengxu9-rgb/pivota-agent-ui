@@ -25,6 +25,7 @@ vi.mock('next/navigation', () => ({
 
 vi.mock('@stripe/react-stripe-js', () => ({
   Elements: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  ExpressCheckoutElement: () => <div data-testid="express-checkout-element" />,
   PaymentElement: () => <div data-testid="payment-element" />,
   useStripe: () => null,
   useElements: () => null,
@@ -352,5 +353,80 @@ describe('OrderFlow checkout restart state', () => {
     expect(
       screen.getByRole('button', { name: /continue to merchant payment/i }),
     ).toBeInTheDocument()
+  })
+
+  it('does not double-submit payment init when shipping submit prestarts payment preparation', async () => {
+    previewQuoteMock.mockResolvedValueOnce({
+      quote_id: 'quote_prefetch_123',
+      currency: 'USD',
+      pricing: {
+        subtotal: 24,
+        shipping_fee: 0,
+        tax: 0,
+        total: 24,
+      },
+      line_items: [
+        {
+          variant_id: 'var_123',
+          unit_price_effective: 24,
+        },
+      ],
+      delivery_options: [],
+    })
+    createOrderMock.mockResolvedValueOnce({
+      order_id: 'ord_prefetch_123',
+    })
+    processPaymentMock.mockResolvedValueOnce({
+      payment_status: 'requires_action',
+      psp: 'stripe',
+      client_secret: 'pi_prefetch_secret_123',
+      payment_action: {
+        type: 'stripe_client_secret',
+        client_secret: 'pi_prefetch_secret_123',
+        public_key: 'pk_test_prefetch_123',
+      },
+    })
+
+    const { container } = render(
+      <OrderFlow
+        items={[
+          {
+            product_id: 'prod_123',
+            variant_id: 'var_123',
+            merchant_id: 'merchant_checkout',
+            title: 'Creator serum',
+            quantity: 1,
+            unit_price: 24,
+            currency: 'USD',
+          },
+        ]}
+        skipEmailVerification
+      />,
+    )
+
+    fireEvent.change(container.querySelector('input[type="email"]') as HTMLInputElement, {
+      target: { value: 'buyer@example.com' },
+    })
+    fireEvent.change(container.querySelector('input[autocomplete="name"]') as HTMLInputElement, {
+      target: { value: 'Buyer One' },
+    })
+    fireEvent.change(container.querySelector('input[autocomplete="address-line1"]') as HTMLInputElement, {
+      target: { value: '123 Market St' },
+    })
+    fireEvent.change(container.querySelector('input[autocomplete="address-level2"]') as HTMLInputElement, {
+      target: { value: 'San Francisco' },
+    })
+    fireEvent.change(container.querySelector('input[autocomplete="postal-code"]') as HTMLInputElement, {
+      target: { value: '94107' },
+    })
+
+    fireEvent.click(screen.getAllByRole('button', { name: /continue to payment/i })[0])
+
+    expect(await screen.findByTestId('payment-element')).toBeInTheDocument()
+
+    await waitFor(() => {
+      expect(createOrderMock).toHaveBeenCalledTimes(1)
+      expect(processPaymentMock).toHaveBeenCalledTimes(1)
+    })
   })
 })

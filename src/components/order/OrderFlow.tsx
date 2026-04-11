@@ -130,6 +130,20 @@ type PrefetchedPaymentInit = {
   paymentResponse: any
 }
 
+function buildPaymentInitKeyForQuote(
+  quote: QuotePreview | null | undefined,
+  fallbackCurrency: string,
+): string | null {
+  const quoteId = String(quote?.quote_id || '').trim()
+  if (!quoteId) return null
+  const currency = String(quote?.currency || fallbackCurrency || 'USD').trim().toUpperCase()
+  const amountMinor = Number.isFinite(Number(quote?.pricing?.total))
+    ? Math.round(Number(quote?.pricing?.total) * 100)
+    : null
+  if (!currency || amountMinor == null) return null
+  return `${quoteId}:${currency}:${amountMinor}`
+}
+
 type CreatedOrderPaymentSnapshot = {
   orderId: string
   paymentResponse: any
@@ -1029,13 +1043,8 @@ function OrderFlowInner({
   const tax = quote?.pricing?.tax ?? 0
   const total = quote?.pricing?.total ?? estimatedSubtotal
   const paymentInitKey = useMemo(() => {
-    const quoteId = String(quote?.quote_id || '').trim()
-    if (!quoteId) return null
-    const cur = String(currency || 'USD').trim().toUpperCase()
-    const amountMinor = Number.isFinite(total) ? Math.round(Number(total) * 100) : null
-    if (!cur || amountMinor == null) return null
-    return `${quoteId}:${cur}:${amountMinor}`
-  }, [currency, quote?.quote_id, total])
+    return buildPaymentInitKeyForQuote(quote, currency)
+  }, [currency, quote])
   const requestedPreferredPsp = useMemo(() => {
     const raw = searchParams?.get('preferred_psp') || searchParams?.get('psp') || ''
     const normalized = raw.trim().toLowerCase()
@@ -1889,6 +1898,64 @@ function OrderFlowInner({
     }
   }
 
+  const startPaymentInitForQuote = (quoteForPayment: QuotePreview): Promise<PrefetchedPaymentInit> | null => {
+    const nextPaymentInitKey = buildPaymentInitKeyForQuote(quoteForPayment, currency)
+    if (!nextPaymentInitKey) return null
+    if (paymentInitKeyRef.current === nextPaymentInitKey && paymentInitPromiseRef.current) {
+      return paymentInitPromiseRef.current
+    }
+
+    const runId = paymentInitRunIdRef.current + 1
+    paymentInitRunIdRef.current = runId
+    setPaymentInitLoading(true)
+    setPaymentInitError(null)
+    setPrefetchedPaymentRes(null)
+    // Pre-warm Adyen SDK to reduce first-render jitter.
+    void import('@adyen/adyen-web').catch(() => null)
+
+    const initPromise = primePaymentForStep(quoteForPayment)
+    paymentInitKeyRef.current = nextPaymentInitKey
+    paymentInitPromiseRef.current = initPromise
+
+    initPromise
+      .then((prefetched) => {
+        if (paymentInitRunIdRef.current !== runId) return
+        const action = extractPaymentAction(prefetched.paymentResponse, initialPaymentAction)
+        const detectedPsp = detectPaymentPsp(prefetched.paymentResponse, action)
+        assertSupportedPaymentSurface(prefetched.paymentResponse, action, detectedPsp)
+        setPrefetchedPaymentRes(prefetched)
+        setPaymentInitError(null)
+        setInitialPaymentAction(action)
+        setPaymentActionType(action?.type || null)
+        setPspUsed(detectedPsp)
+        syncStripeRuntime(prefetched.paymentResponse, action, detectedPsp)
+      })
+      .catch((err: any) => {
+        if (paymentInitRunIdRef.current !== runId) return
+        if (isCheckoutRestartRequired(err)) {
+          setCheckoutFailure({
+            message:
+              String(err?.message || '').trim() ||
+              'This checkout link is invalid or expired. Please restart checkout to continue.',
+          })
+          setPaymentInitError(null)
+          return
+        }
+        const msg = String(err?.message || '').trim() || 'Failed to prepare payment'
+        setPaymentInitError(msg)
+      })
+      .finally(() => {
+        if (paymentInitPromiseRef.current === initPromise) {
+          paymentInitPromiseRef.current = null
+        }
+        if (paymentInitRunIdRef.current === runId) {
+          setPaymentInitLoading(false)
+        }
+      })
+
+    return initPromise
+  }
+
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!resumeOrder?.orderId) return
@@ -1962,54 +2029,7 @@ function OrderFlowInner({
     ) {
       return
     }
-
-    const runId = paymentInitRunIdRef.current + 1
-    paymentInitRunIdRef.current = runId
-    setPaymentInitLoading(true)
-    setPaymentInitError(null)
-    setPrefetchedPaymentRes(null)
-    // Pre-warm Adyen SDK to reduce first-render jitter.
-    void import('@adyen/adyen-web').catch(() => null)
-
-    const initPromise = primePaymentForStep(quote)
-    paymentInitKeyRef.current = paymentInitKey
-    paymentInitPromiseRef.current = initPromise
-
-    initPromise
-      .then((prefetched) => {
-        if (paymentInitRunIdRef.current !== runId) return
-        const action = extractPaymentAction(prefetched.paymentResponse, initialPaymentAction)
-        const detectedPsp = detectPaymentPsp(prefetched.paymentResponse, action)
-        assertSupportedPaymentSurface(prefetched.paymentResponse, action, detectedPsp)
-        setPrefetchedPaymentRes(prefetched)
-        setPaymentInitError(null)
-        setInitialPaymentAction(action)
-        setPaymentActionType(action?.type || null)
-        setPspUsed(detectedPsp)
-        syncStripeRuntime(prefetched.paymentResponse, action, detectedPsp)
-      })
-      .catch((err: any) => {
-        if (paymentInitRunIdRef.current !== runId) return
-        if (isCheckoutRestartRequired(err)) {
-          setCheckoutFailure({
-            message:
-              String(err?.message || '').trim() ||
-              'This checkout link is invalid or expired. Please restart checkout to continue.',
-          })
-          setPaymentInitError(null)
-          return
-        }
-        const msg = String(err?.message || '').trim() || 'Failed to prepare payment'
-        setPaymentInitError(msg)
-      })
-      .finally(() => {
-        if (paymentInitPromiseRef.current === initPromise) {
-          paymentInitPromiseRef.current = null
-        }
-        if (paymentInitRunIdRef.current === runId) {
-          setPaymentInitLoading(false)
-        }
-      })
+    startPaymentInitForQuote(quote)
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
@@ -2190,7 +2210,8 @@ function OrderFlowInner({
       setPaymentInitError(null)
 
       try {
-        await refreshQuoteWithRetry()
+        const nextQuote = await refreshQuoteWithRetry()
+        void startPaymentInitForQuote(nextQuote)
       } catch (err: any) {
         if (isInventoryUnavailable(err)) {
           if (onFailure) onFailure({ reason: 'action_required', stage: 'shipping' })
@@ -2273,16 +2294,7 @@ function OrderFlowInner({
         }
         
         // Step 2: Create/confirm payment intent via gateway (prefer prefetched result).
-        const quoteKeyForRun = (() => {
-          const qid = String(quoteForPayment?.quote_id || '').trim()
-          if (!qid) return null
-          const cur = String(quoteForPayment?.currency || currency || 'USD').trim().toUpperCase()
-          const amountMinor = Number.isFinite(Number(quoteForPayment?.pricing?.total))
-            ? Math.round(Number(quoteForPayment?.pricing?.total) * 100)
-            : null
-          if (!cur || amountMinor == null) return null
-          return `${qid}:${cur}:${amountMinor}`
-        })()
+        const quoteKeyForRun = buildPaymentInitKeyForQuote(quoteForPayment, currency)
         let paymentResponse: any
         const canReusePrefetch =
           quoteKeyForRun &&
