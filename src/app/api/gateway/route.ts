@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 
 // This route is a backend-bound proxy, not a latency-sensitive edge personalization layer.
 // Keep it on the Node runtime in the project's home region so requests do not bounce from
@@ -47,6 +47,25 @@ const AGENT_API_KEY =
   process.env.SHOP_GATEWAY_AGENT_API_KEY ||
   process.env.PIVOTA_API_KEY ||
   '';
+
+const EXPOSED_PROXY_HEADERS = [
+  'Server-Timing',
+  'x-gateway-server-timing',
+  'x-gateway-retries',
+  'x-gateway-request-id',
+  'x-service-commit',
+  'x-service-deployment-id',
+  'x-aurora-build',
+  'x-aurora-git-sha',
+];
+
+const SAFE_UPSTREAM_DEBUG_HEADERS = [
+  'x-gateway-request-id',
+  'x-service-commit',
+  'x-service-deployment-id',
+  'x-aurora-build',
+  'x-aurora-git-sha',
+];
 
 function buildShopUpstreamInvokeUrl(base: string): string {
   const normalized = String(base || '').trim().replace(/\/+$/, '');
@@ -423,6 +442,67 @@ function normalizeCheckoutSafeResponse(operation: string, payload: unknown): unk
   return payload;
 }
 
+function appendIfPresent(headers: Headers, name: string, value: unknown) {
+  const normalized = String(value || '').trim();
+  if (normalized) headers.set(name, normalized);
+}
+
+function buildGatewayResponseHeaders(args?: {
+  contentType?: string | null;
+  serverTiming?: string | null;
+  gatewayRetries?: string | null;
+  upstreamHeaders?: Headers;
+  extraHeaders?: Record<string, string>;
+}): Headers {
+  const headers = new Headers();
+  headers.set('Access-Control-Allow-Origin', '*');
+  headers.set('Access-Control-Expose-Headers', EXPOSED_PROXY_HEADERS.join(', '));
+  appendIfPresent(
+    headers,
+    'Content-Type',
+    args?.contentType || 'application/json; charset=utf-8',
+  );
+
+  const serverTiming = String(args?.serverTiming || '').trim();
+  if (serverTiming) {
+    headers.set('Server-Timing', serverTiming);
+    headers.set('x-gateway-server-timing', serverTiming);
+  }
+  appendIfPresent(headers, 'x-gateway-retries', args?.gatewayRetries);
+
+  for (const name of SAFE_UPSTREAM_DEBUG_HEADERS) {
+    appendIfPresent(headers, name, args?.upstreamHeaders?.get(name));
+  }
+
+  for (const [name, value] of Object.entries(args?.extraHeaders || {})) {
+    appendIfPresent(headers, name, value);
+  }
+
+  return headers;
+}
+
+function jsonProxyResponse(
+  payload: unknown,
+  args?: {
+    status?: number;
+    serverTiming?: string | null;
+    gatewayRetries?: string | null;
+    upstreamHeaders?: Headers;
+    extraHeaders?: Record<string, string>;
+  },
+) {
+  return new Response(JSON.stringify(payload), {
+    status: args?.status || 200,
+    headers: buildGatewayResponseHeaders({
+      contentType: 'application/json; charset=utf-8',
+      serverTiming: args?.serverTiming,
+      gatewayRetries: args?.gatewayRetries,
+      upstreamHeaders: args?.upstreamHeaders,
+      extraHeaders: args?.extraHeaders,
+    }),
+  });
+}
+
 export async function POST(req: NextRequest) {
   try {
     const startedAt = Date.now();
@@ -436,7 +516,7 @@ export async function POST(req: NextRequest) {
       : null;
 
     if (checkoutSafeRequest && 'error' in checkoutSafeRequest) {
-      return NextResponse.json(
+      return jsonProxyResponse(
         {
           error: checkoutSafeRequest.error,
           message: checkoutSafeRequest.message,
@@ -516,26 +596,24 @@ export async function POST(req: NextRequest) {
     if (typeof responsePayload === 'string') {
       return new Response(responsePayload, {
         status: upstreamRes.status,
-        headers: {
-          'Access-Control-Allow-Origin': '*',
-          'Server-Timing': timingParts.join(', '),
-          ...(upstreamRetries ? { 'x-gateway-retries': upstreamRetries } : {}),
-          'Content-Type': upstreamRes.headers.get('content-type') || 'text/plain; charset=utf-8',
-        },
+        headers: buildGatewayResponseHeaders({
+          contentType: upstreamRes.headers.get('content-type') || 'text/plain; charset=utf-8',
+          serverTiming: timingParts.join(', '),
+          gatewayRetries: upstreamRetries,
+          upstreamHeaders: upstreamRes.headers,
+        }),
       });
     }
 
-    return NextResponse.json(responsePayload, {
+    return jsonProxyResponse(responsePayload, {
       status: upstreamRes.status,
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Server-Timing': timingParts.join(', '),
-        ...(upstreamRetries ? { 'x-gateway-retries': upstreamRetries } : {}),
-      },
+      serverTiming: timingParts.join(', '),
+      gatewayRetries: upstreamRetries,
+      upstreamHeaders: upstreamRes.headers,
     });
   } catch (error) {
     console.error('Gateway proxy error:', error);
-    return NextResponse.json(
+    return jsonProxyResponse(
       {
         error: 'Gateway proxy error',
         message: (error as Error).message ?? String(error),
@@ -546,12 +624,11 @@ export async function POST(req: NextRequest) {
 }
 
 export async function OPTIONS() {
-  return NextResponse.json(
+  return jsonProxyResponse(
     {},
     {
       status: 200,
-      headers: {
-        'Access-Control-Allow-Origin': '*',
+      extraHeaders: {
         'Access-Control-Allow-Methods': 'POST, OPTIONS',
         'Access-Control-Allow-Headers':
           'Content-Type, Authorization, X-API-Key, X-Checkout-Token',
