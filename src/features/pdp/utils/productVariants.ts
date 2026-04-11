@@ -1,4 +1,8 @@
 import type { Variant, VariantPrice } from '@/features/pdp/types';
+import {
+  getDisplayVariantLabel,
+  isPlaceholderVariantTitle,
+} from '@/features/pdp/utils/variantLabels';
 import type { ProductResponse } from '@/lib/api';
 
 function normalizeImageUrl(value: unknown): string | undefined {
@@ -86,8 +90,6 @@ export function buildProductVariants(product: ProductResponse, raw?: any): Varia
     .map((variant: any, idx: number) => {
       const variantId =
         variant.variant_id || variant.id || variant.sku || variant.sku_id || `${product.product_id}-${idx + 1}`;
-      const title =
-        variant.title || variant.name || variant.option_title || variant.sku_name || `Variant ${idx + 1}`;
       const options = Array.isArray(variant.options)
         ? variant.options
         : typeof variant.options === 'object' && variant.options
@@ -96,6 +98,18 @@ export function buildProductVariants(product: ProductResponse, raw?: any): Varia
               value: String(value),
             }))
           : [];
+      const rawTitle = String(
+        variant.title || variant.name || variant.option_title || variant.sku_name || '',
+      ).trim();
+      const title = isPlaceholderVariantTitle(rawTitle)
+        ? getDisplayVariantLabel(
+            {
+              title: rawTitle,
+              options,
+            },
+            rawVariants.length <= 1 ? 'Default option' : `Option ${idx + 1}`,
+          )
+        : rawTitle;
 
       const price =
         toVariantPrice(variant.price || variant.pricing, currency) ||

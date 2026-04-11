@@ -1,17 +1,7 @@
 import Image from 'next/image';
 import type { Variant } from '@/features/pdp/types';
+import { getDisplayVariantLabel } from '@/features/pdp/utils/variantLabels';
 import { cn } from '@/lib/utils';
-
-const SINGLE_VARIANT_PLACEHOLDER_TITLE = /^(default(?: title)?|variant \d+)$/i;
-const SINGLE_VARIANT_FALLBACK_LABEL = 'Default option';
-
-function getDisplayVariantLabel(variant: Variant | undefined): string {
-  const title = String(variant?.title || '').trim();
-  if (!title || SINGLE_VARIANT_PLACEHOLDER_TITLE.test(title)) {
-    return SINGLE_VARIANT_FALLBACK_LABEL;
-  }
-  return title;
-}
 
 export function VariantSelector({
   variants,
@@ -97,7 +87,7 @@ export function VariantSelector({
                 ) : null
               ) : null}
               <span className={cn('truncate', isSelected ? 'font-semibold' : 'font-medium')}>
-                {v.title}
+                {getDisplayVariantLabel(v)}
               </span>
             </button>
           );

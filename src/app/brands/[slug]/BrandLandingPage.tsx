@@ -1,18 +1,20 @@
 'use client';
 
 import Image from 'next/image';
-import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowLeft,
-  Plus,
   Search,
   ShoppingBag,
   SlidersHorizontal,
   X,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
+import {
+  CatalogProductCard,
+  CatalogProductSkeleton,
+} from '@/components/catalog/CatalogProductCard';
 import {
   type BrandDiscoveryFeedResult,
   getBrandDiscoveryFeed,
@@ -22,12 +24,10 @@ import {
   type ProductResponse,
 } from '@/lib/api';
 import { normalizeBrandLabel } from '@/lib/brandRoute';
-import { resolveProductCardPresentation } from '@/lib/productCardPresentation';
-import { buildProductHref } from '@/lib/productHref';
-import { appendCurrentPathAsReturn, safeReturnUrl } from '@/lib/returnUrl';
+import { buildCatalogProductKey, mergeUniqueCatalogProducts } from '@/lib/catalogProducts';
+import { safeReturnUrl } from '@/lib/returnUrl';
 import { useAuthStore } from '@/store/authStore';
 import { useCartStore } from '@/store/cartStore';
-import { toast } from 'sonner';
 
 const PAGE_SIZE = 12;
 const NO_GROWTH_STOP_THRESHOLD = 2;
@@ -60,23 +60,6 @@ type BrandStory = {
   quote: string;
   author?: string;
 };
-
-function buildProductKey(product: ProductResponse): string {
-  const sellableGroupId = String(product?.sellable_item_group_id || '').trim();
-  if (sellableGroupId) return `sellable_item_group::${sellableGroupId}`;
-  return `${String(product?.merchant_id || '').trim()}::${String(product?.product_id || '').trim()}`;
-}
-
-function mergeUniqueProducts(current: ProductResponse[], incoming: ProductResponse[]) {
-  const map = new Map<string, ProductResponse>();
-  current.forEach((item) => map.set(buildProductKey(item), item));
-  const before = map.size;
-  incoming.forEach((item) => map.set(buildProductKey(item), item));
-  return {
-    merged: Array.from(map.values()),
-    added: map.size - before,
-  };
-}
 
 function decodeSlugToBrand(slug: string): string {
   return String(slug || '')
@@ -144,18 +127,6 @@ function mapRemoteHistory(items: any[]): DiscoveryRecentView[] {
       } satisfies DiscoveryRecentView;
     })
     .filter(Boolean) as DiscoveryRecentView[];
-}
-
-function formatPrice(price: number, currency = 'USD'): string {
-  try {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: currency || 'USD',
-      maximumFractionDigits: Number.isInteger(price) ? 0 : 2,
-    }).format(price);
-  } catch {
-    return `$${Number(price || 0).toFixed(2)}`;
-  }
 }
 
 function getBrandInitials(brandName: string): string {
@@ -351,129 +322,6 @@ function resolveBrandStory(metadata: Record<string, any> | null | undefined): Br
   };
 }
 
-function BrandProductCard({ product }: { product: ProductResponse }) {
-  const router = useRouter();
-  const addItem = useCartStore((state) => state.addItem);
-  const openCart = useCartStore((state) => state.open);
-  const [imageSrc, setImageSrc] = useState(product.image_url || '/placeholder.svg');
-
-  const href = buildProductHref(product.product_id, product.merchant_id);
-  const hrefWithReturn = appendCurrentPathAsReturn(href);
-  const card = resolveProductCardPresentation(product);
-  const compactCopy = card.highlight || card.subtitle;
-  const isIdentityGrouped =
-    Boolean(product.sellable_item_group_id) ||
-    product.canonical_scope === 'synthetic' ||
-    (Array.isArray(product.group_members) && product.group_members.length > 1);
-  const isDirectCartEligible =
-    !isIdentityGrouped &&
-    Boolean(product.merchant_id) &&
-    product.merchant_id !== 'external_seed' &&
-    !product.external_redirect_url;
-
-  useEffect(() => {
-    setImageSrc(product.image_url || '/placeholder.svg');
-  }, [product.image_url]);
-
-  const handleQuickAction = (event: React.MouseEvent<HTMLButtonElement>) => {
-    event.preventDefault();
-    event.stopPropagation();
-
-    if (!isDirectCartEligible) {
-      router.push(hrefWithReturn);
-      return;
-    }
-
-    const resolvedVariantId = String(product.variant_id || product.sku_id || '').trim() || product.product_id;
-    const cartItemId = product.merchant_id ? `${product.merchant_id}:${resolvedVariantId}` : resolvedVariantId;
-
-    addItem({
-      id: cartItemId,
-      product_id: product.product_id,
-      variant_id: resolvedVariantId,
-      sku: product.sku,
-      title: product.title,
-      price: product.price,
-      currency: product.currency,
-      imageUrl: imageSrc,
-      merchant_id: product.merchant_id,
-      quantity: 1,
-    });
-    openCart();
-    toast.success(`Added ${product.title} to cart`);
-  };
-
-  return (
-    <div className="group relative">
-      <Link href={hrefWithReturn} prefetch={false} className="block h-full">
-        <article className="h-full overflow-hidden rounded-[16px] border border-[#f3ede5] bg-white shadow-[0_6px_18px_rgba(15,23,42,0.045)] transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_12px_22px_rgba(15,23,42,0.07)]">
-          <div className="relative aspect-[4/5] overflow-hidden bg-[#f7f3ee]">
-            <Image
-              src={imageSrc}
-              alt={product.title}
-              fill
-              unoptimized
-              className="object-cover transition duration-300 group-hover:scale-[1.02]"
-              onError={() => {
-                if (imageSrc !== '/placeholder.svg') setImageSrc('/placeholder.svg');
-              }}
-            />
-
-            {card.badge ? (
-              <span className="absolute left-2 top-2 rounded-full bg-white/96 px-2 py-1 text-[10px] font-semibold tracking-[-0.01em] text-slate-700 shadow-sm">
-                {card.badge}
-              </span>
-            ) : null}
-          </div>
-
-          <div className="space-y-1 p-2.5 pr-10 sm:p-3 sm:pr-10">
-            <h3 className="min-h-[2.7rem] line-clamp-3 text-[12px] font-medium leading-[0.92rem] tracking-[-0.01em] text-[#202531] sm:text-[12.5px] sm:leading-[0.98rem]">
-              {card.title}
-            </h3>
-
-            {compactCopy ? (
-              <p className="line-clamp-1 text-[10.5px] text-[#667085] sm:text-[11px]">
-                {compactCopy}
-              </p>
-            ) : null}
-
-            <div>
-              <p className="text-[14px] font-semibold tracking-[-0.015em] text-[#111827] sm:text-[14.5px]">
-                {formatPrice(product.price, product.currency)}
-              </p>
-            </div>
-          </div>
-        </article>
-      </Link>
-
-      <button
-        type="button"
-        onClick={handleQuickAction}
-        className="absolute bottom-2.5 right-2.5 inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#e6e0d7] bg-white text-slate-700 shadow-[0_4px_12px_rgba(15,23,42,0.1)] transition hover:scale-105 hover:text-slate-950"
-        aria-label={
-          isDirectCartEligible ? `Quick add ${product.title}` : `View details for ${product.title}`
-        }
-      >
-        <Plus className="h-3.25 w-3.25" />
-      </button>
-    </div>
-  );
-}
-
-function BrandProductSkeleton() {
-  return (
-    <div className="overflow-hidden rounded-[24px] bg-white shadow-[0_8px_32px_rgba(15,23,42,0.08)] ring-1 ring-black/5">
-      <div className="aspect-[4/5] animate-pulse bg-slate-100" />
-      <div className="space-y-3 p-4">
-        <div className="h-4 w-4/5 animate-pulse rounded-full bg-slate-100" />
-        <div className="h-4 w-3/5 animate-pulse rounded-full bg-slate-100" />
-        <div className="h-3 w-1/2 animate-pulse rounded-full bg-slate-100" />
-        <div className="h-4 w-2/5 animate-pulse rounded-full bg-slate-100" />
-      </div>
-    </div>
-  );
-}
-
 export function BrandLandingPage({
   slug,
   initialBrandName,
@@ -506,7 +354,7 @@ export function BrandLandingPage({
 
   const hasInitialFeed = Boolean(initialFeed);
   const [products, setProducts] = useState<ProductResponse[]>(() =>
-    mergeUniqueProducts([], initialFeed?.products || []).merged,
+    mergeUniqueCatalogProducts([], initialFeed?.products || []).merged,
   );
   const [feedMetadata, setFeedMetadata] = useState<Record<string, any>>(
     () => initialFeed?.metadata || {},
@@ -697,7 +545,7 @@ export function BrandLandingPage({
     })
       .then((result) => {
         if (cancelled || requestSeq !== requestSeqRef.current) return;
-        setProducts(mergeUniqueProducts([], result.products).merged);
+        setProducts(mergeUniqueCatalogProducts([], result.products).merged);
         setFeedMetadata(result.metadata || {});
         setTotal(result.page_info.total);
         setHasMore(Boolean(result.page_info.has_more));
@@ -755,7 +603,7 @@ export function BrandLandingPage({
             setFeedMetadata((current) => ({ ...current, ...(result.metadata || {}) }));
             setTotal(result.page_info.total);
             setProducts((current) => {
-              const { merged, added } = mergeUniqueProducts(current, result.products);
+              const { merged, added } = mergeUniqueCatalogProducts(current, result.products);
               if (added === 0) {
                 noGrowthCountRef.current += 1;
               } else {
@@ -1107,7 +955,7 @@ export function BrandLandingPage({
             <section id="brand-products" className="space-y-4">
               <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-4">
                 {Array.from({ length: 8 }).map((_, index) => (
-                  <BrandProductSkeleton key={index} />
+                  <CatalogProductSkeleton key={index} />
                 ))}
               </div>
             </section>
@@ -1133,7 +981,7 @@ export function BrandLandingPage({
             <section id="brand-products" className="space-y-4" aria-busy={isRefreshing}>
               <div className={`grid grid-cols-2 gap-x-2.5 gap-y-3.5 md:gap-x-4 md:gap-y-5 lg:grid-cols-3 xl:grid-cols-4 ${isRefreshing ? 'opacity-80 transition-opacity' : ''}`}>
                 {visibleProducts.map((product) => (
-                  <BrandProductCard key={buildProductKey(product)} product={product} />
+                  <CatalogProductCard key={buildCatalogProductKey(product)} product={product} />
                 ))}
               </div>
 

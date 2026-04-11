@@ -4,6 +4,10 @@ import { ArrowUpRight, ShoppingBag } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ResponsiveSheet } from '@/features/pdp/components/ResponsiveSheet';
 import type { Variant } from '@/features/pdp/types';
+import {
+  getDisplayVariantLabel,
+  getDisplayVariantMeta,
+} from '@/features/pdp/utils/variantLabels';
 import { cn } from '@/lib/utils';
 
 function formatPrice(amount: number, currency: string) {
@@ -76,12 +80,8 @@ export function SimilarQuickActionSheet({
             const isSelected = variant.variant_id === selectedVariantId;
             const amount = variant.price?.current.amount ?? 0;
             const currency = variant.price?.current.currency || 'USD';
-            const meta = Array.isArray(variant.options)
-              ? variant.options
-                  .map((option) => String(option.value || '').trim())
-                  .filter(Boolean)
-                  .join(' · ')
-              : '';
+            const displayTitle = getDisplayVariantLabel(variant);
+            const meta = getDisplayVariantMeta(variant);
             return (
               <button
                 key={variant.variant_id}
@@ -95,7 +95,7 @@ export function SimilarQuickActionSheet({
                 )}
               >
                 <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm font-medium text-foreground">{variant.title}</div>
+                  <div className="truncate text-sm font-medium text-foreground">{displayTitle}</div>
                   {meta ? (
                     <div className="mt-0.5 truncate text-[11px] text-muted-foreground">{meta}</div>
                   ) : null}
