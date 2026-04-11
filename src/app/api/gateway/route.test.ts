@@ -238,6 +238,70 @@ describe('/api/gateway checkout-safe proxy', () => {
     });
   });
 
+  it('duplicates timing and upstream trace headers for proxy observability', async () => {
+    vi.stubEnv('PIVOTA_BACKEND_BASE_URL', 'https://checkout.example.com');
+
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ quote_id: 'quote_obs_123' }), {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json',
+          'Server-Timing': 'upstream;dur=123, upprimary;dur=123, normalize;dur=0',
+          'x-gateway-retries': '1',
+          'x-gateway-request-id': 'req_obs_123',
+          'x-service-commit': 'sha_obs_123',
+          'x-service-deployment-id': 'dep_obs_123',
+          'x-aurora-build': 'build_obs_123',
+          'x-aurora-git-sha': 'git_obs_123',
+        },
+      }),
+    );
+
+    const { POST } = await import('@/app/api/gateway/route');
+
+    const req = new Request('http://localhost/api/gateway', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        operation: 'preview_quote',
+        payload: {
+          quote: {
+            merchant_id: 'merchant_obs',
+            items: [{ product_id: 'prod_obs', variant_id: 'var_obs', quantity: 1 }],
+            shipping_address: {
+              country: 'US',
+              postal_code: '94107',
+            },
+          },
+        },
+      }),
+    });
+
+    const res = await POST(req as any);
+    const data = await res.json();
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(res.status).toBe(200);
+    expect(data).toMatchObject({ quote_id: 'quote_obs_123' });
+    expect(res.headers.get('server-timing')).toContain('upstream;dur=123');
+    expect(res.headers.get('server-timing')).toContain('upprimary;dur=123');
+    expect(res.headers.get('server-timing')).toContain('proxy;dur=');
+    expect(res.headers.get('server-timing')).toContain('gateway;dur=');
+    expect(res.headers.get('x-gateway-server-timing')).toBe(res.headers.get('server-timing'));
+    expect(res.headers.get('x-gateway-retries')).toBe('1');
+    expect(res.headers.get('x-gateway-request-id')).toBe('req_obs_123');
+    expect(res.headers.get('x-service-commit')).toBe('sha_obs_123');
+    expect(res.headers.get('x-service-deployment-id')).toBe('dep_obs_123');
+    expect(res.headers.get('x-aurora-build')).toBe('build_obs_123');
+    expect(res.headers.get('x-aurora-git-sha')).toBe('git_obs_123');
+    expect(res.headers.get('access-control-expose-headers')).toContain('Server-Timing');
+    expect(res.headers.get('access-control-expose-headers')).toContain('x-gateway-server-timing');
+    expect(res.headers.get('access-control-expose-headers')).toContain('x-gateway-request-id');
+    expect(res.headers.get('access-control-expose-headers')).toContain('x-service-commit');
+  });
+
   it('keeps non-checkout traffic on the invoke gateway path', async () => {
     vi.stubEnv('SHOP_UPSTREAM_API_URL', 'https://invoke.example.com');
     vi.stubEnv('PIVOTA_BACKEND_BASE_URL', 'https://checkout.example.com');
