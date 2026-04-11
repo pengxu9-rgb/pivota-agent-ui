@@ -36,6 +36,7 @@ import {
   listQuestions,
   postQuestion,
   type QuestionListItem,
+  type ProductResponse,
   type UgcCapabilities,
 } from '@/lib/api';
 import { isBeautyProduct } from '@/features/pdp/utils/isBeautyProduct';
@@ -55,7 +56,7 @@ import { PdpMediaViewer } from '@/features/pdp/components/PdpMediaViewer';
 import { VariantSelector } from '@/features/pdp/sections/VariantSelector';
 import { DetailsAccordion } from '@/features/pdp/sections/DetailsAccordion';
 import { RecommendationsGrid, RecommendationsSkeleton } from '@/features/pdp/sections/RecommendationsGrid';
-import { SimilarProductsSheet } from '@/features/pdp/sections/SimilarProductsSheet';
+import { SimilarQuickActionSheet } from '@/features/pdp/sections/SimilarQuickActionSheet';
 import { BeautyReviewsSection } from '@/features/pdp/sections/BeautyReviewsSection';
 import { BeautyUgcGallery } from '@/features/pdp/sections/BeautyUgcGallery';
 import { BeautyRecentPurchases } from '@/features/pdp/sections/BeautyRecentPurchases';
@@ -76,10 +77,18 @@ import { getStableGalleryItems, resolveHeroMediaUrl } from '@/features/pdp/state
 import { buildPdpViewModel } from '@/features/pdp/state/viewModel';
 import { resolveOfferPricing } from '@/features/pdp/utils/offerVariantMatching';
 import { buildBrandHref } from '@/lib/brandRoute';
+import { buildProductHref } from '@/lib/productHref';
+import { buildProductVariants } from '@/features/pdp/utils/productVariants';
 import { cn } from '@/lib/utils';
 import { resolveReviewGate, reviewGateMessage, reviewGateResultToReason } from '@/lib/reviewGate';
 import { postRequestCloseToParent } from '@/lib/auroraEmbed';
-import { isExternalAgentEntry, resolveExternalAgentHomeUrl, safeReturnUrl } from '@/lib/returnUrl';
+import { appendCurrentPathAsReturn, isExternalAgentEntry, resolveExternalAgentHomeUrl, safeReturnUrl } from '@/lib/returnUrl';
+import {
+  getExternalRedirectUrlFromOffer,
+  getExternalRedirectUrlFromProduct,
+  isExternalCtaTarget,
+  resolveCheckoutTarget,
+} from '@/lib/pdpPurchaseFlow';
 import { useIsDesktop } from '@/features/pdp/hooks/useIsDesktop';
 import { buildSimilarMainlineStatus } from '@/features/pdp/utils/similarHints';
 import { partitionDetailSections } from '@/features/pdp/utils/detailSections';
@@ -306,6 +315,32 @@ function offerSupportsVariant(
   const rawVariants = Array.isArray((offer as any)?.variants) ? (offer as any).variants : [];
   if (!rawVariants.length) return true;
   return Boolean(resolveOfferPricing(offer, variant).matchedVariant);
+}
+
+function getInitialVariantIdFromDetail(detail: ProductResponse, variants: Variant[]): string {
+  const candidateIds = [
+    detail.variant_id,
+    (detail.raw_detail as any)?.default_variant_id,
+    (detail.raw_detail as any)?.defaultVariantId,
+    variants[0]?.variant_id,
+  ]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean);
+  return candidateIds.find((candidateId) => variants.some((variant) => variant.variant_id === candidateId)) || variants[0]?.variant_id || '';
+}
+
+function getDisplayMerchantName(offer: Offer | null | undefined, detail: ProductResponse | null | undefined): string | null {
+  const candidates = [
+    offer?.merchant_name,
+    detail?.merchant_name,
+    offer?.merchant_id,
+    detail?.merchant_id,
+  ];
+  for (const value of candidates) {
+    const normalized = String(value || '').trim();
+    if (normalized) return normalized;
+  }
+  return null;
 }
 
 function StarRating({ value }: { value: number }) {
@@ -940,14 +975,24 @@ export function PdpContainer({
     Boolean(initialSimilarState.metadata?.has_more),
   );
   const [similarLoadingMore, setSimilarLoadingMore] = useState(false);
-  const [similarSheetOpen, setSimilarSheetOpen] = useState(false);
+  const [similarLoadMoreError, setSimilarLoadMoreError] = useState(false);
   const [similarStrategy, setSimilarStrategy] = useState(initialSimilarState.strategy);
   const [similarMetadata, setSimilarMetadata] =
     useState<RecommendationsData['metadata'] | null>(initialSimilarState.metadata);
+  const [similarDetailCache, setSimilarDetailCache] = useState<Record<string, ProductResponse>>({});
+  const [similarQuickActionLoadingKey, setSimilarQuickActionLoadingKey] = useState<string | null>(null);
+  const [similarQuickActionSheetOpen, setSimilarQuickActionSheetOpen] = useState(false);
+  const [similarQuickActionItem, setSimilarQuickActionItem] =
+    useState<RecommendationsData['items'][number] | null>(null);
+  const [similarQuickActionDetail, setSimilarQuickActionDetail] = useState<ProductResponse | null>(null);
+  const [similarQuickActionSelectedVariantId, setSimilarQuickActionSelectedVariantId] = useState('');
+  const [similarQuickActionSubmitting, setSimilarQuickActionSubmitting] = useState(false);
   const defaultReviewScope = useMemo(() => resolveDefaultReviewScope(reviews), [reviews]);
   const [selectedReviewScope, setSelectedReviewScope] = useState<string | null>(defaultReviewScope);
   const similarResetProductIdRef = useRef<string>('');
   const similarNoGrowthCountRef = useRef(0);
+  const similarAutoLoadSentinelRef = useRef<HTMLDivElement | null>(null);
+  const similarAutoLoadPendingRef = useRef(false);
 
   const offers = useMemo(() => payload.offers ?? [], [payload.offers]);
   const internalFirstDefaultOfferId = useMemo(
@@ -1145,7 +1190,14 @@ export function PdpContainer({
     setSimilarVisibleCount(SIMILAR_PAGE_SIZE);
     setSimilarHasMore(Boolean(initialSimilarState.metadata?.has_more));
     setSimilarLoadingMore(false);
-    setSimilarSheetOpen(false);
+    setSimilarLoadMoreError(false);
+    setSimilarDetailCache({});
+    setSimilarQuickActionLoadingKey(null);
+    setSimilarQuickActionSheetOpen(false);
+    setSimilarQuickActionItem(null);
+    setSimilarQuickActionDetail(null);
+    setSimilarQuickActionSelectedVariantId('');
+    setSimilarQuickActionSubmitting(false);
     similarNoGrowthCountRef.current = 0;
   }, [
     initialSimilarState,
@@ -1182,7 +1234,12 @@ export function PdpContainer({
   useEffect(() => {
     const candidates = similarItems
       .slice(0, Math.max(similarVisibleCount, SIMILAR_PAGE_SIZE))
-      .filter((item) => needsRecommendationEnrichment(item))
+      .filter((item) => item.merchant_id)
+      .filter((item) => {
+        const key = buildRecommendationProductKey(item);
+        if (similarDetailCache[key]) return false;
+        return needsRecommendationEnrichment(item) || Boolean(item.merchant_id);
+      })
       .filter((item) => !similarEnrichmentRequestedRef.current.has(buildRecommendationProductKey(item)));
 
     if (!candidates.length) return;
@@ -1211,11 +1268,33 @@ export function PdpContainer({
           ],
           recommendationCurrencyFallback,
         );
-        return normalized[0] || null;
+        return {
+          key: buildRecommendationProductKey(item),
+          detail,
+          item: normalized[0] || null,
+        };
       }),
     ).then((results) => {
       if (cancelled) return;
-      const enrichedItems = results.filter(Boolean) as RecommendationsData['items'];
+      const enrichedResults = results.filter(Boolean) as Array<{
+        key: string;
+        detail: ProductResponse;
+        item: RecommendationsData['items'][number] | null;
+      }>;
+      if (!enrichedResults.length) return;
+      setSimilarDetailCache((prev) => {
+        const next = { ...prev };
+        let changed = false;
+        for (const result of enrichedResults) {
+          if (next[result.key]) continue;
+          next[result.key] = result.detail;
+          changed = true;
+        }
+        return changed ? next : prev;
+      });
+      const enrichedItems = enrichedResults
+        .map((result) => result.item)
+        .filter(Boolean) as RecommendationsData['items'];
       if (!enrichedItems.length) return;
       setSimilarItems((prev) => mergeRecommendationItems(prev, enrichedItems).items);
     });
@@ -1225,6 +1304,7 @@ export function PdpContainer({
     };
   }, [
     recommendationCurrencyFallback,
+    similarDetailCache,
     similarItems,
     similarVisibleCount,
   ]);
@@ -1825,20 +1905,194 @@ export function PdpContainer({
   const merchantId = String(payload.product.merchant_id || '').trim() || null;
   latestProductGroupIdRef.current = productGroupId;
 
-  const handleOpenSimilarAll = useCallback(async () => {
-    setSimilarSheetOpen(true);
-    pdpTracking.track('similar_open_all', {
-      loaded_count: similarItems.length,
-      visible_count: Math.min(similarVisibleCount, similarItems.length),
-      source: pdpViewModel.sourceLocks.similar ? 'locked' : 'live',
-    });
-  }, [
-    pdpViewModel.sourceLocks.similar,
-    similarItems.length,
-    similarVisibleCount,
-  ]);
+  const navigateToSimilarPdp = useCallback(
+    (item: RecommendationsData['items'][number]) => {
+      router.push(appendCurrentPathAsReturn(buildProductHref(item.product_id, item.merchant_id)));
+    },
+    [router],
+  );
 
-  const loadMoreSimilarProducts = useCallback(async (entrySurface: 'grid' | 'similar_sheet') => {
+  const getSimilarActionVariants = useCallback((detail: ProductResponse) => {
+    return buildProductVariants(detail, detail.raw_detail);
+  }, []);
+
+  const resolveSimilarOfferForVariant = useCallback(
+    (detail: ProductResponse, variant: Variant | null | undefined): Offer | null => {
+      const offers = Array.isArray(detail.offers) ? detail.offers : [];
+      if (!offers.length) return null;
+      const eligibleOffers = offers.filter((offer) => offerSupportsVariant(offer, variant));
+      const candidateOffers = eligibleOffers.length ? eligibleOffers : offers;
+      const recommendedOfferId = pickInternalFirstOfferId({
+        offers: candidateOffers,
+        merchantId: detail.merchant_id || null,
+        defaultOfferId: detail.default_offer_id || null,
+      });
+      return (
+        candidateOffers.find((offer) => offer.offer_id === recommendedOfferId) ||
+        candidateOffers[0] ||
+        null
+      );
+    },
+    [],
+  );
+
+  const resolveSimilarActionLabel = useCallback(
+    (detail: ProductResponse, variant: Variant | null | undefined): 'Buy' | 'Open' => {
+      const preferredOffer = resolveSimilarOfferForVariant(detail, variant);
+      const resolvedMerchantId = String(preferredOffer?.merchant_id || detail.merchant_id || '').trim();
+      const redirectUrl = preferredOffer
+        ? getExternalRedirectUrlFromOffer(preferredOffer)
+        : getExternalRedirectUrlFromProduct(detail);
+      const isExternal = isExternalCtaTarget({
+        offer: preferredOffer,
+        product: detail,
+        merchantId: resolvedMerchantId,
+        redirectUrl,
+      });
+      return isExternal ? 'Open' : 'Buy';
+    },
+    [resolveSimilarOfferForVariant],
+  );
+
+  const ensureSimilarDetail = useCallback(
+    async (item: RecommendationsData['items'][number]) => {
+      const key = buildRecommendationProductKey(item);
+      const cached = similarDetailCache[key];
+      if (cached) return cached;
+      if (!item.merchant_id) return null;
+      const detail = await getProductDetailExact({
+        product_id: item.product_id,
+        merchant_id: item.merchant_id,
+        timeout_ms: 4500,
+      });
+      if (!detail) return null;
+
+      setSimilarDetailCache((prev) => ({ ...prev, [key]: detail }));
+      const normalized = normalizeRecommendationItems(
+        [
+          {
+            ...detail,
+            variant_count: Array.isArray(detail.variants) ? detail.variants.length : undefined,
+          },
+        ],
+        recommendationCurrencyFallback,
+      );
+      if (normalized[0]) {
+        setSimilarItems((prev) => mergeRecommendationItems(prev, [normalized[0]!]).items);
+      }
+      return detail;
+    },
+    [recommendationCurrencyFallback, similarDetailCache],
+  );
+
+  const executeSimilarQuickAction = useCallback(
+    async ({
+      item,
+      detail,
+      variant,
+      entrySurface,
+    }: {
+      item: RecommendationsData['items'][number];
+      detail: ProductResponse;
+      variant: Variant;
+      entrySurface: 'card_cta' | 'variant_sheet';
+    }) => {
+      const preferredOffer = resolveSimilarOfferForVariant(detail, variant);
+      const searchParams =
+        typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : new URLSearchParams();
+      const target = resolveCheckoutTarget({
+        product: {
+          ...detail,
+          variants: getSimilarActionVariants(detail),
+        },
+        offers: detail.offers,
+        variant,
+        quantity: 1,
+        merchantId: preferredOffer?.merchant_id || detail.merchant_id || undefined,
+        productId: preferredOffer?.product_id || detail.product_id,
+        offerId: preferredOffer?.offer_id || null,
+        searchParams,
+      });
+
+      pdpTracking.track('similar_quick_action_resolve', {
+        product_id: item.product_id,
+        merchant_id: item.merchant_id || null,
+        resolved_offer_id: preferredOffer?.offer_id || null,
+        entry_surface: entrySurface,
+        result: target.kind,
+      });
+
+      if (target.kind === 'checkout') {
+        router.push(target.href);
+        return;
+      }
+      if (target.kind === 'external') {
+        toast.success(target.notice);
+        window.open(target.url, '_blank', 'noopener,noreferrer');
+        return;
+      }
+      navigateToSimilarPdp(item);
+    },
+    [getSimilarActionVariants, navigateToSimilarPdp, resolveSimilarOfferForVariant, router],
+  );
+
+  const handleSimilarQuickAction = useCallback(
+    async (item: RecommendationsData['items'][number], index: number) => {
+      const key = buildRecommendationProductKey(item);
+      if (!key || similarQuickActionLoadingKey === key || similarQuickActionSubmitting) return;
+
+      setSimilarQuickActionLoadingKey(key);
+      pdpTracking.track('similar_quick_action_click', {
+        index,
+        product_id: item.product_id,
+        merchant_id: item.merchant_id || null,
+        source: pdpViewModel.sourceLocks.similar ? 'locked' : 'live',
+      });
+
+      try {
+        const detail = await ensureSimilarDetail(item);
+        if (!detail) {
+          navigateToSimilarPdp(item);
+          return;
+        }
+        const variants = getSimilarActionVariants(detail);
+        const initialVariantId = getInitialVariantIdFromDetail(detail, variants);
+        const initialVariant =
+          variants.find((variant) => variant.variant_id === initialVariantId) || variants[0] || null;
+        if (!initialVariant) {
+          navigateToSimilarPdp(item);
+          return;
+        }
+        if (variants.length <= 1) {
+          await executeSimilarQuickAction({
+            item,
+            detail,
+            variant: initialVariant,
+            entrySurface: 'card_cta',
+          });
+          return;
+        }
+
+        setSimilarQuickActionItem(item);
+        setSimilarQuickActionDetail(detail);
+        setSimilarQuickActionSelectedVariantId(initialVariant.variant_id);
+        setSimilarQuickActionSheetOpen(true);
+      } finally {
+        setSimilarQuickActionLoadingKey((current) => (current === key ? null : current));
+      }
+    },
+    [
+      ensureSimilarDetail,
+      executeSimilarQuickAction,
+      getSimilarActionVariants,
+      navigateToSimilarPdp,
+      pdpViewModel.sourceLocks.similar,
+      similarQuickActionLoadingKey,
+      similarQuickActionSubmitting,
+    ],
+  );
+
+  const loadMoreSimilarProducts = useCallback(async (entrySurface: 'auto' | 'retry') => {
     const targetVisibleCount = Math.min(
       Math.max(similarVisibleCount, Math.min(similarItems.length, SIMILAR_MAX)) + SIMILAR_PAGE_SIZE,
       SIMILAR_MAX,
@@ -1853,12 +2107,14 @@ export function PdpContainer({
 
     if (targetVisibleCount <= similarItems.length) {
       setSimilarVisibleCount(targetVisibleCount);
+      setSimilarLoadMoreError(false);
       return;
     }
 
     if (similarLoadingMore || !productId) return;
 
     setSimilarLoadingMore(true);
+    setSimilarLoadMoreError(false);
     try {
       const result = await getSimilarProductsMainline({
         product_id: productId,
@@ -1901,7 +2157,7 @@ export function PdpContainer({
       setSimilarHasMore(Boolean(upstreamHasMore) && !stopForNoGrowth && mergedLength < SIMILAR_MAX);
       setSimilarVisibleCount(Math.min(targetVisibleCount, mergedLength));
     } catch {
-      toast.message('Could not load more similar products right now.');
+      setSimilarLoadMoreError(true);
     } finally {
       setSimilarLoadingMore(false);
     }
@@ -1915,13 +2171,110 @@ export function PdpContainer({
     similarVisibleCount,
   ]);
 
-  const handleSimilarLoadMore = useCallback(async () => {
-    await loadMoreSimilarProducts('grid');
+  const handleSimilarRetryLoadMore = useCallback(async () => {
+    await loadMoreSimilarProducts('retry');
   }, [loadMoreSimilarProducts]);
 
-  const handleSimilarSheetLoadMore = useCallback(async () => {
-    await loadMoreSimilarProducts('similar_sheet');
-  }, [loadMoreSimilarProducts]);
+  const similarQuickActionVariants = useMemo(() => {
+    if (!similarQuickActionDetail) return [];
+    return getSimilarActionVariants(similarQuickActionDetail);
+  }, [getSimilarActionVariants, similarQuickActionDetail]);
+
+  const similarQuickActionSelectedVariant = useMemo(() => {
+    if (!similarQuickActionVariants.length) return null;
+    return (
+      similarQuickActionVariants.find((variant) => variant.variant_id === similarQuickActionSelectedVariantId) ||
+      similarQuickActionVariants[0] ||
+      null
+    );
+  }, [similarQuickActionSelectedVariantId, similarQuickActionVariants]);
+
+  const similarQuickActionLabel = useMemo<'Buy' | 'Open'>(() => {
+    if (!similarQuickActionDetail || !similarQuickActionSelectedVariant) return 'Buy';
+    return resolveSimilarActionLabel(similarQuickActionDetail, similarQuickActionSelectedVariant);
+  }, [resolveSimilarActionLabel, similarQuickActionDetail, similarQuickActionSelectedVariant]);
+
+  const similarQuickActionSellerLabel = useMemo(() => {
+    if (!similarQuickActionDetail || !similarQuickActionSelectedVariant) return null;
+    return getDisplayMerchantName(
+      resolveSimilarOfferForVariant(similarQuickActionDetail, similarQuickActionSelectedVariant),
+      similarQuickActionDetail,
+    );
+  }, [resolveSimilarOfferForVariant, similarQuickActionDetail, similarQuickActionSelectedVariant]);
+
+  const similarQuickActionState = useMemo(() => {
+    const state: Record<string, { label: 'Buy' | 'Open'; loading?: boolean }> = {};
+    for (const item of similarItems.slice(0, Math.max(similarVisibleCount, SIMILAR_PAGE_SIZE))) {
+      const key = buildRecommendationProductKey(item);
+      const detail = similarDetailCache[key];
+      const variants = detail ? getSimilarActionVariants(detail) : [];
+      const defaultVariant = detail
+        ? variants.find((variant) => variant.variant_id === getInitialVariantIdFromDetail(detail, variants)) ||
+          variants[0] ||
+          null
+        : null;
+      state[key] = {
+        label:
+          detail && defaultVariant
+            ? resolveSimilarActionLabel(detail, defaultVariant)
+            : String(item.merchant_id || '').trim().toLowerCase() === 'external_seed'
+              ? 'Open'
+              : 'Buy',
+        ...(similarQuickActionLoadingKey === key ? { loading: true } : {}),
+      };
+    }
+    return state;
+  }, [
+    getSimilarActionVariants,
+    resolveSimilarActionLabel,
+    similarDetailCache,
+    similarItems,
+    similarQuickActionLoadingKey,
+    similarVisibleCount,
+  ]);
+
+  useEffect(() => {
+    if (!showRecommendationsSection) return;
+    if (typeof window === 'undefined' || typeof IntersectionObserver === 'undefined') return;
+    const node = similarAutoLoadSentinelRef.current;
+    if (!node) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        if (!entry?.isIntersecting) return;
+        const canRevealLoaded = similarVisibleCount < similarItems.length;
+        const canFetchMore = similarHasMore && similarItems.length < SIMILAR_MAX;
+        if ((!canRevealLoaded && !canFetchMore) || similarLoadingMore || similarLoadMoreError) return;
+        if (similarAutoLoadPendingRef.current) return;
+        similarAutoLoadPendingRef.current = true;
+        pdpTracking.track('similar_auto_load', {
+          loaded_count: similarItems.length,
+          visible_count: Math.min(similarVisibleCount, similarItems.length),
+          source: pdpViewModel.sourceLocks.similar ? 'locked' : 'live',
+        });
+        void loadMoreSimilarProducts('auto').finally(() => {
+          similarAutoLoadPendingRef.current = false;
+        });
+      },
+      { rootMargin: '240px 0px' },
+    );
+
+    observer.observe(node);
+    return () => {
+      observer.disconnect();
+      similarAutoLoadPendingRef.current = false;
+    };
+  }, [
+    loadMoreSimilarProducts,
+    pdpViewModel.sourceLocks.similar,
+    showRecommendationsSection,
+    similarHasMore,
+    similarItems.length,
+    similarLoadMoreError,
+    similarLoadingMore,
+    similarVisibleCount,
+  ]);
 
   useEffect(() => {
     let cancelled = false;
@@ -3117,34 +3470,49 @@ export function PdpContainer({
               skeleton={<RecommendationsSkeleton />}
             >
               {hasRecommendationItems ? (
-                <RecommendationsGrid
-                  data={recommendations}
-                  visibleCount={similarVisibleCount}
-                  canLoadMore={similarHasMore || similarVisibleCount < similarItems.length}
-                  isLoadingMore={similarLoadingMore}
-                  statusNoteTitle={similarStatus?.title || null}
-                  statusNote={similarStatus?.body || null}
-                  onLoadMore={() => {
-                    pdpTracking.track('pdp_action_click', {
-                      action_type: 'load_more_similar',
-                    });
-                    void handleSimilarLoadMore();
-                  }}
-                  onOpenAll={() => {
-                    pdpTracking.track('pdp_action_click', {
-                      action_type: 'open_similar_all',
-                    });
-                    void handleOpenSimilarAll();
-                  }}
-                  onItemClick={(item, index) => {
-                    pdpTracking.track('similar_click', {
-                      index,
-                      product_id: item.product_id,
-                      merchant_id: item.merchant_id || null,
-                      source: pdpViewModel.sourceLocks.similar ? 'locked' : 'live',
-                    });
-                  }}
-                />
+                <>
+                  <RecommendationsGrid
+                    data={recommendations}
+                    visibleCount={similarVisibleCount}
+                    statusNoteTitle={similarStatus?.title || null}
+                    statusNote={similarStatus?.body || null}
+                    quickActionState={similarQuickActionState}
+                    onQuickAction={(item, index) => {
+                      void handleSimilarQuickAction(item, index);
+                    }}
+                    onItemClick={(item, index) => {
+                      pdpTracking.track('similar_click', {
+                        index,
+                        product_id: item.product_id,
+                        merchant_id: item.merchant_id || null,
+                        source: pdpViewModel.sourceLocks.similar ? 'locked' : 'live',
+                      });
+                    }}
+                  />
+                  {similarLoadMoreError ? (
+                    <div className="px-3.5 pb-2 sm:px-4">
+                      <div className="flex items-center justify-between gap-3 rounded-xl border border-border bg-background/80 px-3 py-3">
+                        <div className="text-xs text-muted-foreground">
+                          Could not load more similar products right now.
+                        </div>
+                        <button
+                          type="button"
+                          className="shrink-0 text-xs font-semibold text-primary"
+                          onClick={() => {
+                            void handleSimilarRetryLoadMore();
+                          }}
+                        >
+                          Retry
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
+                  <div
+                    ref={similarAutoLoadSentinelRef}
+                    className="h-8"
+                    aria-hidden="true"
+                  />
+                </>
               ) : moduleStates.similar === 'ERROR' ? (
                 <div className="rounded-xl border border-border bg-white/90 px-3.5 py-4 text-sm text-muted-foreground sm:px-4">
                   Similar products are temporarily unavailable.
@@ -3349,24 +3717,32 @@ export function PdpContainer({
           });
         }}
       />
-      <SimilarProductsSheet
-        open={similarSheetOpen}
-        onClose={() => setSimilarSheetOpen(false)}
-        items={similarItems}
-        statusNoteTitle={similarStatus?.title || null}
-        statusNote={similarStatus?.body || null}
-        canLoadMore={similarHasMore}
-        isLoadingMore={similarLoadingMore}
-        onLoadMore={() => {
-          void handleSimilarSheetLoadMore();
+      <SimilarQuickActionSheet
+        open={similarQuickActionSheetOpen}
+        onClose={() => {
+          if (similarQuickActionSubmitting) return;
+          setSimilarQuickActionSheetOpen(false);
         }}
-        onItemClick={(item, index) => {
-          pdpTracking.track('similar_click', {
-            index,
-            product_id: item.product_id,
-            merchant_id: item.merchant_id || null,
-            source: pdpViewModel.sourceLocks.similar ? 'locked' : 'live',
-            entry_surface: 'similar_sheet',
+        title={similarQuickActionItem?.title || 'Select option'}
+        sellerLabel={similarQuickActionSellerLabel}
+        variants={similarQuickActionVariants}
+        selectedVariantId={similarQuickActionSelectedVariant?.variant_id || ''}
+        actionLabel={similarQuickActionLabel}
+        isSubmitting={similarQuickActionSubmitting}
+        onSelect={(variantId) => setSimilarQuickActionSelectedVariantId(variantId)}
+        onSubmit={() => {
+          if (!similarQuickActionItem || !similarQuickActionDetail || !similarQuickActionSelectedVariant) {
+            return;
+          }
+          setSimilarQuickActionSubmitting(true);
+          void executeSimilarQuickAction({
+            item: similarQuickActionItem,
+            detail: similarQuickActionDetail,
+            variant: similarQuickActionSelectedVariant,
+            entrySurface: 'variant_sheet',
+          }).finally(() => {
+            setSimilarQuickActionSubmitting(false);
+            setSimilarQuickActionSheetOpen(false);
           });
         }}
       />

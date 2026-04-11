@@ -7,7 +7,7 @@ import {
 } from '@/lib/checkoutToken'
 import { ensureAuroraSession, shouldUseAuroraAutoExchange } from '@/lib/auroraOrdersAuth'
 import { formatDescriptionText } from '@/features/pdp/utils/formatDescriptionText'
-import type { RecommendationsData } from '@/features/pdp/types'
+import type { Offer, RecommendationsData } from '@/features/pdp/types'
 
 // Point to the public Agent Gateway by default; override via NEXT_PUBLIC_API_URL if needed.
 const API_BASE =
@@ -135,6 +135,7 @@ interface RealAPIProduct {
 // Normalized product used across the UI
 export interface ProductResponse {
   product_id: string;
+  product_group_id?: string;
   merchant_id?: string;
   merchant_name?: string;
   external_redirect_url?: string;
@@ -207,6 +208,10 @@ export interface ProductResponse {
   options?: any[] | null;
   product_options?: any[] | null;
   seller_feedback_summary?: any;
+  offers?: Offer[];
+  offers_count?: number;
+  default_offer_id?: string;
+  best_price_offer_id?: string;
   card_title?: string;
   card_subtitle?: string;
   card_highlight?: string;
@@ -569,6 +574,12 @@ export function normalizeProduct(
 
   return {
     product_id: anyP.product_id || anyP.id,
+    product_group_id:
+      typeof anyP.product_group_id === 'string'
+        ? anyP.product_group_id
+        : typeof anyP.productGroupId === 'string'
+          ? anyP.productGroupId
+          : undefined,
     merchant_id:
       anyP.merchant_id ||
       anyP.merchant?.id ||
@@ -650,6 +661,16 @@ export function normalizeProduct(
     options: anyP.options ?? null,
     product_options: anyP.product_options ?? null,
     seller_feedback_summary: anyP.seller_feedback_summary,
+    ...(Array.isArray(anyP.offers) ? { offers: anyP.offers as Offer[] } : {}),
+    ...((Number.isFinite(Number(anyP.offers_count)) || Number.isFinite(Number(anyP.offersCount)))
+      ? { offers_count: Number(anyP.offers_count ?? anyP.offersCount) }
+      : {}),
+    ...(typeof anyP.default_offer_id === 'string' || typeof anyP.defaultOfferId === 'string'
+      ? { default_offer_id: String(anyP.default_offer_id || anyP.defaultOfferId).trim() }
+      : {}),
+    ...(typeof anyP.best_price_offer_id === 'string' || typeof anyP.bestPriceOfferId === 'string'
+      ? { best_price_offer_id: String(anyP.best_price_offer_id || anyP.bestPriceOfferId).trim() }
+      : {}),
     ...(cardTitle ? { card_title: cardTitle } : {}),
     ...(cardSubtitle ? { card_subtitle: cardSubtitle } : {}),
     ...(cardHighlight ? { card_highlight: cardHighlight } : {}),

@@ -10,9 +10,9 @@ import type {
   SizeGuide,
   Variant,
   ReviewsPreviewData,
-  VariantPrice,
 } from '@/features/pdp/types';
 import { formatDescriptionText } from '@/features/pdp/utils/formatDescriptionText';
+import { buildProductVariants } from '@/features/pdp/utils/productVariants';
 
 function createPageRequestId() {
   try {
@@ -177,152 +177,6 @@ function normalizeImageUrl(url?: string): string | undefined {
     return `/api/image-proxy?url=${encodeURIComponent(url)}`;
   }
   return url;
-}
-
-function normalizeAvailableQuantity(value: unknown): number | undefined {
-  if (value == null) return undefined;
-  const parsed = typeof value === 'number' ? value : Number(value);
-  if (!Number.isFinite(parsed)) return undefined;
-  return Math.max(0, Math.floor(parsed));
-}
-
-function toVariant(product: ProductResponse, raw?: any): Variant {
-  const currency = product.currency || 'USD';
-  const availableQuantity = normalizeAvailableQuantity(
-    raw?.available_quantity ??
-      raw?.availableQuantity ??
-      raw?.inventory_quantity ??
-      raw?.inventoryQuantity ??
-      raw?.quantity ??
-      raw?.stock,
-  );
-  const inStock = availableQuantity != null ? availableQuantity > 0 : !!product.in_stock;
-  return {
-    variant_id: product.product_id,
-    sku_id: product.product_id,
-    title: 'Default',
-    options: [],
-    price: { current: { amount: Number(product.price) || 0, currency } },
-    availability: {
-      in_stock: inStock,
-      ...(availableQuantity != null ? { available_quantity: availableQuantity } : {}),
-    },
-    image_url: normalizeImageUrl(product.image_url),
-  };
-}
-
-function toVariantPrice(input: any, currency: string): VariantPrice | undefined {
-  if (!input) return undefined;
-  if (typeof input === 'number' || typeof input === 'string') {
-    return { current: { amount: Number(input) || 0, currency } };
-  }
-
-  const amount =
-    input.amount ??
-    input.current?.amount ??
-    input.price ??
-    input.price_amount ??
-    input.value;
-  const compareAt =
-    input.compare_at ??
-    input.compareAt ??
-    input.compare_at_price ??
-    input.list_price;
-
-  return {
-    current: { amount: Number(amount) || 0, currency: input.currency || currency },
-    ...(compareAt != null
-      ? {
-          compare_at: {
-            amount: Number(compareAt) || 0,
-            currency: input.currency || currency,
-          },
-        }
-      : {}),
-  };
-}
-
-function buildVariants(product: ProductResponse, raw: any): Variant[] {
-  const currency = product.currency || 'USD';
-  const rawVariants = Array.isArray(raw?.variants)
-    ? raw.variants
-    : Array.isArray(product.variants)
-      ? product.variants
-      : [];
-
-  if (!rawVariants.length) return [toVariant(product, raw)];
-
-  const mapped = rawVariants
-    .map((v: any, idx: number) => {
-      const variantId = v.variant_id || v.id || v.sku || v.sku_id || `${product.product_id}-${idx + 1}`;
-      const title = v.title || v.name || v.option_title || v.sku_name || `Variant ${idx + 1}`;
-      const options = Array.isArray(v.options)
-        ? v.options
-        : typeof v.options === 'object' && v.options
-          ? Object.entries(v.options).map(([name, value]) => ({ name, value: String(value) }))
-          : [];
-
-      const price = toVariantPrice(v.price || v.pricing, currency) || toVariantPrice(product.price, currency);
-      const availableQuantity = normalizeAvailableQuantity(
-        v.available_quantity ??
-          v.availableQuantity ??
-          v.availability?.available_quantity ??
-          v.availability?.availableQuantity ??
-          v.inventory_quantity ??
-          v.inventoryQuantity ??
-          v.quantity ??
-          v.stock,
-      );
-      const inStock =
-        typeof v.in_stock === 'boolean'
-          ? v.in_stock
-          : typeof v.available === 'boolean'
-            ? v.available
-            : availableQuantity != null
-              ? availableQuantity > 0
-              : (v.inventory_quantity || v.quantity || 0) > 0;
-
-      const swatchHex =
-        v.color_hex ||
-        v.swatch?.hex ||
-        v.beauty_meta?.shade_hex ||
-        v.shade_hex ||
-        v.hex;
-
-      const beautyMeta = v.beauty_meta || v.beautyMeta || {
-        shade_hex: v.shade_hex || v.shadeHex,
-        finish: v.finish,
-        coverage: v.coverage,
-        undertone: v.undertone,
-      };
-
-      return {
-        variant_id: String(variantId),
-        sku_id: v.sku_id || v.sku || v.sku_code,
-        title: String(title),
-        options,
-        swatch: swatchHex ? { hex: swatchHex } : undefined,
-        beauty_meta: beautyMeta,
-        price,
-        availability: {
-          in_stock: inStock,
-          ...(availableQuantity != null ? { available_quantity: availableQuantity } : {}),
-        },
-        image_url: normalizeImageUrl(v.image_url || v.image || v.images?.[0]),
-        label_image_url: normalizeImageUrl(
-          v.label_image_url ||
-            v.swatch_image_url ||
-            v.thumbnail_url ||
-            v.thumbnail ||
-            v.swatch?.image_url ||
-            v.swatch?.imageUrl ||
-            undefined,
-        ),
-      } as Variant;
-    })
-    .filter(Boolean);
-
-  return mapped.length ? mapped : [toVariant(product)];
 }
 
 function buildMediaItems(product: ProductResponse, raw: any, variants: Variant[]): MediaGalleryData {
@@ -764,8 +618,8 @@ export function mapToPdpPayload(args: {
   const bestPriceOfferId: string | undefined =
     raw.best_price_offer_id || raw.bestPriceOfferId || undefined;
 
-  const variants = buildVariants(product, raw);
-  const defaultVariant = variants[0] || toVariant(product);
+  const variants = buildProductVariants(product, raw);
+  const defaultVariant = variants[0];
 
   const media = buildMediaItems(product, raw, variants);
 

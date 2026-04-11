@@ -1,8 +1,10 @@
 /* eslint-disable @next/next/no-img-element */
 import React from 'react';
-import { describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { RecommendationsGrid, optimizeRecommendationImageUrl } from './RecommendationsGrid';
+
+const routerPushMock = vi.fn();
 
 vi.mock('next/image', () => ({
   default: (
@@ -35,7 +37,7 @@ vi.mock('next/link', () => ({
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({
-    push: vi.fn(),
+    push: routerPushMock,
   }),
 }));
 
@@ -99,6 +101,14 @@ describe('optimizeRecommendationImageUrl', () => {
 });
 
 describe('RecommendationsGrid', () => {
+  beforeEach(() => {
+    routerPushMock.mockReset();
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+
   const data = {
     strategy: 'related_products',
     items: Array.from({ length: 10 }).map((_, idx) => ({
@@ -112,30 +122,29 @@ describe('RecommendationsGrid', () => {
     })),
   };
 
-  it('renders only visibleCount items and triggers open/load callbacks', () => {
-    const onOpenAll = vi.fn();
-    const onLoadMore = vi.fn();
+  it('renders only visibleCount items and uses compact footer CTA instead of legacy browse controls', () => {
+    const onQuickAction = vi.fn();
 
     render(
       <RecommendationsGrid
         data={data}
         visibleCount={6}
-        canLoadMore
-        isLoadingMore={false}
-        onOpenAll={onOpenAll}
-        onLoadMore={onLoadMore}
+        onQuickAction={onQuickAction}
+        quickActionState={{
+          'external_seed:prod_1': { label: 'Open' },
+          'external_seed:prod_2': { label: 'Buy' },
+        }}
       />,
     );
 
     expect(screen.getByText('Product 1')).toBeInTheDocument();
     expect(screen.getByText('Product 6')).toBeInTheDocument();
     expect(screen.queryByText('Product 7')).toBeNull();
+    expect(screen.queryByRole('button', { name: /view all/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /load more similar products/i })).toBeNull();
 
-    fireEvent.click(screen.getByRole('button', { name: /view all/i }));
-    expect(onOpenAll).toHaveBeenCalledTimes(1);
-
-    fireEvent.click(screen.getByRole('button', { name: /load more similar products/i }));
-    expect(onLoadMore).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole('button', { name: /open product 1/i }));
+    expect(onQuickAction).toHaveBeenCalledWith(expect.objectContaining({ product_id: 'prod_1' }), 0);
   });
 
   it('uses canonical product links for external seed recommendations', () => {
@@ -203,5 +212,45 @@ describe('RecommendationsGrid', () => {
       ),
     ).toBeInTheDocument();
     expect(screen.queryByText('Same brand')).toBeNull();
+  });
+
+  it('suppresses variant-count badges and keeps only the compact CTA in the footer row', () => {
+    render(
+      <RecommendationsGrid
+        data={{
+          strategy: 'related_products',
+          items: [
+            {
+              product_id: 'prod_options',
+              merchant_id: 'external_seed',
+              title: 'Option Product',
+              image_url: 'https://example.com/options.jpg',
+              price: { amount: 44, currency: 'USD' },
+              variant_count: 2,
+            },
+          ],
+        }}
+        visibleCount={1}
+        onQuickAction={() => {}}
+        quickActionState={{ 'external_seed:prod_options': { label: 'Open' } }}
+      />,
+    );
+
+    expect(screen.queryByText('2 options')).toBeNull();
+    expect(screen.getByRole('button', { name: /open option product/i })).toBeInTheDocument();
+  });
+
+  it('keeps card-body navigation separate from footer CTA clicks', () => {
+    render(
+      <RecommendationsGrid
+        data={data}
+        visibleCount={1}
+        onQuickAction={() => {}}
+        quickActionState={{ 'external_seed:prod_1': { label: 'Open' } }}
+      />,
+    );
+
+    fireEvent.click(screen.getAllByRole('link', { name: /product 1/i })[0]);
+    expect(routerPushMock).toHaveBeenCalledWith('/products/prod_1?return=%2F');
   });
 });
