@@ -130,6 +130,93 @@ type PrefetchedPaymentInit = {
   paymentResponse: any
 }
 
+type CheckoutTimingMarks = Partial<{
+  shipping_submit_started_at_ms: number
+  quote_ready_at_ms: number
+  payment_step_visible_at_ms: number
+  payment_init_started_at_ms: number
+  create_order_started_at_ms: number
+  create_order_completed_at_ms: number
+  submit_payment_started_at_ms: number
+  submit_payment_completed_at_ms: number
+  wallets_ready_at_ms: number
+  payment_element_ready_at_ms: number
+}>
+
+type CheckoutTimingSnapshot = {
+  marks: CheckoutTimingMarks
+  durations_ms: {
+    shipping_to_quote_ms: number | null
+    shipping_to_payment_step_ms: number | null
+    shipping_to_payment_init_ms: number | null
+    quote_to_payment_init_ms: number | null
+    payment_init_to_create_order_ms: number | null
+    create_order_ms: number | null
+    submit_payment_ms: number | null
+    payment_step_to_wallets_ready_ms: number | null
+    payment_step_to_payment_element_ready_ms: number | null
+    shipping_to_payment_element_ready_ms: number | null
+  }
+}
+
+function diffMs(
+  end: number | null | undefined,
+  start: number | null | undefined,
+): number | null {
+  if (!Number.isFinite(Number(end)) || !Number.isFinite(Number(start))) return null
+  return Math.max(0, Math.round(Number(end) - Number(start)))
+}
+
+export function buildCheckoutTimingSnapshot(
+  marks: CheckoutTimingMarks,
+): CheckoutTimingSnapshot {
+  return {
+    marks: { ...marks },
+    durations_ms: {
+      shipping_to_quote_ms: diffMs(
+        marks.quote_ready_at_ms,
+        marks.shipping_submit_started_at_ms,
+      ),
+      shipping_to_payment_step_ms: diffMs(
+        marks.payment_step_visible_at_ms,
+        marks.shipping_submit_started_at_ms,
+      ),
+      shipping_to_payment_init_ms: diffMs(
+        marks.payment_init_started_at_ms,
+        marks.shipping_submit_started_at_ms,
+      ),
+      quote_to_payment_init_ms: diffMs(
+        marks.payment_init_started_at_ms,
+        marks.quote_ready_at_ms,
+      ),
+      payment_init_to_create_order_ms: diffMs(
+        marks.create_order_started_at_ms,
+        marks.payment_init_started_at_ms,
+      ),
+      create_order_ms: diffMs(
+        marks.create_order_completed_at_ms,
+        marks.create_order_started_at_ms,
+      ),
+      submit_payment_ms: diffMs(
+        marks.submit_payment_completed_at_ms,
+        marks.submit_payment_started_at_ms,
+      ),
+      payment_step_to_wallets_ready_ms: diffMs(
+        marks.wallets_ready_at_ms,
+        marks.payment_step_visible_at_ms,
+      ),
+      payment_step_to_payment_element_ready_ms: diffMs(
+        marks.payment_element_ready_at_ms,
+        marks.payment_step_visible_at_ms,
+      ),
+      shipping_to_payment_element_ready_ms: diffMs(
+        marks.payment_element_ready_at_ms,
+        marks.shipping_submit_started_at_ms,
+      ),
+    },
+  }
+}
+
 function buildPaymentInitKeyForQuote(
   quote: QuotePreview | null | undefined,
   fallbackCurrency: string,
@@ -465,6 +552,8 @@ const StripePaymentSectionInner = forwardRef<
     shipping?: Partial<ShippingInfo> | null
     onPaymentError: (message: string) => void
     onPaymentMethodChange: (methodType: string | null) => void
+    onWalletsReady?: () => void
+    onPaymentElementReady?: () => void
     onConfirmationResult?: (result: { status?: string; paymentIntentId?: string }) => Promise<void> | void
   }
 >(function StripePaymentSectionInner(
@@ -474,6 +563,8 @@ const StripePaymentSectionInner = forwardRef<
     shipping = null,
     onPaymentError,
     onPaymentMethodChange,
+    onWalletsReady,
+    onPaymentElementReady,
     onConfirmationResult,
   },
   ref,
@@ -573,6 +664,7 @@ const StripePaymentSectionInner = forwardRef<
             onReady={(event) => {
               setExpressWalletsReady(true)
               setExpressWalletsAvailable(hasAvailableStripeExpressWallets(event.availablePaymentMethods))
+              onWalletsReady?.()
             }}
             onClick={(event: any) => {
               const methodType = String(event?.expressPaymentType || '').trim() || null
@@ -620,6 +712,9 @@ const StripePaymentSectionInner = forwardRef<
         <div className="mt-2 rounded-[16px] border border-slate-200 bg-slate-50 p-3">
         <PaymentElement
           options={buildStripePaymentElementOptions(shipping)}
+          onReady={() => {
+            onPaymentElementReady?.()
+          }}
           onChange={(event: any) => {
             const message = String(event?.error?.message || '').trim()
             setLocalPaymentError(message)
@@ -645,6 +740,8 @@ const StripePaymentSection = forwardRef<
     shipping?: Partial<ShippingInfo> | null
     onPaymentError: (message: string) => void
     onPaymentMethodChange: (methodType: string | null) => void
+    onWalletsReady?: () => void
+    onPaymentElementReady?: () => void
     onConfirmationResult?: (result: { status?: string; paymentIntentId?: string }) => Promise<void> | void
   }
 >(function StripePaymentSection(
@@ -656,6 +753,8 @@ const StripePaymentSection = forwardRef<
     shipping = null,
     onPaymentError,
     onPaymentMethodChange,
+    onWalletsReady,
+    onPaymentElementReady,
     onConfirmationResult,
   },
   ref,
@@ -676,6 +775,8 @@ const StripePaymentSection = forwardRef<
         shipping={shipping}
         onPaymentError={onPaymentError}
         onPaymentMethodChange={onPaymentMethodChange}
+        onWalletsReady={onWalletsReady}
+        onPaymentElementReady={onPaymentElementReady}
         onConfirmationResult={onConfirmationResult}
       />
     </Elements>
@@ -985,6 +1086,7 @@ function OrderFlowInner({
   } | null>(null)
   const [debugEnabled, setDebugEnabled] = useState(false)
   const createdOrderPaymentRef = useRef<CreatedOrderPaymentSnapshot | null>(null)
+  const checkoutTimingMarksRef = useRef<CheckoutTimingMarks>({})
   const resumeHydratingRef = useRef(false)
   const paymentInitPromiseRef = useRef<Promise<PrefetchedPaymentInit> | null>(null)
   const paymentInitKeyRef = useRef<string | null>(null)
@@ -998,6 +1100,9 @@ function OrderFlowInner({
   const [stripeAccount, setStripeAccount] = useState<string | null>(null)
   const [stripeSelectedMethodType, setStripeSelectedMethodType] = useState<string | null>(null)
   const stripePaymentSectionRef = useRef<StripePaymentSectionHandle | null>(null)
+  const [checkoutTimingSnapshot, setCheckoutTimingSnapshot] = useState<CheckoutTimingSnapshot>(
+    () => buildCheckoutTimingSnapshot({}),
+  )
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1017,6 +1122,28 @@ function OrderFlowInner({
     const raw = String(params.get('checkout_debug') || params.get('debug') || '').trim().toLowerCase()
     if (!raw || raw === '0' || raw === 'false') return
     setDebugEnabled(true)
+  }, [])
+
+  const resetCheckoutTiming = useCallback(() => {
+    checkoutTimingMarksRef.current = {}
+    setCheckoutTimingSnapshot(buildCheckoutTimingSnapshot({}))
+  }, [])
+
+  const markCheckoutTiming = useCallback((
+    key: keyof CheckoutTimingMarks,
+    options: { onlyIfMissing?: boolean } = {},
+  ) => {
+    const existing = checkoutTimingMarksRef.current[key]
+    if (options.onlyIfMissing && typeof existing === 'number') {
+      return existing
+    }
+    const nextMarks = {
+      ...checkoutTimingMarksRef.current,
+      [key]: Date.now(),
+    }
+    checkoutTimingMarksRef.current = nextMarks
+    setCheckoutTimingSnapshot(buildCheckoutTimingSnapshot(nextMarks))
+    return nextMarks[key]
   }, [])
 
   const estimatedSubtotal = items.reduce(
@@ -1443,6 +1570,7 @@ function OrderFlowInner({
       if (Number.isFinite(price)) lineItemPriceByVariant.set(li.variant_id, price)
     }
 
+    markCheckoutTiming('create_order_started_at_ms', { onlyIfMissing: true })
     const orderResponse = await createOrder({
       // Keep backwards compatibility: merchant_id is still sent even when offer_id is present.
       merchant_id: merchantId || 'unknown',
@@ -1496,6 +1624,7 @@ function OrderFlowInner({
         ? { preferred_psp: requestedPreferredPsp || FORCE_PSP }
         : {})
     })
+    markCheckoutTiming('create_order_completed_at_ms')
 
     // Minimal, token-safe debug logging (do not print payment client secrets / tokens).
     // eslint-disable-next-line no-console
@@ -1513,13 +1642,6 @@ function OrderFlowInner({
         : null,
     }
     setOrderDebug(nextOrderDebug)
-    try {
-      if (typeof window !== 'undefined') {
-        sessionStorage.setItem('pivota_checkout_debug', JSON.stringify(nextOrderDebug))
-      }
-    } catch {
-      // ignore storage errors
-    }
 
     orderId = orderResponse.order_id
     setCreatedOrderId(orderId)
@@ -1853,6 +1975,21 @@ function OrderFlowInner({
     setAdyenMounted(true)
   }
 
+  const runTimedProcessPayment = async (payload: {
+    order_id: string
+    total_amount: number
+    currency: string
+    payment_method: { type: string }
+    return_url?: string
+  }) => {
+    markCheckoutTiming('submit_payment_started_at_ms', { onlyIfMissing: true })
+    try {
+      return await processPayment(payload)
+    } finally {
+      markCheckoutTiming('submit_payment_completed_at_ms')
+    }
+  }
+
   const primePaymentForStep = async (quoteForPayment: QuotePreview): Promise<PrefetchedPaymentInit> => {
     let workingQuote = quoteForPayment
     let orderId = await createOrderIfNeeded(workingQuote, { allowRedirect: false })
@@ -1871,7 +2008,7 @@ function OrderFlowInner({
     }
     try {
       if (!paymentResponse) {
-        paymentResponse = await processPayment(buildPayload(workingQuote, orderId))
+        paymentResponse = await runTimedProcessPayment(buildPayload(workingQuote, orderId))
       }
     } catch (err: any) {
       if (isQuoteDrift(err)) {
@@ -1885,7 +2022,7 @@ function OrderFlowInner({
         const nextCreatedOrderPayment = getReusableCreatedOrderPayment(orderId)
         paymentResponse =
           nextCreatedOrderPayment?.paymentResponse ||
-          (await processPayment(buildPayload(workingQuote, orderId)))
+          (await runTimedProcessPayment(buildPayload(workingQuote, orderId)))
       } else {
         throw err
       }
@@ -1907,6 +2044,7 @@ function OrderFlowInner({
 
     const runId = paymentInitRunIdRef.current + 1
     paymentInitRunIdRef.current = runId
+    markCheckoutTiming('payment_init_started_at_ms', { onlyIfMissing: true })
     setPaymentInitLoading(true)
     setPaymentInitError(null)
     setPrefetchedPaymentRes(null)
@@ -2015,10 +2153,11 @@ function OrderFlowInner({
     setPaymentInitLoading(false)
     setPaymentInitError(null)
     clearCreatedOrderPaymentSnapshot()
+    resetCheckoutTiming()
     setStripePublishableKey(DEFAULT_STRIPE_PUBLISHABLE_KEY)
     setStripeAccount(null)
     setStripeSelectedMethodType(null)
-  }, [step])
+  }, [resetCheckoutTiming, step])
 
   useEffect(() => {
     if (step !== 'payment') return
@@ -2037,6 +2176,32 @@ function OrderFlowInner({
     quote?.quote_id,
     step,
   ])
+
+  useEffect(() => {
+    if (step !== 'payment') return
+    markCheckoutTiming('payment_step_visible_at_ms', { onlyIfMissing: true })
+  }, [markCheckoutTiming, step])
+
+  useEffect(() => {
+    try {
+      if (typeof window === 'undefined') return
+      sessionStorage.setItem(
+        'pivota_checkout_debug',
+        JSON.stringify(
+          {
+            selected_offer_id: offerIdForOrder || null,
+            selected_merchant_id: merchantIdForOrder || null,
+            ...(orderDebug || {}),
+            timing: checkoutTimingSnapshot,
+          },
+          null,
+          2,
+        ),
+      )
+    } catch {
+      // ignore storage errors
+    }
+  }, [checkoutTimingSnapshot, merchantIdForOrder, offerIdForOrder, orderDebug])
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
@@ -2190,6 +2355,8 @@ function OrderFlowInner({
       return
     }
     try {
+      resetCheckoutTiming()
+      markCheckoutTiming('shipping_submit_started_at_ms')
       void prewarmStripeRuntime(stripePublishableKey || DEFAULT_STRIPE_PUBLISHABLE_KEY, stripeAccount)
       setCheckoutFailure(null)
       setIsProcessing(true)
@@ -2211,6 +2378,7 @@ function OrderFlowInner({
 
       try {
         const nextQuote = await refreshQuoteWithRetry()
+        markCheckoutTiming('quote_ready_at_ms')
         void startPaymentInitForQuote(nextQuote)
       } catch (err: any) {
         if (isInventoryUnavailable(err)) {
@@ -2324,7 +2492,7 @@ function OrderFlowInner({
         }
         if (!paymentResponse) {
           try {
-            paymentResponse = await processPayment({
+            paymentResponse = await runTimedProcessPayment({
               order_id: orderId,
               total_amount: Number(quoteForPayment.pricing.total) || total,
               currency: String(quoteForPayment.currency || currency || 'USD'),
@@ -2347,7 +2515,7 @@ function OrderFlowInner({
               const nextCreatedOrderPayment = getReusableCreatedOrderPayment(orderId)
                 paymentResponse =
                 nextCreatedOrderPayment?.paymentResponse ||
-                (await processPayment({
+                (await runTimedProcessPayment({
                   order_id: orderId,
                   total_amount: Number(quoteForPayment.pricing.total) || total,
                   currency: String(quoteForPayment.currency || currency || 'USD'),
@@ -3239,6 +3407,12 @@ function OrderFlowInner({
                         shipping={shipping}
                         onPaymentError={setCardError}
                         onPaymentMethodChange={setStripeSelectedMethodType}
+                        onWalletsReady={() => {
+                          markCheckoutTiming('wallets_ready_at_ms', { onlyIfMissing: true })
+                        }}
+                        onPaymentElementReady={() => {
+                          markCheckoutTiming('payment_element_ready_at_ms', { onlyIfMissing: true })
+                        }}
                         onConfirmationResult={handleStripeConfirmationResult}
                       />
                     ) : paymentActionType === 'stripe_client_secret' || pspUsed === 'stripe' ? (
@@ -3352,6 +3526,7 @@ function OrderFlowInner({
                 selected_offer_id: offerIdForOrder || null,
                 selected_merchant_id: merchantIdForOrder || null,
                 ...(orderDebug || {}),
+                timing: checkoutTimingSnapshot,
               },
               null,
               2,
