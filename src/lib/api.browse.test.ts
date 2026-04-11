@@ -298,9 +298,22 @@ describe('getAllProducts browse routing', () => {
           {
             product_id: 'sim_7',
             merchant_id: 'external_seed',
+            merchant_name: 'KraveBeauty',
             title: 'Hair Mask',
             image_url: 'https://example.com/sim-7.png',
             price: { amount: 39, currency: 'USD' },
+            product_type: 'hair mask',
+            department: 'haircare',
+            tags: ['editorial: moisture reset'],
+            review_summary: {
+              rating: 4.7,
+              review_count: 182,
+            },
+            search_card: {
+              compact_candidate: 'Hair Mask',
+              highlight_candidate: 'Deep moisture reset',
+              proof_badge_candidate: '4.7★ (182)',
+            },
           },
         ],
         metadata: {
@@ -328,7 +341,19 @@ describe('getAllProducts browse routing', () => {
       expect.objectContaining({
         product_id: 'sim_7',
         merchant_id: 'external_seed',
+        merchant_name: 'KraveBeauty',
         title: 'Hair Mask',
+        product_type: 'hair mask',
+        category: 'hair mask',
+        department: 'haircare',
+        tags: ['editorial: moisture reset'],
+        card_highlight: 'Deep moisture reset',
+        card_badge: '4.7★ (182)',
+        search_card: expect.objectContaining({
+          compact_candidate: 'Hair Mask',
+          highlight_candidate: 'Deep moisture reset',
+          proof_badge_candidate: '4.7★ (182)',
+        }),
       }),
     ]);
     expect(result.page_info.has_more).toBe(true);
