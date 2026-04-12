@@ -29,6 +29,141 @@ function readFirstString(...values: unknown[]): string | null {
   return null
 }
 
+function normalizeCompactComparisonText(value: unknown): string {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[–—]/g, '-')
+    .replace(/[^\w%+ -]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function normalizeSurfaceText(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const trimmed = value.replace(/\s+/g, ' ').trim()
+  if (!trimmed || trimmed.length > 40) return null
+  return trimmed
+}
+
+function looksLikeEntityStyleCompactHighlight(value: string): boolean {
+  const text = normalizeCompactComparisonText(value)
+  if (!text) return true
+  if (text.split(' ').length <= 1) return true
+  if (
+    /^(?:\d+%?\s+)?(?:niacinamide|vitamin c|retinol|peptide|azelaic acid(?: derivative)?|salicylic acid|hyaluronic acid)\s+(?:serum|moisturizer|cream|cleanser|lotion)$/i.test(
+      text,
+    )
+  ) {
+    return true
+  }
+  if (
+    /^(?:spf(?:\s+\d+\+?)?|multi-active|amla brightening|brightening|hydrating|gentle|daily|color-correcting|multi-vitamin)\s+(?:serum|moisturizer|cream|cleanser|lotion|toner|sunscreen|body wash|mask|balm)$/i.test(
+      text,
+    )
+  ) {
+    return true
+  }
+  if (/^(?:color-correcting|brightening|hydrating)\s+eye\s+(?:stick|serum|cream)$/i.test(text)) {
+    return true
+  }
+  if (
+    /\b(serum|moisturizer|cream|cleanser|lotion|toner|mask|balm|sunscreen|body wash|eye stick|eye serum|eye cream|lip balm)$/.test(
+      text,
+    ) &&
+    !/\b(with|for|under|over|against|without|in|from|instead|versus|vs)\b/.test(text) &&
+    text.split(' ').length <= 4
+  ) {
+    return true
+  }
+  return false
+}
+
+function resolveDisplayableCompactHighlight(
+  value: string | null,
+  { title = '', subtitle = '' }: { title?: string; subtitle?: string } = {},
+): string | null {
+  const normalized = normalizeSurfaceText(value)
+  if (!normalized) return null
+
+  const normalizedHighlight = normalizeCompactComparisonText(normalized)
+  const normalizedSubtitle = normalizeCompactComparisonText(subtitle)
+  const normalizedTitle = normalizeCompactComparisonText(title)
+
+  if (normalizedSubtitle && normalizedHighlight === normalizedSubtitle) return null
+  if (normalizedTitle && normalizedHighlight === normalizedTitle) return null
+  if (looksLikeEntityStyleCompactHighlight(normalized)) return null
+
+  return normalized
+}
+
+function normalizeSurfaceTargets(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  return value
+    .map((item) => String(item || '').trim().toLowerCase())
+    .filter(Boolean)
+}
+
+function isSurfaceableExternalHighlightSignal(signal: Record<string, any>, surfaceTarget: string): boolean {
+  if (!signal || typeof signal !== 'object') return false
+  const surfaceText = normalizeSurfaceText(signal.surface_text) || normalizeSurfaceText(signal.claim_text)
+  if (!surfaceText) return false
+
+  const stance = String(signal.stance || 'positive').trim().toLowerCase()
+  if (stance === 'negative') return false
+
+  const targets = normalizeSurfaceTargets(signal.surface_targets)
+  if (targets.length && !targets.includes(surfaceTarget)) return false
+
+  if (signal.surfaceable === true) return true
+  if (signal.surfaceable === false) return false
+
+  const sourceType = String(signal.source_type || '').trim().toLowerCase()
+  const sponsorshipStatus = String(signal.sponsorship_status || 'unknown').trim().toLowerCase()
+  const evidenceStrength = String(signal.evidence_strength || 'weak').trim().toLowerCase()
+  const independenceCount = Number(signal.independence_count || 0) || 0
+  const reviewCount = Number(signal.rating_summary?.review_count || 0) || 0
+  const hasSources = Array.isArray(signal.supporting_sources) && signal.supporting_sources.length > 0
+
+  if (sourceType === 'verified_reviews') {
+    return reviewCount > 0 || hasSources || independenceCount >= 1
+  }
+  if (sourceType === 'creator_social_consensus') {
+    if (['sponsored', 'gifted'].includes(sponsorshipStatus)) return false
+    if (!['moderate', 'strong'].includes(evidenceStrength)) return false
+    return independenceCount >= 3
+  }
+  return false
+}
+
+function pickExternalCompactHighlight(product: ProductResponse): string | null {
+  const rawDetail = product.raw_detail && typeof product.raw_detail === 'object' ? (product.raw_detail as Record<string, any>) : null
+  const candidates = [
+    ...(Array.isArray(product.external_highlight_signals) ? product.external_highlight_signals : []),
+    ...(Array.isArray(product.shopping_card?.external_highlight_signals)
+      ? product.shopping_card.external_highlight_signals
+      : []),
+    ...(Array.isArray(rawDetail?.external_highlight_signals) ? rawDetail.external_highlight_signals : []),
+    ...(Array.isArray(rawDetail?.product_intel?.external_highlight_signals)
+      ? rawDetail.product_intel.external_highlight_signals
+      : []),
+    ...(Array.isArray(rawDetail?.shopping_card?.external_highlight_signals)
+      ? rawDetail.shopping_card.external_highlight_signals
+      : []),
+    ...(Array.isArray(rawDetail?.shoppingCard?.external_highlight_signals)
+      ? rawDetail.shoppingCard.external_highlight_signals
+      : []),
+  ]
+
+  for (const candidate of candidates) {
+    if (!candidate || typeof candidate !== 'object') continue
+    if (!isSurfaceableExternalHighlightSignal(candidate, 'shopping_card_highlight')) continue
+    const text = normalizeSurfaceText(candidate.surface_text) || normalizeSurfaceText(candidate.claim_text)
+    if (text) return text
+  }
+  return null
+}
+
 function getReviewMeta(product: ProductResponse) {
   const summary =
     product?.review_summary && typeof product.review_summary === 'object'
@@ -208,10 +343,22 @@ export function resolveProductCardPresentation(
     product.search_card?.proof_badge_candidate,
     product.market_signal_badges?.[0]?.badge_label,
   )
+  const resolvedTitle = explicitTitle || String(product.title || '').trim() || 'Untitled product'
   const resolvedSubtitle = explicitSubtitle || buildCategorySubtitle(product)
   const descriptionHighlight = buildDescriptionHighlight(product)
+  const explicitResolvedHighlight = resolveDisplayableCompactHighlight(explicitHighlight, {
+    title: resolvedTitle,
+    subtitle: resolvedSubtitle || '',
+  })
+  const externalResolvedHighlight = explicitResolvedHighlight
+    ? null
+    : resolveDisplayableCompactHighlight(pickExternalCompactHighlight(product), {
+        title: resolvedTitle,
+        subtitle: resolvedSubtitle || '',
+      })
   const resolvedHighlight =
-    explicitHighlight ||
+    explicitResolvedHighlight ||
+    externalResolvedHighlight ||
     (options.allowDescriptionAlongsideSubtitle
       ? descriptionHighlight && descriptionHighlight !== resolvedSubtitle
         ? descriptionHighlight
@@ -221,7 +368,7 @@ export function resolveProductCardPresentation(
         : null)
 
   return {
-    title: explicitTitle || String(product.title || '').trim() || 'Untitled product',
+    title: resolvedTitle,
     subtitle: resolvedSubtitle,
     highlight: resolvedHighlight,
     badge:

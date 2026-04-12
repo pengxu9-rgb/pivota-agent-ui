@@ -49,6 +49,41 @@ describe('resolveProductCardPresentation', () => {
     })
   })
 
+  it('drops duplicate explicit highlight and falls back to approved external highlight copy', () => {
+    const product = {
+      product_id: 'prod_2b',
+      title: 'Barrier Balm',
+      description: 'Legacy overview',
+      price: 34,
+      currency: 'USD',
+      in_stock: true,
+      card_subtitle: 'Barrier balm',
+      card_highlight: 'Barrier balm',
+      raw_detail: {
+        product_intel: {
+          external_highlight_signals: [
+            {
+              signal_id: 'sig_1',
+              source_type: 'verified_reviews',
+              claim_type: 'card_hook',
+              claim_text: 'Reviewers often mention how well it layers under makeup.',
+              surface_text: 'Layers cleanly under makeup',
+              surfaceable: true,
+              surface_targets: ['shopping_card_highlight'],
+            },
+          ],
+        },
+      },
+    } satisfies ProductResponse
+
+    expect(resolveProductCardPresentation(product)).toEqual({
+      title: 'Barrier Balm',
+      subtitle: 'Barrier balm',
+      highlight: 'Layers cleanly under makeup',
+      badge: null,
+    })
+  })
+
   it('reads editorial-style badge labels from structured tags when explicit card fields are absent', () => {
     const product = {
       product_id: 'prod_3',
