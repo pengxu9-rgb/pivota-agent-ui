@@ -123,7 +123,13 @@ export default function ProductsPage() {
         if (error?.name === 'AbortError') return;
         console.error('Search error:', error);
         setHasLoadedOnce(true);
-        toast.error(trimmed ? 'Failed to search products' : 'Unable to load products. Please try again.');
+        toast.error(
+          error?.code === 'UPSTREAM_TIMEOUT'
+            ? 'Search timed out. Please retry.'
+            : trimmed
+              ? 'Failed to search products'
+              : 'Unable to load products. Please try again.',
+        );
       } finally {
         if (requestSeq !== searchRequestSeqRef.current) return;
         if (append) {

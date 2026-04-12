@@ -1117,6 +1117,23 @@ type GatewayCallOptions = {
   signal?: AbortSignal;
 };
 
+type GatewayTimeoutOptions = {
+  signal?: AbortSignal;
+  timeoutMs?: number;
+};
+
+function normalizeGatewayTimeoutOptions(
+  timeoutOrOptions?: number | GatewayTimeoutOptions,
+): GatewayTimeoutOptions {
+  if (typeof timeoutOrOptions === 'number') {
+    return { timeoutMs: timeoutOrOptions };
+  }
+  if (timeoutOrOptions && typeof timeoutOrOptions === 'object') {
+    return timeoutOrOptions;
+  }
+  return {};
+}
+
 function resolveGatewayInvokeUrl(base: string): string {
   const normalized = String(base || '').trim().replace(/\/$/, '');
   if (!normalized) return '/api/gateway';
@@ -1266,24 +1283,48 @@ async function callGateway(body: InvokeBody, options: GatewayCallOptions = {}) {
 
 async function callGatewayWithTimeout<T = any>(
   body: InvokeBody,
-  timeoutMs?: number,
+  timeoutOrOptions?: number | GatewayTimeoutOptions,
 ): Promise<T> {
+  const { signal, timeoutMs } = normalizeGatewayTimeoutOptions(timeoutOrOptions);
   const ms = Number(timeoutMs);
-  if (!Number.isFinite(ms) || ms <= 0) return (await callGateway(body)) as T;
+  const shouldTimeout = Number.isFinite(ms) && ms > 0;
+  if (!signal && !shouldTimeout) return (await callGateway(body)) as T;
 
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), ms);
+  let didTimeout = false;
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+  const handleAbort = () => {
+    if (!controller.signal.aborted) controller.abort();
+  };
+
+  if (signal) {
+    if (signal.aborted) {
+      handleAbort();
+    } else {
+      signal.addEventListener('abort', handleAbort, { once: true });
+    }
+  }
+
+  if (shouldTimeout) {
+    timeoutId = setTimeout(() => {
+      didTimeout = true;
+      handleAbort();
+    }, ms);
+  }
+
   try {
     return (await callGateway(body, { signal: controller.signal })) as T;
   } catch (err) {
-    if ((err as any)?.name === 'AbortError') {
+    if ((err as any)?.name === 'AbortError' && didTimeout) {
       const timeoutErr = new Error('The request timed out. Please retry.') as ApiError;
       timeoutErr.code = 'UPSTREAM_TIMEOUT';
       throw timeoutErr;
     }
     throw err;
   } finally {
-    clearTimeout(timer);
+    if (timeoutId) clearTimeout(timeoutId);
+    if (signal) signal.removeEventListener('abort', handleAbort);
   }
 }
 
@@ -2282,6 +2323,7 @@ export async function getShoppingDiscoveryFeed(args: {
   category?: string;
   sort?: BrandDiscoverySort;
   signal?: AbortSignal;
+  timeout_ms?: number;
 }): Promise<ShoppingDiscoveryFeedResult> {
   const surface: ShoppingDiscoverySurface =
     args.surface === 'home_hot_deals' ? 'home_hot_deals' : 'browse_products';
@@ -2315,7 +2357,7 @@ export async function getShoppingDiscoveryFeed(args: {
       : readRecentQueries(userId),
   );
 
-  const data = await callGateway(
+  const data = await callGatewayWithTimeout(
     {
       operation: 'get_discovery_feed',
       payload: {
@@ -2341,7 +2383,12 @@ export async function getShoppingDiscoveryFeed(args: {
         },
       },
     },
-    { signal: args.signal },
+    {
+      signal: args.signal,
+      timeoutMs: Number.isFinite(Number(args.timeout_ms))
+        ? Number(args.timeout_ms)
+        : 12000,
+    },
   );
 
   const products = ((data as any).products || []).map(
