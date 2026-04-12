@@ -581,6 +581,7 @@ describe('BrandLandingPage', () => {
           in_stock: true,
           card_title: 'Nike Air Max Running Shoes',
           card_subtitle: 'Men’s black air-cushion sneaker',
+          card_highlight: 'Celebrity-styled black sneaker',
           card_badge: 'Seen in 4 editor picks',
         },
       ],
@@ -601,8 +602,9 @@ describe('BrandLandingPage', () => {
       expect(screen.getByText('Nike Air Max Running Shoes')).toBeInTheDocument();
     });
 
-    expect(screen.getByText('Men’s black air-cushion sneaker')).toBeInTheDocument();
+    expect(screen.getByText('Celebrity-styled black sneaker')).toBeInTheDocument();
     expect(screen.getByText('Seen in 4 editor picks')).toBeInTheDocument();
+    expect(screen.queryByText('Men’s black air-cushion sneaker')).not.toBeInTheDocument();
     expect(screen.queryByText('Air Max Special Edition')).not.toBeInTheDocument();
   });
 

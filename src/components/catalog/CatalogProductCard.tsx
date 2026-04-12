@@ -108,7 +108,7 @@ export function CatalogProductCard({ product }: { product: ProductResponse }) {
             </h3>
 
             {compactCopy ? (
-              <p className="line-clamp-1 text-[10.5px] text-[#667085] sm:text-[11px]">
+              <p className="min-h-[2rem] line-clamp-2 text-[10.5px] leading-[0.98rem] text-[#667085] sm:text-[11px] sm:leading-[1rem]">
                 {compactCopy}
               </p>
             ) : null}
