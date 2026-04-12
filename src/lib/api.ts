@@ -217,6 +217,7 @@ export interface ProductResponse {
   card_highlight?: string;
   card_badge?: string;
   card_intro?: string;
+  external_highlight_signals?: Array<Record<string, any>>;
   market_signal_badges?: Array<{
     badge_type?: string;
     badge_label: string;
@@ -234,6 +235,7 @@ export interface ProductResponse {
     highlight?: string;
     proof_badge?: string;
     intro?: string;
+    external_highlight_signals?: Array<Record<string, any>>;
     [key: string]: any;
   };
 }
@@ -529,6 +531,13 @@ export function normalizeProduct(
     normalizeMarketSignalBadges(anyP.product_intel?.market_signal_badges) ||
     normalizeMarketSignalBadges(rawSearchCard?.market_signal_badges) ||
     normalizeMarketSignalBadges(rawShoppingCard?.market_signal_badges);
+  const externalHighlightSignals = Array.isArray(anyP.external_highlight_signals)
+    ? anyP.external_highlight_signals
+    : Array.isArray(anyP.product_intel?.external_highlight_signals)
+      ? anyP.product_intel.external_highlight_signals
+      : Array.isArray(rawShoppingCard?.external_highlight_signals)
+        ? rawShoppingCard.external_highlight_signals
+        : undefined;
   const cardTitle = readFirstString(
     anyP.card_title,
     anyP.cardTitle,
@@ -676,6 +685,7 @@ export function normalizeProduct(
     ...(cardHighlight ? { card_highlight: cardHighlight } : {}),
     ...(cardBadge ? { card_badge: cardBadge } : {}),
     ...(cardIntro ? { card_intro: cardIntro } : {}),
+    ...(externalHighlightSignals ? { external_highlight_signals: externalHighlightSignals } : {}),
     ...(marketSignalBadges ? { market_signal_badges: marketSignalBadges } : {}),
     ...(rawSearchCard
       ? {
@@ -732,6 +742,9 @@ export function normalizeProduct(
               ? { proof_badge: readFirstString(rawShoppingCard?.proof_badge) }
               : {}),
             ...(readFirstString(rawShoppingCard?.intro) ? { intro: readFirstString(rawShoppingCard?.intro) } : {}),
+            ...(Array.isArray(rawShoppingCard?.external_highlight_signals)
+              ? { external_highlight_signals: rawShoppingCard.external_highlight_signals }
+              : {}),
           },
         }
       : {}),

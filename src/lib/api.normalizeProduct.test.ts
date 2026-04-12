@@ -39,6 +39,16 @@ describe('normalizeProduct', () => {
         title: 'Olehenriksen Vitamin C Eye Stick',
         subtitle: 'Color-correcting eye stick',
         highlight: 'Creator-noted brightening pick',
+        external_highlight_signals: [
+          {
+            signal_id: 'sig_1',
+            source_type: 'verified_reviews',
+            claim_text: 'Reviewers mention the brightening effect.',
+            surface_text: 'Reviewers cite brightening',
+            surfaceable: true,
+            surface_targets: ['shopping_card_highlight'],
+          },
+        ],
       },
       market_signal_badges: [
         {
@@ -54,6 +64,18 @@ describe('normalizeProduct', () => {
     expect(normalized.card_badge).toBe('Seen in 4 editor picks');
     expect(normalized.search_card?.highlight_candidate).toBe('Creator-noted brightening pick');
     expect(normalized.shopping_card?.highlight).toBe('Creator-noted brightening pick');
+    expect(normalized.shopping_card?.external_highlight_signals).toEqual([
+      expect.objectContaining({
+        signal_id: 'sig_1',
+        surface_text: 'Reviewers cite brightening',
+      }),
+    ]);
+    expect(normalized.external_highlight_signals).toEqual([
+      expect.objectContaining({
+        signal_id: 'sig_1',
+        surface_text: 'Reviewers cite brightening',
+      }),
+    ]);
     expect(normalized.market_signal_badges).toEqual([
       {
         badge_type: 'editorial_signal',
