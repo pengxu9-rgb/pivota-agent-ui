@@ -32,6 +32,7 @@ describe('getAllProducts browse routing', () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.restoreAllMocks();
   });
 
@@ -215,6 +216,39 @@ describe('getAllProducts browse routing', () => {
         },
       },
     });
+  });
+
+  it('times out shopping discovery feed requests instead of hanging indefinitely', async () => {
+    vi.useFakeTimers();
+    vi.spyOn(globalThis, 'fetch').mockImplementation((_input, init) => {
+      const signal = init?.signal as AbortSignal | undefined;
+      return new Promise((_resolve, reject) => {
+        signal?.addEventListener(
+          'abort',
+          () => {
+            const error = new Error('Aborted');
+            (error as Error & { name: string }).name = 'AbortError';
+            reject(error);
+          },
+          { once: true },
+        );
+      });
+    });
+
+    const request = getShoppingDiscoveryFeed({
+      surface: 'browse_products',
+      query: 'Vitamin C Complex Serum',
+      timeout_ms: 50,
+    });
+
+    const assertion = expect(request).rejects.toMatchObject({
+      code: 'UPSTREAM_TIMEOUT',
+      message: 'The request timed out. Please retry.',
+    });
+
+    await vi.advanceTimersByTimeAsync(60);
+
+    await assertion;
   });
 
   it('keeps explicit merchant browse on product search', async () => {
