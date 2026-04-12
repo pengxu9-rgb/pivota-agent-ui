@@ -24,8 +24,35 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
+function withDiscoveryCursorInfo<T extends Record<string, any>>(result: T): T {
+  const pageInfo = result?.page_info && typeof result.page_info === 'object'
+    ? result.page_info
+    : { has_more: false };
+  const hasNextPage = Boolean(
+    result?.cursor_info?.has_next_page ??
+      result?.metadata?.cursor_info?.has_next_page ??
+      pageInfo?.has_more,
+  );
+  const nextCursor =
+    typeof result?.cursor_info?.next_cursor === 'string'
+      ? result.cursor_info.next_cursor
+      : hasNextPage
+        ? `mock_cursor_${String(pageInfo?.page || 1)}`
+        : null;
+
+  return {
+    ...result,
+    cursor_info: {
+      next_cursor: nextCursor,
+      has_next_page: hasNextPage,
+      serving_mode: String(result?.cursor_info?.serving_mode || 'exhaustive'),
+    },
+  };
+}
+
 vi.mock('@/lib/api', () => ({
-  getBrandDiscoveryFeed: (...args: unknown[]) => getBrandDiscoveryFeedMock(...args),
+  getBrandDiscoveryFeed: (...args: unknown[]) =>
+    Promise.resolve(getBrandDiscoveryFeedMock(...args)).then((result) => withDiscoveryCursorInfo(result as Record<string, any>)),
   getBrowseHistory: (...args: unknown[]) => getBrowseHistoryMock(...args),
 }));
 
@@ -142,7 +169,6 @@ describe('BrandLandingPage', () => {
         expect.objectContaining({
           brandName: 'Tom Ford',
           sort: 'popular',
-          page: 1,
         }),
       );
     });
@@ -165,7 +191,6 @@ describe('BrandLandingPage', () => {
           brandName: 'Tom Ford',
           query: 'cherry',
           sort: 'popular',
-          page: 1,
         }),
       );
     });
@@ -424,7 +449,6 @@ describe('BrandLandingPage', () => {
       expect(getBrandDiscoveryFeedMock).toHaveBeenLastCalledWith(
         expect.objectContaining({
           sort: 'price_desc',
-          page: 1,
         }),
       );
     });
@@ -516,7 +540,6 @@ describe('BrandLandingPage', () => {
         expect.objectContaining({
           brandName: 'Fenty Beauty',
           category: 'Lip',
-          page: 1,
         }),
       );
     });
@@ -701,13 +724,11 @@ describe('BrandLandingPage', () => {
         expect.objectContaining({
           brandName: 'Fenty Beauty',
           category: 'Concealer',
-          page: 1,
         }),
       );
     });
 
-    expect(screen.getByText('130 products across sellers')).toBeInTheDocument();
-    expect(screen.queryByText('0 products across sellers')).not.toBeInTheDocument();
+    expect(screen.queryByText(/products across sellers/i)).not.toBeInTheDocument();
 
     scopedResponse.resolve({
       products: [
@@ -739,7 +760,7 @@ describe('BrandLandingPage', () => {
     await waitFor(() => {
       expect(screen.getByText("Pro Filt'r Instant Retouch Concealer — #300")).toBeInTheDocument();
     });
-    expect(screen.getByText('35 products across sellers')).toBeInTheDocument();
+    expect(screen.queryByText(/products across sellers/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/No concealer picks yet/i)).not.toBeInTheDocument();
   });
 
@@ -846,7 +867,6 @@ describe('BrandLandingPage', () => {
         expect.objectContaining({
           brandName: 'Fenty Beauty',
           category: 'Lip',
-          page: 1,
         }),
       );
     });
@@ -858,7 +878,6 @@ describe('BrandLandingPage', () => {
         expect.objectContaining({
           brandName: 'Fenty Beauty',
           sort: 'popular',
-          page: 1,
         }),
       );
     });

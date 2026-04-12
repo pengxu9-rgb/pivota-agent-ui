@@ -113,18 +113,37 @@ async function fetchInitialBrandFeed(args: {
       Number.isFinite(rawPageSize) && rawPageSize >= 0 ? Math.floor(rawPageSize) : products.length;
     const total =
       Number.isFinite(rawTotal) && rawTotal >= 0 ? Math.floor(rawTotal) : undefined;
+    const rawCursorInfo =
+      (data as any).cursor_info && typeof (data as any).cursor_info === 'object'
+        ? (data as any).cursor_info
+        : metadata?.cursor_info && typeof metadata.cursor_info === 'object'
+          ? metadata.cursor_info
+          : {};
+    const nextCursor =
+      typeof (rawCursorInfo as any)?.next_cursor === 'string' &&
+      String((rawCursorInfo as any).next_cursor).trim()
+        ? String((rawCursorInfo as any).next_cursor).trim()
+        : null;
     const hasMore =
-      typeof metadata.has_more === 'boolean'
+      (typeof (rawCursorInfo as any)?.has_next_page === 'boolean'
+        ? Boolean((rawCursorInfo as any).has_next_page)
+        : false) ||
+      (typeof metadata.has_more === 'boolean'
         ? metadata.has_more
         : typeof total === 'number'
           ? page * limit < total
-          : products.length >= limit;
+          : products.length >= limit);
 
     return {
       products,
       metadata,
       facets: { categories: [] },
       query_text: query,
+      cursor_info: {
+        next_cursor: nextCursor,
+        has_next_page: hasMore,
+        serving_mode: String((rawCursorInfo as any)?.serving_mode || '').trim() || 'exhaustive',
+      },
       page_info: {
         page,
         page_size: pageSize,

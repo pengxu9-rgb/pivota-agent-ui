@@ -1829,11 +1829,18 @@ export type BrandDiscoveryFacets = {
   categories: BrandDiscoveryFacet[];
 };
 
+export type DiscoveryCursorInfo = {
+  next_cursor: string | null;
+  has_next_page: boolean;
+  serving_mode?: 'curated_head' | 'exhaustive' | string;
+};
+
 export type BrandDiscoveryFeedResult = {
   products: ProductResponse[];
   metadata: Record<string, any>;
   facets: BrandDiscoveryFacets;
   query_text: string;
+  cursor_info?: DiscoveryCursorInfo;
   page_info: {
     page: number;
     page_size: number;
@@ -1845,6 +1852,7 @@ export type BrandDiscoveryFeedResult = {
 export type ShoppingDiscoveryFeedResult = {
   products: ProductResponse[];
   metadata: Record<string, any>;
+  cursor_info?: DiscoveryCursorInfo;
   page_info: {
     page: number;
     page_size: number;
@@ -1933,6 +1941,32 @@ function normalizeRecommendationsMetadata(input: any): RecommendationsData['meta
     ...(retrievalMix && typeof retrievalMix === 'object' ? { retrieval_mix: retrievalMix } : {}),
     ...(selectionMix && typeof selectionMix === 'object' ? { selection_mix: selectionMix } : {}),
     ...(baseSemantic && typeof baseSemantic === 'object' ? { base_semantic: baseSemantic } : {}),
+  };
+}
+
+function normalizeDiscoveryCursorInfo(
+  input: any,
+  fallbackHasMore = false,
+): DiscoveryCursorInfo {
+  const source =
+    input && typeof input === 'object' && !Array.isArray(input)
+      ? input
+      : {};
+  const nextCursorRaw = source?.next_cursor ?? source?.nextCursor;
+  const nextCursor = typeof nextCursorRaw === 'string' && nextCursorRaw.trim()
+    ? nextCursorRaw.trim()
+    : null;
+  const hasNextPage =
+    typeof source?.has_next_page === 'boolean'
+      ? source.has_next_page
+      : typeof source?.hasNextPage === 'boolean'
+        ? source.hasNextPage
+        : Boolean(nextCursor) || Boolean(fallbackHasMore);
+  const servingMode = String(source?.serving_mode || source?.servingMode || '').trim();
+  return {
+    next_cursor: nextCursor,
+    has_next_page: hasNextPage,
+    ...(servingMode ? { serving_mode: servingMode } : {}),
   };
 }
 
@@ -2085,7 +2119,9 @@ export async function getBrandDiscoveryFeed(args: {
   category?: string;
   sort?: BrandDiscoverySort;
   page?: number;
+  cursor?: string | null;
   limit?: number;
+  signal?: AbortSignal;
   recentViews?: DiscoveryRecentView[];
   recentQueries?: string[];
   sourceProductRef?: {
@@ -2130,6 +2166,11 @@ export async function getBrandDiscoveryFeed(args: {
         categories: [],
       },
       query_text: queryText,
+      cursor_info: {
+        next_cursor: null,
+        has_next_page: false,
+        serving_mode: 'exhaustive',
+      },
       page_info: {
         page: requestedPage,
         page_size: 0,
@@ -2138,38 +2179,42 @@ export async function getBrandDiscoveryFeed(args: {
     };
   }
 
-  const data = await callGateway({
-    operation: 'get_discovery_feed',
-    payload: {
-      surface: 'browse_products',
-      response_detail: 'card',
-      page: requestedPage,
-      limit: requestedLimit,
-      sort,
-      query: {
-        text: queryText,
+  const data = await callGateway(
+    {
+      operation: 'get_discovery_feed',
+      payload: {
+        surface: 'browse_products',
+        response_detail: 'card',
+        page: requestedPage,
+        limit: requestedLimit,
+        ...(args.cursor ? { cursor: String(args.cursor).trim() } : {}),
+        sort,
+        query: {
+          text: queryText,
+        },
+        scope: {
+          brand_names: [brandName],
+          ...(category ? { categories: [category] } : {}),
+        },
+        context: {
+          recent_views: recentViews,
+          recent_queries: recentQueries,
+          locale: getBrowserLanguage() || 'en-US',
+        },
+        ...(args.sourceProductRef?.product_id
+          ? {
+              source_product_ref: {
+                product_id: String(args.sourceProductRef.product_id).trim(),
+                ...(args.sourceProductRef.merchant_id
+                  ? { merchant_id: String(args.sourceProductRef.merchant_id).trim() }
+                  : {}),
+              },
+            }
+          : {}),
       },
-      scope: {
-        brand_names: [brandName],
-        ...(category ? { categories: [category] } : {}),
-      },
-      context: {
-        recent_views: recentViews,
-        recent_queries: recentQueries,
-        locale: getBrowserLanguage() || 'en-US',
-      },
-      ...(args.sourceProductRef?.product_id
-        ? {
-            source_product_ref: {
-              product_id: String(args.sourceProductRef.product_id).trim(),
-              ...(args.sourceProductRef.merchant_id
-                ? { merchant_id: String(args.sourceProductRef.merchant_id).trim() }
-                : {}),
-            },
-          }
-        : {}),
     },
-  });
+    { signal: args.signal },
+  );
 
   const products = ((data as any).products || []).map(
     (p: RealAPIProduct | ProductResponse) => normalizeProduct(p),
@@ -2192,18 +2237,28 @@ export async function getBrandDiscoveryFeed(args: {
     Number.isFinite(responseTotalRaw) && responseTotalRaw >= 0
       ? Math.floor(responseTotalRaw)
       : undefined;
-  const hasMore =
+  const cursorInfo = normalizeDiscoveryCursorInfo(
+    (data as any)?.cursor_info ?? metadata?.cursor_info,
     typeof metadata.has_more === 'boolean'
       ? metadata.has_more
       : typeof total === 'number'
         ? page * requestedLimit < total
-        : products.length >= requestedLimit;
+        : products.length >= requestedLimit,
+  );
+  const hasMore =
+    cursorInfo.has_next_page ||
+    (typeof metadata.has_more === 'boolean'
+      ? metadata.has_more
+      : typeof total === 'number'
+        ? page * requestedLimit < total
+        : products.length >= requestedLimit);
 
   return {
     products,
     metadata,
     facets,
     query_text: queryText,
+    cursor_info: cursorInfo,
     page_info: {
       page,
       page_size: pageSize,
@@ -2216,12 +2271,17 @@ export async function getBrandDiscoveryFeed(args: {
 export async function getShoppingDiscoveryFeed(args: {
   surface: ShoppingDiscoverySurface;
   page?: number;
+  cursor?: string | null;
   limit?: number;
   entry?: ShoppingEntry;
   catalog?: ShoppingScopeCatalog;
   userId?: string | null;
   recentViews?: DiscoveryRecentView[];
   recentQueries?: string[];
+  query?: string;
+  category?: string;
+  sort?: BrandDiscoverySort;
+  signal?: AbortSignal;
 }): Promise<ShoppingDiscoveryFeedResult> {
   const surface: ShoppingDiscoverySurface =
     args.surface === 'home_hot_deals' ? 'home_hot_deals' : 'browse_products';
@@ -2241,6 +2301,10 @@ export async function getShoppingDiscoveryFeed(args: {
         ? 'promo_pool'
         : 'global';
   const userId = String(args.userId || '').trim() || null;
+  const queryText = String(args.query || '').trim();
+  const category = String(args.category || '').trim();
+  const sort: BrandDiscoverySort =
+    args.sort === 'price_desc' || args.sort === 'price_asc' ? args.sort : 'popular';
   const recentViews = (Array.isArray(args.recentViews) ? args.recentViews : [])
     .map((item) => normalizeDiscoveryRecentView(item))
     .filter(Boolean)
@@ -2251,27 +2315,34 @@ export async function getShoppingDiscoveryFeed(args: {
       : readRecentQueries(userId),
   );
 
-  const data = await callGateway({
-    operation: 'get_discovery_feed',
-    payload: {
-      surface,
-      response_detail: 'card',
-      page: requestedPage,
-      limit: requestedLimit,
-      context: {
-        recent_views: recentViews,
-        recent_queries: recentQueries,
-        auth_state: userId ? 'authenticated' : 'anonymous',
-        locale: getBrowserLanguage() || 'en-US',
+  const data = await callGateway(
+    {
+      operation: 'get_discovery_feed',
+      payload: {
+        surface,
+        response_detail: 'card',
+        page: requestedPage,
+        limit: requestedLimit,
+        ...(args.cursor ? { cursor: String(args.cursor).trim() } : {}),
+        sort,
+        ...(queryText ? { query: { text: queryText } } : {}),
+        ...(category ? { scope: { categories: [category] } } : {}),
+        context: {
+          recent_views: recentViews,
+          recent_queries: recentQueries,
+          auth_state: userId ? 'authenticated' : 'anonymous',
+          locale: getBrowserLanguage() || 'en-US',
+        },
+      },
+      metadata: {
+        entry,
+        scope: {
+          catalog,
+        },
       },
     },
-    metadata: {
-      entry,
-      scope: {
-        catalog,
-      },
-    },
-  });
+    { signal: args.signal },
+  );
 
   const products = ((data as any).products || []).map(
     (p: RealAPIProduct | ProductResponse) => normalizeProduct(p),
@@ -2295,7 +2366,8 @@ export async function getShoppingDiscoveryFeed(args: {
     Number.isFinite(responseTotalRaw) && responseTotalRaw >= 0
       ? Math.floor(responseTotalRaw)
       : undefined;
-  const hasMore =
+  const cursorInfo = normalizeDiscoveryCursorInfo(
+    (data as any)?.cursor_info ?? metadata?.cursor_info,
     typeof metadata.has_more === 'boolean'
       ? metadata.has_more
       : typeof responseHasMore === 'boolean'
@@ -2304,11 +2376,24 @@ export async function getShoppingDiscoveryFeed(args: {
           ? responseHasMoreAlt
           : typeof total === 'number'
             ? page * requestedLimit < total
-            : products.length >= requestedLimit;
+            : products.length >= requestedLimit,
+  );
+  const hasMore =
+    cursorInfo.has_next_page ||
+    (typeof metadata.has_more === 'boolean'
+      ? metadata.has_more
+      : typeof responseHasMore === 'boolean'
+        ? responseHasMore
+        : typeof responseHasMoreAlt === 'boolean'
+          ? responseHasMoreAlt
+          : typeof total === 'number'
+            ? page * requestedLimit < total
+            : products.length >= requestedLimit);
 
   return {
     products,
     metadata,
+    cursor_info: cursorInfo,
     page_info: {
       page,
       page_size: pageSize,

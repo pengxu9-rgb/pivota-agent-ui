@@ -370,12 +370,13 @@ export function BrandLandingPage({
   const [loading, setLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
-  const [page, setPage] = useState(() => initialFeed?.page_info.page || 1);
+  const [nextCursor, setNextCursor] = useState<string | null>(
+    () => initialFeed?.cursor_info?.next_cursor || null,
+  );
   const [hasMore, setHasMore] = useState(() => {
     if (!hasInitialFeed) return true;
-    return Boolean(initialFeed?.page_info.has_more);
+    return Boolean(initialFeed?.cursor_info?.has_next_page ?? initialFeed?.page_info.has_more);
   });
-  const [total, setTotal] = useState<number | undefined>(() => initialFeed?.page_info.total);
   const [recentViews, setRecentViews] = useState<DiscoveryRecentView[]>([]);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(hasInitialFeed);
 
@@ -385,6 +386,7 @@ export function BrandLandingPage({
   const noGrowthCountRef = useRef(0);
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
   const recentViewsRef = useRef<DiscoveryRecentView[]>([]);
+  const activeRecentViewsRef = useRef<DiscoveryRecentView[]>([]);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
 
   const cartItemCount = useMemo(
@@ -410,16 +412,11 @@ export function BrandLandingPage({
           key: ALL_CATEGORY_KEY,
           label: 'All',
           scopeValue: null,
-          ...(typeof total === 'number'
-            ? { count: total }
-            : hasLoadedOnce
-              ? { count: products.length }
-              : {}),
         },
         ...resolved,
       ];
     },
-    [activeCategory, feedMetadata, hasLoadedOnce, products, total],
+    [activeCategory, feedMetadata, products],
   );
   const filterCategoryChips = useMemo(
     () => categoryChips.filter((chip) => chip.scopeValue),
@@ -434,12 +431,6 @@ export function BrandLandingPage({
 
   const visibleProducts = useMemo(() => products, [products]);
   const isInitialLoading = loading && !hasLoadedOnce;
-  const displayTotal = useMemo(() => {
-    if (typeof total === 'number') return total;
-    if (hasLoadedOnce) return products.length;
-    return undefined;
-  }, [hasLoadedOnce, products.length, total]);
-
   const brandCampaign = useMemo(() => resolveBrandCampaign(feedMetadata), [feedMetadata]);
   const brandStory = useMemo(() => resolveBrandStory(feedMetadata), [feedMetadata]);
   const brandAvatarUrl = String(
@@ -511,6 +502,8 @@ export function BrandLandingPage({
     let cancelled = false;
     const requestSeq = ++requestSeqRef.current;
     noGrowthCountRef.current = 0;
+    const requestRecentViews = [...recentViewsRef.current];
+    activeRecentViewsRef.current = requestRecentViews;
     const coldStart = !hasLoadedOnceRef.current;
     if (coldStart) {
       setLoading(true);
@@ -518,16 +511,15 @@ export function BrandLandingPage({
       setIsRefreshing(true);
     }
     setHasMore(true);
-    setPage(1);
+    setNextCursor(null);
 
     void getBrandDiscoveryFeed({
       brandName,
       query: activeQuery,
       ...(activeCategory ? { category: activeCategory } : {}),
       sort,
-      page: 1,
       limit: PAGE_SIZE,
-      recentViews: recentViewsRef.current,
+      recentViews: requestRecentViews,
       sourceProductRef: {
         product_id: initialSourceProductId || null,
         merchant_id: initialSourceMerchantId || null,
@@ -537,8 +529,8 @@ export function BrandLandingPage({
         if (cancelled || requestSeq !== requestSeqRef.current) return;
         setProducts(mergeUniqueCatalogProducts([], result.products).merged);
         setFeedMetadata(result.metadata || {});
-        setTotal(result.page_info.total);
-        setHasMore(Boolean(result.page_info.has_more));
+        setNextCursor(result.cursor_info?.next_cursor || null);
+        setHasMore(Boolean(result.cursor_info?.has_next_page ?? result.page_info.has_more));
         hasLoadedOnceRef.current = true;
         setHasLoadedOnce(true);
       })
@@ -546,7 +538,7 @@ export function BrandLandingPage({
         if (cancelled || requestSeq !== requestSeqRef.current) return;
         setProducts([]);
         setFeedMetadata({});
-        setTotal(0);
+        setNextCursor(null);
         setHasMore(false);
         hasLoadedOnceRef.current = true;
         setHasLoadedOnce(true);
@@ -564,14 +556,13 @@ export function BrandLandingPage({
 
   useEffect(() => {
     const target = loadMoreRef.current;
-    if (!target || !hasMore) return;
+    if (!target || !hasMore || !nextCursor) return;
 
     const observer = new IntersectionObserver(
       (entries) => {
         const entry = entries[0];
         if (!entry?.isIntersecting || loading || isLoadingMore) return;
 
-        const nextPage = page + 1;
         const requestSeq = ++requestSeqRef.current;
         setIsLoadingMore(true);
 
@@ -580,9 +571,9 @@ export function BrandLandingPage({
           query: activeQuery,
           ...(activeCategory ? { category: activeCategory } : {}),
           sort,
-          page: nextPage,
+          cursor: nextCursor,
           limit: PAGE_SIZE,
-          recentViews: recentViewsRef.current,
+          recentViews: activeRecentViewsRef.current,
           sourceProductRef: {
             product_id: initialSourceProductId || null,
             merchant_id: initialSourceMerchantId || null,
@@ -591,7 +582,6 @@ export function BrandLandingPage({
           .then((result) => {
             if (requestSeq !== requestSeqRef.current) return;
             setFeedMetadata((current) => ({ ...current, ...(result.metadata || {}) }));
-            setTotal(result.page_info.total);
             setProducts((current) => {
               const { merged, added } = mergeUniqueCatalogProducts(current, result.products);
               if (added === 0) {
@@ -600,13 +590,17 @@ export function BrandLandingPage({
                 noGrowthCountRef.current = 0;
               }
               const stopForNoGrowth = noGrowthCountRef.current >= NO_GROWTH_STOP_THRESHOLD;
-              setHasMore(Boolean(result.page_info.has_more) && !stopForNoGrowth);
-              if (!stopForNoGrowth) setPage(nextPage);
+              const canContinue =
+                Boolean(result.cursor_info?.has_next_page ?? result.page_info.has_more) &&
+                !stopForNoGrowth;
+              setNextCursor(canContinue ? result.cursor_info?.next_cursor || null : null);
+              setHasMore(canContinue);
               return merged;
             });
           })
           .catch(() => {
             if (requestSeq !== requestSeqRef.current) return;
+            setNextCursor(null);
             setHasMore(false);
           })
           .finally(() => {
@@ -628,7 +622,7 @@ export function BrandLandingPage({
     initialSourceProductId,
     isLoadingMore,
     loading,
-    page,
+    nextCursor,
     sort,
   ]);
 
@@ -663,11 +657,6 @@ export function BrandLandingPage({
                 </h1>
               </div>
               <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] leading-none text-[#667085]">
-                {typeof displayTotal === 'number' ? (
-                  <p>{displayTotal} products across sellers</p>
-                ) : (
-                  <div className="h-3.5 w-32 animate-pulse rounded-full bg-[#ece5dd]" aria-hidden />
-                )}
                 {isRefreshing ? (
                     <span className="inline-flex items-center rounded-full bg-[#f3efff] px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.12em] text-[#7c3aed]">
                     Updating
