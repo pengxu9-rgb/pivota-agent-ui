@@ -3,18 +3,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { ArrowLeft, Search, ShoppingBag } from 'lucide-react';
+import { toast } from 'sonner';
 import {
   CatalogProductCard,
   CatalogProductSkeleton,
 } from '@/components/catalog/CatalogProductCard';
 import {
-  sendMessage,
   getShoppingDiscoveryFeed,
   type ProductResponse,
 } from '@/lib/api';
 import { mergeUniqueCatalogProducts, buildCatalogProductKey } from '@/lib/catalogProducts';
 import { useCartStore } from '@/store/cartStore';
-import { toast } from 'sonner';
 
 const TRENDING_TAGS = [
   'Vitamin C',
@@ -33,7 +32,7 @@ export default function ProductsPage() {
   const [activeQuery, setActiveQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
-  const [page, setPage] = useState(1);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(true);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [searchFocused, setSearchFocused] = useState(false);
@@ -42,6 +41,7 @@ export default function ProductsPage() {
   const searchRequestSeqRef = useRef(0);
   const noGrowthCountRef = useRef(0);
   const activeQueryRef = useRef('');
+  const nextCursorRef = useRef<string | null>(null);
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
   const { items, open } = useCartStore();
 
@@ -49,7 +49,7 @@ export default function ProductsPage() {
   const isInitialLoading = loading && !hasLoadedOnce;
 
   const executeSearchPage = useCallback(
-    async (query: string, targetPage: number, options?: { append?: boolean }) => {
+    async (query: string, cursor: string | null, options?: { append?: boolean }) => {
       const append = Boolean(options?.append);
       const requestSeq = ++searchRequestSeqRef.current;
       const trimmed = query.trim();
@@ -72,41 +72,31 @@ export default function ProductsPage() {
 
       try {
         let fetchedProducts: ProductResponse[] = [];
-        let hasMoreFromResponse: boolean | undefined;
+        let nextCursorFromResponse: string | null = null;
+        let hasMoreFromResponse = false;
 
-        if (!trimmed) {
-          const result = await getShoppingDiscoveryFeed({
-            surface: 'browse_products',
-            page: targetPage,
-            limit: GRID_INITIAL_PAGE_SIZE,
-            // Browse is a full-catalog surface. Do not pass behavior history here:
-            // page-1 recent-view suppression can underfill the grid for active users.
-            recentViews: [],
-            recentQueries: [],
-          });
-          fetchedProducts = result.products;
-          hasMoreFromResponse = result.page_info.has_more;
-        } else {
-          const result = await sendMessage(trimmed, undefined, {
-            signal: controller.signal,
-            pagination: {
-              page: targetPage,
-              limit: GRID_INITIAL_PAGE_SIZE,
-            },
-          });
-          fetchedProducts = Array.isArray(result?.products) ? result.products : [];
-          hasMoreFromResponse = Boolean(result?.page_info?.has_more);
-          if (!append && result?.strict_empty && result?.reply) {
-            toast.info(result.reply);
-          }
-        }
+        const result = await getShoppingDiscoveryFeed({
+          surface: 'browse_products',
+          cursor,
+          limit: GRID_INITIAL_PAGE_SIZE,
+          ...(trimmed ? { query: trimmed } : {}),
+          signal: controller.signal,
+          // Browse is a full-catalog surface. Do not pass behavior history here:
+          // public browse/search should remain stable and cursor-safe.
+          recentViews: [],
+          recentQueries: [],
+        });
+        fetchedProducts = result.products;
+        nextCursorFromResponse = result.cursor_info?.next_cursor || null;
+        hasMoreFromResponse = result.cursor_info?.has_next_page ?? result.page_info.has_more;
 
         if (requestSeq !== searchRequestSeqRef.current) return;
 
         if (!append) {
           const deduped = mergeUniqueCatalogProducts([], fetchedProducts).merged;
           setProducts(deduped);
-          setPage(targetPage);
+          setNextCursor(nextCursorFromResponse);
+          nextCursorRef.current = nextCursorFromResponse;
           setHasLoadedOnce(true);
           noGrowthCountRef.current = 0;
           setHasMore(Boolean(hasMoreFromResponse) && deduped.length > 0);
@@ -123,8 +113,9 @@ export default function ProductsPage() {
 
           const stopForNoGrowth = noGrowthCountRef.current >= NO_GROWTH_STOP_THRESHOLD;
           const canContinue = Boolean(hasMoreFromResponse) && !stopForNoGrowth;
+          setNextCursor(canContinue ? nextCursorFromResponse : null);
+          nextCursorRef.current = canContinue ? nextCursorFromResponse : null;
           setHasMore(canContinue);
-          if (canContinue) setPage(targetPage);
           return merged;
         });
       } catch (error: any) {
@@ -148,9 +139,10 @@ export default function ProductsPage() {
   const executeSearch = useCallback(
     async (query: string) => {
       noGrowthCountRef.current = 0;
-      setPage(1);
+      setNextCursor(null);
+      nextCursorRef.current = null;
       setHasMore(true);
-      await executeSearchPage(query, 1, { append: false });
+      await executeSearchPage(query, null, { append: false });
     },
     [executeSearchPage],
   );
@@ -186,9 +178,10 @@ export default function ProductsPage() {
 
   const loadMore = useCallback(() => {
     if (loading || isLoadingMore || !hasMore) return;
-    const nextPage = page + 1;
-    void executeSearchPage(activeQueryRef.current, nextPage, { append: true });
-  }, [executeSearchPage, hasMore, isLoadingMore, loading, page]);
+    const cursor = nextCursorRef.current;
+    if (!cursor) return;
+    void executeSearchPage(activeQueryRef.current, cursor, { append: true });
+  }, [executeSearchPage, hasMore, isLoadingMore, loading]);
 
   useEffect(() => {
     const target = loadMoreRef.current;
