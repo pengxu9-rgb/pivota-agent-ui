@@ -35,7 +35,6 @@ export default function ProductsPage() {
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
-  const [total, setTotal] = useState<number | undefined>(undefined);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [searchFocused, setSearchFocused] = useState(false);
   const searchAbortRef = useRef<AbortController | null>(null);
@@ -47,8 +46,6 @@ export default function ProductsPage() {
   const { items, open } = useCartStore();
 
   const itemCount = items.reduce((acc, item) => acc + item.quantity, 0);
-  const displayTotal =
-    typeof total === 'number' ? total : hasLoadedOnce ? products.length : undefined;
   const isInitialLoading = loading && !hasLoadedOnce;
 
   const executeSearchPage = useCallback(
@@ -76,7 +73,6 @@ export default function ProductsPage() {
       try {
         let fetchedProducts: ProductResponse[] = [];
         let hasMoreFromResponse: boolean | undefined;
-        let totalFromResponse: number | undefined;
 
         if (!trimmed) {
           const result = await getShoppingDiscoveryFeed({
@@ -90,7 +86,6 @@ export default function ProductsPage() {
           });
           fetchedProducts = result.products;
           hasMoreFromResponse = result.page_info.has_more;
-          totalFromResponse = result.page_info.total;
         } else {
           const result = await sendMessage(trimmed, undefined, {
             signal: controller.signal,
@@ -101,9 +96,6 @@ export default function ProductsPage() {
           });
           fetchedProducts = Array.isArray(result?.products) ? result.products : [];
           hasMoreFromResponse = Boolean(result?.page_info?.has_more);
-          totalFromResponse = Number.isFinite(Number(result?.page_info?.total))
-            ? Number(result?.page_info?.total)
-            : undefined;
           if (!append && result?.strict_empty && result?.reply) {
             toast.info(result.reply);
           }
@@ -115,7 +107,6 @@ export default function ProductsPage() {
           const deduped = mergeUniqueCatalogProducts([], fetchedProducts).merged;
           setProducts(deduped);
           setPage(targetPage);
-          setTotal(totalFromResponse ?? deduped.length);
           setHasLoadedOnce(true);
           noGrowthCountRef.current = 0;
           setHasMore(Boolean(hasMoreFromResponse) && deduped.length > 0);
@@ -133,7 +124,6 @@ export default function ProductsPage() {
           const stopForNoGrowth = noGrowthCountRef.current >= NO_GROWTH_STOP_THRESHOLD;
           const canContinue = Boolean(hasMoreFromResponse) && !stopForNoGrowth;
           setHasMore(canContinue);
-          setTotal(totalFromResponse ?? merged.length);
           if (canContinue) setPage(targetPage);
           return merged;
         });
@@ -268,18 +258,13 @@ export default function ProductsPage() {
                   Browse products
                 </h1>
               </div>
-              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] leading-none text-[#667085]">
-                {typeof displayTotal === 'number' ? (
-                  <p>{displayTotal} products across brands</p>
-                ) : (
-                  <div className="h-3.5 w-32 animate-pulse rounded-full bg-[#ece5dd]" aria-hidden />
-                )}
-                {loading && hasLoadedOnce ? (
+              {loading && hasLoadedOnce ? (
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] leading-none text-[#667085]">
                   <span className="inline-flex items-center rounded-full bg-[#f3efff] px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.12em] text-[#7c3aed]">
                     Updating
                   </span>
-                ) : null}
-              </div>
+                </div>
+              ) : null}
               {activeQuery ? (
                 <p className="text-[12px] text-[#667085]">
                   Showing results for <span className="font-medium text-slate-900">“{activeQuery}”</span>
