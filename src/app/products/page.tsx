@@ -23,7 +23,11 @@ const TRENDING_TAGS = [
   'Moisturizer',
 ] as const;
 
-const GRID_INITIAL_PAGE_SIZE = 60;
+// Keep the first browse payload below the live gateway timeout budget.
+// Once the page is interactive, infinite scroll can fetch a denser follow-up page.
+const GRID_INITIAL_PAGE_SIZE = 24;
+const GRID_APPEND_PAGE_SIZE = 36;
+const GRID_DISCOVERY_TIMEOUT_MS = 15000;
 const NO_GROWTH_STOP_THRESHOLD = 2;
 
 export default function ProductsPage() {
@@ -78,9 +82,10 @@ export default function ProductsPage() {
         const result = await getShoppingDiscoveryFeed({
           surface: 'browse_products',
           cursor,
-          limit: GRID_INITIAL_PAGE_SIZE,
+          limit: append ? GRID_APPEND_PAGE_SIZE : GRID_INITIAL_PAGE_SIZE,
           ...(trimmed ? { query: trimmed } : {}),
           signal: controller.signal,
+          timeout_ms: GRID_DISCOVERY_TIMEOUT_MS,
           // Browse is a full-catalog surface. Do not pass behavior history here:
           // public browse/search should remain stable and cursor-safe.
           recentViews: [],
