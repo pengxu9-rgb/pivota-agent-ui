@@ -116,6 +116,39 @@ describe('getAllProducts browse routing', () => {
     });
   });
 
+  it('does not backfill local recent queries when browse explicitly passes an empty list', async () => {
+    window.localStorage.setItem(
+      'pivota_recent_queries_v1:anon:device_test',
+      JSON.stringify(['the ordinary', '薇诺娜']),
+    );
+    window.localStorage.setItem('pivota_behavior_device_id_v1', 'device_test');
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      jsonResponse({
+        products: makeProducts(4),
+      }),
+    );
+
+    await getShoppingDiscoveryFeed({
+      surface: 'browse_products',
+      page: 1,
+      limit: 4,
+      recentQueries: [],
+      recentViews: [],
+    });
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(String(init.body || '{}'));
+    expect(body).toMatchObject({
+      operation: 'get_discovery_feed',
+      payload: {
+        context: {
+          recent_queries: [],
+          recent_views: [],
+        },
+      },
+    });
+  });
+
   it('preserves explicit browse catalog overrides while using the matching discovery surface', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       jsonResponse({

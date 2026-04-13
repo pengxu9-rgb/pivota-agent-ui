@@ -977,6 +977,15 @@ function normalizeRecentQueries(input: unknown, limit = MAX_RECENT_QUERIES): str
     .slice(0, limit);
 }
 
+function resolveRecentQueries(
+  input: string[] | undefined,
+  userId?: string | null,
+  limit = MAX_RECENT_QUERIES,
+): string[] {
+  if (Array.isArray(input)) return normalizeRecentQueries(input, limit);
+  return readRecentQueries(userId).slice(0, limit);
+}
+
 function readRecentQueries(userId?: string | null): string[] {
   if (typeof window === 'undefined') return [];
   try {
@@ -2181,14 +2190,7 @@ export async function getBrandDiscoveryFeed(args: {
     .map((item) => normalizeDiscoveryRecentView(item))
     .filter(Boolean)
     .slice(0, 16) as DiscoveryRecentView[];
-  const recentQueries = (
-    Array.isArray(args.recentQueries) && args.recentQueries.length
-      ? args.recentQueries
-      : readRecentQueries()
-  )
-    .map((item) => String(item || '').trim())
-    .filter(Boolean)
-    .slice(0, MAX_RECENT_QUERIES);
+  const recentQueries = resolveRecentQueries(args.recentQueries);
 
   if (!brandName) {
     return {
@@ -2351,11 +2353,7 @@ export async function getShoppingDiscoveryFeed(args: {
     .map((item) => normalizeDiscoveryRecentView(item))
     .filter(Boolean)
     .slice(0, 50) as DiscoveryRecentView[];
-  const recentQueries = normalizeRecentQueries(
-    Array.isArray(args.recentQueries) && args.recentQueries.length
-      ? args.recentQueries
-      : readRecentQueries(userId),
-  );
+  const recentQueries = resolveRecentQueries(args.recentQueries, userId);
 
   const data = await callGatewayWithTimeout(
     {
