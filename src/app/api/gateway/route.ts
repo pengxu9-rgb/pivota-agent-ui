@@ -6,11 +6,13 @@ import { NextRequest } from 'next/server';
 export const runtime = 'nodejs';
 export const preferredRegion = 'home';
 
+const DEFAULT_SHOP_UPSTREAM_BASE = 'https://pivota-agent-production.up.railway.app';
+
 const SHOP_UPSTREAM_BASE =
   process.env.SHOP_UPSTREAM_API_URL ||
   process.env.SHOP_GATEWAY_UPSTREAM_BASE_URL ||
   process.env.SHOP_GATEWAY_AGENT_BASE_URL ||
-  'https://pivota-agent-production.up.railway.app';
+  DEFAULT_SHOP_UPSTREAM_BASE;
 
 const CHECKOUT_UPSTREAM_BASE =
   process.env.PIVOTA_BACKEND_BASE_URL ||
@@ -67,11 +69,54 @@ const SAFE_UPSTREAM_DEBUG_HEADERS = [
   'x-aurora-git-sha',
 ];
 
+const GATEWAY_PROXY_HOP_HEADER = 'x-gateway-proxy-hop';
+const MAX_GATEWAY_PROXY_HOPS = 1;
+
 function buildShopUpstreamInvokeUrl(base: string): string {
   const normalized = String(base || '').trim().replace(/\/+$/, '');
   if (!normalized) return '/agent/shop/v1/invoke';
   if (/\/api\/gateway$/i.test(normalized)) return normalized;
   return `${normalized}/agent/shop/v1/invoke`;
+}
+
+function normalizeGatewayPathname(pathname: string): string {
+  const normalized = String(pathname || '').trim().replace(/\/+$/, '');
+  return normalized || '/';
+}
+
+function isSameOriginGatewayProxyTarget(base: string, requestUrl: string): boolean {
+  const normalizedBase = String(base || '').trim();
+  const normalizedRequestUrl = String(requestUrl || '').trim();
+  if (!normalizedBase || !normalizedRequestUrl) return false;
+
+  try {
+    const upstreamUrl = new URL(normalizedBase);
+    const currentUrl = new URL(normalizedRequestUrl);
+    return (
+      upstreamUrl.origin === currentUrl.origin &&
+      normalizeGatewayPathname(upstreamUrl.pathname).toLowerCase() === '/api/gateway' &&
+      normalizeGatewayPathname(currentUrl.pathname).toLowerCase() === '/api/gateway'
+    );
+  } catch {
+    return false;
+  }
+}
+
+function resolveShopUpstreamBase(requestUrl: string): {
+  upstreamBase: string;
+  recursionPrevented: boolean;
+} {
+  if (isSameOriginGatewayProxyTarget(SHOP_UPSTREAM_BASE, requestUrl)) {
+    return {
+      upstreamBase: DEFAULT_SHOP_UPSTREAM_BASE,
+      recursionPrevented: true,
+    };
+  }
+
+  return {
+    upstreamBase: SHOP_UPSTREAM_BASE,
+    recursionPrevented: false,
+  };
 }
 
 const CLIENT_OWNED_PAYMENT_STATUSES = new Set(['requires_action']);
@@ -505,6 +550,17 @@ function jsonProxyResponse(
 
 export async function POST(req: NextRequest) {
   try {
+    const proxyHopCount = Math.max(0, Number(req.headers.get(GATEWAY_PROXY_HOP_HEADER) || 0) || 0);
+    if (proxyHopCount > MAX_GATEWAY_PROXY_HOPS) {
+      return jsonProxyResponse(
+        {
+          error: 'Gateway proxy loop detected',
+          message: 'The gateway proxy re-entered itself and was stopped.',
+        },
+        { status: 508 },
+      );
+    }
+
     const startedAt = Date.now();
     const body = await req.json();
     const checkoutToken = String(req.headers.get('x-checkout-token') || '').trim() || null;
@@ -526,11 +582,14 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const { upstreamBase: resolvedShopUpstreamBase, recursionPrevented } = resolveShopUpstreamBase(
+      req.url,
+    );
     const upstreamBase = REVIEWS_OPERATIONS.has(operation)
       ? REVIEWS_UPSTREAM_BASE
       : useCheckoutSafeProxy
         ? CHECKOUT_UPSTREAM_BASE
-        : SHOP_UPSTREAM_BASE;
+        : resolvedShopUpstreamBase;
     const upstreamUrl =
       checkoutSafeRequest && !('error' in checkoutSafeRequest)
         ? checkoutSafeRequest.url
@@ -550,6 +609,7 @@ export async function POST(req: NextRequest) {
         upstream: upstreamBase,
         operation,
         checkoutSafeProxy: useCheckoutSafeProxy,
+        recursionPrevented,
       });
     }
 
@@ -566,6 +626,7 @@ export async function POST(req: NextRequest) {
                 Authorization: `Bearer ${AGENT_API_KEY}`,
               }
             : {}),
+        [GATEWAY_PROXY_HOP_HEADER]: String(proxyHopCount + 1),
       },
       ...(upstreamMethod === 'GET' ? {} : { body: JSON.stringify(upstreamBody || {}) }),
     });

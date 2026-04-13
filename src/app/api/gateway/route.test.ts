@@ -335,8 +335,8 @@ describe('/api/gateway checkout-safe proxy', () => {
     expect(url).toBe('https://invoke.example.com/agent/shop/v1/invoke');
   });
 
-  it('uses explicit /api/gateway upstreams without appending invoke twice', async () => {
-    vi.stubEnv('SHOP_UPSTREAM_API_URL', 'https://agent.pivota.cc/api/gateway');
+  it('keeps explicit remote /api/gateway upstreams without appending invoke twice', async () => {
+    vi.stubEnv('SHOP_UPSTREAM_API_URL', 'https://invoke.example.com/api/gateway');
     vi.stubEnv('PIVOTA_BACKEND_BASE_URL', 'https://checkout.example.com');
 
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
@@ -365,7 +365,77 @@ describe('/api/gateway checkout-safe proxy', () => {
     expect(data).toMatchObject({ status: 'success' });
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe('https://agent.pivota.cc/api/gateway');
+    expect(url).toBe('https://invoke.example.com/api/gateway');
+  });
+
+  it('prevents same-origin /api/gateway self-recursion by falling back to invoke upstream', async () => {
+    vi.stubEnv('SHOP_UPSTREAM_API_URL', 'https://agent.pivota.cc/api/gateway');
+    vi.stubEnv('PIVOTA_BACKEND_BASE_URL', 'https://checkout.example.com');
+
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      jsonResponse({ status: 'success', products: [] }),
+    );
+
+    const { POST } = await import('@/app/api/gateway/route');
+
+    const req = new Request('https://agent.pivota.cc/api/gateway', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        operation: 'get_discovery_feed',
+        payload: {
+          surface: 'browse_products',
+          page: 1,
+          limit: 12,
+        },
+      }),
+    });
+
+    const res = await POST(req as any);
+    const data = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(data).toMatchObject({ status: 'success' });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('https://pivota-agent-production.up.railway.app/agent/shop/v1/invoke');
+    expect((init.headers as Record<string, string>)['x-gateway-proxy-hop']).toBe('1');
+  });
+
+  it('fails fast when proxy hop re-enters the gateway route', async () => {
+    vi.stubEnv('SHOP_UPSTREAM_API_URL', 'https://invoke.example.com/api/gateway');
+    vi.stubEnv('PIVOTA_BACKEND_BASE_URL', 'https://checkout.example.com');
+
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      jsonResponse({ status: 'success', products: [] }),
+    );
+
+    const { POST } = await import('@/app/api/gateway/route');
+
+    const req = new Request('https://agent.pivota.cc/api/gateway', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-gateway-proxy-hop': '2',
+      },
+      body: JSON.stringify({
+        operation: 'find_products_multi',
+        payload: {
+          query: 'winona serum',
+        },
+      }),
+    });
+
+    const res = await POST(req as any);
+    const data = await res.json();
+
+    expect(res.status).toBe(508);
+    expect(data).toMatchObject({
+      error: 'Gateway proxy loop detected',
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('ignores NEXT_PUBLIC upstream drift for server-side shop proxy traffic', async () => {
