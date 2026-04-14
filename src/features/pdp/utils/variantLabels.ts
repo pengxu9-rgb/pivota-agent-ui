@@ -11,7 +11,7 @@ export function isPlaceholderVariantTitle(title: unknown): boolean {
   return !normalized || VARIANT_PLACEHOLDER_TITLE_RE.test(normalized);
 }
 
-function isPlaceholderVariantOptionValue(option: Variant['options'][number] | undefined): boolean {
+function isPlaceholderVariantOptionValue(option: NonNullable<Variant['options']>[number] | undefined): boolean {
   const name = String(option?.name || '').trim().toLowerCase();
   if (name !== 'title') return false;
   return isPlaceholderVariantTitle(option?.value);
