@@ -7,7 +7,7 @@ import type {
 } from '@/features/pdp/types';
 
 const DETAIL_HEADING_NOISE_RE =
-  /^(ingredients?|active ingredients?|how to use|directions?|how to pair|about|our story|brand story|faq|questions?|warnings?|warning|caution)$/i;
+  /^(.*\bingredients?\b.*|active ingredients?|how to use|directions?|how to pair|about|our story|brand story|faq|questions?|warnings?|warning|caution)$/i;
 const DETAIL_CONTENT_NOISE_RE =
   /\b(shop now|pair with|our story|product philosophy|sustainability|inclusivity pledge)\b/i;
 const HOW_TO_USE_NOISE_RE =
@@ -141,6 +141,18 @@ function filterDetailSections(
   });
 }
 
+function sectionKey(section: DetailSection): string {
+  return `${normalizeWhitespace(section.heading).toLowerCase()}::${normalizeWhitespace(section.content).toLowerCase()}`;
+}
+
+function pushUniqueSection(sections: DetailSection[], seen: Set<string>, section: DetailSection | null | undefined) {
+  if (!section) return;
+  const key = sectionKey(section);
+  if (!key || seen.has(key)) return;
+  seen.add(key);
+  sections.push(section);
+}
+
 export function sanitizeActiveIngredientsData(
   data: ActiveIngredientsData | null | undefined,
 ): ActiveIngredientsData | null {
@@ -198,21 +210,27 @@ export function chooseProductDetailsData(args: {
     hasStructuredBlocks: args.hasStructuredBlocks,
   });
 
+  const overviewIndex = legacySections.findIndex((section) =>
+    OVERVIEW_LIKE_HEADING_RE.test(normalizeWhitespace(section.heading)),
+  );
   const overviewSection =
-    legacySections.find((section) => OVERVIEW_LIKE_HEADING_RE.test(normalizeWhitespace(section.heading))) ||
-    legacySections[0] ||
-    null;
+    (overviewIndex >= 0 ? legacySections[overviewIndex] : legacySections[0]) || null;
 
   if (factsSections.length > 0) {
-    if (
-      overviewSection &&
-      !factsSections.some(
-        (section) => normalizeWhitespace(section.content) === normalizeWhitespace(overviewSection.content),
-      )
-    ) {
-      return { sections: [overviewSection, ...factsSections] };
+    const mergedSections: DetailSection[] = [];
+    const seen = new Set<string>();
+
+    pushUniqueSection(mergedSections, seen, overviewSection);
+    for (const section of factsSections) {
+      pushUniqueSection(mergedSections, seen, section);
     }
-    return { sections: factsSections };
+    for (let index = 0; index < legacySections.length; index += 1) {
+      const section = legacySections[index];
+      if (!section || (overviewSection && section === overviewSection)) continue;
+      pushUniqueSection(mergedSections, seen, section);
+    }
+
+    return mergedSections.length ? { sections: mergedSections } : { sections: factsSections };
   }
 
   return legacySections.length ? { sections: legacySections } : null;

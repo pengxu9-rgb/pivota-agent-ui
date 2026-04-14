@@ -161,6 +161,11 @@ function buildBeautyPayload(): PDPPayload {
               content_type: 'text',
               content: 'This should not be shown when product_facts exists.',
             },
+            {
+              heading: 'Rice-Infused Hydration',
+              content_type: 'text',
+              content: 'Rice extract helps replenish moisture.',
+            },
           ],
         },
       },
@@ -410,6 +415,7 @@ describe('PdpContainer structured PDP modules', () => {
     expect(screen.getByText('Overview')).toBeInTheDocument();
     expect(screen.getAllByText('Retail PDP').length).toBeGreaterThan(0);
     expect(screen.getByText('Clinical Results')).toBeInTheDocument();
+    expect(screen.getByText('Rice-Infused Hydration')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Legacy Ingredients' })).not.toBeInTheDocument();
     expect(screen.getAllByRole('button', { name: 'Add to Cart' }).length).toBeGreaterThan(0);
     expect(screen.getAllByRole('button', { name: 'Buy Now' }).length).toBeGreaterThan(0);
