@@ -28,7 +28,7 @@ function ensureLoadingStyles() {
     'style',
     [
       'padding:10px 16px',
-      'border-radius:999px',
+      'border-radius:8px',
       'font-size:14px',
       'font-weight:600',
       'color:#111827',
@@ -36,7 +36,7 @@ function ensureLoadingStyles() {
       'box-shadow:0 10px 35px rgba(0,0,0,0.2)',
     ].join(';'),
   );
-  badge.textContent = 'Loading product...';
+  badge.textContent = 'Loading products';
 
   overlay.appendChild(badge);
   document.body.appendChild(overlay);
