@@ -1,4 +1,5 @@
 import type { Variant } from '@/features/pdp/types';
+import { isPlaceholderVariantTitle } from '@/features/pdp/utils/variantLabels';
 
 const COLOR_KEYS = ['color', 'colour', 'shade', 'tone'];
 const SIZE_KEYS = ['size', 'fit'];
@@ -153,6 +154,7 @@ export function extractAttributeOptions(variant: Variant): Array<{ name: string;
   const options = variant.options || [];
   return options
     .filter((opt) => opt?.name && opt?.value)
+    .filter((opt) => !(normalizeOptionName(String(opt.name)) === 'title' && isPlaceholderVariantTitle(opt.value)))
     .filter((opt) => !isCombinedColorSizeOptionName(String(opt.name)))
     .filter((opt) => !matchesKey(String(opt.name), COLOR_KEYS) && !matchesKey(String(opt.name), SIZE_KEYS))
     .filter((opt) => !BEAUTY_KEYS.some((beauty) => matchesKey(opt.name, beauty.keys)))
