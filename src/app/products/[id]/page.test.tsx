@@ -321,6 +321,14 @@ describe('ProductDetailPage canonical PDP loading', () => {
     vi.restoreAllMocks();
   });
 
+  it('shows the centered PDP loading status while the canonical payload is pending', () => {
+    getPdpV2Mock.mockReturnValue(new Promise(() => {}));
+
+    renderPage();
+
+    expect(screen.getByRole('status')).toHaveTextContent('Loading products');
+  });
+
   it('requests canonical PDP modules on the first get_pdp_v2 call', async () => {
     getPdpV2Mock.mockResolvedValue({ status: 'success', modules: [] });
 

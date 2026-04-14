@@ -19,6 +19,7 @@ import { mapPdpV2ToPdpPayload } from '@/features/pdp/adapter/mapPdpV2ToPdpPayloa
 import { isBeautyProduct } from '@/features/pdp/utils/isBeautyProduct';
 import { BeautyPDPContainer } from '@/features/pdp/containers/BeautyPDPContainer';
 import { GenericPDPContainer } from '@/features/pdp/containers/GenericPDPContainer';
+import { ProductDetailLoading } from '@/features/pdp/components/ProductDetailLoading';
 import type { Module, PDPPayload, Variant } from '@/features/pdp/types';
 import { pdpTracking } from '@/features/pdp/tracking';
 import { findMatchingOfferVariant } from '@/features/pdp/utils/offerVariantMatching';
@@ -422,38 +423,6 @@ function shouldRetryWithCoreOnlyPdp(err: unknown): boolean {
   const message = String((err as Error)?.message || '').toLowerCase();
   return message.includes('timed out') || message.includes('timeout') || message.includes('temporarily unavailable');
 }
-function ProductDetailLoading({ label }: { label: string }) {
-  return (
-    <div className="min-h-screen bg-background">
-      <div className="mx-auto max-w-md px-4 pt-6">
-        <div className="rounded-2xl border border-border/60 bg-card/60 px-4 py-3">
-          <div className="flex items-center justify-center gap-2 text-sm font-medium text-foreground/90">
-            <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary/30 border-t-primary" />
-            <span>{label}</span>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-3">
-          <div className="h-10 w-10 rounded-full bg-muted/25 animate-pulse" />
-          <div className="h-10 flex-1 rounded-full bg-muted/20 animate-pulse" />
-          <div className="h-10 w-10 rounded-full bg-muted/25 animate-pulse" />
-        </div>
-
-        <div className="mt-4 aspect-[3/4] rounded-3xl bg-muted/20 animate-pulse" />
-
-        <div className="mt-5 space-y-2">
-          <div className="h-8 w-32 rounded bg-muted/20 animate-pulse" />
-          <div className="h-5 w-full rounded bg-muted/20 animate-pulse" />
-          <div className="h-5 w-3/4 rounded bg-muted/20 animate-pulse" />
-          <div className="h-4 w-1/2 rounded bg-muted/20 animate-pulse" />
-        </div>
-
-        <div className="mt-6 text-center text-sm text-muted-foreground">{label}</div>
-      </div>
-    </div>
-  );
-}
-
 export default function ProductDetailPage({ params }: Props) {
   const { id } = use(params);
   const searchParams = useSearchParams();
@@ -1547,7 +1516,7 @@ export default function ProductDetailPage({ params }: Props) {
   };
 
   if (loading && !pdpPayload) {
-    return <ProductDetailLoading label="Loading product…" />;
+    return <ProductDetailLoading />;
   }
 
   if (!loading && !pdpPayload && sellerCandidates?.length) {
