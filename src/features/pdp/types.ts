@@ -421,6 +421,9 @@ export interface ReviewsPreviewData {
     question: string;
     answer?: string;
     replies?: number;
+    source?: 'merchant_faq' | 'review_derived' | 'community' | string;
+    source_label?: string;
+    support_count?: number;
   }>;
   brand_card?: {
     name: string;

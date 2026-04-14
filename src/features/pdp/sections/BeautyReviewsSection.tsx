@@ -266,6 +266,14 @@ export function BeautyReviewsSection({
                   {disc.answer ? (
                     <p className="mt-2 text-xs text-muted-foreground">&quot;{disc.answer}&quot;</p>
                   ) : null}
+                  {disc.source_label ? (
+                    <p className="mt-2 text-[11px] font-medium text-muted-foreground">{disc.source_label}</p>
+                  ) : null}
+                  {disc.support_count != null ? (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Supported by {disc.support_count} reviews
+                    </p>
+                  ) : null}
                   {disc.replies != null ? (
                     <p className="mt-2 text-xs text-muted-foreground">{disc.replies} replies</p>
                   ) : null}
