@@ -191,6 +191,7 @@ function buildGenericSingleVariantPayload(): PDPPayload {
           variant_id: 'SKU-DEFAULT',
           sku_id: 'SKU-DEFAULT',
           title: 'Default Title',
+          options: [{ name: 'Title', value: 'Default Title' }],
           price: { current: { amount: 48, currency: 'USD' } },
           availability: { in_stock: true, available_quantity: 3 },
         },
@@ -546,7 +547,9 @@ describe('PdpContainer structured PDP modules', () => {
 
     expect(screen.getByText('Options')).toBeInTheDocument();
     expect(screen.getByText('1 variant')).toBeInTheDocument();
+    expect(screen.getByText((_, element) => element?.textContent === 'Selected: Default')).toBeInTheDocument();
     expect(screen.getAllByText('Default option').length).toBeGreaterThan(0);
+    expect(screen.queryByText('Title: Default Title')).not.toBeInTheDocument();
     expect(screen.getByText('Overview')).toBeInTheDocument();
     expect(screen.queryAllByText('Product Details')).toHaveLength(1);
   });

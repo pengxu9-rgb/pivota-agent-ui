@@ -78,6 +78,7 @@ import { resolveOfferPricing } from '@/features/pdp/utils/offerVariantMatching';
 import { buildBrandHref } from '@/lib/brandRoute';
 import { buildProductHref } from '@/lib/productHref';
 import { buildProductVariants } from '@/features/pdp/utils/productVariants';
+import { getDisplayVariantLabel } from '@/features/pdp/utils/variantLabels';
 import { cn } from '@/lib/utils';
 import { resolveReviewGate, reviewGateMessage, reviewGateResultToReason } from '@/lib/reviewGate';
 import { postRequestCloseToParent } from '@/lib/auroraEmbed';
@@ -127,15 +128,8 @@ function formatPrice(amount: number, currency: string) {
 
 const SIMILAR_PAGE_STEP = 12;
 const SIMILAR_NO_GROWTH_STOP_THRESHOLD = 2;
-const SINGLE_VARIANT_PLACEHOLDER_TITLE = /^(default(?: title)?|variant \d+)$/i;
 const LOW_CONFIDENCE_ACTIVE_INGREDIENT_BEAUTY_HINT_RE =
   /(beauty|makeup|cosmetic|palette|powder|eyeshadow|eye color|eye|quad|shadow|blush|bronzer|concealer|foundation|lip|lips|mascara|brow|skincare|serum|cream|creme|fragrance|perfume|parfum|eau de parfum)/i;
-
-function getSingleVariantSummaryLabel(variant: Variant | undefined): string {
-  const title = String(variant?.title || '').trim();
-  if (!title || SINGLE_VARIANT_PLACEHOLDER_TITLE.test(title)) return 'Default option';
-  return title;
-}
 
 function getCurrentRelativePath(): string | null {
   if (typeof window === 'undefined') return null;
@@ -1860,16 +1854,10 @@ export function PdpContainer({
   const shouldHideLowConfidenceActiveIngredients =
     isExternalSeedProduct &&
     isLikelyBeautyExternalSeedProduct(payload.product, resolvedMode);
-  const singleVariantSummaryLabel = useMemo(
-    () => getSingleVariantSummaryLabel(selectedVariant),
+  const selectedVariantHeaderLabel = useMemo(
+    () => getDisplayVariantLabel(selectedVariant, 'Default'),
     [selectedVariant],
   );
-  const showExternalSeedSingleVariantSummary =
-    isExternalSeedProduct &&
-    variants.length === 1 &&
-    !colorOptions.length &&
-    !sizeOptions.length &&
-    !attributeOptions.length;
   const compareAmount =
     pricePromo?.compare_at?.amount ??
     selectedVariant.price?.compare_at?.amount ??
@@ -2782,22 +2770,9 @@ export function PdpContainer({
               {payload.product.subtitle ? (
                 <p className="mt-0.5 text-[11px] text-muted-foreground">{payload.product.subtitle}</p>
               ) : null}
-              {variants.length > 1 ? (
+              {selectedVariant ? (
                 <div className="mt-0.5 text-xs text-muted-foreground">
-                  Selected: <span className="text-foreground">{selectedVariant?.title}</span>
-                </div>
-              ) : null}
-              {showExternalSeedSingleVariantSummary ? (
-                <div className="mt-2">
-                  <div className="flex items-center justify-between">
-                    <div className="text-xs font-semibold">Option</div>
-                    <div className="text-[11px] text-muted-foreground">Selected by default</div>
-                  </div>
-                  <div className="mt-1.5 flex flex-wrap gap-1.5">
-                    <span className="inline-flex min-h-10 items-center rounded-full border border-[color:var(--accent-600)] bg-[var(--accent-50)] px-3 text-xs font-semibold text-[color:var(--accent-800)]">
-                      {singleVariantSummaryLabel}
-                    </span>
-                  </div>
+                  Selected: <span className="text-foreground">{selectedVariantHeaderLabel}</span>
                 </div>
               ) : null}
 

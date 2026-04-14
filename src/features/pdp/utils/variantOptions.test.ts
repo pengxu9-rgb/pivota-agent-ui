@@ -41,4 +41,14 @@ describe('variantOptions combined color/size handling', () => {
     ).toBe('v2');
     expect(extractAttributeOptions(variants[0])).toEqual([]);
   });
+
+  it('drops placeholder single-variant title options from attribute chips', () => {
+    expect(
+      extractAttributeOptions({
+        variant_id: 'default',
+        title: 'Default Title',
+        options: [{ name: 'Title', value: 'Default Title' }],
+      }),
+    ).toEqual([]);
+  });
 });

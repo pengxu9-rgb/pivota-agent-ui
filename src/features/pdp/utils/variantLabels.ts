@@ -11,9 +11,15 @@ export function isPlaceholderVariantTitle(title: unknown): boolean {
   return !normalized || VARIANT_PLACEHOLDER_TITLE_RE.test(normalized);
 }
 
+function isPlaceholderTitleOption(option: { name?: unknown; value?: unknown } | null | undefined): boolean {
+  const normalizedName = String(option?.name || '').trim().toLowerCase();
+  return normalizedName === 'title' && isPlaceholderVariantTitle(option?.value);
+}
+
 export function getVariantOptionSummary(options: Variant['options'] | undefined): string {
   if (!Array.isArray(options) || !options.length) return '';
   return options
+    .filter((option) => !isPlaceholderTitleOption(option))
     .map((option) => String(option?.value || '').trim())
     .filter(Boolean)
     .join(' · ');

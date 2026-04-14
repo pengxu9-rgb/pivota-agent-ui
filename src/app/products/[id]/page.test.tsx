@@ -326,6 +326,7 @@ describe('ProductDetailPage canonical PDP loading', () => {
 
     renderPage();
 
+    expect(screen.getByTestId('pdp-loading-scrim')).toBeInTheDocument();
     expect(screen.getByRole('status')).toHaveTextContent('Loading products');
   });
 
