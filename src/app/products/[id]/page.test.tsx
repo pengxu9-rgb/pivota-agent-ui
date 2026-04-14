@@ -691,7 +691,7 @@ describe('ProductDetailPage canonical PDP loading', () => {
       expect.objectContaining({
         product_id: 'prod_1',
         include: ['similar'],
-        timeout_ms: 6500,
+        timeout_ms: 14000,
         cache_bypass: true,
       }),
     );
@@ -734,7 +734,7 @@ describe('ProductDetailPage canonical PDP loading', () => {
       expect.objectContaining({
         product_id: 'prod_1',
         include: ['similar'],
-        timeout_ms: 6500,
+        timeout_ms: 14000,
         cache_bypass: true,
       }),
     );
@@ -772,7 +772,7 @@ describe('ProductDetailPage canonical PDP loading', () => {
       expect.objectContaining({
         product_id: 'prod_1',
         include: ['similar'],
-        timeout_ms: 6500,
+        timeout_ms: 14000,
         cache_bypass: true,
       }),
     );
