@@ -15,7 +15,7 @@ export default function ProductPageLoading() {
         </div>
       </div>
       <div className="pointer-events-none fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 backdrop-blur-[2px]">
-        <div className="rounded-lg bg-white/90 px-4 py-2 text-sm font-semibold text-slate-900 shadow-[0_10px_35px_rgba(0,0,0,0.2)]">
+        <div className="rounded-[8px] bg-white/90 px-4 py-2 text-sm font-semibold text-slate-900 shadow-[0_10px_35px_rgba(0,0,0,0.2)]">
           Loading products
         </div>
       </div>
