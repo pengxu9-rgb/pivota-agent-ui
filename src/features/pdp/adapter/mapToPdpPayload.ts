@@ -353,7 +353,8 @@ function buildDetailSections(product: ProductResponse, raw: any): DetailSection[
 }
 
 function buildReviewsPreview(product: ProductResponse, raw: any): ReviewsPreviewData | null {
-  const merchantFaqQuestions = Array.isArray(raw?.pdp_faq_items)
+  type ReviewQuestion = NonNullable<ReviewsPreviewData['questions']>[number];
+  const merchantFaqQuestions: ReviewQuestion[] = Array.isArray(raw?.pdp_faq_items)
     ? raw.pdp_faq_items
         .map((item: any) => ({
           question: String(item?.question || ''),
@@ -361,7 +362,7 @@ function buildReviewsPreview(product: ProductResponse, raw: any): ReviewsPreview
           source: 'merchant_faq',
           source_label: 'Official FAQ',
         }))
-        .filter((item) => item.question)
+        .filter((item: ReviewQuestion) => item.question)
     : [];
   const normalizeStarDistributionPercent = (value: unknown): number | undefined => {
     const rawNum = typeof value === 'string' ? Number(value.replace('%', '').trim()) : Number(value);
