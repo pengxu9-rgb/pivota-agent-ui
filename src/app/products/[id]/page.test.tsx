@@ -1,5 +1,5 @@
 import React from 'react';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import ProductDetailPage from './page';
@@ -90,7 +90,8 @@ vi.mock('@/features/pdp/containers/GenericPDPContainer', () => ({
     payload: {
       product: { title: string; merchant_id?: string; product_id?: string; variants?: any[] };
       offers?: any[];
-      modules?: Array<{ type?: string; data?: { items?: unknown[] } }>;
+      modules?: Array<{ type?: string; data?: { items?: unknown[]; review_count?: number } }>;
+      x_reviews_state?: string;
       x_recommendations_state?: string;
     };
     onAddToCart: (args: any) => void;
@@ -131,6 +132,10 @@ vi.mock('@/features/pdp/containers/GenericPDPContainer', () => ({
       <div data-testid="recommendations-count">
         {payload.modules?.find((module) => module.type === 'recommendations')?.data?.items?.length ?? 0}
       </div>
+      <div data-testid="reviews-count">
+        {payload.modules?.find((module) => module.type === 'reviews_preview')?.data?.review_count ?? 0}
+      </div>
+      <div data-testid="reviews-state">{payload.x_reviews_state ?? ''}</div>
       <div data-testid="recommendations-state">{payload.x_recommendations_state ?? ''}</div>
     </div>
   ),
@@ -231,6 +236,20 @@ const canonicalPayload = {
 const canonicalLoadingPayload = {
   ...canonicalPayload,
   modules: canonicalPayload.modules.filter((module) => module.type !== 'recommendations'),
+  x_recommendations_state: 'loading',
+} as const;
+
+const canonicalBackfillLoadingPayload = {
+  ...canonicalPayload,
+  modules: [],
+  x_reviews_state: 'loading',
+  x_recommendations_state: 'loading',
+} as const;
+
+const canonicalWithReviewsPayload = {
+  ...canonicalBackfillLoadingPayload,
+  modules: canonicalPayload.modules.filter((module) => module.type === 'reviews_preview'),
+  x_reviews_state: 'ready',
   x_recommendations_state: 'loading',
 } as const;
 
@@ -581,6 +600,53 @@ describe('ProductDetailPage canonical PDP loading', () => {
     await screen.findByTestId('generic-pdp');
     await waitFor(() => {
       expect(recordBrowseHistoryEventMock).not.toHaveBeenCalled();
+    });
+  });
+
+  it('renders reviews before a slow similar backfill finishes', async () => {
+    let resolveSimilar!: (value: { kind: string }) => void;
+    const similarResponse = new Promise<{ kind: string }>((resolve) => {
+      resolveSimilar = resolve;
+    });
+
+    getPdpV2Mock.mockImplementation(async (args: { include?: string[] }) => {
+      if (Array.isArray(args?.include) && args.include.length === 1 && args.include[0] === 'reviews_preview') {
+        return { kind: 'reviews-success' };
+      }
+      if (Array.isArray(args?.include) && args.include.length === 1 && args.include[0] === 'similar') {
+        return similarResponse;
+      }
+      return { kind: 'initial' };
+    });
+
+    mapPdpV2ToPdpPayloadMock.mockImplementation((response: { kind?: string }) => {
+      if (response?.kind === 'reviews-success') {
+        return canonicalWithReviewsPayload;
+      }
+      if (response?.kind === 'similar-success') {
+        return canonicalWithSimilarPayload;
+      }
+      return canonicalBackfillLoadingPayload;
+    });
+
+    renderPage();
+
+    await screen.findByTestId('generic-pdp');
+    await waitFor(() => {
+      expect(screen.getByTestId('reviews-state')).toHaveTextContent('ready');
+      expect(screen.getByTestId('reviews-count')).toHaveTextContent('12');
+    });
+    expect(screen.getByTestId('recommendations-state')).toHaveTextContent('loading');
+    expect(screen.getByTestId('recommendations-count')).toHaveTextContent('0');
+
+    await act(async () => {
+      resolveSimilar({ kind: 'similar-success' });
+      await similarResponse;
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('recommendations-state')).toHaveTextContent('ready');
+      expect(screen.getByTestId('recommendations-count')).toHaveTextContent('2');
     });
   });
 
