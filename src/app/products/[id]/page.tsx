@@ -424,15 +424,8 @@ function shouldRetryWithCoreOnlyPdp(err: unknown): boolean {
 }
 function ProductDetailLoading({ label }: { label: string }) {
   return (
-    <div className="min-h-screen bg-background">
-      <div className="mx-auto max-w-md px-4 pt-6">
-        <div className="rounded-2xl border border-border/60 bg-card/60 px-4 py-3">
-          <div className="flex items-center justify-center gap-2 text-sm font-medium text-foreground/90">
-            <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary/30 border-t-primary" />
-            <span>{label}</span>
-          </div>
-        </div>
-
+    <div className="relative min-h-screen bg-background">
+      <div className="mx-auto max-w-md px-4 pt-6 opacity-80">
         <div className="flex items-center gap-3">
           <div className="h-10 w-10 rounded-full bg-muted/25 animate-pulse" />
           <div className="h-10 flex-1 rounded-full bg-muted/20 animate-pulse" />
@@ -447,8 +440,12 @@ function ProductDetailLoading({ label }: { label: string }) {
           <div className="h-5 w-3/4 rounded bg-muted/20 animate-pulse" />
           <div className="h-4 w-1/2 rounded bg-muted/20 animate-pulse" />
         </div>
-
-        <div className="mt-6 text-center text-sm text-muted-foreground">{label}</div>
+      </div>
+      <div className="pointer-events-none fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 backdrop-blur-[2px]">
+        <div className="flex items-center gap-2 rounded-lg bg-white/90 px-4 py-2 text-sm font-semibold text-slate-900 shadow-[0_10px_35px_rgba(0,0,0,0.2)]">
+          <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-slate-900" />
+          <span>{label}</span>
+        </div>
       </div>
     </div>
   );
@@ -1491,7 +1488,7 @@ export default function ProductDetailPage({ params }: Props) {
   };
 
   if (loading && !pdpPayload) {
-    return <ProductDetailLoading label="Loading product…" />;
+    return <ProductDetailLoading label="Loading products" />;
   }
 
   if (!loading && !pdpPayload && sellerCandidates?.length) {
