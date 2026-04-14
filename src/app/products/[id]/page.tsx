@@ -925,6 +925,28 @@ export default function ProductDetailPage({ params }: Props) {
           return { reviews, recommendations };
         };
 
+        const shouldRetryEmptySimilar = (payload: PDPPayload | null) => {
+          const { recommendations } = extractModules(payload);
+          const data = recommendations?.data as any;
+          const items = Array.isArray(data?.items) ? data.items : [];
+          const metadata = data?.metadata && typeof data.metadata === 'object' ? data.metadata : {};
+          const reasonCodes = new Set(
+            Array.isArray(metadata.low_confidence_reason_codes)
+              ? metadata.low_confidence_reason_codes
+                  .map((item: unknown) => String(item || '').trim())
+                  .filter(Boolean)
+              : [],
+          );
+
+          return Boolean(
+            recommendations &&
+              items.length === 0 &&
+              (data?.status === 'empty' ||
+                String(metadata.similar_status || '').toLowerCase() === 'unavailable' ||
+                reasonCodes.has('UNDERFILL_FOR_QUALITY')),
+          );
+        };
+
         let [reviewOnlyV2, similarOnlyV2] = await Promise.all([
           needReviews
             ? fetchModuleWithBudget(['reviews_preview'], reviewsInitialTimeoutMs)
@@ -934,10 +956,24 @@ export default function ProductDetailPage({ params }: Props) {
             : Promise.resolve({ response: null, nonRetryable: false, code: '' }),
         ]);
 
-        if (needSimilar && shouldRetryTimeout(similarOnlyV2) && remainingMs() > 500) {
-          similarOnlyV2 = await fetchModuleWithBudget(['similar'], similarRetryTimeoutMs, {
+        let similarOnlyPayload: PDPPayload | null = similarOnlyV2.response
+          ? mapPdpV2ToPdpPayload(similarOnlyV2.response)
+          : null;
+
+        if (
+          needSimilar &&
+          (shouldRetryTimeout(similarOnlyV2) || shouldRetryEmptySimilar(similarOnlyPayload)) &&
+          remainingMs() > 500
+        ) {
+          const retrySimilarOnlyV2 = await fetchModuleWithBudget(['similar'], similarRetryTimeoutMs, {
             cacheBypass: true,
           });
+          if (retrySimilarOnlyV2.response || shouldRetryTimeout(similarOnlyV2)) {
+            similarOnlyV2 = retrySimilarOnlyV2;
+            similarOnlyPayload = retrySimilarOnlyV2.response
+              ? mapPdpV2ToPdpPayload(retrySimilarOnlyV2.response)
+              : null;
+          }
         }
 
         if (cancelled) return;
@@ -956,7 +992,6 @@ export default function ProductDetailPage({ params }: Props) {
 
         if (similarOnlyV2.response) {
           similarRequestSucceeded = true;
-          const similarOnlyPayload = mapPdpV2ToPdpPayload(similarOnlyV2.response);
           const extractedSimilarOnly = extractModules(similarOnlyPayload);
           recModule = extractedSimilarOnly.recommendations || null;
         }
