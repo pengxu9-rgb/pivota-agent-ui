@@ -173,4 +173,78 @@ describe('ProductsPage', () => {
 
     expect(screen.getByText('Cloud Cream')).toBeInTheDocument();
   });
+
+  it('does not start duplicate load-more requests while the same cursor is in flight', async () => {
+    let resolveSecondPage: ((value: unknown) => void) | null = null;
+
+    getShoppingDiscoveryFeedMock
+      .mockResolvedValueOnce({
+        products: [
+          {
+            product_id: 'prod_1',
+            merchant_id: 'merch_1',
+            title: 'Barrier Serum',
+          },
+        ],
+        cursor_info: {
+          next_cursor: 'cursor_2',
+          has_next_page: true,
+        },
+        page_info: {
+          page: 1,
+          page_size: 1,
+          has_more: true,
+        },
+      })
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveSecondPage = resolve;
+          }),
+      );
+
+    render(<ProductsPage />);
+
+    await waitFor(() => {
+      expect(getShoppingDiscoveryFeedMock).toHaveBeenCalledTimes(1);
+    });
+
+    await act(async () => {
+      intersectionCallback?.([{ isIntersecting: true }]);
+      intersectionCallback?.([{ isIntersecting: true }]);
+    });
+
+    expect(getShoppingDiscoveryFeedMock).toHaveBeenCalledTimes(2);
+    expect(getShoppingDiscoveryFeedMock).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        cursor: 'cursor_2',
+        limit: 36,
+        timeout_ms: 15000,
+      }),
+    );
+
+    await act(async () => {
+      resolveSecondPage?.({
+        products: [
+          {
+            product_id: 'prod_2',
+            merchant_id: 'merch_1',
+            title: 'Cloud Cream',
+          },
+        ],
+        cursor_info: {
+          next_cursor: null,
+          has_next_page: false,
+        },
+        page_info: {
+          page: 2,
+          page_size: 1,
+          has_more: false,
+        },
+      });
+    });
+
+    expect(screen.getByText('Cloud Cream')).toBeInTheDocument();
+  });
 });

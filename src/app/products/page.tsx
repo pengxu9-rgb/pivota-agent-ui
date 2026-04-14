@@ -46,6 +46,7 @@ export default function ProductsPage() {
   const noGrowthCountRef = useRef(0);
   const activeQueryRef = useRef('');
   const nextCursorRef = useRef<string | null>(null);
+  const loadMoreInFlightCursorRef = useRef<string | null>(null);
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
   const { items, open } = useCartStore();
 
@@ -150,6 +151,7 @@ export default function ProductsPage() {
   const executeSearch = useCallback(
     async (query: string) => {
       noGrowthCountRef.current = 0;
+      loadMoreInFlightCursorRef.current = null;
       setNextCursor(null);
       nextCursorRef.current = null;
       setHasMore(true);
@@ -191,7 +193,13 @@ export default function ProductsPage() {
     if (loading || isLoadingMore || !hasMore) return;
     const cursor = nextCursorRef.current;
     if (!cursor) return;
-    void executeSearchPage(activeQueryRef.current, cursor, { append: true });
+    if (loadMoreInFlightCursorRef.current) return;
+    loadMoreInFlightCursorRef.current = cursor;
+    void executeSearchPage(activeQueryRef.current, cursor, { append: true }).finally(() => {
+      if (loadMoreInFlightCursorRef.current === cursor) {
+        loadMoreInFlightCursorRef.current = null;
+      }
+    });
   }, [executeSearchPage, hasMore, isLoadingMore, loading]);
 
   useEffect(() => {
