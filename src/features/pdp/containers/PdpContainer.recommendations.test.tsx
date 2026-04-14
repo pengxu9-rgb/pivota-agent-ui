@@ -7,7 +7,6 @@ import type { PDPPayload } from '@/features/pdp/types';
 
 const routerPushMock = vi.fn();
 const getSimilarProductsMainlineMock = vi.fn();
-const getProductDetailExactMock = vi.fn();
 const getPdpV2Mock = vi.fn();
 const toastMessageMock = vi.fn();
 const toastSuccessMock = vi.fn();
@@ -77,7 +76,6 @@ vi.mock('@/lib/api', () => ({
   listQuestions: vi.fn(async () => ({ items: [] })),
   postQuestion: vi.fn(async () => ({ question_id: 1 })),
   getSimilarProductsMainline: (...args: unknown[]) => getSimilarProductsMainlineMock(...args),
-  getProductDetailExact: (...args: unknown[]) => getProductDetailExactMock(...args),
   getPdpV2: (...args: unknown[]) => getPdpV2Mock(...args),
 }));
 
@@ -163,6 +161,81 @@ function buildPayload(args?: {
   };
 }
 
+function buildQuickActionPdpV2Response(args?: {
+  product_id?: string;
+  merchant_id?: string;
+  merchant_name?: string;
+  title?: string;
+  description?: string;
+  image_url?: string;
+  source?: string;
+  destination_url?: string;
+  variants?: any[];
+  offers?: any[];
+  default_variant_id?: string;
+}) {
+  const productId = args?.product_id || 'prod_1';
+  const merchantId = args?.merchant_id || 'external_seed';
+  const variants =
+    args?.variants || [
+      {
+        variant_id: 'default',
+        title: 'Default',
+        price: { current: { amount: 99, currency: 'USD' } },
+        availability: { in_stock: true, available_quantity: 3 },
+      },
+    ];
+  const firstVariant = variants[0];
+  const defaultVariantId = args?.default_variant_id || firstVariant?.variant_id || 'default';
+  const price = firstVariant?.price?.current || { amount: 99, currency: 'USD' };
+  const offers = args?.offers || [];
+
+  return {
+    subject: {
+      type: 'product',
+      id: productId,
+    },
+    modules: [
+      {
+        type: 'canonical',
+        data: {
+          pdp_payload: {
+            schema_version: '1.0.0',
+            page_type: 'product_detail',
+            tracking: {
+              page_request_id: 'pdp_quick_action',
+              entry_point: 'agent',
+            },
+            product: {
+              product_id: productId,
+              merchant_id: merchantId,
+              title: args?.title || 'Product 1',
+              description: args?.description || 'Quick action product',
+              image_url: args?.image_url || 'https://example.com/product.jpg',
+              ...(args?.source ? { source: args.source } : {}),
+              ...(args?.destination_url ? { destination_url: args.destination_url } : {}),
+              default_variant_id: defaultVariantId,
+              variants,
+              price: { current: price },
+              availability: { in_stock: true, available_quantity: 9 },
+            },
+            modules: [],
+            actions: [],
+          },
+        },
+      },
+      {
+        type: 'offers',
+        data: {
+          offers,
+          offers_count: offers.length,
+          ...(offers[0]?.offer_id ? { default_offer_id: offers[0].offer_id } : {}),
+        },
+      },
+    ],
+  };
+}
+
 beforeAll(() => {
   vi.stubGlobal('IntersectionObserver', IntersectionObserverMock as unknown as typeof IntersectionObserver);
   vi.spyOn(window, 'open').mockImplementation(windowOpenMock as any);
@@ -176,7 +249,6 @@ describe('PdpContainer recommendations interactions', () => {
   beforeEach(() => {
     routerPushMock.mockReset();
     getSimilarProductsMainlineMock.mockReset();
-    getProductDetailExactMock.mockReset();
     getPdpV2Mock.mockReset();
     toastMessageMock.mockReset();
     toastSuccessMock.mockReset();
@@ -206,6 +278,7 @@ describe('PdpContainer recommendations interactions', () => {
     expect(screen.queryByRole('button', { name: /view all similar/i })).toBeNull();
     expect(screen.queryByRole('button', { name: /load more similar products/i })).toBeNull();
     expect(screen.getByRole('button', { name: /open product 1/i })).toBeInTheDocument();
+    expect(getPdpV2Mock).not.toHaveBeenCalled();
   });
 
   it('auto-loads more similar products when the sentinel intersects', async () => {
@@ -303,42 +376,41 @@ describe('PdpContainer recommendations interactions', () => {
   });
 
   it('opens a quick-buy sheet for multi-variant internal products and routes to checkout after selection', async () => {
-    getProductDetailExactMock.mockResolvedValue({
-      product_id: 'prod_1',
-      merchant_id: 'merch_internal',
-      merchant_name: 'Internal Shop',
-      title: 'Product 1',
-      description: 'Internal product',
-      price: 39,
-      currency: 'USD',
-      image_url: 'https://example.com/internal.jpg',
-      in_stock: true,
-      variants: [
-        {
-          variant_id: 'var_s',
-          title: 'Small',
-          price: { current: { amount: 39, currency: 'USD' } },
-          availability: { in_stock: true, available_quantity: 4 },
-        },
-        {
-          variant_id: 'var_l',
-          title: 'Large',
-          price: { current: { amount: 49, currency: 'USD' } },
-          availability: { in_stock: true, available_quantity: 6 },
-        },
-      ],
-      default_offer_id: 'offer_internal',
-      offers: [
-        {
-          offer_id: 'offer_internal',
-          merchant_id: 'merch_internal',
-          merchant_name: 'Internal Shop',
-          product_id: 'prod_1',
-          price: { amount: 39, currency: 'USD' },
-          checkout_url: 'https://checkout.example.com',
-        },
-      ],
-    });
+    getPdpV2Mock.mockResolvedValue(
+      buildQuickActionPdpV2Response({
+        product_id: 'prod_1',
+        merchant_id: 'merch_internal',
+        merchant_name: 'Internal Shop',
+        title: 'Product 1',
+        description: 'Internal product',
+        image_url: 'https://example.com/internal.jpg',
+        default_variant_id: 'var_s',
+        variants: [
+          {
+            variant_id: 'var_s',
+            title: 'Small',
+            price: { current: { amount: 39, currency: 'USD' } },
+            availability: { in_stock: true, available_quantity: 4 },
+          },
+          {
+            variant_id: 'var_l',
+            title: 'Large',
+            price: { current: { amount: 49, currency: 'USD' } },
+            availability: { in_stock: true, available_quantity: 6 },
+          },
+        ],
+        offers: [
+          {
+            offer_id: 'offer_internal',
+            merchant_id: 'merch_internal',
+            merchant_name: 'Internal Shop',
+            product_id: 'prod_1',
+            price: { amount: 39, currency: 'USD' },
+            checkout_url: 'https://checkout.example.com',
+          },
+        ],
+      }),
+    );
 
     render(
       <PdpContainer
@@ -362,29 +434,35 @@ describe('PdpContainer recommendations interactions', () => {
     await waitFor(() => {
       expect(routerPushMock).toHaveBeenCalledWith(expect.stringMatching(/^\/order\?/));
     });
+    expect(getPdpV2Mock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        product_id: 'prod_1',
+        merchant_id: 'merch_internal',
+        include: ['offers', 'variant_selector'],
+      }),
+    );
   });
 
   it('opens the external merchant site for single-variant external products', async () => {
-    getProductDetailExactMock.mockResolvedValue({
-      product_id: 'prod_1',
-      merchant_id: 'external_seed',
-      title: 'Product 1',
-      description: 'External product',
-      price: 99,
-      currency: 'USD',
-      image_url: 'https://example.com/external.jpg',
-      in_stock: true,
-      source: 'external_seed',
-      destination_url: 'https://merchant.example.com/products/prod_1',
-      variants: [
-        {
-          variant_id: 'default',
-          title: 'Default',
-          price: { current: { amount: 99, currency: 'USD' } },
-          availability: { in_stock: true, available_quantity: 3 },
-        },
-      ],
-    });
+    getPdpV2Mock.mockResolvedValue(
+      buildQuickActionPdpV2Response({
+        product_id: 'prod_1',
+        merchant_id: 'external_seed',
+        title: 'Product 1',
+        description: 'External product',
+        image_url: 'https://example.com/external.jpg',
+        source: 'external_seed',
+        destination_url: 'https://merchant.example.com/products/prod_1',
+        variants: [
+          {
+            variant_id: 'default',
+            title: 'Default',
+            price: { current: { amount: 99, currency: 'USD' } },
+            availability: { in_stock: true, available_quantity: 3 },
+          },
+        ],
+      }),
+    );
 
     render(
       <PdpContainer
@@ -404,34 +482,16 @@ describe('PdpContainer recommendations interactions', () => {
         'noopener,noreferrer',
       );
     });
+    expect(getPdpV2Mock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        product_id: 'prod_1',
+        merchant_id: 'external_seed',
+        include: ['offers', 'variant_selector'],
+      }),
+    );
   });
 
   it('enriches placeholder external-seed variants from exact pdp v2 before opening the quick-action sheet', async () => {
-    getProductDetailExactMock.mockResolvedValue({
-      product_id: 'prod_1',
-      merchant_id: 'external_seed',
-      title: 'Oil La La',
-      description: 'Placeholder detail',
-      price: 28,
-      currency: 'USD',
-      image_url: 'https://example.com/oil-la-la.jpg',
-      in_stock: true,
-      destination_url: 'https://merchant.example.com/products/oil-la-la',
-      variants: [
-        {
-          variant_id: 'variant_1',
-          title: 'Variant 1',
-          price: { current: { amount: 28, currency: 'USD' } },
-          availability: { in_stock: true, available_quantity: 9 },
-        },
-        {
-          variant_id: 'variant_2',
-          title: 'Variant 2',
-          price: { current: { amount: 52, currency: 'USD' } },
-          availability: { in_stock: true, available_quantity: 4 },
-        },
-      ],
-    });
     getPdpV2Mock.mockResolvedValue({
       subject: {
         type: 'product',
@@ -540,8 +600,8 @@ describe('PdpContainer recommendations interactions', () => {
     );
   });
 
-  it('falls back to the full PDP when exact detail lookup fails', async () => {
-    getProductDetailExactMock.mockResolvedValue(null);
+  it('falls back to the full PDP when quick-action PDP v2 lookup fails', async () => {
+    getPdpV2Mock.mockRejectedValue(new Error('boom'));
 
     render(
       <PdpContainer
@@ -557,5 +617,12 @@ describe('PdpContainer recommendations interactions', () => {
     await waitFor(() => {
       expect(routerPushMock).toHaveBeenCalledWith(expect.stringContaining('/products/prod_1'));
     });
+    expect(getPdpV2Mock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        product_id: 'prod_1',
+        merchant_id: 'external_seed',
+        include: ['offers', 'variant_selector'],
+      }),
+    );
   });
 });

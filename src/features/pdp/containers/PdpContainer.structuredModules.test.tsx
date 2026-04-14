@@ -414,6 +414,44 @@ describe('PdpContainer structured PDP modules', () => {
     expect(screen.getAllByRole('button', { name: 'Buy Now' }).length).toBeGreaterThan(0);
   });
 
+  it('does not render legacy shade modules while keeping shade variants selectable', () => {
+    const payload = buildBeautyPayload();
+    payload.product.title = 'Pout Preserve Peptide Lip Treatment';
+    payload.product.default_variant_id = 'shade_grape';
+    payload.product.variants = [
+      {
+        variant_id: 'shade_grape',
+        title: 'Grape Fizz',
+        options: [{ name: 'Shade', value: 'Grape Fizz' }],
+        price: { current: { amount: 22, currency: 'USD' } },
+        availability: { in_stock: true, available_quantity: 9 },
+      },
+      {
+        variant_id: 'shade_citrus',
+        title: 'Citrus Sunshine',
+        options: [{ name: 'Shade', value: 'Citrus Sunshine' }],
+        price: { current: { amount: 24, currency: 'USD' } },
+        availability: { in_stock: true, available_quantity: 9 },
+      },
+    ];
+    payload.product.price = { current: { amount: 22, currency: 'USD' } };
+
+    render(
+      <PdpContainer payload={payload} mode="beauty" onAddToCart={() => {}} onBuyNow={() => {}} />,
+    );
+
+    expect(screen.queryByText('Shade Matching')).not.toBeInTheDocument();
+    expect(screen.queryByText('Popular Looks')).not.toBeInTheDocument();
+    expect(screen.queryByText('Best For')).not.toBeInTheDocument();
+    expect(screen.queryByText('Shade Gallery')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Grape Fizz' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Citrus Sunshine' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Citrus Sunshine' }));
+
+    expect(screen.getAllByText('$24.00').length).toBeGreaterThan(0);
+  });
+
   it('falls back to legacy product_details when additive modules are absent', () => {
     const payload = buildBeautyPayload();
     payload.modules = payload.modules.filter(

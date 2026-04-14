@@ -254,6 +254,28 @@ const canonicalWithSimilarPayload = {
   x_recommendations_state: 'ready',
 } as const;
 
+const staleEmptySimilarPayload = {
+  ...canonicalLoadingPayload,
+  modules: [
+    ...canonicalLoadingPayload.modules,
+    {
+      module_id: 'recommendations',
+      type: 'recommendations',
+      priority: 90,
+      data: {
+        strategy: 'related_products',
+        status: 'empty',
+        items: [],
+        metadata: {
+          similar_status: 'unavailable',
+          low_confidence_reason_codes: ['UNDERFILL_FOR_QUALITY'],
+        },
+      },
+    },
+  ],
+  x_recommendations_state: 'ready',
+} as const;
+
 describe('ProductDetailPage canonical PDP loading', () => {
   beforeEach(() => {
     searchParamsValue = '';
@@ -599,6 +621,87 @@ describe('ProductDetailPage canonical PDP loading', () => {
         timeout_ms: 10500,
       }),
     );
+    expect(getPdpV2Mock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        product_id: 'prod_1',
+        include: ['similar'],
+        timeout_ms: 6500,
+        cache_bypass: true,
+      }),
+    );
+  });
+
+  it('retries similar backfill with cache bypass after stale empty underfill response', async () => {
+    getPdpV2Mock.mockImplementation(async (args: { include?: string[]; cache_bypass?: boolean }) => {
+      if (Array.isArray(args?.include) && args.include.length === 1 && args.include[0] === 'similar') {
+        return args.cache_bypass ? { kind: 'similar-success' } : { kind: 'similar-stale-empty' };
+      }
+      return { kind: 'initial' };
+    });
+
+    mapPdpV2ToPdpPayloadMock.mockImplementation((response: { kind?: string }) => {
+      if (response?.kind === 'similar-stale-empty') {
+        return staleEmptySimilarPayload;
+      }
+      if (response?.kind === 'similar-success') {
+        return canonicalWithSimilarPayload;
+      }
+      return canonicalLoadingPayload;
+    });
+
+    renderPage();
+
+    await screen.findByTestId('generic-pdp');
+    await waitFor(() => {
+      expect(screen.getByTestId('recommendations-count')).toHaveTextContent('2');
+      expect(screen.getByTestId('recommendations-state')).toHaveTextContent('ready');
+    });
+
+    expect(getPdpV2Mock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        product_id: 'prod_1',
+        include: ['similar'],
+        timeout_ms: 10500,
+      }),
+    );
+    expect(getPdpV2Mock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        product_id: 'prod_1',
+        include: ['similar'],
+        timeout_ms: 6500,
+        cache_bypass: true,
+      }),
+    );
+  });
+
+  it('keeps the stale empty similar module ready when cache-bypass retry fails', async () => {
+    const timeoutErr = Object.assign(new Error('The request timed out. Please retry.'), {
+      code: 'UPSTREAM_TIMEOUT',
+    });
+
+    getPdpV2Mock.mockImplementation(async (args: { include?: string[]; cache_bypass?: boolean }) => {
+      if (Array.isArray(args?.include) && args.include.length === 1 && args.include[0] === 'similar') {
+        if (args.cache_bypass) throw timeoutErr;
+        return { kind: 'similar-stale-empty' };
+      }
+      return { kind: 'initial' };
+    });
+
+    mapPdpV2ToPdpPayloadMock.mockImplementation((response: { kind?: string }) => {
+      if (response?.kind === 'similar-stale-empty') {
+        return staleEmptySimilarPayload;
+      }
+      return canonicalLoadingPayload;
+    });
+
+    renderPage();
+
+    await screen.findByTestId('generic-pdp');
+    await waitFor(() => {
+      expect(screen.getByTestId('recommendations-count')).toHaveTextContent('0');
+      expect(screen.getByTestId('recommendations-state')).toHaveTextContent('ready');
+    });
+
     expect(getPdpV2Mock).toHaveBeenCalledWith(
       expect.objectContaining({
         product_id: 'prod_1',

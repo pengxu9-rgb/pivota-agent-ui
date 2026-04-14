@@ -31,7 +31,6 @@ import type {
   Variant,
 } from '@/features/pdp/types';
 import {
-  getProductDetailExact,
   getPdpV2,
   getSimilarProductsMainline,
   listQuestions,
@@ -62,9 +61,7 @@ import { SimilarQuickActionSheet } from '@/features/pdp/sections/SimilarQuickAct
 import { BeautyReviewsSection } from '@/features/pdp/sections/BeautyReviewsSection';
 import { BeautyUgcGallery } from '@/features/pdp/sections/BeautyUgcGallery';
 import { BeautyRecentPurchases } from '@/features/pdp/sections/BeautyRecentPurchases';
-import { BeautyShadesSection } from '@/features/pdp/sections/BeautyShadesSection';
 import { BeautyDetailsSection } from '@/features/pdp/sections/BeautyDetailsSection';
-import { BeautyVariantSheet } from '@/features/pdp/sections/BeautyVariantSheet';
 import { GenericColorSheet, type GenericColorOption } from '@/features/pdp/sections/GenericColorSheet';
 import { GenericRecentPurchases } from '@/features/pdp/sections/GenericRecentPurchases';
 import { GenericStyleGallery } from '@/features/pdp/sections/GenericStyleGallery';
@@ -100,7 +97,6 @@ import {
   sanitizeHowToUseData,
   sanitizeIngredientsInciData,
 } from '@/features/pdp/utils/pdpDisplaySanitizers';
-import { isPlaceholderVariantTitle } from '@/features/pdp/utils/variantLabels';
 
 function nonEmptyText(value: unknown, fallback: string): string {
   const text = String(value ?? '').trim();
@@ -332,106 +328,89 @@ function getInitialVariantIdFromDetail(detail: ProductResponse, variants: Varian
   return candidateIds.find((candidateId) => variants.some((variant) => variant.variant_id === candidateId)) || variants[0]?.variant_id || '';
 }
 
-function getSimilarRawVariants(detail: ProductResponse): any[] {
-  if (Array.isArray((detail.raw_detail as any)?.variants)) {
-    return (detail.raw_detail as any).variants;
-  }
-  return Array.isArray(detail.variants) ? detail.variants : [];
-}
-
-function hasVariantOptions(variant: any): boolean {
-  if (Array.isArray(variant?.options)) return variant.options.length > 0;
-  if (variant?.options && typeof variant.options === 'object') {
-    return Object.keys(variant.options).length > 0;
-  }
-  return false;
-}
-
-function needsSimilarDetailPdpEnrichment(detail: ProductResponse): boolean {
-  const rawVariants = getSimilarRawVariants(detail);
-  if (rawVariants.length <= 1) return false;
-
-  return rawVariants.every((variant) => {
-    const title = String(
-      variant?.title || variant?.name || variant?.option_title || variant?.sku_name || '',
-    ).trim();
-    return isPlaceholderVariantTitle(title) && !hasVariantOptions(variant);
-  });
-}
-
-function mergeSimilarDetailWithPdpPayload(
-  detail: ProductResponse,
-  nextPayload: PDPPayload | null,
-): ProductResponse {
-  if (!nextPayload) return detail;
+function buildSimilarDetailFromPdpPayload(nextPayload: PDPPayload | null): ProductResponse | null {
+  if (!nextPayload) return null;
 
   const payloadProduct = nextPayload.product;
+  if (!payloadProduct?.product_id) return null;
   const payloadVariants = Array.isArray(payloadProduct.variants) ? payloadProduct.variants : [];
   const payloadOffers = Array.isArray(nextPayload.offers) ? nextPayload.offers : [];
-  const rawDetailBase =
-    detail.raw_detail && typeof detail.raw_detail === 'object' ? detail.raw_detail : {};
-  const payloadAmount = payloadProduct.price?.current?.amount;
-  const payloadCurrency = payloadProduct.price?.current?.currency;
+  const productAny = payloadProduct as any;
+  const defaultVariant =
+    payloadVariants.find((variant) => variant.variant_id === payloadProduct.default_variant_id) ||
+    payloadVariants[0] ||
+    null;
+  const firstOffer = payloadOffers[0] as any;
+  const payloadAmount =
+    payloadProduct.price?.current?.amount ??
+    defaultVariant?.price?.current?.amount ??
+    firstOffer?.price?.amount;
+  const payloadCurrency =
+    payloadProduct.price?.current?.currency ??
+    defaultVariant?.price?.current?.currency ??
+    firstOffer?.price?.currency ??
+    'USD';
   const payloadMerchantName =
     payloadOffers
       .map((offer) => String(offer?.merchant_name || '').trim())
-      .find(Boolean) || detail.merchant_name;
+      .find(Boolean) || undefined;
 
   return {
-    ...detail,
-    product_group_id: nextPayload.product_group_id || detail.product_group_id,
-    merchant_id: payloadProduct.merchant_id || detail.merchant_id,
+    product_id: payloadProduct.product_id,
+    product_group_id: nextPayload.product_group_id,
+    merchant_id: payloadProduct.merchant_id,
     merchant_name: payloadMerchantName,
-    sellable_item_group_id: nextPayload.sellable_item_group_id || detail.sellable_item_group_id,
-    product_line_id: nextPayload.product_line_id || detail.product_line_id,
-    review_family_id: nextPayload.review_family_id || detail.review_family_id,
-    identity_confidence:
-      nextPayload.identity_confidence != null
-        ? nextPayload.identity_confidence
-        : detail.identity_confidence,
-    match_basis:
-      Array.isArray(nextPayload.match_basis) && nextPayload.match_basis.length
-        ? nextPayload.match_basis
-        : detail.match_basis,
-    canonical_scope: nextPayload.canonical_scope || detail.canonical_scope,
-    title: payloadProduct.title || detail.title,
-    description: payloadProduct.description || detail.description,
+    sellable_item_group_id: nextPayload.sellable_item_group_id,
+    product_line_id: nextPayload.product_line_id,
+    review_family_id: nextPayload.review_family_id,
+    identity_confidence: nextPayload.identity_confidence,
+    match_basis: nextPayload.match_basis,
+    canonical_scope: nextPayload.canonical_scope,
+    title: payloadProduct.title || 'Product',
+    description: payloadProduct.description || '',
     price:
       Number.isFinite(Number(payloadAmount)) && payloadAmount != null
         ? Number(payloadAmount)
-        : detail.price,
-    currency: payloadCurrency || detail.currency,
-    image_url: payloadProduct.image_url || detail.image_url,
+        : 0,
+    currency: payloadCurrency || 'USD',
+    image_url: payloadProduct.image_url,
     in_stock:
       typeof payloadProduct.availability?.in_stock === 'boolean'
         ? payloadProduct.availability.in_stock
-        : detail.in_stock,
-    source: payloadProduct.source || detail.source,
-    commerce_mode: payloadProduct.commerce_mode || detail.commerce_mode,
-    checkout_handoff: payloadProduct.checkout_handoff || detail.checkout_handoff,
-    purchase_route: payloadProduct.purchase_route || detail.purchase_route,
-    external_redirect_url: payloadProduct.external_redirect_url || detail.external_redirect_url,
-    externalRedirectUrl: payloadProduct.externalRedirectUrl || detail.externalRedirectUrl,
-    affiliate_url: payloadProduct.affiliate_url || detail.affiliate_url,
-    external_url: payloadProduct.external_url || detail.external_url,
-    redirect_url: payloadProduct.redirect_url || detail.redirect_url,
-    url: payloadProduct.url || detail.url,
-    canonical_url: payloadProduct.canonical_url || detail.canonical_url,
-    destination_url: payloadProduct.destination_url || detail.destination_url,
-    source_url: payloadProduct.source_url || detail.source_url,
-    platform: payloadProduct.platform || detail.platform,
-    variants: payloadVariants.length ? payloadVariants : detail.variants,
-    offers: payloadOffers.length ? payloadOffers : detail.offers,
+        : true,
+    brand: payloadProduct.brand?.name,
+    category: Array.isArray(payloadProduct.category_path)
+      ? payloadProduct.category_path.join(' / ')
+      : undefined,
+    tags: payloadProduct.tags,
+    department: payloadProduct.department,
+    source: payloadProduct.source,
+    commerce_mode: payloadProduct.commerce_mode,
+    checkout_handoff: payloadProduct.checkout_handoff,
+    purchase_route: payloadProduct.purchase_route,
+    external_redirect_url: payloadProduct.external_redirect_url,
+    externalRedirectUrl: productAny.externalRedirectUrl,
+    affiliate_url: productAny.affiliate_url,
+    external_url: productAny.external_url,
+    redirect_url: productAny.redirect_url,
+    url: payloadProduct.url,
+    canonical_url: payloadProduct.canonical_url,
+    destination_url: payloadProduct.destination_url,
+    source_url: payloadProduct.source_url,
+    platform: productAny.platform,
+    variants: payloadVariants,
+    offers: payloadOffers,
     offers_count:
       nextPayload.offers_count != null
         ? nextPayload.offers_count
         : payloadOffers.length
           ? payloadOffers.length
-          : detail.offers_count,
-    default_offer_id: nextPayload.default_offer_id || detail.default_offer_id,
-    best_price_offer_id: nextPayload.best_price_offer_id || detail.best_price_offer_id,
+          : undefined,
+    default_offer_id: nextPayload.default_offer_id,
+    best_price_offer_id: nextPayload.best_price_offer_id,
+    variant_id: payloadProduct.default_variant_id,
     raw_detail: {
-      ...rawDetailBase,
+      ...productAny,
       ...(payloadProduct.default_variant_id
         ? { default_variant_id: payloadProduct.default_variant_id }
         : {}),
@@ -441,7 +420,7 @@ function mergeSimilarDetailWithPdpPayload(
   };
 }
 
-async function fetchSimilarExactDetail(args: {
+async function fetchSimilarPdpDetail(args: {
   product_id: string;
   merchant_id?: string | null;
   timeout_ms?: number;
@@ -450,31 +429,17 @@ async function fetchSimilarExactDetail(args: {
   const productId = String(args.product_id || '').trim();
   if (!merchantId || !productId) return null;
 
-  let detail = await getProductDetailExact({
-    product_id: productId,
-    merchant_id: merchantId,
-    timeout_ms: args.timeout_ms,
-  });
-  if (!detail) return null;
-
-  if (needsSimilarDetailPdpEnrichment(detail)) {
-    try {
-      const exactPdp = await getPdpV2({
-        product_id: productId,
-        merchant_id: merchantId,
-        include: ['offers', 'variant_selector'],
-        timeout_ms: args.timeout_ms,
-      });
-      detail = mergeSimilarDetailWithPdpPayload(
-        detail,
-        mapPdpV2ToPdpPayload(exactPdp),
-      );
-    } catch {
-      // Keep the exact product-detail result when PDP enrichment fails.
-    }
+  try {
+    const exactPdp = await getPdpV2({
+      product_id: productId,
+      merchant_id: merchantId,
+      include: ['offers', 'variant_selector'],
+      timeout_ms: args.timeout_ms,
+    });
+    return buildSimilarDetailFromPdpPayload(mapPdpV2ToPdpPayload(exactPdp));
+  } catch {
+    return null;
   }
-
-  return detail;
 }
 
 function getDisplayMerchantName(offer: Offer | null | undefined, detail: ProductResponse | null | undefined): string | null {
@@ -837,21 +802,6 @@ function buildRecommendationProductKey(
   return `${String(item.merchant_id || '').trim()}:${String(item.product_id || '').trim()}`;
 }
 
-function needsRecommendationEnrichment(
-  item: RecommendationsData['items'][number],
-): boolean {
-  if (!item.product_id || !item.merchant_id) return false;
-  if (item.card_highlight || item.card_subtitle || item.description) return false;
-  if (
-    item.search_card?.highlight_candidate ||
-    item.search_card?.compact_candidate ||
-    item.shopping_card?.highlight
-  ) {
-    return false;
-  }
-  return true;
-}
-
 function normalizeSimilarMetadata(
   metadata:
     | RecommendationsData['metadata']
@@ -1002,9 +952,7 @@ export function PdpContainer({
   const recentPurchasesTracked = useRef(false);
   const ugcTracked = useRef(false);
   const similarTracked = useRef(false);
-  const similarEnrichmentRequestedRef = useRef<Set<string>>(new Set());
   const [activeTab, setActiveTab] = useState('product');
-  const [showShadeSheet, setShowShadeSheet] = useState(false);
   const [showColorSheet, setShowColorSheet] = useState(false);
   const [showOfferSheet, setShowOfferSheet] = useState(false);
   const [activeMediaIndex, setActiveMediaIndex] = useState(0);
@@ -1325,7 +1273,6 @@ export function PdpContainer({
     recentPurchasesTracked.current = false;
     ugcTracked.current = false;
     similarTracked.current = false;
-    similarEnrichmentRequestedRef.current.clear();
   }, [payload.product.product_id]);
 
   useEffect(() => {
@@ -1377,84 +1324,6 @@ export function PdpContainer({
     payloadRecommendations?.metadata,
     payloadRecommendations?.strategy,
     recommendationCurrencyFallback,
-  ]);
-
-  useEffect(() => {
-    const candidates = similarItems
-      .slice(0, Math.max(similarVisibleCount, SIMILAR_PAGE_SIZE))
-      .filter((item) => item.merchant_id)
-      .filter((item) => {
-        const key = buildRecommendationProductKey(item);
-        if (similarDetailCache[key]) return false;
-        return needsRecommendationEnrichment(item) || Boolean(item.merchant_id);
-      })
-      .filter((item) => !similarEnrichmentRequestedRef.current.has(buildRecommendationProductKey(item)));
-
-    if (!candidates.length) return;
-
-    candidates.forEach((item) => {
-      similarEnrichmentRequestedRef.current.add(buildRecommendationProductKey(item));
-    });
-
-    let cancelled = false;
-
-    void Promise.all(
-      candidates.map(async (item) => {
-        const detail = await fetchSimilarExactDetail({
-          product_id: item.product_id,
-          merchant_id: item.merchant_id,
-          timeout_ms: 4500,
-        });
-        if (!detail) return null;
-        const resolvedVariants = buildProductVariants(detail, detail.raw_detail);
-        const normalized = normalizeRecommendationItems(
-          [
-            {
-              ...detail,
-              variant_count: resolvedVariants.length || undefined,
-            },
-          ],
-          recommendationCurrencyFallback,
-        );
-        return {
-          key: buildRecommendationProductKey(item),
-          detail,
-          item: normalized[0] || null,
-        };
-      }),
-    ).then((results) => {
-      if (cancelled) return;
-      const enrichedResults = results.filter(Boolean) as Array<{
-        key: string;
-        detail: ProductResponse;
-        item: RecommendationsData['items'][number] | null;
-      }>;
-      if (!enrichedResults.length) return;
-      setSimilarDetailCache((prev) => {
-        const next = { ...prev };
-        let changed = false;
-        for (const result of enrichedResults) {
-          if (next[result.key]) continue;
-          next[result.key] = result.detail;
-          changed = true;
-        }
-        return changed ? next : prev;
-      });
-      const enrichedItems = enrichedResults
-        .map((result) => result.item)
-        .filter(Boolean) as RecommendationsData['items'];
-      if (!enrichedItems.length) return;
-      setSimilarItems((prev) => mergeRecommendationItems(prev, enrichedItems).items);
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    recommendationCurrencyFallback,
-    similarDetailCache,
-    similarItems,
-    similarVisibleCount,
   ]);
 
   const recommendations = useMemo<RecommendationsData>(
@@ -1693,7 +1562,6 @@ export function PdpContainer({
     similarItems.length,
   ]);
 
-  const showShades = resolvedMode === 'beauty' && variants.length > 0;
   const showSizeGuide = resolvedMode === 'generic' && !!payload.product.size_guide;
   const hasInsights = Boolean(productIntel?.product_intel_core);
   const showSizeHelper = useMemo(() => {
@@ -1748,12 +1616,11 @@ export function PdpContainer({
       { id: 'product', label: 'Product' },
       ...(hasInsights ? [{ id: 'insights', label: 'Insights' }] : []),
       ...(hasReviews ? [{ id: 'reviews', label: 'Reviews' }] : []),
-      ...(showShades ? [{ id: 'shades', label: 'Shades' }] : []),
       ...(showSizeGuide ? [{ id: 'size', label: 'Size' }] : []),
       { id: 'details', label: 'Details' },
       ...(showRecommendationsSection ? [{ id: 'similar', label: 'Similar' }] : []),
     ];
-  }, [hasInsights, hasReviews, showShades, showSizeGuide, showRecommendationsSection]);
+  }, [hasInsights, hasReviews, showSizeGuide, showRecommendationsSection]);
 
   const handleTabChange = (tabId: string) => {
     setActiveTab(tabId);
@@ -2011,13 +1878,6 @@ export function PdpContainer({
     compareAmount && compareAmount > displayPriceAmount
       ? Math.round((1 - displayPriceAmount / compareAmount) * 100)
       : null;
-  const tagList = payload.product.tags || [];
-  const halfTagCount = Math.ceil(tagList.length / 2);
-  const popularLooks =
-    payload.product.beauty_meta?.popular_looks || tagList.slice(0, halfTagCount);
-  const bestFor =
-    payload.product.beauty_meta?.best_for || tagList.slice(halfTagCount);
-  const importantInfo = payload.product.beauty_meta?.important_info || [];
   const trustBadges = [];
   if (payload.product.brand?.name) trustBadges.push('Authentic');
   if (effectiveReturns?.return_window_days) {
@@ -2034,12 +1894,9 @@ export function PdpContainer({
   }
   const showTrustBadges = resolvedMode === 'beauty' && trustBadges.length > 0;
   const hasRightColumnSelectorSection =
-    resolvedMode === 'generic' &&
-    (
-      colorOptions.length > 0 ||
-      sizeOptions.length > 0 ||
-      (!sizeOptions.length && !colorOptions.length && variants.length > 1)
-    );
+    colorOptions.length > 0 ||
+    sizeOptions.length > 0 ||
+    (!sizeOptions.length && !colorOptions.length && variants.length > 1);
   const hasRightColumnSupportInfo =
     showTrustBadges || Boolean(effectiveShippingEta?.length || effectiveReturns?.return_window_days);
   const isDesktopInfoSparse =
@@ -2108,7 +1965,7 @@ export function PdpContainer({
       const cached = similarDetailCache[key];
       if (cached) return cached;
       if (!item.merchant_id) return null;
-      const detail = await fetchSimilarExactDetail({
+      const detail = await fetchSimilarPdpDetail({
         product_id: item.product_id,
         merchant_id: item.merchant_id,
         timeout_ms: 4500,
@@ -2873,67 +2730,6 @@ export function PdpContainer({
               />
             </div>
 
-            {resolvedMode === 'beauty' && variants.length > 0 ? (
-              <div className="border-b border-border bg-card py-1.5">
-                <div className="overflow-x-auto">
-                  <div className="flex items-center gap-1.5 px-2.5 sm:px-3">
-                    {variants.slice(0, 4).map((variant) => {
-                      const isSelected = variant.variant_id === selectedVariant.variant_id;
-                      return (
-                        <button
-                          key={variant.variant_id}
-                          onClick={() => {
-                            handleVariantSelect(variant.variant_id);
-                            pdpTracking.track('pdp_action_click', { action_type: 'select_variant', variant_id: variant.variant_id });
-                          }}
-                          className={cn(
-                            'flex items-center gap-1.5 rounded-full border bg-card px-2.5 py-1 text-[10px] text-foreground whitespace-nowrap transition-colors',
-                            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]',
-                            isSelected
-                              ? 'border-[color:var(--accent-600)] bg-[var(--accent-50)] text-[color:var(--accent-800)] font-semibold'
-                              : 'border-border hover:bg-muted/30 hover:border-muted-foreground/40',
-                          )}
-                        >
-                          {variant.label_image_url ? (
-                            <span
-                              className={cn(
-                                'relative h-3 w-3 overflow-hidden rounded-full ring-1 bg-muted',
-                                isSelected ? 'ring-[color:var(--accent-600)]' : 'ring-border',
-                              )}
-                            >
-                              <Image src={variant.label_image_url} alt="" fill className="object-cover" sizes="12px" loading="lazy" />
-                            </span>
-                          ) : variant.swatch?.hex ? (
-                            <span
-                              className={cn(
-                                'h-3 w-3 rounded-full ring-1',
-                                isSelected ? 'ring-[color:var(--accent-600)]' : 'ring-border',
-                              )}
-                              style={{ backgroundColor: variant.swatch.hex }}
-                            />
-                          ) : null}
-                          <span>{variant.title}</span>
-                        </button>
-                      );
-                    })}
-                    {variants.length > 4 ? (
-                      <button
-                        onClick={() => setShowShadeSheet(true)}
-                        className="rounded-full border border-dashed border-border px-2.5 py-1 text-[10px] text-muted-foreground"
-                      >
-                        +{variants.length - 4} more
-                      </button>
-                    ) : null}
-                    <button
-                      onClick={() => setShowShadeSheet(true)}
-                      className="ml-auto text-[10px] text-primary font-medium whitespace-nowrap"
-                    >
-                      {variants.length} colors →
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ) : null}
             </div>
 
             <div className="lg:pt-3">
@@ -3042,7 +2838,7 @@ export function PdpContainer({
                 </div>
               ) : null}
 
-              {resolvedMode === 'generic' && colorOptions.length ? (
+              {colorOptions.length ? (
                 <div className="mt-2">
                   <div className="flex items-center justify-between">
                     <div className="text-xs font-semibold">Color</div>
@@ -3089,7 +2885,7 @@ export function PdpContainer({
                 </div>
               ) : null}
 
-              {resolvedMode === 'generic' && staticSizeOption ? (
+              {staticSizeOption ? (
                 <div className="mt-2">
                   <div className="flex items-center justify-between">
                     <div className="text-xs font-semibold">Size</div>
@@ -3103,7 +2899,7 @@ export function PdpContainer({
                 </div>
               ) : null}
 
-              {resolvedMode === 'generic' && sizeOptions.length ? (
+              {sizeOptions.length ? (
                 <div className="mt-2">
                   <div className="flex items-center justify-between">
                     <div className="text-xs font-semibold">Size</div>
@@ -3135,7 +2931,7 @@ export function PdpContainer({
                 </div>
               ) : null}
 
-              {resolvedMode === 'generic' && !sizeOptions.length && !colorOptions.length && variants.length > 0 ? (
+              {!sizeOptions.length && !colorOptions.length && variants.length > 0 ? (
                 <div className="mt-2">
                   <VariantSelector
                     variants={variants}
@@ -3473,62 +3269,6 @@ export function PdpContainer({
           </div>
           ) : null}
 
-        {showShades ? (
-          <div
-            ref={(el) => {
-              sectionRefs.current.shades = el;
-            }}
-            className="border-t border-muted/60"
-            style={{ scrollMarginTop }}
-          >
-            {resolvedMode === 'beauty' ? (
-              <BeautyShadesSection
-                selectedVariant={selectedVariant}
-                popularLooks={popularLooks}
-                bestFor={bestFor}
-                importantInfo={importantInfo}
-                mediaItems={media?.items || []}
-                brandName={payload.product.brand?.name}
-                showEmpty
-                shareCtaLabel="Share yours +"
-                shareCtaEnabled={canUploadMedia}
-                onShareCtaClick={handleUploadMedia}
-              />
-            ) : (
-              <div className="px-3.5 py-4 sm:px-4">
-                <h2 className="text-sm font-semibold mb-2">Shades</h2>
-                <div className="grid grid-cols-3 gap-3">
-                  {variants.map((variant) => {
-                    const isSelected = variant.variant_id === selectedVariant.variant_id;
-                    return (
-                      <button
-                        key={variant.variant_id}
-                        onClick={() => {
-                          handleVariantSelect(variant.variant_id);
-                          pdpTracking.track('pdp_action_click', { action_type: 'select_variant', variant_id: variant.variant_id });
-                        }}
-                        className={cn(
-                          'rounded-xl border p-3 text-left transition-colors',
-                          isSelected ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50',
-                        )}
-                      >
-                        <div className="flex items-center gap-2">
-                          {variant.swatch?.hex ? (
-                            <span className="h-6 w-6 rounded-full ring-1 ring-border" style={{ backgroundColor: variant.swatch.hex }} />
-                          ) : (
-                            <span className="h-6 w-6 rounded-full bg-muted" />
-                          )}
-                          <span className="text-xs font-medium">{variant.title}</span>
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-          </div>
-        ) : null}
-
         {showSizeGuide ? (
           <div
             ref={(el) => {
@@ -3842,18 +3582,8 @@ export function PdpContainer({
           </div>
         </div>
       ) : null}
-      <BeautyVariantSheet
-        open={resolvedMode === 'beauty' && showShadeSheet}
-        onClose={() => setShowShadeSheet(false)}
-        variants={variants}
-        selectedVariantId={selectedVariant.variant_id}
-        onSelect={(variantId) => {
-          handleVariantSelect(variantId);
-          pdpTracking.track('pdp_action_click', { action_type: 'select_variant', variant_id: variantId });
-        }}
-      />
       <GenericColorSheet
-        open={resolvedMode === 'generic' && showColorSheet}
+        open={showColorSheet}
         onClose={() => setShowColorSheet(false)}
         options={colorSheetOptions}
         selectedValue={selectedColor}
