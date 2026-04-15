@@ -237,6 +237,86 @@ function withSelectedProductLineOption(payload: PDPPayload, selected: ProductLin
   };
 }
 
+function buildProductLinePayloadCacheKey(productId: string, merchantId?: string | null): string {
+  const normalizedProductId = String(productId || '').trim();
+  const normalizedMerchantId = String(merchantId || '').trim();
+  return normalizedProductId ? `${normalizedMerchantId}::${normalizedProductId}` : '';
+}
+
+function stripProductLineAsyncModules(payload: PDPPayload): PDPPayload {
+  return {
+    ...payload,
+    modules: payload.modules.filter((module) => {
+      const type = String(module?.type || '').trim();
+      return type !== 'reviews_preview' && type !== 'recommendations' && type !== 'similar';
+    }),
+    x_reviews_state: 'loading',
+    x_recommendations_state: 'loading',
+    x_source_locks: {
+      ...(payload.x_source_locks || {}),
+      reviews: false,
+      similar: false,
+    },
+  };
+}
+
+function mergeProductLineReviewsPayload(current: PDPPayload, incoming: PDPPayload | null): PDPPayload {
+  const nextReviewsModule =
+    incoming?.modules.find((module) => String(module?.type || '').trim() === 'reviews_preview') || null;
+  const baseModules = current.modules.filter((module) => String(module?.type || '').trim() !== 'reviews_preview');
+  const resolvedReviewsModule = nextReviewsModule || {
+    module_id: 'reviews_preview',
+    type: 'reviews_preview' as const,
+    priority: 50,
+    title: 'Reviews',
+    data: {
+      scale: 5,
+      rating: 0,
+      review_count: 0,
+      preview_items: [],
+    },
+  };
+  return {
+    ...current,
+    modules: [...baseModules, resolvedReviewsModule],
+    x_reviews_state: 'ready',
+    x_source_locks: {
+      ...(current.x_source_locks || {}),
+      reviews: Boolean(nextReviewsModule),
+    },
+  };
+}
+
+function mergeProductLineSimilarPayload(current: PDPPayload, incoming: PDPPayload | null): PDPPayload {
+  const nextSimilarModule =
+    incoming?.modules.find((module) => {
+      const type = String(module?.type || '').trim();
+      return type === 'recommendations' || type === 'similar';
+    }) || null;
+  const baseModules = current.modules.filter((module) => {
+    const type = String(module?.type || '').trim();
+    return type !== 'recommendations' && type !== 'similar';
+  });
+  return {
+    ...current,
+    modules: nextSimilarModule ? [...baseModules, nextSimilarModule] : baseModules,
+    x_recommendations_state: incoming?.x_recommendations_state || 'ready',
+    x_source_locks: {
+      ...(current.x_source_locks || {}),
+      similar: Boolean(nextSimilarModule),
+    },
+  };
+}
+
+function needsProductLineOptionalBackfill(payload: PDPPayload): boolean {
+  return (
+    payload.x_reviews_state === 'loading' ||
+    payload.x_reviews_state === 'error' ||
+    payload.x_recommendations_state === 'loading' ||
+    payload.x_recommendations_state === 'error'
+  );
+}
+
 function buildInlineProductLineTargetPath(
   nextProductId: string,
   nextMerchantId: string,
@@ -269,6 +349,17 @@ function formatPrice(amount: number, currency: string) {
 
 const SIMILAR_PAGE_STEP = 12;
 const SIMILAR_NO_GROWTH_STOP_THRESHOLD = 2;
+const PRODUCT_LINE_FAST_INCLUDE = [
+  'offers',
+  'variant_selector',
+  'product_intel',
+  'active_ingredients',
+  'ingredients_inci',
+  'how_to_use',
+  'product_details',
+] as const;
+const PRODUCT_LINE_REVIEWS_TIMEOUT_MS = 4200;
+const PRODUCT_LINE_SIMILAR_TIMEOUT_MS = 10000;
 const LOW_CONFIDENCE_ACTIVE_INGREDIENT_BEAUTY_HINT_RE =
   /(beauty|makeup|cosmetic|palette|powder|eyeshadow|eye color|eye|quad|shadow|blush|bronzer|concealer|foundation|lip|lips|mascara|brow|skincare|serum|cream|creme|fragrance|perfume|parfum|eau de parfum)/i;
 
@@ -1119,11 +1210,22 @@ export function PdpContainer({
   const latestProductGroupIdRef = useRef<string | null>(null);
   const productLineSwitchRequestRef = useRef(0);
   const productLineSwitchPendingRef = useRef(false);
+  const productLinePayloadCacheRef = useRef(new Map<string, PDPPayload>());
   const [pendingProductLineProductId, setPendingProductLineProductId] = useState<string | null>(null);
 
   useEffect(() => {
     setPayload(initialPayload);
   }, [initialPayload]);
+
+  useEffect(() => {
+    if (pendingProductLineProductId) return;
+    const cacheKey = buildProductLinePayloadCacheKey(
+      payload.product.product_id,
+      payload.product.merchant_id,
+    );
+    if (!cacheKey) return;
+    productLinePayloadCacheRef.current.set(cacheKey, payload);
+  }, [payload, pendingProductLineProductId]);
 
   const variants = useMemo(() => payload.product.variants ?? [], [payload.product.variants]);
 
@@ -2571,6 +2673,76 @@ export function PdpContainer({
     [currentRelativePath, payload.product.merchant_id, payload.product.product_id, router],
   );
 
+  const backfillProductLineOptionalModules = useCallback(
+    (args: { requestId: number; productId: string; merchantId: string }) => {
+      const { requestId, productId, merchantId } = args;
+      const cacheKey = buildProductLinePayloadCacheKey(productId, merchantId);
+
+      void getPdpV2({
+        product_id: productId,
+        ...(merchantId ? { merchant_id: merchantId } : {}),
+        include: ['reviews_preview'],
+        timeout_ms: PRODUCT_LINE_REVIEWS_TIMEOUT_MS,
+      })
+        .then((response) => {
+          const mapped = mapPdpV2ToPdpPayload(response);
+          setPayload((current) => {
+            if (productLineSwitchRequestRef.current !== requestId) return current;
+            if (String(current.product.product_id || '').trim() !== productId) return current;
+            const currentMerchantId = String(current.product.merchant_id || '').trim();
+            if (merchantId && currentMerchantId && currentMerchantId !== merchantId) return current;
+            const merged = mergeProductLineReviewsPayload(current, mapped);
+            if (cacheKey) productLinePayloadCacheRef.current.set(cacheKey, merged);
+            return merged;
+          });
+        })
+        .catch(() => {
+          setPayload((current) => {
+            if (productLineSwitchRequestRef.current !== requestId) return current;
+            if (String(current.product.product_id || '').trim() !== productId) return current;
+            const currentMerchantId = String(current.product.merchant_id || '').trim();
+            if (merchantId && currentMerchantId && currentMerchantId !== merchantId) return current;
+            return {
+              ...current,
+              x_reviews_state: 'error',
+            };
+          });
+        });
+
+      void getPdpV2({
+        product_id: productId,
+        ...(merchantId ? { merchant_id: merchantId } : {}),
+        include: ['similar'],
+        timeout_ms: PRODUCT_LINE_SIMILAR_TIMEOUT_MS,
+      })
+        .then((response) => {
+          const mapped = mapPdpV2ToPdpPayload(response);
+          setPayload((current) => {
+            if (productLineSwitchRequestRef.current !== requestId) return current;
+            if (String(current.product.product_id || '').trim() !== productId) return current;
+            const currentMerchantId = String(current.product.merchant_id || '').trim();
+            if (merchantId && currentMerchantId && currentMerchantId !== merchantId) return current;
+            const merged = mergeProductLineSimilarPayload(current, mapped);
+            if (cacheKey) productLinePayloadCacheRef.current.set(cacheKey, merged);
+            return merged;
+          });
+        })
+        .catch(() => {
+          setPayload((current) => {
+            if (productLineSwitchRequestRef.current !== requestId) return current;
+            if (String(current.product.product_id || '').trim() !== productId) return current;
+            const currentMerchantId = String(current.product.merchant_id || '').trim();
+            if (merchantId && currentMerchantId && currentMerchantId !== merchantId) return current;
+            return {
+              ...current,
+              x_recommendations_state: 'error',
+            };
+          });
+        });
+    },
+    [],
+  );
+
   const handleProductLineOptionSelect = useCallback(
     async (option: ProductLineOption, index: number) => {
       if (productLineSwitchPendingRef.current) {
@@ -2603,14 +2775,34 @@ export function PdpContainer({
       if (shouldUseProductLineColorSelector) {
         const requestId = productLineSwitchRequestRef.current + 1;
         productLineSwitchRequestRef.current = requestId;
-        productLineSwitchPendingRef.current = true;
         const previousPayload = payload;
         const targetPath = buildInlineProductLineTargetPath(
           nextProductId,
           nextMerchantId,
           currentRelativePath,
         );
+        const cacheKey = buildProductLinePayloadCacheKey(nextProductId, nextMerchantId);
+        const cachedPayload = cacheKey
+          ? productLinePayloadCacheRef.current.get(cacheKey) || null
+          : null;
 
+        if (cachedPayload) {
+          setPayload(cachedPayload);
+          if (typeof window !== 'undefined') {
+            window.history.replaceState(window.history.state, '', targetPath);
+            setCurrentRelativePath(getCurrentRelativePath());
+          }
+          if (needsProductLineOptionalBackfill(cachedPayload)) {
+            backfillProductLineOptionalModules({
+              requestId,
+              productId: nextProductId,
+              merchantId: nextMerchantId,
+            });
+          }
+          return;
+        }
+
+        productLineSwitchPendingRef.current = true;
         setPendingProductLineProductId(nextProductId);
         setPayload((current) => withSelectedProductLineOption(current, option));
 
@@ -2618,29 +2810,29 @@ export function PdpContainer({
           const nextPdp = await getPdpV2({
             product_id: nextProductId,
             ...(nextMerchantId ? { merchant_id: nextMerchantId } : {}),
-            include: [
-              'offers',
-              'variant_selector',
-              'product_intel',
-              'product_details',
-              'product_facts',
-              'active_ingredients',
-              'ingredients_inci',
-              'how_to_use',
-              'reviews_preview',
-              'similar',
-            ],
-            timeout_ms: 15000,
+            include: [...PRODUCT_LINE_FAST_INCLUDE],
+            timeout_ms: 8000,
           });
           if (productLineSwitchRequestRef.current !== requestId) return;
-          const nextPayload = mapPdpV2ToPdpPayload(nextPdp);
-          if (!nextPayload) {
+          const mappedPayload = mapPdpV2ToPdpPayload(nextPdp);
+          if (!mappedPayload) {
             throw new Error('PDP payload unavailable');
+          }
+          const nextPayload = stripProductLineAsyncModules(mappedPayload);
+          if (cacheKey) {
+            productLinePayloadCacheRef.current.set(cacheKey, nextPayload);
           }
           setPayload(nextPayload);
           if (typeof window !== 'undefined') {
             window.history.replaceState(window.history.state, '', targetPath);
             setCurrentRelativePath(getCurrentRelativePath());
+          }
+          if (needsProductLineOptionalBackfill(nextPayload)) {
+            backfillProductLineOptionalModules({
+              requestId,
+              productId: nextProductId,
+              merchantId: nextMerchantId,
+            });
           }
         } catch {
           if (productLineSwitchRequestRef.current === requestId) {
@@ -2660,6 +2852,7 @@ export function PdpContainer({
       router.push(`${pathname}${params.toString() ? `?${params.toString()}` : ''}`);
     },
     [
+      backfillProductLineOptionalModules,
       currentRelativePath,
       payload,
       productLineOptionName,

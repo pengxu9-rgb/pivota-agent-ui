@@ -546,11 +546,23 @@ describe('PdpContainer structured PDP modules', () => {
           },
     );
     let resolvePdp: ((value: unknown) => void) | null = null;
-    getPdpV2Mock.mockReturnValue(
-      new Promise<any>((resolve) => {
-        resolvePdp = resolve;
-      }),
-    );
+    getPdpV2Mock
+      .mockReturnValueOnce(
+        new Promise<any>((resolve) => {
+          resolvePdp = resolve;
+        }),
+      )
+      .mockResolvedValue({
+        status: 'success',
+        modules: [
+          {
+            type: 'canonical',
+            data: {
+              pdp_payload: nextPayload,
+            },
+          },
+        ],
+      });
 
     render(
       <PdpContainer payload={payload} mode="beauty" onAddToCart={() => {}} onBuyNow={() => {}} />,
@@ -571,11 +583,17 @@ describe('PdpContainer structured PDP modules', () => {
 
     await waitFor(() => {
       expect(getPdpV2Mock).toHaveBeenCalledTimes(1);
-      expect(getPdpV2Mock).toHaveBeenCalledWith(
+      expect(getPdpV2Mock).toHaveBeenNthCalledWith(
+        1,
         expect.objectContaining({
           product_id: 'ext_boj_dn310',
           merchant_id: 'external_seed',
-          include: expect.arrayContaining(['product_intel', 'similar', 'variant_selector']),
+          include: expect.arrayContaining(['product_intel', 'variant_selector']),
+        }),
+      );
+      expect(getPdpV2Mock.mock.calls[0]?.[0]).toEqual(
+        expect.objectContaining({
+          include: expect.not.arrayContaining(['reviews_preview', 'similar']),
         }),
       );
     });
@@ -601,6 +619,18 @@ describe('PdpContainer structured PDP modules', () => {
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'DN310' })).toHaveAttribute('aria-pressed', 'true');
+    });
+    await waitFor(() => {
+      expect(
+        getPdpV2Mock.mock.calls.some(
+          ([args]) => Array.isArray(args?.include) && args.include.includes('reviews_preview'),
+        ),
+      ).toBe(true);
+      expect(
+        getPdpV2Mock.mock.calls.some(
+          ([args]) => Array.isArray(args?.include) && args.include.includes('similar'),
+        ),
+      ).toBe(true);
     });
   });
 
