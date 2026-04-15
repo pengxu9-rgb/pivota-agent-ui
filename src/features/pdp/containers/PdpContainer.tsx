@@ -1325,6 +1325,8 @@ export function PdpContainer({
   const productIntel = getModuleData<ProductIntelData>(payload, 'product_intel');
   const productFacts = getModuleData<ProductFactsData>(payload, 'product_facts');
   const legacyDetails = getModuleData<ProductDetailsData>(payload, 'product_details');
+  const isExternalSeedProduct =
+    String(payload.product.merchant_id || '').trim().toLowerCase() === 'external_seed';
   const activeIngredients = sanitizeActiveIngredientsData(
     getModuleData<ActiveIngredientsData>(payload, 'active_ingredients'),
   );
@@ -1337,7 +1339,7 @@ export function PdpContainer({
   const details = chooseProductDetailsData({
     productFacts,
     legacyDetails,
-    hasStructuredBlocks: Boolean(activeIngredients || ingredientsInci || howToUse),
+    hasStructuredBlocks: Boolean(activeIngredients || ingredientsInci || howToUse || isExternalSeedProduct),
   });
   const detailSectionParts = useMemo(
     () => partitionDetailSections(Array.isArray(details?.sections) ? details.sections : []),
@@ -2171,7 +2173,20 @@ export function PdpContainer({
     [galleryItems.length, ugcItems.length],
   );
 
-  const attributeOptions = extractAttributeOptions(selectedVariant);
+  const selectedVariantHeaderLabel = useMemo(
+    () => {
+      const variantLabel = getDisplayVariantLabel(selectedVariant, 'Default');
+      const lineLabel = selectedProductLineOption?.label || '';
+      if (!lineLabel) return variantLabel;
+      if (!variantLabel || variantLabel === 'Default') return lineLabel;
+      return `${lineLabel} / ${variantLabel}`;
+    },
+    [selectedProductLineOption?.label, selectedVariant],
+  );
+  const attributeOptions = extractAttributeOptions(selectedVariant, {
+    variants: payload.product.variants,
+    selectedLabel: selectedVariantHeaderLabel,
+  });
   const beautyAttributes = extractBeautyAttributes(selectedVariant);
   const suppressOverviewInDetails = hasInsights || hasLowQualityOverviewSection(details);
   const hasStructuredDetailBlocks = Boolean(
@@ -2190,21 +2205,18 @@ export function PdpContainer({
       hasStructuredDetailBlocks ||
       hasNonOverviewDetails,
   );
-  const isExternalSeedProduct =
-    String(payload.product.merchant_id || '').trim().toLowerCase() === 'external_seed';
+  const activeIngredientQualityStatus = String(
+    activeIngredients?.source_quality_status ||
+      (activeIngredients as any)?.sourceQualityStatus ||
+      activeIngredients?.source_origin ||
+      '',
+  ).trim().toLowerCase();
   const shouldHideLowConfidenceActiveIngredients =
     isExternalSeedProduct &&
-    isLikelyBeautyExternalSeedProduct(payload.product, resolvedMode);
-  const selectedVariantHeaderLabel = useMemo(
-    () => {
-      const variantLabel = getDisplayVariantLabel(selectedVariant, 'Default');
-      const lineLabel = selectedProductLineOption?.label || '';
-      if (!lineLabel) return variantLabel;
-      if (!variantLabel || variantLabel === 'Default') return lineLabel;
-      return `${lineLabel} / ${variantLabel}`;
-    },
-    [selectedProductLineOption?.label, selectedVariant],
-  );
+    isLikelyBeautyExternalSeedProduct(payload.product, resolvedMode) &&
+    !['regulatory_active', 'regulatory', 'otc', 'drug_facts', 'captured', 'verified'].includes(
+      activeIngredientQualityStatus,
+    );
   const compareAmount =
     pricePromo?.compare_at?.amount ??
     selectedVariant.price?.compare_at?.amount ??

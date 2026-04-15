@@ -179,7 +179,7 @@ export function BeautyReviewsSection({
         ) : null}
       </div>
 
-      {data.filter_chips?.length || showEmpty ? (
+      {data.filter_chips?.length ? (
         <div className="overflow-x-auto mt-3">
           <div className="flex gap-2 px-2.5 sm:px-3">
             {data.filter_chips?.map((chip) => (
@@ -193,11 +193,6 @@ export function BeautyReviewsSection({
                 ) : null}
               </button>
             ))}
-            {!data.filter_chips?.length ? (
-              <span className="flex items-center gap-1.5 rounded-full border border-dashed border-border px-3 py-1.5 text-xs text-muted-foreground whitespace-nowrap">
-                No filters yet
-              </span>
-            ) : null}
           </div>
         </div>
       ) : null}

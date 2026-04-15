@@ -51,4 +51,33 @@ describe('variantOptions combined color/size handling', () => {
       }),
     ).toEqual([]);
   });
+
+  it('drops generic option metadata such as Option: Refill from attribute chips', () => {
+    expect(
+      extractAttributeOptions({
+        variant_id: 'refill',
+        title: 'Refill',
+        options: [{ name: 'Option', value: 'Refill' }],
+      }),
+    ).toEqual([]);
+  });
+
+  it('keeps real multi-value refill axes when they are not generic option metadata', () => {
+    const refillVariants: Variant[] = [
+      {
+        variant_id: 'full',
+        title: 'Full size',
+        options: [{ name: 'Refill', value: 'Full size' }],
+      },
+      {
+        variant_id: 'refill',
+        title: 'Refill',
+        options: [{ name: 'Refill', value: 'Refill' }],
+      },
+    ];
+
+    expect(extractAttributeOptions(refillVariants[0], { variants: refillVariants })).toEqual([
+      { name: 'Refill', value: 'Full size' },
+    ]);
+  });
 });

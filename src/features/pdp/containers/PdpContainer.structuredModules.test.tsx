@@ -427,6 +427,52 @@ describe('PdpContainer structured PDP modules', () => {
     expect(screen.getAllByRole('button', { name: 'Buy Now' }).length).toBeGreaterThan(0);
   });
 
+  it('keeps regulatory SPF active ingredients visible for external seeds', () => {
+    const payload = buildBeautyPayload();
+    payload.product.title = 'Daily Tinted Fluid Sunscreen SPF 40';
+    payload.modules = payload.modules.map((module) => {
+      if (module.type === 'active_ingredients') {
+        return {
+          ...module,
+          data: {
+            title: 'Active ingredients',
+            items: ['Zinc Oxide'],
+            source_origin: 'ingredients_inci',
+            source_quality_status: 'regulatory_active',
+          },
+        };
+      }
+      if (module.type === 'ingredients_inci') {
+        return {
+          ...module,
+          data: {
+            title: 'Ingredients',
+            raw_text:
+              'Zinc Oxide, Water, Butyloctyl Salicylate, Glycerin, 1,2-Hexanediol, Tocopherol',
+            items: [
+              'Zinc Oxide',
+              'Water',
+              'Butyloctyl Salicylate',
+              'Glycerin',
+              '1,2-Hexanediol',
+              'Tocopherol',
+            ],
+            source_origin: 'retail_pdp',
+            source_quality_status: 'captured',
+          },
+        };
+      }
+      return module;
+    });
+
+    render(
+      <PdpContainer payload={payload} mode="beauty" onAddToCart={() => {}} onBuyNow={() => {}} />,
+    );
+
+    expect(screen.getByText('Active ingredients')).toBeInTheDocument();
+    expect(screen.getAllByText('Zinc Oxide').length).toBeGreaterThan(0);
+  });
+
   it('does not render legacy shade modules while keeping shade variants selectable', () => {
     const payload = buildBeautyPayload();
     payload.product.title = 'Pout Preserve Peptide Lip Treatment';
@@ -636,7 +682,7 @@ describe('PdpContainer structured PDP modules', () => {
     });
   });
 
-  it('falls back to legacy product_details when additive modules are absent', () => {
+  it('isolates legacy detail noise for external seeds when additive modules are absent', () => {
     const payload = buildBeautyPayload();
     payload.modules = payload.modules.filter(
       (module) =>
@@ -652,7 +698,7 @@ describe('PdpContainer structured PDP modules', () => {
 
     expect(screen.queryByText('Active ingredients')).toBeNull();
     expect(screen.queryByText('How to use')).toBeNull();
-    expect(screen.getByText('Legacy Ingredients')).toBeInTheDocument();
+    expect(screen.queryByText('Legacy Ingredients')).not.toBeInTheDocument();
     expect(screen.getByText('Overview')).toBeInTheDocument();
   });
 

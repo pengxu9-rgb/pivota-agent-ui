@@ -155,14 +155,50 @@ export function findVariantByOptions(args: {
   });
 }
 
-export function extractAttributeOptions(variant: Variant): Array<{ name: string; value: string }> {
+const GENERIC_ATTRIBUTE_OPTION_NAMES = new Set(['option', 'options', 'type', 'default']);
+
+function normalizeAttributeSurface(value: unknown): string {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function countDistinctOptionValues(variants: Variant[] | undefined, optionName: string): number {
+  if (!Array.isArray(variants) || !variants.length) return 0;
+  const key = normalizeAttributeSurface(optionName);
+  const values = new Set<string>();
+  variants.forEach((item) => {
+    const match = (item.options || []).find((opt) => normalizeAttributeSurface(opt?.name) === key);
+    const value = normalizeAttributeSurface(match?.value);
+    if (value) values.add(value);
+  });
+  return values.size;
+}
+
+export function extractAttributeOptions(
+  variant: Variant,
+  context: { variants?: Variant[]; selectedLabel?: string } = {},
+): Array<{ name: string; value: string }> {
   const options = variant.options || [];
+  const selectedSurface = normalizeAttributeSurface(context.selectedLabel);
   return options
     .filter((opt) => opt?.name && opt?.value)
     .filter((opt) => !isPlaceholderTitleOption(opt))
     .filter((opt) => !isCombinedColorSizeOptionName(String(opt.name)))
     .filter((opt) => !matchesKey(String(opt.name), COLOR_KEYS) && !matchesKey(String(opt.name), SIZE_KEYS))
     .filter((opt) => !BEAUTY_KEYS.some((beauty) => matchesKey(opt.name, beauty.keys)))
+    .filter((opt) => {
+      const nameSurface = normalizeAttributeSurface(opt.name);
+      const valueSurface = normalizeAttributeSurface(opt.value);
+      if (!nameSurface || !valueSurface) return false;
+      if (GENERIC_ATTRIBUTE_OPTION_NAMES.has(nameSurface)) return false;
+      const distinctValueCount = countDistinctOptionValues(context.variants, String(opt.name));
+      if (distinctValueCount <= 1 && ['refill', 'format', 'packaging'].includes(nameSurface)) return false;
+      if (selectedSurface && selectedSurface.includes(valueSurface)) return false;
+      return true;
+    })
     .map((opt) => ({ name: String(opt.name), value: String(opt.value) }))
     .slice(0, 3);
 }

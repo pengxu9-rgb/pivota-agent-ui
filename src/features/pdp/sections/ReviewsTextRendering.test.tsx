@@ -79,6 +79,20 @@ describe('Reviews text rendering', () => {
     expect(screen.getByText('No written details provided.')).toBeInTheDocument();
   });
 
+  it('does not render an empty filter rail placeholder', () => {
+    render(
+      <BeautyReviewsSection
+        data={{
+          ...baseReviewsData,
+          filter_chips: [],
+        }}
+        showEmpty
+      />,
+    );
+
+    expect(screen.queryByText('No filters yet')).not.toBeInTheDocument();
+  });
+
   it('renders brand card as a link when brandHref is provided', () => {
     render(
       <BeautyReviewsSection
