@@ -210,6 +210,25 @@ function isHumanReviewedProductIntelData(data: ProductIntelData | null | undefin
   );
 }
 
+function isAssistantReviewedSellerGroundedProductIntelData(data: ProductIntelData | null | undefined): boolean {
+  const provenance = data?.provenance || {};
+  const reviewStatus = normalizeWhitespace(provenance.review_status).toLowerCase();
+  const reviewDecision = normalizeWhitespace(provenance.review_decision).toLowerCase();
+  const reviewerKind = normalizeWhitespace(provenance.reviewer_kind).toLowerCase();
+  const selectedStrategy = normalizeWhitespace(provenance.selection_strategy).toLowerCase();
+  const evidenceProfile = normalizeWhitespace(
+    data?.product_intel_core?.evidence_profile || (data as any)?.evidence_profile || (provenance as any).evidence_profile,
+  ).toLowerCase();
+
+  return (
+    reviewerKind === 'assistant' &&
+    reviewStatus === 'completed' &&
+    ['pass', 'rewrite', 'seller_only_fallback'].includes(reviewDecision) &&
+    selectedStrategy === 'curated_override' &&
+    ['seller_only', 'seller_plus_formula'].includes(evidenceProfile)
+  );
+}
+
 function isGenericBestForLabel(value: unknown): boolean {
   const text = normalizeWhitespace(value).toLowerCase();
   if (!text) return true;
@@ -248,6 +267,7 @@ export function isDisplayableProductIntelData(data: ProductIntelData | null | un
 
   if (!normalizeWhitespace(combined)) return false;
   if (isHumanReviewedProductIntelData(data)) return true;
+  if (isAssistantReviewedSellerGroundedProductIntelData(data) && hasProductSpecificInsightText(combined)) return true;
   if (isGenericInsightText(primaryText) && !hasProductSpecificInsightText(combined)) return false;
   return false;
 }

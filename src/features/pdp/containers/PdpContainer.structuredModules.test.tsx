@@ -473,6 +473,45 @@ describe('PdpContainer structured PDP modules', () => {
     expect(screen.getAllByText('Zinc Oxide').length).toBeGreaterThan(0);
   });
 
+  it('keeps regulatory SPF active ingredients visible on generic sunscreen PDPs', () => {
+    const payload = buildBeautyPayload();
+    payload.product.title = 'Daily Tinted Fluid Sunscreen SPF 40';
+    payload.modules = payload.modules.map((module) => {
+      if (module.type === 'active_ingredients') {
+        return {
+          ...module,
+          data: {
+            title: 'Active ingredients',
+            items: ['Zinc Oxide'],
+            source_origin: 'ingredients_inci',
+            source_quality_status: 'regulatory_active',
+          },
+        };
+      }
+      if (module.type === 'ingredients_inci') {
+        return {
+          ...module,
+          data: {
+            title: 'Ingredients',
+            raw_text: 'Zinc Oxide, Water, Glycerin',
+            items: ['Zinc Oxide', 'Water', 'Glycerin'],
+            source_origin: 'retail_pdp',
+            source_quality_status: 'captured',
+          },
+        };
+      }
+      return module;
+    });
+
+    render(
+      <PdpContainer payload={payload} mode="generic" onAddToCart={() => {}} onBuyNow={() => {}} />,
+    );
+
+    expect(screen.getByText('Active ingredients')).toBeInTheDocument();
+    expect(screen.getAllByText('Zinc Oxide').length).toBeGreaterThan(0);
+    expect(screen.getByText('Ingredients')).toBeInTheDocument();
+  });
+
   it('does not render legacy shade modules while keeping shade variants selectable', () => {
     const payload = buildBeautyPayload();
     payload.product.title = 'Pout Preserve Peptide Lip Treatment';

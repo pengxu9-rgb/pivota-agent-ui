@@ -324,6 +324,59 @@ describe('PdpContainer product intel section', () => {
     expect(screen.queryByText(/niacinamide and hyaluronic acid/i)).not.toBeInTheDocument();
   });
 
+  it('renders assistant-reviewed seller-grounded insights when they are product-specific', () => {
+    const assistantReviewedPayload: PDPPayload = {
+      ...payload,
+      modules: payload.modules.map((module) =>
+        module.type !== 'product_intel'
+          ? module
+          : {
+              ...module,
+              data: {
+                ...module.data,
+                evidence_profile: 'seller_plus_formula',
+                quality_state: 'eligible',
+                provenance: {
+                  generator: 'curated_override',
+                  reviewer_kind: 'assistant',
+                  review_status: 'completed',
+                  review_decision: 'rewrite',
+                  selection_strategy: 'curated_override',
+                },
+                product_intel_core: {
+                  ...module.data.product_intel_core!,
+                  evidence_profile: 'seller_plus_formula',
+                  quality_state: 'eligible',
+                  what_it_is: {
+                    headline: 'Tinted mineral sunscreen',
+                    body: 'A daily tinted mineral sunscreen centered on zinc oxide, flexible shade coverage, and a fluid skin-like finish.',
+                  },
+                  why_it_stands_out: [
+                    {
+                      headline: 'Flexible shade system',
+                      body: 'The merchant FAQ describes 12 flexible shades and a shade-finder flow.',
+                    },
+                  ],
+                },
+              },
+            },
+      ),
+    };
+
+    render(
+      <PdpContainer
+        payload={assistantReviewedPayload}
+        mode="generic"
+        onAddToCart={() => {}}
+        onBuyNow={() => {}}
+      />,
+    );
+
+    expect(screen.getByText('Pivota Insights')).toBeInTheDocument();
+    expect(screen.getByText('Tinted mineral sunscreen')).toBeInTheDocument();
+    expect(screen.getByText('Flexible shade system')).toBeInTheDocument();
+  });
+
   it('filters generic best-for title fallback labels from otherwise specific insights', () => {
     const filteredPayload: PDPPayload = {
       ...payload,

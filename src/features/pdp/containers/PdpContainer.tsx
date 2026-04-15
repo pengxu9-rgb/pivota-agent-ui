@@ -4121,12 +4121,15 @@ export function PdpContainer({
                 data={details}
                 product={payload.product}
                 media={media}
+                activeIngredients={activeIngredients}
+                ingredientsInci={ingredientsInci}
                 materials={materials}
                 productSpecs={productSpecs}
                 sizeFit={sizeFitDetails}
                 careInstructions={careInstructions}
                 usageSafety={usageSafety}
                 howToUse={howToUse}
+                hideLowConfidenceActiveIngredients={shouldHideLowConfidenceActiveIngredients}
                 suppressOverview={suppressOverviewInDetails}
               />
             ) : (
