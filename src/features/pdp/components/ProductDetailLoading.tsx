@@ -31,15 +31,15 @@ export function ProductDetailLoading({ label = 'Loading products' }: ProductDeta
       <div className="pointer-events-none fixed inset-0 z-10">
         <div
           data-testid="pdp-loading-scrim"
-          className="absolute inset-0 bg-foreground/10 backdrop-blur-[2px]"
+          className="absolute inset-0 bg-slate-950/45 backdrop-blur-[2px]"
         />
         <div className="absolute inset-0 flex items-center justify-center px-6">
           <div
             role="status"
             aria-live="polite"
-            className="flex items-center justify-center gap-2 rounded-lg border border-border/70 bg-background/92 px-5 py-3 text-sm font-medium text-foreground shadow-xl backdrop-blur-xl"
+            className="flex items-center justify-center gap-2 rounded-lg bg-white/90 px-5 py-3 text-sm font-semibold text-slate-900 shadow-[0_10px_35px_rgba(0,0,0,0.2)] backdrop-blur-xl"
           >
-            <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary/30 border-t-primary" />
+            <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-slate-900" />
             <span>{label}</span>
           </div>
         </div>
