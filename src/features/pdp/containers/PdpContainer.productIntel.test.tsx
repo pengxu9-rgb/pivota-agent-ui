@@ -245,6 +245,58 @@ describe('PdpContainer product intel section', () => {
     expect(screen.queryByText(/daily sunscreen product focused on UV protection/i)).not.toBeInTheDocument();
   });
 
+  it('filters generic best-for title fallback labels from otherwise specific insights', () => {
+    const filteredPayload: PDPPayload = {
+      ...payload,
+      modules: payload.modules.map((module) =>
+        module.type !== 'product_intel'
+          ? module
+          : {
+              ...module,
+              data: {
+                ...module.data,
+                evidence_profile: 'seller_plus_formula',
+                quality_state: 'eligible',
+                product_intel_core: {
+                  ...module.data.product_intel_core!,
+                  evidence_profile: 'seller_plus_formula',
+                  quality_state: 'eligible',
+                  what_it_is: {
+                    headline: 'Mineral tinted SPF 40',
+                    body: 'A mineral SPF 40 tinted fluid sunscreen with sheer coverage and a balanced finish.',
+                  },
+                  best_for: [
+                    { label: 'Daily Use', tag: 'daily', confidence: 'low' },
+                    { label: 'Sunscreen shoppers', tag: 'sunscreen', confidence: 'low' },
+                    { label: 'Mineral SPF with tint', tag: 'mineral_spf', confidence: 'moderate' },
+                  ],
+                  why_it_stands_out: [
+                    {
+                      headline: 'Tint and SPF in one step',
+                      body: 'Combines Zinc Oxide UV protection with sheer shade coverage.',
+                    },
+                  ],
+                },
+              },
+            },
+      ),
+    };
+
+    render(
+      <PdpContainer
+        payload={filteredPayload}
+        mode="generic"
+        onAddToCart={() => {}}
+        onBuyNow={() => {}}
+      />,
+    );
+
+    expect(screen.getByText('Pivota Insights')).toBeInTheDocument();
+    expect(screen.getByText('Mineral SPF with tint')).toBeInTheDocument();
+    expect(screen.queryByText('Daily Use')).not.toBeInTheDocument();
+    expect(screen.queryByText('Sunscreen shoppers')).not.toBeInTheDocument();
+  });
+
   it('hides legacy product-details overview when Pivota Insights already carries the normalized summary', () => {
     const dedupedPayload: PDPPayload = {
       ...payload,

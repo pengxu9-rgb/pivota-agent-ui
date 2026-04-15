@@ -96,6 +96,8 @@ function isGenericInsightText(value: unknown): boolean {
   if (!text) return false;
   return [
     /\bpresented through merchant product data\b/,
+    /\blisting[-\s]?grounded\b/,
+    /\bdefines? the product around the title\b/,
     /\bfocused on .* within a .* routine\b/,
     /\banchors? the product\b/,
     /\bdaytime uv step\b/,
@@ -126,6 +128,21 @@ function hasProductSpecificInsightText(value: unknown): boolean {
   ].some((pattern) => pattern.test(text));
 }
 
+function isGenericBestForLabel(value: unknown): boolean {
+  const text = normalizeWhitespace(value).toLowerCase();
+  if (!text) return true;
+  if (/\bshoppers?\b/.test(text)) return true;
+  return /^(daily use|everyday use|daytime wear|daily uv protection|general use|all skin types?)$/.test(text);
+}
+
+function displayableBestForLabels(items: Array<any> | null | undefined): string[] {
+  if (!Array.isArray(items)) return [];
+  return items
+    .map((item) => normalizeWhitespace(item?.label || item?.tag))
+    .filter((item) => item && !isGenericBestForLabel(item))
+    .slice(0, 3);
+}
+
 export function isDisplayableProductIntelData(data: ProductIntelData | null | undefined): boolean {
   const core = data?.product_intel_core;
   if (!core) return false;
@@ -137,9 +154,7 @@ export function isDisplayableProductIntelData(data: ProductIntelData | null | un
   const whyText = Array.isArray(core.why_it_stands_out)
     ? core.why_it_stands_out.map((item) => `${item?.headline || ''} ${item?.body || ''}`).join(' ')
     : '';
-  const bestForText = Array.isArray(core.best_for)
-    ? core.best_for.map((item) => `${item?.label || ''} ${item?.tag || ''}`).join(' ')
-    : '';
+  const bestForText = displayableBestForLabels(core.best_for).join(' ');
   const primaryText = [
     core.what_it_is?.headline,
     core.what_it_is?.body,
@@ -204,12 +219,7 @@ export function PivotaInsightsSection({ data }: { data: ProductIntelData }) {
     normalizeNarrativeLead(core.what_it_is?.body, evidenceProfile),
     evidenceProfile === 'seller_only' ? 150 : 180,
   );
-  const bestFor = Array.isArray(core.best_for)
-    ? core.best_for
-        .map((item) => normalizeWhitespace(item?.label || item?.tag))
-        .filter(Boolean)
-        .slice(0, 3)
-    : [];
+  const bestFor = displayableBestForLabels(core.best_for);
   const highlights = Array.isArray(core.why_it_stands_out)
     ? core.why_it_stands_out
         .map((item) => ({
