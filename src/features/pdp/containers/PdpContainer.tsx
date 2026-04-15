@@ -26,6 +26,7 @@ import type {
   ProductDetailsData,
   ProductIntelData,
   ProductFactsData,
+  ProductLineOption,
   RecommendationsData,
   ReviewsPreviewData,
   Variant,
@@ -68,7 +69,7 @@ import { GenericStyleGallery } from '@/features/pdp/sections/GenericStyleGallery
 import { GenericSizeHelper } from '@/features/pdp/sections/GenericSizeHelper';
 import { GenericSizeGuide } from '@/features/pdp/sections/GenericSizeGuide';
 import { GenericDetailsSection } from '@/features/pdp/sections/GenericDetailsSection';
-import { PivotaInsightsSection } from '@/features/pdp/sections/PivotaInsightsSection';
+import { PivotaInsightsSection, isDisplayableProductIntelData } from '@/features/pdp/sections/PivotaInsightsSection';
 import { OfferSheet } from '@/features/pdp/offers/OfferSheet';
 import { ModuleShell } from '@/features/pdp/components/ModuleShell';
 import { DEFAULT_UGC_SNAPSHOT, lockFirstUgcSource, mergeUgcItems } from '@/features/pdp/state/freezePolicy';
@@ -92,6 +93,7 @@ import {
 import { useIsDesktop } from '@/features/pdp/hooks/useIsDesktop';
 import { buildSimilarMainlineStatus } from '@/features/pdp/utils/similarHints';
 import { partitionDetailSections } from '@/features/pdp/utils/detailSections';
+import { normalizePdpImageUrl } from '@/features/pdp/utils/pdpImageUrls';
 import {
   chooseProductDetailsData,
   hasLowQualityOverviewSection,
@@ -117,6 +119,225 @@ function getRecommendationsModuleData(payload: PDPPayload): RecommendationsData 
   return (recommendationModule?.data as RecommendationsData) ?? null;
 }
 
+type VariantSelectorModuleData = {
+  selected_variant_id?: string;
+  product_line_option_name?: string;
+  product_line_options?: ProductLineOption[];
+};
+
+function normalizeHexColor(value: unknown): string | undefined {
+  const text = String(value || '').trim().replace(/^#/, '');
+  if (/^[0-9a-f]{3}$/i.test(text)) {
+    return `#${text
+      .split('')
+      .map((part) => `${part}${part}`)
+      .join('')}`.toLowerCase();
+  }
+  if (/^[0-9a-f]{6}$/i.test(text)) return `#${text}`.toLowerCase();
+  return undefined;
+}
+
+function normalizeProductLineOptions(options: ProductLineOption[] | undefined): ProductLineOption[] {
+  if (!Array.isArray(options)) return [];
+  const seen = new Set<string>();
+  const normalized: ProductLineOption[] = [];
+  for (const item of options) {
+    const label = String(item?.label || item?.value || '').trim();
+    const productId = String(item?.product_id || '').trim();
+    if (!label || !productId) continue;
+    const merchantId = String(item?.merchant_id || '').trim();
+    const axis = String(item?.axis || '').trim().toLowerCase();
+    const value = String(item?.value || label).trim();
+    const swatchImageUrl =
+      normalizePdpImageUrl(
+        item?.swatch_image_url ||
+          item?.label_image_url ||
+          item?.swatch?.image_url ||
+          item?.swatch?.imageUrl ||
+          item?.swatch?.url,
+      ) || undefined;
+    const swatchColor = normalizeHexColor(
+      item?.swatch_color || item?.color_hex || item?.swatch?.hex,
+    );
+    const key = `${axis || 'option'}:${value.toLowerCase()}:${productId}:${merchantId}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    normalized.push({
+      ...item,
+      label,
+      value,
+      product_id: productId,
+      merchant_id: merchantId || undefined,
+      axis: axis || undefined,
+      ...(swatchImageUrl ? { swatch_image_url: swatchImageUrl, label_image_url: swatchImageUrl } : {}),
+      ...(swatchColor ? { swatch_color: swatchColor, color_hex: swatchColor, swatch: { hex: swatchColor } } : {}),
+    });
+  }
+  return normalized;
+}
+
+function getProductLineSwatch(option: ProductLineOption): { imageUrl?: string; color?: string } {
+  return {
+    imageUrl:
+      normalizePdpImageUrl(
+        option.swatch_image_url ||
+          option.label_image_url ||
+          option.swatch?.image_url ||
+          option.swatch?.imageUrl ||
+          option.swatch?.url,
+      ) || undefined,
+    color: normalizeHexColor(option.swatch_color || option.color_hex || option.swatch?.hex),
+  };
+}
+
+function isSameProductLineOption(
+  option: ProductLineOption,
+  productId: string,
+  merchantId: string,
+): boolean {
+  const optionProductId = String(option.product_id || '').trim();
+  const optionMerchantId = String(option.merchant_id || '').trim();
+  return (
+    optionProductId === productId &&
+    (!optionMerchantId || !merchantId || optionMerchantId === merchantId)
+  );
+}
+
+function withSelectedProductLineOption(payload: PDPPayload, selected: ProductLineOption): PDPPayload {
+  const selectedProductId = String(selected.product_id || '').trim();
+  const selectedMerchantId = String(selected.merchant_id || '').trim();
+  if (!selectedProductId) return payload;
+
+  const markOptions = (options: ProductLineOption[] | undefined): ProductLineOption[] | undefined => {
+    if (!Array.isArray(options)) return options;
+    return options.map((option) => ({
+      ...option,
+      selected: isSameProductLineOption(option, selectedProductId, selectedMerchantId),
+    }));
+  };
+
+  return {
+    ...payload,
+    product: {
+      ...payload.product,
+      product_line_options: markOptions(payload.product.product_line_options),
+    },
+    modules: payload.modules.map((module) => {
+      if (module.type !== 'variant_selector' || !module.data || typeof module.data !== 'object') {
+        return module;
+      }
+      const data = module.data as VariantSelectorModuleData;
+      return {
+        ...module,
+        data: {
+          ...data,
+          product_line_options: markOptions(data.product_line_options),
+        },
+      };
+    }),
+  };
+}
+
+function buildProductLinePayloadCacheKey(productId: string, merchantId?: string | null): string {
+  const normalizedProductId = String(productId || '').trim();
+  const normalizedMerchantId = String(merchantId || '').trim();
+  return normalizedProductId ? `${normalizedMerchantId}::${normalizedProductId}` : '';
+}
+
+function stripProductLineAsyncModules(payload: PDPPayload): PDPPayload {
+  return {
+    ...payload,
+    modules: payload.modules.filter((module) => {
+      const type = String(module?.type || '').trim();
+      return type !== 'reviews_preview' && type !== 'recommendations' && type !== 'similar';
+    }),
+    x_reviews_state: 'loading',
+    x_recommendations_state: 'loading',
+    x_source_locks: {
+      ...(payload.x_source_locks || {}),
+      reviews: false,
+      similar: false,
+    },
+  };
+}
+
+function mergeProductLineReviewsPayload(current: PDPPayload, incoming: PDPPayload | null): PDPPayload {
+  const nextReviewsModule =
+    incoming?.modules.find((module) => String(module?.type || '').trim() === 'reviews_preview') || null;
+  const baseModules = current.modules.filter((module) => String(module?.type || '').trim() !== 'reviews_preview');
+  const resolvedReviewsModule = nextReviewsModule || {
+    module_id: 'reviews_preview',
+    type: 'reviews_preview' as const,
+    priority: 50,
+    title: 'Reviews',
+    data: {
+      scale: 5,
+      rating: 0,
+      review_count: 0,
+      preview_items: [],
+    },
+  };
+  return {
+    ...current,
+    modules: [...baseModules, resolvedReviewsModule],
+    x_reviews_state: 'ready',
+    x_source_locks: {
+      ...(current.x_source_locks || {}),
+      reviews: Boolean(nextReviewsModule),
+    },
+  };
+}
+
+function mergeProductLineSimilarPayload(current: PDPPayload, incoming: PDPPayload | null): PDPPayload {
+  const nextSimilarModule =
+    incoming?.modules.find((module) => {
+      const type = String(module?.type || '').trim();
+      return type === 'recommendations' || type === 'similar';
+    }) || null;
+  const baseModules = current.modules.filter((module) => {
+    const type = String(module?.type || '').trim();
+    return type !== 'recommendations' && type !== 'similar';
+  });
+  return {
+    ...current,
+    modules: nextSimilarModule ? [...baseModules, nextSimilarModule] : baseModules,
+    x_recommendations_state: incoming?.x_recommendations_state || 'ready',
+    x_source_locks: {
+      ...(current.x_source_locks || {}),
+      similar: Boolean(nextSimilarModule),
+    },
+  };
+}
+
+function needsProductLineOptionalBackfill(payload: PDPPayload): boolean {
+  return (
+    payload.x_reviews_state === 'loading' ||
+    payload.x_reviews_state === 'error' ||
+    payload.x_recommendations_state === 'loading' ||
+    payload.x_recommendations_state === 'error'
+  );
+}
+
+function buildInlineProductLineTargetPath(
+  nextProductId: string,
+  nextMerchantId: string,
+  currentRelativePath: string | null,
+): string {
+  const targetHref = buildProductHref(nextProductId, nextMerchantId || undefined);
+  const [pathname, rawQuery = ''] = targetHref.split('?');
+  const params = new URLSearchParams(rawQuery);
+  const existingReturn =
+    typeof window !== 'undefined'
+      ? new URLSearchParams(window.location.search).get('return')
+      : null;
+  if (existingReturn) {
+    params.set('return', existingReturn);
+  } else if (currentRelativePath) {
+    params.set('return', currentRelativePath);
+  }
+  return `${pathname}${params.toString() ? `?${params.toString()}` : ''}`;
+}
+
 function formatPrice(amount: number, currency: string) {
   const n = Number.isFinite(amount) ? amount : 0;
   const c = currency || 'USD';
@@ -129,6 +350,20 @@ function formatPrice(amount: number, currency: string) {
 
 const SIMILAR_PAGE_STEP = 12;
 const SIMILAR_NO_GROWTH_STOP_THRESHOLD = 2;
+const PRODUCT_LINE_FAST_INCLUDE = [
+  'offers',
+  'variant_selector',
+  'product_intel',
+  'active_ingredients',
+  'ingredients_inci',
+  'how_to_use',
+  'product_details',
+] as const;
+const PRODUCT_LINE_PREFETCH_LIMIT = 2;
+const PRODUCT_LINE_PREFETCH_CONCURRENCY = 1;
+const PRODUCT_LINE_PREFETCH_TIMEOUT_MS = 8000;
+const PRODUCT_LINE_REVIEWS_TIMEOUT_MS = 4200;
+const PRODUCT_LINE_SIMILAR_TIMEOUT_MS = 10000;
 const LOW_CONFIDENCE_ACTIVE_INGREDIENT_BEAUTY_HINT_RE =
   /(beauty|makeup|cosmetic|palette|powder|eyeshadow|eye color|eye|quad|shadow|blush|bronzer|concealer|foundation|lip|lips|mascara|brow|skincare|serum|cream|creme|fragrance|perfume|parfum|eau de parfum)/i;
 
@@ -909,7 +1144,7 @@ function getInitialSimilarState(payload: PDPPayload): {
 }
 
 export function PdpContainer({
-  payload,
+  payload: initialPayload,
   initialQuantity = 1,
   mode,
   onAddToCart,
@@ -939,8 +1174,9 @@ export function PdpContainer({
   onSeeAllReviews?: () => void;
   ugcCapabilities?: UgcCapabilities | null;
 }) {
+  const [payload, setPayload] = useState(initialPayload);
   const [selectedVariantId, setSelectedVariantId] = useState(
-    payload.product.default_variant_id || payload.product.variants?.[0]?.variant_id,
+    initialPayload.product.default_variant_id || initialPayload.product.variants?.[0]?.variant_id,
   );
   const [quantity, setQuantity] = useState(initialQuantity);
   const reviewsTracked = useRef(false);
@@ -976,12 +1212,84 @@ export function PdpContainer({
   const [ugcQuestions, setUgcQuestions] = useState<QuestionListItem[]>([]);
   const questionsFetchedProductIdRef = useRef<string>('');
   const latestProductGroupIdRef = useRef<string | null>(null);
+  const productLineSwitchRequestRef = useRef(0);
+  const productLineSwitchPendingRef = useRef(false);
+  const productLinePayloadCacheRef = useRef(new Map<string, PDPPayload>());
+  const productLinePayloadInflightRef = useRef(new Map<string, Promise<PDPPayload | null>>());
+  const productLinePrefetchAttemptedRef = useRef(new Set<string>());
+  const [pendingProductLineProductId, setPendingProductLineProductId] = useState<string | null>(null);
+
+  useEffect(() => {
+    setPayload(initialPayload);
+  }, [initialPayload]);
+
+  useEffect(() => {
+    if (pendingProductLineProductId) return;
+    const cacheKey = buildProductLinePayloadCacheKey(
+      payload.product.product_id,
+      payload.product.merchant_id,
+    );
+    if (!cacheKey) return;
+    productLinePayloadCacheRef.current.set(cacheKey, payload);
+  }, [payload, pendingProductLineProductId]);
 
   const variants = useMemo(() => payload.product.variants ?? [], [payload.product.variants]);
 
   const selectedVariant = useMemo(() => {
     return variants.find((v) => v.variant_id === selectedVariantId) || variants[0];
   }, [variants, selectedVariantId]);
+  const variantSelectorData = getModuleData<VariantSelectorModuleData>(payload, 'variant_selector');
+  const productLineOptions = useMemo(
+    () =>
+      normalizeProductLineOptions(
+        payload.product.product_line_options?.length
+          ? payload.product.product_line_options
+          : variantSelectorData?.product_line_options,
+      ),
+    [payload.product.product_line_options, variantSelectorData?.product_line_options],
+  );
+  const selectedProductLineOption = useMemo(() => {
+    const currentProductId = String(payload.product.product_id || '').trim();
+    const currentMerchantId = String(payload.product.merchant_id || '').trim();
+    return (
+      productLineOptions.find((option) => option.selected) ||
+      productLineOptions.find((option) => {
+        const optionProductId = String(option.product_id || '').trim();
+        const optionMerchantId = String(option.merchant_id || '').trim();
+        return (
+          optionProductId === currentProductId &&
+          (!optionMerchantId || !currentMerchantId || optionMerchantId === currentMerchantId)
+        );
+      }) ||
+      null
+    );
+  }, [payload.product.merchant_id, payload.product.product_id, productLineOptions]);
+  const pendingProductLineOption = useMemo(
+    () =>
+      productLineOptions.find(
+        (option) => String(option.product_id || '').trim() === pendingProductLineProductId,
+      ) || null,
+    [pendingProductLineProductId, productLineOptions],
+  );
+  const productLineOptionName = useMemo(
+    () =>
+      String(
+        payload.product.product_line_option_name ||
+          variantSelectorData?.product_line_option_name ||
+          selectedProductLineOption?.option_name ||
+          productLineOptions[0]?.option_name ||
+          'Option',
+      ).trim(),
+    [
+      payload.product.product_line_option_name,
+      productLineOptions,
+      selectedProductLineOption?.option_name,
+      variantSelectorData?.product_line_option_name,
+    ],
+  );
+  const productLineOptionAxis = String(selectedProductLineOption?.axis || productLineOptions[0]?.axis || '')
+    .trim()
+    .toLowerCase();
 
   const isInStock =
     typeof selectedVariant?.availability?.in_stock === 'boolean'
@@ -1207,6 +1515,35 @@ export function PdpContainer({
   }, [promoDismissStorageKey]);
 
   const colorOptions = useMemo(() => collectColorOptions(variants), [variants]);
+  const shouldUseProductLineColorSelector =
+    productLineOptions.length > 1 && ['shade', 'color', 'colour', 'tone', 'hue'].includes(productLineOptionAxis);
+  const isProductLineSwitching = shouldUseProductLineColorSelector && pendingProductLineProductId !== null;
+  const shouldRenderColorOptions = colorOptions.length > 0 && !shouldUseProductLineColorSelector;
+  const productLinePrefetchTargets = useMemo(() => {
+    if (!shouldUseProductLineColorSelector || productLineOptions.length <= 1) return [];
+
+    const currentProductId = String(payload.product.product_id || '').trim();
+    const currentMerchantId = String(payload.product.merchant_id || '').trim();
+    const selectedIndex = Math.max(
+      0,
+      productLineOptions.findIndex((option) => isSameProductLineOption(option, currentProductId, currentMerchantId)),
+    );
+
+    return productLineOptions
+      .map((option, index) => ({ option, index, distance: Math.abs(index - selectedIndex) }))
+      .filter(({ option }) => !isSameProductLineOption(option, currentProductId, currentMerchantId))
+      .sort((left, right) => {
+        if (left.distance !== right.distance) return left.distance - right.distance;
+        return left.index - right.index;
+      })
+      .slice(0, PRODUCT_LINE_PREFETCH_LIMIT)
+      .map(({ option }) => option);
+  }, [
+    payload.product.merchant_id,
+    payload.product.product_id,
+    productLineOptions,
+    shouldUseProductLineColorSelector,
+  ]);
   const colorSheetOptions = useMemo<GenericColorOption[]>(() => {
     if (!colorOptions.length) return [];
 
@@ -1370,7 +1707,10 @@ export function PdpContainer({
     }),
     [baseMediaItems, selectedVariantId, variants],
   );
-  const galleryPreviewItems = useMemo(() => media?.preview_items ?? [], [media]);
+  const galleryPreviewItems = useMemo(
+    () => (shouldUseProductLineColorSelector ? [] : media?.preview_items ?? []),
+    [media, shouldUseProductLineColorSelector],
+  );
   const galleryData = useMemo(
     () => ({
       items: galleryItems,
@@ -1558,7 +1898,7 @@ export function PdpContainer({
   ]);
 
   const showSizeGuide = resolvedMode === 'generic' && !!payload.product.size_guide;
-  const hasInsights = Boolean(productIntel?.product_intel_core);
+  const hasInsights = isDisplayableProductIntelData(productIntel);
   const showSizeHelper = useMemo(() => {
     if (resolvedMode !== 'generic') return false;
     const categoryPath = payload.product.category_path || [];
@@ -1856,8 +2196,14 @@ export function PdpContainer({
     isExternalSeedProduct &&
     isLikelyBeautyExternalSeedProduct(payload.product, resolvedMode);
   const selectedVariantHeaderLabel = useMemo(
-    () => getDisplayVariantLabel(selectedVariant, 'Default'),
-    [selectedVariant],
+    () => {
+      const variantLabel = getDisplayVariantLabel(selectedVariant, 'Default');
+      const lineLabel = selectedProductLineOption?.label || '';
+      if (!lineLabel) return variantLabel;
+      if (!variantLabel || variantLabel === 'Default') return lineLabel;
+      return `${lineLabel} / ${variantLabel}`;
+    },
+    [selectedProductLineOption?.label, selectedVariant],
   );
   const compareAmount =
     pricePromo?.compare_at?.amount ??
@@ -1883,9 +2229,10 @@ export function PdpContainer({
   }
   const showTrustBadges = resolvedMode === 'beauty' && trustBadges.length > 0;
   const hasRightColumnSelectorSection =
-    colorOptions.length > 0 ||
+    productLineOptions.length > 1 ||
+    shouldRenderColorOptions ||
     sizeOptions.length > 0 ||
-    (!sizeOptions.length && !colorOptions.length && variants.length > 1);
+    (!sizeOptions.length && !shouldRenderColorOptions && variants.length > 1);
   const hasRightColumnSupportInfo =
     showTrustBadges || Boolean(effectiveShippingEta?.length || effectiveReturns?.return_window_days);
   const isDesktopInfoSparse =
@@ -2357,35 +2704,397 @@ export function PdpContainer({
     [currentRelativePath, payload.product.merchant_id, payload.product.product_id, router],
   );
 
+  const ensureProductLineCorePayload = useCallback(
+    (args: { productId: string; merchantId: string; timeoutMs?: number }) => {
+      const { productId, merchantId, timeoutMs = 8000 } = args;
+      const cacheKey = buildProductLinePayloadCacheKey(productId, merchantId);
+      if (cacheKey) {
+        const cachedPayload = productLinePayloadCacheRef.current.get(cacheKey);
+        if (cachedPayload) {
+          return Promise.resolve(cachedPayload);
+        }
+        const inflightRequest = productLinePayloadInflightRef.current.get(cacheKey);
+        if (inflightRequest) {
+          return inflightRequest;
+        }
+      }
+
+      let requestPromise: Promise<PDPPayload | null>;
+      requestPromise = getPdpV2({
+        product_id: productId,
+        ...(merchantId ? { merchant_id: merchantId } : {}),
+        include: [...PRODUCT_LINE_FAST_INCLUDE],
+        timeout_ms: timeoutMs,
+      })
+        .then((response) => {
+          const mappedPayload = mapPdpV2ToPdpPayload(response);
+          if (!mappedPayload) return null;
+          const nextPayload = stripProductLineAsyncModules(mappedPayload);
+          if (cacheKey) {
+            productLinePayloadCacheRef.current.set(cacheKey, nextPayload);
+          }
+          return nextPayload;
+        })
+        .catch(() => null)
+        .finally(() => {
+          if (!cacheKey) return;
+          if (productLinePayloadInflightRef.current.get(cacheKey) === requestPromise) {
+            productLinePayloadInflightRef.current.delete(cacheKey);
+          }
+        });
+
+      if (cacheKey) {
+        productLinePayloadInflightRef.current.set(cacheKey, requestPromise);
+      }
+      return requestPromise;
+    },
+    [],
+  );
+
+  const backfillProductLineOptionalModules = useCallback(
+    (args: { requestId: number; productId: string; merchantId: string }) => {
+      const { requestId, productId, merchantId } = args;
+      const cacheKey = buildProductLinePayloadCacheKey(productId, merchantId);
+
+      void getPdpV2({
+        product_id: productId,
+        ...(merchantId ? { merchant_id: merchantId } : {}),
+        include: ['reviews_preview'],
+        timeout_ms: PRODUCT_LINE_REVIEWS_TIMEOUT_MS,
+      })
+        .then((response) => {
+          const mapped = mapPdpV2ToPdpPayload(response);
+          setPayload((current) => {
+            if (productLineSwitchRequestRef.current !== requestId) return current;
+            if (String(current.product.product_id || '').trim() !== productId) return current;
+            const currentMerchantId = String(current.product.merchant_id || '').trim();
+            if (merchantId && currentMerchantId && currentMerchantId !== merchantId) return current;
+            const merged = mergeProductLineReviewsPayload(current, mapped);
+            if (cacheKey) productLinePayloadCacheRef.current.set(cacheKey, merged);
+            return merged;
+          });
+        })
+        .catch(() => {
+          setPayload((current) => {
+            if (productLineSwitchRequestRef.current !== requestId) return current;
+            if (String(current.product.product_id || '').trim() !== productId) return current;
+            const currentMerchantId = String(current.product.merchant_id || '').trim();
+            if (merchantId && currentMerchantId && currentMerchantId !== merchantId) return current;
+            return {
+              ...current,
+              x_reviews_state: 'error',
+            };
+          });
+        });
+
+      void getPdpV2({
+        product_id: productId,
+        ...(merchantId ? { merchant_id: merchantId } : {}),
+        include: ['similar'],
+        timeout_ms: PRODUCT_LINE_SIMILAR_TIMEOUT_MS,
+      })
+        .then((response) => {
+          const mapped = mapPdpV2ToPdpPayload(response);
+          setPayload((current) => {
+            if (productLineSwitchRequestRef.current !== requestId) return current;
+            if (String(current.product.product_id || '').trim() !== productId) return current;
+            const currentMerchantId = String(current.product.merchant_id || '').trim();
+            if (merchantId && currentMerchantId && currentMerchantId !== merchantId) return current;
+            const merged = mergeProductLineSimilarPayload(current, mapped);
+            if (cacheKey) productLinePayloadCacheRef.current.set(cacheKey, merged);
+            return merged;
+          });
+        })
+        .catch(() => {
+          setPayload((current) => {
+            if (productLineSwitchRequestRef.current !== requestId) return current;
+            if (String(current.product.product_id || '').trim() !== productId) return current;
+            const currentMerchantId = String(current.product.merchant_id || '').trim();
+            if (merchantId && currentMerchantId && currentMerchantId !== merchantId) return current;
+            return {
+              ...current,
+              x_recommendations_state: 'error',
+            };
+          });
+        });
+    },
+    [],
+  );
+
+  const prefetchProductLineOption = useCallback(
+    (option: ProductLineOption) => {
+      if (!shouldUseProductLineColorSelector) return;
+      const productId = String(option.product_id || '').trim();
+      const merchantId = String(option.merchant_id || '').trim();
+      const currentProductId = String(payload.product.product_id || '').trim();
+      const currentMerchantId = String(payload.product.merchant_id || '').trim();
+      if (!productId || isSameProductLineOption(option, currentProductId, currentMerchantId)) {
+        return;
+      }
+      const cacheKey = buildProductLinePayloadCacheKey(productId, merchantId);
+      if (!cacheKey) return;
+      productLinePrefetchAttemptedRef.current.add(cacheKey);
+      void ensureProductLineCorePayload({
+        productId,
+        merchantId,
+        timeoutMs: PRODUCT_LINE_PREFETCH_TIMEOUT_MS,
+      });
+    },
+    [
+      ensureProductLineCorePayload,
+      payload.product.merchant_id,
+      payload.product.product_id,
+      shouldUseProductLineColorSelector,
+    ],
+  );
+
+  useEffect(() => {
+    if (!shouldUseProductLineColorSelector || pendingProductLineProductId) return;
+
+    let cancelled = false;
+    let nextIndex = 0;
+    let activeCount = 0;
+    const targets = productLinePrefetchTargets.filter((option) => {
+      const productId = String(option.product_id || '').trim();
+      const merchantId = String(option.merchant_id || '').trim();
+      const cacheKey = buildProductLinePayloadCacheKey(productId, merchantId);
+      if (!cacheKey) return false;
+      if (productLinePayloadCacheRef.current.has(cacheKey)) return false;
+      if (productLinePayloadInflightRef.current.has(cacheKey)) return false;
+      if (productLinePrefetchAttemptedRef.current.has(cacheKey)) return false;
+      return true;
+    });
+
+    if (!targets.length) return;
+
+    const pump = () => {
+      if (cancelled) return;
+      while (activeCount < PRODUCT_LINE_PREFETCH_CONCURRENCY && nextIndex < targets.length) {
+        const nextOption = targets[nextIndex++];
+        const productId = String(nextOption.product_id || '').trim();
+        const merchantId = String(nextOption.merchant_id || '').trim();
+        const cacheKey = buildProductLinePayloadCacheKey(productId, merchantId);
+        if (!cacheKey) continue;
+        productLinePrefetchAttemptedRef.current.add(cacheKey);
+        activeCount += 1;
+        void ensureProductLineCorePayload({
+          productId,
+          merchantId,
+          timeoutMs: PRODUCT_LINE_PREFETCH_TIMEOUT_MS,
+        }).finally(() => {
+          activeCount -= 1;
+          pump();
+        });
+      }
+    };
+
+    pump();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    ensureProductLineCorePayload,
+    pendingProductLineProductId,
+    productLinePrefetchTargets,
+    shouldUseProductLineColorSelector,
+  ]);
+
+  const handleProductLineOptionSelect = useCallback(
+    async (option: ProductLineOption, index: number) => {
+      if (productLineSwitchPendingRef.current) {
+        return;
+      }
+      const nextProductId = String(option.product_id || '').trim();
+      if (!nextProductId) return;
+      const nextMerchantId = String(option.merchant_id || '').trim();
+      const currentProductId = String(payload.product.product_id || '').trim();
+      const currentMerchantId = String(payload.product.merchant_id || '').trim();
+      if (
+        nextProductId === currentProductId &&
+        (!nextMerchantId || !currentMerchantId || nextMerchantId === currentMerchantId)
+      ) {
+        return;
+      }
+      const targetHref = buildProductHref(nextProductId, nextMerchantId);
+      const params = new URLSearchParams(targetHref.split('?')[1] || '');
+      if (currentRelativePath) params.set('return', currentRelativePath);
+      pdpTracking.track('pdp_action_click', {
+        action_type: 'select_product_line_option',
+        option_name: productLineOptionName,
+        option_label: option.label,
+        option_axis: option.axis || null,
+        index,
+        target_product_id: nextProductId,
+        target_merchant_id: nextMerchantId || null,
+      });
+
+      if (shouldUseProductLineColorSelector) {
+        const requestId = productLineSwitchRequestRef.current + 1;
+        productLineSwitchRequestRef.current = requestId;
+        const previousPayload = payload;
+        const targetPath = buildInlineProductLineTargetPath(
+          nextProductId,
+          nextMerchantId,
+          currentRelativePath,
+        );
+        const cacheKey = buildProductLinePayloadCacheKey(nextProductId, nextMerchantId);
+        const cachedPayload = cacheKey
+          ? productLinePayloadCacheRef.current.get(cacheKey) || null
+          : null;
+
+        if (cachedPayload) {
+          setPayload(cachedPayload);
+          if (typeof window !== 'undefined') {
+            window.history.replaceState(window.history.state, '', targetPath);
+            setCurrentRelativePath(getCurrentRelativePath());
+          }
+          if (needsProductLineOptionalBackfill(cachedPayload)) {
+            backfillProductLineOptionalModules({
+              requestId,
+              productId: nextProductId,
+              merchantId: nextMerchantId,
+            });
+          }
+          return;
+        }
+
+        productLineSwitchPendingRef.current = true;
+        setPendingProductLineProductId(nextProductId);
+        setPayload((current) => withSelectedProductLineOption(current, option));
+
+        try {
+          const nextPayload = await ensureProductLineCorePayload({
+            productId: nextProductId,
+            merchantId: nextMerchantId,
+            timeoutMs: 8000,
+          });
+          if (productLineSwitchRequestRef.current !== requestId) return;
+          if (!nextPayload) {
+            throw new Error('PDP payload unavailable');
+          }
+          setPayload(nextPayload);
+          if (typeof window !== 'undefined') {
+            window.history.replaceState(window.history.state, '', targetPath);
+            setCurrentRelativePath(getCurrentRelativePath());
+          }
+          if (needsProductLineOptionalBackfill(nextPayload)) {
+            backfillProductLineOptionalModules({
+              requestId,
+              productId: nextProductId,
+              merchantId: nextMerchantId,
+            });
+          }
+        } catch {
+          if (productLineSwitchRequestRef.current === requestId) {
+            setPayload(previousPayload);
+            toast.error('Could not switch shade. Please try again.');
+          }
+        } finally {
+          if (productLineSwitchRequestRef.current === requestId) {
+            productLineSwitchPendingRef.current = false;
+            setPendingProductLineProductId(null);
+          }
+        }
+        return;
+      }
+
+      const pathname = targetHref.split('?')[0];
+      router.push(`${pathname}${params.toString() ? `?${params.toString()}` : ''}`);
+    },
+    [
+      backfillProductLineOptionalModules,
+      currentRelativePath,
+      ensureProductLineCorePayload,
+      payload,
+      productLineOptionName,
+      router,
+      shouldUseProductLineColorSelector,
+    ],
+  );
+
   const mergedQuestions = useMemo(() => {
-    const seen = new Set<string>();
-    const out: Array<{ question_id?: number; question: string; answer?: string; replies?: number }> = [];
+    const merged = new Map<
+      string,
+      {
+        question_id?: number;
+        question: string;
+        answer?: string;
+        replies?: number;
+        source?: 'merchant_faq' | 'review_derived' | 'community' | string;
+        source_label?: string;
+        support_count?: number;
+      }
+    >();
+
+    const upsert = (item: {
+      question_id?: number;
+      question: string;
+      answer?: string;
+      replies?: number;
+      source?: 'merchant_faq' | 'review_derived' | 'community' | string;
+      source_label?: string;
+      support_count?: number;
+    }) => {
+      const text = String(item?.question || '').trim();
+      const qid = Number(item?.question_id) || 0;
+      const key = text
+        .toLowerCase()
+        .replace(/[?？]+$/, '')
+        .replace(/[^a-z0-9]+/g, ' ')
+        .trim();
+      if (!text || !key) return;
+
+      const existing = merged.get(key);
+      if (!existing) {
+        merged.set(key, {
+          ...(qid ? { question_id: qid } : {}),
+          question: text,
+          ...(item.answer ? { answer: item.answer } : {}),
+          ...(typeof item.replies === 'number' ? { replies: item.replies } : {}),
+          ...(item.source ? { source: item.source } : {}),
+          ...(item.source_label ? { source_label: item.source_label } : {}),
+          ...(typeof item.support_count === 'number' ? { support_count: item.support_count } : {}),
+        });
+        return;
+      }
+
+      if (!existing.question_id && qid) existing.question_id = qid;
+      if (!existing.answer && item.answer) existing.answer = item.answer;
+      if (existing.replies == null && typeof item.replies === 'number') existing.replies = item.replies;
+      if ((!existing.source || existing.source === 'community') && item.source) existing.source = item.source;
+      if (!existing.source_label && item.source_label) existing.source_label = item.source_label;
+      if ((existing.support_count || 0) < (item.support_count || 0)) {
+        existing.support_count = item.support_count;
+      }
+    };
 
     for (const q of ugcQuestions) {
-      const text = String(q?.question || '').trim();
-      const qid = Number(q?.question_id) || 0;
-      const key = qid ? `id:${qid}` : `q:${text}`;
-      if (!text || seen.has(key) || seen.has(`q:${text}`)) continue;
-      seen.add(key);
-      seen.add(`q:${text}`);
-      out.push({
-        ...(qid ? { question_id: qid } : {}),
-        question: text,
+      upsert({
+        ...(Number(q?.question_id) ? { question_id: Number(q.question_id) } : {}),
+        question: String(q?.question || '').trim(),
         ...(typeof q?.replies === 'number' ? { replies: q.replies } : {}),
+        source: 'community',
+        source_label: 'Community',
       });
     }
 
     const legacy = (reviews as any)?.questions;
     if (Array.isArray(legacy)) {
       for (const q of legacy) {
-        const text = String(q?.question || '').trim();
-        if (!text || seen.has(`q:${text}`)) continue;
-        seen.add(`q:${text}`);
-        out.push(q);
+        upsert({
+          ...(Number(q?.question_id) ? { question_id: Number(q.question_id) } : {}),
+          question: String(q?.question || '').trim(),
+          ...(q?.answer ? { answer: String(q.answer) } : {}),
+          ...(typeof q?.replies === 'number' ? { replies: q.replies } : {}),
+          ...(q?.source ? { source: String(q.source) } : {}),
+          ...(q?.source_label ? { source_label: String(q.source_label) } : {}),
+          ...(typeof q?.support_count === 'number' ? { support_count: q.support_count } : {}),
+        });
       }
     }
 
-    return out;
+    return Array.from(merged.values());
   }, [reviews, ugcQuestions]);
 
   const reviewsForRender = useMemo(() => {
@@ -2814,7 +3523,80 @@ export function PdpContainer({
                 </div>
               ) : null}
 
-              {colorOptions.length ? (
+              {productLineOptions.length > 1 ? (
+                <div className="mt-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="text-xs font-semibold">{productLineOptionName}</div>
+                    {isProductLineSwitching && pendingProductLineOption?.label ? (
+                      <div className="flex items-center gap-1.5 truncate text-[11px] text-muted-foreground">
+                        <span aria-hidden="true" className="h-2 w-2 flex-shrink-0 rounded-full bg-current opacity-60 animate-pulse" />
+                        <span>Switching to {pendingProductLineOption.label}...</span>
+                      </div>
+                    ) : selectedProductLineOption?.label ? (
+                      <div className="truncate text-[11px] text-muted-foreground">
+                        Selected: {selectedProductLineOption.label}
+                      </div>
+                    ) : null}
+                  </div>
+                  <div className="mt-1.5 overflow-x-auto">
+                    <div className="flex gap-1.5 pb-1">
+                      {productLineOptions.map((option, index) => {
+                        const isSelected =
+                          option.selected ||
+                          (option.product_id === payload.product.product_id &&
+                            (!option.merchant_id ||
+                              !payload.product.merchant_id ||
+                              option.merchant_id === payload.product.merchant_id));
+                        const isPending = pendingProductLineProductId === String(option.product_id || '').trim();
+                        const swatch = shouldUseProductLineColorSelector
+                          ? getProductLineSwatch(option)
+                          : {};
+                        const hasSwatch = Boolean(swatch.imageUrl || swatch.color);
+                        return (
+                          <button
+                            key={option.option_id || `${option.product_id}-${option.value || option.label}`}
+                            type="button"
+                            disabled={isProductLineSwitching}
+                            aria-pressed={isSelected}
+                            aria-busy={isPending || undefined}
+                            onMouseEnter={() => prefetchProductLineOption(option)}
+                            onFocus={() => prefetchProductLineOption(option)}
+                            onClick={() => handleProductLineOptionSelect(option, index)}
+                            className={cn(
+                              'flex min-h-8 flex-shrink-0 items-center gap-1.5 rounded-md border bg-card text-xs text-foreground transition-colors',
+                              hasSwatch ? 'px-2 py-1.5' : 'px-3 py-1',
+                              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)] disabled:cursor-wait disabled:opacity-100',
+                              isSelected
+                                ? 'border-[color:var(--accent-600)] bg-[var(--accent-50)] text-[color:var(--accent-800)] font-semibold shadow-[inset_0_0_0_1px_var(--accent-600)]'
+                                : 'border-border hover:bg-muted/30 hover:border-muted-foreground/40',
+                              isPending ? 'opacity-75' : '',
+                            )}
+                          >
+                            {hasSwatch ? (
+                              <span
+                                aria-hidden="true"
+                                className={cn(
+                                  'h-4 w-4 flex-shrink-0 overflow-hidden rounded-full border',
+                                  isSelected ? 'border-[color:var(--accent-600)]' : 'border-border',
+                                )}
+                                style={{
+                                  backgroundColor: swatch.color || undefined,
+                                  backgroundImage: swatch.imageUrl ? `url("${swatch.imageUrl}")` : undefined,
+                                  backgroundSize: 'cover',
+                                  backgroundPosition: 'center',
+                                }}
+                              />
+                            ) : null}
+                            <span>{option.label}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
+              {shouldRenderColorOptions ? (
                 <div className="mt-2">
                   <div className="flex items-center justify-between">
                     <div className="text-xs font-semibold">Color</div>
@@ -2907,7 +3689,10 @@ export function PdpContainer({
                 </div>
               ) : null}
 
-              {!sizeOptions.length && !colorOptions.length && variants.length > 0 ? (
+              {!sizeOptions.length &&
+              !shouldRenderColorOptions &&
+              variants.length > 0 &&
+              !(productLineOptions.length > 1 && variants.length === 1) ? (
                 <div className="mt-2">
                   <VariantSelector
                     variants={variants}

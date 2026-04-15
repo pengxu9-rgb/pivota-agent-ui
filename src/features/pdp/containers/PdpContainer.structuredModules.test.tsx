@@ -1,10 +1,13 @@
 /* eslint-disable @next/next/no-img-element */
 import React from 'react';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { PdpContainer } from './PdpContainer';
 import type { PDPPayload } from '@/features/pdp/types';
+
+const routerPush = vi.hoisted(() => vi.fn());
+const getPdpV2Mock = vi.hoisted(() => vi.fn());
 
 vi.mock('next/image', () => ({
   default: (
@@ -29,7 +32,7 @@ vi.mock('next/image', () => ({
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({
-    push: vi.fn(),
+    push: routerPush,
   }),
 }));
 
@@ -38,6 +41,7 @@ vi.mock('@/lib/auroraEmbed', () => ({
 }));
 
 vi.mock('@/lib/api', () => ({
+  getPdpV2: (...args: unknown[]) => getPdpV2Mock(...args),
   listQuestions: vi.fn(async () => ({ items: [] })),
   postQuestion: vi.fn(async () => ({ question_id: 1 })),
 }));
@@ -160,6 +164,11 @@ function buildBeautyPayload(): PDPPayload {
               heading: 'Legacy Ingredients',
               content_type: 'text',
               content: 'This should not be shown when product_facts exists.',
+            },
+            {
+              heading: 'Rice-Infused Hydration',
+              content_type: 'text',
+              content: 'Rice extract helps replenish moisture.',
             },
           ],
         },
@@ -384,6 +393,8 @@ function buildMultiOfferVariantPricingPayload(): PDPPayload {
 describe('PdpContainer structured PDP modules', () => {
   afterEach(() => {
     cleanup();
+    routerPush.mockReset();
+    getPdpV2Mock.mockReset();
     vi.restoreAllMocks();
   });
 
@@ -410,6 +421,7 @@ describe('PdpContainer structured PDP modules', () => {
     expect(screen.getByText('Overview')).toBeInTheDocument();
     expect(screen.getAllByText('Retail PDP').length).toBeGreaterThan(0);
     expect(screen.getByText('Clinical Results')).toBeInTheDocument();
+    expect(screen.getByText('Rice-Infused Hydration')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Legacy Ingredients' })).not.toBeInTheDocument();
     expect(screen.getAllByRole('button', { name: 'Add to Cart' }).length).toBeGreaterThan(0);
     expect(screen.getAllByRole('button', { name: 'Buy Now' }).length).toBeGreaterThan(0);
@@ -451,6 +463,177 @@ describe('PdpContainer structured PDP modules', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Citrus Sunshine' }));
 
     expect(screen.getAllByText('$24.00').length).toBeGreaterThan(0);
+  });
+
+  it('renders cross-url product-line shades as swatches and switches in place', async () => {
+    const payload = buildBeautyPayload();
+    payload.product.product_id = 'ext_boj_dn350';
+    payload.product.merchant_id = 'external_seed';
+    payload.product.title = 'Daily Tinted Fluid Sunscreen DN350';
+    payload.product.default_variant_id = '52402575475060';
+    payload.product.variants = [
+      {
+        variant_id: '52402575475060',
+        title: 'Default Title',
+        options: [{ name: 'Title', value: 'Default Title' }],
+        price: { current: { amount: 18, currency: 'USD' } },
+        availability: { in_stock: true, available_quantity: 9 },
+      },
+    ];
+    payload.product.product_line_option_name = 'Shade';
+    payload.product.product_line_options = [
+      {
+        option_id: 'external_seed:ext_boj_dn310',
+        option_name: 'Shade',
+        axis: 'shade',
+        value: 'dn310',
+        label: 'DN310',
+        product_id: 'ext_boj_dn310',
+        merchant_id: 'external_seed',
+        swatch_color: '#c7bbaf',
+      },
+      {
+        option_id: 'external_seed:ext_boj_dn350',
+        option_name: 'Shade',
+        axis: 'shade',
+        value: 'dn350',
+        label: 'DN350',
+        product_id: 'ext_boj_dn350',
+        merchant_id: 'external_seed',
+        swatch_color: '#c6beb5',
+        selected: true,
+      },
+    ];
+    const mediaModule = payload.modules.find((module) => module.type === 'media_gallery');
+    if (mediaModule && typeof mediaModule.data === 'object' && mediaModule.data) {
+      (mediaModule.data as any).preview_scope = 'product_line';
+      (mediaModule.data as any).preview_items = [
+        {
+          type: 'image',
+          url: 'https://example.com/dn310.jpg',
+          alt_text: 'Daily Tinted Fluid Sunscreen DN310',
+          product_id: 'ext_boj_dn310',
+          merchant_id: 'external_seed',
+        },
+      ];
+    }
+    payload.modules.push({
+      module_id: 'm_variant',
+      type: 'variant_selector',
+      priority: 95,
+      data: {
+        selected_variant_id: '52402575475060',
+        product_line_option_name: 'Shade',
+        product_line_options: payload.product.product_line_options,
+      },
+    } as any);
+    const nextPayload = JSON.parse(JSON.stringify(payload)) as PDPPayload;
+    nextPayload.product.product_id = 'ext_boj_dn310';
+    nextPayload.product.title = 'Daily Tinted Fluid Sunscreen DN310';
+    nextPayload.product.product_line_options = nextPayload.product.product_line_options?.map((option) => ({
+      ...option,
+      selected: option.product_id === 'ext_boj_dn310',
+    }));
+    nextPayload.modules = nextPayload.modules.map((module) =>
+      module.type !== 'variant_selector'
+        ? module
+        : {
+            ...module,
+            data: {
+              ...(module.data as Record<string, unknown>),
+              product_line_options: nextPayload.product.product_line_options,
+            },
+          },
+    );
+    let resolvePdp: ((value: unknown) => void) | null = null;
+    getPdpV2Mock
+      .mockReturnValueOnce(
+        new Promise<any>((resolve) => {
+          resolvePdp = resolve;
+        }),
+      )
+      .mockResolvedValue({
+        status: 'success',
+        modules: [
+          {
+            type: 'canonical',
+            data: {
+              pdp_payload: nextPayload,
+            },
+          },
+        ],
+      });
+
+    render(
+      <PdpContainer payload={payload} mode="beauty" onAddToCart={() => {}} onBuyNow={() => {}} />,
+    );
+
+    expect(screen.getAllByText('Shade').length).toBeGreaterThan(0);
+    const dn310Button = screen.getByRole('button', { name: 'DN310' });
+    expect(dn310Button).toBeInTheDocument();
+    expect(dn310Button.querySelector('[aria-hidden="true"]')).toHaveStyle({
+      backgroundColor: '#c7bbaf',
+    });
+    expect(screen.getByRole('button', { name: 'DN350' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.queryByText('Title: Default Title')).not.toBeInTheDocument();
+    expect(screen.queryByText('Product Line')).not.toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(getPdpV2Mock).toHaveBeenCalledTimes(1);
+      expect(getPdpV2Mock).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({
+          product_id: 'ext_boj_dn310',
+          merchant_id: 'external_seed',
+          include: expect.arrayContaining(['product_intel', 'variant_selector']),
+        }),
+      );
+      expect(getPdpV2Mock.mock.calls[0]?.[0]).toEqual(
+        expect.objectContaining({
+          include: expect.not.arrayContaining(['reviews_preview', 'similar']),
+        }),
+      );
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'DN310' }));
+    fireEvent.click(screen.getByRole('button', { name: 'DN310' }));
+
+    expect(getPdpV2Mock).toHaveBeenCalledTimes(1);
+    expect(routerPush).not.toHaveBeenCalled();
+    expect(screen.getByText('Switching to DN310...')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'DN310' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'DN350' })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'DN350' }));
+    expect(getPdpV2Mock).toHaveBeenCalledTimes(1);
+
+    resolvePdp?.({
+      status: 'success',
+      modules: [
+        {
+          type: 'canonical',
+          data: {
+            pdp_payload: nextPayload,
+          },
+        },
+      ],
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'DN310' })).toHaveAttribute('aria-pressed', 'true');
+    });
+    await waitFor(() => {
+      expect(
+        getPdpV2Mock.mock.calls.some(
+          ([args]) => Array.isArray(args?.include) && args.include.includes('reviews_preview'),
+        ),
+      ).toBe(true);
+      expect(
+        getPdpV2Mock.mock.calls.some(
+          ([args]) => Array.isArray(args?.include) && args.include.includes('similar'),
+        ),
+      ).toBe(true);
+    });
   });
 
   it('falls back to legacy product_details when additive modules are absent', () => {
@@ -630,5 +813,43 @@ describe('PdpContainer structured PDP modules', () => {
     expect(externalOffer).toHaveTextContent('Item: €50.00');
     expect(externalOffer).not.toHaveTextContent('Recommended');
     expect(externalOffer).not.toHaveTextContent('Best price');
+  });
+
+  it('renders FAQ and review-derived source labels in the questions rail', () => {
+    const payload = buildBeautyPayload();
+    payload.modules.push({
+      module_id: 'm_reviews',
+      type: 'reviews_preview',
+      priority: 50,
+      data: {
+        scale: 5,
+        rating: 4.7,
+        review_count: 126,
+        questions: [
+          {
+            question: 'Can I use this every day?',
+            answer: 'Yes, it is gentle enough for daily use.',
+            source: 'merchant_faq',
+            source_label: 'Official FAQ',
+          },
+          {
+            question: 'Is this good for oily skin?',
+            answer: 'Reviewers say it feels lightweight on oily skin.',
+            source: 'review_derived',
+            source_label: 'From reviews',
+            support_count: 3,
+          },
+        ],
+      },
+    } as any);
+
+    render(
+      <PdpContainer payload={payload} mode="beauty" onAddToCart={() => {}} onBuyNow={() => {}} />,
+    );
+
+    expect(screen.getByText('Can I use this every day?')).toBeInTheDocument();
+    expect(screen.getByText('Official FAQ')).toBeInTheDocument();
+    expect(screen.getByText('From reviews')).toBeInTheDocument();
+    expect(screen.getByText('Supported by 3 reviews')).toBeInTheDocument();
   });
 });

@@ -353,6 +353,17 @@ function buildDetailSections(product: ProductResponse, raw: any): DetailSection[
 }
 
 function buildReviewsPreview(product: ProductResponse, raw: any): ReviewsPreviewData | null {
+  type ReviewQuestion = NonNullable<ReviewsPreviewData['questions']>[number];
+  const merchantFaqQuestions: ReviewQuestion[] = Array.isArray(raw?.pdp_faq_items)
+    ? raw.pdp_faq_items
+        .map((item: any) => ({
+          question: String(item?.question || ''),
+          answer: item?.answer ? String(item.answer) : undefined,
+          source: 'merchant_faq',
+          source_label: 'Official FAQ',
+        }))
+        .filter((item: ReviewQuestion) => item.question)
+    : [];
   const normalizeStarDistributionPercent = (value: unknown): number | undefined => {
     const rawNum = typeof value === 'string' ? Number(value.replace('%', '').trim()) : Number(value);
     if (!Number.isFinite(rawNum)) return undefined;
@@ -375,6 +386,7 @@ function buildReviewsPreview(product: ProductResponse, raw: any): ReviewsPreview
       scale: 5,
       rating: 0,
       review_count: 0,
+      ...(merchantFaqQuestions.length ? { questions: merchantFaqQuestions } : {}),
       entry_points: {
         write_review: {
           action_type: 'open_embed',
@@ -401,6 +413,32 @@ function buildReviewsPreview(product: ProductResponse, raw: any): ReviewsPreview
     : Array.isArray(summary.snippets)
       ? summary.snippets
       : [];
+  const summaryQuestions = Array.isArray(summary.questions)
+    ? summary.questions.map((item: any) => ({
+        question: String(item.question || item.title || ''),
+        answer: item.answer ? String(item.answer) : undefined,
+        replies: item.replies ?? item.reply_count,
+        source: item.source ? String(item.source) : undefined,
+        source_label: item.source_label ? String(item.source_label) : item.sourceLabel ? String(item.sourceLabel) : undefined,
+        support_count:
+          item.support_count != null
+            ? Number(item.support_count) || 0
+            : item.supportCount != null
+              ? Number(item.supportCount) || 0
+              : undefined,
+      }))
+    : [];
+  const seenQuestionKeys = new Set<string>();
+  const questions = [...merchantFaqQuestions, ...summaryQuestions].filter((item) => {
+    const key = String(item.question || '')
+      .toLowerCase()
+      .replace(/[?？]+$/, '')
+      .replace(/[^a-z0-9]+/g, ' ')
+      .trim();
+    if (!key || seenQuestionKeys.has(key)) return false;
+    seenQuestionKeys.add(key);
+    return true;
+  });
 
   return {
     scale,
@@ -425,13 +463,7 @@ function buildReviewsPreview(product: ProductResponse, raw: any): ReviewsPreview
           count: item.count ?? item.total,
         }))
       : undefined,
-    questions: Array.isArray(summary.questions)
-      ? summary.questions.map((item: any) => ({
-          question: String(item.question || item.title || ''),
-          answer: item.answer ? String(item.answer) : undefined,
-          replies: item.replies ?? item.reply_count,
-        }))
-      : undefined,
+    questions: questions.length ? questions : undefined,
     brand_card: summary.brand_card
       ? {
           name: String(summary.brand_card.name || ''),

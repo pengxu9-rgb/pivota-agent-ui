@@ -62,6 +62,8 @@ export interface Product {
   size_guide?: SizeGuide;
   default_variant_id: string;
   variants: Variant[];
+  product_line_option_name?: string;
+  product_line_options?: ProductLineOption[];
   price?: VariantPrice;
   availability?: { in_stock: boolean; available_quantity?: number };
   shipping?: { eta_days_range?: number[] };
@@ -82,6 +84,24 @@ export interface Product {
   destination_url?: string;
   source_url?: string;
   platform?: string;
+}
+
+export interface ProductLineOption {
+  option_id?: string;
+  label: string;
+  value?: string;
+  option_name?: string;
+  axis?: string;
+  merchant_id?: string;
+  product_id?: string;
+  title?: string;
+  image_url?: string;
+  label_image_url?: string;
+  swatch_image_url?: string;
+  swatch_color?: string;
+  color_hex?: string;
+  swatch?: { hex?: string; image_url?: string; imageUrl?: string; url?: string };
+  selected?: boolean;
 }
 
 export interface SizeGuide {
@@ -433,6 +453,9 @@ export interface ReviewsPreviewData {
     question: string;
     answer?: string;
     replies?: number;
+    source?: 'merchant_faq' | 'review_derived' | 'community' | string;
+    source_label?: string;
+    support_count?: number;
   }>;
   brand_card?: {
     name: string;

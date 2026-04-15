@@ -1728,8 +1728,12 @@ export async function postQuestion(args: {
 export type QuestionListItem = {
   question_id: number;
   question: string;
+  answer?: string;
   created_at?: string | null;
   replies?: number | null;
+  source?: 'merchant_faq' | 'review_derived' | 'community' | string;
+  source_label?: string;
+  support_count?: number;
 };
 
 export async function listQuestions(args: {
@@ -1760,8 +1764,14 @@ export async function listQuestions(args: {
     .map((it: any) => ({
       question_id: Number(it?.question_id ?? it?.questionId ?? it?.id) || 0,
       question: String(it?.question ?? '').trim(),
+      ...(it?.answer ? { answer: String(it.answer).trim() } : {}),
       created_at: it?.created_at ?? it?.createdAt ?? null,
       replies: Number(it?.replies ?? it?.reply_count ?? it?.replyCount) || 0,
+      ...(it?.source ? { source: String(it.source) } : {}),
+      ...(it?.source_label ? { source_label: String(it.source_label) } : {}),
+      ...(Number.isFinite(Number(it?.support_count ?? it?.supportCount))
+        ? { support_count: Number(it?.support_count ?? it?.supportCount) }
+        : {}),
     }))
     .filter((it: any) => it.question);
   const countRaw = Number(res?.count);

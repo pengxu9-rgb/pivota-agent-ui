@@ -6,8 +6,116 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
-import { listQuestions, postQuestion, type QuestionListItem } from '@/lib/api';
+import { getPdpV2, listQuestions, postQuestion, type QuestionListItem } from '@/lib/api';
 import { buildProductHref } from '@/lib/productHref';
+import { mapPdpV2ToPdpPayload } from '@/features/pdp/adapter/mapPdpV2ToPdpPayload';
+import type { ReviewsPreviewData } from '@/features/pdp/types';
+
+type QuestionDisplayItem = QuestionListItem & {
+  synthetic_key?: string;
+};
+
+function normalizeQuestionKey(value: unknown): string {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[?？]+$/, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function sourceLabelFor(source: unknown): string | undefined {
+  const key = String(source || '').trim().toLowerCase();
+  if (key === 'merchant_faq') return 'Official FAQ';
+  if (key === 'review_derived') return 'From reviews';
+  if (key === 'community') return 'Community';
+  return undefined;
+}
+
+function mergeQuestionItems(...groups: Array<QuestionDisplayItem[] | null | undefined>): QuestionDisplayItem[] {
+  const merged = new Map<string, QuestionDisplayItem>();
+
+  const upsert = (item: QuestionDisplayItem) => {
+    const question = String(item?.question || '').trim();
+    const key = normalizeQuestionKey(question);
+    if (!question || !key) return;
+    const qid = Number(item.question_id) || 0;
+    const existing = merged.get(key);
+    const normalized: QuestionDisplayItem = {
+      ...item,
+      question_id: qid,
+      question,
+      ...(item.source && !item.source_label ? { source_label: sourceLabelFor(item.source) } : {}),
+      synthetic_key: item.synthetic_key || `${item.source || 'question'}:${key}`,
+    };
+
+    if (!existing) {
+      merged.set(key, normalized);
+      return;
+    }
+
+    const preserveCommunityThreadSource = Boolean(existing.question_id) && existing.source === 'community';
+    merged.set(key, {
+      ...existing,
+      ...(existing.question_id ? {} : { question_id: qid }),
+      ...(existing.answer ? {} : normalized.answer ? { answer: normalized.answer } : {}),
+      replies: Math.max(Number(existing.replies) || 0, Number(normalized.replies) || 0),
+      ...(preserveCommunityThreadSource || (existing.source && existing.source !== 'community')
+        ? {}
+        : normalized.source
+          ? { source: normalized.source }
+          : {}),
+      ...(existing.source_label ? {} : normalized.source_label ? { source_label: normalized.source_label } : {}),
+      support_count: Math.max(Number(existing.support_count) || 0, Number(normalized.support_count) || 0) || undefined,
+    });
+  };
+
+  for (const group of groups) {
+    for (const item of group || []) upsert(item);
+  }
+
+  return Array.from(merged.values());
+}
+
+function normalizeReviewQuestions(reviews: ReviewsPreviewData | null): QuestionDisplayItem[] {
+  const questions = Array.isArray((reviews as any)?.questions) ? (reviews as any).questions : [];
+  return questions
+    .map((item: any, index: number) => {
+      const question = String(item?.question || '').trim();
+      if (!question) return null;
+      const source = item?.source ? String(item.source) : undefined;
+      return {
+        question_id: Number(item?.question_id ?? item?.questionId ?? item?.id) || 0,
+        question,
+        ...(item?.answer ? { answer: String(item.answer).trim() } : {}),
+        replies: Number(item?.replies ?? item?.reply_count ?? item?.replyCount) || 0,
+        ...(source ? { source } : {}),
+        source_label: item?.source_label ? String(item.source_label) : sourceLabelFor(source),
+        ...(Number.isFinite(Number(item?.support_count ?? item?.supportCount))
+          ? { support_count: Number(item?.support_count ?? item?.supportCount) }
+          : {}),
+        synthetic_key: `${source || 'reviews_preview'}:${normalizeQuestionKey(question)}:${index}`,
+      } satisfies QuestionDisplayItem;
+    })
+    .filter(Boolean) as QuestionDisplayItem[];
+}
+
+function extractReviewsPreviewQuestions(response: Awaited<ReturnType<typeof getPdpV2>>): QuestionDisplayItem[] {
+  const directModule = Array.isArray(response?.modules)
+    ? response.modules.find((module: any) => module?.type === 'reviews_preview')
+    : null;
+  const directReviews = directModule?.data && typeof directModule.data === 'object'
+    ? (directModule.data as ReviewsPreviewData)
+    : null;
+  const directQuestions = normalizeReviewQuestions(directReviews);
+  if (directQuestions.length) return directQuestions;
+
+  const mappedPayload = mapPdpV2ToPdpPayload(response);
+  const mappedReviews = mappedPayload?.modules.find((module) => module.type === 'reviews_preview')?.data as
+    | ReviewsPreviewData
+    | undefined;
+  return normalizeReviewQuestions(mappedReviews || null);
+}
 
 export default function QuestionsListClient() {
   const router = useRouter();
@@ -17,7 +125,7 @@ export default function QuestionsListClient() {
   const productGroupId = (params.get('product_group_id') || params.get('productGroupId') || '').trim() || null;
   const merchantId = (params.get('merchant_id') || params.get('merchantId') || '').trim() || null;
 
-  const [items, setItems] = useState<QuestionListItem[]>([]);
+  const [items, setItems] = useState<QuestionDisplayItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [askOpen, setAskOpen] = useState(false);
   const [askText, setAskText] = useState('');
@@ -29,13 +137,33 @@ export default function QuestionsListClient() {
     async function run() {
       setLoading(true);
       try {
-        const res = await listQuestions({
-          productId,
-          ...(productGroupId ? { productGroupId } : {}),
-          limit: 50,
-        });
+        const [communityResult, pdpQuestionResult] = await Promise.allSettled([
+          listQuestions({
+            productId,
+            ...(productGroupId ? { productGroupId } : {}),
+            limit: 50,
+          }),
+          getPdpV2({
+            product_id: productId,
+            ...(merchantId ? { merchant_id: merchantId } : {}),
+            include: ['reviews_preview'],
+            timeout_ms: 7000,
+          }).then(extractReviewsPreviewQuestions),
+        ]);
         if (cancelled) return;
-        setItems(res?.items || []);
+        if (communityResult.status === 'rejected' && pdpQuestionResult.status === 'rejected') {
+          throw communityResult.reason || pdpQuestionResult.reason;
+        }
+        const communityItems =
+          communityResult.status === 'fulfilled'
+            ? (communityResult.value?.items || []).map((item) => ({
+                ...item,
+                source: item.source || 'community',
+                source_label: item.source_label || 'Community',
+              }))
+            : [];
+        const pdpQuestions = pdpQuestionResult.status === 'fulfilled' ? pdpQuestionResult.value : [];
+        setItems(mergeQuestionItems(communityItems, pdpQuestions));
       } catch (e: any) {
         if (!cancelled) toast.error(e?.message || 'Failed to load questions');
       } finally {
@@ -46,7 +174,7 @@ export default function QuestionsListClient() {
     return () => {
       cancelled = true;
     };
-  }, [productGroupId, productId]);
+  }, [merchantId, productGroupId, productId]);
 
   const requireLogin = (intent: 'question' | 'reply') => {
     const redirect =
@@ -74,7 +202,14 @@ export default function QuestionsListClient() {
       });
       const qid = Number((res as any)?.question_id ?? (res as any)?.questionId ?? (res as any)?.id) || Date.now();
       setItems((prev) => [
-        { question_id: qid, question: text, created_at: new Date().toISOString(), replies: 0 },
+        {
+          question_id: qid,
+          question: text,
+          created_at: new Date().toISOString(),
+          replies: 0,
+          source: 'community',
+          source_label: 'Community',
+        },
         ...(prev || []),
       ]);
       setAskText('');
@@ -108,7 +243,7 @@ export default function QuestionsListClient() {
             </button>
             <div>
               <h1 className="text-xl font-semibold">Questions</h1>
-              <p className="text-xs text-muted-foreground">Ask and answer questions from the community.</p>
+              <p className="text-xs text-muted-foreground">Questions and answers from the product page and community.</p>
             </div>
           </div>
 
@@ -128,23 +263,46 @@ export default function QuestionsListClient() {
         {productId && !loading ? (
           <div className="space-y-3">
             {items.length ? (
-              items.map((q) => (
-                <Link
-                  key={String(q.question_id)}
-                  href={`/community/questions/${q.question_id}?${params.toString()}`}
-                  className="block rounded-2xl border border-border bg-white/70 p-4 hover:border-primary/50"
-                >
+              items.map((q) => {
+                const canOpenThread = Number(q.question_id) > 0 && (!q.source || q.source === 'community');
+                const key = q.synthetic_key || String(q.question_id || normalizeQuestionKey(q.question));
+                const content = (
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex-1">
                       <div className="text-sm font-semibold leading-snug">{q.question}</div>
+                      {q.answer ? (
+                        <div className="mt-2 text-sm leading-relaxed text-muted-foreground">{q.answer}</div>
+                      ) : null}
+                      {q.source_label ? (
+                        <div className="mt-2 text-[11px] font-medium text-muted-foreground">{q.source_label}</div>
+                      ) : null}
+                      {q.support_count ? (
+                        <div className="mt-1 text-xs text-muted-foreground">
+                          Supported by {q.support_count} reviews
+                        </div>
+                      ) : null}
                       <div className="mt-2 text-xs text-muted-foreground">
                         {(q.replies || 0) === 1 ? '1 reply' : `${q.replies || 0} replies`}
                       </div>
                     </div>
-                    <ChevronRight className="h-4 w-4 text-muted-foreground mt-0.5" />
+                    {canOpenThread ? <ChevronRight className="h-4 w-4 text-muted-foreground mt-0.5" /> : null}
                   </div>
-                </Link>
-              ))
+                );
+
+                return canOpenThread ? (
+                  <Link
+                    key={key}
+                    href={`/community/questions/${q.question_id}?${params.toString()}`}
+                    className="block rounded-2xl border border-border bg-white/70 p-4 hover:border-primary/50"
+                  >
+                    {content}
+                  </Link>
+                ) : (
+                  <div key={key} className="block rounded-2xl border border-border bg-white/70 p-4">
+                    {content}
+                  </div>
+                );
+              })
             ) : (
               <div className="rounded-2xl border border-dashed border-border bg-white/70 p-6 text-sm text-muted-foreground">
                 No questions yet. Be the first to ask!

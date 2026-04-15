@@ -1516,7 +1516,7 @@ export default function ProductDetailPage({ params }: Props) {
   };
 
   if (loading && !pdpPayload) {
-    return <ProductDetailLoading />;
+    return <ProductDetailLoading label="Loading products" />;
   }
 
   if (!loading && !pdpPayload && sellerCandidates?.length) {
