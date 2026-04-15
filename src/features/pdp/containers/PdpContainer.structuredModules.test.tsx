@@ -6,6 +6,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PdpContainer } from './PdpContainer';
 import type { PDPPayload } from '@/features/pdp/types';
 
+const routerPush = vi.hoisted(() => vi.fn());
+
 vi.mock('next/image', () => ({
   default: (
     props: React.ImgHTMLAttributes<HTMLImageElement> & {
@@ -29,7 +31,7 @@ vi.mock('next/image', () => ({
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({
-    push: vi.fn(),
+    push: routerPush,
   }),
 }));
 
@@ -389,6 +391,7 @@ function buildMultiOfferVariantPricingPayload(): PDPPayload {
 describe('PdpContainer structured PDP modules', () => {
   afterEach(() => {
     cleanup();
+    routerPush.mockReset();
     vi.restoreAllMocks();
   });
 
@@ -457,6 +460,68 @@ describe('PdpContainer structured PDP modules', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Citrus Sunshine' }));
 
     expect(screen.getAllByText('$24.00').length).toBeGreaterThan(0);
+  });
+
+  it('renders cross-url product-line shades as text options and navigates to sibling PDPs', () => {
+    const payload = buildBeautyPayload();
+    payload.product.product_id = 'ext_boj_dn350';
+    payload.product.merchant_id = 'external_seed';
+    payload.product.title = 'Daily Tinted Fluid Sunscreen DN350';
+    payload.product.default_variant_id = '52402575475060';
+    payload.product.variants = [
+      {
+        variant_id: '52402575475060',
+        title: 'Default Title',
+        options: [{ name: 'Title', value: 'Default Title' }],
+        price: { current: { amount: 18, currency: 'USD' } },
+        availability: { in_stock: true, available_quantity: 9 },
+      },
+    ];
+    payload.product.product_line_option_name = 'Shade';
+    payload.product.product_line_options = [
+      {
+        option_id: 'external_seed:ext_boj_dn310',
+        option_name: 'Shade',
+        axis: 'shade',
+        value: 'dn310',
+        label: 'DN310',
+        product_id: 'ext_boj_dn310',
+        merchant_id: 'external_seed',
+      },
+      {
+        option_id: 'external_seed:ext_boj_dn350',
+        option_name: 'Shade',
+        axis: 'shade',
+        value: 'dn350',
+        label: 'DN350',
+        product_id: 'ext_boj_dn350',
+        merchant_id: 'external_seed',
+        selected: true,
+      },
+    ];
+    payload.modules.push({
+      module_id: 'm_variant',
+      type: 'variant_selector',
+      priority: 95,
+      data: {
+        selected_variant_id: '52402575475060',
+        product_line_option_name: 'Shade',
+        product_line_options: payload.product.product_line_options,
+      },
+    } as any);
+
+    render(
+      <PdpContainer payload={payload} mode="beauty" onAddToCart={() => {}} onBuyNow={() => {}} />,
+    );
+
+    expect(screen.getAllByText('Shade').length).toBeGreaterThan(0);
+    expect(screen.getByRole('button', { name: 'DN310' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'DN350' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.queryByText('Title: Default Title')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'DN310' }));
+
+    expect(routerPush).toHaveBeenCalledWith(expect.stringMatching(/^\/products\/ext_boj_dn310(?:\?|$)/));
   });
 
   it('falls back to legacy product_details when additive modules are absent', () => {
