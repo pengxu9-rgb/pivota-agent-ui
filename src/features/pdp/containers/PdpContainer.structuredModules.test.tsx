@@ -545,17 +545,12 @@ describe('PdpContainer structured PDP modules', () => {
             },
           },
     );
-    getPdpV2Mock.mockResolvedValue({
-      status: 'success',
-      modules: [
-        {
-          type: 'canonical',
-          data: {
-            pdp_payload: nextPayload,
-          },
-        },
-      ],
-    });
+    let resolvePdp: ((value: unknown) => void) | null = null;
+    getPdpV2Mock.mockReturnValue(
+      new Promise<any>((resolve) => {
+        resolvePdp = resolve;
+      }),
+    );
 
     render(
       <PdpContainer payload={payload} mode="beauty" onAddToCart={() => {}} onBuyNow={() => {}} />,
@@ -583,6 +578,25 @@ describe('PdpContainer structured PDP modules', () => {
       );
     });
     expect(routerPush).not.toHaveBeenCalled();
+    expect(screen.getByText('Switching to DN310...')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'DN310' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'DN350' })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'DN350' }));
+    expect(getPdpV2Mock).toHaveBeenCalledTimes(1);
+
+    resolvePdp?.({
+      status: 'success',
+      modules: [
+        {
+          type: 'canonical',
+          data: {
+            pdp_payload: nextPayload,
+          },
+        },
+      ],
+    });
+
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'DN310' })).toHaveAttribute('aria-pressed', 'true');
     });

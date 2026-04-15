@@ -1155,6 +1155,13 @@ export function PdpContainer({
       null
     );
   }, [payload.product.merchant_id, payload.product.product_id, productLineOptions]);
+  const pendingProductLineOption = useMemo(
+    () =>
+      productLineOptions.find(
+        (option) => String(option.product_id || '').trim() === pendingProductLineProductId,
+      ) || null,
+    [pendingProductLineProductId, productLineOptions],
+  );
   const productLineOptionName = useMemo(
     () =>
       String(
@@ -1401,6 +1408,7 @@ export function PdpContainer({
   const colorOptions = useMemo(() => collectColorOptions(variants), [variants]);
   const shouldUseProductLineColorSelector =
     productLineOptions.length > 1 && ['shade', 'color', 'colour', 'tone', 'hue'].includes(productLineOptionAxis);
+  const isProductLineSwitching = shouldUseProductLineColorSelector && pendingProductLineProductId !== null;
   const shouldRenderColorOptions = colorOptions.length > 0 && !shouldUseProductLineColorSelector;
   const colorSheetOptions = useMemo<GenericColorOption[]>(() => {
     if (!colorOptions.length) return [];
@@ -2564,6 +2572,9 @@ export function PdpContainer({
 
   const handleProductLineOptionSelect = useCallback(
     async (option: ProductLineOption, index: number) => {
+      if (pendingProductLineProductId) {
+        return;
+      }
       const nextProductId = String(option.product_id || '').trim();
       if (!nextProductId) return;
       const nextMerchantId = String(option.merchant_id || '').trim();
@@ -2647,6 +2658,7 @@ export function PdpContainer({
     },
     [
       currentRelativePath,
+      pendingProductLineProductId,
       payload,
       productLineOptionName,
       router,
@@ -3168,7 +3180,12 @@ export function PdpContainer({
                 <div className="mt-2">
                   <div className="flex items-center justify-between gap-3">
                     <div className="text-xs font-semibold">{productLineOptionName}</div>
-                    {selectedProductLineOption?.label ? (
+                    {isProductLineSwitching && pendingProductLineOption?.label ? (
+                      <div className="flex items-center gap-1.5 truncate text-[11px] text-muted-foreground">
+                        <span aria-hidden="true" className="h-2 w-2 flex-shrink-0 rounded-full bg-current opacity-60 animate-pulse" />
+                        <span>Switching to {pendingProductLineOption.label}...</span>
+                      </div>
+                    ) : selectedProductLineOption?.label ? (
                       <div className="truncate text-[11px] text-muted-foreground">
                         Selected: {selectedProductLineOption.label}
                       </div>
@@ -3192,13 +3209,14 @@ export function PdpContainer({
                           <button
                             key={option.option_id || `${option.product_id}-${option.value || option.label}`}
                             type="button"
+                            disabled={isProductLineSwitching}
                             aria-pressed={isSelected}
                             aria-busy={isPending || undefined}
                             onClick={() => handleProductLineOptionSelect(option, index)}
                             className={cn(
                               'flex min-h-8 flex-shrink-0 items-center gap-1.5 rounded-md border bg-card text-xs text-foreground transition-colors',
                               hasSwatch ? 'px-2 py-1.5' : 'px-3 py-1',
-                              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]',
+                              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)] disabled:cursor-wait disabled:opacity-100',
                               isSelected
                                 ? 'border-[color:var(--accent-600)] bg-[var(--accent-50)] text-[color:var(--accent-800)] font-semibold shadow-[inset_0_0_0_1px_var(--accent-600)]'
                                 : 'border-border hover:bg-muted/30 hover:border-muted-foreground/40',
