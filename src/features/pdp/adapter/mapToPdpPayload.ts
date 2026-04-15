@@ -777,8 +777,8 @@ export function mapToPdpPayload(args: {
       data: pricePromo,
     },
     {
-      module_id: 'm_details',
-      type: 'product_details' as const,
+      module_id: 'm_product_overview',
+      type: 'product_overview' as const,
       priority: 70,
       data: details,
     },

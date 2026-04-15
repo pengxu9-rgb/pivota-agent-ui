@@ -90,8 +90,8 @@ const payload: PDPPayload = {
       data: { price: { amount: 12.35, currency: 'USD' }, promotions: [] },
     },
     {
-      module_id: 'm_details',
-      type: 'product_details',
+      module_id: 'm_product_overview',
+      type: 'product_overview',
       priority: 70,
       data: { sections: [] },
     },

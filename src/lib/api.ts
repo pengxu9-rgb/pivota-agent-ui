@@ -2699,7 +2699,7 @@ export async function getPdpV2(args: {
 
   const include =
     args.include == null
-      ? ['offers', 'variant_selector', 'active_ingredients', 'ingredients_inci', 'how_to_use', 'product_details', 'reviews_preview']
+      ? ['offers', 'variant_selector', 'active_ingredients', 'ingredients_inci', 'how_to_use', 'product_overview', 'supplemental_details', 'reviews_preview']
       : args.include;
 
   const data = await callGatewayWithTimeout(

@@ -492,7 +492,7 @@ describe('mapPdpV2ToPdpPayload image normalization', () => {
         },
       },
       {
-        type: 'product_details',
+        type: 'product_overview',
         data: {
           sections: [{ heading: 'Details', content_type: 'text', content: 'Barrier-support serum.' }],
         },
