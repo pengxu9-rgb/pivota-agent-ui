@@ -18,7 +18,7 @@ const INGREDIENT_NOISE_RE =
   /\b(shop now|pair with|our story|product philosophy|sustainability|inclusivity pledge|peta-certified|vegan and cruelty-free|no worries|patch test|allerg(?:y|ic)|warning|warnings|caution|note:)\b/i;
 const OVERVIEW_LIKE_HEADING_RE = /^(overview|details|product details?)$/i;
 const SECTION_SOUP_LABEL_RE =
-  /\b(description|details?|overview|benefits?|clinical results?|results?|proven results?|key ingredients?|why it works|texture|finish|coverage|free of|set includes|best for|formulation|what else you should know|good to know|ingredients?|active ingredients?|how to use|how to apply|directions?|faq|frequently asked questions?|q\s*&\s*a|questions?)\b\s*:?\s*/gi;
+  /(^|[\n\r.;•|])\s*(description|details?|overview|benefits?|clinical results?|results?|proven results?|key ingredients?|why it works|texture|finish|coverage|free of|set includes|best for|formulation|what else you should know|good to know|ingredients?|active ingredients?|how to use|how to apply|directions?|faq|frequently asked questions?|q\s*&\s*a|questions?)\s*:?\s*(?=[A-Z0-9])/gi;
 
 function normalizeWhitespace(value: unknown): string {
   return String(value || '')
