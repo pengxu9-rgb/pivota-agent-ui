@@ -358,6 +358,9 @@ const PRODUCT_LINE_FAST_INCLUDE = [
   'how_to_use',
   'product_details',
 ] as const;
+const PRODUCT_LINE_PREFETCH_LIMIT = 4;
+const PRODUCT_LINE_PREFETCH_CONCURRENCY = 2;
+const PRODUCT_LINE_PREFETCH_TIMEOUT_MS = 4500;
 const PRODUCT_LINE_REVIEWS_TIMEOUT_MS = 4200;
 const PRODUCT_LINE_SIMILAR_TIMEOUT_MS = 10000;
 const LOW_CONFIDENCE_ACTIVE_INGREDIENT_BEAUTY_HINT_RE =
@@ -1211,6 +1214,8 @@ export function PdpContainer({
   const productLineSwitchRequestRef = useRef(0);
   const productLineSwitchPendingRef = useRef(false);
   const productLinePayloadCacheRef = useRef(new Map<string, PDPPayload>());
+  const productLinePayloadInflightRef = useRef(new Map<string, Promise<PDPPayload | null>>());
+  const productLinePrefetchAttemptedRef = useRef(new Set<string>());
   const [pendingProductLineProductId, setPendingProductLineProductId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -1513,6 +1518,31 @@ export function PdpContainer({
     productLineOptions.length > 1 && ['shade', 'color', 'colour', 'tone', 'hue'].includes(productLineOptionAxis);
   const isProductLineSwitching = shouldUseProductLineColorSelector && pendingProductLineProductId !== null;
   const shouldRenderColorOptions = colorOptions.length > 0 && !shouldUseProductLineColorSelector;
+  const productLinePrefetchTargets = useMemo(() => {
+    if (!shouldUseProductLineColorSelector || productLineOptions.length <= 1) return [];
+
+    const currentProductId = String(payload.product.product_id || '').trim();
+    const currentMerchantId = String(payload.product.merchant_id || '').trim();
+    const selectedIndex = Math.max(
+      0,
+      productLineOptions.findIndex((option) => isSameProductLineOption(option, currentProductId, currentMerchantId)),
+    );
+
+    return productLineOptions
+      .map((option, index) => ({ option, index, distance: Math.abs(index - selectedIndex) }))
+      .filter(({ option }) => !isSameProductLineOption(option, currentProductId, currentMerchantId))
+      .sort((left, right) => {
+        if (left.distance !== right.distance) return left.distance - right.distance;
+        return left.index - right.index;
+      })
+      .slice(0, PRODUCT_LINE_PREFETCH_LIMIT)
+      .map(({ option }) => option);
+  }, [
+    payload.product.merchant_id,
+    payload.product.product_id,
+    productLineOptions,
+    shouldUseProductLineColorSelector,
+  ]);
   const colorSheetOptions = useMemo<GenericColorOption[]>(() => {
     if (!colorOptions.length) return [];
 
@@ -2673,6 +2703,53 @@ export function PdpContainer({
     [currentRelativePath, payload.product.merchant_id, payload.product.product_id, router],
   );
 
+  const ensureProductLineCorePayload = useCallback(
+    (args: { productId: string; merchantId: string; timeoutMs?: number }) => {
+      const { productId, merchantId, timeoutMs = 8000 } = args;
+      const cacheKey = buildProductLinePayloadCacheKey(productId, merchantId);
+      if (cacheKey) {
+        const cachedPayload = productLinePayloadCacheRef.current.get(cacheKey);
+        if (cachedPayload) {
+          return Promise.resolve(cachedPayload);
+        }
+        const inflightRequest = productLinePayloadInflightRef.current.get(cacheKey);
+        if (inflightRequest) {
+          return inflightRequest;
+        }
+      }
+
+      let requestPromise: Promise<PDPPayload | null>;
+      requestPromise = getPdpV2({
+        product_id: productId,
+        ...(merchantId ? { merchant_id: merchantId } : {}),
+        include: [...PRODUCT_LINE_FAST_INCLUDE],
+        timeout_ms: timeoutMs,
+      })
+        .then((response) => {
+          const mappedPayload = mapPdpV2ToPdpPayload(response);
+          if (!mappedPayload) return null;
+          const nextPayload = stripProductLineAsyncModules(mappedPayload);
+          if (cacheKey) {
+            productLinePayloadCacheRef.current.set(cacheKey, nextPayload);
+          }
+          return nextPayload;
+        })
+        .catch(() => null)
+        .finally(() => {
+          if (!cacheKey) return;
+          if (productLinePayloadInflightRef.current.get(cacheKey) === requestPromise) {
+            productLinePayloadInflightRef.current.delete(cacheKey);
+          }
+        });
+
+      if (cacheKey) {
+        productLinePayloadInflightRef.current.set(cacheKey, requestPromise);
+      }
+      return requestPromise;
+    },
+    [],
+  );
+
   const backfillProductLineOptionalModules = useCallback(
     (args: { requestId: number; productId: string; merchantId: string }) => {
       const { requestId, productId, merchantId } = args;
@@ -2743,6 +2820,85 @@ export function PdpContainer({
     [],
   );
 
+  const prefetchProductLineOption = useCallback(
+    (option: ProductLineOption) => {
+      if (!shouldUseProductLineColorSelector) return;
+      const productId = String(option.product_id || '').trim();
+      const merchantId = String(option.merchant_id || '').trim();
+      const currentProductId = String(payload.product.product_id || '').trim();
+      const currentMerchantId = String(payload.product.merchant_id || '').trim();
+      if (!productId || isSameProductLineOption(option, currentProductId, currentMerchantId)) {
+        return;
+      }
+      const cacheKey = buildProductLinePayloadCacheKey(productId, merchantId);
+      if (!cacheKey) return;
+      productLinePrefetchAttemptedRef.current.add(cacheKey);
+      void ensureProductLineCorePayload({
+        productId,
+        merchantId,
+        timeoutMs: PRODUCT_LINE_PREFETCH_TIMEOUT_MS,
+      });
+    },
+    [
+      ensureProductLineCorePayload,
+      payload.product.merchant_id,
+      payload.product.product_id,
+      shouldUseProductLineColorSelector,
+    ],
+  );
+
+  useEffect(() => {
+    if (!shouldUseProductLineColorSelector || pendingProductLineProductId) return;
+
+    let cancelled = false;
+    let nextIndex = 0;
+    let activeCount = 0;
+    const targets = productLinePrefetchTargets.filter((option) => {
+      const productId = String(option.product_id || '').trim();
+      const merchantId = String(option.merchant_id || '').trim();
+      const cacheKey = buildProductLinePayloadCacheKey(productId, merchantId);
+      if (!cacheKey) return false;
+      if (productLinePayloadCacheRef.current.has(cacheKey)) return false;
+      if (productLinePayloadInflightRef.current.has(cacheKey)) return false;
+      if (productLinePrefetchAttemptedRef.current.has(cacheKey)) return false;
+      return true;
+    });
+
+    if (!targets.length) return;
+
+    const pump = () => {
+      if (cancelled) return;
+      while (activeCount < PRODUCT_LINE_PREFETCH_CONCURRENCY && nextIndex < targets.length) {
+        const nextOption = targets[nextIndex++];
+        const productId = String(nextOption.product_id || '').trim();
+        const merchantId = String(nextOption.merchant_id || '').trim();
+        const cacheKey = buildProductLinePayloadCacheKey(productId, merchantId);
+        if (!cacheKey) continue;
+        productLinePrefetchAttemptedRef.current.add(cacheKey);
+        activeCount += 1;
+        void ensureProductLineCorePayload({
+          productId,
+          merchantId,
+          timeoutMs: PRODUCT_LINE_PREFETCH_TIMEOUT_MS,
+        }).finally(() => {
+          activeCount -= 1;
+          pump();
+        });
+      }
+    };
+
+    pump();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    ensureProductLineCorePayload,
+    pendingProductLineProductId,
+    productLinePrefetchTargets,
+    shouldUseProductLineColorSelector,
+  ]);
+
   const handleProductLineOptionSelect = useCallback(
     async (option: ProductLineOption, index: number) => {
       if (productLineSwitchPendingRef.current) {
@@ -2807,20 +2963,14 @@ export function PdpContainer({
         setPayload((current) => withSelectedProductLineOption(current, option));
 
         try {
-          const nextPdp = await getPdpV2({
-            product_id: nextProductId,
-            ...(nextMerchantId ? { merchant_id: nextMerchantId } : {}),
-            include: [...PRODUCT_LINE_FAST_INCLUDE],
-            timeout_ms: 8000,
+          const nextPayload = await ensureProductLineCorePayload({
+            productId: nextProductId,
+            merchantId: nextMerchantId,
+            timeoutMs: 8000,
           });
           if (productLineSwitchRequestRef.current !== requestId) return;
-          const mappedPayload = mapPdpV2ToPdpPayload(nextPdp);
-          if (!mappedPayload) {
+          if (!nextPayload) {
             throw new Error('PDP payload unavailable');
-          }
-          const nextPayload = stripProductLineAsyncModules(mappedPayload);
-          if (cacheKey) {
-            productLinePayloadCacheRef.current.set(cacheKey, nextPayload);
           }
           setPayload(nextPayload);
           if (typeof window !== 'undefined') {
@@ -2854,6 +3004,7 @@ export function PdpContainer({
     [
       backfillProductLineOptionalModules,
       currentRelativePath,
+      ensureProductLineCorePayload,
       payload,
       productLineOptionName,
       router,
@@ -3407,6 +3558,8 @@ export function PdpContainer({
                             disabled={isProductLineSwitching}
                             aria-pressed={isSelected}
                             aria-busy={isPending || undefined}
+                            onMouseEnter={() => prefetchProductLineOption(option)}
+                            onFocus={() => prefetchProductLineOption(option)}
                             onClick={() => handleProductLineOptionSelect(option, index)}
                             className={cn(
                               'flex min-h-8 flex-shrink-0 items-center gap-1.5 rounded-md border bg-card text-xs text-foreground transition-colors',

@@ -578,9 +578,6 @@ describe('PdpContainer structured PDP modules', () => {
     expect(screen.queryByText('Title: Default Title')).not.toBeInTheDocument();
     expect(screen.queryByText('Product Line')).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'DN310' }));
-    fireEvent.click(screen.getByRole('button', { name: 'DN310' }));
-
     await waitFor(() => {
       expect(getPdpV2Mock).toHaveBeenCalledTimes(1);
       expect(getPdpV2Mock).toHaveBeenNthCalledWith(
@@ -597,6 +594,11 @@ describe('PdpContainer structured PDP modules', () => {
         }),
       );
     });
+
+    fireEvent.click(screen.getByRole('button', { name: 'DN310' }));
+    fireEvent.click(screen.getByRole('button', { name: 'DN310' }));
+
+    expect(getPdpV2Mock).toHaveBeenCalledTimes(1);
     expect(routerPush).not.toHaveBeenCalled();
     expect(screen.getByText('Switching to DN310...')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'DN310' })).toBeDisabled();
