@@ -340,7 +340,6 @@ describe('ProductDetailPage canonical PDP loading', () => {
       expect.objectContaining({
         product_id: 'prod_1',
         include: [
-          'offers',
           'variant_selector',
           'product_intel',
           'active_ingredients',
@@ -407,7 +406,6 @@ describe('ProductDetailPage canonical PDP loading', () => {
       expect.objectContaining({
         product_id: 'prod_1',
         include: [
-          'offers',
           'variant_selector',
           'product_intel',
           'active_ingredients',
