@@ -438,7 +438,7 @@ describe('PdpContainer structured PDP modules', () => {
             title: 'Active ingredients',
             items: ['Zinc Oxide'],
             source_origin: 'ingredients_inci',
-            source_quality_status: 'regulatory_active',
+            source_quality_status: 'authoritative',
           },
         };
       }

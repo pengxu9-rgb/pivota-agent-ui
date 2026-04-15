@@ -2236,7 +2236,7 @@ export function PdpContainer({
   const shouldHideLowConfidenceActiveIngredients =
     isExternalSeedProduct &&
     isLikelyBeautyExternalSeedProduct(payload.product, resolvedMode) &&
-    !['regulatory_active', 'regulatory', 'otc', 'drug_facts', 'captured', 'verified'].includes(
+    !['regulatory_active', 'regulatory', 'otc', 'drug_facts', 'captured', 'verified', 'authoritative'].includes(
       activeIngredientQualityStatus,
     );
   const compareAmount =
