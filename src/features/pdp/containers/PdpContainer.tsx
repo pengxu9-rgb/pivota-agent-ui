@@ -1336,10 +1336,28 @@ export function PdpContainer({
   const howToUse = sanitizeHowToUseData(
     getModuleData<HowToUseData>(payload, 'how_to_use'),
   );
+  const materials = getModuleData<ProductDetailsData>(payload, 'materials');
+  const productSpecs = getModuleData<ProductDetailsData>(payload, 'product_specs');
+  const sizeFitDetails = getModuleData<ProductDetailsData>(payload, 'size_fit');
+  const careInstructions = getModuleData<ProductDetailsData>(payload, 'care_instructions');
+  const usageSafety = getModuleData<ProductDetailsData>(payload, 'usage_safety');
+  const hasGenericStructuredBlocks = Boolean(
+    materials?.sections?.length ||
+      productSpecs?.sections?.length ||
+      sizeFitDetails?.sections?.length ||
+      careInstructions?.sections?.length ||
+      usageSafety?.sections?.length,
+  );
   const details = chooseProductDetailsData({
     productFacts,
     legacyDetails,
-    hasStructuredBlocks: Boolean(activeIngredients || ingredientsInci || howToUse || isExternalSeedProduct),
+    hasStructuredBlocks: Boolean(
+      activeIngredients ||
+        ingredientsInci ||
+        howToUse ||
+        hasGenericStructuredBlocks ||
+        isExternalSeedProduct,
+    ),
   });
   const detailSectionParts = useMemo(
     () => partitionDetailSections(Array.isArray(details?.sections) ? details.sections : []),
@@ -2193,6 +2211,7 @@ export function PdpContainer({
     activeIngredients?.items?.length ||
       ingredientsInci?.items?.length ||
       howToUse?.steps?.length ||
+      hasGenericStructuredBlocks ||
       activeIngredients?.raw_text ||
       ingredientsInci?.raw_text ||
       howToUse?.raw_text,
@@ -4102,10 +4121,12 @@ export function PdpContainer({
                 data={details}
                 product={payload.product}
                 media={media}
-                activeIngredients={activeIngredients}
-                ingredientsInci={ingredientsInci}
+                materials={materials}
+                productSpecs={productSpecs}
+                sizeFit={sizeFitDetails}
+                careInstructions={careInstructions}
+                usageSafety={usageSafety}
                 howToUse={howToUse}
-                hideLowConfidenceActiveIngredients={shouldHideLowConfidenceActiveIngredients}
                 suppressOverview={suppressOverviewInDetails}
               />
             ) : (

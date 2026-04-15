@@ -75,6 +75,12 @@ function hasPhrase(haystack: string, phrase: string): boolean {
 }
 
 export function isBeautyProduct(product: Product): boolean {
+  const schemaProfile = String(product.pdp_schema_profile || '').trim().toLowerCase();
+  if (schemaProfile === 'beauty_formula') return true;
+  if (schemaProfile === 'beauty_tool' || schemaProfile === 'generic_merch' || schemaProfile === 'generic_product') {
+    return false;
+  }
+
   const title = String(product.title || '');
   const subtitle = String(product.subtitle || '');
   const categoryText = Array.isArray(product.category_path)

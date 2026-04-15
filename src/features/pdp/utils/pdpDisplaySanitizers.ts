@@ -7,7 +7,7 @@ import type {
 } from '@/features/pdp/types';
 
 const DETAIL_HEADING_NOISE_RE =
-  /^(.*\bingredients?\b.*|active ingredients?|how to use|directions?|how to pair|about|our story|brand story|faq|questions?|warnings?|warning|caution)$/i;
+  /^(.*\bingredients?\b.*|active ingredients?|how to use|directions?|how to pair|materials?|material composition|fabric|composition|care|care instructions?|cleaning|wash(?:ing)? instructions?|storage|specifications?|specs?|dimensions?|capacity|weight|size(?: & fit)?|fit|sizing|size guide|measurements?|usage|safety|warranty|about|our story|brand story|faq|questions?|warnings?|warning|caution)$/i;
 const DETAIL_CONTENT_NOISE_RE =
   /\b(shop now|pair with|our story|product philosophy|sustainability|inclusivity pledge)\b/i;
 const HOW_TO_USE_NOISE_RE =

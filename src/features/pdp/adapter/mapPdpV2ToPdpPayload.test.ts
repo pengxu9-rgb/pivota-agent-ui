@@ -524,4 +524,52 @@ describe('mapPdpV2ToPdpPayload image normalization', () => {
       }),
     );
   });
+
+  it('carries PDP schema profile and generic structured modules', () => {
+    const response = buildMinimalResponse();
+    const canonical = response.modules.find((module) => module.type === 'canonical') as any;
+    canonical.data.pdp_schema_profile = 'generic_merch';
+    canonical.data.pdp_payload.pdp_schema_profile = 'generic_merch';
+    canonical.data.pdp_payload.modules.push(
+      {
+        module_id: 'm_materials',
+        type: 'materials',
+        data: {
+          title: 'Materials',
+          sections: [
+            { heading: 'Materials', content_type: 'text', content: 'Quilted nylon.' },
+          ],
+        },
+      },
+      {
+        module_id: 'm_care',
+        type: 'care_instructions',
+        data: {
+          title: 'Care',
+          sections: [
+            { heading: 'Care', content_type: 'text', content: 'Spot clean only.' },
+          ],
+        },
+      },
+    );
+
+    const payload = mapPdpV2ToPdpPayload(response);
+
+    expect(payload?.pdp_schema_profile).toBe('generic_merch');
+    expect(payload?.product.pdp_schema_profile).toBe('generic_merch');
+    expect(payload?.modules.find((module) => module.type === 'materials')).toEqual(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          sections: [expect.objectContaining({ content: 'Quilted nylon.' })],
+        }),
+      }),
+    );
+    expect(payload?.modules.find((module) => module.type === 'care_instructions')).toEqual(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          sections: [expect.objectContaining({ content: 'Spot clean only.' })],
+        }),
+      }),
+    );
+  });
 });

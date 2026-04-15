@@ -214,6 +214,11 @@ const CANONICAL_PASSTHROUGH_MODULE_TYPES: ReadonlyArray<Module['type']> = [
   'variant_selector',
   'product_details',
   'product_facts',
+  'materials',
+  'product_specs',
+  'care_instructions',
+  'size_fit',
+  'usage_safety',
   'ingredients_inci',
   'active_ingredients',
   'how_to_use',
@@ -315,6 +320,21 @@ export function mapPdpV2ToPdpPayload(response: GetPdpV2Response): PDPPayload | n
   if (typeof canonicalData?.canonical_scope === 'string' && canonicalData.canonical_scope.trim()) {
     next.canonical_scope = canonicalData.canonical_scope.trim();
   }
+  if (typeof canonicalData?.pdp_schema_profile === 'string' && canonicalData.pdp_schema_profile.trim()) {
+    const pdpSchemaProfile = canonicalData.pdp_schema_profile.trim();
+    next.pdp_schema_profile = pdpSchemaProfile;
+    next.product = {
+      ...next.product,
+      pdp_schema_profile: pdpSchemaProfile,
+    };
+  } else if (typeof (base as any).pdp_schema_profile === 'string' && (base as any).pdp_schema_profile.trim()) {
+    const pdpSchemaProfile = String((base as any).pdp_schema_profile).trim();
+    next.pdp_schema_profile = pdpSchemaProfile;
+    next.product = {
+      ...next.product,
+      pdp_schema_profile: next.product.pdp_schema_profile || pdpSchemaProfile,
+    };
+  }
 
   for (const moduleType of CANONICAL_PASSTHROUGH_MODULE_TYPES) {
     const moduleEntry = getModule(response, moduleType);
@@ -404,6 +424,41 @@ export function mapPdpV2ToPdpPayload(response: GetPdpV2Response): PDPPayload | n
       type: 'how_to_use' as const,
       priority: 42,
       title: 'How to Use',
+    },
+    {
+      responseType: 'materials',
+      module_id: 'materials',
+      type: 'materials' as const,
+      priority: 44,
+      title: 'Materials',
+    },
+    {
+      responseType: 'product_specs',
+      module_id: 'product_specs',
+      type: 'product_specs' as const,
+      priority: 45,
+      title: 'Specifications',
+    },
+    {
+      responseType: 'size_fit',
+      module_id: 'size_fit',
+      type: 'size_fit' as const,
+      priority: 46,
+      title: 'Size & Fit',
+    },
+    {
+      responseType: 'care_instructions',
+      module_id: 'care_instructions',
+      type: 'care_instructions' as const,
+      priority: 47,
+      title: 'Care',
+    },
+    {
+      responseType: 'usage_safety',
+      module_id: 'usage_safety',
+      type: 'usage_safety' as const,
+      priority: 48,
+      title: 'Usage & Safety',
     },
     {
       responseType: 'product_details',

@@ -10,6 +10,7 @@ export interface PDPPayload {
   identity_confidence?: number;
   match_basis?: string[];
   canonical_scope?: 'synthetic' | string;
+  pdp_schema_profile?: 'beauty_formula' | 'beauty_tool' | 'generic_merch' | 'generic_product' | string;
   offers?: Offer[];
   offers_count?: number;
   default_offer_id?: string;
@@ -41,6 +42,7 @@ export interface PageTracking {
 export interface Product {
   product_id: string;
   title: string;
+  pdp_schema_profile?: 'beauty_formula' | 'beauty_tool' | 'generic_merch' | 'generic_product' | string;
   subtitle?: string;
   brand?: { name: string };
   brand_story?: string;
@@ -210,6 +212,11 @@ export type ModuleType =
   | 'active_ingredients'
   | 'ingredients_inci'
   | 'how_to_use'
+  | 'materials'
+  | 'product_specs'
+  | 'care_instructions'
+  | 'size_fit'
+  | 'usage_safety'
   | 'product_facts'
   | 'product_details'
   | 'reviews_preview'
