@@ -473,7 +473,7 @@ describe('PdpContainer structured PDP modules', () => {
     expect(screen.getAllByText('Zinc Oxide').length).toBeGreaterThan(0);
   });
 
-  it('keeps regulatory SPF active ingredients visible on generic sunscreen PDPs', () => {
+  it('does not render formula ingredient modules on generic PDPs', () => {
     const payload = buildBeautyPayload();
     payload.product.title = 'Daily Tinted Fluid Sunscreen SPF 40';
     payload.modules = payload.modules.map((module) => {
@@ -507,9 +507,8 @@ describe('PdpContainer structured PDP modules', () => {
       <PdpContainer payload={payload} mode="generic" onAddToCart={() => {}} onBuyNow={() => {}} />,
     );
 
-    expect(screen.getByText('Active ingredients')).toBeInTheDocument();
-    expect(screen.getAllByText('Zinc Oxide').length).toBeGreaterThan(0);
-    expect(screen.getByText('Ingredients')).toBeInTheDocument();
+    expect(screen.queryByText('Active ingredients')).not.toBeInTheDocument();
+    expect(screen.queryByText('Ingredients')).not.toBeInTheDocument();
   });
 
   it('does not render legacy shade modules while keeping shade variants selectable', () => {
