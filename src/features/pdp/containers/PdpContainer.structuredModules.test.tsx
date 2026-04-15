@@ -1,12 +1,13 @@
 /* eslint-disable @next/next/no-img-element */
 import React from 'react';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { PdpContainer } from './PdpContainer';
 import type { PDPPayload } from '@/features/pdp/types';
 
 const routerPush = vi.hoisted(() => vi.fn());
+const getPdpV2Mock = vi.hoisted(() => vi.fn());
 
 vi.mock('next/image', () => ({
   default: (
@@ -40,6 +41,7 @@ vi.mock('@/lib/auroraEmbed', () => ({
 }));
 
 vi.mock('@/lib/api', () => ({
+  getPdpV2: (...args: unknown[]) => getPdpV2Mock(...args),
   listQuestions: vi.fn(async () => ({ items: [] })),
   postQuestion: vi.fn(async () => ({ question_id: 1 })),
 }));
@@ -392,6 +394,7 @@ describe('PdpContainer structured PDP modules', () => {
   afterEach(() => {
     cleanup();
     routerPush.mockReset();
+    getPdpV2Mock.mockReset();
     vi.restoreAllMocks();
   });
 
@@ -462,7 +465,7 @@ describe('PdpContainer structured PDP modules', () => {
     expect(screen.getAllByText('$24.00').length).toBeGreaterThan(0);
   });
 
-  it('renders cross-url product-line shades as text options and navigates to sibling PDPs', () => {
+  it('renders cross-url product-line shades as swatches and switches in place', async () => {
     const payload = buildBeautyPayload();
     payload.product.product_id = 'ext_boj_dn350';
     payload.product.merchant_id = 'external_seed';
@@ -524,6 +527,35 @@ describe('PdpContainer structured PDP modules', () => {
         product_line_options: payload.product.product_line_options,
       },
     } as any);
+    const nextPayload = JSON.parse(JSON.stringify(payload)) as PDPPayload;
+    nextPayload.product.product_id = 'ext_boj_dn310';
+    nextPayload.product.title = 'Daily Tinted Fluid Sunscreen DN310';
+    nextPayload.product.product_line_options = nextPayload.product.product_line_options?.map((option) => ({
+      ...option,
+      selected: option.product_id === 'ext_boj_dn310',
+    }));
+    nextPayload.modules = nextPayload.modules.map((module) =>
+      module.type !== 'variant_selector'
+        ? module
+        : {
+            ...module,
+            data: {
+              ...(module.data as Record<string, unknown>),
+              product_line_options: nextPayload.product.product_line_options,
+            },
+          },
+    );
+    getPdpV2Mock.mockResolvedValue({
+      status: 'success',
+      modules: [
+        {
+          type: 'canonical',
+          data: {
+            pdp_payload: nextPayload,
+          },
+        },
+      ],
+    });
 
     render(
       <PdpContainer payload={payload} mode="beauty" onAddToCart={() => {}} onBuyNow={() => {}} />,
@@ -541,7 +573,19 @@ describe('PdpContainer structured PDP modules', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'DN310' }));
 
-    expect(routerPush).toHaveBeenCalledWith(expect.stringMatching(/^\/products\/ext_boj_dn310(?:\?|$)/));
+    await waitFor(() => {
+      expect(getPdpV2Mock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          product_id: 'ext_boj_dn310',
+          merchant_id: 'external_seed',
+          include: expect.arrayContaining(['product_intel', 'similar', 'variant_selector']),
+        }),
+      );
+    });
+    expect(routerPush).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'DN310' })).toHaveAttribute('aria-pressed', 'true');
+    });
   });
 
   it('falls back to legacy product_details when additive modules are absent', () => {

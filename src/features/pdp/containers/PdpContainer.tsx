@@ -69,7 +69,7 @@ import { GenericStyleGallery } from '@/features/pdp/sections/GenericStyleGallery
 import { GenericSizeHelper } from '@/features/pdp/sections/GenericSizeHelper';
 import { GenericSizeGuide } from '@/features/pdp/sections/GenericSizeGuide';
 import { GenericDetailsSection } from '@/features/pdp/sections/GenericDetailsSection';
-import { PivotaInsightsSection } from '@/features/pdp/sections/PivotaInsightsSection';
+import { PivotaInsightsSection, isDisplayableProductIntelData } from '@/features/pdp/sections/PivotaInsightsSection';
 import { OfferSheet } from '@/features/pdp/offers/OfferSheet';
 import { ModuleShell } from '@/features/pdp/components/ModuleShell';
 import { DEFAULT_UGC_SNAPSHOT, lockFirstUgcSource, mergeUgcItems } from '@/features/pdp/state/freezePolicy';
@@ -187,6 +187,74 @@ function getProductLineSwatch(option: ProductLineOption): { imageUrl?: string; c
       ) || undefined,
     color: normalizeHexColor(option.swatch_color || option.color_hex || option.swatch?.hex),
   };
+}
+
+function isSameProductLineOption(
+  option: ProductLineOption,
+  productId: string,
+  merchantId: string,
+): boolean {
+  const optionProductId = String(option.product_id || '').trim();
+  const optionMerchantId = String(option.merchant_id || '').trim();
+  return (
+    optionProductId === productId &&
+    (!optionMerchantId || !merchantId || optionMerchantId === merchantId)
+  );
+}
+
+function withSelectedProductLineOption(payload: PDPPayload, selected: ProductLineOption): PDPPayload {
+  const selectedProductId = String(selected.product_id || '').trim();
+  const selectedMerchantId = String(selected.merchant_id || '').trim();
+  if (!selectedProductId) return payload;
+
+  const markOptions = (options: ProductLineOption[] | undefined): ProductLineOption[] | undefined => {
+    if (!Array.isArray(options)) return options;
+    return options.map((option) => ({
+      ...option,
+      selected: isSameProductLineOption(option, selectedProductId, selectedMerchantId),
+    }));
+  };
+
+  return {
+    ...payload,
+    product: {
+      ...payload.product,
+      product_line_options: markOptions(payload.product.product_line_options),
+    },
+    modules: payload.modules.map((module) => {
+      if (module.type !== 'variant_selector' || !module.data || typeof module.data !== 'object') {
+        return module;
+      }
+      const data = module.data as VariantSelectorModuleData;
+      return {
+        ...module,
+        data: {
+          ...data,
+          product_line_options: markOptions(data.product_line_options),
+        },
+      };
+    }),
+  };
+}
+
+function buildInlineProductLineTargetPath(
+  nextProductId: string,
+  nextMerchantId: string,
+  currentRelativePath: string | null,
+): string {
+  const targetHref = buildProductHref(nextProductId, nextMerchantId || undefined);
+  const [pathname, rawQuery = ''] = targetHref.split('?');
+  const params = new URLSearchParams(rawQuery);
+  const existingReturn =
+    typeof window !== 'undefined'
+      ? new URLSearchParams(window.location.search).get('return')
+      : null;
+  if (existingReturn) {
+    params.set('return', existingReturn);
+  } else if (currentRelativePath) {
+    params.set('return', currentRelativePath);
+  }
+  return `${pathname}${params.toString() ? `?${params.toString()}` : ''}`;
 }
 
 function formatPrice(amount: number, currency: string) {
@@ -981,7 +1049,7 @@ function getInitialSimilarState(payload: PDPPayload): {
 }
 
 export function PdpContainer({
-  payload,
+  payload: initialPayload,
   initialQuantity = 1,
   mode,
   onAddToCart,
@@ -1011,8 +1079,9 @@ export function PdpContainer({
   onSeeAllReviews?: () => void;
   ugcCapabilities?: UgcCapabilities | null;
 }) {
+  const [payload, setPayload] = useState(initialPayload);
   const [selectedVariantId, setSelectedVariantId] = useState(
-    payload.product.default_variant_id || payload.product.variants?.[0]?.variant_id,
+    initialPayload.product.default_variant_id || initialPayload.product.variants?.[0]?.variant_id,
   );
   const [quantity, setQuantity] = useState(initialQuantity);
   const reviewsTracked = useRef(false);
@@ -1048,6 +1117,12 @@ export function PdpContainer({
   const [ugcQuestions, setUgcQuestions] = useState<QuestionListItem[]>([]);
   const questionsFetchedProductIdRef = useRef<string>('');
   const latestProductGroupIdRef = useRef<string | null>(null);
+  const productLineSwitchRequestRef = useRef(0);
+  const [pendingProductLineProductId, setPendingProductLineProductId] = useState<string | null>(null);
+
+  useEffect(() => {
+    setPayload(initialPayload);
+  }, [initialPayload]);
 
   const variants = useMemo(() => payload.product.variants ?? [], [payload.product.variants]);
 
@@ -1681,7 +1756,7 @@ export function PdpContainer({
   ]);
 
   const showSizeGuide = resolvedMode === 'generic' && !!payload.product.size_guide;
-  const hasInsights = Boolean(productIntel?.product_intel_core);
+  const hasInsights = isDisplayableProductIntelData(productIntel);
   const showSizeHelper = useMemo(() => {
     if (resolvedMode !== 'generic') return false;
     const categoryPath = payload.product.category_path || [];
@@ -2488,7 +2563,7 @@ export function PdpContainer({
   );
 
   const handleProductLineOptionSelect = useCallback(
-    (option: ProductLineOption, index: number) => {
+    async (option: ProductLineOption, index: number) => {
       const nextProductId = String(option.product_id || '').trim();
       if (!nextProductId) return;
       const nextMerchantId = String(option.merchant_id || '').trim();
@@ -2512,15 +2587,70 @@ export function PdpContainer({
         target_product_id: nextProductId,
         target_merchant_id: nextMerchantId || null,
       });
+
+      if (shouldUseProductLineColorSelector) {
+        const requestId = productLineSwitchRequestRef.current + 1;
+        productLineSwitchRequestRef.current = requestId;
+        const previousPayload = payload;
+        const targetPath = buildInlineProductLineTargetPath(
+          nextProductId,
+          nextMerchantId,
+          currentRelativePath,
+        );
+
+        setPendingProductLineProductId(nextProductId);
+        setPayload((current) => withSelectedProductLineOption(current, option));
+
+        try {
+          const nextPdp = await getPdpV2({
+            product_id: nextProductId,
+            ...(nextMerchantId ? { merchant_id: nextMerchantId } : {}),
+            include: [
+              'offers',
+              'variant_selector',
+              'product_intel',
+              'product_details',
+              'product_facts',
+              'active_ingredients',
+              'ingredients_inci',
+              'how_to_use',
+              'reviews_preview',
+              'similar',
+            ],
+            timeout_ms: 15000,
+          });
+          if (productLineSwitchRequestRef.current !== requestId) return;
+          const nextPayload = mapPdpV2ToPdpPayload(nextPdp);
+          if (!nextPayload) {
+            throw new Error('PDP payload unavailable');
+          }
+          setPayload(nextPayload);
+          if (typeof window !== 'undefined') {
+            window.history.replaceState(window.history.state, '', targetPath);
+            setCurrentRelativePath(getCurrentRelativePath());
+          }
+        } catch {
+          if (productLineSwitchRequestRef.current === requestId) {
+            setPayload(previousPayload);
+            toast.error('Could not switch shade. Please try again.');
+          }
+        } finally {
+          if (productLineSwitchRequestRef.current === requestId) {
+            setPendingProductLineProductId(null);
+          }
+        }
+        return;
+      }
+
       const pathname = targetHref.split('?')[0];
       router.push(`${pathname}${params.toString() ? `?${params.toString()}` : ''}`);
     },
     [
       currentRelativePath,
-      payload.product.merchant_id,
-      payload.product.product_id,
+      payload,
       productLineOptionName,
       router,
+      shouldUseProductLineColorSelector,
     ],
   );
 
@@ -3053,6 +3183,7 @@ export function PdpContainer({
                             (!option.merchant_id ||
                               !payload.product.merchant_id ||
                               option.merchant_id === payload.product.merchant_id));
+                        const isPending = pendingProductLineProductId === String(option.product_id || '').trim();
                         const swatch = shouldUseProductLineColorSelector
                           ? getProductLineSwatch(option)
                           : {};
@@ -3062,6 +3193,7 @@ export function PdpContainer({
                             key={option.option_id || `${option.product_id}-${option.value || option.label}`}
                             type="button"
                             aria-pressed={isSelected}
+                            aria-busy={isPending || undefined}
                             onClick={() => handleProductLineOptionSelect(option, index)}
                             className={cn(
                               'flex min-h-8 flex-shrink-0 items-center gap-1.5 rounded-md border bg-card text-xs text-foreground transition-colors',
@@ -3070,6 +3202,7 @@ export function PdpContainer({
                               isSelected
                                 ? 'border-[color:var(--accent-600)] bg-[var(--accent-50)] text-[color:var(--accent-800)] font-semibold shadow-[inset_0_0_0_1px_var(--accent-600)]'
                                 : 'border-border hover:bg-muted/30 hover:border-muted-foreground/40',
+                              isPending ? 'opacity-75' : '',
                             )}
                           >
                             {hasSwatch ? (

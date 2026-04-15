@@ -200,6 +200,51 @@ describe('PdpContainer product intel section', () => {
     expect(screen.queryByText(/Double up and save/i)).not.toBeInTheDocument();
   });
 
+  it('does not render generic fallback insights without product-specific substance', () => {
+    const genericPayload: PDPPayload = {
+      ...payload,
+      modules: payload.modules.map((module) =>
+        module.type !== 'product_intel'
+          ? module
+          : {
+              ...module,
+              data: {
+                ...module.data,
+                evidence_profile: 'seller_plus_formula',
+                quality_state: 'eligible',
+                product_intel_core: {
+                  ...module.data.product_intel_core!,
+                  evidence_profile: 'seller_plus_formula',
+                  quality_state: 'eligible',
+                  what_it_is: {
+                    body: 'A daily sunscreen product focused on UV protection within a daytime skin-care routine.',
+                  },
+                  best_for: [{ label: 'Daily UV protection' }],
+                  why_it_stands_out: [
+                    {
+                      headline: 'Daytime UV step',
+                      body: 'Anchors the product in daily UV protection and daytime layering context.',
+                    },
+                  ],
+                },
+              },
+            },
+      ),
+    };
+
+    render(
+      <PdpContainer
+        payload={genericPayload}
+        mode="generic"
+        onAddToCart={() => {}}
+        onBuyNow={() => {}}
+      />,
+    );
+
+    expect(screen.queryByText('What it is')).not.toBeInTheDocument();
+    expect(screen.queryByText(/daily sunscreen product focused on UV protection/i)).not.toBeInTheDocument();
+  });
+
   it('hides legacy product-details overview when Pivota Insights already carries the normalized summary', () => {
     const dedupedPayload: PDPPayload = {
       ...payload,

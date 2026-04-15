@@ -91,6 +91,69 @@ function isLowSignalSellerHighlight(headline: unknown, body: unknown, evidencePr
   );
 }
 
+function isGenericInsightText(value: unknown): boolean {
+  const text = normalizeWhitespace(value).toLowerCase();
+  if (!text) return false;
+  return [
+    /\bpresented through merchant product data\b/,
+    /\bfocused on .* within a .* routine\b/,
+    /\banchors? the product\b/,
+    /\bdaytime uv step\b/,
+    /\bdaytime skin-?care routines?\b/,
+    /\bgeneral .* routine\b/,
+    /\bproduct data\b.*\broutine\b/,
+    /\broutine context\b/,
+  ].some((pattern) => pattern.test(text));
+}
+
+function hasProductSpecificInsightText(value: unknown): boolean {
+  const text = normalizeWhitespace(value).toLowerCase();
+  if (!text) return false;
+  return [
+    /\bspf\s*\d+\b/,
+    /\bzinc oxide\b/,
+    /\btinted\b/,
+    /\bshade\b/,
+    /\bmineral\b/,
+    /\bcoverage\b/,
+    /\bfinish\b/,
+    /\balcohol denat\b/,
+    /\bbutyloctyl salicylate\b/,
+    /\b1,2-hexanediol\b/,
+    /\bclinical\b/,
+    /\bsebum\b/,
+    /\brice[-\s]?infused\b/,
+  ].some((pattern) => pattern.test(text));
+}
+
+export function isDisplayableProductIntelData(data: ProductIntelData | null | undefined): boolean {
+  const core = data?.product_intel_core;
+  if (!core) return false;
+  const qualityState = String(core.quality_state || data?.quality_state || data?.normalized_pdp?.quality_state || '')
+    .trim()
+    .toLowerCase();
+  if (qualityState === 'blocked') return false;
+
+  const whyText = Array.isArray(core.why_it_stands_out)
+    ? core.why_it_stands_out.map((item) => `${item?.headline || ''} ${item?.body || ''}`).join(' ')
+    : '';
+  const bestForText = Array.isArray(core.best_for)
+    ? core.best_for.map((item) => `${item?.label || ''} ${item?.tag || ''}`).join(' ')
+    : '';
+  const primaryText = [
+    core.what_it_is?.headline,
+    core.what_it_is?.body,
+    bestForText,
+    core.routine_fit?.step,
+    ...(Array.isArray(core.routine_fit?.pairing_notes) ? core.routine_fit.pairing_notes : []),
+  ].join(' ');
+  const combined = [primaryText, whyText].join(' ');
+
+  if (!normalizeWhitespace(combined)) return false;
+  if (isGenericInsightText(primaryText) && !hasProductSpecificInsightText(combined)) return false;
+  return true;
+}
+
 function nonEmptyList(values: Array<unknown> | null | undefined): string[] {
   if (!Array.isArray(values)) return [];
   return values.map((value) => normalizeWhitespace(value)).filter(Boolean);
@@ -131,6 +194,7 @@ function SectionLabel({ children }: { children: ReactNode }) {
 export function PivotaInsightsSection({ data }: { data: ProductIntelData }) {
   const core = data.product_intel_core;
   if (!core) return null;
+  if (!isDisplayableProductIntelData(data)) return null;
 
   const evidenceProfile = core.evidence_profile || data.evidence_profile || data.normalized_pdp?.evidence_profile;
   const qualityState = core.quality_state || data.quality_state || data.normalized_pdp?.quality_state;
