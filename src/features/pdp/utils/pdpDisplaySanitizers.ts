@@ -163,14 +163,9 @@ function countSectionSoupLabels(value: string): number {
 }
 
 function looksLikeSectionSoupText(value: string): boolean {
-  const text = normalizeWhitespace(value);
+  const text = String(value || '').trim();
   if (!text) return false;
-  if (countSectionSoupLabels(text) >= 2) return true;
-  return (
-    text.length > 500 &&
-    /\b(description|details?|overview)\b/i.test(text) &&
-    /\b(benefits?|how to use|ingredients?|clinical results?|coverage|finish)\b/i.test(text)
-  );
+  return countSectionSoupLabels(text) >= 2;
 }
 
 export function hasLowQualityOverviewSection(
@@ -182,7 +177,7 @@ export function hasLowQualityOverviewSection(
       OVERVIEW_LIKE_HEADING_RE.test(normalizeWhitespace(section.heading)),
     ) || sections[0];
   if (!overviewSection) return false;
-  return looksLikeSectionSoupText(normalizeWhitespace(overviewSection.content));
+  return looksLikeSectionSoupText(overviewSection.content);
 }
 
 export function sanitizeActiveIngredientsData(
