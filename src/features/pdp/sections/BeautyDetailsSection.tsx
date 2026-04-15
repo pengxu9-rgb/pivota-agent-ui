@@ -29,6 +29,8 @@ export function BeautyDetailsSection({
   howToUse,
   hideLowConfidenceActiveIngredients = false,
   suppressOverview = false,
+  showDetailMedia = true,
+  showProductInformation = true,
 }: {
   data?: ProductDetailsData | null;
   product: Product;
@@ -38,9 +40,11 @@ export function BeautyDetailsSection({
   howToUse?: HowToUseData | null;
   hideLowConfidenceActiveIngredients?: boolean;
   suppressOverview?: boolean;
+  showDetailMedia?: boolean;
+  showProductInformation?: boolean;
 }) {
   const heroUrl = media?.items?.[0]?.url || product.image_url;
-  const accentImages = media?.items?.slice(1, 3) || [];
+  const accentImages = showDetailMedia ? media?.items?.slice(1, 3) || [] : [];
   const sections = Array.isArray(data?.sections) ? data.sections : [];
   const {
     overviewSection: overviewSourceSection,
@@ -57,13 +61,13 @@ export function BeautyDetailsSection({
 
   return (
     <div className="py-4">
-      {heroUrl ? (
-        <div className="aspect-[4/5] bg-gradient-to-b from-muted to-background">
+      {showDetailMedia && heroUrl ? (
+        <div className="relative aspect-[4/5] overflow-hidden bg-gradient-to-b from-muted to-background">
           <Image
             src={heroUrl}
             alt={product.title}
             fill
-            className="object-contain"
+            className="object-contain pointer-events-none"
             sizes="(max-width: 768px) 100vw, 640px"
             loading="lazy"
           />
@@ -84,7 +88,7 @@ export function BeautyDetailsSection({
                   src={item.url}
                   alt=""
                   fill
-                  className="object-cover"
+                  className="object-cover pointer-events-none"
                   sizes="(max-width: 768px) 50vw, 320px"
                   loading="lazy"
                 />
@@ -130,7 +134,7 @@ export function BeautyDetailsSection({
         </div>
       ) : null}
 
-      {factsSections.length ? (
+      {showProductInformation && factsSections.length ? (
         <div className="mx-2.5 border-t border-muted/60 pt-5 sm:mx-3">
           <h3 className="text-sm font-semibold mb-3">Product Information</h3>
           <DetailsAccordion data={{ sections: factsSections }} />

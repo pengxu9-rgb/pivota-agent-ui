@@ -399,9 +399,12 @@ describe('PdpContainer structured PDP modules', () => {
   });
 
   it('renders additive beauty modules ahead of facts and prefers product_facts over overview copy', () => {
+    const payload = buildBeautyPayload();
+    payload.product.merchant_id = 'merchant_beauty';
+
     render(
       <PdpContainer
-        payload={buildBeautyPayload()}
+        payload={payload}
         mode="beauty"
         onAddToCart={() => {}}
         onBuyNow={() => {}}
@@ -425,6 +428,39 @@ describe('PdpContainer structured PDP modules', () => {
     expect(screen.queryByRole('button', { name: 'Legacy Ingredients' })).not.toBeInTheDocument();
     expect(screen.getAllByRole('button', { name: 'Add to Cart' }).length).toBeGreaterThan(0);
     expect(screen.getAllByRole('button', { name: 'Buy Now' }).length).toBeGreaterThan(0);
+  });
+
+  it('isolates external-seed beauty PDPs from legacy detail media and product information', () => {
+    const payload = buildBeautyPayload();
+    payload.modules.push({
+      module_id: 'm_supplemental',
+      type: 'supplemental_details',
+      priority: 69,
+      data: {
+        sections: [
+          {
+            heading: 'Effortless Skin Enhancement',
+            content_type: 'text',
+            content: 'Captured merchant marketing copy that should be replaced by Pivota Insights.',
+          },
+          {
+            heading: 'Category',
+            content_type: 'text',
+            content: 'external',
+          },
+        ],
+      },
+    });
+
+    render(
+      <PdpContainer payload={payload} mode="beauty" onAddToCart={() => {}} onBuyNow={() => {}} />,
+    );
+
+    expect(screen.getByText('Active ingredients')).toBeInTheDocument();
+    expect(screen.getByText('How to use')).toBeInTheDocument();
+    expect(screen.queryByText('Product Information')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Effortless Skin Enhancement' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Category' })).not.toBeInTheDocument();
   });
 
   it('keeps regulatory SPF active ingredients visible for external seeds', () => {

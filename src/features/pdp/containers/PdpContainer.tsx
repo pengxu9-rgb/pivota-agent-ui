@@ -4118,6 +4118,8 @@ export function PdpContainer({
                 howToUse={howToUse}
                 hideLowConfidenceActiveIngredients={shouldHideLowConfidenceActiveIngredients}
                 suppressOverview={suppressOverviewInDetails}
+                showDetailMedia={!isExternalSeedProduct}
+                showProductInformation={!isExternalSeedProduct}
               />
             ) : resolvedMode === 'generic' ? (
               <GenericDetailsSection
