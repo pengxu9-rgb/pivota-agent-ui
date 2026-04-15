@@ -1118,6 +1118,7 @@ export function PdpContainer({
   const questionsFetchedProductIdRef = useRef<string>('');
   const latestProductGroupIdRef = useRef<string | null>(null);
   const productLineSwitchRequestRef = useRef(0);
+  const productLineSwitchPendingRef = useRef(false);
   const [pendingProductLineProductId, setPendingProductLineProductId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -2572,7 +2573,7 @@ export function PdpContainer({
 
   const handleProductLineOptionSelect = useCallback(
     async (option: ProductLineOption, index: number) => {
-      if (pendingProductLineProductId) {
+      if (productLineSwitchPendingRef.current) {
         return;
       }
       const nextProductId = String(option.product_id || '').trim();
@@ -2602,6 +2603,7 @@ export function PdpContainer({
       if (shouldUseProductLineColorSelector) {
         const requestId = productLineSwitchRequestRef.current + 1;
         productLineSwitchRequestRef.current = requestId;
+        productLineSwitchPendingRef.current = true;
         const previousPayload = payload;
         const targetPath = buildInlineProductLineTargetPath(
           nextProductId,
@@ -2647,6 +2649,7 @@ export function PdpContainer({
           }
         } finally {
           if (productLineSwitchRequestRef.current === requestId) {
+            productLineSwitchPendingRef.current = false;
             setPendingProductLineProductId(null);
           }
         }
@@ -2658,7 +2661,6 @@ export function PdpContainer({
     },
     [
       currentRelativePath,
-      pendingProductLineProductId,
       payload,
       productLineOptionName,
       router,
