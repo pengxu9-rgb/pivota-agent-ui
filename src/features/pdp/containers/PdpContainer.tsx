@@ -1450,7 +1450,10 @@ export function PdpContainer({
     }),
     [baseMediaItems, selectedVariantId, variants],
   );
-  const galleryPreviewItems = useMemo(() => media?.preview_items ?? [], [media]);
+  const galleryPreviewItems = useMemo(
+    () => (shouldUseProductLineColorSelector ? [] : media?.preview_items ?? []),
+    [media, shouldUseProductLineColorSelector],
+  );
   const galleryData = useMemo(
     () => ({
       items: galleryItems,

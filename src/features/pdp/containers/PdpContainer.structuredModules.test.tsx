@@ -499,6 +499,19 @@ describe('PdpContainer structured PDP modules', () => {
         selected: true,
       },
     ];
+    const mediaModule = payload.modules.find((module) => module.type === 'media_gallery');
+    if (mediaModule && typeof mediaModule.data === 'object' && mediaModule.data) {
+      (mediaModule.data as any).preview_scope = 'product_line';
+      (mediaModule.data as any).preview_items = [
+        {
+          type: 'image',
+          url: 'https://example.com/dn310.jpg',
+          alt_text: 'Daily Tinted Fluid Sunscreen DN310',
+          product_id: 'ext_boj_dn310',
+          merchant_id: 'external_seed',
+        },
+      ];
+    }
     payload.modules.push({
       module_id: 'm_variant',
       type: 'variant_selector',
@@ -518,6 +531,7 @@ describe('PdpContainer structured PDP modules', () => {
     expect(screen.getByRole('button', { name: 'DN310' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'DN350' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.queryByText('Title: Default Title')).not.toBeInTheDocument();
+    expect(screen.queryByText('Product Line')).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'DN310' }));
 
