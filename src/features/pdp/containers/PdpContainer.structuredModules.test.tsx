@@ -459,6 +459,10 @@ describe('PdpContainer structured PDP modules', () => {
     expect(screen.getByText('Active ingredients')).toBeInTheDocument();
     expect(screen.getByText('How to use')).toBeInTheDocument();
     expect(screen.getByText('Rice extract helps replenish moisture.')).toBeInTheDocument();
+    expect(screen.getByAltText('Barrier Support Cream overview')).toHaveAttribute(
+      'src',
+      'https://example.com/hero.jpg',
+    );
     expect(screen.queryByText('Product Information')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Effortless Skin Enhancement' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Category' })).not.toBeInTheDocument();

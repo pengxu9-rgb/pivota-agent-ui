@@ -45,6 +45,9 @@ export function BeautyDetailsSection({
 }) {
   const heroUrl = media?.items?.[0]?.url || product.image_url;
   const accentImages = showDetailMedia ? media?.items?.slice(1, 3) || [] : [];
+  const overviewImage = !showDetailMedia
+    ? media?.items?.find((item) => item?.type !== 'video' && item?.url) || null
+    : null;
   const sections = Array.isArray(data?.sections) ? data.sections : [];
   const {
     overviewSection: overviewSourceSection,
@@ -99,7 +102,12 @@ export function BeautyDetailsSection({
       ) : null}
 
       <div className="mx-2.5 space-y-3 sm:mx-3">
-        {!suppressOverview ? <OverviewSection content={overviewContent} /> : null}
+        {!suppressOverview ? (
+          <OverviewSection
+            content={overviewContent}
+            image={overviewImage?.url ? { url: overviewImage.url, alt: `${product.title} overview` } : null}
+          />
+        ) : null}
         <StructuredDetailsBlocks
           activeIngredients={activeIngredients}
           ingredientsInci={ingredientsInci}
