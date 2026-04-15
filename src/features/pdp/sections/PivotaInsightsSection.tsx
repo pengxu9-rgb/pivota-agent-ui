@@ -163,6 +163,19 @@ function hasProductSpecificInsightText(value: unknown): boolean {
     /\bmineral\b/,
     /\bcoverage\b/,
     /\bfinish\b/,
+    /\bretinol\b/,
+    /\bvitamin\s*c\b/,
+    /\bascorb(?:ic|yl)\b/,
+    /\bhyaluronic\s+acid\b/,
+    /\bniacinamide\b/,
+    /\bceramide\b/,
+    /\bpeptide\b/,
+    /\bsalicylic\s+acid\b/,
+    /\bglycolic\s+acid\b/,
+    /\blactic\s+acid\b/,
+    /\baha\b/,
+    /\bbha\b/,
+    /\bpha\b/,
     /\balcohol denat\b/,
     /\bbutyloctyl salicylate\b/,
     /\b1,2-hexanediol\b/,
@@ -170,6 +183,31 @@ function hasProductSpecificInsightText(value: unknown): boolean {
     /\bsebum\b/,
     /\brice[-\s]?infused\b/,
   ].some((pattern) => pattern.test(text));
+}
+
+function isHumanReviewedProductIntelData(data: ProductIntelData | null | undefined): boolean {
+  const provenance = data?.provenance || {};
+  const qualityGate = provenance.gemini_quality_gate || {};
+  const fieldSources = provenance.field_sources || {};
+  const sourceVersion = normalizeWhitespace(data?.freshness?.source_version || data?.product_intel_core?.freshness?.source_version);
+  const reviewStatus = normalizeWhitespace(provenance.review_status).toLowerCase();
+  const reviewDecision = normalizeWhitespace(provenance.review_decision).toLowerCase();
+  const generator = normalizeWhitespace(provenance.generator).toLowerCase();
+  const reviewerKind = normalizeWhitespace(provenance.reviewer_kind).toLowerCase();
+  const selectedStrategy = normalizeWhitespace(provenance.selection_strategy).toLowerCase();
+  const hasHumanField = Object.values(fieldSources).some(
+    (value) => normalizeWhitespace(value).toLowerCase() === 'human_standard',
+  );
+
+  if (sourceVersion === 'pilot_selected:strict_human_reviewed') return true;
+  if (generator === 'strict_human_manual_rewrite') return true;
+  if (hasHumanField && qualityGate.human_standard_rewrite === true) return true;
+  return (
+    reviewerKind === 'human' &&
+    reviewStatus === 'completed' &&
+    ['pass', 'rewrite'].includes(reviewDecision) &&
+    selectedStrategy.includes('strict_human')
+  );
 }
 
 function isGenericBestForLabel(value: unknown): boolean {
@@ -209,8 +247,9 @@ export function isDisplayableProductIntelData(data: ProductIntelData | null | un
   const combined = [primaryText, whyText].join(' ');
 
   if (!normalizeWhitespace(combined)) return false;
+  if (isHumanReviewedProductIntelData(data)) return true;
   if (isGenericInsightText(primaryText) && !hasProductSpecificInsightText(combined)) return false;
-  return true;
+  return false;
 }
 
 function nonEmptyList(values: Array<unknown> | null | undefined): string[] {

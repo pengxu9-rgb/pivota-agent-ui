@@ -19,6 +19,7 @@ import { mapPdpV2ToPdpPayload } from '@/features/pdp/adapter/mapPdpV2ToPdpPayloa
 import { isBeautyProduct } from '@/features/pdp/utils/isBeautyProduct';
 import { BeautyPDPContainer } from '@/features/pdp/containers/BeautyPDPContainer';
 import { GenericPDPContainer } from '@/features/pdp/containers/GenericPDPContainer';
+import { ProductDetailLoading } from '@/features/pdp/components/ProductDetailLoading';
 import type { Module, PDPPayload, Variant } from '@/features/pdp/types';
 import { pdpTracking } from '@/features/pdp/tracking';
 import { findMatchingOfferVariant } from '@/features/pdp/utils/offerVariantMatching';
@@ -422,35 +423,6 @@ function shouldRetryWithCoreOnlyPdp(err: unknown): boolean {
   const message = String((err as Error)?.message || '').toLowerCase();
   return message.includes('timed out') || message.includes('timeout') || message.includes('temporarily unavailable');
 }
-function ProductDetailLoading({ label }: { label: string }) {
-  return (
-    <div className="relative min-h-screen bg-background">
-      <div className="mx-auto max-w-md px-4 pt-6 opacity-80">
-        <div className="flex items-center gap-3">
-          <div className="h-10 w-10 rounded-full bg-muted/25 animate-pulse" />
-          <div className="h-10 flex-1 rounded-full bg-muted/20 animate-pulse" />
-          <div className="h-10 w-10 rounded-full bg-muted/25 animate-pulse" />
-        </div>
-
-        <div className="mt-4 aspect-[3/4] rounded-3xl bg-muted/20 animate-pulse" />
-
-        <div className="mt-5 space-y-2">
-          <div className="h-8 w-32 rounded bg-muted/20 animate-pulse" />
-          <div className="h-5 w-full rounded bg-muted/20 animate-pulse" />
-          <div className="h-5 w-3/4 rounded bg-muted/20 animate-pulse" />
-          <div className="h-4 w-1/2 rounded bg-muted/20 animate-pulse" />
-        </div>
-      </div>
-      <div className="pointer-events-none fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 backdrop-blur-[2px]">
-        <div className="flex items-center gap-2 rounded-[8px] bg-white/90 px-4 py-2 text-sm font-semibold text-slate-900 shadow-[0_10px_35px_rgba(0,0,0,0.2)]">
-          <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-slate-900" />
-          <span>{label}</span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 export default function ProductDetailPage({ params }: Props) {
   const { id } = use(params);
   const searchParams = useSearchParams();

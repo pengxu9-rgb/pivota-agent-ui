@@ -17,6 +17,8 @@ const HOW_TO_USE_ACTION_RE =
 const INGREDIENT_NOISE_RE =
   /\b(shop now|pair with|our story|product philosophy|sustainability|inclusivity pledge|peta-certified|vegan and cruelty-free|no worries|patch test|allerg(?:y|ic)|warning|warnings|caution|note:)\b/i;
 const OVERVIEW_LIKE_HEADING_RE = /^(overview|details|product details?)$/i;
+const SECTION_SOUP_LABEL_RE =
+  /\b(description|details?|overview|benefits?|clinical results?|results?|proven results?|key ingredients?|why it works|texture|finish|coverage|free of|set includes|best for|formulation|what else you should know|good to know|ingredients?|active ingredients?|how to use|how to apply|directions?|faq|frequently asked questions?|q\s*&\s*a|questions?)\b\s*:?\s*/gi;
 
 function normalizeWhitespace(value: unknown): string {
   return String(value || '')
@@ -151,6 +153,36 @@ function pushUniqueSection(sections: DetailSection[], seen: Set<string>, section
   if (!key || seen.has(key)) return;
   seen.add(key);
   sections.push(section);
+}
+
+function countSectionSoupLabels(value: string): number {
+  SECTION_SOUP_LABEL_RE.lastIndex = 0;
+  let count = 0;
+  while (SECTION_SOUP_LABEL_RE.exec(value)) count += 1;
+  return count;
+}
+
+function looksLikeSectionSoupText(value: string): boolean {
+  const text = normalizeWhitespace(value);
+  if (!text) return false;
+  if (countSectionSoupLabels(text) >= 2) return true;
+  return (
+    text.length > 500 &&
+    /\b(description|details?|overview)\b/i.test(text) &&
+    /\b(benefits?|how to use|ingredients?|clinical results?|coverage|finish)\b/i.test(text)
+  );
+}
+
+export function hasLowQualityOverviewSection(
+  data: ProductDetailsData | null | undefined,
+): boolean {
+  const sections = Array.isArray(data?.sections) ? data.sections : [];
+  const overviewSection =
+    sections.find((section) =>
+      OVERVIEW_LIKE_HEADING_RE.test(normalizeWhitespace(section.heading)),
+    ) || sections[0];
+  if (!overviewSection) return false;
+  return looksLikeSectionSoupText(normalizeWhitespace(overviewSection.content));
 }
 
 export function sanitizeActiveIngredientsData(

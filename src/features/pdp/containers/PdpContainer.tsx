@@ -96,6 +96,7 @@ import { partitionDetailSections } from '@/features/pdp/utils/detailSections';
 import { normalizePdpImageUrl } from '@/features/pdp/utils/pdpImageUrls';
 import {
   chooseProductDetailsData,
+  hasLowQualityOverviewSection,
   sanitizeActiveIngredientsData,
   sanitizeHowToUseData,
   sanitizeIngredientsInciData,
@@ -2172,7 +2173,7 @@ export function PdpContainer({
 
   const attributeOptions = extractAttributeOptions(selectedVariant);
   const beautyAttributes = extractBeautyAttributes(selectedVariant);
-  const suppressOverviewInDetails = hasInsights;
+  const suppressOverviewInDetails = hasInsights || hasLowQualityOverviewSection(details);
   const hasStructuredDetailBlocks = Boolean(
     activeIngredients?.items?.length ||
       ingredientsInci?.items?.length ||
