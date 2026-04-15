@@ -486,7 +486,7 @@ describe('PdpContainer product intel section', () => {
     expect(source).not.toContain('truncate');
   });
 
-  it('hides duplicate product overview when Pivota Insights already carries the normalized summary', () => {
+  it('keeps clean product overview visible alongside Pivota Insights', () => {
     const dedupedPayload: PDPPayload = {
       ...payload,
       modules: payload.modules.map((module) =>
@@ -518,9 +518,8 @@ describe('PdpContainer product intel section', () => {
     );
 
     expect(screen.getByText('Pivota Insights')).toBeInTheDocument();
-    expect(screen.queryByText('Product Details')).not.toBeInTheDocument();
     expect(
-      screen.queryByText('Seller overview copy that would otherwise duplicate the normalized summary.'),
-    ).not.toBeInTheDocument();
+      screen.getByText('Seller overview copy that would otherwise duplicate the normalized summary.'),
+    ).toBeInTheDocument();
   });
 });
