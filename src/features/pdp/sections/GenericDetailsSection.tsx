@@ -2,16 +2,13 @@
 
 import Image from 'next/image';
 import type {
-  ActiveIngredientsData,
   HowToUseData,
-  IngredientsInciData,
   MediaGalleryData,
   Product,
   ProductDetailsData,
 } from '@/features/pdp/types';
 import { DetailsAccordion } from '@/features/pdp/sections/DetailsAccordion';
 import { OverviewSection } from '@/features/pdp/sections/OverviewSection';
-import { StructuredDetailsBlocks } from '@/features/pdp/sections/StructuredDetailsBlocks';
 import { partitionDetailSections } from '@/features/pdp/utils/detailSections';
 import { buildOverviewContent } from '@/features/pdp/utils/overviewContent';
 
@@ -23,29 +20,23 @@ export function GenericDetailsSection({
   data,
   product,
   media,
-  activeIngredients,
-  ingredientsInci,
   materials,
   productSpecs,
   sizeFit,
   careInstructions,
   usageSafety,
   howToUse,
-  hideLowConfidenceActiveIngredients = false,
   suppressOverview = false,
 }: {
   data?: ProductDetailsData | null;
   product: Product;
   media?: MediaGalleryData | null;
-  activeIngredients?: ActiveIngredientsData | null;
-  ingredientsInci?: IngredientsInciData | null;
   materials?: ProductDetailsData | null;
   productSpecs?: ProductDetailsData | null;
   sizeFit?: ProductDetailsData | null;
   careInstructions?: ProductDetailsData | null;
   usageSafety?: ProductDetailsData | null;
   howToUse?: HowToUseData | null;
-  hideLowConfidenceActiveIngredients?: boolean;
   suppressOverview?: boolean;
 }) {
   const sections = Array.isArray(data?.sections) ? data.sections : [];
@@ -96,13 +87,6 @@ export function GenericDetailsSection({
           ))}
         </div>
       ) : null}
-
-      <StructuredDetailsBlocks
-        activeIngredients={activeIngredients}
-        ingredientsInci={ingredientsInci}
-        howToUse={null}
-        hideLowConfidenceActiveIngredients={hideLowConfidenceActiveIngredients}
-      />
 
       {genericBlocks.length ? (
         <div className="mt-3 space-y-3">
