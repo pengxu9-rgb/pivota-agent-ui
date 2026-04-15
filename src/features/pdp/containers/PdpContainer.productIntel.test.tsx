@@ -297,6 +297,53 @@ describe('PdpContainer product intel section', () => {
     expect(screen.queryByText('Sunscreen shoppers')).not.toBeInTheDocument();
   });
 
+  it('renders long insight copy as complete text without ellipsis truncation', () => {
+    const longCopy =
+      'Combines Zinc Oxide UV protection with a fluid tint so it can work as the final morning SPF step or a light base for everyday wear.';
+    const longCopyPayload: PDPPayload = {
+      ...payload,
+      modules: payload.modules.map((module) =>
+        module.type !== 'product_intel'
+          ? module
+          : {
+              ...module,
+              data: {
+                ...module.data,
+                evidence_profile: 'seller_plus_formula',
+                quality_state: 'eligible',
+                product_intel_core: {
+                  ...module.data.product_intel_core!,
+                  evidence_profile: 'seller_plus_formula',
+                  quality_state: 'eligible',
+                  what_it_is: {
+                    headline: 'Mineral tinted SPF 40',
+                    body: 'A mineral SPF 40 tinted fluid sunscreen with sheer coverage and a balanced finish.',
+                  },
+                  why_it_stands_out: [
+                    {
+                      headline: 'Tint and SPF in one step',
+                      body: longCopy,
+                    },
+                  ],
+                },
+              },
+            },
+      ),
+    };
+
+    const { container } = render(
+      <PdpContainer
+        payload={longCopyPayload}
+        mode="generic"
+        onAddToCart={() => {}}
+        onBuyNow={() => {}}
+      />,
+    );
+
+    expect(screen.getByText(longCopy)).toBeInTheDocument();
+    expect(container.textContent).not.toContain('…');
+  });
+
   it('hides legacy product-details overview when Pivota Insights already carries the normalized summary', () => {
     const dedupedPayload: PDPPayload = {
       ...payload,
