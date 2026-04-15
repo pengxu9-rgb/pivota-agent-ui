@@ -2883,7 +2883,9 @@ export function PdpContainer({
   );
 
   useEffect(() => {
-    if (!shouldUseProductLineColorSelector || pendingProductLineProductId) return;
+    if (!shouldUseProductLineColorSelector || pendingProductLineProductId || moduleStates.similar === 'LOADING') {
+      return;
+    }
 
     let cancelled = false;
     let nextIndex = 0;
@@ -2929,6 +2931,7 @@ export function PdpContainer({
     };
   }, [
     ensureProductLineCorePayload,
+    moduleStates.similar,
     pendingProductLineProductId,
     productLinePrefetchTargets,
     shouldUseProductLineColorSelector,
