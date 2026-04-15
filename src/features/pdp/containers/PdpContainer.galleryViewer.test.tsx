@@ -113,8 +113,8 @@ const payload: PDPPayload = {
       },
     },
     {
-      module_id: 'm_details',
-      type: 'product_details',
+      module_id: 'm_product_overview',
+      type: 'product_overview',
       priority: 70,
       data: {
         sections: [],
@@ -373,8 +373,8 @@ describe('PdpContainer gallery viewer wiring', () => {
           },
         },
         {
-          module_id: 'm_details',
-          type: 'product_details',
+          module_id: 'm_product_overview',
+          type: 'product_overview',
           priority: 45,
           data: {
             sections: [

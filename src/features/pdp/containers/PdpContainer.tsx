@@ -357,7 +357,8 @@ const PRODUCT_LINE_FAST_INCLUDE = [
   'active_ingredients',
   'ingredients_inci',
   'how_to_use',
-  'product_details',
+  'product_overview',
+  'supplemental_details',
 ] as const;
 const PRODUCT_LINE_PREFETCH_LIMIT = 2;
 const PRODUCT_LINE_PREFETCH_CONCURRENCY = 1;
@@ -1324,7 +1325,8 @@ export function PdpContainer({
   const pricePromo = getModuleData<PricePromoData>(payload, 'price_promo');
   const productIntel = getModuleData<ProductIntelData>(payload, 'product_intel');
   const productFacts = getModuleData<ProductFactsData>(payload, 'product_facts');
-  const legacyDetails = getModuleData<ProductDetailsData>(payload, 'product_details');
+  const productOverview = getModuleData<ProductDetailsData>(payload, 'product_overview');
+  const supplementalDetails = getModuleData<ProductDetailsData>(payload, 'supplemental_details');
   const isExternalSeedProduct =
     String(payload.product.merchant_id || '').trim().toLowerCase() === 'external_seed';
   const activeIngredients = sanitizeActiveIngredientsData(
@@ -1350,7 +1352,8 @@ export function PdpContainer({
   );
   const details = chooseProductDetailsData({
     productFacts,
-    legacyDetails,
+    productOverview,
+    supplementalDetails,
     hasStructuredBlocks: Boolean(
       activeIngredients ||
         ingredientsInci ||

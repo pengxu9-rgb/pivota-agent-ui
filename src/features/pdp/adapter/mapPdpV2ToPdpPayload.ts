@@ -212,7 +212,8 @@ const CANONICAL_PASSTHROUGH_MODULE_TYPES: ReadonlyArray<Module['type']> = [
   'media_gallery',
   'price_promo',
   'variant_selector',
-  'product_details',
+  'product_overview',
+  'supplemental_details',
   'product_facts',
   'materials',
   'product_specs',
@@ -461,11 +462,18 @@ export function mapPdpV2ToPdpPayload(response: GetPdpV2Response): PDPPayload | n
       title: 'Usage & Safety',
     },
     {
-      responseType: 'product_details',
-      module_id: 'product_details',
-      type: 'product_details' as const,
+      responseType: 'product_overview',
+      module_id: 'product_overview',
+      type: 'product_overview' as const,
       priority: 45,
-      title: 'Product Details',
+      title: 'Product Overview',
+    },
+    {
+      responseType: 'supplemental_details',
+      module_id: 'supplemental_details',
+      type: 'supplemental_details' as const,
+      priority: 49,
+      title: 'More Details',
     },
   ] as const;
 

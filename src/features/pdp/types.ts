@@ -217,8 +217,9 @@ export type ModuleType =
   | 'care_instructions'
   | 'size_fit'
   | 'usage_safety'
+  | 'product_overview'
+  | 'supplemental_details'
   | 'product_facts'
-  | 'product_details'
   | 'reviews_preview'
   | 'recommendations'
   | 'variant_selector';

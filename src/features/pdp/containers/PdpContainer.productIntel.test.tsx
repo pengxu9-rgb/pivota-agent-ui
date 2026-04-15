@@ -145,8 +145,8 @@ const payload: PDPPayload = {
       },
     },
     {
-      module_id: 'm_details',
-      type: 'product_details',
+      module_id: 'm_product_overview',
+      type: 'product_overview',
       priority: 70,
       data: { sections: [] },
     },
@@ -433,11 +433,11 @@ describe('PdpContainer product intel section', () => {
     expect(source).not.toContain('truncate');
   });
 
-  it('hides legacy product-details overview when Pivota Insights already carries the normalized summary', () => {
+  it('hides duplicate product overview when Pivota Insights already carries the normalized summary', () => {
     const dedupedPayload: PDPPayload = {
       ...payload,
       modules: payload.modules.map((module) =>
-        module.type !== 'product_details'
+        module.type !== 'product_overview'
           ? module
           : {
               ...module,

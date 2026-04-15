@@ -155,8 +155,8 @@ function buildBeautyPayload(): PDPPayload {
         },
       },
       {
-        module_id: 'm_details_legacy',
-        type: 'product_details',
+        module_id: 'm_product_overview',
+        type: 'product_overview',
         priority: 70,
         data: {
           sections: [
@@ -227,8 +227,8 @@ function buildGenericSingleVariantPayload(): PDPPayload {
         },
       },
       {
-        module_id: 'm_details',
-        type: 'product_details',
+        module_id: 'm_product_overview',
+        type: 'product_overview',
         priority: 70,
         data: {
           sections: [
@@ -331,8 +331,8 @@ function buildExternalSeedMultiVariantOfferPayload(): PDPPayload {
         },
       },
       {
-        module_id: 'm_details',
-        type: 'product_details',
+        module_id: 'm_product_overview',
+        type: 'product_overview',
         priority: 70,
         data: {
           sections: [
@@ -398,7 +398,7 @@ describe('PdpContainer structured PDP modules', () => {
     vi.restoreAllMocks();
   });
 
-  it('renders additive beauty modules ahead of facts and prefers product_facts over legacy product_details', () => {
+  it('renders additive beauty modules ahead of facts and prefers product_facts over overview copy', () => {
     render(
       <PdpContainer
         payload={buildBeautyPayload()}
@@ -706,7 +706,7 @@ describe('PdpContainer structured PDP modules', () => {
     const payload = buildGenericSingleVariantPayload();
     payload.product.description = '';
     payload.modules = payload.modules.map((module) =>
-      module.type !== 'product_details'
+      module.type !== 'product_overview'
         ? module
         : {
             ...module,
@@ -732,7 +732,7 @@ describe('PdpContainer structured PDP modules', () => {
     expect(screen.queryByText(/Water, Dimethicone, Glycerin/i)).not.toBeInTheDocument();
   });
 
-  it('drops polluted product_facts and how-to-use blocks, then falls back to clean legacy overview', () => {
+  it('drops polluted product_facts and how-to-use blocks, then falls back to clean overview', () => {
     const payload = buildBeautyPayload();
     payload.product.description = 'Barrier-first overview copy.';
     payload.modules = payload.modules.map((module) => {
@@ -766,7 +766,7 @@ describe('PdpContainer structured PDP modules', () => {
           },
         };
       }
-      if (module.type === 'product_details') {
+      if (module.type === 'product_overview') {
         return {
           ...module,
           data: {

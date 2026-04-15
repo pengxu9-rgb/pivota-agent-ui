@@ -232,21 +232,25 @@ export function sanitizeHowToUseData(
 
 export function chooseProductDetailsData(args: {
   productFacts?: ProductDetailsData | null;
-  legacyDetails?: ProductDetailsData | null;
+  productOverview?: ProductDetailsData | null;
+  supplementalDetails?: ProductDetailsData | null;
   hasStructuredBlocks: boolean;
 }): ProductDetailsData | null {
   const factsSections = filterDetailSections(args.productFacts, {
     hasStructuredBlocks: args.hasStructuredBlocks,
   });
-  const legacySections = filterDetailSections(args.legacyDetails, {
+  const overviewSections = filterDetailSections(args.productOverview, {
+    hasStructuredBlocks: args.hasStructuredBlocks,
+  });
+  const supplementalSections = filterDetailSections(args.supplementalDetails, {
     hasStructuredBlocks: args.hasStructuredBlocks,
   });
 
-  const overviewIndex = legacySections.findIndex((section) =>
+  const overviewIndex = overviewSections.findIndex((section) =>
     OVERVIEW_LIKE_HEADING_RE.test(normalizeWhitespace(section.heading)),
   );
   const overviewSection =
-    (overviewIndex >= 0 ? legacySections[overviewIndex] : legacySections[0]) || null;
+    (overviewIndex >= 0 ? overviewSections[overviewIndex] : overviewSections[0]) || null;
 
   if (factsSections.length > 0) {
     const mergedSections: DetailSection[] = [];
@@ -256,14 +260,25 @@ export function chooseProductDetailsData(args: {
     for (const section of factsSections) {
       pushUniqueSection(mergedSections, seen, section);
     }
-    for (let index = 0; index < legacySections.length; index += 1) {
-      const section = legacySections[index];
+    for (let index = 0; index < overviewSections.length; index += 1) {
+      const section = overviewSections[index];
       if (!section || (overviewSection && section === overviewSection)) continue;
+      pushUniqueSection(mergedSections, seen, section);
+    }
+    for (const section of supplementalSections) {
       pushUniqueSection(mergedSections, seen, section);
     }
 
     return mergedSections.length ? { sections: mergedSections } : { sections: factsSections };
   }
 
-  return legacySections.length ? { sections: legacySections } : null;
+  const mergedSections: DetailSection[] = [];
+  const seen = new Set<string>();
+  for (const section of overviewSections) {
+    pushUniqueSection(mergedSections, seen, section);
+  }
+  for (const section of supplementalSections) {
+    pushUniqueSection(mergedSections, seen, section);
+  }
+  return mergedSections.length ? { sections: mergedSections } : null;
 }
