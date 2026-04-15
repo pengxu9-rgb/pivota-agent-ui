@@ -367,7 +367,12 @@ describe('BrandLandingPage', () => {
             review_summary: { rating: 4.7, review_count: 88, scale: 5 },
           },
         ],
-        metadata: { has_more: true },
+        metadata: {
+          has_more: true,
+          facets: {
+            categories: [{ value: 'Fragrance', count: 3 }],
+          },
+        },
         query_text: '',
         page_info: { page: 1, page_size: 1, total: 3, has_more: true },
       })
@@ -396,7 +401,12 @@ describe('BrandLandingPage', () => {
             in_stock: true,
           },
         ],
-        metadata: { has_more: false },
+        metadata: {
+          has_more: false,
+          facets: {
+            categories: [{ value: 'Fragrance', count: 3 }],
+          },
+        },
         query_text: '',
         page_info: { page: 2, page_size: 2, total: 2, has_more: false },
       })
@@ -414,7 +424,12 @@ describe('BrandLandingPage', () => {
             in_stock: true,
           },
         ],
-        metadata: { has_more: false },
+        metadata: {
+          has_more: false,
+          facets: {
+            categories: [{ value: 'Fragrance', count: 3 }],
+          },
+        },
         query_text: '',
         page_info: { page: 1, page_size: 1, total: 1, has_more: false },
       });

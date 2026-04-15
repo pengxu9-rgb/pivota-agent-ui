@@ -43,7 +43,7 @@ async function fetchInitialBrandFeed(args: {
   if (!brandName) return null;
 
   const query = readSearchParam(args.query);
-  const category = readSearchParam(args.category).toLowerCase();
+  const category = readSearchParam(args.category);
   const sourceProductId = readSearchParam(args.sourceProductId);
   const sourceMerchantId = readSearchParam(args.sourceMerchantId);
   const shouldServerPrefetch = Boolean(query || category || sourceProductId);

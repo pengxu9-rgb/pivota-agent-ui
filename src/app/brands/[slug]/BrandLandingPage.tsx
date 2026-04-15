@@ -153,42 +153,6 @@ function normalizeCategoryScopeValue(value: string | null | undefined): string |
   return formatCategoryLabel(trimmed);
 }
 
-function inferCategoryLabel(product: ProductResponse): string | null {
-  const rawPool = [
-    product.product_type,
-    product.category,
-    product.department,
-    ...(Array.isArray(product.tags) ? product.tags : []),
-    product.title,
-  ]
-    .map((value) => String(value || '').trim())
-    .filter(Boolean);
-
-  if (!rawPool.length) return null;
-
-  const haystack = rawPool.join(' ').toLowerCase();
-  if (/(fragrance|perfume|parfum|cologne|eau de)/.test(haystack)) return 'Fragrance';
-  if (/(lipstick|lip color|lip gloss|lip balm|lip stain|lip liner|\blip\b)/.test(haystack)) {
-    return 'Lip';
-  }
-  if (/(concealer|foundation|powder|skin tint|blush|bronzer|highlighter|primer|corrector)/.test(haystack)) {
-    return 'Complexion';
-  }
-  if (/(mascara|brow|eyeshadow|eyeliner|eye color|lash|kohl)/.test(haystack)) return 'Eyes';
-  if (/(brush|tools|tool|sponge|applicator)/.test(haystack)) return 'Tools';
-  if (/(serum|cream|cleanser|moisturizer|treatment|mask|skincare|essence|lotion)/.test(haystack)) {
-    return 'Skincare';
-  }
-
-  const firstSpecific = rawPool.find((value) => {
-    const normalized = value.toLowerCase();
-    return normalized && !['beauty', 'makeup', 'external'].includes(normalized);
-  });
-
-  if (!firstSpecific) return null;
-  return formatCategoryLabel(firstSpecific);
-}
-
 function buildCategoryKey(label: string): string {
   return label.trim().toLowerCase().replace(/\s+/g, '-');
 }
@@ -236,33 +200,14 @@ function readCategoryFacets(metadata: Record<string, any> | null | undefined): C
   return [];
 }
 
-function resolveCategoryChips(
-  products: ProductResponse[],
-  metadata: Record<string, any> | null | undefined,
-): CategoryChip[] {
+function resolveCategoryChips(metadata: Record<string, any> | null | undefined): CategoryChip[] {
   const chipsFromMetadata = readCategoryFacets(metadata);
   if (chipsFromMetadata.length) {
     return chipsFromMetadata
       .sort((left, right) => (right.count || 0) - (left.count || 0))
       .slice(0, 8);
   }
-
-  const counts = new Map<string, number>();
-  products.forEach((product) => {
-    const label = inferCategoryLabel(product);
-    if (!label) return;
-    counts.set(label, (counts.get(label) || 0) + 1);
-  });
-
-  return Array.from(counts.entries())
-    .sort((left, right) => right[1] - left[1])
-    .slice(0, 8)
-    .map(([label, count]) => ({
-      key: buildCategoryKey(label),
-      label,
-      scopeValue: label,
-      count,
-    }));
+  return [];
 }
 
 function resolveBrandCampaign(metadata: Record<string, any> | null | undefined): BrandCampaign | null {
@@ -396,7 +341,7 @@ export function BrandLandingPage({
 
   const categoryChips = useMemo(
     () => {
-      const resolved = resolveCategoryChips(products, feedMetadata);
+      const resolved = resolveCategoryChips(feedMetadata);
       if (
         activeCategory &&
         !resolved.some((chip) => chip.scopeValue === activeCategory)
@@ -416,7 +361,7 @@ export function BrandLandingPage({
         ...resolved,
       ];
     },
-    [activeCategory, feedMetadata, products],
+    [activeCategory, feedMetadata],
   );
   const filterCategoryChips = useMemo(
     () => categoryChips.filter((chip) => chip.scopeValue),

@@ -2191,7 +2191,7 @@ export async function getBrandDiscoveryFeed(args: {
 }): Promise<BrandDiscoveryFeedResult> {
   const brandName = String(args.brandName || '').trim();
   const queryText = String(args.query || '').trim();
-  const category = String(args.category || '').trim().toLowerCase();
+  const category = String(args.category || '').trim();
   const sort: BrandDiscoverySort =
     args.sort === 'price_desc' || args.sort === 'price_asc' ? args.sort : 'popular';
   const requestedPage = Math.max(1, Math.floor(Number(args.page || 1) || 1));
@@ -2776,6 +2776,63 @@ async function _attachReviewSummaryBestEffort(product: ProductResponse): Promise
   }
 }
 
+export async function getProductDetailExact(
+  productId: string,
+  merchantId: string,
+  options?: {
+    timeout_ms?: number;
+    throwOnError?: boolean;
+    includeReviewSummary?: boolean;
+  },
+): Promise<ProductResponse | null> {
+  const normalizedProductId = String(productId || '').trim();
+  const normalizedMerchantId = String(merchantId || '').trim();
+  if (!normalizedProductId || !normalizedMerchantId) return null;
+
+  try {
+    const data = await callGatewayWithTimeout(
+      {
+        operation: 'get_product_detail',
+        payload: {
+          product: {
+            merchant_id: normalizedMerchantId,
+            product_id: normalizedProductId,
+          },
+          options: {
+            exact: true,
+            no_legacy_pdp: true,
+          },
+        },
+      },
+      options?.timeout_ms,
+    );
+
+    const product = (data as any).product;
+    if (!product) return null;
+    const enriched = {
+      ...product,
+      ...(typeof (data as any).product_group_id === 'string'
+        ? { product_group_id: (data as any).product_group_id }
+        : {}),
+      ...(Array.isArray((data as any).offers) ? { offers: (data as any).offers } : {}),
+      ...((data as any).offers_count != null ? { offers_count: (data as any).offers_count } : {}),
+      ...(typeof (data as any).default_offer_id === 'string'
+        ? { default_offer_id: (data as any).default_offer_id }
+        : {}),
+      ...(typeof (data as any).best_price_offer_id === 'string'
+        ? { best_price_offer_id: (data as any).best_price_offer_id }
+        : {}),
+    };
+    const normalized = normalizeProduct(enriched) as ProductResponse;
+    return options?.includeReviewSummary
+      ? await _attachReviewSummaryBestEffort(normalized)
+      : normalized;
+  } catch (err) {
+    if (options?.throwOnError === true) throw err;
+    return null;
+  }
+}
+
 // Single product detail
 export async function getProductDetail(
   productId: string,
@@ -2794,7 +2851,7 @@ export async function getProductDetail(
   const throwOnError = options?.throwOnError === true;
   const includeReviewSummary = options?.includeReviewSummary === true;
 
-  // Try to resolve merchant_id, then use identifier search. Broad catalog scans are opt-in only.
+  // Try exact merchant/product detail first. Legacy list search remains opt-in for non-PDP surfaces only.
   let merchantId: string | undefined = merchantIdOverride;
   if (!merchantId && useConfiguredMerchantId) {
     try {
@@ -2806,44 +2863,15 @@ export async function getProductDetail(
 
   try {
     if (merchantId) {
-      const data = await callGatewayWithTimeout(
-        {
-          operation: 'get_product_detail',
-          payload: {
-            product: {
-              merchant_id: merchantId,
-              product_id: productId,
-            },
-          },
-        },
-        timeoutMs,
-      );
-
-      const product = (data as any).product;
-      if (product) {
-        const enriched = {
-          ...product,
-          ...(typeof (data as any).product_group_id === 'string'
-            ? { product_group_id: (data as any).product_group_id }
-            : {}),
-          ...(Array.isArray((data as any).offers) ? { offers: (data as any).offers } : {}),
-          ...((data as any).offers_count != null ? { offers_count: (data as any).offers_count } : {}),
-          ...(typeof (data as any).default_offer_id === 'string'
-            ? { default_offer_id: (data as any).default_offer_id }
-            : {}),
-          ...(typeof (data as any).best_price_offer_id === 'string'
-            ? { best_price_offer_id: (data as any).best_price_offer_id }
-            : {}),
-        };
-        const normalized = normalizeProduct(enriched) as ProductResponse;
-        return includeReviewSummary
-          ? await _attachReviewSummaryBestEffort(normalized)
-          : normalized;
-      }
+      const exact = await getProductDetailExact(productId, merchantId, {
+        timeout_ms: timeoutMs,
+        throwOnError,
+        includeReviewSummary,
+      });
+      if (exact) return exact;
     }
   } catch (err) {
-    // In MOCK mode or when backend returns 404, gracefully fall back to list search
-    console.error('getProductDetail primary error, falling back to list:', err);
+    console.error('getProductDetail exact primary error:', err);
     if (throwOnError) throw err;
   }
 

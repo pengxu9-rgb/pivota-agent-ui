@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   getAllProducts,
   getBrandDiscoveryFeed,
+  getProductDetailExact,
   getShoppingDiscoveryFeed,
   getSimilarProductsMainline,
 } from './api';
@@ -436,6 +437,47 @@ describe('getAllProducts browse routing', () => {
           { product_id: 'sim_1', merchant_id: 'external_seed' },
           { product_id: 'sim_2', merchant_id: 'external_seed' },
         ],
+      },
+    });
+  });
+
+  it('uses exact product detail without broad product-search fallback', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      jsonResponse({
+        status: 'success',
+        product: {
+          product_id: 'prod_exact_1',
+          merchant_id: 'merch_exact',
+          title: 'Exact Product',
+          price: 24,
+          currency: 'USD',
+        },
+      }),
+    );
+
+    const product = await getProductDetailExact('prod_exact_1', 'merch_exact');
+
+    expect(product).toEqual(
+      expect.objectContaining({
+        product_id: 'prod_exact_1',
+        merchant_id: 'merch_exact',
+        title: 'Exact Product',
+      }),
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(String(init.body || '{}'));
+    expect(body).toMatchObject({
+      operation: 'get_product_detail',
+      payload: {
+        product: {
+          merchant_id: 'merch_exact',
+          product_id: 'prod_exact_1',
+        },
+        options: {
+          exact: true,
+          no_legacy_pdp: true,
+        },
       },
     });
   });
