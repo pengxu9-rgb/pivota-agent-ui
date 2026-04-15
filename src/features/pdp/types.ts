@@ -317,6 +317,18 @@ export interface CommunitySignalsData {
 export interface ProductIntelData {
   contract_version?: string;
   display_name?: string;
+  provenance?: {
+    source?: string;
+    generator?: string;
+    selection_strategy?: string;
+    reviewer_kind?: string;
+    review_status?: string;
+    review_decision?: string;
+    field_sources?: Record<string, string>;
+    gemini_quality_gate?: Record<string, unknown>;
+    kb_key?: string;
+    generated_at?: string;
+  };
   canonical_product_ref?: {
     merchant_id?: string;
     product_id?: string;
