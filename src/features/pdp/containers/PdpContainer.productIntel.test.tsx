@@ -1,5 +1,7 @@
 /* eslint-disable @next/next/no-img-element */
 import React from 'react';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import '@testing-library/jest-dom/vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -342,6 +344,16 @@ describe('PdpContainer product intel section', () => {
 
     expect(screen.getByText(longCopy)).toBeInTheDocument();
     expect(container.textContent).not.toContain('…');
+  });
+
+  it('keeps Pivota Insights free of old line-clamp truncation classes', () => {
+    const source = readFileSync(
+      resolve(process.cwd(), 'src/features/pdp/sections/PivotaInsightsSection.tsx'),
+      'utf8',
+    );
+
+    expect(source).not.toContain('line-clamp');
+    expect(source).not.toContain('truncate');
   });
 
   it('hides legacy product-details overview when Pivota Insights already carries the normalized summary', () => {
