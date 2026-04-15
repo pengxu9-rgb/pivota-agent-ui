@@ -656,6 +656,36 @@ describe('PdpContainer structured PDP modules', () => {
     expect(screen.getByText('Overview')).toBeInTheDocument();
   });
 
+  it('hides section-soup legacy overview when normalized insights are missing', () => {
+    const payload = buildGenericSingleVariantPayload();
+    payload.product.description = '';
+    payload.modules = payload.modules.map((module) =>
+      module.type !== 'product_details'
+        ? module
+        : {
+            ...module,
+            data: {
+              sections: [
+                {
+                  heading: 'Product Details',
+                  content_type: 'text',
+                  content:
+                    'Details Full coverage concealer copy that was copied from the merchant PDP. Benefits 24H wear and crease resistance. Coverage Medium to full. Finish Natural matte. How to Use Apply to targeted areas and blend. Ingredients Water, Dimethicone, Glycerin.',
+                },
+              ],
+            },
+          },
+    );
+
+    render(
+      <PdpContainer payload={payload} mode="generic" onAddToCart={() => {}} onBuyNow={() => {}} />,
+    );
+
+    expect(screen.queryByText('Product Details')).not.toBeInTheDocument();
+    expect(screen.queryByText(/24H wear and crease resistance/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Water, Dimethicone, Glycerin/i)).not.toBeInTheDocument();
+  });
+
   it('drops polluted product_facts and how-to-use blocks, then falls back to clean legacy overview', () => {
     const payload = buildBeautyPayload();
     payload.product.description = 'Barrier-first overview copy.';

@@ -441,8 +441,15 @@ function ProductDetailLoading({ label }: { label: string }) {
           <div className="h-4 w-1/2 rounded bg-muted/20 animate-pulse" />
         </div>
       </div>
-      <div className="pointer-events-none fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 backdrop-blur-[2px]">
-        <div className="flex items-center gap-2 rounded-[8px] bg-white/90 px-4 py-2 text-sm font-semibold text-slate-900 shadow-[0_10px_35px_rgba(0,0,0,0.2)]">
+      <div
+        data-testid="pdp-loading-scrim"
+        className="pointer-events-none fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 backdrop-blur-[2px]"
+      >
+        <div
+          role="status"
+          aria-live="polite"
+          className="flex items-center gap-2 rounded-[8px] bg-white/90 px-4 py-2 text-sm font-semibold text-slate-900 shadow-[0_10px_35px_rgba(0,0,0,0.2)]"
+        >
           <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-slate-900" />
           <span>{label}</span>
         </div>

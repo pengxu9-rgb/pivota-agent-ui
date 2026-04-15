@@ -95,10 +95,28 @@ const payload: PDPPayload = {
         display_name: 'Pivota Insights',
         evidence_profile: 'seller_only',
         quality_state: 'limited',
+        provenance: {
+          generator: 'strict_human_manual_rewrite',
+          selection_strategy: 'gemini_flash_first_then_strict_human_rewrite',
+          reviewer_kind: 'human',
+          review_status: 'completed',
+          review_decision: 'rewrite',
+          field_sources: {
+            what_it_is: 'human_standard',
+            why_it_stands_out: 'human_standard',
+          },
+          gemini_quality_gate: {
+            human_standard_rewrite: true,
+          },
+        },
         source_coverage: { seller: true, formula: true },
         product_intel_core: {
           evidence_profile: 'seller_only',
           quality_state: 'limited',
+          freshness: {
+            generated_at: '2026-04-15T10:01:12.646Z',
+            source_version: 'pilot_selected:strict_human_reviewed',
+          },
           what_it_is: {
             body: 'our overnight cream is designed to support barrier comfort while you sleep.',
           },
@@ -214,10 +232,19 @@ describe('PdpContainer product intel section', () => {
                 ...module.data,
                 evidence_profile: 'seller_plus_formula',
                 quality_state: 'eligible',
+                provenance: {
+                  generator: 'baseline_plus_gemini',
+                  review_status: 'pending',
+                  review_decision: 'pending',
+                },
                 product_intel_core: {
                   ...module.data.product_intel_core!,
                   evidence_profile: 'seller_plus_formula',
                   quality_state: 'eligible',
+                  freshness: {
+                    generated_at: '2026-04-15T10:01:12.646Z',
+                    source_version: 'pilot_selected:gemini-3-flash-preview',
+                  },
                   what_it_is: {
                     body: 'A daily sunscreen product focused on UV protection within a daytime skin-care routine.',
                   },
@@ -245,6 +272,56 @@ describe('PdpContainer product intel section', () => {
 
     expect(screen.queryByText('What it is')).not.toBeInTheDocument();
     expect(screen.queryByText(/daily sunscreen product focused on UV protection/i)).not.toBeInTheDocument();
+  });
+
+  it('does not render specific-looking generated insights without reviewed provenance', () => {
+    const generatedPayload: PDPPayload = {
+      ...payload,
+      modules: payload.modules.map((module) =>
+        module.type !== 'product_intel'
+          ? module
+          : {
+              ...module,
+              data: {
+                ...module.data,
+                provenance: {
+                  generator: 'baseline_plus_gemini',
+                  review_status: 'pending',
+                  review_decision: 'pending',
+                },
+                product_intel_core: {
+                  ...module.data.product_intel_core!,
+                  freshness: {
+                    generated_at: '2026-04-15T10:01:12.646Z',
+                    source_version: 'pilot_selected:gemini-3-flash-preview',
+                  },
+                  what_it_is: {
+                    headline: 'Vitamin C serum',
+                    body: 'A vitamin C serum with niacinamide and hyaluronic acid for tone and texture routines.',
+                  },
+                  why_it_stands_out: [
+                    {
+                      headline: 'Multi-active serum',
+                      body: 'Combines vitamin C, niacinamide, and hyaluronic acid in one serum step.',
+                    },
+                  ],
+                },
+              },
+            },
+      ),
+    };
+
+    render(
+      <PdpContainer
+        payload={generatedPayload}
+        mode="generic"
+        onAddToCart={() => {}}
+        onBuyNow={() => {}}
+      />,
+    );
+
+    expect(screen.queryByText('Vitamin C serum')).not.toBeInTheDocument();
+    expect(screen.queryByText(/niacinamide and hyaluronic acid/i)).not.toBeInTheDocument();
   });
 
   it('filters generic best-for title fallback labels from otherwise specific insights', () => {
