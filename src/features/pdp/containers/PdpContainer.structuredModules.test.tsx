@@ -487,6 +487,7 @@ describe('PdpContainer structured PDP modules', () => {
         label: 'DN310',
         product_id: 'ext_boj_dn310',
         merchant_id: 'external_seed',
+        swatch_color: '#c7bbaf',
       },
       {
         option_id: 'external_seed:ext_boj_dn350',
@@ -496,6 +497,7 @@ describe('PdpContainer structured PDP modules', () => {
         label: 'DN350',
         product_id: 'ext_boj_dn350',
         merchant_id: 'external_seed',
+        swatch_color: '#c6beb5',
         selected: true,
       },
     ];
@@ -528,7 +530,11 @@ describe('PdpContainer structured PDP modules', () => {
     );
 
     expect(screen.getAllByText('Shade').length).toBeGreaterThan(0);
-    expect(screen.getByRole('button', { name: 'DN310' })).toBeInTheDocument();
+    const dn310Button = screen.getByRole('button', { name: 'DN310' });
+    expect(dn310Button).toBeInTheDocument();
+    expect(dn310Button.querySelector('[aria-hidden="true"]')).toHaveStyle({
+      backgroundColor: '#c7bbaf',
+    });
     expect(screen.getByRole('button', { name: 'DN350' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.queryByText('Title: Default Title')).not.toBeInTheDocument();
     expect(screen.queryByText('Product Line')).not.toBeInTheDocument();

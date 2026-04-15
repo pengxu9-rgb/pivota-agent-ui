@@ -93,6 +93,7 @@ import {
 import { useIsDesktop } from '@/features/pdp/hooks/useIsDesktop';
 import { buildSimilarMainlineStatus } from '@/features/pdp/utils/similarHints';
 import { partitionDetailSections } from '@/features/pdp/utils/detailSections';
+import { normalizePdpImageUrl } from '@/features/pdp/utils/pdpImageUrls';
 import {
   chooseProductDetailsData,
   sanitizeActiveIngredientsData,
@@ -123,6 +124,18 @@ type VariantSelectorModuleData = {
   product_line_options?: ProductLineOption[];
 };
 
+function normalizeHexColor(value: unknown): string | undefined {
+  const text = String(value || '').trim().replace(/^#/, '');
+  if (/^[0-9a-f]{3}$/i.test(text)) {
+    return `#${text
+      .split('')
+      .map((part) => `${part}${part}`)
+      .join('')}`.toLowerCase();
+  }
+  if (/^[0-9a-f]{6}$/i.test(text)) return `#${text}`.toLowerCase();
+  return undefined;
+}
+
 function normalizeProductLineOptions(options: ProductLineOption[] | undefined): ProductLineOption[] {
   if (!Array.isArray(options)) return [];
   const seen = new Set<string>();
@@ -134,6 +147,17 @@ function normalizeProductLineOptions(options: ProductLineOption[] | undefined): 
     const merchantId = String(item?.merchant_id || '').trim();
     const axis = String(item?.axis || '').trim().toLowerCase();
     const value = String(item?.value || label).trim();
+    const swatchImageUrl =
+      normalizePdpImageUrl(
+        item?.swatch_image_url ||
+          item?.label_image_url ||
+          item?.swatch?.image_url ||
+          item?.swatch?.imageUrl ||
+          item?.swatch?.url,
+      ) || undefined;
+    const swatchColor = normalizeHexColor(
+      item?.swatch_color || item?.color_hex || item?.swatch?.hex,
+    );
     const key = `${axis || 'option'}:${value.toLowerCase()}:${productId}:${merchantId}`;
     if (seen.has(key)) continue;
     seen.add(key);
@@ -144,9 +168,25 @@ function normalizeProductLineOptions(options: ProductLineOption[] | undefined): 
       product_id: productId,
       merchant_id: merchantId || undefined,
       axis: axis || undefined,
+      ...(swatchImageUrl ? { swatch_image_url: swatchImageUrl, label_image_url: swatchImageUrl } : {}),
+      ...(swatchColor ? { swatch_color: swatchColor, color_hex: swatchColor, swatch: { hex: swatchColor } } : {}),
     });
   }
   return normalized;
+}
+
+function getProductLineSwatch(option: ProductLineOption): { imageUrl?: string; color?: string } {
+  return {
+    imageUrl:
+      normalizePdpImageUrl(
+        option.swatch_image_url ||
+          option.label_image_url ||
+          option.swatch?.image_url ||
+          option.swatch?.imageUrl ||
+          option.swatch?.url,
+      ) || undefined,
+    color: normalizeHexColor(option.swatch_color || option.color_hex || option.swatch?.hex),
+  };
 }
 
 function formatPrice(amount: number, currency: string) {
@@ -3013,6 +3053,10 @@ export function PdpContainer({
                             (!option.merchant_id ||
                               !payload.product.merchant_id ||
                               option.merchant_id === payload.product.merchant_id));
+                        const swatch = shouldUseProductLineColorSelector
+                          ? getProductLineSwatch(option)
+                          : {};
+                        const hasSwatch = Boolean(swatch.imageUrl || swatch.color);
                         return (
                           <button
                             key={option.option_id || `${option.product_id}-${option.value || option.label}`}
@@ -3020,14 +3064,30 @@ export function PdpContainer({
                             aria-pressed={isSelected}
                             onClick={() => handleProductLineOptionSelect(option, index)}
                             className={cn(
-                              'flex-shrink-0 rounded-full border bg-card px-3 py-1 text-xs text-foreground transition-colors',
+                              'flex min-h-8 flex-shrink-0 items-center gap-1.5 rounded-md border bg-card text-xs text-foreground transition-colors',
+                              hasSwatch ? 'px-2 py-1.5' : 'px-3 py-1',
                               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]',
                               isSelected
-                                ? 'border-[color:var(--accent-600)] bg-[var(--accent-50)] text-[color:var(--accent-800)] font-semibold'
+                                ? 'border-[color:var(--accent-600)] bg-[var(--accent-50)] text-[color:var(--accent-800)] font-semibold shadow-[inset_0_0_0_1px_var(--accent-600)]'
                                 : 'border-border hover:bg-muted/30 hover:border-muted-foreground/40',
                             )}
                           >
-                            {option.label}
+                            {hasSwatch ? (
+                              <span
+                                aria-hidden="true"
+                                className={cn(
+                                  'h-4 w-4 flex-shrink-0 overflow-hidden rounded-full border',
+                                  isSelected ? 'border-[color:var(--accent-600)]' : 'border-border',
+                                )}
+                                style={{
+                                  backgroundColor: swatch.color || undefined,
+                                  backgroundImage: swatch.imageUrl ? `url("${swatch.imageUrl}")` : undefined,
+                                  backgroundSize: 'cover',
+                                  backgroundPosition: 'center',
+                                }}
+                              />
+                            ) : null}
+                            <span>{option.label}</span>
                           </button>
                         );
                       })}

@@ -96,6 +96,11 @@ export interface ProductLineOption {
   product_id?: string;
   title?: string;
   image_url?: string;
+  label_image_url?: string;
+  swatch_image_url?: string;
+  swatch_color?: string;
+  color_hex?: string;
+  swatch?: { hex?: string; image_url?: string; imageUrl?: string; url?: string };
   selected?: boolean;
 }
 
