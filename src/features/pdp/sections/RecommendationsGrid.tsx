@@ -67,7 +67,7 @@ export function RecommendationsGrid({
       <div className="grid grid-cols-2 gap-3 px-3.5 sm:px-4 lg:grid-cols-4">
         {visibleItems.map((p, idx) => {
           const card = resolveProductCardPresentation(p as any, {
-            allowDescriptionAlongsideSubtitle: true,
+            allowDescriptionAlongsideSubtitle: false,
             suppressGenericReasonBadges: true,
           });
           const itemKey = buildRecommendationGridKey(p);

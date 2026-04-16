@@ -44,7 +44,10 @@ export function GenericDetailsSection({
     overviewSection: primarySection,
     supplementalSections: secondarySections,
   } = partitionDetailSections(sections);
-  const detailImages = (media?.items || []).slice(1, 3);
+  const overviewImage = media?.items?.[1] || media?.items?.[0] || null;
+  const detailImages = (media?.items || [])
+    .filter((item) => item?.url && item.url !== overviewImage?.url)
+    .slice(0, 2);
   const overviewContent = buildOverviewContent({
     description: product.description,
     section: primarySection,
@@ -69,7 +72,12 @@ export function GenericDetailsSection({
   return (
     <div className="px-2.5 py-3 sm:p-3">
       <h2 className="text-sm font-semibold mb-2">Product Details</h2>
-      {!suppressOverview ? <OverviewSection content={overviewContent} /> : null}
+      {!suppressOverview ? (
+        <OverviewSection
+          content={overviewContent}
+          image={overviewImage?.url ? { url: overviewImage.url, alt: product.title } : null}
+        />
+      ) : null}
 
       {detailImages.length ? (
         <div className="mt-3 space-y-2">
