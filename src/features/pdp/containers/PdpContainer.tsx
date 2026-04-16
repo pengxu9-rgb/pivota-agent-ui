@@ -350,7 +350,8 @@ function formatPrice(amount: number, currency: string) {
 
 const SIMILAR_PAGE_STEP = 12;
 const SIMILAR_NO_GROWTH_STOP_THRESHOLD = 2;
-const PRODUCT_LINE_FAST_INCLUDE = [
+const PRODUCT_LINE_PREFETCH_INCLUDE = ['offers', 'variant_selector'] as const;
+const PRODUCT_LINE_SWITCH_INCLUDE = [
   'offers',
   'variant_selector',
   'product_intel',
@@ -1217,6 +1218,7 @@ export function PdpContainer({
   const productLineSwitchPendingRef = useRef(false);
   const productLinePayloadCacheRef = useRef(new Map<string, PDPPayload>());
   const productLinePayloadInflightRef = useRef(new Map<string, Promise<PDPPayload | null>>());
+  const productLinePrefetchInflightRef = useRef(new Map<string, Promise<void>>());
   const productLinePrefetchAttemptedRef = useRef(new Set<string>());
   const [pendingProductLineProductId, setPendingProductLineProductId] = useState<string | null>(null);
 
@@ -2757,7 +2759,7 @@ export function PdpContainer({
       requestPromise = getPdpV2({
         product_id: productId,
         ...(merchantId ? { merchant_id: merchantId } : {}),
-        include: [...PRODUCT_LINE_FAST_INCLUDE],
+        include: [...PRODUCT_LINE_SWITCH_INCLUDE],
         timeout_ms: timeoutMs,
       })
         .then((response) => {
@@ -2781,6 +2783,34 @@ export function PdpContainer({
         productLinePayloadInflightRef.current.set(cacheKey, requestPromise);
       }
       return requestPromise;
+    },
+    [],
+  );
+
+  const prefetchProductLineVariantPayload = useCallback(
+    (args: { productId: string; merchantId: string; timeoutMs?: number }) => {
+      const { productId, merchantId, timeoutMs = PRODUCT_LINE_PREFETCH_TIMEOUT_MS } = args;
+      const cacheKey = buildProductLinePayloadCacheKey(productId, merchantId);
+      if (!cacheKey) return;
+      if (productLinePayloadCacheRef.current.has(cacheKey)) return;
+      if (productLinePayloadInflightRef.current.has(cacheKey)) return;
+      if (productLinePrefetchInflightRef.current.has(cacheKey)) return;
+
+      const requestPromise = getPdpV2({
+        product_id: productId,
+        ...(merchantId ? { merchant_id: merchantId } : {}),
+        include: [...PRODUCT_LINE_PREFETCH_INCLUDE],
+        timeout_ms: timeoutMs,
+      })
+        .then(() => undefined)
+        .catch(() => undefined)
+        .finally(() => {
+          if (productLinePrefetchInflightRef.current.get(cacheKey) === requestPromise) {
+            productLinePrefetchInflightRef.current.delete(cacheKey);
+          }
+        });
+
+      productLinePrefetchInflightRef.current.set(cacheKey, requestPromise);
     },
     [],
   );
@@ -2868,16 +2898,16 @@ export function PdpContainer({
       const cacheKey = buildProductLinePayloadCacheKey(productId, merchantId);
       if (!cacheKey) return;
       productLinePrefetchAttemptedRef.current.add(cacheKey);
-      void ensureProductLineCorePayload({
+      prefetchProductLineVariantPayload({
         productId,
         merchantId,
         timeoutMs: PRODUCT_LINE_PREFETCH_TIMEOUT_MS,
       });
     },
     [
-      ensureProductLineCorePayload,
       payload.product.merchant_id,
       payload.product.product_id,
+      prefetchProductLineVariantPayload,
       shouldUseProductLineColorSelector,
     ],
   );
@@ -2897,6 +2927,7 @@ export function PdpContainer({
       if (!cacheKey) return false;
       if (productLinePayloadCacheRef.current.has(cacheKey)) return false;
       if (productLinePayloadInflightRef.current.has(cacheKey)) return false;
+      if (productLinePrefetchInflightRef.current.has(cacheKey)) return false;
       if (productLinePrefetchAttemptedRef.current.has(cacheKey)) return false;
       return true;
     });
@@ -2913,11 +2944,13 @@ export function PdpContainer({
         if (!cacheKey) continue;
         productLinePrefetchAttemptedRef.current.add(cacheKey);
         activeCount += 1;
-        void ensureProductLineCorePayload({
+        prefetchProductLineVariantPayload({
           productId,
           merchantId,
           timeoutMs: PRODUCT_LINE_PREFETCH_TIMEOUT_MS,
-        }).finally(() => {
+        });
+        const prefetchRequest = productLinePrefetchInflightRef.current.get(cacheKey);
+        void (prefetchRequest || Promise.resolve()).finally(() => {
           activeCount -= 1;
           pump();
         });
@@ -2930,9 +2963,9 @@ export function PdpContainer({
       cancelled = true;
     };
   }, [
-    ensureProductLineCorePayload,
     moduleStates.similar,
     pendingProductLineProductId,
+    prefetchProductLineVariantPayload,
     productLinePrefetchTargets,
     shouldUseProductLineColorSelector,
   ]);

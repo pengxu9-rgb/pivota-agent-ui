@@ -672,6 +672,10 @@ describe('PdpContainer structured PDP modules', () => {
     );
     let resolvePdp: ((value: unknown) => void) | null = null;
     getPdpV2Mock
+      .mockResolvedValueOnce({
+        status: 'success',
+        modules: [],
+      })
       .mockReturnValueOnce(
         new Promise<any>((resolve) => {
           resolvePdp = resolve;
@@ -710,12 +714,12 @@ describe('PdpContainer structured PDP modules', () => {
         expect.objectContaining({
           product_id: 'ext_boj_dn310',
           merchant_id: 'external_seed',
-          include: expect.arrayContaining(['product_intel', 'variant_selector']),
+          include: ['offers', 'variant_selector'],
         }),
       );
       expect(getPdpV2Mock.mock.calls[0]?.[0]).toEqual(
         expect.objectContaining({
-          include: expect.not.arrayContaining(['reviews_preview', 'similar']),
+          include: expect.not.arrayContaining(['product_intel', 'reviews_preview', 'similar']),
         }),
       );
     });
@@ -723,14 +727,22 @@ describe('PdpContainer structured PDP modules', () => {
     fireEvent.click(screen.getByRole('button', { name: 'DN310' }));
     fireEvent.click(screen.getByRole('button', { name: 'DN310' }));
 
-    expect(getPdpV2Mock).toHaveBeenCalledTimes(1);
+    expect(getPdpV2Mock).toHaveBeenCalledTimes(2);
+    expect(getPdpV2Mock).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        product_id: 'ext_boj_dn310',
+        merchant_id: 'external_seed',
+        include: expect.arrayContaining(['product_intel', 'variant_selector']),
+      }),
+    );
     expect(routerPush).not.toHaveBeenCalled();
     expect(screen.getByText('Switching to DN310...')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'DN310' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'DN350' })).toBeDisabled();
 
     fireEvent.click(screen.getByRole('button', { name: 'DN350' }));
-    expect(getPdpV2Mock).toHaveBeenCalledTimes(1);
+    expect(getPdpV2Mock).toHaveBeenCalledTimes(2);
 
     resolvePdp?.({
       status: 'success',
