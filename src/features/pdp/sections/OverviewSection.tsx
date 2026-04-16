@@ -1,13 +1,16 @@
 'use client';
 
+import Image from 'next/image';
 import type { OverviewContent } from '@/features/pdp/utils/overviewContent';
 
 export function OverviewSection({
   content,
   heading = 'Overview',
+  image,
 }: {
   content: OverviewContent | null;
   heading?: string;
+  image?: { url: string; alt?: string } | null;
 }) {
   if (!content) return null;
 
@@ -19,57 +22,74 @@ export function OverviewSection({
   if (!hasSummary && !hasHighlights && !hasFacts && !hasBody) return null;
 
   return (
-    <section className="rounded-2xl border border-border bg-card/70 p-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <h3 className="text-sm font-semibold">{heading}</h3>
-        {content.eyebrow ? (
-          <span className="rounded-full border border-border/70 bg-background/90 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-            {content.eyebrow}
-          </span>
+    <section className="rounded-lg border border-border bg-card/70 p-4">
+      <div className={image?.url ? 'grid gap-4 md:grid-cols-[1.15fr_0.85fr]' : ''}>
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="text-sm font-semibold">{heading}</h3>
+            {content.eyebrow ? (
+              <span className="rounded-full border border-border/70 bg-background/90 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                {content.eyebrow}
+              </span>
+            ) : null}
+          </div>
+
+          {hasSummary ? (
+            <p className="mt-3 text-sm leading-6 text-foreground/90">
+              {content.summary}
+            </p>
+          ) : null}
+
+          {hasHighlights ? (
+            <div className="mt-4 grid gap-2 sm:grid-cols-2">
+              {content.highlights.map((item, idx) => (
+                <div
+                  key={`${item}-${idx}`}
+                  className="rounded-lg border border-border/60 bg-background/70 px-3 py-2 text-sm leading-5 text-muted-foreground"
+                >
+                  {item}
+                </div>
+              ))}
+            </div>
+          ) : null}
+
+          {hasFacts ? (
+            <dl className="mt-4 grid grid-cols-1 gap-3 border-t border-border/60 pt-4 sm:grid-cols-2">
+              {content.facts.map((item, idx) => (
+                <div key={`${item.label}-${idx}`} className="space-y-1">
+                  <dt className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                    {item.label}
+                  </dt>
+                  <dd className="text-sm leading-5 text-foreground/90">{item.value}</dd>
+                </div>
+              ))}
+            </dl>
+          ) : null}
+
+          {hasBody ? (
+            <div className="mt-4 space-y-2 border-t border-border/60 pt-4">
+              {content.body.map((paragraph, idx) => (
+                <p key={`${paragraph}-${idx}`} className="text-sm leading-6 text-muted-foreground">
+                  {paragraph}
+                </p>
+              ))}
+            </div>
+          ) : null}
+        </div>
+
+        {image?.url ? (
+          <div className="relative min-h-[220px] overflow-hidden rounded-lg bg-muted md:min-h-full">
+            <Image
+              src={image.url}
+              alt={image.alt || ''}
+              fill
+              className="object-cover"
+              sizes="(max-width: 768px) 100vw, 360px"
+              loading="lazy"
+            />
+          </div>
         ) : null}
       </div>
-
-      {hasSummary ? (
-        <p className="mt-3 text-sm leading-6 text-foreground/90">
-          {content.summary}
-        </p>
-      ) : null}
-
-      {hasHighlights ? (
-        <div className="mt-4 grid gap-2 sm:grid-cols-2">
-          {content.highlights.map((item, idx) => (
-            <div
-              key={`${item}-${idx}`}
-              className="rounded-xl border border-border/60 bg-background/70 px-3 py-2 text-sm leading-5 text-muted-foreground"
-            >
-              {item}
-            </div>
-          ))}
-        </div>
-      ) : null}
-
-      {hasFacts ? (
-        <dl className="mt-4 grid grid-cols-1 gap-3 border-t border-border/60 pt-4 sm:grid-cols-2">
-          {content.facts.map((item, idx) => (
-            <div key={`${item.label}-${idx}`} className="space-y-1">
-              <dt className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                {item.label}
-              </dt>
-              <dd className="text-sm leading-5 text-foreground/90">{item.value}</dd>
-            </div>
-          ))}
-        </dl>
-      ) : null}
-
-      {hasBody ? (
-        <div className="mt-4 space-y-2 border-t border-border/60 pt-4">
-          {content.body.map((paragraph, idx) => (
-            <p key={`${paragraph}-${idx}`} className="text-sm leading-6 text-muted-foreground">
-              {paragraph}
-            </p>
-          ))}
-        </div>
-      ) : null}
     </section>
   );
 }

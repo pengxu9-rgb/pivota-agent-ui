@@ -2209,7 +2209,7 @@ export function PdpContainer({
     selectedLabel: selectedVariantHeaderLabel,
   });
   const beautyAttributes = extractBeautyAttributes(selectedVariant);
-  const suppressOverviewInDetails = hasInsights || hasLowQualityOverviewSection(details);
+  const suppressOverviewInDetails = hasLowQualityOverviewSection(details);
   const hasStructuredDetailBlocks = Boolean(
     activeIngredients?.items?.length ||
       ingredientsInci?.items?.length ||

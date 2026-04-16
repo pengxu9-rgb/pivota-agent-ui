@@ -197,6 +197,7 @@ describe('RecommendationsGrid', () => {
               category: 'treatment serum',
               description:
                 'A clarifying treatment that helps smooth texture and visibly minimize the look of pores.',
+              card_highlight: 'Helps smooth visible texture.',
               reason: 'same_brand_same_category',
             },
           ],
@@ -206,11 +207,8 @@ describe('RecommendationsGrid', () => {
     );
 
     expect(screen.getByText('Treatment Serum')).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        'A clarifying treatment that helps smooth texture and visibly minimize the look of pores.',
-      ),
-    ).toBeInTheDocument();
+    expect(screen.getByText('Helps smooth visible texture.')).toBeInTheDocument();
+    expect(screen.queryByText(/A clarifying treatment that helps smooth texture/)).toBeNull();
     expect(screen.queryByText('Same brand')).toBeNull();
   });
 

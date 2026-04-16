@@ -1,6 +1,5 @@
 'use client';
 
-import Image from 'next/image';
 import type {
   ActiveIngredientsData,
   HowToUseData,
@@ -39,8 +38,7 @@ export function BeautyDetailsSection({
   hideLowConfidenceActiveIngredients?: boolean;
   suppressOverview?: boolean;
 }) {
-  const heroUrl = media?.items?.[0]?.url || product.image_url;
-  const accentImages = media?.items?.slice(1, 3) || [];
+  const overviewImageUrl = media?.items?.[1]?.url || media?.items?.[0]?.url || product.image_url;
   const sections = Array.isArray(data?.sections) ? data.sections : [];
   const {
     overviewSection: overviewSourceSection,
@@ -57,45 +55,13 @@ export function BeautyDetailsSection({
 
   return (
     <div className="py-4">
-      {heroUrl ? (
-        <div className="aspect-[4/5] bg-gradient-to-b from-muted to-background">
-          <Image
-            src={heroUrl}
-            alt={product.title}
-            fill
-            className="object-contain"
-            sizes="(max-width: 768px) 100vw, 640px"
-            loading="lazy"
-          />
-        </div>
-      ) : null}
-
-      <div className="px-2.5 py-6 text-center sm:px-3">
-        <h2 className="text-xl font-serif tracking-wide">{product.title}</h2>
-        {product.subtitle ? <p className="mt-2 text-sm text-muted-foreground">{product.subtitle}</p> : null}
-      </div>
-
-      {accentImages.length ? (
-        <div className="space-y-6 px-2.5 sm:px-3">
-          <div className="grid grid-cols-2 gap-2 rounded-xl overflow-hidden">
-            {accentImages.map((item, idx) => (
-              <div key={`${item.url}-${idx}`} className="relative aspect-[3/4] bg-muted">
-                <Image
-                  src={item.url}
-                  alt=""
-                  fill
-                  className="object-cover"
-                  sizes="(max-width: 768px) 50vw, 320px"
-                  loading="lazy"
-                />
-              </div>
-            ))}
-          </div>
-        </div>
-      ) : null}
-
       <div className="mx-2.5 space-y-3 sm:mx-3">
-        {!suppressOverview ? <OverviewSection content={overviewContent} /> : null}
+        {!suppressOverview ? (
+          <OverviewSection
+            content={overviewContent}
+            image={overviewImageUrl ? { url: overviewImageUrl, alt: product.title } : null}
+          />
+        ) : null}
         <StructuredDetailsBlocks
           activeIngredients={activeIngredients}
           ingredientsInci={ingredientsInci}
@@ -132,7 +98,7 @@ export function BeautyDetailsSection({
 
       {factsSections.length ? (
         <div className="mx-2.5 border-t border-muted/60 pt-5 sm:mx-3">
-          <h3 className="text-sm font-semibold mb-3">Product Information</h3>
+          <h3 className="text-sm font-semibold mb-3">More Details</h3>
           <DetailsAccordion data={{ sections: factsSections }} />
         </div>
       ) : null}
