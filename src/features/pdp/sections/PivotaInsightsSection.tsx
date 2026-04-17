@@ -1,7 +1,6 @@
 'use client';
 
 import type { ReactNode } from 'react';
-import { Badge } from '@/components/ui/badge';
 import type { ProductIntelData } from '@/features/pdp/types';
 
 function normalizeWhitespace(value: unknown): string {
@@ -284,15 +283,6 @@ function evidenceLabel(profile?: string): string {
   return 'Based on product data';
 }
 
-function qualityLabel(state?: string): string {
-  const key = String(state || '').trim().toLowerCase();
-  if (!key) return '';
-  if (key === 'limited') return 'Limited';
-  if (key === 'eligible') return 'Verified';
-  if (key === 'blocked') return 'Blocked';
-  return titleCase(key);
-}
-
 function normalizeHighlightHeadline(value: unknown): string {
   const text = normalizeWhitespace(value);
   if (!text) return '';
@@ -315,8 +305,6 @@ export function PivotaInsightsSection({ data }: { data: ProductIntelData }) {
   if (!isDisplayableProductIntelData(data)) return null;
 
   const evidenceProfile = core.evidence_profile || data.evidence_profile || data.normalized_pdp?.evidence_profile;
-  const qualityState = core.quality_state || data.quality_state || data.normalized_pdp?.quality_state;
-  const badgeLabel = qualityLabel(qualityState);
   const whatItIsHeadline = normalizeWhitespace(core.what_it_is?.headline);
   const whatItIsBody = insightCopy(
     normalizeNarrativeLead(core.what_it_is?.body, evidenceProfile),
@@ -367,16 +355,11 @@ export function PivotaInsightsSection({ data }: { data: ProductIntelData }) {
   return (
     <section id="pivota-insights" className="bg-[#fcfaf6] px-2.5 py-4 sm:px-3">
       <div className="rounded-[24px] border border-[#e7dfd2] bg-white px-3 py-3 shadow-sm sm:px-3.5">
-        <div className="flex items-start justify-between gap-3">
+        <div>
           <div>
             <h2 className="text-base font-semibold text-foreground">{data.display_name || 'Pivota Insights'}</h2>
             <p className="mt-1 text-xs text-muted-foreground">{evidenceLabel(evidenceProfile)}</p>
           </div>
-          {badgeLabel ? (
-            <Badge variant="secondary" className="bg-amber-100 text-amber-900 hover:bg-amber-100">
-              {badgeLabel}
-            </Badge>
-          ) : null}
         </div>
 
         <div className="mt-3 grid gap-3 border-t border-border/60 pt-3 md:grid-cols-[1.15fr_0.85fr]">

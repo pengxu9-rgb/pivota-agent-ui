@@ -177,6 +177,9 @@ describe('PdpContainer product intel section', () => {
     expect(screen.getByText('What it is')).toBeInTheDocument();
     expect(screen.getByText('Based on product and brand information')).toBeInTheDocument();
     expect(screen.queryByText(/Sources:/)).not.toBeInTheDocument();
+    expect(screen.queryByText('Limited')).not.toBeInTheDocument();
+    expect(screen.queryByText('Verified')).not.toBeInTheDocument();
+    expect(screen.queryByText('Blocked')).not.toBeInTheDocument();
     expect(
       screen.getByText('This overnight cream is designed to support barrier comfort while you sleep.'),
     ).toBeInTheDocument();
