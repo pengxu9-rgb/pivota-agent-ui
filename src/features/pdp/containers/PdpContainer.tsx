@@ -2250,7 +2250,6 @@ export function PdpContainer({
       ? Math.round((1 - displayPriceAmount / compareAmount) * 100)
       : null;
   const trustBadges = [];
-  if (payload.product.brand?.name) trustBadges.push('Authentic');
   if (effectiveReturns?.return_window_days) {
     trustBadges.push(
       effectiveReturns.free_returns

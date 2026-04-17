@@ -422,7 +422,8 @@ describe('PdpContainer structured PDP modules', () => {
     expect(screen.getByText('Apply after cleansing.')).toBeInTheDocument();
     expect(screen.getByText('Brand Story')).toBeInTheDocument();
     expect(screen.getByText('Overview')).toBeInTheDocument();
-    expect(screen.getAllByText('Retail PDP').length).toBeGreaterThan(0);
+    expect(screen.queryByText('Retail PDP')).not.toBeInTheDocument();
+    expect(screen.queryByText('PDP Section')).not.toBeInTheDocument();
     expect(screen.getByText('Clinical Results')).toBeInTheDocument();
     expect(screen.getByText('Rice-Infused Hydration')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Legacy Ingredients' })).not.toBeInTheDocument();

@@ -188,22 +188,6 @@ function cleanStructuredToken(value: string): string {
     .trim();
 }
 
-function formatSourceLabel(sourceOrigin: unknown): string | null {
-  const raw = String(sourceOrigin || '').trim();
-  if (!raw) return null;
-  return raw
-    .split(/[_\s]+/)
-    .filter(Boolean)
-    .map((token) => {
-      const normalized = token.toLowerCase();
-      if (normalized === 'pdp') return 'PDP';
-      if (normalized === 'inci') return 'INCI';
-      if (normalized === 'sku') return 'SKU';
-      return token.charAt(0).toUpperCase() + token.slice(1).toLowerCase();
-    })
-    .join(' ');
-}
-
 function normalizeIngredientsRawText(text: string, hasActiveIngredients: boolean): string {
   let normalized = String(text || '').trim();
   if (!normalized) return '';
@@ -303,20 +287,12 @@ function sanitizeHowToUseItems(steps: unknown, rawText: string): string[] {
 
 function SectionHeader({
   title,
-  sourceOrigin,
 }: {
   title: string;
-  sourceOrigin?: string;
 }) {
-  const sourceLabel = formatSourceLabel(sourceOrigin);
   return (
     <div className="flex items-center justify-between gap-2">
       <h3 className="text-sm font-semibold">{title}</h3>
-      {sourceLabel ? (
-        <span className="rounded-full border border-border/70 bg-background/80 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
-          {sourceLabel}
-        </span>
-      ) : null}
     </div>
   );
 }
@@ -417,10 +393,7 @@ export function StructuredDetailsBlocks({
     <div className="space-y-3">
       {hasActiveIngredients ? (
         <div className="rounded-xl border border-border/70 bg-card/70 px-3 py-3">
-          <SectionHeader
-            title={String(activeIngredients?.title || 'Active Ingredients').trim() || 'Active Ingredients'}
-            sourceOrigin={activeIngredients?.source_origin}
-          />
+          <SectionHeader title={String(activeIngredients?.title || 'Active Ingredients').trim() || 'Active Ingredients'} />
           <p className="mt-1 text-xs text-muted-foreground">
             Highlighted actives or hero ingredients, not the full formula.
           </p>
@@ -445,10 +418,7 @@ export function StructuredDetailsBlocks({
 
       {(ingredientsInciItems.length || normalizedIngredientsRawText) ? (
         <div className="rounded-xl border border-border/70 bg-card/70 px-3 py-3">
-          <SectionHeader
-            title={String(ingredientsInci?.title || 'Ingredients').trim() || 'Ingredients'}
-            sourceOrigin={ingredientsInci?.source_origin}
-          />
+          <SectionHeader title={String(ingredientsInci?.title || 'Ingredients').trim() || 'Ingredients'} />
           <p className="mt-1 text-xs text-muted-foreground">
             Full formula list. Expand only when you need the complete INCI.
           </p>
@@ -502,10 +472,7 @@ export function StructuredDetailsBlocks({
 
       {howToUseItems.length ? (
         <div className="rounded-xl border border-border/70 bg-card/70 px-3 py-3">
-          <SectionHeader
-            title={String(howToUse?.title || 'How to Use').trim() || 'How to Use'}
-            sourceOrigin={howToUse?.source_origin}
-          />
+          <SectionHeader title={String(howToUse?.title || 'How to Use').trim() || 'How to Use'} />
           {howToUseItems.length ? (
             <ol className="mt-3 space-y-3">
               {howToUseItems.map((item, idx) => (
