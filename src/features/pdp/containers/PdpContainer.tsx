@@ -3814,17 +3814,6 @@ export function PdpContainer({
             quantity={resolvedQuantity}
           />
 
-          {moduleStates.offers === 'LOADING' ? (
-            <div
-              className="mx-2.5 mt-2 space-y-2 rounded-lg border border-border bg-card px-3 py-3 sm:mx-3 lg:mx-0"
-              style={{ minHeight: pdpViewModel.heightSpec.offers }}
-              data-module-state="loading"
-            >
-              <div className="h-3 w-28 rounded bg-muted/30 animate-pulse" />
-              <div className="h-3 w-full rounded bg-muted/20 animate-pulse" />
-            </div>
-          ) : null}
-
           <div
             className="hidden lg:block mt-6"
             style={isDesktopInfoSparse ? { marginTop: 'max(10rem, calc(58vh - 14rem))' } : undefined}
