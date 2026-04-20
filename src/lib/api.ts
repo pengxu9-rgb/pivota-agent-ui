@@ -13,6 +13,18 @@ import type { Offer, RecommendationsData } from '@/features/pdp/types'
 const API_BASE =
   process.env.NEXT_PUBLIC_API_URL ||
   '/api/gateway'; // default to same-origin proxy to avoid CORS
+const DEFAULT_AGENT_DIRECT_API_URL =
+  'https://pivota-agent-production.up.railway.app/agent/shop/v1/invoke';
+const AGENT_DIRECT_API_URL =
+  process.env.NEXT_PUBLIC_AGENT_DIRECT_API_URL ||
+  process.env.NEXT_PUBLIC_AGENT_API_URL ||
+  DEFAULT_AGENT_DIRECT_API_URL;
+const AGENT_DIRECT_API_KEY = process.env.NEXT_PUBLIC_AGENT_API_KEY || '';
+const AGENT_DIRECT_READS_ENABLED =
+  process.env.NEXT_PUBLIC_AGENT_DIRECT_READS_ENABLED !== 'false';
+const DIRECT_AGENT_READ_OPERATIONS = new Set([
+  'get_pdp_v2',
+]);
 const SEARCH_LIMIT_MAX = Math.max(
   1,
   Math.min(Number(process.env.NEXT_PUBLIC_SEARCH_LIMIT_MAX || 200) || 200, 200),
@@ -1167,8 +1179,46 @@ function resolveGatewayInvokeUrl(base: string): string {
   return `${normalized}/agent/shop/v1/invoke`;
 }
 
+function isBrowserRuntime(): boolean {
+  return typeof window !== 'undefined' && typeof window.document !== 'undefined';
+}
+
+function shouldUseDirectAgentGateway(args: {
+  operation: string;
+  checkoutToken: string | null;
+}): boolean {
+  return Boolean(
+    AGENT_DIRECT_READS_ENABLED &&
+      isBrowserRuntime() &&
+      !args.checkoutToken &&
+      AGENT_DIRECT_API_KEY &&
+      DIRECT_AGENT_READ_OPERATIONS.has(args.operation),
+  );
+}
+
+function shouldFallbackFromDirectAgent(status: number): boolean {
+  return status === 401 || status === 403 || status === 404;
+}
+
+function buildGatewayRequestHeaders(args: {
+  checkoutToken: string | null;
+  directAgent: boolean;
+}): HeadersInit {
+  return {
+    'Content-Type': 'application/json',
+    ...(args.directAgent
+      ? {
+          Authorization: `Bearer ${AGENT_DIRECT_API_KEY}`,
+          'X-Agent-API-Key': AGENT_DIRECT_API_KEY,
+        }
+      : args.checkoutToken
+        ? { 'X-Checkout-Token': args.checkoutToken }
+        : {}),
+  };
+}
+
 async function callGateway(body: InvokeBody, options: GatewayCallOptions = {}) {
-  const url = resolveGatewayInvokeUrl(API_BASE);
+  const proxyUrl = resolveGatewayInvokeUrl(API_BASE);
   const checkoutContext = getCheckoutContext()
   let checkoutToken = checkoutContext.token
   const defaultScope = getDefaultShoppingScope();
@@ -1211,17 +1261,28 @@ async function callGateway(body: InvokeBody, options: GatewayCallOptions = {}) {
   };
 
   const operation = String(requestBody?.operation || '').trim().toLowerCase();
-  void operation
+  const useDirectAgent = shouldUseDirectAgentGateway({ operation, checkoutToken });
+  const directAgentUrl = resolveGatewayInvokeUrl(AGENT_DIRECT_API_URL);
 
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(checkoutToken ? { 'X-Checkout-Token': checkoutToken } : {}),
-    },
-    signal: options.signal,
-    body: JSON.stringify(requestBody),
-  });
+  const fetchGateway = (url: string, directAgent: boolean) =>
+    fetch(url, {
+      method: 'POST',
+      headers: buildGatewayRequestHeaders({ checkoutToken, directAgent }),
+      signal: options.signal,
+      body: JSON.stringify(requestBody),
+    });
+
+  let res: Response;
+  try {
+    res = await fetchGateway(useDirectAgent ? directAgentUrl : proxyUrl, useDirectAgent);
+  } catch (err) {
+    if (!useDirectAgent) throw err;
+    res = await fetchGateway(proxyUrl, false);
+  }
+
+  if (useDirectAgent && shouldFallbackFromDirectAgent(res.status)) {
+    res = await fetchGateway(proxyUrl, false);
+  }
 
   if (!res.ok) {
     const errorData = await res.json().catch(() => ({}));
