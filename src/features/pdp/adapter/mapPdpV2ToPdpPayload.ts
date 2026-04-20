@@ -335,6 +335,8 @@ export function mapPdpV2ToPdpPayload(response: GetPdpV2Response): PDPPayload | n
   for (const [sourceKey, targetKey] of [
     ['canonical_product_ref', 'canonical_product_ref'],
     ['selected_commerce_ref', 'selected_commerce_ref'],
+    ['content_base_ref', 'content_base_ref'],
+    ['canonical_payload_product_ref', 'canonical_payload_product_ref'],
   ] as const) {
     const value = canonicalData?.[sourceKey];
     if (isRecord(value)) {

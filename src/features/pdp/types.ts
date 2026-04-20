@@ -16,6 +16,8 @@ export interface PDPPayload {
   content_review_state?: 'not_needed' | 'pending' | 'approved' | 'rejected' | string;
   canonical_product_ref?: { merchant_id?: string; product_id?: string; platform?: string };
   selected_commerce_ref?: { merchant_id?: string; product_id?: string; platform?: string };
+  content_base_ref?: { merchant_id?: string; product_id?: string; platform?: string };
+  canonical_payload_product_ref?: { merchant_id?: string; product_id?: string; platform?: string };
   pdp_schema_profile?: 'beauty_formula' | 'beauty_tool' | 'generic_merch' | 'generic_product' | string;
   offers?: Offer[];
   offers_count?: number;
