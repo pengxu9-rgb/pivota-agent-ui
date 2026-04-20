@@ -671,7 +671,7 @@ describe('PdpContainer structured PDP modules', () => {
             },
           },
     );
-    let resolvePdp: ((value: unknown) => void) | null = null;
+    let resolvePdp: (value: unknown) => void = () => {};
     getPdpV2Mock
       .mockResolvedValueOnce({
         status: 'success',
@@ -745,7 +745,7 @@ describe('PdpContainer structured PDP modules', () => {
     fireEvent.click(screen.getByRole('button', { name: 'DN350' }));
     expect(getPdpV2Mock).toHaveBeenCalledTimes(2);
 
-    resolvePdp?.({
+    resolvePdp({
       status: 'success',
       modules: [
         {

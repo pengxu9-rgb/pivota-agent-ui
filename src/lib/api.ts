@@ -29,6 +29,7 @@ const CHECKOUT_CONTEXTUAL_OPS = new Set([
   'submit_payment',
   'confirm_payment',
   'get_order_status',
+  'record_payment_offer_evidence',
 ]);
 type CanonicalCheckoutSource = 'creator_agent' | 'shopping_agent';
 
@@ -217,6 +218,13 @@ export interface ProductResponse {
   card_highlight?: string;
   card_badge?: string;
   card_intro?: string;
+  store_discount_evidence?: Record<string, any>;
+  store_discount_summary?: Record<string, any>;
+  store_discount_badges?: string[];
+  payment_offer_evidence?: Record<string, any>;
+  payment_offer_summary?: Record<string, any>;
+  payment_offer_badges?: string[];
+  payment_pricing?: Record<string, any>;
   external_highlight_signals?: Array<Record<string, any>>;
   market_signal_badges?: Array<{
     badge_type?: string;
@@ -685,6 +693,13 @@ export function normalizeProduct(
     ...(cardHighlight ? { card_highlight: cardHighlight } : {}),
     ...(cardBadge ? { card_badge: cardBadge } : {}),
     ...(cardIntro ? { card_intro: cardIntro } : {}),
+    ...(isRecord(anyP.store_discount_evidence) ? { store_discount_evidence: anyP.store_discount_evidence } : {}),
+    ...(isRecord(anyP.store_discount_summary) ? { store_discount_summary: anyP.store_discount_summary } : {}),
+    ...(Array.isArray(anyP.store_discount_badges) ? { store_discount_badges: anyP.store_discount_badges } : {}),
+    ...(isRecord(anyP.payment_offer_evidence) ? { payment_offer_evidence: anyP.payment_offer_evidence } : {}),
+    ...(isRecord(anyP.payment_offer_summary) ? { payment_offer_summary: anyP.payment_offer_summary } : {}),
+    ...(Array.isArray(anyP.payment_offer_badges) ? { payment_offer_badges: anyP.payment_offer_badges } : {}),
+    ...(isRecord(anyP.payment_pricing) ? { payment_pricing: anyP.payment_pricing } : {}),
     ...(externalHighlightSignals ? { external_highlight_signals: externalHighlightSignals } : {}),
     ...(marketSignalBadges ? { market_signal_badges: marketSignalBadges } : {}),
     ...(rawSearchCard
@@ -2968,6 +2983,8 @@ export async function createOrder(orderData: {
   discount_codes?: string[];
   selected_delivery_option?: any;
   metadata?: Record<string, any>;
+  selected_payment_offer_id?: string;
+  payment_method_evidence?: Record<string, any>;
 }) {
   const checkoutContext = getCheckoutContext()
   const resolvedSource = resolveGatewaySource({
@@ -2999,11 +3016,34 @@ export async function previewQuote(quote: {
   shipping_address?: any;
   discount_codes?: string[];
   selected_delivery_option?: any;
+  payment_context?: Record<string, any>;
 }) {
   const data = await callGateway({
     operation: 'preview_quote',
     payload: {
       quote,
+    },
+  });
+  return data;
+}
+
+export async function recordPaymentOfferEvidence(evidence: {
+  order_id?: string;
+  quote_id?: string;
+  merchant_id?: string;
+  selected_payment_offer_id?: string;
+  payment_method_evidence?: Record<string, any>;
+  payment_offer_evidence?: Record<string, any>;
+  surface?: string;
+  event_type?: string;
+  idempotency_key?: string;
+}) {
+  const data = await callGateway({
+    operation: 'record_payment_offer_evidence',
+    payload: {
+      ...evidence,
+      payment_method_evidence: evidence.payment_method_evidence || {},
+      surface: evidence.surface || 'checkout',
     },
   });
   return data;

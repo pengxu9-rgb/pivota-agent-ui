@@ -8,22 +8,28 @@ export function VariantSelector({
   selectedVariantId,
   onChange,
   mode,
+  singleVariantTitle,
+  singleVariantStatus,
 }: {
   variants: Variant[];
   selectedVariantId: string;
   onChange: (variantId: string) => void;
   mode: 'beauty' | 'generic';
+  singleVariantTitle?: string;
+  singleVariantStatus?: string;
 }) {
   if (!variants.length) return null;
   const selectedVariant = variants.find((variant) => variant.variant_id === selectedVariantId) || variants[0];
 
   if (variants.length === 1) {
     const isBeauty = mode === 'beauty';
+    const title = singleVariantTitle || (isBeauty ? 'Shade' : 'Options');
+    const status = singleVariantStatus || '1 variant';
     return (
       <div className="mt-3">
         <div className="flex items-center justify-between">
-          <div className="text-sm font-medium">{isBeauty ? 'Shade' : 'Options'}</div>
-          <div className="text-xs text-muted-foreground">1 variant</div>
+          <div className="text-sm font-medium">{title}</div>
+          <div className="text-xs text-muted-foreground">{status}</div>
         </div>
         <div className="mt-1.5 flex gap-2 overflow-x-auto pb-1">
           <div

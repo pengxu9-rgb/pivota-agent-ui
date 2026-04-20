@@ -5,6 +5,7 @@ import type { Offer, Variant } from '@/features/pdp/types';
 import { cn } from '@/lib/utils';
 import { ResponsiveSheet } from '@/features/pdp/components/ResponsiveSheet';
 import { resolveOfferPricing } from '@/features/pdp/utils/offerVariantMatching';
+import { buildSavingsPresentation, getSummaryBadges } from '@/lib/savingsPresentation';
 
 function formatPrice(amount: number, currency: string) {
   const n = Number.isFinite(amount) ? amount : 0;
@@ -57,6 +58,7 @@ export function OfferSheet({
   defaultOfferId,
   bestPriceOfferId,
   selectedVariant,
+  quantity = 1,
   onSelect,
   onClose,
 }: {
@@ -66,6 +68,7 @@ export function OfferSheet({
   defaultOfferId?: string;
   bestPriceOfferId?: string;
   selectedVariant?: Variant | null;
+  quantity?: number;
   onSelect: (offerId: string) => void;
   onClose: () => void;
 }) {
@@ -141,6 +144,18 @@ export function OfferSheet({
           const eta = offer.shipping?.eta_days_range;
           const returns = offer.returns;
           const sellerLabel = getSellerLabel(offer);
+          const savings = buildSavingsPresentation({
+            offer: offer as any,
+            variant: selectedVariant as any,
+            quantity,
+            store_discount_evidence: offer.store_discount_evidence || selectedVariant?.store_discount_evidence,
+            payment_offer_evidence: offer.payment_offer_evidence || selectedVariant?.payment_offer_evidence,
+            payment_pricing: offer.payment_pricing,
+            pricing: { total, currency },
+            currency,
+          });
+          const savingsBadges = getSummaryBadges(savings, 3);
+          const hasCartValue = savings.cartUnlocks.some((item) => item.status === 'available');
 
           return (
             <button
@@ -168,6 +183,11 @@ export function OfferSheet({
                         Best price
                       </span>
                     ) : null}
+                    {hasCartValue ? (
+                      <span className="rounded-md border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+                        Best cart value
+                      </span>
+                    ) : null}
                   </div>
                   <div className="mt-1 text-xs text-muted-foreground flex flex-wrap gap-x-3 gap-y-1">
                     {eta?.length === 2 ? (
@@ -188,6 +208,18 @@ export function OfferSheet({
                         Number(offer.shipping.cost.amount) || 0,
                         offer.shipping.cost.currency || currency,
                       )}
+                    </div>
+                  ) : null}
+                  {savingsBadges.length ? (
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      {savingsBadges.map((badge) => (
+                        <span
+                          key={badge}
+                          className="rounded-md border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-medium text-slate-700"
+                        >
+                          {badge}
+                        </span>
+                      ))}
                     </div>
                   ) : null}
                 </div>

@@ -9,6 +9,7 @@ import type { ProductResponse } from '@/lib/api';
 import { resolveProductCardPresentation } from '@/lib/productCardPresentation';
 import { buildProductHref } from '@/lib/productHref';
 import { appendCurrentPathAsReturn } from '@/lib/returnUrl';
+import { buildSavingsPresentation, getSummaryBadges } from '@/lib/savingsPresentation';
 import { useCartStore } from '@/store/cartStore';
 import { toast } from 'sonner';
 
@@ -33,6 +34,17 @@ export function CatalogProductCard({ product }: { product: ProductResponse }) {
   const href = buildProductHref(product.product_id, product.merchant_id);
   const hrefWithReturn = appendCurrentPathAsReturn(href);
   const card = resolveProductCardPresentation(product);
+  const savingsBadges = getSummaryBadges(
+    buildSavingsPresentation({
+      product: product as any,
+      store_discount_evidence: product.store_discount_evidence,
+      payment_offer_evidence: product.payment_offer_evidence,
+      payment_pricing: product.payment_pricing,
+      pricing: { total: product.price, currency: product.currency },
+      currency: product.currency,
+    }),
+    2,
+  );
   const compactCopy = card.highlight || card.subtitle;
   const isIdentityGrouped =
     Boolean(product.sellable_item_group_id) ||
@@ -118,6 +130,18 @@ export function CatalogProductCard({ product }: { product: ProductResponse }) {
                 {formatCatalogPrice(product.price, product.currency)}
               </p>
             </div>
+            {savingsBadges.length ? (
+              <div className="flex min-h-[1.25rem] flex-wrap gap-1">
+                {savingsBadges.map((badge) => (
+                  <span
+                    key={badge}
+                    className="rounded-md border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium leading-4 text-emerald-800"
+                  >
+                    {badge}
+                  </span>
+                ))}
+              </div>
+            ) : null}
           </div>
         </article>
       </Link>

@@ -86,6 +86,13 @@ export interface Product {
   destination_url?: string;
   source_url?: string;
   platform?: string;
+  store_discount_evidence?: Record<string, any>;
+  store_discount_summary?: Record<string, any>;
+  store_discount_badges?: string[];
+  payment_offer_evidence?: Record<string, any>;
+  payment_offer_summary?: Record<string, any>;
+  payment_offer_badges?: string[];
+  payment_pricing?: Record<string, any>;
 }
 
 export interface ProductLineOption {
@@ -137,6 +144,12 @@ export interface Variant {
   availability?: { in_stock: boolean; available_quantity?: number };
   image_url?: string;
   label_image_url?: string;
+  store_discount_evidence?: Record<string, any>;
+  store_discount_summary?: Record<string, any>;
+  store_discount_badges?: string[];
+  payment_offer_evidence?: Record<string, any>;
+  payment_offer_summary?: Record<string, any>;
+  payment_offer_badges?: string[];
 }
 
 export interface Price {
@@ -186,6 +199,13 @@ export interface Offer {
   source_url?: string;
   variant_id?: string;
   sku_id?: string;
+  store_discount_evidence?: Record<string, any>;
+  store_discount_summary?: Record<string, any>;
+  store_discount_badges?: string[];
+  payment_offer_evidence?: Record<string, any>;
+  payment_offer_summary?: Record<string, any>;
+  payment_offer_badges?: string[];
+  payment_pricing?: Record<string, any>;
   action?: {
     type?: string;
     url?: string;

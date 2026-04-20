@@ -154,7 +154,7 @@ describe('Orders page recovery flow', () => {
       }),
     );
 
-    let resolveList: ((payload: unknown) => void) | null = null;
+    let resolveList: (payload: unknown) => void = () => {};
     listMyOrdersMock.mockImplementation(
       () =>
         new Promise((resolve) => {
@@ -167,7 +167,7 @@ describe('Orders page recovery flow', () => {
     await screen.findByText('Order #ORD_CACHE_1');
     expect(listMyOrdersMock).toHaveBeenCalledTimes(1);
 
-    resolveList?.(makeOrderListPayload('ORD_NETWORK_1'));
+    resolveList(makeOrderListPayload('ORD_NETWORK_1'));
     await waitFor(() => {
       expect(screen.getByText('Order #ORD_NETWORK_1')).toBeInTheDocument();
     });

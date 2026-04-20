@@ -2,13 +2,16 @@
 
 import Image from 'next/image';
 import type {
+  ActiveIngredientsData,
   HowToUseData,
+  IngredientsInciData,
   MediaGalleryData,
   Product,
   ProductDetailsData,
 } from '@/features/pdp/types';
 import { DetailsAccordion } from '@/features/pdp/sections/DetailsAccordion';
 import { OverviewSection } from '@/features/pdp/sections/OverviewSection';
+import { StructuredDetailsBlocks } from '@/features/pdp/sections/StructuredDetailsBlocks';
 import { partitionDetailSections } from '@/features/pdp/utils/detailSections';
 import { buildOverviewContent } from '@/features/pdp/utils/overviewContent';
 
@@ -25,6 +28,8 @@ export function GenericDetailsSection({
   sizeFit,
   careInstructions,
   usageSafety,
+  activeIngredients,
+  ingredientsInci,
   howToUse,
   suppressOverview = false,
 }: {
@@ -36,6 +41,8 @@ export function GenericDetailsSection({
   sizeFit?: ProductDetailsData | null;
   careInstructions?: ProductDetailsData | null;
   usageSafety?: ProductDetailsData | null;
+  activeIngredients?: ActiveIngredientsData | null;
+  ingredientsInci?: IngredientsInciData | null;
   howToUse?: HowToUseData | null;
   suppressOverview?: boolean;
 }) {
@@ -64,12 +71,36 @@ export function GenericDetailsSection({
     { title: 'Usage & Safety', data: usageSafety },
   ].filter((block) => hasSections(block.data));
   const howToUseSteps = Array.isArray(howToUse?.steps) ? howToUse.steps.filter(Boolean) : [];
+  const activeSource = String(
+    activeIngredients?.source_origin ||
+      activeIngredients?.source_quality_status ||
+      '',
+  ).trim();
+  const ingredientsSource = String(
+    ingredientsInci?.source_origin ||
+      ingredientsInci?.source_quality_status ||
+      '',
+  ).trim();
+  const showGenericStructuredBlocks = Boolean(
+    (activeIngredients?.items?.length || ingredientsInci?.items?.length || ingredientsInci?.raw_text) &&
+      !activeSource &&
+      !ingredientsSource,
+  );
   const hasGenericContent = Boolean(genericBlocks.length || howToUseSteps.length);
 
   return (
     <div className="px-2.5 py-3 sm:p-3">
       <h2 className="text-sm font-semibold mb-2">Product Details</h2>
       {!suppressOverview ? <OverviewSection content={overviewContent} /> : null}
+
+      {showGenericStructuredBlocks ? (
+        <div className="mt-3">
+          <StructuredDetailsBlocks
+            activeIngredients={activeIngredients}
+            ingredientsInci={ingredientsInci}
+          />
+        </div>
+      ) : null}
 
       {detailImages.length ? (
         <div className="mt-3 space-y-2">

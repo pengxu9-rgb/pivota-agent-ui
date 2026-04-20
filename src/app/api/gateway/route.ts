@@ -41,6 +41,7 @@ const CHECKOUT_SAFE_OPERATIONS = new Set([
   'submit_payment',
   'confirm_payment',
   'get_order_status',
+  'record_payment_offer_evidence',
 ]);
 
 const AGENT_API_KEY =
@@ -220,6 +221,7 @@ function buildPreviewQuoteRequest(body: JsonRecord): CheckoutSafeRequest {
       selected_delivery_option: isPlainObject(quote.selected_delivery_option)
         ? quote.selected_delivery_option
         : undefined,
+      payment_context: isPlainObject(quote.payment_context) ? quote.payment_context : undefined,
     }),
   };
 }
@@ -248,6 +250,15 @@ function buildCreateOrderRequest(body: JsonRecord): CheckoutSafeRequest {
         ? order.selected_delivery_option
         : undefined,
       metadata: isPlainObject(order.metadata) ? order.metadata : undefined,
+      selected_payment_offer_id: firstNonEmptyString(
+        order.selected_payment_offer_id,
+        order.selectedPaymentOfferId,
+      ),
+      payment_method_evidence: isPlainObject(order.payment_method_evidence)
+        ? order.payment_method_evidence
+        : isPlainObject(order.paymentMethodEvidence)
+          ? order.paymentMethodEvidence
+          : undefined,
       preferred_psp: firstNonEmptyString(order.preferred_psp, order.preferredPsp),
       idempotency_key: firstNonEmptyString(order.idempotency_key, order.idempotencyKey),
       items: items.map((item) =>
@@ -305,6 +316,36 @@ function buildSubmitPaymentRequest(body: JsonRecord): CheckoutSafeRequest {
           : typeof payment.savePaymentMethod === 'boolean'
             ? payment.savePaymentMethod
             : undefined,
+    }),
+  };
+}
+
+function buildRecordPaymentOfferEvidenceRequest(body: JsonRecord): CheckoutSafeRequest {
+  const payload = isPlainObject(body.payload) ? body.payload : {};
+  return {
+    method: 'POST',
+    url: `${CHECKOUT_UPSTREAM_BASE}/agent/v1/orders/payment-offer-evidence`,
+    body: pruneEmptyFields({
+      order_id: firstNonEmptyString(payload.order_id, payload.orderId),
+      quote_id: firstNonEmptyString(payload.quote_id, payload.quoteId),
+      merchant_id: firstNonEmptyString(payload.merchant_id, payload.merchantId),
+      selected_payment_offer_id: firstNonEmptyString(
+        payload.selected_payment_offer_id,
+        payload.selectedPaymentOfferId,
+      ),
+      payment_method_evidence: isPlainObject(payload.payment_method_evidence)
+        ? payload.payment_method_evidence
+        : isPlainObject(payload.paymentMethodEvidence)
+          ? payload.paymentMethodEvidence
+          : {},
+      payment_offer_evidence: isPlainObject(payload.payment_offer_evidence)
+        ? payload.payment_offer_evidence
+        : isPlainObject(payload.paymentOfferEvidence)
+          ? payload.paymentOfferEvidence
+          : undefined,
+      surface: firstNonEmptyString(payload.surface) || 'checkout',
+      event_type: firstNonEmptyString(payload.event_type, payload.eventType),
+      idempotency_key: firstNonEmptyString(payload.idempotency_key, payload.idempotencyKey),
     }),
   };
 }
@@ -379,6 +420,8 @@ function buildCheckoutSafeRequest(operation: string, body: JsonRecord): Checkout
       return buildConfirmPaymentRequest(body);
     case 'get_order_status':
       return buildGetOrderStatusRequest(body);
+    case 'record_payment_offer_evidence':
+      return buildRecordPaymentOfferEvidenceRequest(body);
     default:
       return {
         error: 'UNSUPPORTED_OPERATION',

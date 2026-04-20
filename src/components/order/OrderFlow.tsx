@@ -20,7 +20,9 @@ import {
   accountsVerify,
   previewQuote,
   confirmOrderPayment,
+  recordPaymentOfferEvidence,
 } from '@/lib/api'
+import { buildSavingsPresentation } from '@/lib/savingsPresentation'
 import {
   isBackendSettledPaymentStatus,
   resolveCheckoutPaymentContract,
@@ -122,6 +124,10 @@ type QuotePreview = {
     unit_price_effective: number
   }>
   delivery_options?: any[]
+  discount_evidence?: Record<string, any>
+  store_discount_evidence?: Record<string, any>
+  payment_offer_evidence?: Record<string, any>
+  payment_pricing?: Record<string, any>
 }
 
 type PrefetchedPaymentInit = {
@@ -521,6 +527,31 @@ export function hasAvailableStripeExpressWallets(
   return Boolean(availablePaymentMethods?.applePay || availablePaymentMethods?.googlePay)
 }
 
+function normalizeStripeAvailablePaymentMethods(
+  availablePaymentMethods:
+    | StripeExpressCheckoutElementReadyEvent['availablePaymentMethods']
+    | null
+    | undefined,
+): string[] {
+  if (!availablePaymentMethods) return []
+  const methods: string[] = []
+  if (availablePaymentMethods.applePay) methods.push('apple_pay')
+  if (availablePaymentMethods.googlePay) methods.push('google_pay')
+  if ((availablePaymentMethods as any).link) methods.push('link')
+  if ((availablePaymentMethods as any).paypal) methods.push('paypal')
+  return methods
+}
+
+function normalizeStripeWalletType(methodType: string | null | undefined): string | null {
+  const normalized = String(methodType || '').trim().toLowerCase()
+  if (!normalized) return null
+  if (normalized === 'apple_pay' || normalized === 'applepay') return 'apple_pay'
+  if (normalized === 'google_pay' || normalized === 'googlepay') return 'google_pay'
+  if (normalized === 'link') return 'link'
+  if (normalized === 'paypal') return 'paypal'
+  return null
+}
+
 function formatStripePaymentMethodLabel(methodType: string | null | undefined): string | null {
   const normalized = String(methodType || '').trim().toLowerCase()
   if (!normalized) return null
@@ -552,8 +583,11 @@ const StripePaymentSectionInner = forwardRef<
     shipping?: Partial<ShippingInfo> | null
     onPaymentError: (message: string) => void
     onPaymentMethodChange: (methodType: string | null) => void
-    onWalletsReady?: () => void
+    onWalletsReady?: (
+      availablePaymentMethods?: StripeExpressCheckoutElementReadyEvent['availablePaymentMethods'],
+    ) => void
     onPaymentElementReady?: () => void
+    onPaymentMethodEvidence?: (evidence: Record<string, any>, eventType: string) => void
     onConfirmationResult?: (result: { status?: string; paymentIntentId?: string }) => Promise<void> | void
   }
 >(function StripePaymentSectionInner(
@@ -565,6 +599,7 @@ const StripePaymentSectionInner = forwardRef<
     onPaymentMethodChange,
     onWalletsReady,
     onPaymentElementReady,
+    onPaymentMethodEvidence,
     onConfirmationResult,
   },
   ref,
@@ -664,11 +699,27 @@ const StripePaymentSectionInner = forwardRef<
             onReady={(event) => {
               setExpressWalletsReady(true)
               setExpressWalletsAvailable(hasAvailableStripeExpressWallets(event.availablePaymentMethods))
-              onWalletsReady?.()
+              onWalletsReady?.(event.availablePaymentMethods)
+              onPaymentMethodEvidence?.(
+                {
+                  psp: 'stripe',
+                  available_payment_methods: normalizeStripeAvailablePaymentMethods(event.availablePaymentMethods),
+                },
+                'payment_offer.available',
+              )
             }}
             onClick={(event: any) => {
               const methodType = String(event?.expressPaymentType || '').trim() || null
               onPaymentMethodChange(methodType)
+              onPaymentMethodEvidence?.(
+                {
+                  psp: 'stripe',
+                  payment_method_type: 'wallet',
+                  wallet_type: normalizeStripeWalletType(methodType),
+                  selected_payment_method_type: methodType,
+                },
+                'payment_offer.selected',
+              )
               setPaymentError('')
             }}
             onLoadError={(event) => {
@@ -682,6 +733,15 @@ const StripePaymentSectionInner = forwardRef<
             onConfirm={async (event: StripeExpressCheckoutElementConfirmEvent) => {
               const methodType = String(event.expressPaymentType || '').trim() || null
               onPaymentMethodChange(methodType)
+              onPaymentMethodEvidence?.(
+                {
+                  psp: 'stripe',
+                  payment_method_type: 'wallet',
+                  wallet_type: normalizeStripeWalletType(methodType),
+                  selected_payment_method_type: methodType,
+                },
+                'payment_offer.selected',
+              )
               const result = await runStripeConfirmation({
                 confirmReturnUrl: returnUrl,
                 confirmShipping: shipping,
@@ -721,6 +781,14 @@ const StripePaymentSectionInner = forwardRef<
             onPaymentError(message)
             const methodType = String(event?.value?.type || '').trim() || null
             onPaymentMethodChange(methodType)
+            onPaymentMethodEvidence?.(
+              {
+                psp: 'stripe',
+                payment_method_type: methodType || undefined,
+                selected_payment_method_type: methodType || undefined,
+              },
+              'payment_offer.psp_evidence_received',
+            )
           }}
         />
       </div>
@@ -740,8 +808,11 @@ const StripePaymentSection = forwardRef<
     shipping?: Partial<ShippingInfo> | null
     onPaymentError: (message: string) => void
     onPaymentMethodChange: (methodType: string | null) => void
-    onWalletsReady?: () => void
+    onWalletsReady?: (
+      availablePaymentMethods?: StripeExpressCheckoutElementReadyEvent['availablePaymentMethods'],
+    ) => void
     onPaymentElementReady?: () => void
+    onPaymentMethodEvidence?: (evidence: Record<string, any>, eventType: string) => void
     onConfirmationResult?: (result: { status?: string; paymentIntentId?: string }) => Promise<void> | void
   }
 >(function StripePaymentSection(
@@ -755,6 +826,7 @@ const StripePaymentSection = forwardRef<
     onPaymentMethodChange,
     onWalletsReady,
     onPaymentElementReady,
+    onPaymentMethodEvidence,
     onConfirmationResult,
   },
   ref,
@@ -777,6 +849,7 @@ const StripePaymentSection = forwardRef<
         onPaymentMethodChange={onPaymentMethodChange}
         onWalletsReady={onWalletsReady}
         onPaymentElementReady={onPaymentElementReady}
+        onPaymentMethodEvidence={onPaymentMethodEvidence}
         onConfirmationResult={onConfirmationResult}
       />
     </Elements>
@@ -1099,6 +1172,7 @@ function OrderFlowInner({
   )
   const [stripeAccount, setStripeAccount] = useState<string | null>(null)
   const [stripeSelectedMethodType, setStripeSelectedMethodType] = useState<string | null>(null)
+  const [paymentMethodEvidence, setPaymentMethodEvidence] = useState<Record<string, any> | null>(null)
   const stripePaymentSectionRef = useRef<StripePaymentSectionHandle | null>(null)
   const [checkoutTimingSnapshot, setCheckoutTimingSnapshot] = useState<CheckoutTimingSnapshot>(
     () => buildCheckoutTimingSnapshot({}),
@@ -1169,6 +1243,20 @@ function OrderFlowInner({
   const shipping_cost = quote?.pricing?.shipping_fee ?? 0
   const tax = quote?.pricing?.tax ?? 0
   const total = quote?.pricing?.total ?? estimatedSubtotal
+  const savingsPresentation = useMemo(
+    () =>
+      buildSavingsPresentation({
+        pricing: { ...(quote?.pricing || {}), total, currency },
+        promotion_lines: quote?.promotion_lines || [],
+        discount_evidence: quote?.discount_evidence,
+        store_discount_evidence: quote?.store_discount_evidence,
+        payment_offer_evidence: quote?.payment_offer_evidence,
+        payment_pricing: quote?.payment_pricing,
+        currency,
+      }),
+    [currency, quote, total],
+  )
+  const estimatedPaymentBenefit = savingsPresentation.totals.estimatedPaymentBenefit || 0
   const paymentInitKey = useMemo(() => {
     return buildPaymentInitKeyForQuote(quote, currency)
   }, [currency, quote])
@@ -1266,6 +1354,86 @@ function OrderFlowInner({
       return null
     }
   })()
+
+  const buildCurrentPaymentContext = useCallback(
+    (evidence?: Record<string, any> | null): Record<string, any> | null => {
+      const psp = String((evidence?.psp || pspUsed || requestedPreferredPsp || FORCE_PSP || 'stripe') || '').trim()
+      const methodType = String(
+        evidence?.payment_method_type ||
+          evidence?.selected_payment_method_type ||
+          stripeSelectedMethodType ||
+          '',
+      ).trim()
+      const walletType = String(evidence?.wallet_type || normalizeStripeWalletType(methodType) || '').trim()
+      const context = {
+        ...(psp ? { psp } : {}),
+        ...(methodType ? { payment_method_type: walletType ? 'wallet' : methodType } : {}),
+        ...(walletType ? { wallet_type: walletType } : {}),
+        ...(evidence?.card_network ? { card_network: evidence.card_network } : {}),
+        ...(evidence?.issuer_name ? { issuer_name: evidence.issuer_name } : {}),
+        ...(evidence?.installment_provider ? { installment_provider: evidence.installment_provider } : {}),
+      }
+      return Object.keys(context).length ? context : null
+    },
+    [pspUsed, requestedPreferredPsp, stripeSelectedMethodType],
+  )
+
+  const pickSelectedPaymentOfferId = useCallback(
+    (evidence?: Record<string, any> | null): string | null => {
+      const offers = Array.isArray(quote?.payment_offer_evidence?.offers)
+        ? quote.payment_offer_evidence.offers
+        : []
+      if (!offers.length || !evidence) return null
+      const context = buildCurrentPaymentContext(evidence) || {}
+      const matchesRequirements = (offer: any) => {
+        const requirements = offer?.requirements && typeof offer.requirements === 'object' ? offer.requirements : {}
+        const requiredKeys = Object.keys(requirements).filter((key) => String(requirements[key] || '').trim())
+        if (!requiredKeys.length) return false
+        return requiredKeys.every((key) => String(requirements[key]).toLowerCase() === String((context as any)[key] || '').toLowerCase())
+      }
+      const matched = offers.find((offer: any) => {
+        const status = String(offer?.eligibility?.status || '').trim().toLowerCase()
+        return ['context_matched', 'psp_verified'].includes(status) || matchesRequirements(offer)
+      })
+      return matched?.payment_offer_id ? String(matched.payment_offer_id) : null
+    },
+    [buildCurrentPaymentContext, quote?.payment_offer_evidence],
+  )
+
+  const recordPaymentMethodEvidence = useCallback(
+    async (evidence: Record<string, any>, eventType = 'payment_offer.psp_evidence_received') => {
+      const normalizedEvidence = {
+        ...(paymentMethodEvidence || {}),
+        ...(evidence || {}),
+      }
+      setPaymentMethodEvidence(normalizedEvidence)
+      const orderId = createdOrderId || createdOrderPaymentRef.current?.orderId || ''
+      if (!orderId && !quote?.quote_id) return
+      try {
+        await recordPaymentOfferEvidence({
+          ...(orderId ? { order_id: orderId } : {}),
+          ...(quote?.quote_id ? { quote_id: quote.quote_id } : {}),
+          ...(merchantIdForOrder ? { merchant_id: merchantIdForOrder } : {}),
+          selected_payment_offer_id: pickSelectedPaymentOfferId(normalizedEvidence) || undefined,
+          payment_method_evidence: normalizedEvidence,
+          payment_offer_evidence: quote?.payment_offer_evidence,
+          surface: 'checkout',
+          event_type: eventType,
+          idempotency_key: [orderId, quote?.quote_id, eventType].filter(Boolean).join(':') || undefined,
+        })
+      } catch {
+        // Evidence is analytics-only in display-only mode; never block checkout.
+      }
+    },
+    [
+      createdOrderId,
+      merchantIdForOrder,
+      paymentMethodEvidence,
+      pickSelectedPaymentOfferId,
+      quote?.payment_offer_evidence,
+      quote?.quote_id,
+    ],
+  )
 
   const itemCurrencies = useMemo(() => {
     const set = new Set<string>()
@@ -1415,6 +1583,7 @@ function OrderFlowInner({
         }
       })
       .filter((it) => Boolean(it.product_id) && Boolean(it.variant_id))
+    const paymentContext = buildCurrentPaymentContext(paymentMethodEvidence) || undefined
 
     return {
       ...(offerId ? { offer_id: offerId } : {}),
@@ -1432,6 +1601,7 @@ function OrderFlowInner({
         phone: shipping.phone || undefined,
       },
       ...(deliveryOptionOverride ? { selected_delivery_option: deliveryOptionOverride } : {}),
+      ...(paymentContext ? { payment_context: paymentContext } : {}),
     }
   }
 
@@ -1459,6 +1629,10 @@ function OrderFlowInner({
       promotion_lines: Array.isArray(quoteResp?.promotion_lines) ? quoteResp.promotion_lines : [],
       line_items: quoteResp?.line_items || [],
       delivery_options: Array.isArray(deliveryOptionsRaw) ? deliveryOptionsRaw : undefined,
+      discount_evidence: quoteResp?.discount_evidence || undefined,
+      store_discount_evidence: quoteResp?.store_discount_evidence || undefined,
+      payment_offer_evidence: quoteResp?.payment_offer_evidence || undefined,
+      payment_pricing: quoteResp?.payment_pricing || undefined,
     }
   }
 
@@ -1622,7 +1796,11 @@ function OrderFlowInner({
       },
       ...((requestedPreferredPsp || FORCE_PSP)
         ? { preferred_psp: requestedPreferredPsp || FORCE_PSP }
-        : {})
+        : {}),
+      ...(pickSelectedPaymentOfferId(paymentMethodEvidence)
+        ? { selected_payment_offer_id: pickSelectedPaymentOfferId(paymentMethodEvidence) as string }
+        : {}),
+      ...(paymentMethodEvidence ? { payment_method_evidence: paymentMethodEvidence } : {}),
     })
     markCheckoutTiming('create_order_completed_at_ms')
 
@@ -1645,6 +1823,23 @@ function OrderFlowInner({
 
     orderId = orderResponse.order_id
     setCreatedOrderId(orderId)
+    if (paymentMethodEvidence) {
+      try {
+        await recordPaymentOfferEvidence({
+          order_id: orderId,
+          ...(quoteForOrder?.quote_id ? { quote_id: quoteForOrder.quote_id } : {}),
+          ...(merchantId ? { merchant_id: merchantId } : {}),
+          selected_payment_offer_id: pickSelectedPaymentOfferId(paymentMethodEvidence) || undefined,
+          payment_method_evidence: paymentMethodEvidence,
+          payment_offer_evidence: quoteForOrder?.payment_offer_evidence,
+          surface: 'checkout',
+          event_type: 'payment_offer.psp_evidence_received',
+          idempotency_key: [orderId, quoteForOrder?.quote_id, 'create_order'].filter(Boolean).join(':'),
+        })
+      } catch {
+        // Evidence logging is non-mutating and must not block order creation.
+      }
+    }
 
     const orderPayment = (orderResponse as any)?.payment || {}
     let orderPaymentAction: any =
@@ -1820,6 +2015,15 @@ function OrderFlowInner({
 
     const status = result.status
     if (status === 'succeeded') {
+      await recordPaymentMethodEvidence(
+        {
+          ...(paymentMethodEvidence || {}),
+          psp: 'stripe',
+          verification_status: 'psp_verified',
+          eligible: true,
+        },
+        'payment_offer.psp_verified',
+      )
       await completeCheckoutForOrder(activeOrderId, result.paymentIntentId || '')
       return
     }
@@ -3413,6 +3617,7 @@ function OrderFlowInner({
                         onPaymentElementReady={() => {
                           markCheckoutTiming('payment_element_ready_at_ms', { onlyIfMissing: true })
                         }}
+                        onPaymentMethodEvidence={recordPaymentMethodEvidence}
                         onConfirmationResult={handleStripeConfirmationResult}
                       />
                     ) : paymentActionType === 'stripe_client_secret' || pspUsed === 'stripe' ? (
@@ -3440,7 +3645,7 @@ function OrderFlowInner({
                   </div>
                   {discount_total > 0 ? (
                     <div className="flex justify-between">
-                      <span>Discounts</span>
+                      <span>Store discounts</span>
                       <span className="text-green-700">-{formatAmount(discount_total)}</span>
                     </div>
                   ) : null}
@@ -3453,9 +3658,20 @@ function OrderFlowInner({
                     <span>{formatAmount(tax)}</span>
                   </div>
                   <div className="flex justify-between pt-1 text-base font-semibold">
-                    <span>Total</span>
+                    <span>Total charged now</span>
                     <span>{formatAmount(total)}</span>
                   </div>
+                  {estimatedPaymentBenefit > 0 ? (
+                    <div className="mt-2 border-t border-slate-200 pt-2">
+                      <div className="flex justify-between text-[13px] text-slate-600">
+                        <span>Estimated payment benefit</span>
+                        <span className="text-emerald-700">-{formatAmount(estimatedPaymentBenefit)}</span>
+                      </div>
+                      <p className="mt-1 text-[11px] leading-4 text-slate-500">
+                        Estimated payment benefit depends on selected payment method and is not deducted from today&apos;s charge.
+                      </p>
+                    </div>
+                  ) : null}
                 </div>
                 {discount_total > 0 && (quote?.promotion_lines?.length || 0) > 0 ? (
                   <div className="mt-2 text-xs text-slate-600">
