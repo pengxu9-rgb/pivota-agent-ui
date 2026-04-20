@@ -321,6 +321,26 @@ export function mapPdpV2ToPdpPayload(response: GetPdpV2Response): PDPPayload | n
   if (typeof canonicalData?.canonical_scope === 'string' && canonicalData.canonical_scope.trim()) {
     next.canonical_scope = canonicalData.canonical_scope.trim();
   }
+  for (const [sourceKey, targetKey] of [
+    ['pdp_content_source', 'pdp_content_source'],
+    ['offer_source', 'offer_source'],
+    ['commerce_source', 'commerce_source'],
+    ['content_review_state', 'content_review_state'],
+  ] as const) {
+    const value = canonicalData?.[sourceKey];
+    if (typeof value === 'string' && value.trim()) {
+      (next as any)[targetKey] = value.trim();
+    }
+  }
+  for (const [sourceKey, targetKey] of [
+    ['canonical_product_ref', 'canonical_product_ref'],
+    ['selected_commerce_ref', 'selected_commerce_ref'],
+  ] as const) {
+    const value = canonicalData?.[sourceKey];
+    if (isRecord(value)) {
+      (next as any)[targetKey] = value;
+    }
+  }
   if (typeof canonicalData?.pdp_schema_profile === 'string' && canonicalData.pdp_schema_profile.trim()) {
     const pdpSchemaProfile = canonicalData.pdp_schema_profile.trim();
     next.pdp_schema_profile = pdpSchemaProfile;

@@ -555,18 +555,21 @@ export default function ProductDetailPage({ params }: Props) {
 
     const loadProduct = async () => {
       const explicitMerchantId = inferredMerchantId ? String(inferredMerchantId).trim() : null;
-      const candidateResolutionPromise = explicitMerchantId
-        ? Promise.resolve(null)
-        : Promise.resolve()
+      const shouldResolveCandidates =
+        !explicitMerchantId || Boolean(merchantIdParam);
+      const candidateResolutionPromise = shouldResolveCandidates
+        ? Promise.resolve()
             .then(() =>
               resolveProductCandidates({
                 product_id: id,
+                ...(explicitMerchantId ? { merchant_id: explicitMerchantId } : {}),
                 limit: 12,
                 include_offers: true,
                 timeout_ms: candidateTimeoutMs,
               }),
             )
-            .catch(() => null);
+            .catch(() => null)
+        : Promise.resolve(null);
 
       setLoading(true);
       setError(null);
@@ -685,9 +688,9 @@ export default function ProductDetailPage({ params }: Props) {
           }
         }
 
-        const candidateResolution = explicitMerchantId ? null : await candidateResolutionPromise;
+        const candidateResolution = await candidateResolutionPromise;
         const candidateSellerOptions = mapResolvedOffersToSellerCandidates(candidateResolution);
-        if (!explicitMerchantId && candidateSellerOptions.length > 1) {
+        if (candidateSellerOptions.length > 1) {
           setSellerCandidates(candidateSellerOptions);
           setLoading(false);
           return;

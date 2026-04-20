@@ -14,6 +14,18 @@ function buildMinimalResponse() {
           identity_confidence: 0.94,
           match_basis: ['official_url:https://kravebeauty.com/products/great-barrier-relief'],
           canonical_scope: 'synthetic',
+          pdp_content_source: 'canonical_inherited',
+          offer_source: 'group_fused',
+          commerce_source: 'selected_seller_store',
+          content_review_state: 'pending',
+          canonical_product_ref: {
+            merchant_id: 'external_seed',
+            product_id: 'ext_123',
+          },
+          selected_commerce_ref: {
+            merchant_id: 'merch_new',
+            product_id: '10064558096681',
+          },
           pdp_payload: {
             product: {
               product_id: 'ext_123',
@@ -169,6 +181,18 @@ describe('mapPdpV2ToPdpPayload image normalization', () => {
     expect(payload?.product_line_id).toBe('pl_krave_gbr');
     expect(payload?.review_family_id).toBe('rf_krave_gbr');
     expect(payload?.canonical_scope).toBe('synthetic');
+    expect(payload?.pdp_content_source).toBe('canonical_inherited');
+    expect(payload?.offer_source).toBe('group_fused');
+    expect(payload?.commerce_source).toBe('selected_seller_store');
+    expect(payload?.content_review_state).toBe('pending');
+    expect(payload?.canonical_product_ref).toEqual({
+      merchant_id: 'external_seed',
+      product_id: 'ext_123',
+    });
+    expect(payload?.selected_commerce_ref).toEqual({
+      merchant_id: 'merch_new',
+      product_id: '10064558096681',
+    });
   });
 
   it('does not promote stale response-owned modules from canonical payload', () => {

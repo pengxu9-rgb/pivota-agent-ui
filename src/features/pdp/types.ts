@@ -10,6 +10,12 @@ export interface PDPPayload {
   identity_confidence?: number;
   match_basis?: string[];
   canonical_scope?: 'synthetic' | string;
+  pdp_content_source?: 'canonical_inherited' | 'self' | 'merchant_specific' | string;
+  offer_source?: 'group_fused' | 'self' | string;
+  commerce_source?: 'selected_seller_store' | 'canonical_seller_store' | string;
+  content_review_state?: 'not_needed' | 'pending' | 'approved' | 'rejected' | string;
+  canonical_product_ref?: { merchant_id?: string; product_id?: string; platform?: string };
+  selected_commerce_ref?: { merchant_id?: string; product_id?: string; platform?: string };
   pdp_schema_profile?: 'beauty_formula' | 'beauty_tool' | 'generic_merch' | 'generic_product' | string;
   offers?: Offer[];
   offers_count?: number;
