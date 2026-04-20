@@ -509,14 +509,14 @@ describe('mapPdpV2ToPdpPayload image normalization', () => {
         }),
       }),
     );
-    expect(payload?.modules.find((module) => module.type === 'ingredients_inci')).toEqual(
+    expect(payload?.modules.find((module: any) => module.type === 'ingredients_inci')).toEqual(
       expect.objectContaining({
         data: expect.objectContaining({
           items: ['Water', 'Niacinamide'],
         }),
       }),
     );
-    expect(payload?.modules.find((module) => module.type === 'how_to_use')).toEqual(
+    expect(payload?.modules.find((module: any) => module.type === 'how_to_use')).toEqual(
       expect.objectContaining({
         data: expect.objectContaining({
           steps: ['Apply after cleansing', 'Follow with moisturizer'],
@@ -527,7 +527,7 @@ describe('mapPdpV2ToPdpPayload image normalization', () => {
 
   it('carries PDP schema profile and generic structured modules', () => {
     const response = buildMinimalResponse();
-    const canonical = response.modules.find((module) => module.type === 'canonical') as any;
+    const canonical = response.modules.find((module: any) => module.type === 'canonical') as any;
     canonical.data.pdp_schema_profile = 'generic_merch';
     canonical.data.pdp_payload.pdp_schema_profile = 'generic_merch';
     canonical.data.pdp_payload.modules.push(

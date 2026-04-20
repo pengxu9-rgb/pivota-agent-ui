@@ -634,6 +634,21 @@ export function mapToPdpPayload(args: {
         source_url: offer?.source_url || offer?.sourceUrl || undefined,
         variant_id: offer?.variant_id || offer?.variantId || undefined,
         sku_id: offer?.sku_id || offer?.skuId || undefined,
+        store_discount_evidence: offer?.store_discount_evidence || offer?.storeDiscountEvidence || undefined,
+        store_discount_summary: offer?.store_discount_summary || offer?.storeDiscountSummary || undefined,
+        store_discount_badges: Array.isArray(offer?.store_discount_badges)
+          ? offer.store_discount_badges
+          : Array.isArray(offer?.storeDiscountBadges)
+            ? offer.storeDiscountBadges
+            : undefined,
+        payment_offer_evidence: offer?.payment_offer_evidence || offer?.paymentOfferEvidence || undefined,
+        payment_offer_summary: offer?.payment_offer_summary || offer?.paymentOfferSummary || undefined,
+        payment_offer_badges: Array.isArray(offer?.payment_offer_badges)
+          ? offer.payment_offer_badges
+          : Array.isArray(offer?.paymentOfferBadges)
+            ? offer.paymentOfferBadges
+            : undefined,
+        payment_pricing: offer?.payment_pricing || offer?.paymentPricing || undefined,
         action: offer?.action || undefined,
         inventory: offer?.inventory || undefined,
         price: { amount: Number.isFinite(priceAmount) ? priceAmount : 0, currency: priceCurrency },
@@ -860,6 +875,25 @@ export function mapToPdpPayload(args: {
       destination_url: raw.destination_url || raw.destinationUrl || product.destination_url || undefined,
       source_url: raw.source_url || raw.sourceUrl || product.source_url || undefined,
       platform: raw.platform || product.platform || undefined,
+      store_discount_evidence:
+        raw.store_discount_evidence || raw.storeDiscountEvidence || product.store_discount_evidence || undefined,
+      store_discount_summary:
+        raw.store_discount_summary || raw.storeDiscountSummary || product.store_discount_summary || undefined,
+      store_discount_badges: Array.isArray(raw.store_discount_badges)
+        ? raw.store_discount_badges
+        : Array.isArray(raw.storeDiscountBadges)
+          ? raw.storeDiscountBadges
+          : product.store_discount_badges,
+      payment_offer_evidence:
+        raw.payment_offer_evidence || raw.paymentOfferEvidence || product.payment_offer_evidence || undefined,
+      payment_offer_summary:
+        raw.payment_offer_summary || raw.paymentOfferSummary || product.payment_offer_summary || undefined,
+      payment_offer_badges: Array.isArray(raw.payment_offer_badges)
+        ? raw.payment_offer_badges
+        : Array.isArray(raw.paymentOfferBadges)
+          ? raw.paymentOfferBadges
+          : product.payment_offer_badges,
+      payment_pricing: raw.payment_pricing || raw.paymentPricing || product.payment_pricing || undefined,
       beauty_meta: hasBeautyMeta ? beautyMeta : undefined,
       recent_purchases: recentPurchases.length ? recentPurchases : undefined,
       size_guide: hasSizeGuide ? sizeGuide : undefined,

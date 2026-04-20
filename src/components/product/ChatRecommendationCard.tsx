@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation';
 import { hideProductRouteLoading, showProductRouteLoading } from '@/lib/productRouteLoading';
 import { buildProductHref } from '@/lib/productHref';
 import { appendCurrentPathAsReturn } from '@/lib/returnUrl';
+import { buildSavingsPresentation, getSummaryBadges } from '@/lib/savingsPresentation';
 
 import type { ProductResponse } from '@/lib/api';
 
@@ -34,6 +35,17 @@ export function ChatRecommendationCard({ product, onAddToCart }: Props) {
 
   const href = buildProductHref(product.product_id, product.merchant_id);
   const compactCopy = String(product.card_highlight || product.card_subtitle || '').trim();
+  const savingsBadges = getSummaryBadges(
+    buildSavingsPresentation({
+      product: product as any,
+      store_discount_evidence: product.store_discount_evidence,
+      payment_offer_evidence: product.payment_offer_evidence,
+      payment_pricing: product.payment_pricing,
+      pricing: { total: product.price, currency: product.currency },
+      currency: product.currency,
+    }),
+    2,
+  );
 
   const handleCardClick = () => {
     if (isNavigatingRef.current) return;
@@ -160,6 +172,18 @@ export function ChatRecommendationCard({ product, onAddToCart }: Props) {
         <div className="mt-2 text-sm font-semibold text-primary">
           {formatPrice(product)}
         </div>
+        {savingsBadges.length ? (
+          <div className="mt-1 flex flex-wrap gap-1">
+            {savingsBadges.map((badge) => (
+              <span
+                key={badge}
+                className="rounded-md border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium leading-4 text-emerald-800"
+              >
+                {badge}
+              </span>
+            ))}
+          </div>
+        ) : null}
       </div>
     </div>
   );

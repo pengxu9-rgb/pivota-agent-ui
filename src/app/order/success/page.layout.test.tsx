@@ -171,12 +171,12 @@ describe('Order success action layout', () => {
 
   it('runs finalization recovery on success page when finalizing=1 is present', async () => {
     searchParamsValue = 'orderId=ord_123&finalizing=1';
-    let resolvePoll: ((value: {
+    let resolvePoll: (value: {
       status: 'confirmed' | 'pending';
       polls: number;
       paymentStatus: string | null;
       lastError: unknown | null;
-    }) => void) | null = null;
+    }) => void = () => {};
     confirmPaymentWithRetryMock.mockResolvedValueOnce({
       status: 'pending',
       attempts: 1,
@@ -197,7 +197,7 @@ describe('Order success action layout', () => {
       expect(confirmPaymentWithRetryMock).toHaveBeenCalledTimes(1);
       expect(pollOrderStatusUntilSettledMock).toHaveBeenCalledTimes(1);
     });
-    resolvePoll?.({
+    resolvePoll({
       status: 'confirmed',
       polls: 2,
       paymentStatus: 'paid',

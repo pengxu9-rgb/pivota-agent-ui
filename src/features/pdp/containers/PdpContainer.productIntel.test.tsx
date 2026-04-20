@@ -195,9 +195,9 @@ describe('PdpContainer product intel section', () => {
           : {
               ...module,
               data: {
-                ...module.data,
+                ...(module.data as any),
                 product_intel_core: {
-                  ...module.data.product_intel_core!,
+                  ...(module.data as any).product_intel_core!,
                   why_it_stands_out: [
                     {
                       headline: 'Positioning',
@@ -232,7 +232,7 @@ describe('PdpContainer product intel section', () => {
           : {
               ...module,
               data: {
-                ...module.data,
+                ...(module.data as any),
                 evidence_profile: 'seller_plus_formula',
                 quality_state: 'eligible',
                 provenance: {
@@ -241,7 +241,7 @@ describe('PdpContainer product intel section', () => {
                   review_decision: 'pending',
                 },
                 product_intel_core: {
-                  ...module.data.product_intel_core!,
+                  ...(module.data as any).product_intel_core!,
                   evidence_profile: 'seller_plus_formula',
                   quality_state: 'eligible',
                   freshness: {
@@ -286,14 +286,14 @@ describe('PdpContainer product intel section', () => {
           : {
               ...module,
               data: {
-                ...module.data,
+                ...(module.data as any),
                 provenance: {
                   generator: 'baseline_plus_gemini',
                   review_status: 'pending',
                   review_decision: 'pending',
                 },
                 product_intel_core: {
-                  ...module.data.product_intel_core!,
+                  ...(module.data as any).product_intel_core!,
                   freshness: {
                     generated_at: '2026-04-15T10:01:12.646Z',
                     source_version: 'pilot_selected:gemini-3-flash-preview',
@@ -336,7 +336,7 @@ describe('PdpContainer product intel section', () => {
           : {
               ...module,
               data: {
-                ...module.data,
+                ...(module.data as any),
                 evidence_profile: 'seller_plus_formula',
                 quality_state: 'eligible',
                 provenance: {
@@ -347,7 +347,7 @@ describe('PdpContainer product intel section', () => {
                   selection_strategy: 'curated_override',
                 },
                 product_intel_core: {
-                  ...module.data.product_intel_core!,
+                  ...(module.data as any).product_intel_core!,
                   evidence_profile: 'seller_plus_formula',
                   quality_state: 'eligible',
                   what_it_is: {
@@ -389,11 +389,11 @@ describe('PdpContainer product intel section', () => {
           : {
               ...module,
               data: {
-                ...module.data,
+                ...(module.data as any),
                 evidence_profile: 'seller_plus_formula',
                 quality_state: 'eligible',
                 product_intel_core: {
-                  ...module.data.product_intel_core!,
+                  ...(module.data as any).product_intel_core!,
                   evidence_profile: 'seller_plus_formula',
                   quality_state: 'eligible',
                   what_it_is: {
@@ -443,11 +443,11 @@ describe('PdpContainer product intel section', () => {
           : {
               ...module,
               data: {
-                ...module.data,
+                ...(module.data as any),
                 evidence_profile: 'seller_plus_formula',
                 quality_state: 'eligible',
                 product_intel_core: {
-                  ...module.data.product_intel_core!,
+                  ...(module.data as any).product_intel_core!,
                   evidence_profile: 'seller_plus_formula',
                   quality_state: 'eligible',
                   what_it_is: {

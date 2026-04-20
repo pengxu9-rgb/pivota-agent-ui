@@ -208,6 +208,7 @@ describe('ProductsPage', () => {
     await waitFor(() => {
       expect(getShoppingDiscoveryFeedMock).toHaveBeenCalledTimes(1);
     });
+    expect(screen.getByText('Barrier Serum')).toBeInTheDocument();
 
     await act(async () => {
       intersectionCallback?.([{ isIntersecting: true }]);

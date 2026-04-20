@@ -71,6 +71,7 @@ import { GenericSizeGuide } from '@/features/pdp/sections/GenericSizeGuide';
 import { GenericDetailsSection } from '@/features/pdp/sections/GenericDetailsSection';
 import { PivotaInsightsSection, isDisplayableProductIntelData } from '@/features/pdp/sections/PivotaInsightsSection';
 import { OfferSheet } from '@/features/pdp/offers/OfferSheet';
+import { WaysToSave } from '@/features/pdp/components/WaysToSave';
 import { ModuleShell } from '@/features/pdp/components/ModuleShell';
 import { DEFAULT_UGC_SNAPSHOT, lockFirstUgcSource, mergeUgcItems } from '@/features/pdp/state/freezePolicy';
 import { getStableGalleryItems, resolveHeroMediaUrl } from '@/features/pdp/state/heroMedia';
@@ -2275,6 +2276,10 @@ export function PdpContainer({
     !hasRightColumnSupportInfo &&
     moduleStates.offers !== 'LOADING' &&
     offers.length <= 1;
+  const shouldUseExternalSeedSingleOptionSummary =
+    isExternalSeedProduct &&
+    variants.length === 1 &&
+    !Array.isArray(selectedVariant?.options);
 
   const productId = payloadProductId;
   const productGroupId = String(payload.product_group_id || selectedOffer?.product_group_id || '').trim() || null;
@@ -3771,6 +3776,8 @@ export function PdpContainer({
                       pdpTracking.track('pdp_action_click', { action_type: 'select_variant', variant_id: variantId });
                     }}
                     mode={resolvedMode}
+                    singleVariantTitle={shouldUseExternalSeedSingleOptionSummary ? 'Option' : undefined}
+                    singleVariantStatus={shouldUseExternalSeedSingleOptionSummary ? 'Selected by default' : undefined}
                   />
                 </div>
               ) : null}
@@ -3799,6 +3806,13 @@ export function PdpContainer({
               ) : null}
             </div>
           ) : null}
+
+          <WaysToSave
+            product={payload.product}
+            selectedOffer={selectedOffer}
+            selectedVariant={selectedVariant}
+            quantity={resolvedQuantity}
+          />
 
           {moduleStates.offers === 'LOADING' ? (
             <div
@@ -4166,6 +4180,8 @@ export function PdpContainer({
                 sizeFit={sizeFitDetails}
                 careInstructions={careInstructions}
                 usageSafety={usageSafety}
+                activeIngredients={activeIngredients}
+                ingredientsInci={ingredientsInci}
                 howToUse={howToUse}
                 suppressOverview={suppressOverviewInDetails}
               />
@@ -4466,6 +4482,7 @@ export function PdpContainer({
         defaultOfferId={variantAwareDefaultOfferId ?? undefined}
         bestPriceOfferId={variantAwareBestPriceOfferId}
         selectedVariant={selectedVariant}
+        quantity={resolvedQuantity}
         onClose={() => setShowOfferSheet(false)}
         onSelect={(offerId) => {
           setSelectedOfferId(offerId);
