@@ -324,6 +324,7 @@ function hasRecommendationsItems(response: PDPPayload | null): boolean {
 }
 
 const PDP_INITIAL_INCLUDE = [
+  'offers',
   'variant_selector',
   'product_intel',
   'active_ingredients',
@@ -331,6 +332,8 @@ const PDP_INITIAL_INCLUDE = [
   'how_to_use',
   'product_overview',
   'supplemental_details',
+  'reviews_preview',
+  'similar',
 ] as const;
 
 function mapSellerCandidatesFromResolveCandidates(
@@ -599,11 +602,6 @@ export default function ProductDetailPage({ params }: Props) {
       ) => {
         const offerRows = Array.isArray((assembled as any).offers) ? (assembled as any).offers : [];
         const expectedOffersCount = Number((assembled as any).offers_count);
-        const hasCompleteOffers =
-          offerRows.length > 0 &&
-          (!Number.isFinite(expectedOffersCount) ||
-            expectedOffersCount <= 0 ||
-            offerRows.length >= expectedOffersCount);
         const hasReviewsModule = hasModule(assembled, 'reviews_preview');
         const hasSimilarModule = hasModule(assembled, 'recommendations');
         const hasRecommendations = hasRecommendationsItems(assembled);
@@ -625,9 +623,11 @@ export default function ProductDetailPage({ params }: Props) {
 
         setPdpPayload({
           ...assembled,
-          ...(hasCompleteOffers ? {} : { x_offers_state: 'loading' }),
-          x_reviews_state: hasReviewsModule ? 'ready' : 'loading',
-          x_recommendations_state: hasSimilarModule ? 'ready' : 'loading',
+          ...(offerRows.length > 0 || Number.isFinite(expectedOffersCount)
+            ? { x_offers_state: 'ready' as const }
+            : {}),
+          ...(hasReviewsModule ? { x_reviews_state: 'ready' as const } : {}),
+          ...(hasSimilarModule ? { x_recommendations_state: 'ready' as const } : {}),
           x_source_locks: {
             reviews: hasReviewsModule,
             similar: hasSimilarModule,
