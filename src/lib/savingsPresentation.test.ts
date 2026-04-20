@@ -119,4 +119,28 @@ describe('buildSavingsPresentation', () => {
 
     expect(getSummaryBadges(model, 2)).toEqual(['10% off at checkout', 'Free US shipping']);
   });
+
+  it('includes free-shipping coverage in compact badges', () => {
+    const model = buildSavingsPresentation({
+      store_discount_evidence: {
+        offers: [
+          {
+            store_discount_id: 'ship_us',
+            discount_type: 'free_shipping',
+            status: 'available',
+            display: {
+              badge: 'Free shipping code',
+              short_copy: 'Free shipping on all products • For United States',
+            },
+          },
+        ],
+      },
+    });
+
+    expect(model.cartUnlocks[0]).toMatchObject({
+      badge: 'Free US shipping',
+      label: 'Free shipping on all products • For United States',
+    });
+    expect(getSummaryBadges(model, 1)).toEqual(['Free US shipping']);
+  });
 });

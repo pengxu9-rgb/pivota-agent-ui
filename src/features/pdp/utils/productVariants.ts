@@ -39,12 +39,6 @@ function toDefaultVariant(product: ProductResponse, raw?: any): Variant {
       ...(availableQuantity != null ? { available_quantity: availableQuantity } : {}),
     },
     image_url: normalizeImageUrl(product.image_url),
-    store_discount_evidence: product.store_discount_evidence,
-    store_discount_summary: product.store_discount_summary,
-    store_discount_badges: product.store_discount_badges,
-    payment_offer_evidence: product.payment_offer_evidence,
-    payment_offer_summary: product.payment_offer_summary,
-    payment_offer_badges: product.payment_offer_badges,
   };
 }
 
@@ -174,12 +168,12 @@ export function buildProductVariants(product: ProductResponse, raw?: any): Varia
             variant.swatch?.image_url ||
             variant.swatch?.imageUrl,
         ),
-        store_discount_evidence: variant.store_discount_evidence || product.store_discount_evidence,
-        store_discount_summary: variant.store_discount_summary || product.store_discount_summary,
-        store_discount_badges: variant.store_discount_badges || product.store_discount_badges,
-        payment_offer_evidence: variant.payment_offer_evidence || product.payment_offer_evidence,
-        payment_offer_summary: variant.payment_offer_summary || product.payment_offer_summary,
-        payment_offer_badges: variant.payment_offer_badges || product.payment_offer_badges,
+        store_discount_evidence: variant.store_discount_evidence,
+        store_discount_summary: variant.store_discount_summary,
+        store_discount_badges: variant.store_discount_badges,
+        payment_offer_evidence: variant.payment_offer_evidence,
+        payment_offer_summary: variant.payment_offer_summary,
+        payment_offer_badges: variant.payment_offer_badges,
       } satisfies Variant;
     })
     .filter(Boolean);

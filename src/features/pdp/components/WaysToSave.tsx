@@ -92,15 +92,34 @@ export function WaysToSave({
   selectedVariant?: Variant | null;
   quantity?: number | null;
 }) {
+  const productSelectedCommerceRef = (product as any).selected_commerce_ref || (product as any).selectedCommerceRef;
+  const productCommerceMerchantId = String(
+    productSelectedCommerceRef?.merchant_id ||
+      productSelectedCommerceRef?.merchantId ||
+      product.merchant_id ||
+      '',
+  ).trim();
+  const productCommerceProductId = String(
+    productSelectedCommerceRef?.product_id ||
+      productSelectedCommerceRef?.productId ||
+      product.product_id ||
+      '',
+  ).trim();
+  const selectedOfferUsesProductCommerce =
+    !selectedOffer &&
+    productCommerceMerchantId !== 'external_seed' &&
+    Boolean(productCommerceMerchantId || productCommerceProductId);
   const storeEvidence =
     selectedOffer?.store_discount_evidence ||
-    selectedVariant?.store_discount_evidence ||
-    product.store_discount_evidence;
+    (selectedOfferUsesProductCommerce ? selectedVariant?.store_discount_evidence : undefined) ||
+    (selectedOfferUsesProductCommerce ? product.store_discount_evidence : undefined);
   const paymentEvidence =
     selectedOffer?.payment_offer_evidence ||
-    selectedVariant?.payment_offer_evidence ||
-    product.payment_offer_evidence;
-  const paymentPricing = selectedOffer?.payment_pricing || product.payment_pricing;
+    (selectedOfferUsesProductCommerce ? selectedVariant?.payment_offer_evidence : undefined) ||
+    (selectedOfferUsesProductCommerce ? product.payment_offer_evidence : undefined);
+  const paymentPricing =
+    selectedOffer?.payment_pricing ||
+    (selectedOfferUsesProductCommerce ? product.payment_pricing : undefined);
   const currency =
     selectedOffer?.price?.currency ||
     selectedVariant?.price?.current?.currency ||

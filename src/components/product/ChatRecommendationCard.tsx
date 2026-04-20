@@ -23,6 +23,35 @@ function formatPrice(product: ProductResponse): string {
   return `$${price.toFixed(2)}`;
 }
 
+function hasEvidenceOffers(value: unknown): boolean {
+  return Boolean(
+    value &&
+      typeof value === 'object' &&
+      Array.isArray((value as any).offers) &&
+      (value as any).offers.length > 0,
+  );
+}
+
+function hasMultipleSellerOffers(product: ProductResponse): boolean {
+  const sellerIds = new Set<string>();
+  if (Array.isArray(product.offers)) {
+    for (const offer of product.offers as any[]) {
+      const merchantId = String(offer?.merchant_id || '').trim();
+      if (merchantId) sellerIds.add(merchantId);
+    }
+  }
+  return sellerIds.size > 1 || Number(product.offers_count || 0) > 1;
+}
+
+function pickOfferSavingsSource(product: ProductResponse): any | null {
+  const offers = Array.isArray(product.offers) ? product.offers.filter(Boolean) : [];
+  return offers.find(
+    (offer: any) =>
+      hasEvidenceOffers(offer?.store_discount_evidence) ||
+      hasEvidenceOffers(offer?.payment_offer_evidence),
+  ) || null;
+}
+
 export function ChatRecommendationCard({ product, onAddToCart }: Props) {
   const router = useRouter();
   const [isNavigating, setIsNavigating] = useState(false);
@@ -35,12 +64,24 @@ export function ChatRecommendationCard({ product, onAddToCart }: Props) {
 
   const href = buildProductHref(product.product_id, product.merchant_id);
   const compactCopy = String(product.card_highlight || product.card_subtitle || '').trim();
+  const multipleSellerOffers = hasMultipleSellerOffers(product);
+  const offerSavingsSource = pickOfferSavingsSource(product);
+  const storeDiscountEvidence =
+    offerSavingsSource?.store_discount_evidence ||
+    (!multipleSellerOffers ? product.store_discount_evidence : undefined);
+  const paymentOfferEvidence =
+    offerSavingsSource?.payment_offer_evidence ||
+    (!multipleSellerOffers ? product.payment_offer_evidence : undefined);
+  const paymentPricing =
+    offerSavingsSource?.payment_pricing ||
+    (!multipleSellerOffers ? product.payment_pricing : undefined);
   const savingsBadges = getSummaryBadges(
     buildSavingsPresentation({
       product: product as any,
-      store_discount_evidence: product.store_discount_evidence,
-      payment_offer_evidence: product.payment_offer_evidence,
-      payment_pricing: product.payment_pricing,
+      offer: offerSavingsSource,
+      store_discount_evidence: storeDiscountEvidence,
+      payment_offer_evidence: paymentOfferEvidence,
+      payment_pricing: paymentPricing,
       pricing: { total: product.price, currency: product.currency },
       currency: product.currency,
     }),

@@ -152,12 +152,15 @@ export function OfferSheet({
           const eta = offer.shipping?.eta_days_range;
           const returns = offer.returns;
           const sellerLabel = getSellerLabel(offer);
+          const matchedOfferVariant = pricing.matchedVariant;
           const savings = buildSavingsPresentation({
             offer: offer as any,
-            variant: selectedVariant as any,
+            variant: matchedOfferVariant as any,
             quantity,
-            store_discount_evidence: offer.store_discount_evidence || selectedVariant?.store_discount_evidence,
-            payment_offer_evidence: offer.payment_offer_evidence || selectedVariant?.payment_offer_evidence,
+            store_discount_evidence:
+              offer.store_discount_evidence || matchedOfferVariant?.store_discount_evidence,
+            payment_offer_evidence:
+              offer.payment_offer_evidence || matchedOfferVariant?.payment_offer_evidence,
             payment_pricing: offer.payment_pricing,
             pricing: { total, currency },
             currency,

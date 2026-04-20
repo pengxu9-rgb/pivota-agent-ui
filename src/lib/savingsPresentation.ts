@@ -115,6 +115,66 @@ function itemDisplay(raw: any): { badge: string; label: string; disclaimer?: str
   return { badge: badge || label || 'Offer available', label: label || badge || 'Offer available', disclaimer };
 }
 
+function normalizeCoverageLabel(value: string): string {
+  const normalized = nonEmpty(value).replace(/\s+/g, ' ');
+  if (!normalized) return '';
+  if (/^(us|usa|u\.s\.|u\.s\.a\.|united states|united states of america)$/i.test(normalized)) {
+    return 'US';
+  }
+  return normalized;
+}
+
+function extractFreeShippingCoverage(raw: any): string {
+  const countryCandidates = [
+    raw?.country,
+    raw?.country_code,
+    raw?.countryCode,
+    raw?.destination_country,
+    raw?.destinationCountry,
+  ];
+  const arrayCandidates = [
+    raw?.countries,
+    raw?.country_codes,
+    raw?.countryCodes,
+    raw?.destination_countries,
+    raw?.destinationCountries,
+  ];
+  for (const value of countryCandidates) {
+    const label = normalizeCoverageLabel(String(value || ''));
+    if (label) return label;
+  }
+  for (const value of arrayCandidates) {
+    if (!Array.isArray(value)) continue;
+    const labels = uniqueStrings(value.map((item) => normalizeCoverageLabel(String(item || '')))).slice(0, 3);
+    if (labels.length) return labels.join(', ');
+  }
+  const display = raw?.display && typeof raw.display === 'object' ? raw.display : {};
+  const text = [display.short_copy, display.detail_copy, raw?.label, raw?.badge]
+    .map((item) => nonEmpty(item))
+    .find((item) => /\bfor\s+[^•]+$/i.test(item));
+  const match = text?.match(/\bfor\s+([^•]+)$/i);
+  return normalizeCoverageLabel(match?.[1] || '');
+}
+
+function withFreeShippingCoverage(
+  raw: any,
+  display: { badge: string; label: string; disclaimer?: string },
+): { badge: string; label: string; disclaimer?: string } {
+  const coverage = extractFreeShippingCoverage(raw);
+  if (!coverage) return display;
+  const mentionsCoverage = (text: string) => {
+    if (coverage === 'US' && /\b(united states|usa|u\.s\.|u\.s\.a\.)\b/i.test(text)) return true;
+    return new RegExp(`\\b${coverage.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(text);
+  };
+  const badgeHasCoverage = mentionsCoverage(display.badge);
+  const labelHasCoverage = mentionsCoverage(display.label);
+  return {
+    ...display,
+    badge: badgeHasCoverage ? display.badge : `Free ${coverage} shipping`,
+    label: labelHasCoverage ? display.label : `${display.label} • ${coverage} only`,
+  };
+}
+
 function normalizeProgress(raw: any): SavingsPresentationItem['progress'] | undefined {
   const minimum = raw?.minimum_requirement && typeof raw.minimum_requirement === 'object'
     ? raw.minimum_requirement
@@ -167,8 +227,9 @@ function normalizePromotionLine(line: any, index: number, fallbackCurrency?: str
 }
 
 function storeOfferToItem(raw: any, index: number, fallbackCurrency?: string | null): SavingsPresentationItem {
-  const { badge, label, disclaimer } = itemDisplay(raw);
   const kind = nonEmpty(raw?.discount_type) || 'store_offer';
+  const { badge, label, disclaimer } =
+    kind === 'free_shipping' ? withFreeShippingCoverage(raw, itemDisplay(raw)) : itemDisplay(raw);
   const status = nonEmpty(raw?.status) || 'unverified';
   const isCartUnlock =
     kind === 'bxgy' ||

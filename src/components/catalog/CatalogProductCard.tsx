@@ -106,14 +106,17 @@ export function CatalogProductCard({ product }: { product: ProductResponse }) {
   const hrefWithReturn = appendCurrentPathAsReturn(href);
   const card = resolveProductCardPresentation(product);
   const offerSavingsSource = pickOfferSavingsSource(product);
-  const storeDiscountEvidence = hasEvidenceOffers(product.store_discount_evidence)
+  const multipleSellerOffers = hasMultipleSellerOffers(product);
+  const storeDiscountEvidence = !multipleSellerOffers && hasEvidenceOffers(product.store_discount_evidence)
     ? product.store_discount_evidence
     : offerSavingsSource?.store_discount_evidence;
-  const paymentOfferEvidence = hasEvidenceOffers(product.payment_offer_evidence)
+  const paymentOfferEvidence = !multipleSellerOffers && hasEvidenceOffers(product.payment_offer_evidence)
     ? product.payment_offer_evidence
     : offerSavingsSource?.payment_offer_evidence;
-  const paymentPricing = product.payment_pricing || offerSavingsSource?.payment_pricing;
-  const multipleSellerOffers = hasMultipleSellerOffers(product);
+  const paymentPricing =
+    !multipleSellerOffers && product.payment_pricing
+      ? product.payment_pricing
+      : offerSavingsSource?.payment_pricing;
   const savingsModel = buildSavingsPresentation({
     product: product as any,
     offer: offerSavingsSource,

@@ -1,5 +1,5 @@
-import { render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { cleanup, render, screen, within } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { OfferSheet } from './OfferSheet';
 
 vi.mock('@/features/pdp/hooks/useIsDesktop', () => ({
@@ -7,6 +7,10 @@ vi.mock('@/features/pdp/hooks/useIsDesktop', () => ({
 }));
 
 describe('OfferSheet', () => {
+  afterEach(() => {
+    cleanup();
+  });
+
   it('uses real store fields instead of brand fields for internal marketplace offers', async () => {
     render(
       <OfferSheet
@@ -98,5 +102,67 @@ describe('OfferSheet', () => {
 
     expect(await screen.findByText('Item: €40.00')).toBeInTheDocument();
     expect(screen.getByText('Item: €50.00')).toBeInTheDocument();
+  });
+
+  it('does not leak selected product savings into external seed offer rows', async () => {
+    render(
+      <OfferSheet
+        open
+        offers={[
+          {
+            offer_id: 'offer_internal_pivota_market',
+            product_id: '10064558096681',
+            merchant_id: 'merch_efbc46b4619cfbdf',
+            store_name: 'Pivota Market',
+            price: { amount: 28, currency: 'USD' },
+            store_discount_evidence: {
+              offers: [
+                {
+                  store_discount_id: 'store_a',
+                  discount_type: 'basic',
+                  status: 'available',
+                  display: { badge: 'Pivota store code' },
+                },
+              ],
+            },
+          } as any,
+          {
+            offer_id: 'offer_external_seed_default',
+            product_id: 'ext_670fd3f47ecd319d143f8c65',
+            merchant_id: 'external_seed',
+            merchant_name: 'KraveBeauty',
+            price: { amount: 28, currency: 'USD' },
+          } as any,
+        ]}
+        selectedOfferId="offer_external_seed_default"
+        defaultOfferId="offer_internal_pivota_market"
+        bestPriceOfferId="offer_internal_pivota_market"
+        selectedVariant={{
+          variant_id: 'SHOP_STD',
+          title: 'Standard - 45 mL',
+          price: { current: { amount: 28, currency: 'USD' } },
+          store_discount_evidence: {
+            offers: [
+              {
+                store_discount_id: 'variant_store_a',
+                discount_type: 'basic',
+                status: 'available',
+                display: { badge: 'Variant store code' },
+              },
+            ],
+          },
+        }}
+        onClose={() => {}}
+        onSelect={() => {}}
+      />,
+    );
+
+    const internalRow = (await screen.findByText('Pivota Market')).closest('button');
+    const externalRow = screen.getByText('KraveBeauty').closest('button');
+    expect(internalRow).not.toBeNull();
+    expect(externalRow).not.toBeNull();
+    expect(within(internalRow as HTMLElement).getByText('Pivota store code')).toBeInTheDocument();
+    expect(within(externalRow as HTMLElement).queryByText('Pivota store code')).not.toBeInTheDocument();
+    expect(within(externalRow as HTMLElement).queryByText('Variant store code')).not.toBeInTheDocument();
   });
 });
