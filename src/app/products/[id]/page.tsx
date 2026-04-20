@@ -11,7 +11,6 @@ import {
   getPdpV2Personalization,
   recordBrowseHistoryEvent,
   resolveProductCandidates,
-  type GetPdpV2Response,
   type ProductResponse,
   type UgcCapabilities,
 } from '@/lib/api';
@@ -20,7 +19,7 @@ import { isBeautyProduct } from '@/features/pdp/utils/isBeautyProduct';
 import { BeautyPDPContainer } from '@/features/pdp/containers/BeautyPDPContainer';
 import { GenericPDPContainer } from '@/features/pdp/containers/GenericPDPContainer';
 import { ProductDetailLoading } from '@/features/pdp/components/ProductDetailLoading';
-import type { Module, PDPPayload, Variant } from '@/features/pdp/types';
+import type { PDPPayload, Variant } from '@/features/pdp/types';
 import { pdpTracking } from '@/features/pdp/tracking';
 import { findMatchingOfferVariant } from '@/features/pdp/utils/offerVariantMatching';
 import {
@@ -33,10 +32,7 @@ import {
   inferCanonicalPdpMerchantId,
   normalizeProductRouteMerchantId,
 } from '@/lib/productHref';
-import {
-  DEFAULT_MODULE_SOURCE_LOCKS,
-  upsertLockedModule,
-} from '@/features/pdp/state/freezePolicy';
+import { DEFAULT_MODULE_SOURCE_LOCKS } from '@/features/pdp/state/freezePolicy';
 import {
   mapResolvedOffersToSellerCandidates,
 } from '@/lib/pdpResolvedOffers';
@@ -395,18 +391,6 @@ function isNonRetryablePdpError(err: unknown): boolean {
   ]).has(code);
 }
 
-function isUnavailableModuleErrorCode(code: string): boolean {
-  if (!code) return false;
-  return new Set([
-    'UNSUPPORTED_INCLUDE',
-    'UNSUPPORTED_MODULE',
-    'MODULE_UNAVAILABLE',
-    'MODULE_NOT_AVAILABLE',
-    'FEATURE_DISABLED',
-    'NOT_IMPLEMENTED',
-  ]).has(code);
-}
-
 function shouldRetryWithCoreOnlyPdp(err: unknown): boolean {
   const code = readApiErrorCode(err);
   if (isNonRetryablePdpError(err)) return false;
@@ -442,10 +426,6 @@ export default function ProductDetailPage({ params }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
-  const [loadedViaPdpV2, setLoadedViaPdpV2] = useState(false);
-  const offersFetchKeyRef = useRef<string | null>(null);
-  const reviewsFetchKeyRef = useRef<string | null>(null);
-  const similarFetchKeyRef = useRef<string | null>(null);
   const localBrowseHistoryRecordedRef = useRef<string | null>(null);
   const remoteBrowseHistoryRecordedRef = useRef<string | null>(null);
   const moduleSourceLocksRef = useRef({ ...DEFAULT_MODULE_SOURCE_LOCKS });
@@ -462,23 +442,6 @@ export default function ProductDetailPage({ params }: Props) {
 
   const { addItem, open } = useCartStore();
   const inferredMerchantId = inferCanonicalPdpMerchantId(id, merchantIdParam);
-  const progressiveMerchantId = String(
-    merchantIdParam ||
-      pdpPayload?.selected_commerce_ref?.merchant_id ||
-      pdpPayload?.product?.merchant_id ||
-      '',
-  ).trim();
-  const progressiveProductId = String(
-    (merchantIdParam ? id : null) ||
-      pdpPayload?.selected_commerce_ref?.product_id ||
-      pdpPayload?.product?.product_id ||
-      id ||
-      '',
-  ).trim();
-  const offersLoadState = pdpPayload?.x_offers_state;
-  const reviewsLoadState = pdpPayload?.x_reviews_state;
-  const similarLoadState = pdpPayload?.x_recommendations_state;
-
   useEffect(() => {
     if (loading && !error && !pdpPayload) return;
     hideProductRouteLoading();
@@ -589,10 +552,6 @@ export default function ProductDetailPage({ params }: Props) {
       setError(null);
       setSellerCandidates(null);
       setPdpPayload(null);
-      setLoadedViaPdpV2(false);
-      offersFetchKeyRef.current = null;
-      reviewsFetchKeyRef.current = null;
-      similarFetchKeyRef.current = null;
       moduleSourceLocksRef.current = { ...DEFAULT_MODULE_SOURCE_LOCKS };
 
       const commitLoadedPdp = (
@@ -621,8 +580,13 @@ export default function ProductDetailPage({ params }: Props) {
           similar: hasSimilarModule,
         };
 
+        const nextPayload = { ...assembled } as PDPPayload;
+        delete (nextPayload as any).x_offers_state;
+        delete (nextPayload as any).x_reviews_state;
+        delete (nextPayload as any).x_recommendations_state;
+
         setPdpPayload({
-          ...assembled,
+          ...nextPayload,
           ...(offerRows.length > 0 || Number.isFinite(expectedOffersCount)
             ? { x_offers_state: 'ready' as const }
             : {}),
@@ -656,7 +620,6 @@ export default function ProductDetailPage({ params }: Props) {
             count: similarCount,
           });
         }
-        setLoadedViaPdpV2(true);
         setLoading(false);
       };
 
@@ -728,413 +691,6 @@ export default function ProductDetailPage({ params }: Props) {
       cancelled = true;
     };
   }, [id, inferredMerchantId, merchantIdParam, reloadKey]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const run = async () => {
-      if (!loadedViaPdpV2) return;
-      if (offersLoadState !== 'loading') return;
-
-      const merchantId = progressiveMerchantId;
-      const productId = progressiveProductId;
-      if (!merchantId || !productId) {
-        setPdpPayload((prev) => (prev ? { ...prev, x_offers_state: 'error' } : prev));
-        return;
-      }
-
-      const key = `${merchantId}:${productId}`;
-      if (offersFetchKeyRef.current === key) return;
-      offersFetchKeyRef.current = key;
-
-      try {
-        const v2 = await getPdpV2({
-          product_id: productId,
-          merchant_id: merchantId,
-          include: ['offers'],
-          timeout_ms: 8000,
-        });
-        if (cancelled) return;
-
-        const assembled = mapPdpV2ToPdpPayload(v2);
-        const offers = assembled && Array.isArray((assembled as any).offers) ? (assembled as any).offers : null;
-
-        setPdpPayload((prev) => {
-          if (!prev) return prev;
-          if (!offers) return { ...prev, x_offers_state: 'error' };
-          return {
-            ...prev,
-            offers,
-            ...(assembled?.offers_count != null ? { offers_count: assembled.offers_count } : {}),
-            ...(assembled?.default_offer_id ? { default_offer_id: assembled.default_offer_id } : {}),
-            ...(assembled?.best_price_offer_id ? { best_price_offer_id: assembled.best_price_offer_id } : {}),
-            ...(assembled?.product_group_id ? { product_group_id: assembled.product_group_id } : {}),
-            x_offers_state: 'ready',
-          };
-        });
-        pdpTracking.track('pdp_module_ready', {
-          module: 'offers',
-          source: 'get_pdp_v2_backfill',
-          count: Array.isArray(offers) ? offers.length : 0,
-        });
-      } catch {
-        if (cancelled) return;
-        setPdpPayload((prev) => (prev ? { ...prev, x_offers_state: 'error' } : prev));
-      }
-    };
-
-    void run();
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    loadedViaPdpV2,
-    offersLoadState,
-    progressiveMerchantId,
-    progressiveProductId,
-  ]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const run = async () => {
-      if (!loadedViaPdpV2) return;
-      if (reviewsLoadState !== 'loading') return;
-
-      const buildEmptyReviewsModule = (): Module => ({
-        module_id: 'reviews_preview',
-        type: 'reviews_preview',
-        priority: 50,
-        title: 'Reviews',
-        data: {
-          scale: 5,
-          rating: 0,
-          review_count: 0,
-          preview_items: [],
-        },
-      });
-
-      const merchantId = progressiveMerchantId;
-      const productId = progressiveProductId;
-      if (!merchantId || !productId) {
-        setPdpPayload((prev) => {
-          if (!prev) return prev;
-          const mergedReviews = upsertLockedModule({
-            currentModules: prev.modules,
-            type: 'reviews_preview',
-            nextModule: buildEmptyReviewsModule(),
-            locked: moduleSourceLocksRef.current.reviews,
-          });
-          moduleSourceLocksRef.current.reviews = mergedReviews.locked;
-          return {
-            ...prev,
-            modules: mergedReviews.modules,
-            x_reviews_state: 'ready',
-            x_source_locks: {
-              ...(prev.x_source_locks || {}),
-              reviews: mergedReviews.locked,
-            },
-          };
-        });
-        return;
-      }
-
-      const key = `${merchantId}:${productId}:reviews_preview`;
-      if (reviewsFetchKeyRef.current === key) return;
-      reviewsFetchKeyRef.current = key;
-
-      try {
-        const backfillStartedAt = Date.now();
-        const reviewsInitialTimeoutMs = 4200;
-
-        const reviewOnlyV2 = await getPdpV2({
-          product_id: productId,
-          merchant_id: merchantId,
-          include: ['reviews_preview'],
-          timeout_ms: reviewsInitialTimeoutMs,
-        }).then(
-          (response) => ({ response, nonRetryable: false, code: '' }),
-          (err) => ({
-            response: null,
-            nonRetryable: isNonRetryablePdpError(err),
-            code: readApiErrorCode(err),
-          }),
-        );
-
-        if (cancelled) return;
-
-        let reviewsModule: Module | null = null;
-        let reviewsRequestSucceeded = false;
-
-        if (reviewOnlyV2.response) {
-          reviewsRequestSucceeded = true;
-          const reviewOnlyPayload = mapPdpV2ToPdpPayload(reviewOnlyV2.response);
-          reviewsModule =
-            reviewOnlyPayload && Array.isArray(reviewOnlyPayload.modules)
-              ? (reviewOnlyPayload.modules.find((m) => m?.type === 'reviews_preview') as Module | undefined) || null
-              : null;
-        }
-
-        const reviewModuleUnavailable =
-          reviewOnlyV2.nonRetryable || isUnavailableModuleErrorCode(reviewOnlyV2.code);
-
-        const normalizedReviewsModule =
-          !reviewsModule ? buildEmptyReviewsModule() : reviewsModule;
-
-        setPdpPayload((prev) => {
-          if (!prev) return prev;
-          const mergedReviews = upsertLockedModule({
-            currentModules: prev.modules,
-            type: 'reviews_preview',
-            nextModule: normalizedReviewsModule as Module | null,
-            locked: moduleSourceLocksRef.current.reviews,
-          });
-          moduleSourceLocksRef.current.reviews = mergedReviews.locked;
-          return {
-            ...prev,
-            modules: mergedReviews.modules,
-            x_reviews_state:
-              normalizedReviewsModule || mergedReviews.locked || reviewsRequestSucceeded || reviewModuleUnavailable
-                ? 'ready'
-                : 'loading',
-            x_source_locks: {
-              ...(prev.x_source_locks || {}),
-              reviews: mergedReviews.locked,
-            },
-          };
-        });
-
-        pdpTracking.track('pdp_module_ready', {
-          module: 'reviews_preview',
-          source: 'get_pdp_v2_reviews_backfill',
-          frozen: moduleSourceLocksRef.current.reviews,
-          reviews_request_succeeded: reviewsRequestSucceeded,
-          backfill_phase_ms: Date.now() - backfillStartedAt,
-        });
-      } catch {
-        if (cancelled) return;
-        setPdpPayload((prev) => {
-          if (!prev) return prev;
-          const mergedReviews = upsertLockedModule({
-            currentModules: prev.modules,
-            type: 'reviews_preview',
-            nextModule: buildEmptyReviewsModule(),
-            locked: moduleSourceLocksRef.current.reviews,
-          });
-          moduleSourceLocksRef.current.reviews = mergedReviews.locked;
-          return {
-            ...prev,
-            modules: mergedReviews.modules,
-            x_reviews_state: 'ready',
-            x_source_locks: {
-              ...(prev.x_source_locks || {}),
-              reviews: mergedReviews.locked,
-            },
-          };
-        });
-      }
-    };
-
-    void run();
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    loadedViaPdpV2,
-    reviewsLoadState,
-    progressiveMerchantId,
-    progressiveProductId,
-  ]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const run = async () => {
-      if (!loadedViaPdpV2) return;
-      if (similarLoadState !== 'loading') return;
-
-      const merchantId = progressiveMerchantId;
-      const productId = progressiveProductId;
-      if (!merchantId || !productId) {
-        setPdpPayload((prev) =>
-          prev
-            ? {
-                ...prev,
-                x_recommendations_state: 'ready',
-              }
-            : prev,
-        );
-        return;
-      }
-
-      const key = `${merchantId}:${productId}:similar`;
-      if (similarFetchKeyRef.current === key) return;
-      similarFetchKeyRef.current = key;
-
-      try {
-        const backfillStartedAt = Date.now();
-        // Similar sits below the fold, so it can afford a wider recovery budget than core PDP modules.
-        const backfillBudgetMs = 28000;
-        const similarInitialTimeoutMs = 10500;
-        const similarRetryTimeoutMs = 14000;
-        const deadlineAt = Date.now() + backfillBudgetMs;
-        const remainingMs = () => deadlineAt - Date.now();
-
-        type ModuleFetchResult = {
-          response: GetPdpV2Response | null;
-          nonRetryable: boolean;
-          code: string;
-        };
-
-        const fetchSimilarWithBudget = async (
-          timeoutCapMs: number,
-          options?: {
-            cacheBypass?: boolean;
-          },
-        ): Promise<ModuleFetchResult> => {
-          const remaining = remainingMs();
-          if (cancelled || remaining <= 120) {
-            return { response: null, nonRetryable: false, code: '' };
-          }
-          const timeoutMs = Math.max(350, Math.min(timeoutCapMs, remaining));
-          try {
-            const response = await getPdpV2({
-              product_id: productId,
-              merchant_id: merchantId,
-              include: ['similar'],
-              timeout_ms: timeoutMs,
-              ...(options?.cacheBypass ? { cache_bypass: true } : {}),
-            });
-            return { response, nonRetryable: false, code: '' };
-          } catch (err) {
-            return {
-              response: null,
-              nonRetryable: isNonRetryablePdpError(err),
-              code: readApiErrorCode(err),
-            };
-          }
-        };
-
-        const shouldRetryTimeout = (result: ModuleFetchResult) =>
-          !result.response && !result.nonRetryable && result.code === 'UPSTREAM_TIMEOUT';
-
-        const extractRecommendations = (payload: PDPPayload | null) =>
-          payload && Array.isArray(payload.modules)
-            ? (payload.modules.find((m) => isRecommendationModuleType(m?.type)) as Module | undefined) || null
-            : null;
-
-        const shouldRetryEmptySimilar = (payload: PDPPayload | null) => {
-          const recommendations = extractRecommendations(payload);
-          const data = recommendations?.data as any;
-          const items = Array.isArray(data?.items) ? data.items : [];
-          const metadata = data?.metadata && typeof data.metadata === 'object' ? data.metadata : {};
-          const reasonCodes = new Set(
-            Array.isArray(metadata.low_confidence_reason_codes)
-              ? metadata.low_confidence_reason_codes
-                  .map((item: unknown) => String(item || '').trim())
-                  .filter(Boolean)
-              : [],
-          );
-
-          return Boolean(
-            recommendations &&
-              items.length === 0 &&
-              (data?.status === 'empty' ||
-                String(metadata.similar_status || '').toLowerCase() === 'unavailable' ||
-                reasonCodes.has('UNDERFILL_FOR_QUALITY')),
-          );
-        };
-
-        let similarOnlyV2 = await fetchSimilarWithBudget(similarInitialTimeoutMs);
-        let similarOnlyPayload: PDPPayload | null = similarOnlyV2.response
-          ? mapPdpV2ToPdpPayload(similarOnlyV2.response)
-          : null;
-
-        if (
-          (shouldRetryTimeout(similarOnlyV2) || shouldRetryEmptySimilar(similarOnlyPayload)) &&
-          remainingMs() > 500
-        ) {
-          const retrySimilarOnlyV2 = await fetchSimilarWithBudget(similarRetryTimeoutMs, {
-            cacheBypass: true,
-          });
-          if (retrySimilarOnlyV2.response || shouldRetryTimeout(similarOnlyV2)) {
-            similarOnlyV2 = retrySimilarOnlyV2;
-            similarOnlyPayload = retrySimilarOnlyV2.response
-              ? mapPdpV2ToPdpPayload(retrySimilarOnlyV2.response)
-              : null;
-          }
-        }
-
-        if (cancelled) return;
-
-        let recModule: Module | null = null;
-        let similarRequestSucceeded = false;
-
-        if (similarOnlyV2.response) {
-          similarRequestSucceeded = true;
-          recModule = extractRecommendations(similarOnlyPayload);
-        }
-
-        const itemsCount = Array.isArray((recModule as any)?.data?.items)
-          ? ((recModule as any).data.items as unknown[]).length
-          : 0;
-        const similarState =
-          recModule || moduleSourceLocksRef.current.similar || similarRequestSucceeded
-            ? 'ready'
-            : 'error';
-
-        setPdpPayload((prev) => {
-          if (!prev) return prev;
-          const mergedSimilar = upsertLockedModule({
-            currentModules: prev.modules,
-            type: 'recommendations',
-            nextModule: recModule as Module | null,
-            locked: moduleSourceLocksRef.current.similar,
-          });
-          moduleSourceLocksRef.current.similar = mergedSimilar.locked;
-          return {
-            ...prev,
-            modules: mergedSimilar.modules,
-            x_recommendations_state: similarState,
-            x_source_locks: {
-              ...(prev.x_source_locks || {}),
-              similar: mergedSimilar.locked,
-            },
-          };
-        });
-
-        pdpTracking.track('pdp_module_ready', {
-          module: 'similar',
-          source: 'get_pdp_v2_similar_backfill',
-          count: itemsCount,
-          frozen: moduleSourceLocksRef.current.similar,
-          similar_request_succeeded: similarRequestSucceeded,
-          backfill_phase_ms: Date.now() - backfillStartedAt,
-          backfill_budget_ms: backfillBudgetMs,
-        });
-      } catch {
-        if (cancelled) return;
-        setPdpPayload((prev) =>
-          prev
-            ? {
-                ...prev,
-                x_recommendations_state: 'error',
-              }
-            : prev,
-        );
-      }
-    };
-
-    void run();
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    loadedViaPdpV2,
-    similarLoadState,
-    progressiveMerchantId,
-    progressiveProductId,
-  ]);
 
   useEffect(() => {
     let cancelled = false;
