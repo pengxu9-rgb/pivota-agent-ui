@@ -752,7 +752,7 @@ export default function ProductDetailPage({ params }: Props) {
           product_id: productId,
           merchant_id: merchantId,
           include: ['offers'],
-          timeout_ms: 8000,
+          timeout_ms: 16000,
         });
         if (cancelled) return;
 

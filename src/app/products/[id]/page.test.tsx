@@ -715,7 +715,7 @@ describe('ProductDetailPage canonical PDP loading', () => {
           product_id: 'prod_1',
           merchant_id: 'merch_a',
           include: ['offers'],
-          timeout_ms: 8000,
+          timeout_ms: 16000,
         }),
       );
     });
