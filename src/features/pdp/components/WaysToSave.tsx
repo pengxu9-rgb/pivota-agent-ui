@@ -22,6 +22,31 @@ function formatProgress(item: SavingsPresentationItem): string | null {
   return null;
 }
 
+function itemToneClass(item: SavingsPresentationItem): string {
+  if (!item.displayOnly) return 'border-emerald-300 bg-emerald-50 text-emerald-800';
+  if (item.group === 'payment_benefit') return 'border-slate-200 bg-slate-50 text-slate-700';
+  if (item.kind === 'free_shipping') return 'border-sky-200 bg-sky-50 text-sky-800';
+  if (item.group === 'cart_unlock') return 'border-amber-200 bg-amber-50 text-amber-800';
+  return 'border-teal-200 bg-teal-50 text-teal-800';
+}
+
+function statusLabel(item: SavingsPresentationItem): string {
+  if (!item.displayOnly) return 'Applied';
+  if (item.group === 'payment_benefit') return 'Estimate';
+  if (item.status === 'available') return 'Checkout';
+  if (item.status === 'unlockable') return 'Unlock';
+  return 'Verify';
+}
+
+function supportingCopy(item: SavingsPresentationItem, progress: string | null): string | null {
+  if (progress) return progress;
+  if (item.group === 'payment_benefit') return 'Depends on the selected payment method.';
+  if (item.kind === 'free_shipping') return 'Depends on delivery address and shipping zone.';
+  if (item.status === 'unverified') return 'Verified at checkout.';
+  if (item.status === 'available') return 'Eligible when checkout pricing confirms it.';
+  return null;
+}
+
 function SavingsGroup({
   title,
   items,
@@ -36,21 +61,18 @@ function SavingsGroup({
       <div className="space-y-1">
         {items.slice(0, 3).map((item) => {
           const progress = formatProgress(item);
+          const detail = supportingCopy(item, progress);
           return (
             <div key={`${item.group}-${item.id}`} className="flex items-start justify-between gap-3 text-xs">
               <div className="min-w-0">
                 <div className="font-medium text-slate-900">{item.badge || item.label}</div>
-                {progress ? (
-                  <div className="mt-0.5 text-[11px] text-slate-500">{progress}</div>
-                ) : item.status === 'unverified' ? (
-                  <div className="mt-0.5 text-[11px] text-slate-500">Verified at checkout</div>
+                {detail ? (
+                  <div className="mt-0.5 text-[11px] text-slate-500">{detail}</div>
                 ) : null}
               </div>
-              {item.displayOnly ? (
-                <span className="shrink-0 rounded-md border border-slate-200 px-1.5 py-0.5 text-[10px] font-medium text-slate-600">
-                  Estimate
-                </span>
-              ) : null}
+              <span className={`shrink-0 rounded-md border px-1.5 py-0.5 text-[10px] font-medium ${itemToneClass(item)}`}>
+                {statusLabel(item)}
+              </span>
             </div>
           );
         })}
@@ -114,7 +136,7 @@ export function WaysToSave({
     <section className="mx-2.5 mt-2 space-y-3 border-t border-slate-200 pt-3 sm:mx-3 lg:mx-0">
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-sm font-semibold text-slate-900">Ways to save</h2>
-        <span className="text-[11px] text-slate-500">Final price verified at checkout</span>
+        <span className="text-[11px] text-slate-500">Charge total changes only after checkout confirms it</span>
       </div>
       <SavingsGroup title="Store offers" items={storeOffers} />
       <SavingsGroup title="Cart offers" items={cartOffers} />

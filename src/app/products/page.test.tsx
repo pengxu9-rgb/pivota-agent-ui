@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import ProductsPage from './page';
 
 const getShoppingDiscoveryFeedMock = vi.fn();
+const getMerchantProductsFeedMock = vi.fn();
 const openCartMock = vi.fn();
 let cartItems: Array<{ quantity: number }> = [];
 let intersectionCallback: ((entries: Array<{ isIntersecting: boolean }>) => void) | null = null;
@@ -19,6 +20,7 @@ vi.mock('framer-motion', () => ({
 
 vi.mock('@/lib/api', () => ({
   getShoppingDiscoveryFeed: (...args: unknown[]) => getShoppingDiscoveryFeedMock(...args),
+  getMerchantProductsFeed: (...args: unknown[]) => getMerchantProductsFeedMock(...args),
 }));
 
 vi.mock('@/components/catalog/CatalogProductCard', () => ({
@@ -63,7 +65,9 @@ describe('ProductsPage', () => {
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
     getShoppingDiscoveryFeedMock.mockReset();
+    getMerchantProductsFeedMock.mockReset();
     openCartMock.mockReset();
+    window.history.pushState({}, '', '/products');
   });
 
   it('keeps the first browse request on the lighter limit with an explicit timeout budget', async () => {
@@ -247,5 +251,44 @@ describe('ProductsPage', () => {
     });
 
     expect(screen.getByText('Cloud Cream')).toBeInTheDocument();
+  });
+
+  it('uses merchant-scoped catalog data when merchant_id is present', async () => {
+    window.history.pushState({}, '', '/products?merchant_id=merch_shop');
+    getMerchantProductsFeedMock.mockResolvedValue({
+      products: [
+        {
+          product_id: 'prod_shop',
+          merchant_id: 'merch_shop',
+          title: 'Shopify Serum',
+        },
+      ],
+      cursor_info: {
+        next_cursor: 'page:2',
+        has_next_page: true,
+      },
+      page_info: {
+        page: 1,
+        page_size: 1,
+        has_more: true,
+      },
+    });
+
+    render(<ProductsPage />);
+
+    await waitFor(() => {
+      expect(getMerchantProductsFeedMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          merchant_id: 'merch_shop',
+          page: 1,
+          limit: 24,
+          timeout_ms: 15000,
+        }),
+      );
+    });
+
+    expect(getShoppingDiscoveryFeedMock).not.toHaveBeenCalled();
+    expect(screen.getByText('Merchant products')).toBeInTheDocument();
+    expect(screen.getByText('Shopify Serum')).toBeInTheDocument();
   });
 });

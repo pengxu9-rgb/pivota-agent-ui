@@ -5,7 +5,7 @@ import type { Offer, Variant } from '@/features/pdp/types';
 import { cn } from '@/lib/utils';
 import { ResponsiveSheet } from '@/features/pdp/components/ResponsiveSheet';
 import { resolveOfferPricing } from '@/features/pdp/utils/offerVariantMatching';
-import { buildSavingsPresentation, getSummaryBadges } from '@/lib/savingsPresentation';
+import { buildSavingsPresentation, getSummaryBadgeItems, type SavingsSummaryBadgeTone } from '@/lib/savingsPresentation';
 
 function formatPrice(amount: number, currency: string) {
   const n = Number.isFinite(amount) ? amount : 0;
@@ -49,6 +49,14 @@ function getSellerLabel(offer: Offer): string {
   });
   if (displayName) return displayName;
   return 'Unknown seller';
+}
+
+function savingsChipClass(tone: SavingsSummaryBadgeTone): string {
+  if (tone === 'applied') return 'border-emerald-300 bg-emerald-50 text-emerald-800';
+  if (tone === 'store') return 'border-teal-200 bg-teal-50 text-teal-800';
+  if (tone === 'unlock') return 'border-amber-200 bg-amber-50 text-amber-800';
+  if (tone === 'shipping') return 'border-sky-200 bg-sky-50 text-sky-800';
+  return 'border-slate-200 bg-slate-50 text-slate-700';
 }
 
 export function OfferSheet({
@@ -154,7 +162,7 @@ export function OfferSheet({
             pricing: { total, currency },
             currency,
           });
-          const savingsBadges = getSummaryBadges(savings, 3);
+          const savingsBadges = getSummaryBadgeItems(savings, 3);
           const hasCartValue = savings.cartUnlocks.some((item) => item.status === 'available');
 
           return (
@@ -214,10 +222,10 @@ export function OfferSheet({
                     <div className="mt-2 flex flex-wrap gap-1">
                       {savingsBadges.map((badge) => (
                         <span
-                          key={badge}
-                          className="rounded-md border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-medium text-slate-700"
+                          key={`${badge.tone}-${badge.label}`}
+                          className={`rounded-md border px-1.5 py-0.5 text-[10px] font-medium ${savingsChipClass(badge.tone)}`}
                         >
-                          {badge}
+                          {badge.label}
                         </span>
                       ))}
                     </div>

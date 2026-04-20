@@ -9,6 +9,7 @@ import {
   CatalogProductSkeleton,
 } from '@/components/catalog/CatalogProductCard';
 import {
+  getMerchantProductsFeed,
   getShoppingDiscoveryFeed,
   type ProductResponse,
 } from '@/lib/api';
@@ -34,6 +35,7 @@ export default function ProductsPage() {
   const [products, setProducts] = useState<ProductResponse[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeQuery, setActiveQuery] = useState('');
+  const [merchantScope, setMerchantScope] = useState('');
   const [loading, setLoading] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
@@ -45,6 +47,7 @@ export default function ProductsPage() {
   const searchRequestSeqRef = useRef(0);
   const noGrowthCountRef = useRef(0);
   const activeQueryRef = useRef('');
+  const merchantScopeRef = useRef('');
   const nextCursorRef = useRef<string | null>(null);
   const loadMoreInFlightCursorRef = useRef<string | null>(null);
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
@@ -80,18 +83,32 @@ export default function ProductsPage() {
         let nextCursorFromResponse: string | null = null;
         let hasMoreFromResponse = false;
 
-        const result = await getShoppingDiscoveryFeed({
-          surface: 'browse_products',
-          cursor,
-          limit: append ? GRID_APPEND_PAGE_SIZE : GRID_INITIAL_PAGE_SIZE,
-          ...(trimmed ? { query: trimmed } : {}),
-          signal: controller.signal,
-          timeout_ms: GRID_DISCOVERY_TIMEOUT_MS,
-          // Browse is a full-catalog surface. Do not pass behavior history here:
-          // public browse/search should remain stable and cursor-safe.
-          recentViews: [],
-          recentQueries: [],
-        });
+        const merchantId = merchantScopeRef.current;
+        const pageFromCursor =
+          cursor && /^page:\d+$/i.test(cursor)
+            ? Math.max(1, Number(cursor.replace(/^page:/i, '')) || 1)
+            : 1;
+        const result = merchantId
+          ? await getMerchantProductsFeed({
+              merchant_id: merchantId,
+              page: pageFromCursor,
+              limit: append ? GRID_APPEND_PAGE_SIZE : GRID_INITIAL_PAGE_SIZE,
+              ...(trimmed ? { query: trimmed } : {}),
+              signal: controller.signal,
+              timeout_ms: GRID_DISCOVERY_TIMEOUT_MS,
+            })
+          : await getShoppingDiscoveryFeed({
+              surface: 'browse_products',
+              cursor,
+              limit: append ? GRID_APPEND_PAGE_SIZE : GRID_INITIAL_PAGE_SIZE,
+              ...(trimmed ? { query: trimmed } : {}),
+              signal: controller.signal,
+              timeout_ms: GRID_DISCOVERY_TIMEOUT_MS,
+              // Browse is a full-catalog surface. Do not pass behavior history here:
+              // public browse/search should remain stable and cursor-safe.
+              recentViews: [],
+              recentQueries: [],
+            });
         fetchedProducts = result.products;
         nextCursorFromResponse = result.cursor_info?.next_cursor || null;
         hasMoreFromResponse = result.cursor_info?.has_next_page ?? result.page_info.has_more;
@@ -181,7 +198,11 @@ export default function ProductsPage() {
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const q = new URLSearchParams(window.location.search).get('q')?.trim() || '';
+    const params = new URLSearchParams(window.location.search);
+    const merchantId = params.get('merchant_id')?.trim() || params.get('merchantId')?.trim() || '';
+    merchantScopeRef.current = merchantId;
+    setMerchantScope(merchantId);
+    const q = params.get('q')?.trim() || '';
     if (q) {
       handleSearch(q, { immediate: true });
       return;
@@ -267,7 +288,7 @@ export default function ProductsPage() {
                   <ArrowLeft className="h-3.5 w-3.5" strokeWidth={2.2} />
                 </button>
                 <h1 className="text-[1.6rem] font-semibold tracking-[-0.045em] text-[#111827] sm:text-[1.95rem]">
-                  Browse products
+                  {merchantScope ? 'Merchant products' : 'Browse products'}
                 </h1>
               </div>
               {loading && hasLoadedOnce ? (
@@ -281,6 +302,8 @@ export default function ProductsPage() {
                 <p className="text-[12px] text-[#667085]">
                   Showing results for <span className="font-medium text-slate-900">“{activeQuery}”</span>
                 </p>
+              ) : merchantScope ? (
+                <p className="text-[12px] text-[#667085]">Showing this merchant&apos;s catalog</p>
               ) : null}
             </div>
 

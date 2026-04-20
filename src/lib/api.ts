@@ -2473,6 +2473,105 @@ export async function getShoppingDiscoveryFeed(args: {
   };
 }
 
+export async function getMerchantProductsFeed(args: {
+  merchant_id: string;
+  page?: number;
+  limit?: number;
+  query?: string;
+  signal?: AbortSignal;
+  timeout_ms?: number;
+}): Promise<ShoppingDiscoveryFeedResult> {
+  const merchantId = String(args.merchant_id || '').trim();
+  if (!merchantId) {
+    return {
+      products: [],
+      metadata: { query_source: 'merchant_products_missing_merchant_id' },
+      cursor_info: { next_cursor: null, has_next_page: false },
+      page_info: { page: 1, page_size: 0, has_more: false },
+    };
+  }
+
+  const requestedLimit = clampSearchLimit(args.limit, 20);
+  const requestedPage =
+    Number.isFinite(Number(args.page)) && Number(args.page)! > 0
+      ? Math.floor(Number(args.page))
+      : 1;
+  const queryText = String(args.query || '').trim();
+
+  const data = await callGatewayWithTimeout(
+    {
+      operation: 'find_products',
+      payload: {
+        search: {
+          merchant_id: merchantId,
+          search_all_merchants: false,
+          in_stock_only: false,
+          query: queryText,
+          limit: requestedLimit,
+          page: requestedPage,
+          allow_external_seed: false,
+          allow_stale_cache: false,
+        },
+      },
+      metadata: {
+        entry: 'plp',
+        scope: {
+          catalog: 'merchant',
+        },
+      },
+    },
+    {
+      signal: args.signal,
+      timeoutMs: Number.isFinite(Number(args.timeout_ms))
+        ? Number(args.timeout_ms)
+        : 12000,
+    },
+  );
+
+  const products = ((data as any).products || []).map(
+    (p: RealAPIProduct | ProductResponse) => normalizeProduct(p),
+  );
+  const metadata =
+    data && typeof data === 'object' && data.metadata && typeof (data as any).metadata === 'object'
+      ? ((data as any).metadata as Record<string, any>)
+      : {};
+  const responsePageRaw = Number((data as any)?.page);
+  const responsePageSizeRaw = Number((data as any)?.page_size ?? (data as any)?.pageSize);
+  const responseTotalRaw = Number((data as any)?.total);
+  const page = Number.isFinite(responsePageRaw) && responsePageRaw > 0
+    ? Math.floor(responsePageRaw)
+    : requestedPage;
+  const pageSize = Number.isFinite(responsePageSizeRaw) && responsePageSizeRaw >= 0
+    ? Math.floor(responsePageSizeRaw)
+    : products.length;
+  const total =
+    Number.isFinite(responseTotalRaw) && responseTotalRaw >= 0
+      ? Math.floor(responseTotalRaw)
+      : undefined;
+  const hasMore = typeof total === 'number'
+    ? page * requestedLimit < total
+    : products.length >= requestedLimit;
+
+  return {
+    products,
+    metadata: {
+      ...metadata,
+      merchant_id: merchantId,
+      query_source: metadata.query_source || (data as any)?.query_source || 'merchant_products',
+    },
+    cursor_info: {
+      next_cursor: hasMore ? `page:${page + 1}` : null,
+      has_next_page: hasMore,
+    },
+    page_info: {
+      page,
+      page_size: pageSize,
+      ...(typeof total === 'number' ? { total } : {}),
+      has_more: hasMore,
+    },
+  };
+}
+
 // Generic product list (Hot Deals, history, etc.)
 export async function getAllProducts(
   limit = 20,

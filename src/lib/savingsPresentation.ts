@@ -35,6 +35,16 @@ export type SavingsCheckoutRow = {
   displayOnly: boolean;
 };
 
+export type SavingsSummaryBadgeTone = 'applied' | 'store' | 'unlock' | 'shipping' | 'payment';
+
+export type SavingsSummaryBadge = {
+  label: string;
+  group: SavingsGroup;
+  source: SavingsSource;
+  tone: SavingsSummaryBadgeTone;
+  displayOnly: boolean;
+};
+
 export type SavingsPresentationModel = {
   contractVersion: 'savings.v1';
   appliedStoreDiscounts: SavingsPresentationItem[];
@@ -204,6 +214,58 @@ function paymentOfferToItem(raw: any, index: number, fallbackCurrency?: string |
   };
 }
 
+function summaryToneForItem(item: SavingsPresentationItem): SavingsSummaryBadgeTone {
+  if (item.group === 'applied_store') return 'applied';
+  if (item.group === 'payment_benefit') return 'payment';
+  if (item.kind === 'free_shipping') return 'shipping';
+  if (item.group === 'cart_unlock') return 'unlock';
+  return 'store';
+}
+
+function summaryPriority(item: SavingsPresentationItem): number {
+  if (item.group === 'applied_store') return 0;
+  if (item.group === 'available_store') return 1;
+  if (item.kind === 'free_shipping') return 3;
+  if (item.group === 'cart_unlock') return 2;
+  if (item.group === 'payment_benefit') return 4;
+  return 9;
+}
+
+function normalizeSummaryLabel(item: SavingsPresentationItem): string {
+  const label = nonEmpty(item.badge) || nonEmpty(item.label);
+  if (!label) return '';
+  if (item.group !== 'payment_benefit') return label;
+  return /^pay with\b/i.test(label) ? label : label;
+}
+
+function buildSummaryBadgeItems(items: SavingsPresentationItem[], max: number): SavingsSummaryBadge[] {
+  const sorted = [...items]
+    .filter((item) => normalizeSummaryLabel(item))
+    .sort((a, b) => {
+      const priority = summaryPriority(a) - summaryPriority(b);
+      if (priority !== 0) return priority;
+      return normalizeSummaryLabel(a).localeCompare(normalizeSummaryLabel(b));
+    });
+
+  const out: SavingsSummaryBadge[] = [];
+  const seen = new Set<string>();
+  for (const item of sorted) {
+    const label = normalizeSummaryLabel(item);
+    const key = label.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({
+      label,
+      group: item.group,
+      source: item.source,
+      tone: summaryToneForItem(item),
+      displayOnly: item.displayOnly,
+    });
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
 export function buildSavingsPresentation(input: BuildSavingsPresentationInput): SavingsPresentationModel {
   const currency =
     nonEmpty(input.currency) ||
@@ -243,12 +305,15 @@ export function buildSavingsPresentation(input: BuildSavingsPresentationInput): 
       ? Math.max(0, checkoutTotal - estimatedPaymentBenefit)
       : null);
 
-  const summaryBadges = uniqueStrings([
-    ...appliedStoreDiscounts.map((item) => item.badge),
-    ...cartUnlocks.map((item) => item.badge),
-    ...availableStoreOffers.map((item) => item.badge),
-    ...paymentBenefits.map((item) => item.badge),
-  ]).slice(0, 2);
+  const summaryBadges = buildSummaryBadgeItems(
+    [
+      ...appliedStoreDiscounts,
+      ...availableStoreOffers,
+      ...cartUnlocks,
+      ...paymentBenefits,
+    ],
+    2,
+  ).map((item) => item.label);
 
   const checkoutRows: SavingsCheckoutRow[] = [
     ...appliedStoreDiscounts
@@ -311,4 +376,16 @@ export function buildSavingsPresentation(input: BuildSavingsPresentationInput): 
 
 export function getSummaryBadges(model: SavingsPresentationModel, max = 2): string[] {
   return uniqueStrings(model.summaryBadges).slice(0, Math.max(0, max));
+}
+
+export function getSummaryBadgeItems(model: SavingsPresentationModel, max = 2): SavingsSummaryBadge[] {
+  return buildSummaryBadgeItems(
+    [
+      ...model.appliedStoreDiscounts,
+      ...model.availableStoreOffers,
+      ...model.cartUnlocks,
+      ...model.paymentBenefits,
+    ],
+    Math.max(0, max),
+  );
 }

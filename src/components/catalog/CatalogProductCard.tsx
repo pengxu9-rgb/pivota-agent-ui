@@ -9,7 +9,12 @@ import type { ProductResponse } from '@/lib/api';
 import { resolveProductCardPresentation } from '@/lib/productCardPresentation';
 import { buildProductHref } from '@/lib/productHref';
 import { appendCurrentPathAsReturn } from '@/lib/returnUrl';
-import { buildSavingsPresentation, getSummaryBadges } from '@/lib/savingsPresentation';
+import {
+  buildSavingsPresentation,
+  getSummaryBadgeItems,
+  type SavingsSummaryBadge,
+  type SavingsSummaryBadgeTone,
+} from '@/lib/savingsPresentation';
 import { useCartStore } from '@/store/cartStore';
 import { toast } from 'sonner';
 
@@ -25,6 +30,72 @@ function formatCatalogPrice(price: number, currency = 'USD'): string {
   }
 }
 
+function savingsChipClass(tone: SavingsSummaryBadgeTone): string {
+  if (tone === 'applied') return 'border-emerald-300 bg-emerald-50 text-emerald-800';
+  if (tone === 'store') return 'border-teal-200 bg-teal-50 text-teal-800';
+  if (tone === 'unlock') return 'border-amber-200 bg-amber-50 text-amber-800';
+  if (tone === 'shipping') return 'border-sky-200 bg-sky-50 text-sky-800';
+  return 'border-slate-200 bg-slate-50 text-slate-700';
+}
+
+function hasEvidenceOffers(value: unknown): boolean {
+  return Boolean(
+    value &&
+      typeof value === 'object' &&
+      Array.isArray((value as any).offers) &&
+      (value as any).offers.length > 0,
+  );
+}
+
+function pickOfferSavingsSource(product: ProductResponse): any | null {
+  const offers = Array.isArray(product.offers) ? product.offers.filter(Boolean) : [];
+  if (!offers.length) return null;
+  const preferredIds = [product.best_price_offer_id, product.default_offer_id]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean);
+  const hasOfferSavings = (offer: any) =>
+    hasEvidenceOffers(offer?.store_discount_evidence) || hasEvidenceOffers(offer?.payment_offer_evidence);
+
+  for (const id of preferredIds) {
+    const preferred = offers.find((offer: any) => String(offer?.offer_id || '').trim() === id);
+    if (preferred && hasOfferSavings(preferred)) return preferred;
+  }
+  return offers.find((offer: any) => hasOfferSavings(offer)) || null;
+}
+
+function hasMultipleSellerOffers(product: ProductResponse): boolean {
+  const sellerIds = new Set<string>();
+  if (Array.isArray(product.offers)) {
+    for (const offer of product.offers as any[]) {
+      const merchantId = String(offer?.merchant_id || '').trim();
+      if (merchantId) sellerIds.add(merchantId);
+    }
+  }
+  if (Array.isArray(product.group_members)) {
+    for (const member of product.group_members) {
+      const merchantId = String(member?.merchant_id || '').trim();
+      if (merchantId) sellerIds.add(merchantId);
+    }
+  }
+  return sellerIds.size > 1 || Number(product.offers_count || 0) > 1;
+}
+
+function addMultiOfferCaution(
+  badges: SavingsSummaryBadge[],
+  product: ProductResponse,
+): SavingsSummaryBadge[] {
+  if (!badges.length || !hasMultipleSellerOffers(product)) return badges;
+  const caution: SavingsSummaryBadge = {
+    label: 'Offers vary by seller',
+    group: 'available_store',
+    source: 'store_metadata',
+    tone: 'payment',
+    displayOnly: true,
+  };
+  if (badges.length === 1) return [...badges, caution];
+  return [badges[0], caution];
+}
+
 export function CatalogProductCard({ product }: { product: ProductResponse }) {
   const router = useRouter();
   const addItem = useCartStore((state) => state.addItem);
@@ -34,19 +105,28 @@ export function CatalogProductCard({ product }: { product: ProductResponse }) {
   const href = buildProductHref(product.product_id, product.merchant_id);
   const hrefWithReturn = appendCurrentPathAsReturn(href);
   const card = resolveProductCardPresentation(product);
-  const savingsBadges = getSummaryBadges(
-    buildSavingsPresentation({
-      product: product as any,
-      store_discount_evidence: product.store_discount_evidence,
-      payment_offer_evidence: product.payment_offer_evidence,
-      payment_pricing: product.payment_pricing,
-      pricing: { total: product.price, currency: product.currency },
-      currency: product.currency,
-    }),
-    2,
-  );
+  const offerSavingsSource = pickOfferSavingsSource(product);
+  const storeDiscountEvidence = hasEvidenceOffers(product.store_discount_evidence)
+    ? product.store_discount_evidence
+    : offerSavingsSource?.store_discount_evidence;
+  const paymentOfferEvidence = hasEvidenceOffers(product.payment_offer_evidence)
+    ? product.payment_offer_evidence
+    : offerSavingsSource?.payment_offer_evidence;
+  const paymentPricing = product.payment_pricing || offerSavingsSource?.payment_pricing;
+  const multipleSellerOffers = hasMultipleSellerOffers(product);
+  const savingsModel = buildSavingsPresentation({
+    product: product as any,
+    offer: offerSavingsSource,
+    store_discount_evidence: storeDiscountEvidence,
+    payment_offer_evidence: paymentOfferEvidence,
+    payment_pricing: paymentPricing,
+    pricing: { total: product.price, currency: product.currency },
+    currency: product.currency,
+  });
+  const savingsBadges = addMultiOfferCaution(getSummaryBadgeItems(savingsModel, 2), product);
   const compactCopy = card.highlight || card.subtitle;
   const isIdentityGrouped =
+    multipleSellerOffers ||
     Boolean(product.sellable_item_group_id) ||
     product.canonical_scope === 'synthetic' ||
     (Array.isArray(product.group_members) && product.group_members.length > 1);
@@ -94,7 +174,7 @@ export function CatalogProductCard({ product }: { product: ProductResponse }) {
   return (
     <div className="group relative">
       <Link href={hrefWithReturn} prefetch={false} className="block h-full">
-        <article className="h-full overflow-hidden rounded-[16px] border border-[#f3ede5] bg-white shadow-[0_6px_18px_rgba(15,23,42,0.045)] transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_12px_22px_rgba(15,23,42,0.07)]">
+        <article className="h-full overflow-hidden rounded-lg border border-slate-200 bg-white shadow-[0_6px_18px_rgba(15,23,42,0.045)] transition duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_12px_22px_rgba(15,23,42,0.07)]">
           <div className="relative aspect-[4/5] overflow-hidden bg-[#f7f3ee]">
             <Image
               src={imageSrc}
@@ -108,7 +188,7 @@ export function CatalogProductCard({ product }: { product: ProductResponse }) {
             />
 
             {card.badge ? (
-              <span className="absolute left-2 top-2 rounded-full bg-white/96 px-2 py-1 text-[10px] font-semibold tracking-[-0.01em] text-slate-700 shadow-sm">
+              <span className="absolute left-2 top-2 rounded-md bg-white/96 px-2 py-1 text-[10px] font-semibold tracking-normal text-slate-700 shadow-sm">
                 {card.badge}
               </span>
             ) : null}
@@ -127,17 +207,18 @@ export function CatalogProductCard({ product }: { product: ProductResponse }) {
 
             <div>
               <p className="text-[14px] font-semibold tracking-[-0.015em] text-[#111827] sm:text-[14.5px]">
-                {formatCatalogPrice(product.price, product.currency)}
+                {multipleSellerOffers ? 'From ' : ''}{formatCatalogPrice(product.price, product.currency)}
               </p>
             </div>
             {savingsBadges.length ? (
               <div className="flex min-h-[1.25rem] flex-wrap gap-1">
                 {savingsBadges.map((badge) => (
                   <span
-                    key={badge}
-                    className="rounded-md border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium leading-4 text-emerald-800"
+                    key={`${badge.tone}-${badge.label}`}
+                    data-savings-tone={badge.tone}
+                    className={`rounded-md border px-1.5 py-0.5 text-[10px] font-medium leading-4 ${savingsChipClass(badge.tone)}`}
                   >
-                    {badge}
+                    {badge.label}
                   </span>
                 ))}
               </div>
