@@ -459,8 +459,19 @@ export default function ProductDetailPage({ params }: Props) {
 
   const { addItem, open } = useCartStore();
   const inferredMerchantId = inferCanonicalPdpMerchantId(id, merchantIdParam);
-  const progressiveMerchantId = String(pdpPayload?.product?.merchant_id || '').trim();
-  const progressiveProductId = String(pdpPayload?.product?.product_id || id || '').trim();
+  const progressiveMerchantId = String(
+    merchantIdParam ||
+      pdpPayload?.selected_commerce_ref?.merchant_id ||
+      pdpPayload?.product?.merchant_id ||
+      '',
+  ).trim();
+  const progressiveProductId = String(
+    (merchantIdParam ? id : null) ||
+      pdpPayload?.selected_commerce_ref?.product_id ||
+      pdpPayload?.product?.product_id ||
+      id ||
+      '',
+  ).trim();
   const offersLoadState = pdpPayload?.x_offers_state;
   const reviewsLoadState = pdpPayload?.x_reviews_state;
   const similarLoadState = pdpPayload?.x_recommendations_state;
