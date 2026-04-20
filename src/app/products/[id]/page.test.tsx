@@ -90,6 +90,8 @@ vi.mock('@/features/pdp/containers/GenericPDPContainer', () => ({
     payload: {
       product: { title: string; merchant_id?: string; product_id?: string; variants?: any[] };
       offers?: any[];
+      offers_count?: number;
+      x_offers_state?: string;
       modules?: Array<{ type?: string; data?: { items?: unknown[]; review_count?: number } }>;
       x_reviews_state?: string;
       x_recommendations_state?: string;
@@ -132,6 +134,8 @@ vi.mock('@/features/pdp/containers/GenericPDPContainer', () => ({
       <div data-testid="recommendations-count">
         {payload.modules?.find((module) => module.type === 'recommendations')?.data?.items?.length ?? 0}
       </div>
+      <div data-testid="offers-count">{payload.offers?.length ?? 0}</div>
+      <div data-testid="offers-state">{payload.x_offers_state ?? ''}</div>
       <div data-testid="reviews-count">
         {payload.modules?.find((module) => module.type === 'reviews_preview')?.data?.review_count ?? 0}
       </div>
@@ -656,6 +660,68 @@ describe('ProductDetailPage canonical PDP loading', () => {
     await waitFor(() => {
       expect(screen.getByTestId('recommendations-state')).toHaveTextContent('ready');
       expect(screen.getByTestId('recommendations-count')).toHaveTextContent('2');
+    });
+  });
+
+  it('backfills offers when the initial payload has fewer offers than offers_count', async () => {
+    const initialPayload = {
+      ...canonicalPayload,
+      product: {
+        ...canonicalPayload.product,
+        merchant_id: 'merch_a',
+        product_id: 'prod_1',
+      },
+      offers: [
+        {
+          offer_id: 'offer_initial',
+          merchant_id: 'merch_a',
+          product_id: 'prod_1',
+          price: { amount: 28, currency: 'USD' },
+        },
+      ],
+      offers_count: 2,
+    };
+    const completeOffersPayload = {
+      ...initialPayload,
+      offers: [
+        initialPayload.offers[0],
+        {
+          offer_id: 'offer_external',
+          merchant_id: 'external_seed',
+          product_id: 'ext_1',
+          price: { amount: 30, currency: 'USD' },
+        },
+      ],
+      offers_count: 2,
+    };
+
+    getPdpV2Mock.mockImplementation(async (args: { include?: string[] }) => {
+      if (Array.isArray(args?.include) && args.include.length === 1 && args.include[0] === 'offers') {
+        return { kind: 'offers-success' };
+      }
+      return { kind: 'initial' };
+    });
+    mapPdpV2ToPdpPayloadMock.mockImplementation((response: { kind?: string }) => {
+      if (response?.kind === 'offers-success') return completeOffersPayload;
+      return initialPayload;
+    });
+
+    renderPage();
+
+    await screen.findByTestId('generic-pdp');
+    await waitFor(() => {
+      expect(getPdpV2Mock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          product_id: 'prod_1',
+          merchant_id: 'merch_a',
+          include: ['offers'],
+          timeout_ms: 8000,
+        }),
+      );
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId('offers-count')).toHaveTextContent('2');
+      expect(screen.getByTestId('offers-state')).toHaveTextContent('ready');
     });
   });
 

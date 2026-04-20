@@ -597,7 +597,13 @@ export default function ProductDetailPage({ params }: Props) {
         source: 'get_pdp_v2' | 'get_pdp_v2_core_retry',
         startedAt: number,
       ) => {
-        const hasOffers = Array.isArray((assembled as any).offers) && (assembled as any).offers.length > 0;
+        const offerRows = Array.isArray((assembled as any).offers) ? (assembled as any).offers : [];
+        const expectedOffersCount = Number((assembled as any).offers_count);
+        const hasCompleteOffers =
+          offerRows.length > 0 &&
+          (!Number.isFinite(expectedOffersCount) ||
+            expectedOffersCount <= 0 ||
+            offerRows.length >= expectedOffersCount);
         const hasReviewsModule = hasModule(assembled, 'reviews_preview');
         const hasSimilarModule = hasModule(assembled, 'recommendations');
         const hasRecommendations = hasRecommendationsItems(assembled);
@@ -619,7 +625,7 @@ export default function ProductDetailPage({ params }: Props) {
 
         setPdpPayload({
           ...assembled,
-          ...(hasOffers ? {} : { x_offers_state: 'loading' }),
+          ...(hasCompleteOffers ? {} : { x_offers_state: 'loading' }),
           x_reviews_state: hasReviewsModule ? 'ready' : 'loading',
           x_recommendations_state: hasSimilarModule ? 'ready' : 'loading',
           x_source_locks: {
@@ -631,7 +637,9 @@ export default function ProductDetailPage({ params }: Props) {
         pdpTracking.track('pdp_core_ready', {
           source,
           latency_ms: Date.now() - startedAt,
-          has_offers: hasOffers,
+          has_offers: offerRows.length > 0,
+          offers_count: Number.isFinite(expectedOffersCount) ? expectedOffersCount : null,
+          offers_loaded_count: offerRows.length,
           has_reviews_module: hasReviewsModule,
           has_similar_module: hasSimilarModule,
         });
