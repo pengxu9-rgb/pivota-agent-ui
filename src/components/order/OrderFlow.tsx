@@ -552,6 +552,89 @@ function normalizeStripeWalletType(methodType: string | null | undefined): strin
   return null
 }
 
+type PaymentOfferContextFallbacks = {
+  psp?: unknown
+  payment_method_type?: unknown
+  wallet_type?: unknown
+  card_network?: unknown
+  issuer_name?: unknown
+  installment_provider?: unknown
+}
+
+function normalizedPaymentOfferValue(value: unknown): string | null {
+  const normalized = String(value || '').trim().toLowerCase()
+  return normalized || null
+}
+
+export function buildPaymentOfferContextFromEvidence(
+  evidence?: Record<string, any> | null,
+  fallbacks: PaymentOfferContextFallbacks = {},
+): Record<string, string> | null {
+  const psp = normalizedPaymentOfferValue(evidence?.psp ?? fallbacks.psp)
+  const methodTypeRaw = normalizedPaymentOfferValue(
+    evidence?.payment_method_type ??
+      evidence?.selected_payment_method_type ??
+      fallbacks.payment_method_type,
+  )
+  const walletType =
+    normalizedPaymentOfferValue(evidence?.wallet_type ?? fallbacks.wallet_type) ||
+    normalizeStripeWalletType(methodTypeRaw)
+  const cardNetwork = normalizedPaymentOfferValue(evidence?.card_network ?? fallbacks.card_network)
+  const issuerName = normalizedPaymentOfferValue(evidence?.issuer_name ?? fallbacks.issuer_name)
+  const installmentProvider = normalizedPaymentOfferValue(
+    evidence?.installment_provider ?? fallbacks.installment_provider,
+  )
+  const context = {
+    ...(psp ? { psp } : {}),
+    ...(methodTypeRaw ? { payment_method_type: walletType ? 'wallet' : methodTypeRaw } : {}),
+    ...(walletType ? { wallet_type: walletType } : {}),
+    ...(cardNetwork ? { card_network: cardNetwork } : {}),
+    ...(issuerName ? { issuer_name: issuerName } : {}),
+    ...(installmentProvider ? { installment_provider: installmentProvider } : {}),
+  }
+  return Object.keys(context).length ? context : null
+}
+
+export function paymentOfferMatchesCurrentEvidence(
+  offer: any,
+  context?: Record<string, any> | null,
+): boolean {
+  if (!offer || typeof offer !== 'object' || !context) return false
+  const requirements =
+    offer.requirements && typeof offer.requirements === 'object' ? offer.requirements : {}
+  const requiredKeys = Object.keys(requirements).filter((key) =>
+    Boolean(normalizedPaymentOfferValue(requirements[key])),
+  )
+  if (!requiredKeys.length) return false
+  return requiredKeys.every((key) => {
+    const required = normalizedPaymentOfferValue(requirements[key])
+    const actual = normalizedPaymentOfferValue(context[key])
+    return Boolean(required && actual && required === actual)
+  })
+}
+
+export function pickSelectedPaymentOfferIdFromEvidence(
+  paymentOfferEvidence?: Record<string, any> | null,
+  evidence?: Record<string, any> | null,
+  fallbacks: PaymentOfferContextFallbacks = {},
+): string | null {
+  const offers = Array.isArray(paymentOfferEvidence?.offers) ? paymentOfferEvidence.offers : []
+  if (!offers.length || !evidence) return null
+  const context = buildPaymentOfferContextFromEvidence(evidence, fallbacks)
+  const explicitOfferId = normalizedPaymentOfferValue(evidence.selected_payment_offer_id)
+
+  if (explicitOfferId) {
+    const explicit = offers.find((offer: any) => {
+      const offerId = normalizedPaymentOfferValue(offer?.payment_offer_id)
+      return offerId === explicitOfferId && paymentOfferMatchesCurrentEvidence(offer, context)
+    })
+    if (explicit?.payment_offer_id) return String(explicit.payment_offer_id)
+  }
+
+  const matched = offers.find((offer: any) => paymentOfferMatchesCurrentEvidence(offer, context))
+  return matched?.payment_offer_id ? String(matched.payment_offer_id) : null
+}
+
 function formatStripePaymentMethodLabel(methodType: string | null | undefined): string | null {
   const normalized = String(methodType || '').trim().toLowerCase()
   if (!normalized) return null
@@ -1357,47 +1440,22 @@ function OrderFlowInner({
 
   const buildCurrentPaymentContext = useCallback(
     (evidence?: Record<string, any> | null): Record<string, any> | null => {
-      const psp = String((evidence?.psp || pspUsed || requestedPreferredPsp || FORCE_PSP || 'stripe') || '').trim()
-      const methodType = String(
-        evidence?.payment_method_type ||
-          evidence?.selected_payment_method_type ||
-          stripeSelectedMethodType ||
-          '',
-      ).trim()
-      const walletType = String(evidence?.wallet_type || normalizeStripeWalletType(methodType) || '').trim()
-      const context = {
-        ...(psp ? { psp } : {}),
-        ...(methodType ? { payment_method_type: walletType ? 'wallet' : methodType } : {}),
-        ...(walletType ? { wallet_type: walletType } : {}),
-        ...(evidence?.card_network ? { card_network: evidence.card_network } : {}),
-        ...(evidence?.issuer_name ? { issuer_name: evidence.issuer_name } : {}),
-        ...(evidence?.installment_provider ? { installment_provider: evidence.installment_provider } : {}),
-      }
-      return Object.keys(context).length ? context : null
+      return buildPaymentOfferContextFromEvidence(evidence, {
+        psp: pspUsed || requestedPreferredPsp || FORCE_PSP || 'stripe',
+        payment_method_type: stripeSelectedMethodType,
+      })
     },
     [pspUsed, requestedPreferredPsp, stripeSelectedMethodType],
   )
 
   const pickSelectedPaymentOfferId = useCallback(
     (evidence?: Record<string, any> | null): string | null => {
-      const offers = Array.isArray(quote?.payment_offer_evidence?.offers)
-        ? quote.payment_offer_evidence.offers
-        : []
-      if (!offers.length || !evidence) return null
-      const context = buildCurrentPaymentContext(evidence) || {}
-      const matchesRequirements = (offer: any) => {
-        const requirements = offer?.requirements && typeof offer.requirements === 'object' ? offer.requirements : {}
-        const requiredKeys = Object.keys(requirements).filter((key) => String(requirements[key] || '').trim())
-        if (!requiredKeys.length) return false
-        return requiredKeys.every((key) => String(requirements[key]).toLowerCase() === String((context as any)[key] || '').toLowerCase())
-      }
-      const matched = offers.find((offer: any) => {
-        const status = String(offer?.eligibility?.status || '').trim().toLowerCase()
-        return ['context_matched', 'psp_verified'].includes(status) || matchesRequirements(offer)
+      return pickSelectedPaymentOfferIdFromEvidence(quote?.payment_offer_evidence, evidence, {
+        psp: pspUsed || requestedPreferredPsp || FORCE_PSP || 'stripe',
+        payment_method_type: stripeSelectedMethodType,
       })
-      return matched?.payment_offer_id ? String(matched.payment_offer_id) : null
     },
-    [buildCurrentPaymentContext, quote?.payment_offer_evidence],
+    [pspUsed, quote?.payment_offer_evidence, requestedPreferredPsp, stripeSelectedMethodType],
   )
 
   const recordPaymentMethodEvidence = useCallback(

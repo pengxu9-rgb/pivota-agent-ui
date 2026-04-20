@@ -9,8 +9,11 @@ vi.mock('@stripe/stripe-js', () => ({
 }))
 
 import {
+  buildPaymentOfferContextFromEvidence,
   clearStripePromiseCacheForTests,
   hasAvailableStripeExpressWallets,
+  paymentOfferMatchesCurrentEvidence,
+  pickSelectedPaymentOfferIdFromEvidence,
   prewarmStripeRuntime,
   resolveCheckoutPaymentMethodHint,
   resolveStripeAccount,
@@ -124,5 +127,89 @@ describe('resolveStripePublishableKey', () => {
     expect(loadStripeMock).toHaveBeenNthCalledWith(2, 'pk_live_platform', {
       stripeAccount: 'acct_live_two',
     })
+  })
+
+  it('does not select a network-specific payment offer from generic card evidence', () => {
+    const paymentOfferEvidence = {
+      offers: [
+        {
+          payment_offer_id: 'mc_5',
+          eligibility: { status: 'context_matched' },
+          requirements: {
+            psp: 'stripe',
+            payment_method_type: 'card',
+            card_network: 'mastercard',
+          },
+        },
+      ],
+    }
+
+    expect(
+      pickSelectedPaymentOfferIdFromEvidence(paymentOfferEvidence, {
+        psp: 'stripe',
+        payment_method_type: 'card',
+      }),
+    ).toBeNull()
+  })
+
+  it('selects a wallet payment offer only when current wallet evidence satisfies requirements', () => {
+    const paymentOfferEvidence = {
+      offers: [
+        {
+          payment_offer_id: 'apple_pay_3',
+          requirements: {
+            psp: 'stripe',
+            payment_method_type: 'wallet',
+            wallet_type: 'apple_pay',
+          },
+        },
+      ],
+    }
+
+    expect(
+      pickSelectedPaymentOfferIdFromEvidence(paymentOfferEvidence, {
+        psp: 'stripe',
+        selected_payment_method_type: 'apple_pay',
+      }),
+    ).toBe('apple_pay_3')
+
+    expect(
+      pickSelectedPaymentOfferIdFromEvidence(paymentOfferEvidence, {
+        psp: 'stripe',
+        selected_payment_method_type: 'google_pay',
+      }),
+    ).toBeNull()
+  })
+
+  it('matches generic card offers but requires all concrete offer requirements', () => {
+    const cardContext = buildPaymentOfferContextFromEvidence({
+      psp: 'stripe',
+      payment_method_type: 'card',
+    })
+
+    expect(
+      paymentOfferMatchesCurrentEvidence(
+        {
+          requirements: {
+            psp: 'stripe',
+            payment_method_type: 'card',
+          },
+        },
+        cardContext,
+      ),
+    ).toBe(true)
+
+    expect(
+      paymentOfferMatchesCurrentEvidence(
+        {
+          requirements: {
+            psp: 'stripe',
+            payment_method_type: 'card',
+            issuer_name: 'Chase',
+          },
+        },
+        cardContext,
+      ),
+    ).toBe(false)
   })
 })
