@@ -281,6 +281,33 @@ describe('PdpContainer recommendations interactions', () => {
     expect(getPdpV2Mock).not.toHaveBeenCalled();
   });
 
+  it('shows a deferred mainline note instead of the legacy empty copy', async () => {
+    render(
+      <PdpContainer
+        payload={{
+          ...buildPayload({
+            items: [],
+            metadata: {
+              similar_status: 'deferred',
+              reason_code: 'SIMILAR_STAGE_BUDGET_EXCEEDED',
+              sync_budget_ms: 1800,
+            },
+          }),
+          x_recommendations_state: 'ready',
+        }}
+        mode="generic"
+        onAddToCart={() => {}}
+        onBuyNow={() => {}}
+      />,
+    );
+
+    expect(screen.getByText('Mainline still resolving')).toBeInTheDocument();
+    expect(
+      screen.getByText(/This rail stays empty until mainline results are ready/i),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('No similar products yet.')).toBeNull();
+  });
+
   it('auto-loads more similar products when the sentinel intersects', async () => {
     getSimilarProductsMainlineMock.mockResolvedValue({
       strategy: 'related_products',

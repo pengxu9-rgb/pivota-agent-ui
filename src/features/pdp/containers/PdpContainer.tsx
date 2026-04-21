@@ -1063,6 +1063,12 @@ function normalizeSimilarMetadata(
       : undefined;
   const underfillRaw = Number((metadata as any).underfill);
   const underfill = Number.isFinite(underfillRaw) ? Math.max(0, Math.trunc(underfillRaw)) : undefined;
+  const similarStatus = String((metadata as any).similar_status || '').trim();
+  const reasonCode = String((metadata as any).reason_code || '').trim();
+  const syncBudgetMsRaw = Number((metadata as any).sync_budget_ms);
+  const syncBudgetMs = Number.isFinite(syncBudgetMsRaw)
+    ? Math.max(0, Math.trunc(syncBudgetMsRaw))
+    : undefined;
   const selectionMix = (metadata as any).selection_mix;
   const normalizedSelectionMix =
     selectionMix && typeof selectionMix === 'object'
@@ -1104,6 +1110,9 @@ function normalizeSimilarMetadata(
       : undefined;
 
   return {
+    ...(similarStatus ? { similar_status: similarStatus } : {}),
+    ...(reasonCode ? { reason_code: reasonCode } : {}),
+    ...(syncBudgetMs != null ? { sync_budget_ms: syncBudgetMs } : {}),
     ...(typeof hasMore === 'boolean' ? { has_more: hasMore } : {}),
     ...(similarConfidence ? { similar_confidence: similarConfidence } : {}),
     ...(lowConfidence ? { low_confidence: true } : {}),
