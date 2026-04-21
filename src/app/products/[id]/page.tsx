@@ -534,8 +534,12 @@ export default function ProductDetailPage({ params }: Props) {
       const explicitMerchantId = inferredMerchantId ? String(inferredMerchantId).trim() : null;
       const shouldResolveCandidates =
         !explicitMerchantId || Boolean(merchantIdParam);
-      const candidateResolutionPromise = shouldResolveCandidates
-        ? Promise.resolve()
+      let candidateResolutionPromise: Promise<Awaited<ReturnType<typeof resolveProductCandidates>> | null> | null =
+        null;
+      const resolveCandidatesOnFailure = () => {
+        if (!shouldResolveCandidates) return Promise.resolve(null);
+        if (!candidateResolutionPromise) {
+          candidateResolutionPromise = Promise.resolve()
             .then(() =>
               resolveProductCandidates({
                 product_id: id,
@@ -545,8 +549,10 @@ export default function ProductDetailPage({ params }: Props) {
                 timeout_ms: candidateTimeoutMs,
               }),
             )
-            .catch(() => null)
-        : Promise.resolve(null);
+            .catch(() => null);
+        }
+        return candidateResolutionPromise;
+      };
 
       setLoading(true);
       setError(null);
@@ -670,7 +676,7 @@ export default function ProductDetailPage({ params }: Props) {
           }
         }
 
-        const candidateResolution = await candidateResolutionPromise;
+        const candidateResolution = await resolveCandidatesOnFailure();
         const candidateSellerOptions = mapResolvedOffersToSellerCandidates(candidateResolution);
         if (candidateSellerOptions.length > 1) {
           setSellerCandidates(candidateSellerOptions);

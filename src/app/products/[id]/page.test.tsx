@@ -359,6 +359,7 @@ describe('ProductDetailPage canonical PDP loading', () => {
       }),
     );
     expect(getPdpV2Mock).toHaveBeenCalledTimes(1);
+    expect(resolveProductCandidatesMock).not.toHaveBeenCalled();
   });
 
   it('shows seller chooser on canonical failure and does not revive legacy product detail', async () => {
