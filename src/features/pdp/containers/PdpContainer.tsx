@@ -4247,7 +4247,16 @@ export function PdpContainer({
                 </div>
               ) : moduleStates.similar === 'EMPTY' ? (
                 <div className="rounded-xl border border-border bg-white/90 px-3.5 py-4 text-sm text-muted-foreground sm:px-4">
-                  No similar products yet.
+                  {similarStatus ? (
+                    <div className="space-y-1">
+                      <div className="font-medium text-foreground">
+                        {similarStatus.title}
+                      </div>
+                      <div>{similarStatus.body}</div>
+                    </div>
+                  ) : (
+                    'No similar products yet.'
+                  )}
                 </div>
               ) : null}
             </ModuleShell>

@@ -29,4 +29,16 @@ describe('buildSimilarMainlineStatus', () => {
         'Showing the strongest mainline matches available right now. Exact like-for-like matches were limited, so this set widens to nearby categories and leaves 2 recommendation slots unfilled instead of using fallback padding.',
     });
   });
+
+  it('explains deferred similar rails without pretending the set is empty', () => {
+    expect(
+      buildSimilarMainlineStatus({
+        similar_status: 'deferred',
+      }),
+    ).toEqual({
+      title: 'Mainline still resolving',
+      body:
+        'We are still pulling the strongest like-for-like matches for this item. This rail stays empty until mainline results are ready instead of being padded with fallback picks.',
+    });
+  });
 });
