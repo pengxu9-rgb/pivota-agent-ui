@@ -22,6 +22,7 @@ describe('direct Agent read routing', () => {
   it('routes get_pdp_v2 directly to Agent when a public Agent key is configured', async () => {
     const agentKey = `dummy_public_agent_key_${'a'.repeat(24)}`;
     vi.stubEnv('NEXT_PUBLIC_AGENT_API_KEY', agentKey);
+    vi.stubEnv('NEXT_PUBLIC_AGENT_DIRECT_READS_ENABLED', 'true');
 
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       jsonResponse({
@@ -51,6 +52,7 @@ describe('direct Agent read routing', () => {
 
   it('falls back to the same-origin proxy when direct Agent auth is rejected', async () => {
     vi.stubEnv('NEXT_PUBLIC_AGENT_API_KEY', `dummy_public_agent_key_${'b'.repeat(24)}`);
+    vi.stubEnv('NEXT_PUBLIC_AGENT_DIRECT_READS_ENABLED', 'true');
 
     const fetchMock = vi
       .spyOn(globalThis, 'fetch')
@@ -79,6 +81,7 @@ describe('direct Agent read routing', () => {
 
   it('keeps checkout-token requests on the same-origin proxy', async () => {
     vi.stubEnv('NEXT_PUBLIC_AGENT_API_KEY', `dummy_public_agent_key_${'c'.repeat(24)}`);
+    vi.stubEnv('NEXT_PUBLIC_AGENT_DIRECT_READS_ENABLED', 'true');
     window.localStorage.setItem('pivota_checkout_token', 'checkout_token_123');
     window.localStorage.setItem('pivota_checkout_source', 'creator_agent');
 
@@ -103,6 +106,34 @@ describe('direct Agent read routing', () => {
     expect(init.headers).toEqual(
       expect.objectContaining({
         'X-Checkout-Token': 'checkout_token_123',
+      }),
+    );
+  });
+
+  it('defaults get_pdp_v2 to the same-origin proxy when direct reads are not explicitly enabled', async () => {
+    vi.stubEnv('NEXT_PUBLIC_AGENT_API_KEY', `dummy_public_agent_key_${'d'.repeat(24)}`);
+
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      jsonResponse({
+        status: 'success',
+        modules: [],
+      }),
+    );
+
+    const { getPdpV2 } = await import('./api');
+
+    await getPdpV2({
+      product_id: 'prod_123',
+      merchant_id: 'merch_123',
+      include: ['offers'],
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('/api/gateway');
+    expect(init.headers).not.toEqual(
+      expect.objectContaining({
+        Authorization: expect.any(String),
       }),
     );
   });
