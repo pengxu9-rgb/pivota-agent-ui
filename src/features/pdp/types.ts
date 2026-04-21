@@ -548,6 +548,7 @@ export interface RecommendationsData {
   strategy?: string;
   metadata?: {
     has_more?: boolean;
+    similar_status?: string;
     similar_confidence?: 'high' | 'medium' | 'low' | string;
     low_confidence?: boolean;
     low_confidence_reason_codes?: string[];
