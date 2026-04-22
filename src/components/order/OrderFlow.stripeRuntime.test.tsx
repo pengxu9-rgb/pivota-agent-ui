@@ -15,10 +15,12 @@ import {
   paymentOfferMatchesCurrentEvidence,
   pickSelectedPaymentOfferIdFromEvidence,
   prewarmStripeRuntime,
+  resolveAdyenEnvironment,
   resolveCheckoutPaymentMethodHint,
   resolveStripeAccount,
   resolveStripePaymentMethodOrder,
   resolveStripePublishableKey,
+  shouldRenderExternalPayButton,
   shouldHydrateCreatedOrderPaymentSurface,
 } from './OrderFlow'
 
@@ -211,5 +213,38 @@ describe('resolveStripePublishableKey', () => {
         cardContext,
       ),
     ).toBe(false)
+  })
+
+  it('derives the Adyen runtime environment from the backend action or client key prefix', () => {
+    expect(
+      resolveAdyenEnvironment({
+        raw: {
+          environment: 'live',
+          clientKey: 'test_should_not_win',
+        },
+      }),
+    ).toBe('live')
+
+    expect(
+      resolveAdyenEnvironment({
+        raw: {
+          clientKey: 'live_ABC123',
+        },
+      }),
+    ).toBe('live')
+
+    expect(
+      resolveAdyenEnvironment({
+        raw: {
+          clientKey: 'test_ABC123',
+        },
+      }),
+    ).toBe('test')
+  })
+
+  it('hides the external pay button once an Adyen session is mounted', () => {
+    expect(shouldRenderExternalPayButton('adyen_session')).toBe(false)
+    expect(shouldRenderExternalPayButton('stripe_client_secret')).toBe(true)
+    expect(shouldRenderExternalPayButton(null)).toBe(true)
   })
 })
