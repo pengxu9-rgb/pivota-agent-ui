@@ -40,6 +40,33 @@ function decodeCheckoutTokenPayload(token: string | null): any | null {
   }
 }
 
+function resolveTrackingEmail(args: {
+  explicitEmail: string | null
+  vaultEmail: string | null
+  checkoutTokenPayload: any | null
+}): string | null {
+  const fromExplicit = String(args.explicitEmail || '').trim().toLowerCase()
+  if (fromExplicit) return fromExplicit
+
+  const fromVault = String(args.vaultEmail || '').trim().toLowerCase()
+  if (fromVault) return fromVault
+
+  const payload = args.checkoutTokenPayload
+  if (!payload || typeof payload !== 'object') return null
+  const candidateKeys = [
+    'email',
+    'customer_email',
+    'customerEmail',
+    'buyer_email',
+    'buyerEmail',
+  ]
+  for (const key of candidateKeys) {
+    const value = String(payload?.[key] || '').trim().toLowerCase()
+    if (value) return value
+  }
+  return null
+}
+
 function SuccessContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -65,6 +92,11 @@ function SuccessContent() {
     searchParams.get('return') ||
     searchParams.get('returnUrl') ||
     searchParams.get('return_url')
+  const trackingEmailFromQuery =
+    (searchParams.get('email') ||
+      searchParams.get('customer_email') ||
+      searchParams.get('customerEmail') ||
+      '').trim() || null
   const checkoutTokenFromQuery =
     (searchParams.get('checkout_token') || searchParams.get('checkoutToken') || '').trim() || null
   const shouldFinalizeOnLoad = ['1', 'true', 'yes', 'on'].includes(
@@ -138,6 +170,19 @@ function SuccessContent() {
     const id = String(payload?.intent_id || payload?.intentId || '').trim()
     return id || null
   }, [checkoutToken])
+  const checkoutTokenPayload = useMemo(
+    () => decodeCheckoutTokenPayload(checkoutToken),
+    [checkoutToken],
+  )
+  const trackingEmail = useMemo(
+    () =>
+      resolveTrackingEmail({
+        explicitEmail: trackingEmailFromQuery,
+        vaultEmail: buyerVaultSnapshot.email,
+        checkoutTokenPayload,
+      }),
+    [buyerVaultSnapshot.email, checkoutTokenPayload, trackingEmailFromQuery],
+  )
 
   const attemptSave = useCallback(
     async (args: { save_token?: string; intent_id?: string; order_id?: string }) => {
@@ -370,7 +415,12 @@ function SuccessContent() {
           {!returnUrl && !hasReturnHint && (
             <>
               <button
-                onClick={() => router.push(`/order/track?orderId=${orderId}`)}
+                onClick={() => {
+                  const params = new URLSearchParams()
+                  if (orderId) params.set('orderId', orderId)
+                  if (trackingEmail) params.set('email', trackingEmail)
+                  router.push(`/order/track?${params.toString()}`)
+                }}
                 className="w-full px-4 py-2.5 text-sm bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors flex items-center justify-center gap-2"
               >
                 Track Your Order

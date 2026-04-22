@@ -169,6 +169,45 @@ describe('Order success action layout', () => {
     expect(pushMock).not.toHaveBeenCalled();
   });
 
+  it('passes buyer email through to public tracking when buyer vault email is available', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        buyer: {
+          primary_email: 'buyer@example.com',
+        },
+      }),
+    });
+
+    render(<OrderSuccessPage />);
+
+    const trackButton = await screen.findByRole('button', { name: /track your order/i });
+    trackButton.click();
+
+    expect(pushMock).toHaveBeenCalledWith('/order/track?orderId=ord_123&email=buyer%40example.com');
+  });
+
+  it('prefers explicit customer_email query param over buyer vault email for public tracking', async () => {
+    searchParamsValue = 'orderId=ord_123&customer_email=checkout@example.com';
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        buyer: {
+          primary_email: 'vault@example.com',
+        },
+      }),
+    });
+
+    render(<OrderSuccessPage />);
+
+    const trackButton = await screen.findByRole('button', { name: /track your order/i });
+    trackButton.click();
+
+    expect(pushMock).toHaveBeenCalledWith(
+      '/order/track?orderId=ord_123&email=checkout%40example.com',
+    );
+  });
+
   it('runs finalization recovery on success page when finalizing=1 is present', async () => {
     searchParamsValue = 'orderId=ord_123&finalizing=1';
     let resolvePoll: (value: {
