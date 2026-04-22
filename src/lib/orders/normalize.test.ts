@@ -118,3 +118,44 @@ describe('normalizeOrderDetail item product refs', () => {
     expect(normalized?.items[0]?.merchantId).toBeNull();
   });
 });
+
+describe('normalizeOrderDetail pricing', () => {
+  it('prefers authoritative pricing breakdown from the order payload', () => {
+    const normalized = normalizeOrderDetail({
+      order: {
+        order_id: 'o_pricing_1',
+        merchant_id: 'merchant_root',
+        currency: 'USD',
+        total_amount_minor: 953,
+        status: 'paid',
+        created_at: '2026-02-24T10:00:00.000Z',
+        pricing: {
+          subtotal_minor: 169,
+          discount_total_minor: 16,
+          shipping_fee_minor: 800,
+          tax_minor: 0,
+          total_amount_minor: 953,
+        },
+      },
+      items: [
+        {
+          line_item_id: 'line_1',
+          title: 'Product A',
+          product_id: 'prod_a',
+          quantity: 1,
+          unit_price_minor: 169,
+          subtotal_minor: 169,
+        },
+      ],
+    });
+
+    expect(normalized).not.toBeNull();
+    expect(normalized?.amounts).toEqual({
+      subtotalMinor: 169,
+      discountTotalMinor: 16,
+      shippingFeeMinor: 800,
+      taxMinor: 0,
+      totalAmountMinor: 953,
+    });
+  });
+});

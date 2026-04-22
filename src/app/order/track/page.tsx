@@ -19,11 +19,24 @@ type LookupResult = {
   status: string
   currency: string
   total_amount_minor: number
+  pricing?: {
+    subtotal_minor?: number
+    discount_total_minor?: number
+    shipping_fee_minor?: number
+    tax_minor?: number
+    total_amount_minor?: number
+  }
   created_at: string
   items_summary?: string
   shipping?: { city?: string; country?: string }
   customer?: { name?: string; masked_email?: string }
 }
+
+const formatMoney = (minor: number, currency: string): string =>
+  new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: currency || 'USD',
+  }).format((minor || 0) / 100)
 
 function TrackContent() {
   const router = useRouter()
@@ -237,12 +250,43 @@ function TrackContent() {
                     {lookup.items_summary}
                   </p>
                 )}
-                <p className="text-lg font-bold mt-2">
-                  {new Intl.NumberFormat('en-US', {
-                    style: 'currency',
-                    currency: lookup.currency || 'USD',
-                  }).format((lookup.total_amount_minor || 0) / 100)}
-                </p>
+                <div className="mt-3 space-y-1.5 text-sm">
+                  <div className="flex items-center justify-between text-muted-foreground">
+                    <span>Subtotal</span>
+                    <span className="font-medium text-foreground">
+                      {formatMoney(lookup.pricing?.subtotal_minor || 0, lookup.currency)}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-muted-foreground">
+                    <span>Discount</span>
+                    <span className="font-medium text-foreground">
+                      {(lookup.pricing?.discount_total_minor || 0) > 0
+                        ? `-${formatMoney(lookup.pricing?.discount_total_minor || 0, lookup.currency)}`
+                        : formatMoney(0, lookup.currency)}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-muted-foreground">
+                    <span>Shipping</span>
+                    <span className="font-medium text-foreground">
+                      {formatMoney(lookup.pricing?.shipping_fee_minor || 0, lookup.currency)}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-muted-foreground">
+                    <span>Tax</span>
+                    <span className="font-medium text-foreground">
+                      {formatMoney(lookup.pricing?.tax_minor || 0, lookup.currency)}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between pt-1 text-base font-semibold text-foreground">
+                    <span>Total</span>
+                    <span>
+                      {formatMoney(
+                        lookup.pricing?.total_amount_minor || lookup.total_amount_minor || 0,
+                        lookup.currency,
+                      )}
+                    </span>
+                  </div>
+                </div>
               </div>
               <div className="rounded-xl border border-border p-4 bg-muted/30 space-y-1">
                 <p className="text-sm font-medium">Shipping</p>

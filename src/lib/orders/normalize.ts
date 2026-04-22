@@ -6,6 +6,14 @@ export type NormalizedOrderPermissions = {
   canReorder: boolean
 }
 
+export type NormalizedOrderAmounts = {
+  subtotalMinor: number
+  discountTotalMinor: number
+  shippingFeeMinor: number
+  taxMinor: number
+  totalAmountMinor: number
+}
+
 export type NormalizedOrderListItem = {
   id: string
   merchantId: string | null
@@ -101,6 +109,7 @@ export type NormalizedOrderDetail = {
   merchantId: string | null
   currency: string
   totalAmountMinor: number
+  amounts: NormalizedOrderAmounts
   status: string
   paymentStatus: string
   fulfillmentStatus: string
@@ -352,6 +361,62 @@ const normalizeRefundInfo = (
   }
 }
 
+const normalizeOrderAmounts = (
+  rootSource: AnyRecord,
+  orderSource: AnyRecord,
+  _items: NormalizedOrderItem[],
+): NormalizedOrderAmounts => {
+  const pricingSource =
+    (isRecord(rootSource.pricing) && rootSource.pricing) ||
+    (isRecord(orderSource.pricing) && orderSource.pricing) ||
+    {}
+
+  const fallbackTotalAmountMinor = pickAmountMinor(
+    orderSource,
+    ['total_amount_minor', 'total_minor'],
+    ['total_amount', 'total'],
+  )
+  const fallbackSubtotalMinor = pickAmountMinor(
+    orderSource,
+    ['subtotal_minor', 'subtotal_cents'],
+    ['subtotal'],
+  )
+
+  const subtotalMinor =
+    pickAmountMinor(pricingSource, ['subtotal_minor'], ['subtotal']) || fallbackSubtotalMinor
+  const discountTotalMinor = pickAmountMinor(
+    pricingSource,
+    ['discount_total_minor', 'discount_minor'],
+    ['discount_total', 'discount_amount', 'discounts'],
+  )
+  const shippingFeeMinor = pickAmountMinor(
+    pricingSource,
+    ['shipping_fee_minor', 'shipping_minor', 'shipping_amount_minor'],
+    ['shipping_fee', 'shipping_amount', 'shipping_cost', 'shipping'],
+  )
+  const taxMinor = pickAmountMinor(
+    pricingSource,
+    ['tax_minor', 'tax_amount_minor'],
+    ['tax', 'tax_amount', 'tax_total', 'taxes'],
+  )
+  const totalAmountMinor =
+    pickAmountMinor(
+      pricingSource,
+      ['total_amount_minor', 'total_minor'],
+      ['total_amount', 'total'],
+    ) ||
+    fallbackTotalAmountMinor ||
+    Math.max(0, subtotalMinor - discountTotalMinor) + shippingFeeMinor + taxMinor
+
+  return {
+    subtotalMinor,
+    discountTotalMinor,
+    shippingFeeMinor,
+    taxMinor,
+    totalAmountMinor,
+  }
+}
+
 export const normalizeOrderListItem = (raw: unknown): NormalizedOrderListItem => {
   const source = isRecord(raw) ? raw : {}
   const id = pickString(source, ['order_id', 'id']) || ''
@@ -420,16 +485,14 @@ export const normalizeOrderDetail = (raw: unknown): NormalizedOrderDetail | null
         ? [raw.tracking]
         : []
   const shipments = shipmentsRaw.map(normalizeShipment)
+  const amounts = normalizeOrderAmounts(raw, orderSource, items)
 
   return {
     id,
     merchantId: pickString(orderSource, ['merchant_id']),
     currency: pickString(orderSource, ['currency']) || 'USD',
-    totalAmountMinor: pickAmountMinor(
-      orderSource,
-      ['total_amount_minor', 'total_minor'],
-      ['total_amount', 'total'],
-    ),
+    totalAmountMinor: amounts.totalAmountMinor,
+    amounts,
     status: pickString(orderSource, ['status']) || 'processing',
     paymentStatus: pickString(orderSource, ['payment_status']) || '',
     fulfillmentStatus: pickString(orderSource, ['fulfillment_status']) || '',

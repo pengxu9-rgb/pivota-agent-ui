@@ -98,6 +98,13 @@ All monetary fields are integer minor units: `*_minor` (e.g., 5900 = $59.00).
       "city": "NY",
       "country": "US",
       "postal_code": "10001"
+    },
+    "pricing": {
+      "subtotal_minor": 6100,
+      "discount_total_minor": 200,
+      "shipping_fee_minor": 0,
+      "tax_minor": 0,
+      "total_amount_minor": 5900
     }
   },
   "items": [{
@@ -157,6 +164,13 @@ NOT_FOUND/MISMATCH unified:
     "status": "paid",
     "currency": "USD",
     "total_amount_minor": 5900,
+    "pricing": {
+      "subtotal_minor": 6100,
+      "discount_total_minor": 200,
+      "shipping_fee_minor": 0,
+      "tax_minor": 0,
+      "total_amount_minor": 5900
+    },
     "created_at": "2025-11-25T10:00:00Z",
     "items_summary": "Hoodie x1",
     "shipping": { "city": "NY", "country": "US" },

@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import OrderPage from './page';
@@ -55,6 +55,7 @@ describe('Order page resume fallback', () => {
   });
 
   afterEach(() => {
+    cleanup();
     vi.restoreAllMocks();
   });
 
@@ -116,5 +117,50 @@ describe('Order page resume fallback', () => {
     expect(getAccountOrderMock).toHaveBeenCalledWith('ORD_RESUME_1');
     expect(publicOrderResumeMock).toHaveBeenCalledWith('ORD_RESUME_1', 'buyer@example.com');
     expect(setMerchantIdMock).toHaveBeenCalledWith('merch_1');
+  });
+
+  it('prefers authoritative pricing over legacy total-minus-subtotal fallback', async () => {
+    getAccountOrderMock.mockRejectedValue({ status: 401, code: 'UNAUTHENTICATED' });
+    publicOrderResumeMock.mockResolvedValue({
+      order: {
+        order_id: 'ORD_RESUME_2',
+        merchant_id: 'merch_1',
+        currency: 'USD',
+        total_amount_minor: 953,
+        shipping_address: {
+          name: 'Buyer Example',
+          city: 'San Francisco',
+          country: 'US',
+          postal_code: '94105',
+        },
+        pricing: {
+          subtotal_minor: 169,
+          discount_total_minor: 16,
+          shipping_fee_minor: 800,
+          tax_minor: 0,
+          total_amount_minor: 953,
+        },
+      },
+      items: [
+        {
+          product_id: 'prod_1',
+          variant_id: 'var_1',
+          title: 'Resume Item',
+          quantity: 1,
+          unit_price_minor: 169,
+          subtotal_minor: 169,
+          merchant_id: 'merch_1',
+        },
+      ],
+      customer: {
+        email: 'buyer@example.com',
+      },
+    });
+
+    render(<OrderPage />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('order-flow')).toHaveTextContent('ORD_RESUME_2:1:1.69:0.16:8');
+    });
   });
 });
