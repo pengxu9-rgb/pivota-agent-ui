@@ -8,13 +8,14 @@ import { useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { useCartStore } from '@/store/cartStore';
 import { isAuroraEmbedMode, postRequestCloseToParent } from '@/lib/auroraEmbed';
+import { resolveHostedCheckoutUrl } from '@/lib/ucpCheckout';
 
 export default function CartDrawer() {
   const router = useRouter();
   const { items, isOpen, close, removeItem, updateQuantity, getTotal, clearCart } = useCartStore();
   const isEmbed = useMemo(() => isAuroraEmbedMode(), []);
 
-  const handleCheckout = () => {
+  const handleCheckout = async () => {
     if (items.length === 0) return;
 
     const orderItems = items.map((item) => ({
@@ -30,7 +31,25 @@ export default function CartDrawer() {
       image_url: item.imageUrl,
     }));
 
-    router.push(`/order?items=${encodeURIComponent(JSON.stringify(orderItems))}`);
+    const searchParams =
+      typeof window !== 'undefined'
+        ? new URLSearchParams(window.location.search)
+        : new URLSearchParams();
+    const checkoutUrl = await resolveHostedCheckoutUrl({
+      items: orderItems,
+      context: { searchParams },
+    });
+
+    try {
+      const nextUrl = new URL(checkoutUrl.url, window.location.origin);
+      if (nextUrl.origin !== window.location.origin) {
+        window.location.assign(nextUrl.toString());
+      } else {
+        router.push(`${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`);
+      }
+    } catch {
+      router.push(checkoutUrl.url);
+    }
     close();
   };
 

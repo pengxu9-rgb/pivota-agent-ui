@@ -91,6 +91,7 @@ import {
   isExternalCtaTarget,
   resolveCheckoutTarget,
 } from '@/lib/pdpPurchaseFlow';
+import { resolveHostedCheckoutUrl } from '@/lib/ucpCheckout';
 import { useIsDesktop } from '@/features/pdp/hooks/useIsDesktop';
 import { buildSimilarMainlineStatus } from '@/features/pdp/utils/similarHints';
 import { partitionDetailSections } from '@/features/pdp/utils/detailSections';
@@ -2414,7 +2415,24 @@ export function PdpContainer({
       });
 
       if (target.kind === 'checkout') {
-        router.push(target.href);
+        const checkoutUrl = await resolveHostedCheckoutUrl({
+          items: target.checkoutItems,
+          context: { searchParams },
+        });
+        if (typeof window !== 'undefined') {
+          try {
+            const nextUrl = new URL(checkoutUrl.url, window.location.origin);
+            if (nextUrl.origin !== window.location.origin) {
+              window.location.assign(nextUrl.toString());
+              return;
+            }
+            router.push(`${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`);
+            return;
+          } catch {
+            // ignore and fall back to router.push below
+          }
+        }
+        router.push(checkoutUrl.url);
         return;
       }
       if (target.kind === 'external') {

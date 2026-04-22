@@ -5,6 +5,7 @@ import {
   resolveExternalAgentHomeUrl,
   safeReturnUrl,
 } from '@/lib/returnUrl';
+import type { HostedCheckoutItem } from '@/lib/ucpCheckout';
 
 type ProductPriceLike =
   | number
@@ -64,6 +65,7 @@ export type CheckoutTargetResult =
       href: string;
       variantId: string;
       offerId?: string | null;
+      checkoutItems: HostedCheckoutItem[];
     }
   | {
       kind: 'error';
@@ -423,7 +425,7 @@ export function resolveCheckoutTarget(args: {
         )
       : undefined;
 
-  const checkoutItems = [
+  const checkoutItems: HostedCheckoutItem[] = [
     {
       product_id: resolvedProductId,
       merchant_id: resolvedMerchantId,
@@ -487,5 +489,6 @@ export function resolveCheckoutTarget(args: {
     href: `/order?${params.toString()}`,
     variantId: purchaseVariant.variant_id,
     offerId: offer?.offer_id || null,
+    checkoutItems,
   };
 }

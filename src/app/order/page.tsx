@@ -226,6 +226,25 @@ function OrderContent() {
     (searchParams.get('checkout_debug') || searchParams.get('debug') || '').trim() || null
   const resumeOrderId =
     (searchParams.get('orderId') || searchParams.get('order_id') || '').trim() || null
+  const itemsParam = searchParams.get('items')
+  const entryModeFromQuery =
+    (searchParams.get('entry_mode') || searchParams.get('entryMode') || '').trim() || null
+  const fallbackReasonFromQuery =
+    (searchParams.get('fallback_reason') || searchParams.get('fallbackReason') || '').trim() ||
+    null
+  const entryMode =
+    entryModeFromQuery ||
+    (ucpCheckoutSessionId
+      ? 'ucp_session'
+      : resumeOrderId
+        ? 'resume_order'
+        : checkoutTokenFromQuery
+          ? 'creator_token'
+          : itemsParam
+            ? 'legacy_items'
+            : null)
+  const fallbackReason =
+    fallbackReasonFromQuery || (itemsParam && !entryModeFromQuery ? 'legacy_deeplink' : null)
 
   const markUcpCheckoutSessionFailure = async (
     checkoutId: string,
@@ -263,8 +282,61 @@ function OrderContent() {
   useEffect(() => {
     // In a real app, this would come from cart state or API
     // For demo, we'll parse from URL params or use mock data
-    const itemsParam = searchParams.get('items')
-    if (itemsParam) {
+    const checkoutId = ucpCheckoutSessionId
+    if (checkoutId) {
+      ;(async () => {
+        try {
+          const res = await fetch(`/ucp/v1/checkout-sessions/${encodeURIComponent(checkoutId)}`, {
+            cache: 'no-store',
+          })
+          const json = await res.json().catch(() => null)
+          const ui = json?.pivota?.ui || null
+          const itemsFromUi = ui?.items
+          const merchantId = (ui?.merchant_id || ui?.merchantId || '').trim() || null
+          const seller = ui?.seller || null
+
+          if (merchantId) {
+            setMerchantId(merchantId)
+          }
+          if (seller && typeof seller === 'object') {
+            const name = String(seller?.name || '').trim() || null
+            const domain = String(seller?.domain || '').trim() || null
+            if (name && !sellerName) setSellerName(name)
+            if (domain && !sellerDomain) setSellerDomain(domain)
+          }
+          const bd = String(ui?.billing_descriptor || ui?.billingDescriptor || '').trim() || null
+          if (bd && !billingDescriptor) setBillingDescriptor(bd)
+
+          if (Array.isArray(itemsFromUi) && itemsFromUi.length > 0) {
+            setOrderItems(itemsFromUi)
+            return
+          }
+
+          // Fallback: derive minimal items from UCP response line_items.
+          const ucpLineItems = Array.isArray(json?.line_items) ? json.line_items : []
+          const currency =
+            String(json?.currency || ui?.currency || '').trim().toUpperCase() || 'USD'
+          const derived = ucpLineItems
+            .map((li: any) => {
+              const item = li?.item || {}
+              const priceMinor = Number(item?.price)
+              const qty = Number(li?.quantity) || 1
+              return {
+                product_id: String(item?.id || ''),
+                merchant_id: merchantId || undefined,
+                title: String(item?.title || item?.id || ''),
+                quantity: qty,
+                unit_price: Number.isFinite(priceMinor) ? priceMinor / 100.0 : 0,
+                currency,
+              }
+            })
+            .filter((it: any) => Boolean(it.product_id))
+          if (derived.length > 0) setOrderItems(derived)
+        } catch {
+          // Best-effort: if fetch fails, keep page empty.
+        }
+      })()
+    } else if (itemsParam) {
       try {
         // `URLSearchParams.get()` already returns a decoded string. Calling `decodeURIComponent`
         // again will throw for common product titles like "10%".
@@ -303,63 +375,7 @@ function OrderContent() {
         console.error('[Order] Failed to parse items query param:', e)
         setOrderItems([])
       }
-    } else {
-      // If this order page was opened via UCP `continue_url`, fetch server-side UI payload.
-      const checkoutId = ucpCheckoutSessionId
-      if (checkoutId) {
-        ;(async () => {
-          try {
-            const res = await fetch(`/ucp/v1/checkout-sessions/${encodeURIComponent(checkoutId)}`, {
-              cache: 'no-store',
-            })
-            const json = await res.json().catch(() => null)
-            const ui = json?.pivota?.ui || null
-            const itemsFromUi = ui?.items
-            const merchantId = (ui?.merchant_id || ui?.merchantId || '').trim() || null
-            const seller = ui?.seller || null
-
-            if (merchantId) {
-              setMerchantId(merchantId)
-            }
-            if (seller && typeof seller === 'object') {
-              const name = String(seller?.name || '').trim() || null
-              const domain = String(seller?.domain || '').trim() || null
-              if (name && !sellerName) setSellerName(name)
-              if (domain && !sellerDomain) setSellerDomain(domain)
-            }
-            const bd = String(ui?.billing_descriptor || ui?.billingDescriptor || '').trim() || null
-            if (bd && !billingDescriptor) setBillingDescriptor(bd)
-
-            if (Array.isArray(itemsFromUi) && itemsFromUi.length > 0) {
-              setOrderItems(itemsFromUi)
-              return
-            }
-
-            // Fallback: derive minimal items from UCP response line_items.
-            const ucpLineItems = Array.isArray(json?.line_items) ? json.line_items : []
-            const currency =
-              String(json?.currency || ui?.currency || '').trim().toUpperCase() || 'USD'
-            const derived = ucpLineItems
-              .map((li: any) => {
-                const item = li?.item || {}
-                const priceMinor = Number(item?.price)
-                const qty = Number(li?.quantity) || 1
-                return {
-                  product_id: String(item?.id || ''),
-                  merchant_id: merchantId || undefined,
-                  title: String(item?.title || item?.id || ''),
-                  quantity: qty,
-                  unit_price: Number.isFinite(priceMinor) ? priceMinor / 100.0 : 0,
-                  currency,
-                }
-              })
-              .filter((it: any) => Boolean(it.product_id))
-            if (derived.length > 0) setOrderItems(derived)
-          } catch {
-            // Best-effort: if fetch fails, keep page empty.
-          }
-        })()
-      } else if (resumeOrderId) {
+    } else if (resumeOrderId) {
         ;(async () => {
           setResumeOrderLoading(true)
           try {
@@ -387,21 +403,20 @@ function OrderContent() {
             setResumeOrderLoading(false)
           }
         })()
-      } else {
-        // Mock data for testing
-        setOrderItems([
-          {
-            product_id: 'BOTTLE_001',
-            merchant_id: undefined,
-            title: 'Stainless Steel Water Bottle - 24oz',
-            quantity: 1,
-            unit_price: 24.99,
-            image_url: 'https://m.media-amazon.com/images/I/61CGHv1V7AL._AC_SL1500_.jpg'
-          }
-        ])
-      }
+    } else {
+      // Mock data for testing
+      setOrderItems([
+        {
+          product_id: 'BOTTLE_001',
+          merchant_id: undefined,
+          title: 'Stainless Steel Water Bottle - 24oz',
+          quantity: 1,
+          unit_price: 24.99,
+          image_url: 'https://m.media-amazon.com/images/I/61CGHv1V7AL._AC_SL1500_.jpg'
+        }
+      ])
     }
-  }, [searchParams, ucpCheckoutSessionId, sellerName, sellerDomain, billingDescriptor, resumeOrderId])
+  }, [itemsParam, resumeOrderId, sellerName, sellerDomain, billingDescriptor, ucpCheckoutSessionId])
 
   useEffect(() => {
     if (!ucpFailure || !returnUrl) return
@@ -419,12 +434,14 @@ function OrderContent() {
       checkout: 'fail',
       reason: ucpFailure.reason,
       ...(ucpCheckoutSessionId ? { ucp_checkout_session_id: ucpCheckoutSessionId } : {}),
+      ...(entryMode ? { entry_mode: entryMode } : {}),
+      ...(fallbackReason ? { fallback_reason: fallbackReason } : {}),
     })
 
     window.setTimeout(() => {
       window.location.assign(url)
     }, 50)
-  }, [ucpFailure, returnUrl, ucpCheckoutSessionId])
+  }, [fallbackReason, entryMode, ucpFailure, returnUrl, ucpCheckoutSessionId])
 
   const linkUcpCheckoutSessionOrder = async (checkoutId: string, orderId: string) => {
     if (!checkoutId || !orderId) return
@@ -480,6 +497,8 @@ function OrderContent() {
     if (ucpCheckoutSessionId) sellerParams.set('ucp_checkout_session_id', ucpCheckoutSessionId)
     if (checkoutDebug) sellerParams.set('checkout_debug', checkoutDebug)
     if (checkoutToken) sellerParams.set('checkout_token', checkoutToken)
+    if (entryMode) sellerParams.set('entry_mode', entryMode)
+    if (fallbackReason) sellerParams.set('fallback_reason', fallbackReason)
     if (entryParam) sellerParams.set('entry', entryParam)
     if (embedParam) sellerParams.set('embed', embedParam)
     if (parentOriginParam) sellerParams.set('parent_origin', parentOriginParam)
@@ -504,6 +523,8 @@ function OrderContent() {
       const url = withReturnParams(returnUrl, {
         checkout: 'cancel',
         ...(ucpCheckoutSessionId ? { ucp_checkout_session_id: ucpCheckoutSessionId } : {}),
+        ...(entryMode ? { entry_mode: entryMode } : {}),
+        ...(fallbackReason ? { fallback_reason: fallbackReason } : {}),
       })
       window.location.assign(url)
       return
@@ -567,6 +588,8 @@ function OrderContent() {
                         checkout: 'fail',
                         reason: ucpFailure.reason,
                         ...(ucpCheckoutSessionId ? { ucp_checkout_session_id: ucpCheckoutSessionId } : {}),
+                        ...(entryMode ? { entry_mode: entryMode } : {}),
+                        ...(fallbackReason ? { fallback_reason: fallbackReason } : {}),
                       })
                       window.location.assign(url)
                     }}
@@ -630,6 +653,8 @@ function OrderContent() {
             checkoutToken={checkoutToken}
             returnUrl={returnUrl}
             resumeOrder={resumeOrder}
+            entryMode={entryMode}
+            fallbackReason={fallbackReason}
           />
         ) : resumeOrderId && resumeOrderLoading ? (
           <div className="text-center py-12">

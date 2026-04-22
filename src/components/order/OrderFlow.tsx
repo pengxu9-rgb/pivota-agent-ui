@@ -97,6 +97,8 @@ interface OrderFlowProps {
   checkoutToken?: string | null
   returnUrl?: string | null
   resumeOrder?: ResumeOrderState | null
+  entryMode?: string | null
+  fallbackReason?: string | null
 }
 
 type QuotePricing = {
@@ -1200,6 +1202,8 @@ function OrderFlowInner({
   checkoutToken,
   returnUrl,
   resumeOrder,
+  entryMode,
+  fallbackReason,
 }: OrderFlowProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -1607,7 +1611,7 @@ function OrderFlowInner({
     return () => {
       cancelled = true
     }
-  }, [checkoutToken, step])
+  }, [checkoutToken, step, user?.email, user?.id])
 
   const buildQuoteRequest = (deliveryOptionOverride?: any) => {
     const normalizedCountry = normalizeCountryCode(shipping.country)
@@ -1816,6 +1820,8 @@ function OrderFlowInner({
         ...(jobId ? { job_id: jobId } : {}),
         ...(market ? { market } : {}),
         ...(locale ? { locale } : {}),
+        ...(entryMode ? { checkout_entry_mode: entryMode } : {}),
+        ...(fallbackReason ? { checkout_fallback_reason: fallbackReason } : {}),
         ui_source: 'checkout_ui',
         ...(enforceLiveReadiness
           ? {}
@@ -2453,6 +2459,8 @@ function OrderFlowInner({
           {
             selected_offer_id: offerIdForOrder || null,
             selected_merchant_id: merchantIdForOrder || null,
+            entry_mode: entryMode || null,
+            fallback_reason: fallbackReason || null,
             ...(orderDebug || {}),
             timing: checkoutTimingSnapshot,
           },
@@ -2463,7 +2471,7 @@ function OrderFlowInner({
     } catch {
       // ignore storage errors
     }
-  }, [checkoutTimingSnapshot, merchantIdForOrder, offerIdForOrder, orderDebug])
+  }, [checkoutTimingSnapshot, entryMode, fallbackReason, merchantIdForOrder, offerIdForOrder, orderDebug])
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
