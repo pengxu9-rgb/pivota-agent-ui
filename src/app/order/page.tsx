@@ -73,6 +73,10 @@ function toMinorAmount(value: unknown): number {
   return Math.round(numeric)
 }
 
+function isUcpOfferToken(value: unknown): boolean {
+  return String(value || '').trim().startsWith('offer_v1.')
+}
+
 function buildResumeOrderState(raw: any): ResumeOrderLoadResult | null {
   const order = raw?.order && typeof raw.order === 'object' ? raw.order : raw
   const orderId = String(order?.order_id || order?.id || '').trim()
@@ -312,19 +316,24 @@ function OrderContent() {
             return
           }
 
-          // Fallback: derive minimal items from UCP response line_items.
+          // Fallback: derive minimal items from UCP response line_items only when the
+          // session already contains concrete product identifiers. In the UCP
+          // session-first path, `line_items[].item.id` is typically an `offer_v1`
+          // token, which downstream quote/create-order APIs cannot consume.
           const ucpLineItems = Array.isArray(json?.line_items) ? json.line_items : []
           const currency =
             String(json?.currency || ui?.currency || '').trim().toUpperCase() || 'USD'
           const derived = ucpLineItems
             .map((li: any) => {
               const item = li?.item || {}
+              const itemId = String(item?.id || '').trim()
+              if (!itemId || isUcpOfferToken(itemId)) return null
               const priceMinor = Number(item?.price)
               const qty = Number(li?.quantity) || 1
               return {
-                product_id: String(item?.id || ''),
+                product_id: itemId,
                 merchant_id: merchantId || undefined,
-                title: String(item?.title || item?.id || ''),
+                title: String(item?.title || itemId || ''),
                 quantity: qty,
                 unit_price: Number.isFinite(priceMinor) ? priceMinor / 100.0 : 0,
                 currency,
