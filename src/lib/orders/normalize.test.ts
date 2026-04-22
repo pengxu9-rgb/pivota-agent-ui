@@ -158,6 +158,37 @@ describe('normalizeOrderDetail pricing', () => {
       totalAmountMinor: 953,
     });
   });
+
+  it('falls back to pricing_quote.pricing when direct pricing is absent', () => {
+    const normalized = normalizeOrderDetail({
+      order: {
+        order_id: 'o_pricing_quote_1',
+        merchant_id: 'merchant_root',
+        currency: 'USD',
+        total_amount_minor: 953,
+        status: 'refunded',
+        created_at: '2026-04-22T01:58:43.884266+00:00',
+      },
+      pricing_quote: {
+        pricing: {
+          subtotal: '1.69',
+          discount_total: '0.16',
+          shipping_fee: '8.00',
+          tax: '0.00',
+          total: '9.53',
+        },
+      },
+    });
+
+    expect(normalized).not.toBeNull();
+    expect(normalized?.amounts).toEqual({
+      subtotalMinor: 169,
+      discountTotalMinor: 16,
+      shippingFeeMinor: 800,
+      taxMinor: 0,
+      totalAmountMinor: 953,
+    });
+  });
 });
 describe('normalizeOrderDetail refund PSP telemetry', () => {
   it('parses latest refund tracking snapshot and history', () => {

@@ -485,9 +485,19 @@ const normalizeOrderAmounts = (
   orderSource: AnyRecord,
   _items: NormalizedOrderItem[],
 ): NormalizedOrderAmounts => {
+  const rootPricingQuote =
+    isRecord(rootSource.pricing_quote) && isRecord(rootSource.pricing_quote.pricing)
+      ? rootSource.pricing_quote.pricing
+      : null
+  const orderPricingQuote =
+    isRecord(orderSource.pricing_quote) && isRecord(orderSource.pricing_quote.pricing)
+      ? orderSource.pricing_quote.pricing
+      : null
   const pricingSource =
     (isRecord(rootSource.pricing) && rootSource.pricing) ||
     (isRecord(orderSource.pricing) && orderSource.pricing) ||
+    rootPricingQuote ||
+    orderPricingQuote ||
     {}
 
   const fallbackTotalAmountMinor = pickAmountMinor(
