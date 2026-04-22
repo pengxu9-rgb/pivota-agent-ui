@@ -369,6 +369,45 @@ export function resolveStripeAccount(paymentResponse: any, fallbackAction: any =
   return null
 }
 
+export function resolveAdyenEnvironment(
+  paymentAction: any,
+  fallbackClientKey: string | null = null,
+): 'test' | 'live' {
+  const candidates = [
+    paymentAction?.raw?.environment,
+    paymentAction?.raw?.env,
+    paymentAction?.environment,
+    process.env.NEXT_PUBLIC_ADYEN_ENVIRONMENT,
+  ]
+
+  for (const candidate of candidates) {
+    if (typeof candidate !== 'string') continue
+    const normalized = candidate.trim().toLowerCase()
+    if (!normalized) continue
+    if (normalized.startsWith('live')) return 'live'
+    if (normalized === 'test') return 'test'
+  }
+
+  const clientKey = String(
+    paymentAction?.raw?.clientKey ||
+      paymentAction?.raw?.client_key ||
+      fallbackClientKey ||
+      '',
+  )
+    .trim()
+    .toLowerCase()
+
+  if (clientKey.startsWith('live_')) return 'live'
+  if (clientKey.startsWith('test_')) return 'test'
+  return 'test'
+}
+
+export function shouldRenderExternalPayButton(
+  paymentActionType: string | null | undefined,
+): boolean {
+  return paymentActionType !== 'adyen_session'
+}
+
 function normalizePaymentPspToken(value: unknown): string | null {
   if (typeof value === 'string') {
     const trimmed = value.trim().toLowerCase()
@@ -2013,6 +2052,7 @@ function OrderFlowInner({
       : isExternalRedirectPayment
           ? 'Continue to merchant payment'
           : `Pay ${formatAmount(total)}`
+  const showExternalPayButton = shouldRenderExternalPayButton(paymentActionType)
 
   const finalizeOrderAfterPayment = async (orderId: string): Promise<OrderCompletionOptions> => {
     const confirmation = await confirmPaymentWithRetry({
@@ -2209,7 +2249,7 @@ function OrderFlowInner({
     const { default: AdyenCheckout } = await import('@adyen/adyen-web')
     const checkout = await AdyenCheckout({
       clientKey,
-      environment: 'test', // use 'live' in production with proper key
+      environment: resolveAdyenEnvironment(action, clientKey),
       session: {
         id: sessionId,
         sessionData,
@@ -3769,13 +3809,19 @@ function OrderFlowInner({
                 >
                   Back
                 </button>
-                <button
-                  onClick={handlePayment}
-                  disabled={isProcessing || paymentInitLoading}
-                  className="rounded-[18px] bg-green-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:bg-slate-300 lg:w-full"
-                >
-                  {paymentButtonLabel}
-                </button>
+                {showExternalPayButton ? (
+                  <button
+                    onClick={handlePayment}
+                    disabled={isProcessing || paymentInitLoading}
+                    className="rounded-[18px] bg-green-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:bg-slate-300 lg:w-full"
+                  >
+                    {paymentButtonLabel}
+                  </button>
+                ) : (
+                  <div className="rounded-[18px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs font-medium text-emerald-800 lg:w-full">
+                    Complete payment in the secure Adyen form above.
+                  </div>
+                )}
               </div>
             </div>
           </div>
