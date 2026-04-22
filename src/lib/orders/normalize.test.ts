@@ -159,3 +159,77 @@ describe('normalizeOrderDetail pricing', () => {
     });
   });
 });
+
+describe('normalizeOrderDetail refund PSP telemetry', () => {
+  it('parses latest refund tracking snapshot and history', () => {
+    const normalized = normalizeOrderDetail({
+      order: {
+        order_id: 'o_refund_1',
+        merchant_id: 'merchant_root',
+        currency: 'USD',
+        total_amount_minor: 953,
+        status: 'refunded',
+        payment_status: 'refunded',
+        created_at: '2026-04-22T01:58:43.884266+00:00',
+      },
+      refund: {
+        status: 'refunded',
+        total_refunded_minor: 953,
+        currency: 'USD',
+        psp: {
+          provider: 'stripe',
+          latest: {
+            provider: 'stripe',
+            refund_id: 're_test_123',
+            status: 'succeeded',
+            amount_minor: 953,
+            currency: 'USD',
+            payment_intent_id: 'pi_test_123',
+            destination_type: 'card',
+            destination_entry_type: 'refund',
+            is_reversal: false,
+            reference_status: 'pending',
+            reference_type: 'acquirer_reference_number',
+            tracking_reference_kind: 'ARN',
+            source_event: 'refund.refresh',
+            observed_at: '2026-04-22T14:59:17.500759+00:00',
+          },
+          history: [
+            {
+              provider: 'stripe',
+              refund_id: 're_test_123',
+              status: 'succeeded',
+              amount_minor: 953,
+              currency: 'USD',
+              payment_intent_id: 'pi_test_123',
+              destination_type: 'card',
+              destination_entry_type: 'refund',
+              is_reversal: false,
+              reference_status: 'pending',
+              reference_type: 'acquirer_reference_number',
+              tracking_reference_kind: 'ARN',
+              source_event: 'refund.refresh',
+              observed_at: '2026-04-22T14:59:17.500759+00:00',
+            },
+          ],
+        },
+      },
+    });
+
+    expect(normalized).not.toBeNull();
+    expect(normalized?.refund.psp?.provider).toBe('stripe');
+    expect(normalized?.refund.psp?.latest).toMatchObject({
+      refundId: 're_test_123',
+      status: 'succeeded',
+      amountMinor: 953,
+      paymentIntentId: 'pi_test_123',
+      destinationType: 'card',
+      destinationEntryType: 'refund',
+      isReversal: false,
+      referenceStatus: 'pending',
+      referenceType: 'acquirer_reference_number',
+      trackingReferenceKind: 'ARN',
+    });
+    expect(normalized?.refund.psp?.history).toHaveLength(1);
+  });
+});

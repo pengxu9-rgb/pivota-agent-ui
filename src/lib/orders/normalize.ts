@@ -93,6 +93,7 @@ export type NormalizedRefundInfo = {
   currency: string | null
   requestsCount: number
   requests: NormalizedRefundRequest[]
+  psp: NormalizedRefundPspInfo | null
 }
 
 export type NormalizedRefundRequest = {
@@ -102,6 +103,32 @@ export type NormalizedRefundRequest = {
   currency: string | null
   reason: string | null
   createdAt: string | null
+}
+
+export type NormalizedRefundPspSnapshot = {
+  provider: string | null
+  refundId: string | null
+  status: string | null
+  amountMinor: number
+  currency: string | null
+  paymentIntentId: string | null
+  destinationType: string | null
+  destinationEntryType: string | null
+  isReversal: boolean | null
+  reference: string | null
+  referenceStatus: string | null
+  referenceType: string | null
+  trackingReferenceKind: string | null
+  pendingReason: string | null
+  failureReason: string | null
+  sourceEvent: string | null
+  observedAt: string | null
+}
+
+export type NormalizedRefundPspInfo = {
+  provider: string | null
+  latest: NormalizedRefundPspSnapshot | null
+  history: NormalizedRefundPspSnapshot[]
 }
 
 export type NormalizedOrderDetail = {
@@ -143,6 +170,16 @@ const asNumber = (value: unknown): number | null => {
     if (!cleaned) return null
     const parsed = Number(cleaned)
     if (Number.isFinite(parsed)) return parsed
+  }
+  return null
+}
+
+const asBoolean = (value: unknown): boolean | null => {
+  if (typeof value === 'boolean') return value
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase()
+    if (normalized === 'true') return true
+    if (normalized === 'false') return false
   }
   return null
 }
@@ -346,6 +383,87 @@ const normalizeRefundInfo = (
       createdAt: pickString(request, ['created_at', 'createdAt']),
     }))
 
+  const normalizeRefundPspSnapshot = (raw: unknown): NormalizedRefundPspSnapshot | null => {
+    if (!isRecord(raw)) return null
+    const provider = pickString(raw, ['provider'])
+    const refundId = pickString(raw, ['refund_id', 'refundId'])
+    const status = pickString(raw, ['status'])
+    const amountMinor = pickAmountMinor(raw, ['amount_minor'], ['amount'])
+    const currency = pickString(raw, ['currency'])
+    const paymentIntentId = pickString(raw, ['payment_intent_id', 'paymentIntentId'])
+    const destinationType = pickString(raw, ['destination_type', 'destinationType'])
+    const destinationEntryType = pickString(raw, ['destination_entry_type', 'destinationEntryType'])
+    const isReversal = asBoolean(raw.is_reversal ?? raw.isReversal)
+    const reference = pickString(raw, ['reference'])
+    const referenceStatus = pickString(raw, ['reference_status', 'referenceStatus'])
+    const referenceType = pickString(raw, ['reference_type', 'referenceType'])
+    const trackingReferenceKind = pickString(raw, [
+      'tracking_reference_kind',
+      'trackingReferenceKind',
+    ])
+    const pendingReason = pickString(raw, ['pending_reason', 'pendingReason'])
+    const failureReason = pickString(raw, ['failure_reason', 'failureReason'])
+    const sourceEvent = pickString(raw, ['source_event', 'sourceEvent'])
+    const observedAt = pickString(raw, ['observed_at', 'observedAt'])
+    const hasAnyField = [
+      provider,
+      refundId,
+      status,
+      amountMinor > 0 ? 'amount' : null,
+      currency,
+      paymentIntentId,
+      destinationType,
+      destinationEntryType,
+      isReversal != null ? 'reversal' : null,
+      reference,
+      referenceStatus,
+      referenceType,
+      trackingReferenceKind,
+      pendingReason,
+      failureReason,
+      sourceEvent,
+      observedAt,
+    ].some(Boolean)
+    if (!hasAnyField) return null
+    return {
+      provider,
+      refundId,
+      status,
+      amountMinor,
+      currency,
+      paymentIntentId,
+      destinationType,
+      destinationEntryType,
+      isReversal,
+      reference,
+      referenceStatus,
+      referenceType,
+      trackingReferenceKind,
+      pendingReason,
+      failureReason,
+      sourceEvent,
+      observedAt,
+    }
+  }
+
+  const normalizeRefundPspInfo = (raw: unknown): NormalizedRefundPspInfo | null => {
+    if (!isRecord(raw)) return null
+    const latest = normalizeRefundPspSnapshot(raw.latest)
+    const history = Array.isArray(raw.history)
+      ? raw.history
+          .map((entry) => normalizeRefundPspSnapshot(entry))
+          .filter((entry): entry is NormalizedRefundPspSnapshot => Boolean(entry))
+      : []
+    const provider =
+      pickString(raw, ['provider']) || latest?.provider || history[0]?.provider || null
+    if (!provider && !latest && history.length === 0) return null
+    return {
+      provider,
+      latest,
+      history,
+    }
+  }
+
   return {
     status: pickString(refundSource, ['status']),
     caseId: pickString(refundSource, ['case_id', 'caseId']),
@@ -358,6 +476,7 @@ const normalizeRefundInfo = (
     currency: pickString(refundSource, ['currency']) || pickString(orderSource, ['currency']),
     requestsCount: requests.length,
     requests,
+    psp: normalizeRefundPspInfo(refundSource.psp),
   }
 }
 
