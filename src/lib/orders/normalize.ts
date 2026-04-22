@@ -21,6 +21,8 @@ export type NormalizedOrderListItem = {
   totalAmountMinor: number
   status: string
   paymentStatus: string
+  refundStatus: string | null
+  totalRefundedMinor: number
   fulfillmentStatus: string
   deliveryStatus: string
   createdAt: string
@@ -560,6 +562,12 @@ export const normalizeOrderListItem = (raw: unknown): NormalizedOrderListItem =>
     ),
     status: pickString(source, ['status']) || 'processing',
     paymentStatus: pickString(source, ['payment_status']) || '',
+    refundStatus: pickString(source, ['refund_status', 'refundStatus']),
+    totalRefundedMinor: pickAmountMinor(
+      source,
+      ['total_refunded_minor', 'refund_total_minor'],
+      ['total_refunded', 'refund_total'],
+    ),
     fulfillmentStatus: pickString(source, ['fulfillment_status']) || '',
     deliveryStatus: pickString(source, ['delivery_status']) || '',
     createdAt: pickString(source, ['created_at']) || new Date(0).toISOString(),

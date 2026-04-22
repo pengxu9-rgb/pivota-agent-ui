@@ -587,6 +587,17 @@ function OrdersPageContent() {
                 order.shippingCity || order.shippingCountry
                   ? `${order.shippingCity || ''}${order.shippingCity && order.shippingCountry ? ', ' : ''}${order.shippingCountry || ''}`
                   : null
+              const normalizedRefundStatus = String(order.refundStatus || '').trim().toLowerCase()
+              const hasRefundSummary =
+                normalizedRefundStatus !== '' &&
+                normalizedRefundStatus !== 'none' &&
+                order.totalRefundedMinor > 0
+              const refundSummaryLabel =
+                normalizedRefundStatus === 'partially_refunded'
+                  ? 'Partially refunded'
+                  : normalizedRefundStatus === 'requested'
+                    ? 'Refund requested'
+                    : 'Refunded'
 
               return (
                 <div
@@ -631,6 +642,11 @@ function OrdersPageContent() {
 
                     <div className="flex shrink-0 flex-col items-start gap-2 sm:items-end">
                       <div className="text-lg font-semibold text-foreground">{formatMoney(order.totalAmountMinor, order.currency)}</div>
+                      {hasRefundSummary && (
+                        <div className="text-xs font-medium text-amber-700">
+                          {refundSummaryLabel} {formatMoney(order.totalRefundedMinor, order.currency)}
+                        </div>
+                      )}
                       <div className="flex flex-wrap gap-2 sm:justify-end">
                         <Link href={buildOrderDetailHref(order.id, scopedSearchParams, currentListUrl)}>
                           <button className="inline-flex items-center gap-1 rounded-lg border border-border px-3 py-2 text-xs font-medium hover:bg-muted">

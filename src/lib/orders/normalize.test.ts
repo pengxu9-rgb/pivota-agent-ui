@@ -35,6 +35,24 @@ describe('normalizeOrderListItem scope fields', () => {
     expect(normalized.id).toBe('o_list_2');
     expect(normalized.merchantId).toBe('merchant_scope_2');
   });
+
+  it('reads refund summary fields from list payload', () => {
+    const normalized = normalizeOrderListItem({
+      order_id: 'o_list_3',
+      currency: 'USD',
+      total_amount_minor: 2500,
+      status: 'partially_refunded',
+      payment_status: 'partially_refunded',
+      refund_status: 'partially_refunded',
+      total_refunded_minor: 500,
+      fulfillment_status: 'fulfilled',
+      delivery_status: 'delivered',
+      created_at: '2026-04-22T12:00:00.000Z',
+    });
+
+    expect(normalized.refundStatus).toBe('partially_refunded');
+    expect(normalized.totalRefundedMinor).toBe(500);
+  });
 });
 
 describe('normalizeOrderDetail item product refs', () => {

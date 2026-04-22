@@ -65,6 +65,32 @@ const makeOrderListPayload = (orderId: string, merchantId = 'merchant_test') => 
   has_more: false,
 });
 
+const makeRefundedOrderListPayload = (orderId: string) => ({
+  orders: [
+    {
+      order_id: orderId,
+      merchant_id: 'merchant_test',
+      currency: 'USD',
+      total_amount_minor: 2500,
+      status: 'partially_refunded',
+      payment_status: 'partially_refunded',
+      refund_status: 'partially_refunded',
+      total_refunded_minor: 500,
+      fulfillment_status: 'fulfilled',
+      delivery_status: 'delivered',
+      created_at: '2026-03-05T12:00:00.000Z',
+      items_summary: 'Refunded item x1',
+      permissions: {
+        can_pay: false,
+        can_cancel: false,
+        can_reorder: false,
+      },
+    },
+  ],
+  next_cursor: null,
+  has_more: false,
+});
+
 describe('Orders page recovery flow', () => {
   beforeEach(() => {
     pathnameValue = '/orders';
@@ -239,5 +265,15 @@ describe('Orders page recovery flow', () => {
     expect(listMyOrdersMock).toHaveBeenCalledTimes(1);
     expect(listMyOrdersMock.mock.calls[0][1]).toBe(20);
     expect(listMyOrdersMock.mock.calls[0][2]).toEqual({ merchant_id: 'merchant_hint' });
+  });
+
+  it('renders partial refund summary from the orders list payload', async () => {
+    listMyOrdersMock.mockResolvedValueOnce(makeRefundedOrderListPayload('ORD_REFUND_1'));
+
+    render(<OrdersPage />);
+
+    await screen.findByText('Order #ORD_REFUND_1');
+    expect(screen.getByText('Partially refunded')).toBeInTheDocument();
+    expect(screen.getByText('Partially refunded $5.00')).toBeInTheDocument();
   });
 });

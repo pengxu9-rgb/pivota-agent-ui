@@ -30,6 +30,9 @@ export const getOrderDisplayStatus = (input: StatusInput): string => {
 
   if (status === 'cancelled' || status === 'canceled') return 'Cancelled'
   if (status === 'refunded') return 'Refunded'
+  if (status === 'partially_refunded' || paymentStatus === 'partially_refunded') {
+    return 'Partially refunded'
+  }
   if (deliveryStatus === 'delivered' || fulfillmentStatus === 'delivered') return 'Delivered'
   if (
     deliveryStatus === 'in_transit' ||
@@ -57,6 +60,7 @@ export const getOrderTone = (input: StatusInput): 'success' | 'warning' | 'dange
   const deliveryStatus = normalize(input.deliveryStatus)
 
   if (status === 'cancelled' || status === 'canceled' || status === 'refunded') return 'danger'
+  if (status === 'partially_refunded' || paymentStatus === 'partially_refunded') return 'warning'
   if (deliveryStatus === 'delivered' || fulfillmentStatus === 'delivered') return 'success'
   if (
     deliveryStatus === 'in_transit' ||
