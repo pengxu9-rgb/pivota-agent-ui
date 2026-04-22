@@ -26,7 +26,10 @@ vi.mock('next/image', () => ({
 vi.mock('@/components/order/OrderFlow', () => ({
   default: (props: any) => (
     <div data-testid="order-flow">
-      {props.resumeOrder?.orderId}:{props.items?.length || 0}
+      {props.resumeOrder?.orderId}:{props.items?.length || 0}:
+      {props.resumeOrder?.quote?.pricing?.subtotal ?? 'na'}:
+      {props.resumeOrder?.quote?.pricing?.discount_total ?? 'na'}:
+      {props.resumeOrder?.quote?.pricing?.shipping_fee ?? 'na'}
     </div>
   ),
 }));
@@ -88,6 +91,17 @@ describe('Order page resume fallback', () => {
           payment_action: { type: 'stripe_client_secret' },
         },
       },
+      pricing_quote: {
+        quote_id: 'q_resume_1',
+        currency: 'USD',
+        pricing: {
+          subtotal: '1.53',
+          discount_total: '0.16',
+          shipping_fee: '8.00',
+          tax: '0.00',
+          total: '9.37',
+        },
+      },
       customer: {
         email: 'buyer@example.com',
       },
@@ -96,7 +110,7 @@ describe('Order page resume fallback', () => {
     render(<OrderPage />);
 
     await waitFor(() => {
-      expect(screen.getByTestId('order-flow')).toHaveTextContent('ORD_RESUME_1:1');
+      expect(screen.getByTestId('order-flow')).toHaveTextContent('ORD_RESUME_1:1:1.53:0.16:8');
     });
 
     expect(getAccountOrderMock).toHaveBeenCalledWith('ORD_RESUME_1');

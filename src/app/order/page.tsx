@@ -73,6 +73,12 @@ function toMinorAmount(value: unknown): number {
   return Math.round(numeric)
 }
 
+function toMajorAmount(value: unknown): number {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) return 0
+  return numeric
+}
+
 function isUcpOfferToken(value: unknown): boolean {
   return String(value || '').trim().startsWith('offer_v1.')
 }
@@ -111,13 +117,36 @@ function buildResumeOrderState(raw: any): ResumeOrderLoadResult | null {
 
   if (!items.length) return null
 
+  const pricingQuote =
+    raw?.pricing_quote && typeof raw.pricing_quote === 'object'
+      ? raw.pricing_quote
+      : order?.pricing_quote && typeof order.pricing_quote === 'object'
+        ? order.pricing_quote
+        : null
+  const pricingQuotePricing =
+    pricingQuote?.pricing && typeof pricingQuote.pricing === 'object' ? pricingQuote.pricing : null
   const subtotalMinor = itemsRaw.reduce((sum: number, item: any) => {
     const subtotal = toMinorAmount(item?.subtotal_minor)
     if (subtotal > 0) return sum + subtotal
     return sum + toMinorAmount(item?.unit_price_minor) * (Number(item?.quantity) || 1)
   }, 0)
   const totalMinor = toMinorAmount(order?.total_amount_minor)
-  const surchargeMinor = Math.max(totalMinor - subtotalMinor, 0)
+  const fallbackPricing = {
+    subtotal: subtotalMinor / 100,
+    discount_total: 0,
+    shipping_fee: Math.max(totalMinor - subtotalMinor, 0) / 100,
+    tax: 0,
+    total: totalMinor / 100,
+  }
+  const pricing = pricingQuotePricing
+    ? {
+        subtotal: toMajorAmount(pricingQuotePricing?.subtotal),
+        discount_total: toMajorAmount(pricingQuotePricing?.discount_total),
+        shipping_fee: toMajorAmount(pricingQuotePricing?.shipping_fee),
+        tax: toMajorAmount(pricingQuotePricing?.tax),
+        total: toMajorAmount(pricingQuotePricing?.total),
+      }
+    : fallbackPricing
   const paymentCurrent =
     raw?.payment && typeof raw.payment === 'object' && raw.payment.current && typeof raw.payment.current === 'object'
       ? raw.payment.current
@@ -152,15 +181,9 @@ function buildResumeOrderState(raw: any): ResumeOrderLoadResult | null {
         phone: String(shippingRaw?.phone || ''),
       },
       quote: {
-        quote_id: `resume:${orderId}`,
-        currency,
-        pricing: {
-          subtotal: subtotalMinor / 100,
-          discount_total: 0,
-          shipping_fee: surchargeMinor / 100,
-          tax: 0,
-          total: totalMinor / 100,
-        },
+        quote_id: String(pricingQuote?.quote_id || `resume:${orderId}`),
+        currency: String(pricingQuote?.currency || currency).trim().toUpperCase() || currency,
+        pricing,
         line_items: items.map((item) => ({
           variant_id: item.variant_id || item.product_id,
           unit_price_effective: Number(item.unit_price) || 0,
