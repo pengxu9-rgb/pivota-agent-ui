@@ -5,7 +5,12 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Package, Truck, CheckCircle, Clock, Mail } from 'lucide-react'
-import { publicOrderLookup, publicOrderTrack } from '@/lib/api'
+import { publicOrderResume, publicOrderTrack } from '@/lib/api'
+import {
+  normalizeOrderDetail,
+  type NormalizedOrderDetail,
+  type NormalizedRefundPspSnapshot,
+} from '@/lib/orders/normalize'
 
 type TimelineEntry = {
   status: string
@@ -38,6 +43,58 @@ const formatMoney = (minor: number, currency: string): string =>
     currency: currency || 'USD',
   }).format((minor || 0) / 100)
 
+const formatLabel = (value: string | null | undefined): string => {
+  const normalized = String(value || '').trim()
+  if (!normalized) return '—'
+  return normalized
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/\b\w/g, (char) => char.toUpperCase())
+}
+
+const formatDateTime = (value: string | null | undefined): string | null => {
+  const raw = String(value || '').trim()
+  if (!raw) return null
+  const date = new Date(raw)
+  if (Number.isNaN(date.getTime())) return null
+  return date.toLocaleString()
+}
+
+const getRefundReferenceSummary = (snapshot: NormalizedRefundPspSnapshot | null): string | null => {
+  if (!snapshot) return null
+  if (snapshot.reference) {
+    return snapshot.trackingReferenceKind
+      ? `${snapshot.trackingReferenceKind} ${snapshot.reference}`
+      : snapshot.reference
+  }
+  if (String(snapshot.referenceStatus || '').toLowerCase() === 'pending') {
+    return snapshot.trackingReferenceKind
+      ? `${snapshot.trackingReferenceKind} pending`
+      : 'Pending'
+  }
+  return snapshot.referenceStatus ? formatLabel(snapshot.referenceStatus) : null
+}
+
+const getRefundTelemetryNote = (snapshot: NormalizedRefundPspSnapshot | null): string | null => {
+  if (!snapshot) return null
+  if (snapshot.reference) {
+    return snapshot.trackingReferenceKind
+      ? `Use this ${snapshot.trackingReferenceKind} when asking the card issuer to trace the refund.`
+      : 'Use this processor reference when asking the card issuer to trace the refund.'
+  }
+  if (String(snapshot.referenceStatus || '').toLowerCase() === 'pending') {
+    return 'Bank-side tracking reference is still pending. Some issuers show this as a reversal rather than a separate refund.'
+  }
+  if (snapshot.pendingReason) {
+    return `Processor is still working on this refund: ${formatLabel(snapshot.pendingReason)}.`
+  }
+  if (snapshot.failureReason) {
+    return `Processor reported ${formatLabel(snapshot.failureReason)}.`
+  }
+  return null
+}
+
 function TrackContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -47,7 +104,10 @@ function TrackContent() {
   const [orderId, setOrderId] = useState(initialOrderId)
   const [email, setEmail] = useState(initialEmail)
   const [lookup, setLookup] = useState<LookupResult | null>(null)
+  const [detail, setDetail] = useState<NormalizedOrderDetail | null>(null)
+  const [maskedEmail, setMaskedEmail] = useState<string | null>(null)
   const [timeline, setTimeline] = useState<TimelineEntry[]>([])
+  const [timelineError, setTimelineError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -69,17 +129,63 @@ function TrackContent() {
     }
     setLoading(true)
     setError(null)
+    setTimelineError(null)
     try {
-      const summary = await publicOrderLookup(orderSafe, emailSafe)
-      setLookup(summary as any)
-      const t = await publicOrderTrack(orderSafe, emailSafe)
-      const events = ((t as any)?.timeline || []).map((ev: any) => ({
-        status: ev.status,
-        timestamp: ev.timestamp,
-        description: ev.description,
-        completed: Boolean(ev.completed),
-      }))
-      setTimeline(events)
+      const summary = await publicOrderResume(orderSafe, emailSafe)
+      const normalized = normalizeOrderDetail(summary)
+      const orderRaw = (summary as any)?.order || {}
+      const pricing = normalized?.amounts
+        ? {
+            subtotal_minor: normalized.amounts.subtotalMinor,
+            discount_total_minor: normalized.amounts.discountTotalMinor,
+            shipping_fee_minor: normalized.amounts.shippingFeeMinor,
+            tax_minor: normalized.amounts.taxMinor,
+            total_amount_minor: normalized.amounts.totalAmountMinor,
+          }
+        : undefined
+      setLookup({
+        order_id: normalized?.id || String(orderRaw?.order_id || orderSafe),
+        status: normalized?.status || String(orderRaw?.status || ''),
+        currency: normalized?.currency || String(orderRaw?.currency || 'USD'),
+        total_amount_minor:
+          normalized?.totalAmountMinor || Number(orderRaw?.total_amount_minor || 0) || 0,
+        pricing,
+        created_at:
+          normalized?.createdAt || String(orderRaw?.created_at || new Date(0).toISOString()),
+        items_summary:
+          Array.isArray(normalized?.items) && normalized.items.length > 0
+            ? normalized.items.map((item) => `${item.title} x${item.quantity}`).join(', ')
+            : undefined,
+        shipping: {
+          city: normalized?.shippingAddress?.city || undefined,
+          country: normalized?.shippingAddress?.country || undefined,
+        },
+        customer: {
+          name: (summary as any)?.customer?.name || undefined,
+          masked_email: (summary as any)?.customer?.masked_email || undefined,
+        },
+      })
+      setDetail(normalized)
+      setMaskedEmail((summary as any)?.customer?.masked_email || null)
+      try {
+        const t = await publicOrderTrack(orderSafe, emailSafe)
+        const events = ((t as any)?.timeline || []).map((ev: any) => ({
+          status: ev.status,
+          timestamp: ev.timestamp,
+          description: ev.description,
+          completed: Boolean(ev.completed),
+        }))
+        setTimeline(events)
+      } catch (trackErr: any) {
+        setTimeline([])
+        if (trackErr?.code === 'RATE_LIMITED') {
+          setTimelineError('Timeline temporarily unavailable. Retry later.')
+        } else if (trackErr?.code === 'NOT_FOUND') {
+          setTimelineError('Timeline unavailable for this order.')
+        } else {
+          setTimelineError(trackErr?.message || 'Timeline unavailable.')
+        }
+      }
       if (pushQuery) {
         const params = new URLSearchParams()
         params.set('orderId', orderSafe)
@@ -96,7 +202,10 @@ function TrackContent() {
         setError(err?.message || 'Failed to load order info')
       }
       setLookup(null)
+      setDetail(null)
+      setMaskedEmail(null)
       setTimeline([])
+      setTimelineError(null)
     } finally {
       setLoading(false)
     }
@@ -104,16 +213,20 @@ function TrackContent() {
 
   const events = useMemo(() => {
     if (timeline.length) return timeline
-    if (!lookup) return []
+    if (!detail) return []
     return [
       {
-        status: lookup.status,
-        timestamp: lookup.created_at,
+        status: detail.status,
+        timestamp: detail.createdAt,
         description: 'Order status update',
-        completed: lookup.status === 'paid' || lookup.status === 'completed',
+        completed: detail.paymentStatus === 'paid' || detail.paymentStatus === 'completed',
       },
     ]
-  }, [timeline, lookup])
+  }, [timeline, detail])
+
+  const latestRefundPsp = detail?.refund.psp?.latest || null
+  const refundReferenceSummary = getRefundReferenceSummary(latestRefundPsp)
+  const refundTelemetryNote = getRefundTelemetryNote(latestRefundPsp)
 
   const renderEvents = () => {
     if (!lookup) return null
@@ -295,11 +408,63 @@ function TrackContent() {
                   {lookup.shipping?.city && lookup.shipping?.country ? ', ' : ''}
                   {lookup.shipping?.country || ''}
                 </p>
-                {lookup.customer?.masked_email && (
+                {maskedEmail && (
                   <p className="text-sm text-muted-foreground">
-                    {lookup.customer.masked_email}
+                    {maskedEmail}
                   </p>
                 )}
+                {detail?.refund.totalRefundedMinor ? (
+                  <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-1.5">
+                    <p className="text-sm font-medium text-foreground">Refund</p>
+                    <div className="flex items-center justify-between text-sm text-muted-foreground">
+                      <span>Status</span>
+                      <span className="font-medium text-foreground">
+                        {formatLabel(detail.refund.status)}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm text-muted-foreground">
+                      <span>Refunded</span>
+                      <span className="font-medium text-foreground">
+                        {formatMoney(detail.refund.totalRefundedMinor, detail.refund.currency || detail.currency)}
+                      </span>
+                    </div>
+                    {latestRefundPsp && (
+                      <>
+                        <div className="flex items-center justify-between text-sm text-muted-foreground">
+                          <span>Processor</span>
+                          <span className="font-medium text-foreground">
+                            {formatLabel(latestRefundPsp.provider)}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between text-sm text-muted-foreground">
+                          <span>Processor status</span>
+                          <span className="font-medium text-foreground">
+                            {formatLabel(latestRefundPsp.status)}
+                          </span>
+                        </div>
+                        {refundReferenceSummary && (
+                          <div className="flex items-center justify-between text-sm text-muted-foreground">
+                            <span>Tracking reference</span>
+                            <span className="font-medium text-foreground">
+                              {refundReferenceSummary}
+                            </span>
+                          </div>
+                        )}
+                        {latestRefundPsp.observedAt && (
+                          <div className="flex items-center justify-between text-sm text-muted-foreground">
+                            <span>Last checked</span>
+                            <span className="font-medium text-foreground">
+                              {formatDateTime(latestRefundPsp.observedAt)}
+                            </span>
+                          </div>
+                        )}
+                        {refundTelemetryNote && (
+                          <p className="pt-1 text-xs text-slate-700">{refundTelemetryNote}</p>
+                        )}
+                      </>
+                    )}
+                  </div>
+                ) : null}
               </div>
             </div>
           )}
@@ -308,7 +473,11 @@ function TrackContent() {
         {lookup && (
           <div className="bg-white rounded-lg shadow-md p-6">
             <h2 className="text-lg font-semibold mb-4">Timeline</h2>
-            {renderEvents()}
+            {timelineError ? (
+              <p className="text-sm text-muted-foreground">{timelineError}</p>
+            ) : (
+              renderEvents()
+            )}
           </div>
         )}
 
