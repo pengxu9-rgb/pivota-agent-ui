@@ -2419,6 +2419,13 @@ export function PdpContainer({
           items: target.checkoutItems,
           context: { searchParams },
         });
+        if (checkoutUrl.status === 'blocked' || !checkoutUrl.url) {
+          toast.error(
+            checkoutUrl.message ||
+              'This checkout cannot be started as a single order yet.',
+          );
+          return;
+        }
         if (typeof window !== 'undefined') {
           try {
             const nextUrl = new URL(checkoutUrl.url, window.location.origin);

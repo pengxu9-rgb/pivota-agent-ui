@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { useMemo } from 'react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { useCartStore } from '@/store/cartStore';
 import { isAuroraEmbedMode, postRequestCloseToParent } from '@/lib/auroraEmbed';
@@ -39,6 +40,13 @@ export default function CartDrawer() {
       items: orderItems,
       context: { searchParams },
     });
+    if (checkoutUrl.status === 'blocked' || !checkoutUrl.url) {
+      toast.error(
+        checkoutUrl.message ||
+          'This cart cannot be checked out as a single order yet.',
+      );
+      return;
+    }
 
     try {
       const nextUrl = new URL(checkoutUrl.url, window.location.origin);

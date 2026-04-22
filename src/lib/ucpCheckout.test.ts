@@ -96,6 +96,39 @@ describe('ucpCheckout helpers', () => {
         JSON.stringify({
           checkoutUrl: null,
           checkoutSessionId: null,
+          fallbackReason: 'ucp_unavailable',
+        }),
+        {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        },
+      ),
+    );
+
+    const result = await resolveHostedCheckoutUrl({
+      items: [ITEM],
+      context: {
+        searchParams: new URLSearchParams('return=%2Fproducts%3Fq%3Dkravebeauty'),
+      },
+    });
+
+    const url = new URL(String(result.url), 'https://agent.pivota.cc');
+    expect(result.status).toBe('ready');
+    expect(result.entryMode).toBe('legacy_items');
+    expect(result.fallbackReason).toBe('ucp_unavailable');
+    expect(result.blockedReason).toBeNull();
+    expect(url.pathname).toBe('/order');
+    expect(url.searchParams.get('entry_mode')).toBe('legacy_items');
+    expect(url.searchParams.get('fallback_reason')).toBe('ucp_unavailable');
+    expect(url.searchParams.get('return')).toBe('/products?q=kravebeauty');
+  });
+
+  it('blocks multi-merchant shopping checkout instead of falling back to legacy order items', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          checkoutUrl: null,
+          checkoutSessionId: null,
           fallbackReason: 'multi_merchant',
         }),
         {
@@ -112,12 +145,11 @@ describe('ucpCheckout helpers', () => {
       },
     });
 
-    const url = new URL(result.url, 'https://agent.pivota.cc');
-    expect(result.entryMode).toBe('legacy_items');
+    expect(result.status).toBe('blocked');
+    expect(result.url).toBeNull();
+    expect(result.entryMode).toBeNull();
     expect(result.fallbackReason).toBe('multi_merchant');
-    expect(url.pathname).toBe('/order');
-    expect(url.searchParams.get('entry_mode')).toBe('legacy_items');
-    expect(url.searchParams.get('fallback_reason')).toBe('multi_merchant');
-    expect(url.searchParams.get('return')).toBe('/products?q=kravebeauty');
+    expect(result.blockedReason).toBe('multi_merchant');
+    expect(result.message).toContain('multiple sellers');
   });
 });

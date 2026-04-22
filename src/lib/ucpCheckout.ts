@@ -21,6 +21,8 @@ export type HostedCheckoutFallbackReason =
   | 'ucp_unavailable'
   | 'legacy_deeplink';
 
+export type HostedCheckoutBlockedReason = 'multi_merchant';
+
 type HostedCheckoutQueryContext = {
   searchParams?: URLSearchParams;
   returnUrl?: string | null;
@@ -169,20 +171,39 @@ export async function resolveHostedCheckoutUrl(args: {
   items: HostedCheckoutItem[];
   context?: HostedCheckoutQueryContext;
 }): Promise<{
-  url: string;
-  entryMode: 'ucp_session' | 'legacy_items';
+  status: 'ready' | 'blocked';
+  url: string | null;
+  entryMode: 'ucp_session' | 'legacy_items' | null;
   fallbackReason: HostedCheckoutFallbackReason | null;
+  blockedReason: HostedCheckoutBlockedReason | null;
+  message: string | null;
 }> {
   const ucpResult = await createUcpCheckoutSession(args);
   if (ucpResult.checkoutUrl) {
     return {
+      status: 'ready',
       url: ucpResult.checkoutUrl,
       entryMode: 'ucp_session',
       fallbackReason: null,
+      blockedReason: null,
+      message: null,
+    };
+  }
+
+  if (ucpResult.fallbackReason === 'multi_merchant') {
+    return {
+      status: 'blocked',
+      url: null,
+      entryMode: null,
+      fallbackReason: 'multi_merchant',
+      blockedReason: 'multi_merchant',
+      message:
+        'Items from multiple sellers cannot be checked out together yet. Please purchase each seller separately.',
     };
   }
 
   return {
+    status: 'ready',
     url: buildLegacyOrderHref({
       items: args.items,
       context: args.context,
@@ -190,5 +211,7 @@ export async function resolveHostedCheckoutUrl(args: {
     }),
     entryMode: 'legacy_items',
     fallbackReason: ucpResult.fallbackReason,
+    blockedReason: null,
+    message: null,
   };
 }
