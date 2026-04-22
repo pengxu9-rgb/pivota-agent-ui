@@ -243,8 +243,10 @@ describe('resolveStripePublishableKey', () => {
   })
 
   it('hides the external pay button once an Adyen session is mounted', () => {
-    expect(shouldRenderExternalPayButton('adyen_session')).toBe(false)
-    expect(shouldRenderExternalPayButton('stripe_client_secret')).toBe(true)
+    expect(shouldRenderExternalPayButton('component')).toBe(false)
+    expect(shouldRenderExternalPayButton('unsupported')).toBe(false)
+    expect(shouldRenderExternalPayButton('external_button')).toBe(true)
+    expect(shouldRenderExternalPayButton('redirect')).toBe(true)
     expect(shouldRenderExternalPayButton(null)).toBe(true)
   })
 })

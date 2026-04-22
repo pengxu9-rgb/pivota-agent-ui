@@ -403,9 +403,10 @@ export function resolveAdyenEnvironment(
 }
 
 export function shouldRenderExternalPayButton(
-  paymentActionType: string | null | undefined,
+  submitOwner: string | null | undefined,
 ): boolean {
-  return paymentActionType !== 'adyen_session'
+  if (!submitOwner) return true
+  return submitOwner === 'external_button' || submitOwner === 'redirect'
 }
 
 function normalizePaymentPspToken(value: unknown): string | null {
@@ -2032,6 +2033,21 @@ function OrderFlowInner({
     ? buildPostPayReturnUrl(createdOrderId) || null
     : null
   const stripeMethodLabel = formatStripePaymentMethodLabel(stripeSelectedMethodType)
+  const activePaymentResponse =
+    prefetchedPaymentRes?.paymentResponse ||
+    createdOrderPaymentRef.current?.paymentResponse ||
+    (initialPaymentAction
+      ? {
+          payment_action: initialPaymentAction,
+        }
+      : null)
+  const activePaymentContract = resolveCheckoutPaymentContract({
+    paymentResponse: activePaymentResponse,
+    action: initialPaymentAction || undefined,
+  })
+  const paymentSubmitOwner = activePaymentContract.submitOwner
+  const paymentComponentKind = activePaymentContract.componentKind
+  const paymentSupportedInShoppingUi = activePaymentContract.supportedInShoppingUi
   const isExternalRedirectPayment = paymentActionType === 'redirect_url'
   const paymentProviderLabel =
     pspUsed === 'adyen'
@@ -2049,29 +2065,56 @@ function OrderFlowInner({
     ? 'Processing...'
     : paymentInitLoading
       ? 'Preparing payment...'
-      : isExternalRedirectPayment
+      : paymentSubmitOwner === 'redirect'
           ? 'Continue to merchant payment'
           : `Pay ${formatAmount(total)}`
-  const showExternalPayButton = shouldRenderExternalPayButton(paymentActionType)
+  const showExternalPayButton = shouldRenderExternalPayButton(paymentSubmitOwner)
 
-  const finalizeOrderAfterPayment = async (orderId: string): Promise<OrderCompletionOptions> => {
+  const finalizeOrderAfterPayment = async (
+    orderId: string,
+  ): Promise<OrderCompletionOptions & { paymentFailed?: boolean; paymentStatus?: string | null }> => {
     const confirmation = await confirmPaymentWithRetry({
       orderId,
       confirmPayment: confirmOrderPayment,
       maxAttempts: 3,
       retryDelayMs: 220,
     })
+    if (confirmation.status === 'failed') {
+      return {
+        finalizing: false,
+        paymentFailed: true,
+        paymentStatus: confirmation.paymentStatus,
+      }
+    }
     return {
       finalizing: confirmation.status !== 'confirmed',
+      paymentStatus: confirmation.paymentStatus,
     }
   }
 
+  const handleTerminalPaymentFailure = (paymentStatus?: string | null) => {
+    setIsProcessing(false)
+    setStep('payment')
+    setCheckoutFailure({
+      message:
+        paymentStatus === 'payment_failed'
+          ? 'Payment failed. Restart checkout to try again.'
+          : 'Payment could not be confirmed. Restart checkout to try again.',
+    })
+    toast.error('Payment failed. Restart checkout to try again.')
+    if (onFailure) onFailure({ reason: 'payment_failed', stage: 'payment' })
+  }
+
   const completeCheckoutForOrder = async (targetOrderId: string, paymentIdValue?: string) => {
+    const completionOptions = await finalizeOrderAfterPayment(targetOrderId)
+    if (completionOptions.paymentFailed) {
+      handleTerminalPaymentFailure(completionOptions.paymentStatus)
+      return
+    }
     setPaymentId(paymentIdValue || '')
     setStep('confirm')
     toast.success('Payment completed successfully.')
     clearCart()
-    const completionOptions = await finalizeOrderAfterPayment(targetOrderId)
     if (onComplete) {
       onComplete(targetOrderId, completionOptions)
       return
@@ -2257,16 +2300,7 @@ function OrderFlowInner({
       analytics: { enabled: false },
       onPaymentCompleted: () => {
         void (async () => {
-          setStep('confirm')
-          toast.success('Payment completed successfully.')
-          clearCart()
-          const completionOptions = await finalizeOrderAfterPayment(orderId)
-          if (onComplete) {
-            onComplete(orderId, completionOptions)
-            return
-          }
-          const successPath = buildOrderSuccessPath(orderId, completionOptions)
-          router.push(successPath || `/orders/${orderId}?paid=1`)
+          await completeCheckoutForOrder(orderId)
         })()
       },
       onError: (err: any) => {
@@ -2889,6 +2923,12 @@ function OrderFlowInner({
         }
 
         // Client-owned confirmation paths.
+        if (!paymentContract.supportedInShoppingUi || paymentContract.submitOwner === 'unsupported') {
+          throw new Error(
+            'This payment surface is not available in shopping UI yet. Use a supported PSP or restart checkout.',
+          )
+        }
+
         if (action?.type === 'redirect_url') {
           if (redirectUrl) {
             window.location.href = redirectUrl
@@ -3664,7 +3704,7 @@ function OrderFlowInner({
                   </div>
                 ) : null}
 
-                {paymentActionType === 'adyen_session' ? (
+                {paymentSubmitOwner === 'component' && paymentComponentKind === 'adyen_dropin' ? (
                   <div className="rounded-[20px] border border-slate-200 bg-white p-3 sm:p-4">
                     <p className="mb-2 text-sm font-medium sm:text-base">Adyen payment</p>
                     <div ref={adyenContainerRef} className="mt-2" />
@@ -3674,13 +3714,13 @@ function OrderFlowInner({
                       </p>
                     )}
                   </div>
-                ) : paymentActionType === 'checkout_session' ? (
+                ) : paymentSubmitOwner === 'unsupported' || !paymentSupportedInShoppingUi ? (
                   <div className="rounded-[20px] border border-amber-200 bg-amber-50 p-3 sm:p-4">
                     <p className="text-sm font-medium text-amber-900">
-                      Checkout.com embedded payment is not available in shopping UI yet.
+                      This payment surface is not available in shopping UI yet.
                     </p>
                     <p className="mt-1 text-xs text-amber-800">
-                      Route this checkout to Stripe or Adyen, or use an internal canary path for PSP-only testing.
+                      Route this checkout to Stripe or Adyen, or restart checkout with a supported payment surface.
                     </p>
                   </div>
                 ) : (
@@ -3817,11 +3857,15 @@ function OrderFlowInner({
                   >
                     {paymentButtonLabel}
                   </button>
-                ) : (
+                ) : paymentSubmitOwner === 'component' ? (
                   <div className="rounded-[18px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs font-medium text-emerald-800 lg:w-full">
-                    Complete payment in the secure Adyen form above.
+                    Complete payment in the secure payment form above.
                   </div>
-                )}
+                ) : paymentSubmitOwner === 'unsupported' || !paymentSupportedInShoppingUi ? (
+                  <div className="rounded-[18px] border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-medium text-amber-900 lg:w-full">
+                    This payment surface is not supported here. Restart checkout to continue.
+                  </div>
+                ) : null}
               </div>
             </div>
           </div>

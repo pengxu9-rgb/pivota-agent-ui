@@ -163,4 +163,50 @@ describe('Order page resume fallback', () => {
       expect(screen.getByTestId('order-flow')).toHaveTextContent('ORD_RESUME_2:1:1.69:0.16:8');
     });
   });
+
+  it('does not resume payment_failed orders', async () => {
+    getAccountOrderMock.mockRejectedValue({ status: 401, code: 'UNAUTHENTICATED' });
+    publicOrderResumeMock.mockResolvedValue({
+      order: {
+        order_id: 'ORD_FAILED_1',
+        merchant_id: 'merch_1',
+        currency: 'USD',
+        payment_status: 'payment_failed',
+        shipping_address: {
+          name: 'Buyer Example',
+          city: 'San Francisco',
+          country: 'US',
+          postal_code: '94105',
+        },
+        pricing: {
+          subtotal_minor: 169,
+          discount_total_minor: 16,
+          shipping_fee_minor: 800,
+          tax_minor: 0,
+          total_amount_minor: 953,
+        },
+      },
+      items: [
+        {
+          product_id: 'prod_1',
+          title: 'Resume Item',
+          quantity: 1,
+          unit_price_minor: 169,
+          subtotal_minor: 169,
+          merchant_id: 'merch_1',
+        },
+      ],
+      customer: {
+        email: 'buyer@example.com',
+      },
+    });
+
+    render(<OrderPage />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText('This payment attempt failed and cannot be resumed. Restart checkout to try again.'),
+      ).toBeInTheDocument();
+    });
+  });
 });

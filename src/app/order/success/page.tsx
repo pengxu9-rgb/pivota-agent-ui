@@ -2,7 +2,7 @@
 
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { Check, Package, ArrowRight, LoaderCircle } from 'lucide-react'
+import { Check, Package, ArrowRight, LoaderCircle, AlertCircle } from 'lucide-react'
 import { confirmOrderPayment, getOrderStatus } from '@/lib/api'
 import { resolveExternalAgentHomeUrl, safeReturnUrl, withReturnParams } from '@/lib/returnUrl'
 import { isAuroraEmbedMode, postRequestCloseToParent } from '@/lib/auroraEmbed'
@@ -118,7 +118,7 @@ function SuccessContent() {
   const isEmbedMode = useMemo(() => isAuroraEmbedMode(), [])
 
   const [checkoutToken, setCheckoutToken] = useState<string | null>(null)
-  const [finalizationState, setFinalizationState] = useState<'idle' | 'running' | 'delayed'>(
+  const [finalizationState, setFinalizationState] = useState<'idle' | 'running' | 'delayed' | 'failed'>(
     shouldFinalizeOnLoad ? 'running' : 'idle',
   )
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'step_up' | 'error'>(
@@ -129,7 +129,8 @@ function SuccessContent() {
   const [buyerVaultSnapshot, setBuyerVaultSnapshot] = useState<BuyerVaultSnapshot>(EMPTY_BUYER_VAULT_SNAPSHOT)
   const hasBuyerVaultPrefill = Boolean(buyerVaultSnapshot.email || buyerVaultSnapshot.hasAddress)
   const canSave = Boolean(checkoutToken || orderId || saveTokenFromUrl || hasBuyerVaultPrefill)
-  const isAwaitingConfirmedPayment = shouldFinalizeOnLoad && finalizationState !== 'idle'
+  const isAwaitingConfirmedPayment =
+    shouldFinalizeOnLoad && finalizationState !== 'idle' && finalizationState !== 'failed'
 
   useEffect(() => {
     const rawSearch = searchParams.toString()
@@ -273,6 +274,10 @@ function SuccessContent() {
         setFinalizationState('idle')
         return
       }
+      if (confirmation.status === 'failed') {
+        setFinalizationState('failed')
+        return
+      }
 
       const pollResult = await pollOrderStatusUntilSettled({
         orderId,
@@ -282,7 +287,13 @@ function SuccessContent() {
       })
 
       if (!active) return
-      setFinalizationState(pollResult.status === 'confirmed' ? 'idle' : 'delayed')
+      setFinalizationState(
+        pollResult.status === 'confirmed'
+          ? 'idle'
+          : pollResult.status === 'failed'
+            ? 'failed'
+            : 'delayed',
+      )
     }
 
     void run()
@@ -314,6 +325,10 @@ function SuccessContent() {
         if (!active) return
         if (pollResult.status === 'confirmed') {
           setFinalizationState('idle')
+          return
+        }
+        if (pollResult.status === 'failed') {
+          setFinalizationState('failed')
           return
         }
       }
@@ -349,10 +364,16 @@ function SuccessContent() {
       <div className="bg-white rounded-lg shadow-xl p-6 max-w-md w-full text-center">
         <div
           className={`w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4 ${
-            isAwaitingConfirmedPayment ? 'bg-blue-100' : 'bg-green-100'
+            finalizationState === 'failed'
+              ? 'bg-amber-100'
+              : isAwaitingConfirmedPayment
+                ? 'bg-blue-100'
+                : 'bg-green-100'
           }`}
         >
-          {isAwaitingConfirmedPayment ? (
+          {finalizationState === 'failed' ? (
+            <AlertCircle className="w-7 h-7 text-amber-600" />
+          ) : isAwaitingConfirmedPayment ? (
             <LoaderCircle className="w-7 h-7 text-blue-600 animate-spin" />
           ) : (
             <Check className="w-7 h-7 text-green-600" />
@@ -360,17 +381,30 @@ function SuccessContent() {
         </div>
 
         <h1 className="text-2xl font-bold text-gray-800 mb-2">
-          {isAwaitingConfirmedPayment ? 'Confirming payment' : 'Order Successful!'}
+          {finalizationState === 'failed'
+            ? 'Payment failed'
+            : isAwaitingConfirmedPayment
+              ? 'Confirming payment'
+              : 'Order Successful!'}
         </h1>
         <p className="text-sm text-gray-600 mb-5">
-          {finalizationState === 'running'
-            ? 'Payment received. Confirming your order now.'
-            : finalizationState === 'delayed'
-              ? 'Payment received. Final confirmation is taking a little longer than usual.'
-              : 'Thank you for shopping with Pivota. Your order has been confirmed.'}
+          {finalizationState === 'failed'
+            ? 'This payment attempt did not complete. Restart checkout to try again.'
+            : finalizationState === 'running'
+              ? 'Payment received. Confirming your order now.'
+              : finalizationState === 'delayed'
+                ? 'Payment received. Final confirmation is taking a little longer than usual.'
+                : 'Thank you for shopping with Pivota. Your order has been confirmed.'}
         </p>
 
-        {finalizationState === 'delayed' ? (
+        {finalizationState === 'failed' ? (
+          <div
+            className="mb-5 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-left text-amber-800"
+          >
+            <p className="text-sm font-medium">This order cannot continue from the same payment link.</p>
+            <p className="mt-1 text-xs">Return to the merchant or restart checkout to create a new order.</p>
+          </div>
+        ) : finalizationState === 'delayed' ? (
           <div
             className="mb-5 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-left text-amber-800"
           >

@@ -1,17 +1,20 @@
-import { isBackendSettledPaymentStatus } from '@/lib/checkoutPaymentContract'
+import {
+  isBackendSettledPaymentStatus,
+  isTerminalPaymentFailureStatus,
+} from '@/lib/checkoutPaymentContract'
 
 type SleepFn = (ms: number) => Promise<void>
 type NowFn = () => number
 
 export type PaymentConfirmationResult = {
-  status: 'confirmed' | 'pending'
+  status: 'confirmed' | 'pending' | 'failed'
   attempts: number
   paymentStatus: string | null
   lastError: unknown | null
 }
 
 export type PaymentStatusPollResult = {
-  status: 'confirmed' | 'pending'
+  status: 'confirmed' | 'pending' | 'failed'
   polls: number
   paymentStatus: string | null
   lastError: unknown | null
@@ -29,8 +32,12 @@ const PAYMENT_STATUS_HINTS = new Set([
   'paid',
   'completed',
   'succeeded',
-  'requires_payment_method',
-  'requires_confirmation',
+  'payment_failed',
+  'failed',
+  'cancelled',
+  'canceled',
+  'refunded',
+  'partially_refunded',
   'requires_action',
 ])
 
@@ -157,6 +164,14 @@ export async function confirmPaymentWithRetry(args: {
           lastError: null,
         }
       }
+      if (paymentStatus && isTerminalPaymentFailureStatus(paymentStatus)) {
+        return {
+          status: 'failed',
+          attempts: attempt,
+          paymentStatus,
+          lastError: null,
+        }
+      }
       return {
         status: 'pending',
         attempts: attempt,
@@ -207,6 +222,14 @@ export async function pollOrderStatusUntilSettled(args: {
       if (lastPaymentStatus && isBackendSettledPaymentStatus(lastPaymentStatus)) {
         return {
           status: 'confirmed',
+          polls,
+          paymentStatus: lastPaymentStatus,
+          lastError: null,
+        }
+      }
+      if (lastPaymentStatus && isTerminalPaymentFailureStatus(lastPaymentStatus)) {
+        return {
+          status: 'failed',
           polls,
           paymentStatus: lastPaymentStatus,
           lastError: null,

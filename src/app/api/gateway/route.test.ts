@@ -181,15 +181,138 @@ describe('/api/gateway checkout-safe proxy', () => {
       payment_status: 'requires_action',
       confirmation_owner: 'client',
       requires_client_confirmation: true,
+      submit_owner: 'external_button',
+      component_kind: 'stripe_payment_element',
+      supported_in_shopping_ui: true,
       psp: 'stripe',
       payment: {
         payment_status: 'requires_action',
         confirmation_owner: 'client',
         requires_client_confirmation: true,
+        submit_owner: 'external_button',
+        component_kind: 'stripe_payment_element',
+        supported_in_shopping_ui: true,
       },
       payment_action: {
         type: 'stripe_client_secret',
         client_secret: 'pi_123_secret_456',
+        submit_owner: 'external_button',
+        component_kind: 'stripe_payment_element',
+        supported_in_shopping_ui: true,
+      },
+    });
+  });
+
+  it('preserves explicit backend payment ownership contract fields', async () => {
+    vi.stubEnv('SHOP_UPSTREAM_API_URL', 'https://invoke.example.com');
+    vi.stubEnv('PIVOTA_BACKEND_BASE_URL', 'https://checkout.example.com');
+
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      jsonResponse({
+        payment_status: 'requires_action',
+        confirmation_owner: 'client',
+        requires_client_confirmation: true,
+        psp: 'checkout',
+        payment_action: {
+          type: 'checkout_session',
+          client_secret: 'cko_session_123',
+          submit_owner: 'unsupported',
+          component_kind: 'checkout_embedded',
+          supported_in_shopping_ui: false,
+        },
+      }),
+    );
+
+    const { POST } = await import('@/app/api/gateway/route');
+
+    const req = new Request('http://localhost/api/gateway', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        operation: 'submit_payment',
+        payload: {
+          payment: {
+            order_id: 'ord_unsupported_123',
+            return_url: 'https://agent.pivota.cc/order/success?orderId=ord_unsupported_123',
+          },
+        },
+      }),
+    });
+
+    const res = await POST(req as any);
+    const data = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(data).toMatchObject({
+      payment_status: 'requires_action',
+      confirmation_owner: 'client',
+      requires_client_confirmation: true,
+      submit_owner: 'unsupported',
+      component_kind: 'checkout_embedded',
+      supported_in_shopping_ui: false,
+      payment_action: {
+        type: 'checkout_session',
+        submit_owner: 'unsupported',
+        component_kind: 'checkout_embedded',
+        supported_in_shopping_ui: false,
+      },
+      payment: {
+        payment_status: 'requires_action',
+        confirmation_owner: 'client',
+        requires_client_confirmation: true,
+        submit_owner: 'unsupported',
+        component_kind: 'checkout_embedded',
+        supported_in_shopping_ui: false,
+      },
+    });
+  });
+
+  it('normalizes legacy failed submit_payment responses into terminal payment_failed', async () => {
+    vi.stubEnv('SHOP_UPSTREAM_API_URL', 'https://invoke.example.com');
+    vi.stubEnv('PIVOTA_BACKEND_BASE_URL', 'https://checkout.example.com');
+
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      jsonResponse({
+        status: 'failed',
+        psp_used: 'stripe',
+      }),
+    );
+
+    const { POST } = await import('@/app/api/gateway/route');
+
+    const req = new Request('http://localhost/api/gateway', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        operation: 'submit_payment',
+        payload: {
+          payment: {
+            order_id: 'ord_failed_123',
+            return_url: 'https://agent.pivota.cc/order/success?orderId=ord_failed_123',
+          },
+        },
+      }),
+    });
+
+    const res = await POST(req as any);
+    const data = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(data).toMatchObject({
+      status: 'failed',
+      payment_status: 'payment_failed',
+      confirmation_owner: 'backend',
+      requires_client_confirmation: false,
+      supported_in_shopping_ui: true,
+      payment: {
+        payment_status: 'payment_failed',
+        confirmation_owner: 'backend',
+        requires_client_confirmation: false,
+        supported_in_shopping_ui: true,
       },
     });
   });
