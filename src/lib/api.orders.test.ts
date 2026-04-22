@@ -8,7 +8,7 @@ vi.mock('@/lib/auroraOrdersAuth', () => ({
   shouldUseAuroraAutoExchange: (...args: unknown[]) => shouldUseAuroraAutoExchangeMock(...args),
 }));
 
-import { listMyOrders } from '@/lib/api';
+import { listMyOrders, publicOrderResume } from '@/lib/api';
 
 const jsonResponse = (payload: unknown, status = 200) =>
   new Response(JSON.stringify(payload), {
@@ -89,5 +89,20 @@ describe('listMyOrders request options', () => {
     expect(ensureAuroraSessionMock).toHaveBeenCalledTimes(1);
     expect(Array.isArray((data as any).orders)).toBe(true);
     expect((data as any).orders[0]?.order_id).toBe('ORD_1');
+  });
+
+  it('calls the public order resume endpoint with order id and email', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      jsonResponse({ order: { order_id: 'ORD_RESUME_1' }, items: [], payment: { current: null }, customer: {} }),
+    );
+
+    await publicOrderResume('ORD_RESUME_1', 'buyer@example.com');
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const parsed = new URL(url, 'https://agent.pivota.cc');
+    expect(parsed.pathname).toBe('/api/accounts/public/order-resume');
+    expect(parsed.searchParams.get('order_id')).toBe('ORD_RESUME_1');
+    expect(parsed.searchParams.get('email')).toBe('buyer@example.com');
   });
 });

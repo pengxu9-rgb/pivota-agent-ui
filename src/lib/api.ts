@@ -3401,6 +3401,11 @@ export async function publicOrderLookup(orderId: string, email: string) {
   return callAccounts(`/public/order-lookup?${params.toString()}`);
 }
 
+export async function publicOrderResume(orderId: string, email: string) {
+  const params = new URLSearchParams({ order_id: orderId, email });
+  return callAccounts(`/public/order-resume?${params.toString()}`);
+}
+
 export async function publicOrderTrack(orderId: string, email: string) {
   const params = new URLSearchParams({ order_id: orderId, email });
   return callAccounts(`/public/track?${params.toString()}`);

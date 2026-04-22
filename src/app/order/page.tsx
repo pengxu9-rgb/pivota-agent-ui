@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import OrderFlow from '@/components/order/OrderFlow'
 import { ArrowLeft } from 'lucide-react'
 import { safeReturnUrl, withReturnParams } from '@/lib/returnUrl'
-import { getAccountOrder, setMerchantId } from '@/lib/api'
+import { getAccountOrder, publicOrderResume, setMerchantId } from '@/lib/api'
 import {
   getCheckoutContextFromBrowser,
   normalizeCheckoutSource,
@@ -177,6 +177,7 @@ function OrderContent() {
   const [orderItems, setOrderItems] = useState<OrderItem[]>([])
   const [resumeOrder, setResumeOrder] = useState<ResumeOrderState | null>(null)
   const [resumeOrderLoading, setResumeOrderLoading] = useState(false)
+  const [resumeOrderError, setResumeOrderError] = useState<string | null>(null)
   const [ucpFailure, setUcpFailure] = useState<UcpFailure | null>(null)
   const hasAutoReturnedRef = useRef(false)
   const ucpCheckoutSessionId =
@@ -230,6 +231,12 @@ function OrderContent() {
     (searchParams.get('checkout_debug') || searchParams.get('debug') || '').trim() || null
   const resumeOrderId =
     (searchParams.get('orderId') || searchParams.get('order_id') || '').trim() || null
+  const resumeOrderEmail =
+    (searchParams.get('email') ||
+      searchParams.get('customer_email') ||
+      searchParams.get('customerEmail') ||
+      '')
+      .trim() || null
   const itemsParam = searchParams.get('items')
   const entryModeFromQuery =
     (searchParams.get('entry_mode') || searchParams.get('entryMode') || '').trim() || null
@@ -387,16 +394,25 @@ function OrderContent() {
     } else if (resumeOrderId) {
         ;(async () => {
           setResumeOrderLoading(true)
+          setResumeOrderError(null)
           try {
-            const raw = await getAccountOrder(resumeOrderId)
+            let raw: any
+            try {
+              raw = await getAccountOrder(resumeOrderId)
+            } catch (error) {
+              if (!resumeOrderEmail) throw error
+              raw = await publicOrderResume(resumeOrderId, resumeOrderEmail)
+            }
             const loaded = buildResumeOrderState(raw)
             if (!loaded) {
               setOrderItems([])
               setResumeOrder(null)
+              setResumeOrderError('This payment link is missing order details. Reopen the full payment link and retry.')
               return
             }
             setOrderItems(loaded.items)
             setResumeOrder(loaded.resumeOrder)
+            setResumeOrderError(null)
             const merchantId =
               loaded.items
                 .map((item) => String(item.merchant_id || '').trim())
@@ -408,6 +424,11 @@ function OrderContent() {
             console.error('[Order] Failed to load resumable order:', error)
             setOrderItems([])
             setResumeOrder(null)
+            setResumeOrderError(
+              resumeOrderEmail
+                ? 'We could not verify this payment link. Reopen the latest link and retry.'
+                : 'This payment link needs buyer verification. Sign in or open the full link that includes your email.',
+            )
           } finally {
             setResumeOrderLoading(false)
           }
@@ -425,7 +446,7 @@ function OrderContent() {
         }
       ])
     }
-  }, [itemsParam, resumeOrderId, sellerName, sellerDomain, billingDescriptor, ucpCheckoutSessionId])
+  }, [itemsParam, resumeOrderId, resumeOrderEmail, sellerName, sellerDomain, billingDescriptor, ucpCheckoutSessionId])
 
   useEffect(() => {
     if (!ucpFailure || !returnUrl) return
@@ -671,7 +692,9 @@ function OrderContent() {
           </div>
         ) : (
           <div className="text-center py-12">
-            <p className="text-gray-600">No items in your order</p>
+            <p className="text-gray-600">
+              {resumeOrderId ? resumeOrderError || 'We could not load this order.' : 'No items in your order'}
+            </p>
             <button
               onClick={() => router.push('/')}
               className="mt-4 px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
