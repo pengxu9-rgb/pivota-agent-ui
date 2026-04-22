@@ -37,6 +37,8 @@ type LookupResult = {
   customer?: { name?: string; masked_email?: string }
 }
 
+type LookupPricing = NonNullable<LookupResult['pricing']>
+
 const formatMoney = (minor: number, currency: string): string =>
   new Intl.NumberFormat('en-US', {
     style: 'currency',
@@ -59,6 +61,83 @@ const formatDateTime = (value: string | null | undefined): string | null => {
   const date = new Date(raw)
   if (Number.isNaN(date.getTime())) return null
   return date.toLocaleString()
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+
+const asNumeric = (value: unknown): number | null => {
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (typeof value === 'string') {
+    const cleaned = value.replace(/[^0-9.-]/g, '')
+    if (!cleaned) return null
+    const parsed = Number(cleaned)
+    if (Number.isFinite(parsed)) return parsed
+  }
+  return null
+}
+
+const pickAmountMinor = (
+  source: Record<string, unknown>,
+  minorKey: string,
+  majorKey: string,
+): number => {
+  const minor = asNumeric(source[minorKey])
+  if (minor != null) return Math.max(0, Math.round(minor))
+  const major = asNumeric(source[majorKey])
+  if (major != null) return Math.max(0, Math.round(major * 100))
+  return 0
+}
+
+const normalizeLookupPricing = (raw: unknown): LookupPricing | null => {
+  if (!isRecord(raw)) return null
+  return {
+    subtotal_minor: pickAmountMinor(raw, 'subtotal_minor', 'subtotal'),
+    discount_total_minor: pickAmountMinor(raw, 'discount_total_minor', 'discount_total'),
+    shipping_fee_minor: pickAmountMinor(raw, 'shipping_fee_minor', 'shipping_fee'),
+    tax_minor: pickAmountMinor(raw, 'tax_minor', 'tax'),
+    total_amount_minor: pickAmountMinor(raw, 'total_amount_minor', 'total'),
+  }
+}
+
+const hasMeaningfulPricing = (pricing: LookupResult['pricing'] | null | undefined): boolean =>
+  Boolean(
+    pricing &&
+      ((pricing.total_amount_minor || 0) > 0 ||
+        (pricing.subtotal_minor || 0) > 0 ||
+        (pricing.discount_total_minor || 0) > 0 ||
+        (pricing.shipping_fee_minor || 0) > 0 ||
+        (pricing.tax_minor || 0) > 0),
+  )
+
+const resolveLookupPricing = (
+  summary: Record<string, unknown>,
+  normalized: NormalizedOrderDetail | null,
+): LookupResult['pricing'] | undefined => {
+  const orderRaw = isRecord(summary.order) ? summary.order : {}
+  const candidates: Array<LookupResult['pricing'] | null> = [
+    normalizeLookupPricing(summary.pricing),
+    normalizeLookupPricing(orderRaw.pricing),
+    normalizeLookupPricing(isRecord(summary.pricing_quote) ? summary.pricing_quote.pricing : null),
+    normalizeLookupPricing(
+      isRecord(orderRaw.pricing_quote) ? orderRaw.pricing_quote.pricing : null,
+    ),
+    normalized?.amounts
+      ? {
+          subtotal_minor: normalized.amounts.subtotalMinor,
+          discount_total_minor: normalized.amounts.discountTotalMinor,
+          shipping_fee_minor: normalized.amounts.shippingFeeMinor,
+          tax_minor: normalized.amounts.taxMinor,
+          total_amount_minor: normalized.amounts.totalAmountMinor,
+        }
+      : null,
+  ]
+
+  for (const candidate of candidates) {
+    if (hasMeaningfulPricing(candidate)) return candidate || undefined
+  }
+
+  return candidates.find(Boolean) || undefined
 }
 
 const getRefundReferenceSummary = (snapshot: NormalizedRefundPspSnapshot | null): string | null => {
@@ -133,16 +212,9 @@ function TrackContent() {
     try {
       const summary = await publicOrderResume(orderSafe, emailSafe)
       const normalized = normalizeOrderDetail(summary)
-      const orderRaw = (summary as any)?.order || {}
-      const pricing = normalized?.amounts
-        ? {
-            subtotal_minor: normalized.amounts.subtotalMinor,
-            discount_total_minor: normalized.amounts.discountTotalMinor,
-            shipping_fee_minor: normalized.amounts.shippingFeeMinor,
-            tax_minor: normalized.amounts.taxMinor,
-            total_amount_minor: normalized.amounts.totalAmountMinor,
-          }
-        : undefined
+      const summaryRaw = isRecord(summary) ? summary : {}
+      const orderRaw = isRecord(summaryRaw.order) ? summaryRaw.order : {}
+      const pricing = resolveLookupPricing(summaryRaw, normalized)
       setLookup({
         order_id: normalized?.id || String(orderRaw?.order_id || orderSafe),
         status: normalized?.status || String(orderRaw?.status || ''),
