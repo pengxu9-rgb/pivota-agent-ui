@@ -131,10 +131,13 @@ export function resolveCheckoutPaymentContract(args: {
   const paymentStatus = normalizePaymentStatus(statusRaw)
   const paymentStatusRaw = paymentStatus === 'unknown' ? statusRaw : null
   const explicitRequires =
+    readBoolean(actionObj.requires_client_confirmation) ??
     readBoolean(root.requires_client_confirmation) ??
     readBoolean(nested?.requires_client_confirmation)
   const explicitOwnerRaw =
-    readString(root.confirmation_owner) || readString(nested?.confirmation_owner)
+    readString(actionObj.confirmation_owner) ||
+    readString(root.confirmation_owner) ||
+    readString(nested?.confirmation_owner)
   const explicitOwner =
     explicitOwnerRaw === 'client'
       ? 'client'
