@@ -87,6 +87,13 @@ function buildResumeOrderState(raw: any): ResumeOrderLoadResult | null {
   const order = raw?.order && typeof raw.order === 'object' ? raw.order : raw
   const orderId = String(order?.order_id || order?.id || '').trim()
   if (!orderId) return null
+  const normalizedPaymentStatus = String(order?.payment_status || raw?.payment_status || '')
+    .trim()
+    .toLowerCase()
+  if (normalizedPaymentStatus === 'payment_failed' || normalizedPaymentStatus === 'failed') {
+    console.warn('[OrderResume] terminal_payment_failure', { orderId, paymentStatus: normalizedPaymentStatus })
+    return null
+  }
 
   const currency = String(order?.currency || 'USD').trim().toUpperCase() || 'USD'
   const orderMerchantId = String(order?.merchant_id || '').trim() || undefined
@@ -454,9 +461,17 @@ function OrderContent() {
             }
             const loaded = buildResumeOrderState(raw)
             if (!loaded) {
+              const rawOrder = raw?.order && typeof raw.order === 'object' ? raw.order : raw
+              const rawPaymentStatus = String(rawOrder?.payment_status || raw?.payment_status || '')
+                .trim()
+                .toLowerCase()
               setOrderItems([])
               setResumeOrder(null)
-              setResumeOrderError('This payment link is missing order details. Reopen the full payment link and retry.')
+              setResumeOrderError(
+                rawPaymentStatus === 'payment_failed' || rawPaymentStatus === 'failed'
+                  ? 'This payment attempt failed and cannot be resumed. Restart checkout to try again.'
+                  : 'This payment link is missing order details. Reopen the full payment link and retry.',
+              )
               return
             }
             setOrderItems(loaded.items)

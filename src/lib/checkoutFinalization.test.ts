@@ -69,6 +69,23 @@ describe('checkout finalization helpers', () => {
     })
   })
 
+  it('treats payment_failed as a terminal confirmation failure', async () => {
+    const confirmPayment = vi.fn().mockResolvedValue({ payment_status: 'payment_failed' })
+
+    const result = await confirmPaymentWithRetry({
+      orderId: 'ord_123',
+      confirmPayment,
+      maxAttempts: 1,
+    })
+
+    expect(result).toMatchObject({
+      status: 'failed',
+      attempts: 1,
+      paymentStatus: 'payment_failed',
+      lastError: null,
+    })
+  })
+
   it('keeps confirmation pending when no settled payment status is returned', async () => {
     const confirmPayment = vi.fn().mockResolvedValue({ ok: true })
 
@@ -113,6 +130,31 @@ describe('checkout finalization helpers', () => {
     })
     expect(getOrderStatus).toHaveBeenCalledTimes(2)
     expect(sleepFn).toHaveBeenCalledTimes(1)
+  })
+
+  it('stops polling when order status reaches terminal payment failure', async () => {
+    let now = 0
+    const getOrderStatus = vi.fn().mockResolvedValue({ payment_status: 'payment_failed' })
+    const sleepFn = vi.fn().mockImplementation(async (ms: number) => {
+      now += ms
+    })
+
+    const result = await pollOrderStatusUntilSettled({
+      orderId: 'ord_123',
+      getOrderStatus,
+      timeoutMs: 1000,
+      intervalMs: 200,
+      sleepFn,
+      nowFn: () => now,
+    })
+
+    expect(result).toMatchObject({
+      status: 'failed',
+      polls: 1,
+      paymentStatus: 'payment_failed',
+      lastError: null,
+    })
+    expect(sleepFn).not.toHaveBeenCalled()
   })
 
   it('extracts payment status from nested order payloads', () => {

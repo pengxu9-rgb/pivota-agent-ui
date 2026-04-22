@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server';
+import { resolveCheckoutPaymentContract } from '@/lib/checkoutPaymentContract';
 
 // This route is a backend-bound proxy, not a latency-sensitive edge personalization layer.
 // Keep it on the Node runtime in the project's home region so requests do not bounce from
@@ -120,14 +121,11 @@ function resolveShopUpstreamBase(requestUrl: string): {
   };
 }
 
-const CLIENT_OWNED_PAYMENT_STATUSES = new Set(['requires_action']);
 const KNOWN_PAYMENT_STATUSES = new Set([
-  ...CLIENT_OWNED_PAYMENT_STATUSES,
+  'requires_action',
   'processing',
-  'succeeded',
   'paid',
-  'failed',
-  'canceled',
+  'payment_failed',
   'cancelled',
   'refunded',
   'partially_refunded',
@@ -443,9 +441,20 @@ function normalizeSubmitPaymentStatus(status: unknown): {
     };
   }
   const normalized = raw.toLowerCase();
-  if (KNOWN_PAYMENT_STATUSES.has(normalized)) {
+  const aliases: Record<string, string> = {
+    requires_payment_method: 'requires_action',
+    requires_confirmation: 'requires_action',
+    completed: 'paid',
+    succeeded: 'paid',
+    success: 'paid',
+    settled: 'paid',
+    failed: 'payment_failed',
+    canceled: 'cancelled',
+  };
+  const canonical = aliases[normalized] || normalized;
+  if (KNOWN_PAYMENT_STATUSES.has(canonical)) {
     return {
-      payment_status: normalized,
+      payment_status: canonical,
       payment_status_raw: null,
     };
   }
@@ -496,26 +505,58 @@ function normalizeSubmitPaymentResponse(payload: unknown): unknown {
         };
   }
 
-  const requiresClientConfirmation = CLIENT_OWNED_PAYMENT_STATUSES.has(paymentStatus.payment_status);
+  const paymentContract = resolveCheckoutPaymentContract({
+    paymentResponse: {
+      ...payload,
+      payment_status: paymentStatus.payment_status,
+      ...(paymentStatus.payment_status_raw
+        ? { payment_status_raw: paymentStatus.payment_status_raw }
+        : {}),
+      ...(paymentAction ? { payment_action: paymentAction } : {}),
+      payment: {
+        ...paymentObject,
+        ...(paymentAction ? { payment_action: paymentAction } : {}),
+        payment_status: paymentStatus.payment_status,
+        ...(paymentStatus.payment_status_raw
+          ? { payment_status_raw: paymentStatus.payment_status_raw }
+          : {}),
+      },
+    },
+    action: paymentAction || undefined,
+  });
+  const normalizedPaymentAction = paymentAction
+    ? {
+        ...paymentAction,
+        ...(paymentContract.submitOwner ? { submit_owner: paymentContract.submitOwner } : {}),
+        ...(paymentContract.componentKind ? { component_kind: paymentContract.componentKind } : {}),
+        supported_in_shopping_ui: paymentContract.supportedInShoppingUi,
+      }
+    : null;
 
   return {
     ...payload,
     payment_status: paymentStatus.payment_status,
-    confirmation_owner: requiresClientConfirmation ? 'client' : 'backend',
-    requires_client_confirmation: requiresClientConfirmation,
+    confirmation_owner: paymentContract.confirmationOwner,
+    requires_client_confirmation: paymentContract.requiresClientConfirmation,
     ...(paymentStatus.payment_status_raw
       ? { payment_status_raw: paymentStatus.payment_status_raw }
       : {}),
     ...(psp ? { psp } : {}),
-    ...(paymentAction ? { payment_action: paymentAction } : {}),
+    ...(normalizedPaymentAction ? { payment_action: normalizedPaymentAction } : {}),
+    ...(paymentContract.submitOwner ? { submit_owner: paymentContract.submitOwner } : {}),
+    ...(paymentContract.componentKind ? { component_kind: paymentContract.componentKind } : {}),
+    supported_in_shopping_ui: paymentContract.supportedInShoppingUi,
     payment: {
       ...paymentObject,
       ...(psp ? { psp } : {}),
       ...(clientSecret ? { client_secret: clientSecret } : {}),
-      ...(paymentAction ? { payment_action: paymentAction } : {}),
+      ...(normalizedPaymentAction ? { payment_action: normalizedPaymentAction } : {}),
       payment_status: paymentStatus.payment_status,
-      confirmation_owner: requiresClientConfirmation ? 'client' : 'backend',
-      requires_client_confirmation: requiresClientConfirmation,
+      confirmation_owner: paymentContract.confirmationOwner,
+      requires_client_confirmation: paymentContract.requiresClientConfirmation,
+      ...(paymentContract.submitOwner ? { submit_owner: paymentContract.submitOwner } : {}),
+      ...(paymentContract.componentKind ? { component_kind: paymentContract.componentKind } : {}),
+      supported_in_shopping_ui: paymentContract.supportedInShoppingUi,
       ...(paymentStatus.payment_status_raw
         ? { payment_status_raw: paymentStatus.payment_status_raw }
         : {}),
