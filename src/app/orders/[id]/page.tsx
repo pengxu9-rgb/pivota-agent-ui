@@ -23,7 +23,11 @@ import {
   requestAccountOrderRefund,
 } from '@/lib/api'
 import { isAuroraEmbedMode } from '@/lib/auroraEmbed'
-import { normalizeOrderDetail, type NormalizedOrderDetail } from '@/lib/orders/normalize'
+import {
+  normalizeOrderDetail,
+  type NormalizedOrderDetail,
+  type NormalizedRefundPspSnapshot,
+} from '@/lib/orders/normalize'
 import {
   buildOrderItemPdpHref,
   buildOrderListHref,
@@ -68,6 +72,53 @@ const formatDateTime = (raw: string): string => {
     hour: '2-digit',
     minute: '2-digit',
   })
+}
+
+const formatLabel = (value: string | null | undefined): string => {
+  const normalized = String(value || '').trim()
+  if (!normalized) return '—'
+  return normalized
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/\b\w/g, (char) => char.toUpperCase())
+}
+
+const getRefundReferenceSummary = (snapshot: NormalizedRefundPspSnapshot | null): string | null => {
+  if (!snapshot) return null
+  if (snapshot.reference) {
+    return snapshot.trackingReferenceKind
+      ? `${snapshot.trackingReferenceKind} ${snapshot.reference}`
+      : snapshot.reference
+  }
+  if (String(snapshot.referenceStatus || '').toLowerCase() === 'pending') {
+    return snapshot.trackingReferenceKind
+      ? `${snapshot.trackingReferenceKind} pending`
+      : 'Pending'
+  }
+  return snapshot.referenceStatus ? formatLabel(snapshot.referenceStatus) : null
+}
+
+const getRefundTelemetryNote = (snapshot: NormalizedRefundPspSnapshot | null): string | null => {
+  if (!snapshot) return null
+  if (snapshot.failureReason) {
+    return `Processor reported ${formatLabel(snapshot.failureReason)}.`
+  }
+  if (snapshot.pendingReason) {
+    return `Processor is still working on this refund: ${formatLabel(snapshot.pendingReason)}.`
+  }
+  if (snapshot.reference) {
+    return snapshot.trackingReferenceKind
+      ? `Use this ${snapshot.trackingReferenceKind} when asking the card issuer to trace the refund.`
+      : 'Use this processor reference when asking the card issuer to trace the refund.'
+  }
+  if (String(snapshot.referenceStatus || '').toLowerCase() === 'pending') {
+    return 'Bank-side tracking reference is still pending. Some issuers show this as a reversal rather than a separate refund.'
+  }
+  if (snapshot.isReversal) {
+    return 'This refund may appear as the original charge disappearing instead of a separate refund entry.'
+  }
+  return null
 }
 
 type ProgressStep = {
@@ -394,44 +445,57 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
       })) as any
 
       toast.success('Refund request submitted')
-      setOrder((prev) =>
-        prev
-          ? {
-              ...prev,
-              status:
-                typeof result?.total_refunded_minor === 'number' &&
-                result.total_refunded_minor >= prev.totalAmountMinor
-                  ? 'refunded'
-                  : prev.status,
-              refund: {
-                ...prev.refund,
-                status: result?.refund_status ? String(result.refund_status) : 'requested',
-                caseId: result?.case_id ? String(result.case_id) : prev.refund.caseId,
-                updatedAt: result?.updated_at
-                  ? String(result.updated_at)
-                  : new Date().toISOString(),
-                totalRefundedMinor:
-                  typeof result?.total_refunded_minor === 'number'
-                    ? Number(result.total_refunded_minor)
-                    : prev.refund.totalRefundedMinor + amountMinor,
-                currency:
-                  result?.currency ? String(result.currency) : prev.refund.currency || prev.currency,
-                requests: [
-                  ...prev.refund.requests,
-                  {
-                    caseId: result?.case_id ? String(result.case_id) : null,
-                    status: result?.refund_status ? String(result.refund_status) : 'requested',
-                    amountMinor,
-                    currency: result?.currency ? String(result.currency) : prev.currency,
-                    reason: reason || null,
-                    createdAt: result?.updated_at ? String(result.updated_at) : new Date().toISOString(),
-                  },
-                ],
-                requestsCount: (prev.refund.requestsCount || 0) + 1,
-              },
-            }
-          : prev,
-      )
+      let refreshed = false
+      try {
+        const raw = await getAccountOrder(order.id)
+        const normalized = normalizeOrderDetail(raw)
+        if (normalized) {
+          setOrder(normalized)
+          refreshed = true
+        }
+      } catch {
+        // Fall back to local optimistic state below.
+      }
+      if (!refreshed) {
+        setOrder((prev) =>
+          prev
+            ? {
+                ...prev,
+                status:
+                  typeof result?.total_refunded_minor === 'number' &&
+                  result.total_refunded_minor >= prev.totalAmountMinor
+                    ? 'refunded'
+                    : prev.status,
+                refund: {
+                  ...prev.refund,
+                  status: result?.refund_status ? String(result.refund_status) : 'requested',
+                  caseId: result?.case_id ? String(result.case_id) : prev.refund.caseId,
+                  updatedAt: result?.updated_at
+                    ? String(result.updated_at)
+                    : new Date().toISOString(),
+                  totalRefundedMinor:
+                    typeof result?.total_refunded_minor === 'number'
+                      ? Number(result.total_refunded_minor)
+                      : prev.refund.totalRefundedMinor + amountMinor,
+                  currency:
+                    result?.currency ? String(result.currency) : prev.refund.currency || prev.currency,
+                  requests: [
+                    ...prev.refund.requests,
+                    {
+                      caseId: result?.case_id ? String(result.case_id) : null,
+                      status: result?.refund_status ? String(result.refund_status) : 'requested',
+                      amountMinor,
+                      currency: result?.currency ? String(result.currency) : prev.currency,
+                      reason: reason || null,
+                      createdAt: result?.updated_at ? String(result.updated_at) : new Date().toISOString(),
+                    },
+                  ],
+                  requestsCount: (prev.refund.requestsCount || 0) + 1,
+                },
+              }
+            : prev,
+        )
+      }
       setRefundDialogOpen(false)
       setRefundAmountInput('')
       setRefundReasonInput('')
@@ -497,6 +561,9 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     String(order.refund.status || '').toLowerCase() !== 'requested'
   const refundableMinor = Math.max(0, order.totalAmountMinor - order.refund.totalRefundedMinor)
   const primaryPayment = order.paymentRecords[0] || null
+  const latestRefundPsp = order.refund.psp?.latest || null
+  const refundReferenceSummary = getRefundReferenceSummary(latestRefundPsp)
+  const refundTelemetryNote = getRefundTelemetryNote(latestRefundPsp)
   const paymentMethodText = [
     primaryPayment?.method,
     primaryPayment?.brand,
@@ -860,6 +927,56 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                   </span>
                 </div>
               </div>
+              {latestRefundPsp && (
+                <div className="mt-3 rounded-xl border border-border bg-background/60 p-3 text-xs text-muted-foreground">
+                  <div className="mb-2 font-medium text-foreground">Processor refund</div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between gap-3">
+                      <span>Status</span>
+                      <span className="text-right font-medium text-foreground">
+                        {formatLabel(latestRefundPsp.status)}
+                      </span>
+                    </div>
+                    {latestRefundPsp.provider && (
+                      <div className="flex items-center justify-between gap-3">
+                        <span>Provider</span>
+                        <span className="text-right font-medium text-foreground">
+                          {formatLabel(latestRefundPsp.provider)}
+                        </span>
+                      </div>
+                    )}
+                    {refundReferenceSummary && (
+                      <div className="flex items-center justify-between gap-3">
+                        <span>Tracking reference</span>
+                        <span className="text-right font-medium text-foreground">
+                          {refundReferenceSummary}
+                        </span>
+                      </div>
+                    )}
+                    {latestRefundPsp.referenceType && (
+                      <div className="flex items-center justify-between gap-3">
+                        <span>Reference type</span>
+                        <span className="text-right font-medium text-foreground">
+                          {formatLabel(latestRefundPsp.referenceType)}
+                        </span>
+                      </div>
+                    )}
+                    {latestRefundPsp.observedAt && (
+                      <div className="flex items-center justify-between gap-3">
+                        <span>Last checked</span>
+                        <span className="text-right font-medium text-foreground">
+                          {formatDateTime(latestRefundPsp.observedAt)}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                  {refundTelemetryNote && (
+                    <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2 text-[11px] leading-5 text-slate-700">
+                      {refundTelemetryNote}
+                    </div>
+                  )}
+                </div>
+              )}
             </section>
 
             <section className="rounded-2xl border border-border bg-card/60 p-4">
