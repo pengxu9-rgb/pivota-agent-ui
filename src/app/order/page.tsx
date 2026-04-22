@@ -123,22 +123,47 @@ function buildResumeOrderState(raw: any): ResumeOrderLoadResult | null {
       : order?.pricing_quote && typeof order.pricing_quote === 'object'
         ? order.pricing_quote
         : null
+  const pricingPayload =
+    raw?.pricing && typeof raw.pricing === 'object'
+      ? raw.pricing
+      : order?.pricing && typeof order.pricing === 'object'
+        ? order.pricing
+        : null
   const pricingQuotePricing =
     pricingQuote?.pricing && typeof pricingQuote.pricing === 'object' ? pricingQuote.pricing : null
-  const subtotalMinor = itemsRaw.reduce((sum: number, item: any) => {
-    const subtotal = toMinorAmount(item?.subtotal_minor)
-    if (subtotal > 0) return sum + subtotal
-    return sum + toMinorAmount(item?.unit_price_minor) * (Number(item?.quantity) || 1)
-  }, 0)
-  const totalMinor = toMinorAmount(order?.total_amount_minor)
-  const fallbackPricing = {
-    subtotal: subtotalMinor / 100,
-    discount_total: 0,
-    shipping_fee: Math.max(totalMinor - subtotalMinor, 0) / 100,
-    tax: 0,
-    total: totalMinor / 100,
+  if (!pricingPayload && !pricingQuotePricing) {
+    console.warn('[OrderResume] missing_authoritative_pricing', { orderId })
+    return null
   }
-  const pricing = pricingQuotePricing
+  const pricing = pricingPayload
+    ? {
+        subtotal: toMajorAmount(
+          (pricingPayload as any)?.subtotal_minor != null
+            ? Number((pricingPayload as any).subtotal_minor) / 100
+            : (pricingPayload as any)?.subtotal,
+        ),
+        discount_total: toMajorAmount(
+          (pricingPayload as any)?.discount_total_minor != null
+            ? Number((pricingPayload as any).discount_total_minor) / 100
+            : (pricingPayload as any)?.discount_total,
+        ),
+        shipping_fee: toMajorAmount(
+          (pricingPayload as any)?.shipping_fee_minor != null
+            ? Number((pricingPayload as any).shipping_fee_minor) / 100
+            : (pricingPayload as any)?.shipping_fee,
+        ),
+        tax: toMajorAmount(
+          (pricingPayload as any)?.tax_minor != null
+            ? Number((pricingPayload as any).tax_minor) / 100
+            : (pricingPayload as any)?.tax,
+        ),
+        total: toMajorAmount(
+          (pricingPayload as any)?.total_amount_minor != null
+            ? Number((pricingPayload as any).total_amount_minor) / 100
+            : (pricingPayload as any)?.total_amount ?? (pricingPayload as any)?.total,
+        ),
+      }
+    : pricingQuotePricing
     ? {
         subtotal: toMajorAmount(pricingQuotePricing?.subtotal),
         discount_total: toMajorAmount(pricingQuotePricing?.discount_total),
@@ -146,7 +171,8 @@ function buildResumeOrderState(raw: any): ResumeOrderLoadResult | null {
         tax: toMajorAmount(pricingQuotePricing?.tax),
         total: toMajorAmount(pricingQuotePricing?.total),
       }
-    : fallbackPricing
+    : null
+  if (!pricing) return null
   const paymentCurrent =
     raw?.payment && typeof raw.payment === 'object' && raw.payment.current && typeof raw.payment.current === 'object'
       ? raw.payment.current

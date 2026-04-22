@@ -241,10 +241,6 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   }, [refundDialogOpen, refundLoading])
 
   const progressSteps = useMemo(() => (order ? buildProgressSteps(order) : []), [order])
-  const subtotalMinor = useMemo(
-    () => (order ? order.items.reduce((sum, item) => sum + item.subtotalMinor, 0) : 0),
-    [order],
-  )
   const isEmbed = useMemo(() => isAuroraEmbedMode(), [])
 
   const onContinuePayment = () => {
@@ -769,7 +765,29 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
               <div className="mt-3 space-y-2 text-xs">
                 <div className="flex items-center justify-between text-muted-foreground">
                   <span>Subtotal</span>
-                  <span className="font-medium text-foreground">{formatMoney(subtotalMinor, order.currency)}</span>
+                  <span className="font-medium text-foreground">
+                    {formatMoney(order.amounts.subtotalMinor, order.currency)}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-muted-foreground">
+                  <span>Discount</span>
+                  <span className="font-medium text-foreground">
+                    {order.amounts.discountTotalMinor > 0
+                      ? `-${formatMoney(order.amounts.discountTotalMinor, order.currency)}`
+                      : formatMoney(0, order.currency)}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-muted-foreground">
+                  <span>Shipping</span>
+                  <span className="font-medium text-foreground">
+                    {formatMoney(order.amounts.shippingFeeMinor, order.currency)}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-muted-foreground">
+                  <span>Tax</span>
+                  <span className="font-medium text-foreground">
+                    {formatMoney(order.amounts.taxMinor, order.currency)}
+                  </span>
                 </div>
                 <div className="flex items-center justify-between text-muted-foreground">
                   <span>Total</span>
