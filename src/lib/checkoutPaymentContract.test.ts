@@ -119,10 +119,10 @@ describe('resolveCheckoutPaymentContract', () => {
     const contract = resolveCheckoutPaymentContract({
       paymentResponse: {
         payment_status: 'requires_action',
-        confirmation_owner: 'client',
-        requires_client_confirmation: true,
         payment_action: {
           type: 'adyen_session',
+          confirmation_owner: 'client',
+          requires_client_confirmation: true,
           submit_owner: 'component',
           component_kind: 'adyen_dropin',
           supported_in_shopping_ui: true,
@@ -136,6 +136,31 @@ describe('resolveCheckoutPaymentContract', () => {
       requiresClientConfirmation: true,
       submitOwner: 'component',
       componentKind: 'adyen_dropin',
+      supportedInShoppingUi: true,
+    })
+  })
+
+  it('reads explicit ownership fields from the supplied action object', () => {
+    const contract = resolveCheckoutPaymentContract({
+      paymentResponse: {
+        payment_status: 'requires_action',
+      },
+      action: {
+        type: 'stripe_client_secret',
+        confirmation_owner: 'client',
+        requires_client_confirmation: true,
+        submit_owner: 'external_button',
+        component_kind: 'stripe_payment_element',
+        supported_in_shopping_ui: true,
+      },
+    })
+
+    expect(contract).toMatchObject({
+      paymentStatus: 'requires_action',
+      confirmationOwner: 'client',
+      requiresClientConfirmation: true,
+      submitOwner: 'external_button',
+      componentKind: 'stripe_payment_element',
       supportedInShoppingUi: true,
     })
   })
