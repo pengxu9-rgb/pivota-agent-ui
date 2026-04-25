@@ -236,31 +236,6 @@ function buildQuickActionPdpV2Response(args?: {
   };
 }
 
-function buildSimilarRecoveryPdpV2Response(items: ReturnType<typeof buildSimilar>) {
-  return {
-    subject: {
-      type: 'product',
-      id: 'P_SIMILAR_001',
-    },
-    modules: [
-      {
-        type: 'canonical',
-        data: {
-          pdp_payload: buildPayload({ items: [] }),
-        },
-      },
-      {
-        type: 'similar',
-        data: {
-          strategy: 'related_products',
-          items,
-          metadata: { has_more: false },
-        },
-      },
-    ],
-  };
-}
-
 beforeAll(() => {
   vi.stubGlobal('IntersectionObserver', IntersectionObserverMock as unknown as typeof IntersectionObserver);
   vi.spyOn(window, 'open').mockImplementation(windowOpenMock as any);
@@ -334,8 +309,18 @@ describe('PdpContainer recommendations interactions', () => {
     expect(screen.queryByText('No similar products yet.')).toBeNull();
   });
 
-  it('recovers missing initial similar results from a scoped PDP similar retry', async () => {
-    getPdpV2Mock.mockResolvedValue(buildSimilarRecoveryPdpV2Response(buildSimilar(3)));
+  it('recovers missing initial similar results from the similar mainline endpoint', async () => {
+    getSimilarProductsMainlineMock.mockResolvedValue({
+      strategy: 'related_products',
+      items: buildSimilar(3),
+      metadata: { has_more: false },
+      page_info: {
+        page: 1,
+        page_size: 3,
+        total: 3,
+        has_more: false,
+      },
+    });
     const payloadWithoutSimilar = buildPayload({ items: [] });
 
     render(
@@ -358,11 +343,11 @@ describe('PdpContainer recommendations interactions', () => {
       expect(screen.getByText('Product 3')).toBeInTheDocument();
     });
 
-    expect(getPdpV2Mock).toHaveBeenCalledWith(
+    expect(getSimilarProductsMainlineMock).toHaveBeenCalledWith(
       expect.objectContaining({
         product_id: 'P_SIMILAR_001',
         merchant_id: 'external_seed',
-        include: ['similar'],
+        limit: 6,
         timeout_ms: 9000,
       }),
     );

@@ -1939,30 +1939,29 @@ export function PdpContainer({
           if (cancelled || similarEmptyRecoveryRunRef.current !== runId) return;
 
           try {
-            const response = await getPdpV2({
+            const result = await getSimilarProductsMainline({
               product_id: productId,
               ...(merchantId ? { merchant_id: merchantId } : {}),
-              include: ['similar'],
+              limit: SIMILAR_PAGE_SIZE,
               timeout_ms: SIMILAR_EMPTY_RECOVERY_TIMEOUT_MS,
-              ...(attemptIndex > 0 ? { cache_bypass: true } : {}),
             });
             if (cancelled || similarEmptyRecoveryRunRef.current !== runId) return;
 
-            const mapped = mapPdpV2ToPdpPayload(response);
-            const incomingRecommendations = mapped ? getRecommendationsModuleData(mapped) : null;
             const incomingItems = normalizeRecommendationItems(
-              incomingRecommendations?.items || [],
+              result.items,
               recommendationCurrencyFallback,
             );
-            if (!mapped || incomingItems.length === 0) continue;
+            if (incomingItems.length === 0) continue;
 
+            const incomingMetadata = normalizeSimilarMetadata(result.metadata);
             setSimilarLoadMoreError(false);
-            setPayload((current) => {
-              if (String(current.product.product_id || '').trim() !== productId) return current;
-              const currentMerchantId = String(current.product.merchant_id || '').trim();
-              if (merchantId && currentMerchantId && currentMerchantId !== merchantId) return current;
-              return mergeProductLineSimilarPayload(current, mapped);
-            });
+            setSimilarItems((current) => mergeRecommendationItems(current, incomingItems).items);
+            setSimilarStrategy(result.strategy || 'related_products');
+            if (incomingMetadata) {
+              setSimilarMetadata((current) => ({ ...(current || {}), ...incomingMetadata }));
+            }
+            setSimilarHasMore(Boolean(incomingMetadata?.has_more ?? result.page_info.has_more));
+            similarNoGrowthCountRef.current = 0;
             return;
           } catch {
             // Try the next recovery pass; genuinely empty rails collapse quietly.
