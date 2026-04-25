@@ -4,6 +4,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { Star, ChevronRight } from 'lucide-react';
 import type { ReviewsPreviewData } from '@/features/pdp/types';
+import { shouldUseUnoptimizedPdpImage } from '@/features/pdp/utils/pdpImageUrls';
 import { cn } from '@/lib/utils';
 
 function StarRating({ value }: { value: number }) {
@@ -217,7 +218,15 @@ export function BeautyReviewsSection({
               </div>
               {review.media?.length ? (
                 <div className="relative h-16 w-16 rounded-lg overflow-hidden flex-shrink-0">
-                  <Image src={review.media[0].url} alt="" fill className="object-cover" sizes="64px" loading="lazy" />
+                  <Image
+                    src={review.media[0].url}
+                    alt=""
+                    fill
+                    className="object-cover"
+                    sizes="64px"
+                    loading="lazy"
+                    unoptimized={shouldUseUnoptimizedPdpImage(review.media[0].url)}
+                  />
                 </div>
               ) : null}
             </div>
