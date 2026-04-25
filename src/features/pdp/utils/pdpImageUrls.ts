@@ -109,7 +109,17 @@ function normalizeImageAssetUrl(parsed: URL): URL {
     next.searchParams.delete('v');
     const segments = next.pathname.split('/');
     const lastIndex = segments.length - 1;
-    segments[lastIndex] = normalizeShopifyLikeFilename(segments[lastIndex] || '');
+    const currentFilename = normalizeShopifyLikeFilename(segments[lastIndex] || '');
+    const strippedTomFordFilename = normalizeShopifyLikeFilename(currentFilename, {
+      stripHashSuffix: true,
+    });
+    const shouldStripTomFordHashSuffix =
+      currentFilename !== strippedTomFordFilename &&
+      TOM_FORD_SLOT_DEDUPE_RE.test(strippedTomFordFilename) &&
+      /\.(jpe?g)$/i.test(strippedTomFordFilename);
+    segments[lastIndex] = shouldStripTomFordHashSuffix
+      ? strippedTomFordFilename
+      : currentFilename;
     next.pathname = segments.join('/');
   }
   next = rewriteTomFordAssetHost(next);
@@ -252,6 +262,18 @@ export function optimizePdpImageUrl(rawUrl: string, width = 480): string {
   }
 
   return isAbsoluteHttpUrl(normalized) ? applyKnownHostWidthHint(normalized, width) : normalized;
+}
+
+export function shouldUseUnoptimizedPdpImage(rawUrl: unknown): boolean {
+  const normalized = normalizePdpImageUrl(rawUrl);
+  if (!normalized) return false;
+
+  try {
+    const parsed = new URL(normalized, 'http://localhost');
+    return parsed.pathname === IMAGE_PROXY_PATH;
+  } catch {
+    return false;
+  }
 }
 
 export { IMAGE_PROXY_PATH };

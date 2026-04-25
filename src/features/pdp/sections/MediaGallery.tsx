@@ -2,6 +2,7 @@ import { useRef } from 'react';
 import Image from 'next/image';
 import { ChevronLeft, ChevronRight, Grid3X3, Play } from 'lucide-react';
 import type { MediaGalleryData } from '@/features/pdp/types';
+import { shouldUseUnoptimizedPdpImage } from '@/features/pdp/utils/pdpImageUrls';
 import { cn } from '@/lib/utils';
 
 export function MediaGallery({
@@ -86,6 +87,7 @@ export function MediaGallery({
                 fill
                 className="object-cover"
                 sizes="64px"
+                unoptimized={shouldUseUnoptimizedPdpImage(item.url)}
               />
               {item.type === 'video' ? (
                 <div className="absolute inset-0 flex items-center justify-center bg-foreground/20">
@@ -131,6 +133,7 @@ export function MediaGallery({
                 sizes="(max-width: 768px) 100vw, (max-width: 1024px) 100vw, 600px"
                 priority
                 fetchPriority="high"
+                unoptimized={shouldUseUnoptimizedPdpImage(heroUrl)}
               />
             ) : (
               <div className="absolute inset-0 flex items-center justify-center text-sm text-muted-foreground">
@@ -195,6 +198,7 @@ export function MediaGallery({
                     fill
                     className="object-cover"
                     sizes="48px"
+                    unoptimized={shouldUseUnoptimizedPdpImage(item.url)}
                   />
                   {item.type === 'video' ? (
                     <div className="absolute inset-0 flex items-center justify-center bg-foreground/20">
@@ -252,6 +256,7 @@ export function MediaGallery({
                       fill
                       className="object-cover transition-transform group-hover:scale-[1.02]"
                       sizes="92px"
+                      unoptimized={shouldUseUnoptimizedPdpImage(item.url)}
                     />
                   </div>
                   <p className="mt-1.5 line-clamp-2 text-[11px] leading-4 text-muted-foreground">

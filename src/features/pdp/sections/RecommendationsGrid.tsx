@@ -6,7 +6,10 @@ import { useRouter } from 'next/navigation';
 import type { MouseEvent } from 'react';
 import { ArrowUpRight, LoaderCircle, ShoppingBag, Star } from 'lucide-react';
 import type { RecommendationsData } from '@/features/pdp/types';
-import { optimizePdpImageUrl } from '@/features/pdp/utils/pdpImageUrls';
+import {
+  optimizePdpImageUrl,
+  shouldUseUnoptimizedPdpImage,
+} from '@/features/pdp/utils/pdpImageUrls';
 import { buildProductHref } from '@/lib/productHref';
 import { resolveProductCardPresentation } from '@/lib/productCardPresentation';
 import { appendCurrentPathAsReturn } from '@/lib/returnUrl';
@@ -76,6 +79,10 @@ export function RecommendationsGrid({
           const subtitle = card.subtitle;
           const highlight = card.highlight;
           const baseHref = buildProductHref(p.product_id, p.merchant_id);
+          const optimizedImageUrl = p.image_url ? optimizeRecommendationImageUrl(p.image_url) : null;
+          const shouldUnoptimizeImage = optimizedImageUrl
+            ? shouldUseUnoptimizedPdpImage(optimizedImageUrl)
+            : false;
           const handleClick = (event: MouseEvent<HTMLAnchorElement>) => {
             onItemClick?.(p, idx);
             if (event.defaultPrevented) return;
@@ -95,9 +102,9 @@ export function RecommendationsGrid({
                 onClick={handleClick}
               >
                 <div className="relative aspect-square bg-muted">
-                  {p.image_url ? (
+                  {optimizedImageUrl ? (
                     <Image
-                      src={optimizeRecommendationImageUrl(p.image_url)}
+                      src={optimizedImageUrl}
                       alt={p.title}
                       fill
                       className="object-cover"
@@ -105,6 +112,7 @@ export function RecommendationsGrid({
                       loading={idx < 2 ? 'eager' : 'lazy'}
                       fetchPriority={idx < 2 ? 'high' : 'auto'}
                       quality={idx < 2 ? 72 : 65}
+                      unoptimized={shouldUnoptimizeImage}
                     />
                   ) : (
                     <div className="absolute inset-0 flex items-center justify-center text-xs text-muted-foreground">
