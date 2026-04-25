@@ -1,6 +1,7 @@
 'use client';
 
 import Image from 'next/image';
+import { shouldUseUnoptimizedPdpImage } from '@/features/pdp/utils/pdpImageUrls';
 import { cn } from '@/lib/utils';
 import { ResponsiveSheet } from '@/features/pdp/components/ResponsiveSheet';
 
@@ -57,7 +58,15 @@ export function GenericColorSheet({
               {hasPreview ? (
                 <div className="relative h-14 w-14 rounded-lg overflow-hidden bg-muted">
                   {imageUrl ? (
-                    <Image src={imageUrl} alt={option.value} fill className="object-cover" sizes="56px" loading="lazy" />
+                    <Image
+                      src={imageUrl}
+                      alt={option.value}
+                      fill
+                      className="object-cover"
+                      sizes="56px"
+                      loading="lazy"
+                      unoptimized={shouldUseUnoptimizedPdpImage(imageUrl)}
+                    />
                   ) : option.swatch_hex ? (
                     <span className="absolute inset-0" style={{ backgroundColor: option.swatch_hex }} />
                   ) : null}

@@ -12,6 +12,7 @@ import type {
 import { DetailsAccordion } from '@/features/pdp/sections/DetailsAccordion';
 import { OverviewSection } from '@/features/pdp/sections/OverviewSection';
 import { StructuredDetailsBlocks } from '@/features/pdp/sections/StructuredDetailsBlocks';
+import { shouldUseUnoptimizedPdpImage } from '@/features/pdp/utils/pdpImageUrls';
 import {
   formatDescriptionText,
   isLikelyHeadingParagraph,
@@ -73,6 +74,7 @@ export function BeautyDetailsSection({
             className="object-contain pointer-events-none"
             sizes="(max-width: 768px) 100vw, 640px"
             loading="lazy"
+            unoptimized={shouldUseUnoptimizedPdpImage(heroUrl)}
           />
         </div>
       ) : null}
@@ -94,6 +96,7 @@ export function BeautyDetailsSection({
                   className="object-cover pointer-events-none"
                   sizes="(max-width: 768px) 50vw, 320px"
                   loading="lazy"
+                  unoptimized={shouldUseUnoptimizedPdpImage(item.url)}
                 />
               </div>
             ))}

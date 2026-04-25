@@ -12,6 +12,7 @@ import type {
 import { DetailsAccordion } from '@/features/pdp/sections/DetailsAccordion';
 import { OverviewSection } from '@/features/pdp/sections/OverviewSection';
 import { StructuredDetailsBlocks } from '@/features/pdp/sections/StructuredDetailsBlocks';
+import { shouldUseUnoptimizedPdpImage } from '@/features/pdp/utils/pdpImageUrls';
 import { partitionDetailSections } from '@/features/pdp/utils/detailSections';
 import { buildOverviewContent } from '@/features/pdp/utils/overviewContent';
 
@@ -114,6 +115,7 @@ export function GenericDetailsSection({
               sizes="(max-width: 768px) 100vw, 720px"
               loading="lazy"
               className="w-full h-auto rounded-lg"
+              unoptimized={shouldUseUnoptimizedPdpImage(item.url)}
             />
           ))}
         </div>

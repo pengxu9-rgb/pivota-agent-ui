@@ -1,5 +1,6 @@
 import Image from 'next/image';
 import type { Variant } from '@/features/pdp/types';
+import { shouldUseUnoptimizedPdpImage } from '@/features/pdp/utils/pdpImageUrls';
 import { getDisplayVariantLabel } from '@/features/pdp/utils/variantLabels';
 import { cn } from '@/lib/utils';
 
@@ -42,7 +43,15 @@ export function VariantSelector({
             {isBeauty ? (
               selectedVariant?.label_image_url ? (
                 <span className="relative h-3 w-3 overflow-hidden rounded-full ring-1 ring-border bg-muted">
-                  <Image src={selectedVariant.label_image_url} alt="" fill className="object-cover" sizes="12px" loading="lazy" />
+                  <Image
+                    src={selectedVariant.label_image_url}
+                    alt=""
+                    fill
+                    className="object-cover"
+                    sizes="12px"
+                    loading="lazy"
+                    unoptimized={shouldUseUnoptimizedPdpImage(selectedVariant.label_image_url)}
+                  />
                 </span>
               ) : selectedVariant?.swatch?.hex ? (
                 <span
@@ -83,7 +92,15 @@ export function VariantSelector({
               {mode === 'beauty' ? (
                 v.label_image_url ? (
                   <span className="relative h-3 w-3 overflow-hidden rounded-full ring-1 ring-border bg-muted">
-                    <Image src={v.label_image_url} alt="" fill className="object-cover" sizes="12px" loading="lazy" />
+                    <Image
+                      src={v.label_image_url}
+                      alt=""
+                      fill
+                      className="object-cover"
+                      sizes="12px"
+                      loading="lazy"
+                      unoptimized={shouldUseUnoptimizedPdpImage(v.label_image_url)}
+                    />
                   </span>
                 ) : v.swatch?.hex ? (
                   <span

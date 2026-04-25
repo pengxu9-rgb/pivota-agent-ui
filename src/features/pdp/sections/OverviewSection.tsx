@@ -2,6 +2,7 @@
 
 import Image from 'next/image';
 import type { OverviewContent } from '@/features/pdp/utils/overviewContent';
+import { shouldUseUnoptimizedPdpImage } from '@/features/pdp/utils/pdpImageUrls';
 
 type OverviewImage = {
   url: string;
@@ -114,6 +115,7 @@ export function OverviewSection({
               className="object-cover pointer-events-none"
               sizes="(max-width: 640px) 100vw, 168px"
               loading="lazy"
+              unoptimized={shouldUseUnoptimizedPdpImage(image.url)}
             />
           </div>
         ) : null}
