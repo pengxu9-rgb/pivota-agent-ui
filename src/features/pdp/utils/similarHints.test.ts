@@ -26,15 +26,11 @@ describe('buildSimilarMainlineStatus', () => {
     ).toBeNull();
   });
 
-  it('explains deferred similar rails without pretending the set is empty', () => {
+  it('suppresses deferred similar rail notes', () => {
     expect(
       buildSimilarMainlineStatus({
         similar_status: 'deferred',
       }),
-    ).toEqual({
-      title: 'Mainline still resolving',
-      body:
-        'We are still pulling the strongest like-for-like matches for this item. This rail stays empty until mainline results are ready instead of being padded with fallback picks.',
-    });
+    ).toBeNull();
   });
 });

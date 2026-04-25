@@ -281,7 +281,7 @@ describe('PdpContainer recommendations interactions', () => {
     expect(getPdpV2Mock).not.toHaveBeenCalled();
   });
 
-  it('shows a deferred mainline note instead of the legacy empty copy', async () => {
+  it('falls back to the generic empty copy when deferred similar rail has no items', async () => {
     render(
       <PdpContainer
         payload={{
@@ -301,11 +301,11 @@ describe('PdpContainer recommendations interactions', () => {
       />,
     );
 
-    expect(screen.getByText('Mainline still resolving')).toBeInTheDocument();
+    expect(screen.queryByText('Mainline still resolving')).toBeNull();
     expect(
-      screen.getByText(/This rail stays empty until mainline results are ready/i),
-    ).toBeInTheDocument();
-    expect(screen.queryByText('No similar products yet.')).toBeNull();
+      screen.queryByText(/This rail stays empty until mainline results are ready/i),
+    ).toBeNull();
+    expect(screen.getByText('No similar products yet.')).toBeInTheDocument();
   });
 
   it('does not show low-confidence mainline padding copy when recommendation cards are present', async () => {
