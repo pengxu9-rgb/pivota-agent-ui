@@ -308,6 +308,35 @@ describe('PdpContainer recommendations interactions', () => {
     expect(screen.queryByText('No similar products yet.')).toBeNull();
   });
 
+  it('does not show low-confidence mainline padding copy when recommendation cards are present', async () => {
+    render(
+      <PdpContainer
+        payload={buildPayload({
+          metadata: {
+            low_confidence: true,
+            underfill: 3,
+            low_confidence_reason_codes: ['UNDERFILL_FOR_QUALITY'],
+          },
+        })}
+        mode="generic"
+        onAddToCart={() => {}}
+        onBuyNow={() => {}}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Product 6')).toBeInTheDocument();
+    });
+
+    expect(screen.queryByText('Mainline only')).toBeNull();
+    expect(
+      screen.queryByText(/Showing the strongest mainline matches available right now\./i),
+    ).toBeNull();
+    expect(
+      screen.queryByText(/recommendation slots? (are )?intentionally left unfilled/i),
+    ).toBeNull();
+  });
+
   it('auto-loads more similar products when the sentinel intersects', async () => {
     getSimilarProductsMainlineMock.mockResolvedValue({
       strategy: 'related_products',
