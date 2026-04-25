@@ -706,6 +706,8 @@ function StarRating({ value }: { value: number }) {
 
 const SIMILAR_PAGE_SIZE = 6;
 const SIMILAR_MAX = 30;
+const SIMILAR_EMPTY_RECOVERY_DELAYS_MS = [350, 1400] as const;
+const SIMILAR_EMPTY_RECOVERY_TIMEOUT_MS = 9000;
 
 function toFiniteNumber(value: unknown): number | null {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
@@ -1422,12 +1424,15 @@ export function PdpContainer({
   const [similarQuickActionDetail, setSimilarQuickActionDetail] = useState<ProductResponse | null>(null);
   const [similarQuickActionSelectedVariantId, setSimilarQuickActionSelectedVariantId] = useState('');
   const [similarQuickActionSubmitting, setSimilarQuickActionSubmitting] = useState(false);
+  const [similarEmptyRecoveryLoading, setSimilarEmptyRecoveryLoading] = useState(false);
   const defaultReviewScope = useMemo(() => resolveDefaultReviewScope(reviews), [reviews]);
   const [selectedReviewScope, setSelectedReviewScope] = useState<string | null>(defaultReviewScope);
   const similarResetProductIdRef = useRef<string>('');
   const similarNoGrowthCountRef = useRef(0);
   const similarAutoLoadSentinelRef = useRef<HTMLDivElement | null>(null);
   const similarAutoLoadPendingRef = useRef(false);
+  const similarEmptyRecoveryKeyRef = useRef('');
+  const similarEmptyRecoveryRunRef = useRef(0);
 
   const offers = useMemo(() => payload.offers ?? [], [payload.offers]);
   const internalFirstDefaultOfferId = useMemo(
@@ -1661,6 +1666,7 @@ export function PdpContainer({
     setSimilarQuickActionDetail(null);
     setSimilarQuickActionSelectedVariantId('');
     setSimilarQuickActionSubmitting(false);
+    setSimilarEmptyRecoveryLoading(false);
     similarNoGrowthCountRef.current = 0;
   }, [
     initialSimilarState,
@@ -1894,7 +1900,85 @@ export function PdpContainer({
   const moduleStates = pdpViewModel.moduleStates;
   const hasReviews = moduleStates.reviews_preview !== 'ABSENT';
   const hasRecommendationItems = similarItems.length > 0;
-  const showRecommendationsSection = moduleStates.similar !== 'ABSENT';
+  const similarRenderState =
+    similarEmptyRecoveryLoading && !hasRecommendationItems ? 'LOADING' : moduleStates.similar;
+  const showRecommendationsSection =
+    similarRenderState !== 'ABSENT' &&
+    (similarRenderState !== 'EMPTY' || hasRecommendationItems);
+
+  useEffect(() => {
+    if (moduleStates.similar !== 'EMPTY' || similarItems.length > 0) return;
+    const productId = payloadProductId;
+    if (!productId) return;
+    const merchantId = String(payload.product.merchant_id || '').trim();
+    const recoveryKey = `${merchantId}::${productId}`;
+    if (similarEmptyRecoveryKeyRef.current === recoveryKey) return;
+
+    similarEmptyRecoveryKeyRef.current = recoveryKey;
+    const runId = similarEmptyRecoveryRunRef.current + 1;
+    similarEmptyRecoveryRunRef.current = runId;
+    let cancelled = false;
+
+    const wait = (ms: number) =>
+      new Promise<void>((resolve) => {
+        window.setTimeout(resolve, ms);
+      });
+
+    setSimilarEmptyRecoveryLoading(true);
+
+    void (async () => {
+      try {
+        for (let attemptIndex = 0; attemptIndex < SIMILAR_EMPTY_RECOVERY_DELAYS_MS.length; attemptIndex += 1) {
+          await wait(SIMILAR_EMPTY_RECOVERY_DELAYS_MS[attemptIndex]);
+          if (cancelled || similarEmptyRecoveryRunRef.current !== runId) return;
+
+          try {
+            const response = await getPdpV2({
+              product_id: productId,
+              ...(merchantId ? { merchant_id: merchantId } : {}),
+              include: ['similar'],
+              timeout_ms: SIMILAR_EMPTY_RECOVERY_TIMEOUT_MS,
+              ...(attemptIndex > 0 ? { cache_bypass: true } : {}),
+            });
+            if (cancelled || similarEmptyRecoveryRunRef.current !== runId) return;
+
+            const mapped = mapPdpV2ToPdpPayload(response);
+            const incomingRecommendations = mapped ? getRecommendationsModuleData(mapped) : null;
+            const incomingItems = normalizeRecommendationItems(
+              incomingRecommendations?.items || [],
+              recommendationCurrencyFallback,
+            );
+            if (!mapped || incomingItems.length === 0) continue;
+
+            setSimilarLoadMoreError(false);
+            setPayload((current) => {
+              if (String(current.product.product_id || '').trim() !== productId) return current;
+              const currentMerchantId = String(current.product.merchant_id || '').trim();
+              if (merchantId && currentMerchantId && currentMerchantId !== merchantId) return current;
+              return mergeProductLineSimilarPayload(current, mapped);
+            });
+            return;
+          } catch {
+            // Try the next recovery pass; genuinely empty rails collapse quietly.
+          }
+        }
+      } finally {
+        if (!cancelled && similarEmptyRecoveryRunRef.current === runId) {
+          setSimilarEmptyRecoveryLoading(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    moduleStates.similar,
+    payload.product.merchant_id,
+    payloadProductId,
+    recommendationCurrencyFallback,
+    similarItems.length,
+  ]);
 
   useEffect(() => {
     const count = Array.isArray(payload.product.recent_purchases)
@@ -4226,7 +4310,7 @@ export function PdpContainer({
             style={{ scrollMarginTop }}
           >
             <ModuleShell
-              state={moduleStates.similar}
+              state={similarRenderState}
               height={pdpViewModel.heightSpec.similar}
               className="px-0 py-3"
               skeleton={<RecommendationsSkeleton />}
@@ -4275,22 +4359,9 @@ export function PdpContainer({
                     aria-hidden="true"
                   />
                 </>
-              ) : moduleStates.similar === 'ERROR' ? (
+              ) : similarRenderState === 'ERROR' ? (
                 <div className="rounded-xl border border-border bg-white/90 px-3.5 py-4 text-sm text-muted-foreground sm:px-4">
                   Similar products are temporarily unavailable.
-                </div>
-              ) : moduleStates.similar === 'EMPTY' ? (
-                <div className="rounded-xl border border-border bg-white/90 px-3.5 py-4 text-sm text-muted-foreground sm:px-4">
-                  {similarStatus ? (
-                    <div className="space-y-1">
-                      <div className="font-medium text-foreground">
-                        {similarStatus.title}
-                      </div>
-                      <div>{similarStatus.body}</div>
-                    </div>
-                  ) : (
-                    'No similar products yet.'
-                  )}
                 </div>
               ) : null}
             </ModuleShell>

@@ -236,6 +236,31 @@ function buildQuickActionPdpV2Response(args?: {
   };
 }
 
+function buildSimilarRecoveryPdpV2Response(items: ReturnType<typeof buildSimilar>) {
+  return {
+    subject: {
+      type: 'product',
+      id: 'P_SIMILAR_001',
+    },
+    modules: [
+      {
+        type: 'canonical',
+        data: {
+          pdp_payload: buildPayload({ items: [] }),
+        },
+      },
+      {
+        type: 'similar',
+        data: {
+          strategy: 'related_products',
+          items,
+          metadata: { has_more: false },
+        },
+      },
+    ],
+  };
+}
+
 beforeAll(() => {
   vi.stubGlobal('IntersectionObserver', IntersectionObserverMock as unknown as typeof IntersectionObserver);
   vi.spyOn(window, 'open').mockImplementation(windowOpenMock as any);
@@ -258,6 +283,7 @@ describe('PdpContainer recommendations interactions', () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     cleanup();
   });
 
@@ -281,7 +307,7 @@ describe('PdpContainer recommendations interactions', () => {
     expect(getPdpV2Mock).not.toHaveBeenCalled();
   });
 
-  it('falls back to the generic empty copy when deferred similar rail has no items', async () => {
+  it('does not show empty similar copy while deferred similar recovery can run', async () => {
     render(
       <PdpContainer
         payload={{
@@ -305,7 +331,38 @@ describe('PdpContainer recommendations interactions', () => {
     expect(
       screen.queryByText(/This rail stays empty until mainline results are ready/i),
     ).toBeNull();
-    expect(screen.getByText('No similar products yet.')).toBeInTheDocument();
+    expect(screen.queryByText('No similar products yet.')).toBeNull();
+  });
+
+  it('recovers empty initial similar results from a scoped PDP similar retry', async () => {
+    getPdpV2Mock.mockResolvedValue(buildSimilarRecoveryPdpV2Response(buildSimilar(3)));
+
+    render(
+      <PdpContainer
+        payload={{
+          ...buildPayload({ items: [] }),
+          x_recommendations_state: 'ready',
+        }}
+        mode="generic"
+        onAddToCart={() => {}}
+        onBuyNow={() => {}}
+      />,
+    );
+
+    expect(screen.queryByText('No similar products yet.')).toBeNull();
+
+    await waitFor(() => {
+      expect(screen.getByText('Product 3')).toBeInTheDocument();
+    });
+
+    expect(getPdpV2Mock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        product_id: 'P_SIMILAR_001',
+        merchant_id: 'external_seed',
+        include: ['similar'],
+        timeout_ms: 9000,
+      }),
+    );
   });
 
   it('does not show low-confidence mainline padding copy when recommendation cards are present', async () => {
