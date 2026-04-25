@@ -334,14 +334,17 @@ describe('PdpContainer recommendations interactions', () => {
     expect(screen.queryByText('No similar products yet.')).toBeNull();
   });
 
-  it('recovers empty initial similar results from a scoped PDP similar retry', async () => {
+  it('recovers missing initial similar results from a scoped PDP similar retry', async () => {
     getPdpV2Mock.mockResolvedValue(buildSimilarRecoveryPdpV2Response(buildSimilar(3)));
+    const payloadWithoutSimilar = buildPayload({ items: [] });
 
     render(
       <PdpContainer
         payload={{
-          ...buildPayload({ items: [] }),
-          x_recommendations_state: 'ready',
+          ...payloadWithoutSimilar,
+          modules: payloadWithoutSimilar.modules.filter(
+            (module) => module.type !== 'recommendations' && module.type !== ('similar' as any),
+          ),
         }}
         mode="generic"
         onAddToCart={() => {}}

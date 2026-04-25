@@ -1907,7 +1907,13 @@ export function PdpContainer({
     (similarRenderState !== 'EMPTY' || hasRecommendationItems);
 
   useEffect(() => {
-    if (moduleStates.similar !== 'EMPTY' || similarItems.length > 0) return;
+    if (
+      moduleStates.similar === 'LOADING' ||
+      moduleStates.similar === 'ERROR' ||
+      similarItems.length > 0
+    ) {
+      return;
+    }
     const productId = payloadProductId;
     if (!productId) return;
     const merchantId = String(payload.product.merchant_id || '').trim();
