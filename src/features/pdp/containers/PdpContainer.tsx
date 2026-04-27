@@ -80,7 +80,7 @@ import { resolveOfferPricing } from '@/features/pdp/utils/offerVariantMatching';
 import { buildBrandHref } from '@/lib/brandRoute';
 import { buildProductHref } from '@/lib/productHref';
 import { buildProductVariants } from '@/features/pdp/utils/productVariants';
-import { getDisplayVariantLabel } from '@/features/pdp/utils/variantLabels';
+import { getDisplayVariantLabel, hasDisplayableVariantOptions } from '@/features/pdp/utils/variantLabels';
 import { cn } from '@/lib/utils';
 import { resolveReviewGate, reviewGateMessage, reviewGateResultToReason } from '@/lib/reviewGate';
 import { postRequestCloseToParent } from '@/lib/auroraEmbed';
@@ -2378,7 +2378,7 @@ export function PdpContainer({
   const shouldUseExternalSeedSingleOptionSummary =
     isExternalSeedProduct &&
     variants.length === 1 &&
-    !Array.isArray(selectedVariant?.options);
+    !hasDisplayableVariantOptions(selectedVariant);
 
   const productId = payloadProductId;
   const productGroupId = String(payload.product_group_id || selectedOffer?.product_group_id || '').trim() || null;
