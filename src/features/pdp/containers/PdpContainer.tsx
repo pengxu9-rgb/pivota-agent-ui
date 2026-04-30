@@ -80,7 +80,7 @@ import { resolveOfferPricing } from '@/features/pdp/utils/offerVariantMatching';
 import { buildBrandHref } from '@/lib/brandRoute';
 import { buildProductHref } from '@/lib/productHref';
 import { buildProductVariants } from '@/features/pdp/utils/productVariants';
-import { getDisplayVariantLabel, hasDisplayableVariantOptions } from '@/features/pdp/utils/variantLabels';
+import { getDisplayVariantLabel, isHiddenVariantForSelector } from '@/features/pdp/utils/variantLabels';
 import { cn } from '@/lib/utils';
 import { resolveReviewGate, reviewGateMessage, reviewGateResultToReason } from '@/lib/reviewGate';
 import { postRequestCloseToParent } from '@/lib/auroraEmbed';
@@ -2209,13 +2209,19 @@ export function PdpContainer({
 
   const selectedVariantHeaderLabel = useMemo(
     () => {
-      const variantLabel = getDisplayVariantLabel(selectedVariant, 'Default');
+      const variantLabel = isHiddenVariantForSelector(selectedVariant)
+        ? ''
+        : getDisplayVariantLabel(selectedVariant, '');
       const lineLabel = selectedProductLineOption?.label || '';
       if (!lineLabel) return variantLabel;
-      if (!variantLabel || variantLabel === 'Default') return lineLabel;
+      if (!variantLabel) return lineLabel;
       return `${lineLabel} / ${variantLabel}`;
     },
     [selectedProductLineOption?.label, selectedVariant],
+  );
+  const selectorVariants = useMemo(
+    () => variants.filter((variant) => !isHiddenVariantForSelector(variant)),
+    [variants],
   );
   const attributeOptions = extractAttributeOptions(selectedVariant, {
     variants: payload.product.variants,
@@ -2278,7 +2284,7 @@ export function PdpContainer({
     productLineOptions.length > 1 ||
     shouldRenderColorOptions ||
     sizeOptions.length > 0 ||
-    (!sizeOptions.length && !shouldRenderColorOptions && variants.length > 1);
+    (!sizeOptions.length && !shouldRenderColorOptions && selectorVariants.length > 1);
   const hasRightColumnSupportInfo =
     showTrustBadges || Boolean(effectiveShippingEta?.length || effectiveReturns?.return_window_days);
   const isDesktopInfoSparse =
@@ -2286,11 +2292,6 @@ export function PdpContainer({
     !hasRightColumnSupportInfo &&
     moduleStates.offers !== 'LOADING' &&
     offers.length <= 1;
-  const shouldUseExternalSeedSingleOptionSummary =
-    isExternalSeedProduct &&
-    variants.length === 1 &&
-    !hasDisplayableVariantOptions(selectedVariant);
-
   const productId = payloadProductId;
   const productGroupId = String(payload.product_group_id || selectedOffer?.product_group_id || '').trim() || null;
   const merchantId = String(payload.product.merchant_id || '').trim() || null;
@@ -3588,7 +3589,7 @@ export function PdpContainer({
               {payload.product.subtitle ? (
                 <p className="mt-0.5 text-[11px] text-muted-foreground">{payload.product.subtitle}</p>
               ) : null}
-              {selectedVariant ? (
+              {selectedVariant && selectedVariantHeaderLabel ? (
                 <div className="mt-0.5 text-xs text-muted-foreground">
                   Selected: <span className="text-foreground">{selectedVariantHeaderLabel}</span>
                 </div>
@@ -3799,19 +3800,17 @@ export function PdpContainer({
 
               {!sizeOptions.length &&
               !shouldRenderColorOptions &&
-              variants.length > 0 &&
-              !(productLineOptions.length > 1 && variants.length === 1) ? (
+              selectorVariants.length > 0 &&
+              !(productLineOptions.length > 1 && selectorVariants.length === 1) ? (
                 <div className="mt-2">
                   <VariantSelector
-                    variants={variants}
+                    variants={selectorVariants}
                     selectedVariantId={selectedVariant.variant_id}
                     onChange={(variantId) => {
                       handleVariantSelect(variantId);
                       pdpTracking.track('pdp_action_click', { action_type: 'select_variant', variant_id: variantId });
                     }}
                     mode={resolvedMode}
-                    singleVariantTitle={shouldUseExternalSeedSingleOptionSummary ? 'Option' : undefined}
-                    singleVariantStatus={shouldUseExternalSeedSingleOptionSummary ? 'Selected by default' : undefined}
                   />
                 </div>
               ) : null}

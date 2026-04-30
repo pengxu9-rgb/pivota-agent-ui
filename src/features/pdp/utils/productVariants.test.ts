@@ -41,4 +41,10 @@ describe('buildProductVariants', () => {
       { variant_id: 'v_jumbo', title: 'Jumbo - 100 mL' },
     ]);
   });
+
+  it('marks default-only fallback variants as hidden from selector', () => {
+    const [variant] = buildProductVariants(buildProduct());
+    expect(variant.hidden_from_selector).toBe(true);
+    expect(variant.source_quality_status).toBe('quarantined');
+  });
 });

@@ -107,3 +107,16 @@ export function getDisplayVariantMeta(
   if (normalizeComparableLabel(label) === normalizeComparableLabel(optionSummary)) return '';
   return optionSummary;
 }
+
+export function isHiddenVariantForSelector(
+  variant: Pick<Variant, 'title' | 'options' | 'hidden_from_selector' | 'source_quality_status'> | undefined,
+): boolean {
+  if (!variant) return true;
+  if (variant.hidden_from_selector === true) return true;
+  const title = String(variant.title || '').trim();
+  const hasDisplayableOptions = hasDisplayableVariantOptions(variant);
+  const qualityStatus = String(variant.source_quality_status || '').trim().toLowerCase();
+  if (!hasDisplayableOptions && !isDisplayableVariantTitle(title)) return true;
+  if (qualityStatus === 'quarantined' && !hasDisplayableOptions) return true;
+  return false;
+}

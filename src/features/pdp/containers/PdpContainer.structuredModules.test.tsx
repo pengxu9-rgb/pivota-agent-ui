@@ -896,10 +896,10 @@ describe('PdpContainer structured PDP modules', () => {
       />,
     );
 
-    expect(screen.getByText('Options')).toBeInTheDocument();
-    expect(screen.getByText('1 variant')).toBeInTheDocument();
-    expect(screen.getByText((_, element) => element?.textContent === 'Selected: Default')).toBeInTheDocument();
-    expect(screen.getAllByText('Default option').length).toBeGreaterThan(0);
+    expect(screen.queryByText('Options')).not.toBeInTheDocument();
+    expect(screen.queryByText('1 variant')).not.toBeInTheDocument();
+    expect(screen.queryByText((_, element) => element?.textContent === 'Selected: Default')).not.toBeInTheDocument();
+    expect(screen.queryAllByText('Default option')).toHaveLength(0);
     expect(screen.queryByText('Title: Default Title')).not.toBeInTheDocument();
     expect(screen.getByText('Overview')).toBeInTheDocument();
     expect(screen.queryAllByText('Product Details')).toHaveLength(1);

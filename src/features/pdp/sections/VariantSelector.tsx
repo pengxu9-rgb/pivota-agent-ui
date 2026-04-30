@@ -23,14 +23,15 @@ export function VariantSelector({
 
   if (variants.length === 1) {
     const isBeauty = mode === 'beauty';
-    const title = singleVariantTitle || (isBeauty ? 'Shade' : 'Options');
-    const status = singleVariantStatus || '1 variant';
+    const showSingleVariantSummary = Boolean(singleVariantTitle || singleVariantStatus);
     return (
       <div className="mt-3">
-        <div className="flex items-center justify-between">
-          <div className="text-sm font-medium">{title}</div>
-          <div className="text-xs text-muted-foreground">{status}</div>
-        </div>
+        {showSingleVariantSummary ? (
+          <div className="flex items-center justify-between">
+            <div className="text-sm font-medium">{singleVariantTitle}</div>
+            <div className="text-xs text-muted-foreground">{singleVariantStatus}</div>
+          </div>
+        ) : null}
         <div className="mt-1.5 flex gap-2 overflow-x-auto pb-1">
           <div
             aria-disabled="true"
