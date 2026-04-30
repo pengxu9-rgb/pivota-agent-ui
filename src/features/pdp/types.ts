@@ -141,6 +141,8 @@ export interface Variant {
   sku_id?: string;
   title: string;
   options?: { name: string; value: string }[];
+  hidden_from_selector?: boolean;
+  source_quality_status?: string;
   swatch?: { hex?: string };
   beauty_meta?: {
     shade_hex?: string;

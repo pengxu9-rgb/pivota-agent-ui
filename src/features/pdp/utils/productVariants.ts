@@ -33,6 +33,8 @@ function toDefaultVariant(product: ProductResponse, raw?: any): Variant {
     sku_id: product.product_id,
     title: 'Default',
     options: [],
+    hidden_from_selector: true,
+    source_quality_status: 'quarantined',
     price: { current: { amount: Number(product.price) || 0, currency } },
     availability: {
       in_stock: inStock,
@@ -107,9 +109,15 @@ export function buildProductVariants(product: ProductResponse, raw?: any): Varia
               title: rawTitle,
               options,
             },
-            rawVariants.length <= 1 ? 'Default option' : `Option ${idx + 1}`,
+            '',
           )
         : rawTitle;
+      const hiddenFromSelector =
+        variant.hidden_from_selector === true ||
+        (
+          !title &&
+          options.length === 0
+        );
 
       const price =
         toVariantPrice(variant.price || variant.pricing, currency) ||
@@ -150,8 +158,10 @@ export function buildProductVariants(product: ProductResponse, raw?: any): Varia
       return {
         variant_id: String(variantId),
         sku_id: variant.sku_id || variant.sku || variant.sku_code,
-        title: String(title),
+        title: String(title || rawTitle || 'Default'),
         options,
+        ...(hiddenFromSelector ? { hidden_from_selector: true } : {}),
+        ...(variant.source_quality_status ? { source_quality_status: String(variant.source_quality_status) } : {}),
         swatch: swatchHex ? { hex: swatchHex } : undefined,
         beauty_meta: beautyMeta,
         price,

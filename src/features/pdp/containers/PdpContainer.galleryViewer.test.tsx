@@ -211,8 +211,8 @@ describe('PdpContainer gallery viewer wiring', () => {
       />,
     );
 
-    expect(screen.getByText('Option')).toBeInTheDocument();
-    expect(screen.getByText('Selected by default')).toBeInTheDocument();
+    expect(screen.queryByText('Option')).not.toBeInTheDocument();
+    expect(screen.queryByText('Selected by default')).not.toBeInTheDocument();
     expect(screen.getAllByText('Black Mesh').length).toBeGreaterThan(0);
   });
 
@@ -234,9 +234,9 @@ describe('PdpContainer gallery viewer wiring', () => {
       />,
     );
 
-    expect(screen.getByText('Selected by default')).toBeInTheDocument();
-    expect(screen.getByText('Option')).toBeInTheDocument();
-    expect(screen.getAllByText('Default option').length).toBeGreaterThan(0);
+    expect(screen.queryByText('Selected by default')).not.toBeInTheDocument();
+    expect(screen.queryByText('Option')).not.toBeInTheDocument();
+    expect(screen.queryAllByText('Default option')).toHaveLength(0);
   });
 
   it('navigates to a product-line sibling PDP from the preview rail', () => {
@@ -430,8 +430,8 @@ describe('PdpContainer gallery viewer wiring', () => {
       />,
     );
 
-    expect(screen.getByText('Selected by default')).toBeInTheDocument();
-    expect(screen.getByText('Option')).toBeInTheDocument();
+    expect(screen.queryByText('Selected by default')).not.toBeInTheDocument();
+    expect(screen.queryByText('Option')).not.toBeInTheDocument();
     expect(screen.getAllByText('PIXI BEAUTY Rose Ceramide Cream').length).toBeGreaterThan(1);
   });
 });
