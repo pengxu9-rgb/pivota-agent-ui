@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation';
 import { useMemo } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
+import { normalizeDisplayImageUrl } from '@/lib/displayImage';
 import { useCartStore } from '@/store/cartStore';
 import { isAuroraEmbedMode, postRequestCloseToParent } from '@/lib/auroraEmbed';
 import { resolveHostedCheckoutUrl } from '@/lib/ucpCheckout';
@@ -29,7 +30,7 @@ export default function CartDrawer() {
       quantity: item.quantity,
       unit_price: item.price,
       currency: item.currency,
-      image_url: item.imageUrl,
+      image_url: normalizeDisplayImageUrl(item.imageUrl, '/placeholder.svg'),
     }));
 
     const searchParams =
@@ -129,7 +130,7 @@ export default function CartDrawer() {
                     >
                       <div className="relative w-20 h-20 rounded-xl overflow-hidden flex-shrink-0">
                         <Image
-                          src={item.imageUrl}
+                          src={normalizeDisplayImageUrl(item.imageUrl, '/placeholder.svg')}
                           alt={item.title}
                           fill
                           className="object-cover"

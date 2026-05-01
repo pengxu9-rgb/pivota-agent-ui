@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { Plus } from 'lucide-react';
 import type { ProductResponse } from '@/lib/api';
+import { normalizeDisplayImageUrl } from '@/lib/displayImage';
 import { resolveProductCardPresentation } from '@/lib/productCardPresentation';
 import { buildProductHref } from '@/lib/productHref';
 import { appendCurrentPathAsReturn } from '@/lib/returnUrl';
@@ -100,7 +101,8 @@ export function CatalogProductCard({ product }: { product: ProductResponse }) {
   const router = useRouter();
   const addItem = useCartStore((state) => state.addItem);
   const openCart = useCartStore((state) => state.open);
-  const [imageSrc, setImageSrc] = useState(product.image_url || '/placeholder.svg');
+  const resolvedImage = normalizeDisplayImageUrl(product.image_url, '/placeholder.svg');
+  const [imageSrc, setImageSrc] = useState(resolvedImage);
 
   const href = buildProductHref(product.product_id, product.merchant_id);
   const hrefWithReturn = appendCurrentPathAsReturn(href);
@@ -140,8 +142,8 @@ export function CatalogProductCard({ product }: { product: ProductResponse }) {
     !product.external_redirect_url;
 
   useEffect(() => {
-    setImageSrc(product.image_url || '/placeholder.svg');
-  }, [product.image_url]);
+    setImageSrc(resolvedImage);
+  }, [resolvedImage]);
 
   const handleQuickAction = (event: React.MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();

@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { GlassCard } from '@/components/ui/glass-card';
 import { Button } from '@/components/ui/button';
+import { normalizeDisplayImageUrl } from '@/lib/displayImage';
 import { useCartStore } from '@/store/cartStore';
 import { hideProductRouteLoading, showProductRouteLoading } from '@/lib/productRouteLoading';
 import { buildProductHref } from '@/lib/productHref';
@@ -50,7 +51,8 @@ export default function ProductCard({
   onAddToCart,
 }: ProductCardProps) {
   const router = useRouter();
-  const [imageSrc, setImageSrc] = useState(image || '/placeholder.svg');
+  const resolvedImage = normalizeDisplayImageUrl(image, '/placeholder.svg');
+  const [imageSrc, setImageSrc] = useState(resolvedImage);
   const [isNavigating, setIsNavigating] = useState(false);
   const isNavigatingRef = useRef(false);
   const resetTimerRef = useRef<number | null>(null);
@@ -78,7 +80,7 @@ export default function ProductCard({
         title,
         price,
         currency,
-        imageUrl: image,
+        imageUrl: resolvedImage,
         merchant_id,
         quantity: 1,
       });
@@ -128,8 +130,8 @@ export default function ProductCard({
   };
 
   useEffect(() => {
-    setImageSrc(image || '/placeholder.svg');
-  }, [image]);
+    setImageSrc(resolvedImage);
+  }, [resolvedImage]);
 
   useEffect(() => {
     return () => {

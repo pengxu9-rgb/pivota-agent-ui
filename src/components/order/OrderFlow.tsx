@@ -28,6 +28,7 @@ import {
   resolveCheckoutPaymentContract,
 } from '@/lib/checkoutPaymentContract'
 import { confirmPaymentWithRetry } from '@/lib/checkoutFinalization'
+import { normalizeDisplayImageUrl } from '@/lib/displayImage'
 import { useCartStore } from '@/store/cartStore'
 import { toast } from 'sonner'
 import { useRouter, useSearchParams } from 'next/navigation'
@@ -3575,11 +3576,12 @@ function OrderFlowInner({
                         <div className="flex min-w-0 items-center">
                           {item.image_url && (
                             <Image
-                              src={item.image_url}
+                              src={normalizeDisplayImageUrl(item.image_url, '/placeholder.svg')}
                               alt={item.title}
                               width={40}
                               height={40}
                               className="mr-3 h-10 w-10 rounded object-cover"
+                              unoptimized
                             />
                           )}
                           <div className="min-w-0">

@@ -24,6 +24,7 @@ import {
 import { mapPdpV2ToPdpPayload } from '@/features/pdp/adapter/mapPdpV2ToPdpPayload';
 import type { PDPPayload } from '@/features/pdp/types';
 import { pdpTracking } from '@/features/pdp/tracking';
+import { normalizeDisplayImageUrl } from '@/lib/displayImage';
 import { cn } from '@/lib/utils';
 import { resolveReviewGate, reviewGateMessage, reviewGateResultToReason, type ReviewGateResult } from '@/lib/reviewGate';
 import { safeReturnUrl, withReturnParams } from '@/lib/returnUrl';
@@ -965,7 +966,13 @@ export default function WriteReviewPage() {
               <div className="flex gap-4 items-center rounded-2xl border border-border bg-white/50 p-4">
                 <div className="relative h-16 w-16 rounded-xl overflow-hidden bg-black/5 shrink-0">
                   {product?.image_url ? (
-                    <Image src={product.image_url} alt={product.title} fill className="object-cover" />
+                    <Image
+                      src={normalizeDisplayImageUrl(product.image_url, '/placeholder.svg')}
+                      alt={product.title}
+                      fill
+                      className="object-cover"
+                      unoptimized
+                    />
                   ) : (
                     <div className="h-full w-full flex items-center justify-center text-xs text-muted-foreground">
                       No image
@@ -1163,10 +1170,11 @@ export default function WriteReviewPage() {
                   <div className="relative h-16 w-16 rounded-xl overflow-hidden bg-black/5 shrink-0">
                     {inAppPdp.payload.product.image_url ? (
                       <Image
-                        src={inAppPdp.payload.product.image_url}
+                        src={normalizeDisplayImageUrl(inAppPdp.payload.product.image_url, '/placeholder.svg')}
                         alt={inAppPdp.payload.product.title}
                         fill
                         className="object-cover"
+                        unoptimized
                       />
                     ) : (
                       <div className="h-full w-full flex items-center justify-center text-xs text-muted-foreground">

@@ -83,4 +83,35 @@ describe('normalizeProduct', () => {
       },
     ]);
   });
+
+  it('keeps direct external image URLs instead of forcing them through the local image proxy', () => {
+    const normalized = normalizeProduct({
+      product_id: 'ext_3',
+      merchant_id: 'external_seed',
+      title: 'Dr.Jart cream',
+      price: { amount: 20, currency: 'USD' },
+      image_url: 'https://www.drjart.com/media/export/cms/products/1000x1000/dj_sku_H7T901_1000x1000_0.jpg',
+      description: 'Barrier cream',
+    } as any);
+
+    expect(normalized.image_url).toBe(
+      'https://www.drjart.com/media/export/cms/products/1000x1000/dj_sku_H7T901_1000x1000_0.jpg',
+    );
+  });
+
+  it('unwraps legacy local image-proxy URLs back to their upstream target', () => {
+    const normalized = normalizeProduct({
+      product_id: 'ext_4',
+      merchant_id: 'external_seed',
+      title: 'Legacy proxied image',
+      price: { amount: 20, currency: 'USD' },
+      image_url:
+        '/api/image-proxy?url=https%3A%2F%2Fwww.drjart.com%2Fmedia%2Fexport%2Fcms%2Fproducts%2F1000x1000%2Fdj_sku_H7T901_1000x1000_0.jpg',
+      description: 'Barrier cream',
+    } as any);
+
+    expect(normalized.image_url).toBe(
+      'https://www.drjart.com/media/export/cms/products/1000x1000/dj_sku_H7T901_1000x1000_0.jpg',
+    );
+  });
 });
