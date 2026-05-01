@@ -28,6 +28,7 @@ const DIRECT_REMOTE_IMAGE_HOSTS = [
   'shopifycdn.com',
   'sdcdn.io',
   'assets.sdcdn.io',
+  'drjart.com',
   'static.wixstatic.com',
   'wixstatic.com',
   'images.unsplash.com',

@@ -1,5 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+const IMAGE_PROXY_PLACEHOLDER_SVG = `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1200" viewBox="0 0 1200 1200" role="img" aria-label="Image unavailable">
+  <rect width="1200" height="1200" fill="#f3f4f6"/>
+  <path d="M302 838l182-218 126 151 124-97 164 164H302z" fill="#d1d5db"/>
+  <circle cx="455" cy="422" r="70" fill="#d1d5db"/>
+  <text x="600" y="965" text-anchor="middle" fill="#6b7280" font-family="Arial, sans-serif" font-size="44">Image unavailable</text>
+</svg>`;
+
 function isPrivateNetworkHost(hostname: string): boolean {
   const host = String(hostname || '').trim().toLowerCase();
   if (!host) return true;
@@ -86,13 +94,14 @@ export async function GET(request: NextRequest) {
 
   try {
     const fetchUrl = applyWidthHint(parsed, widthHint).toString();
-    // Fetch the image with proper headers to avoid CORS issues
+    const upstreamReferer = `${parsed.origin}/`;
     const response = await fetch(fetchUrl, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
         'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
         'Accept-Language': 'en-US,en;q=0.9',
-        'Referer': 'https://www.amazon.com/',
+        'Referer': upstreamReferer,
+        'Origin': parsed.origin,
       },
       cache: 'force-cache',
     });
@@ -113,7 +122,13 @@ export async function GET(request: NextRequest) {
     });
   } catch (error) {
     console.error('Image proxy error:', error);
-    // Return a placeholder image on error
-    return NextResponse.redirect(new URL('/placeholder.svg', request.url));
+    return new NextResponse(IMAGE_PROXY_PLACEHOLDER_SVG, {
+      status: 200,
+      headers: {
+        'Content-Type': 'image/svg+xml; charset=utf-8',
+        'Cache-Control': 'public, max-age=3600, stale-while-revalidate=86400',
+        'X-Image-Proxy-Fallback': 'inline-placeholder',
+      },
+    });
   }
 }

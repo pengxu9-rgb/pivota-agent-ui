@@ -46,6 +46,14 @@ const IMAGE_REMOTE_PATTERNS = [
   },
   {
     protocol: 'https',
+    hostname: 'drjart.com',
+  },
+  {
+    protocol: 'https',
+    hostname: 'www.drjart.com',
+  },
+  {
+    protocol: 'https',
     hostname: 'static.wixstatic.com',
   },
   {
