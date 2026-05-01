@@ -32,6 +32,31 @@ function sourceLabelFor(source: unknown): string | undefined {
   return undefined;
 }
 
+function normalizeReplyCount(value: unknown): number | undefined {
+  if (value == null) return undefined;
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0) return undefined;
+  return Math.floor(n);
+}
+
+function shouldCarryReplyCount(item: { source?: unknown; question_id?: unknown; answer?: unknown }): boolean {
+  const source = String(item.source || '').trim().toLowerCase();
+  if (source === 'merchant_faq' || source === 'review_derived') return false;
+  return Number(item.question_id) > 0 || source === 'community';
+}
+
+function mergeReplyCounts(a: unknown, b: unknown): number | undefined {
+  const left = normalizeReplyCount(a);
+  const right = normalizeReplyCount(b);
+  if (left == null) return right;
+  if (right == null) return left;
+  return Math.max(left, right);
+}
+
+function shouldShowReplyCount(item: QuestionDisplayItem): boolean {
+  return shouldCarryReplyCount(item) && normalizeReplyCount(item.replies) != null;
+}
+
 function mergeQuestionItems(...groups: Array<QuestionDisplayItem[] | null | undefined>): QuestionDisplayItem[] {
   const merged = new Map<string, QuestionDisplayItem>();
 
@@ -41,10 +66,12 @@ function mergeQuestionItems(...groups: Array<QuestionDisplayItem[] | null | unde
     if (!question || !key) return;
     const qid = Number(item.question_id) || 0;
     const existing = merged.get(key);
+    const replies = shouldCarryReplyCount(item) ? normalizeReplyCount(item.replies) : undefined;
     const normalized: QuestionDisplayItem = {
       ...item,
       question_id: qid,
       question,
+      ...(replies != null ? { replies } : { replies: undefined }),
       ...(item.source && !item.source_label ? { source_label: sourceLabelFor(item.source) } : {}),
       synthetic_key: item.synthetic_key || `${item.source || 'question'}:${key}`,
     };
@@ -59,7 +86,7 @@ function mergeQuestionItems(...groups: Array<QuestionDisplayItem[] | null | unde
       ...existing,
       ...(existing.question_id ? {} : { question_id: qid }),
       ...(existing.answer ? {} : normalized.answer ? { answer: normalized.answer } : {}),
-      replies: Math.max(Number(existing.replies) || 0, Number(normalized.replies) || 0),
+      replies: mergeReplyCounts(existing.replies, normalized.replies),
       ...(preserveCommunityThreadSource || (existing.source && existing.source !== 'community')
         ? {}
         : normalized.source
@@ -84,11 +111,16 @@ function normalizeReviewQuestions(reviews: ReviewsPreviewData | null): QuestionD
       const question = String(item?.question || '').trim();
       if (!question) return null;
       const source = item?.source ? String(item.source) : undefined;
+      const questionId = Number(item?.question_id ?? item?.questionId ?? item?.id) || 0;
+      const replies =
+        shouldCarryReplyCount({ source, question_id: questionId, answer: item?.answer })
+          ? normalizeReplyCount(item?.replies ?? item?.reply_count ?? item?.replyCount)
+          : undefined;
       return {
-        question_id: Number(item?.question_id ?? item?.questionId ?? item?.id) || 0,
+        question_id: questionId,
         question,
         ...(item?.answer ? { answer: String(item.answer).trim() } : {}),
-        replies: Number(item?.replies ?? item?.reply_count ?? item?.replyCount) || 0,
+        ...(replies != null ? { replies } : {}),
         ...(source ? { source } : {}),
         source_label: item?.source_label ? String(item.source_label) : sourceLabelFor(source),
         ...(Number.isFinite(Number(item?.support_count ?? item?.supportCount))
@@ -266,6 +298,7 @@ export default function QuestionsListClient() {
               items.map((q) => {
                 const canOpenThread = Number(q.question_id) > 0 && (!q.source || q.source === 'community');
                 const key = q.synthetic_key || String(q.question_id || normalizeQuestionKey(q.question));
+                const showReplyCount = shouldShowReplyCount(q);
                 const content = (
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex-1">
@@ -281,9 +314,11 @@ export default function QuestionsListClient() {
                           Supported by {q.support_count} reviews
                         </div>
                       ) : null}
-                      <div className="mt-2 text-xs text-muted-foreground">
-                        {(q.replies || 0) === 1 ? '1 reply' : `${q.replies || 0} replies`}
-                      </div>
+                      {showReplyCount ? (
+                        <div className="mt-2 text-xs text-muted-foreground">
+                          {q.replies === 1 ? '1 reply' : `${q.replies} replies`}
+                        </div>
+                      ) : null}
                     </div>
                     {canOpenThread ? <ChevronRight className="h-4 w-4 text-muted-foreground mt-0.5" /> : null}
                   </div>

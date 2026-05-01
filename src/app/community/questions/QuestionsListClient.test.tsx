@@ -81,6 +81,7 @@ describe('QuestionsListClient', () => {
       screen.getByText('Start with your undertone, then compare nearby shades in natural light.'),
     ).toBeInTheDocument();
     expect(screen.getByText('Official FAQ')).toBeInTheDocument();
+    expect(screen.queryByText('0 replies')).not.toBeInTheDocument();
     expect(screen.queryByText('No questions yet. Be the first to ask!')).not.toBeInTheDocument();
     expect(listQuestionsMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -115,6 +116,8 @@ describe('QuestionsListClient', () => {
     expect(communityLink).toHaveAttribute('href', expect.stringContaining('/community/questions/88?'));
     expect(screen.getByText('How do I choose a shade?')).toBeInTheDocument();
     expect(screen.getByText('Official FAQ').closest('a')).toBeNull();
+    expect(screen.getByText('2 replies')).toBeInTheDocument();
+    expect(screen.queryByText('0 replies')).not.toBeInTheDocument();
   });
 
   it('dedupes PDP FAQ against community questions while preserving the community thread link', async () => {

@@ -96,11 +96,9 @@ export default function QuestionThreadClient() {
 
     setSubmitting(true);
     try {
-      const res = await postQuestionReply({ questionId, body: text });
-      const rid = Number((res as any)?.reply_id ?? (res as any)?.replyId ?? (res as any)?.id) || Date.now();
-      setReplies((prev) => [{ reply_id: rid, body: text, created_at: new Date().toISOString() }, ...(prev || [])]);
+      await postQuestionReply({ questionId, body: text });
       setReplyText('');
-      setQuestion((prev) => (prev ? { ...prev, replies: (prev.replies || 0) + 1 } : prev));
+      toast.success('Answer submitted for review.');
     } catch (e: any) {
       if (e?.status === 401 || e?.code === 'NOT_AUTHENTICATED') {
         requireLogin();
@@ -171,22 +169,30 @@ export default function QuestionThreadClient() {
                 </div>
               )}
             </div>
+            <div className="rounded-2xl border border-border bg-white/70 p-4 text-xs leading-relaxed text-muted-foreground">
+              Answers from logged-in users are reviewed before they appear publicly.
+            </div>
           </>
         )}
       </div>
 
       <div className="fixed inset-x-0 bottom-0 z-50 bg-white/90 backdrop-blur border-t border-border">
-        <div className="max-w-2xl mx-auto px-4 py-3 flex items-end gap-2">
-          <textarea
-            value={replyText}
-            onChange={(e) => setReplyText(e.target.value)}
-            placeholder="Write a reply…"
-            className="flex-1 min-h-[44px] max-h-[120px] resize-none rounded-xl border border-border bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--focus-ring)]"
-            disabled={submitting || !question}
-          />
-          <Button className="rounded-xl" onClick={onSubmitReply} disabled={submitting || !question}>
-            {submitting ? 'Sending…' : 'Send'}
-          </Button>
+        <div className="max-w-2xl mx-auto px-4 py-3">
+          <div className="flex items-end gap-2">
+            <textarea
+              value={replyText}
+              onChange={(e) => setReplyText(e.target.value)}
+              placeholder="Write a reply…"
+              className="flex-1 min-h-[44px] max-h-[120px] resize-none rounded-xl border border-border bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--focus-ring)]"
+              disabled={submitting || !question}
+            />
+            <Button className="rounded-xl" onClick={onSubmitReply} disabled={submitting || !question}>
+              {submitting ? 'Sending…' : 'Send'}
+            </Button>
+          </div>
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            Logged-in users can answer. Answers are reviewed before they appear.
+          </p>
         </div>
       </div>
     </div>
