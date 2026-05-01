@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ShoppingCart } from 'lucide-react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
+import { normalizeDisplayImageUrl } from '@/lib/displayImage';
 import { hideProductRouteLoading, showProductRouteLoading } from '@/lib/productRouteLoading';
 import { buildProductHref } from '@/lib/productHref';
 import { appendCurrentPathAsReturn } from '@/lib/returnUrl';
@@ -55,7 +56,8 @@ function pickOfferSavingsSource(product: ProductResponse): any | null {
 export function ChatRecommendationCard({ product, onAddToCart }: Props) {
   const router = useRouter();
   const [isNavigating, setIsNavigating] = useState(false);
-  const [imageSrc, setImageSrc] = useState(product.image_url || '/placeholder.svg');
+  const resolvedImage = normalizeDisplayImageUrl(product.image_url, '/placeholder.svg');
+  const [imageSrc, setImageSrc] = useState(resolvedImage);
   const lastTouchTsRef = useRef(0);
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
   const touchMovedRef = useRef(false);
@@ -113,8 +115,8 @@ export function ChatRecommendationCard({ product, onAddToCart }: Props) {
   };
 
   useEffect(() => {
-    setImageSrc(product.image_url || '/placeholder.svg');
-  }, [product.image_url]);
+    setImageSrc(resolvedImage);
+  }, [resolvedImage]);
 
   useEffect(() => {
     return () => {

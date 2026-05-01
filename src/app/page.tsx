@@ -14,6 +14,7 @@ import { useCartStore } from '@/store/cartStore';
 import { useAuthStore } from '@/store/authStore';
 import { useChatStore } from '@/store/chatStore';
 import { getAllowedParentOrigin, isAuroraEmbedMode, postRequestCloseToParent } from '@/lib/auroraEmbed';
+import { normalizeDisplayImageUrl } from '@/lib/displayImage';
 import {
   sendMessage,
   getShoppingDiscoveryFeed,
@@ -404,7 +405,7 @@ function HomePageApp() {
       title: product.title,
       price: product.price,
       currency: product.currency,
-      imageUrl: product.image_url || '/placeholder.svg',
+      imageUrl: normalizeDisplayImageUrl(product.image_url, '/placeholder.svg'),
       merchant_id: product.merchant_id,
       quantity: 1,
     });
@@ -611,7 +612,7 @@ function HomePageApp() {
                       >
                         <div className="relative aspect-square rounded-2xl overflow-hidden mb-2 ring-1 ring-border group-hover:ring-primary transition-all">
                           <Image
-                            src={product.image_url || '/placeholder.svg'}
+                            src={normalizeDisplayImageUrl(product.image_url, '/placeholder.svg')}
                             alt={product.title}
                             fill
                             className="object-cover group-hover:scale-110 transition-transform duration-300"

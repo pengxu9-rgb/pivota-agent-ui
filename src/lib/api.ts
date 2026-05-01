@@ -8,6 +8,7 @@ import {
 import { ensureAuroraSession, shouldUseAuroraAutoExchange } from '@/lib/auroraOrdersAuth'
 import { formatDescriptionText } from '@/features/pdp/utils/formatDescriptionText'
 import type { Offer, RecommendationsData } from '@/features/pdp/types'
+import { normalizeDisplayImageUrl } from '@/lib/displayImage'
 
 // Point to the public Agent Gateway by default; override via NEXT_PUBLIC_API_URL if needed.
 const API_BASE =
@@ -514,12 +515,7 @@ export function normalizeProduct(
     firstFromArray(anyP.variants) ||
     firstFromArray(anyP.media);
 
-  // Use image proxy for external images to avoid CORS issues
-  if (normalizedImage && /^https?:\/\//i.test(normalizedImage)) {
-    normalizedImage = `/api/image-proxy?url=${encodeURIComponent(normalizedImage)}`;
-  } else if (!normalizedImage) {
-    normalizedImage = '/placeholder.svg';
-  }
+  normalizedImage = normalizeDisplayImageUrl(normalizedImage, '/placeholder.svg');
 
   const description = normalizeProductDescriptionText(anyP.description);
 
