@@ -26,6 +26,8 @@ function hostnameFromUrl(url) {
 }
 
 const REVIEWS_UPSTREAM_HOSTNAME = hostnameFromUrl(REVIEWS_UPSTREAM_BASE_URL);
+const VERCEL_IMAGE_OPTIMIZATION_ENABLED =
+  process.env.VERCEL_IMAGE_OPTIMIZATION_ENABLED === 'true';
 
 const IMAGE_REMOTE_PATTERNS = [
   {
@@ -82,8 +84,12 @@ const nextConfig = {
     ignoreDuringBuilds: false,
   },
   images: {
+    unoptimized: !VERCEL_IMAGE_OPTIMIZATION_ENABLED,
     remotePatterns: IMAGE_REMOTE_PATTERNS,
-    formats: ['image/avif', 'image/webp'],
+    formats: ['image/webp'],
+    minimumCacheTTL: 2678400,
+    deviceSizes: [360, 414, 768, 1024],
+    imageSizes: [32, 48, 64, 96, 160, 220, 320],
   },
   // Enable compression
   compress: true,
