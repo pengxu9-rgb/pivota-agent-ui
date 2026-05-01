@@ -36,6 +36,16 @@ describe('normalizePdpImageUrl', () => {
     ).toBe('https://sdcdn.io/tf/tf_sku_TE1634_NA_3000x3000_0.png');
   });
 
+  it('keeps Dr.Jart product media on the official remote host instead of routing through the local proxy', () => {
+    expect(
+      normalizePdpImageUrl(
+        'https://www.drjart.com/media/export/cms/products/1000x1000/dj_sku_H7T901_1000x1000_0.jpg',
+      ),
+    ).toBe(
+      'https://www.drjart.com/media/export/cms/products/1000x1000/dj_sku_H7T901_1000x1000_0.jpg',
+    );
+  });
+
   it('strips broken Tom Ford jpg hash suffixes when the slot asset is canonicalized onto Shopify files', () => {
     expect(
       normalizePdpImageUrl(
