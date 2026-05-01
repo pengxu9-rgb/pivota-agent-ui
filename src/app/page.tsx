@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { Menu, ShoppingCart, Send, Package, User } from 'lucide-react';
+import type { ChangeEvent } from 'react';
+import { ImagePlus, Menu, ShoppingCart, Send, Package, User } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -25,6 +26,12 @@ import {
 import { mergeDiscoveryRecentViews, readLocalBrowseHistory } from '@/lib/browseHistoryStorage';
 import { buildProductHref } from '@/lib/productHref';
 import { appendCurrentPathAsReturn } from '@/lib/returnUrl';
+import {
+  analyzeSkinPhotoFile,
+  isShoppingSkinPhotoUploadBetaEnabled,
+  resolvePhotoAnalysisLanguage,
+  SKIN_PHOTO_ACCEPTED_TYPES,
+} from '@/lib/photoAnalysis';
 import { toast } from 'sonner';
 
 const CHAT_RAIL_INITIAL_PAGE_SIZE = 12;
@@ -112,11 +119,13 @@ function HomePageApp() {
   const [input, setInput] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(false); // Mobile: closed by default, Desktop: always visible
   const [loading, setLoading] = useState(false);
+  const [photoUploading, setPhotoUploading] = useState(false);
   const [hotDeals, setHotDeals] = useState<ProductResponse[]>([]);
   const [hotDealsStatus, setHotDealsStatus] = useState<'loading' | 'ready' | 'empty' | 'error'>('loading');
   const [recentViews, setRecentViews] = useState<DiscoveryRecentView[]>([]);
   const [recentViewsReady, setRecentViewsReady] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const photoInputRef = useRef<HTMLInputElement>(null);
   
   const { messages, addMessage, updateMessage, conversations, resetForGuest } = useChatStore();
   const { items, addItem, open } = useCartStore();
@@ -125,6 +134,8 @@ function HomePageApp() {
   
   const itemCount = items.reduce((acc, item) => acc + item.quantity, 0);
   const hasUserMessages = messages.some(msg => msg.role === 'user');
+  const photoUploadEnabled = isShoppingSkinPhotoUploadBetaEnabled();
+  const composerBusy = loading || photoUploading;
 
   useEffect(() => {
     let cancelled = false;
@@ -215,7 +226,7 @@ function HomePageApp() {
   }, [user, ownerEmail, resetForGuest, setOwnerEmail, conversations.length]);
 
   const handleSend = async () => {
-    if (!input.trim() || loading) return;
+    if (!input.trim() || composerBusy) return;
 
     const userMessage = {
       id: Date.now().toString(),
@@ -319,6 +330,73 @@ function HomePageApp() {
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSkinPhotoUploadClick = () => {
+    if (!photoUploadEnabled || composerBusy) return;
+    const latestUserText =
+      input ||
+      [...messages].reverse().find((message) => message.role === 'user')?.content ||
+      '';
+    const language = resolvePhotoAnalysisLanguage(latestUserText);
+    const confirmed = window.confirm(
+      language === 'CN'
+        ? '照片上传 Beta 目前只用于面部/皮肤照片分析，不支持商品瓶身或 PDP 截图识别。继续上传吗？'
+        : 'Photo upload beta is for face/skin analysis only. Product bottles or PDP screenshots are not supported. Continue?',
+    );
+    if (!confirmed) return;
+    photoInputRef.current?.click();
+  };
+
+  const handleSkinPhotoSelected = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0] || null;
+    event.target.value = '';
+    if (!file || composerBusy) return;
+
+    const languageHint =
+      input ||
+      [...messages].reverse().find((message) => message.role === 'user')?.content ||
+      '';
+    const language = resolvePhotoAnalysisLanguage(languageHint);
+
+    const userMessage = {
+      id: `photo-u-${Date.now()}`,
+      role: 'user' as const,
+      content:
+        language === 'CN'
+          ? `已上传皮肤照片：${file.name}`
+          : `Uploaded skin photo: ${file.name}`,
+    };
+    addMessage(userMessage);
+    setPhotoUploading(true);
+
+    try {
+      const result = await analyzeSkinPhotoFile(file, {
+        languageHint,
+        userId: user?.id || null,
+        sourceAgent: 'shopping_agent',
+      });
+      addMessage({
+        id: `photo-a-${Date.now()}`,
+        role: 'assistant',
+        content: result.assistantText,
+      });
+      if (result.status !== 'success') {
+        toast.message(language === 'CN' ? '照片分析未完成，请重试或改用文字描述。' : 'Photo analysis did not complete. Try again or describe your skin in text.');
+      }
+    } catch (error) {
+      console.error('Skin photo analysis error:', error);
+      addMessage({
+        id: `photo-a-error-${Date.now()}`,
+        role: 'assistant',
+        content:
+          language === 'CN'
+            ? '照片分析暂时不可用。请稍后重试，或直接用文字描述肤况。'
+            : 'Photo analysis is temporarily unavailable. Try again later or describe your skin in text.',
+      });
+    } finally {
+      setPhotoUploading(false);
     }
   };
 
@@ -562,7 +640,7 @@ function HomePageApp() {
             ))}
           </AnimatePresence>
           
-          {loading && (
+          {composerBusy && (
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -660,6 +738,27 @@ function HomePageApp() {
           )}
 
           <div className="flex items-center gap-2 bg-secondary border border-border rounded-2xl px-3 py-2">
+            {photoUploadEnabled ? (
+              <>
+                <input
+                  ref={photoInputRef}
+                  type="file"
+                  accept={SKIN_PHOTO_ACCEPTED_TYPES.join(',')}
+                  className="hidden"
+                  onChange={handleSkinPhotoSelected}
+                />
+                <button
+                  type="button"
+                  onClick={handleSkinPhotoUploadClick}
+                  disabled={composerBusy}
+                  className="h-8 w-8 rounded-lg flex flex-shrink-0 items-center justify-center border border-border/70 bg-background/70 text-muted-foreground hover:text-foreground hover:bg-background transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  aria-label="Upload skin photo"
+                  title="Upload skin photo"
+                >
+                  <ImagePlus className="h-4 w-4" />
+                </button>
+              </>
+            ) : null}
             <input
               type="text"
               value={input}
@@ -667,11 +766,11 @@ function HomePageApp() {
               onKeyPress={(e) => e.key === 'Enter' && handleSend()}
               placeholder="Ask me anything..."
               className="flex-1 bg-transparent outline-none text-sm text-foreground placeholder:text-muted-foreground"
-              disabled={loading}
+              disabled={composerBusy}
             />
             <button
               onClick={handleSend}
-              disabled={loading || !input.trim()}
+              disabled={composerBusy || !input.trim()}
               className="h-8 w-8 rounded-lg flex items-center justify-center bg-gradient-to-r from-indigo-500 to-purple-500 hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Send className="h-4 w-4" />

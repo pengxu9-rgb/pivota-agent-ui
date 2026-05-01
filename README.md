@@ -57,6 +57,14 @@ Example:
 NEXT_PUBLIC_AURORA_ORDERS_MERCHANT_ID=merchant_aurora_default
 ```
 
+## Skin Photo Upload Beta
+
+- `NEXT_PUBLIC_SHOPPING_AGENT_PHOTO_UPLOAD_BETA`
+  Enables the composer upload button for skin photo analysis. Default is off.
+- The button is for face/skin photos only. Product bottles, PDP screenshots, and OCR/SKU guessing are not treated as supported success paths.
+- Upload and analysis calls go through same-origin `/api/photo-analysis/*` routes so the browser never sees the agent key.
+- Keep this flag off until the backend curated photo benchmark passes the release gate.
+
 ## Orders page performance (optional)
 
 - `NEXT_PUBLIC_ORDERS_LIST_TIMEOUT_MS`  
