@@ -42,6 +42,18 @@ describe('photoAnalysis client contract helpers', () => {
         ],
       }),
     ).toBe(false);
+
+    expect(
+      isSkinPhotoAnalysisSuccess({
+        status: 'success',
+        cards: [
+          {
+            type: 'analysis_story_v2',
+            payload: { used_photos: true, photo_qc: ['front:degraded'] },
+          },
+        ],
+      }),
+    ).toBe(false);
   });
 
   it('validates supported image type and max size', () => {
