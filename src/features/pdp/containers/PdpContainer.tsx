@@ -3144,6 +3144,7 @@ export function PdpContainer({
         source?: 'merchant_faq' | 'review_derived' | 'community' | string;
         source_label?: string;
         support_count?: number;
+        display?: NonNullable<ReviewsPreviewData['questions']>[number]['display'];
       }
     >();
 
@@ -3155,6 +3156,7 @@ export function PdpContainer({
       source?: 'merchant_faq' | 'review_derived' | 'community' | string;
       source_label?: string;
       support_count?: number;
+      display?: NonNullable<ReviewsPreviewData['questions']>[number]['display'];
     }) => {
       const text = String(item?.question || '').trim();
       const qid = Number(item?.question_id) || 0;
@@ -3175,6 +3177,7 @@ export function PdpContainer({
           ...(item.source ? { source: item.source } : {}),
           ...(item.source_label ? { source_label: item.source_label } : {}),
           ...(typeof item.support_count === 'number' ? { support_count: item.support_count } : {}),
+          ...(item.display ? { display: item.display } : {}),
         });
         return;
       }
@@ -3184,6 +3187,7 @@ export function PdpContainer({
       if (existing.replies == null && typeof item.replies === 'number') existing.replies = item.replies;
       if ((!existing.source || existing.source === 'community') && item.source) existing.source = item.source;
       if (!existing.source_label && item.source_label) existing.source_label = item.source_label;
+      if (!existing.display && item.display) existing.display = item.display;
       if ((existing.support_count || 0) < (item.support_count || 0)) {
         existing.support_count = item.support_count;
       }
@@ -3210,6 +3214,7 @@ export function PdpContainer({
           ...(q?.source ? { source: String(q.source) } : {}),
           ...(q?.source_label ? { source_label: String(q.source_label) } : {}),
           ...(typeof q?.support_count === 'number' ? { support_count: q.support_count } : {}),
+          ...(q?.display ? { display: q.display } : {}),
         });
       }
     }

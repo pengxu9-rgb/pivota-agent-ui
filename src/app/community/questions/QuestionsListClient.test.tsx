@@ -143,4 +143,48 @@ describe('QuestionsListClient', () => {
     );
     expect(screen.getByText('Start with your undertone, then compare nearby shades in natural light.')).toBeInTheDocument();
   });
+
+  it('shows sentence-aware excerpts for long official FAQ answers and expands inline', async () => {
+    const longAnswer =
+      'This fluid sunscreen wears comfortably under makeup and helps even tone. It also layers well with moisturizer and keeps the finish lightweight through the morning. Users with combination skin usually do well with a thin final layer. If you prefer extra grip under long-wear makeup, let it set for one minute before foundation. For very dry skin, add a lighter moisturizer underneath and keep the sunscreen layer thin. Reapply before extended midday sun exposure or after sweating. Some users also prefer applying with fingertips first and then pressing in with a sponge around the nose and chin.';
+
+    getPdpV2Mock.mockResolvedValue({
+      status: 'success',
+      modules: [
+        {
+          type: 'reviews_preview',
+          data: {
+            scale: 5,
+            rating: 0,
+            review_count: 0,
+            questions: [
+              {
+                question:
+                  'Does this sunscreen wear well under makeup when I already use moisturizer and prefer a lightweight finish through the morning?',
+                answer: longAnswer,
+                source: 'merchant_faq',
+                source_label: 'Official FAQ',
+              },
+            ],
+          },
+        },
+      ],
+    });
+
+    render(<QuestionsListClient />);
+
+    expect(await screen.findByText(/This fluid sunscreen wears comfortably under makeup and helps even tone/)).toBeInTheDocument();
+    expect(screen.queryByText(/Reapply before extended midday sun exposure or after sweating/)).not.toBeInTheDocument();
+    expect(screen.queryByText('0 replies')).not.toBeInTheDocument();
+
+    const readMore = screen.getByRole('button', { name: 'Read more' });
+    readMore.click();
+
+    expect(
+      await screen.findByText(
+        /Reapply before extended midday sun exposure or after sweating/,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Show less' })).toBeInTheDocument();
+  });
 });

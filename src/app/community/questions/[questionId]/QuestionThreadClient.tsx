@@ -177,22 +177,22 @@ export default function QuestionThreadClient() {
       </div>
 
       <div className="fixed inset-x-0 bottom-0 z-50 bg-white/90 backdrop-blur border-t border-border">
-        <div className="max-w-2xl mx-auto px-4 py-3">
-          <div className="flex items-end gap-2">
+        <div className="max-w-2xl mx-auto px-4 py-3 flex items-end gap-2">
+          <div className="flex-1">
             <textarea
               value={replyText}
               onChange={(e) => setReplyText(e.target.value)}
               placeholder="Write a reply…"
-              className="flex-1 min-h-[44px] max-h-[120px] resize-none rounded-xl border border-border bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--focus-ring)]"
+              className="min-h-[44px] max-h-[120px] w-full resize-none rounded-xl border border-border bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--focus-ring)]"
               disabled={submitting || !question}
             />
-            <Button className="rounded-xl" onClick={onSubmitReply} disabled={submitting || !question}>
-              {submitting ? 'Sending…' : 'Send'}
-            </Button>
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              Logged-in users can answer. Answers are reviewed before they appear.
+            </p>
           </div>
-          <p className="mt-1 text-[11px] text-muted-foreground">
-            Logged-in users can answer. Answers are reviewed before they appear.
-          </p>
+          <Button className="rounded-xl" onClick={onSubmitReply} disabled={submitting || !question}>
+            {submitting ? 'Sending…' : 'Send'}
+          </Button>
         </div>
       </div>
     </div>

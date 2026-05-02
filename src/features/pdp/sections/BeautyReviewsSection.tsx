@@ -4,6 +4,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { Star, ChevronRight } from 'lucide-react';
 import type { ReviewsPreviewData } from '@/features/pdp/types';
+import { resolveQuestionDisplay } from '@/lib/questionDisplay';
 import { cn } from '@/lib/utils';
 
 function StarRating({ value }: { value: number }) {
@@ -255,11 +256,13 @@ export function BeautyReviewsSection({
           <div className="flex gap-3 overflow-x-auto pb-2">
             {data.questions?.map((disc, idx) => {
               const key = `${disc.question}-${idx}`;
+              const display = resolveQuestionDisplay(disc, 'pdp');
+              const showReplyCount = disc.source === 'community' && disc.replies != null;
               const content = (
                 <>
-                  <p className="text-sm font-medium">{disc.question}</p>
-                  {disc.answer ? (
-                    <p className="mt-2 text-xs text-muted-foreground">&quot;{disc.answer}&quot;</p>
+                  <p className="line-clamp-2 text-sm font-medium leading-snug">{display.question}</p>
+                  {display.answer ? (
+                    <p className="mt-2 line-clamp-4 text-xs leading-relaxed text-muted-foreground">{display.answer}</p>
                   ) : null}
                   {disc.source_label ? (
                     <p className="mt-2 text-[11px] font-medium text-muted-foreground">{disc.source_label}</p>
@@ -269,7 +272,7 @@ export function BeautyReviewsSection({
                       Supported by {disc.support_count} reviews
                     </p>
                   ) : null}
-                  {disc.replies != null ? (
+                  {showReplyCount ? (
                     <p className="mt-2 text-xs text-muted-foreground">{disc.replies} replies</p>
                   ) : null}
                 </>

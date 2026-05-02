@@ -465,6 +465,18 @@ export interface DetailSection {
   collapsed_by_default?: boolean;
 }
 
+export interface QuestionDisplayExcerpt {
+  question: string;
+  answer?: string;
+  question_truncated?: boolean;
+  answer_truncated?: boolean;
+}
+
+export interface QuestionDisplayContract {
+  pdp?: QuestionDisplayExcerpt;
+  landing?: QuestionDisplayExcerpt;
+}
+
 export interface ReviewsPreviewData {
   scale: number;
   rating: number;
@@ -494,6 +506,7 @@ export interface ReviewsPreviewData {
     source?: 'merchant_faq' | 'review_derived' | 'community' | string;
     source_label?: string;
     support_count?: number;
+    display?: QuestionDisplayContract;
   }>;
   brand_card?: {
     name: string;

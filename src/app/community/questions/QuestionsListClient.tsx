@@ -8,10 +8,16 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { getPdpV2, listQuestions, postQuestion, type QuestionListItem } from '@/lib/api';
 import { buildProductHref } from '@/lib/productHref';
+import {
+  isQuestionDisplayTruncated,
+  resolveQuestionDisplay,
+  type QuestionDisplayContract,
+} from '@/lib/questionDisplay';
 import { mapPdpV2ToPdpPayload } from '@/features/pdp/adapter/mapPdpV2ToPdpPayload';
 import type { ReviewsPreviewData } from '@/features/pdp/types';
 
 type QuestionDisplayItem = QuestionListItem & {
+  display?: QuestionDisplayContract;
   synthetic_key?: string;
 };
 
@@ -87,6 +93,7 @@ function mergeQuestionItems(...groups: Array<QuestionDisplayItem[] | null | unde
       ...(existing.question_id ? {} : { question_id: qid }),
       ...(existing.answer ? {} : normalized.answer ? { answer: normalized.answer } : {}),
       replies: mergeReplyCounts(existing.replies, normalized.replies),
+      ...(existing.display ? {} : normalized.display ? { display: normalized.display } : {}),
       ...(preserveCommunityThreadSource || (existing.source && existing.source !== 'community')
         ? {}
         : normalized.source
@@ -126,6 +133,9 @@ function normalizeReviewQuestions(reviews: ReviewsPreviewData | null): QuestionD
         ...(Number.isFinite(Number(item?.support_count ?? item?.supportCount))
           ? { support_count: Number(item?.support_count ?? item?.supportCount) }
           : {}),
+        ...(item?.display && typeof item.display === 'object'
+          ? { display: item.display as QuestionDisplayContract }
+          : {}),
         synthetic_key: `${source || 'reviews_preview'}:${normalizeQuestionKey(question)}:${index}`,
       } satisfies QuestionDisplayItem;
     })
@@ -162,6 +172,7 @@ export default function QuestionsListClient() {
   const [askOpen, setAskOpen] = useState(false);
   const [askText, setAskText] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (!productId) return;
@@ -298,13 +309,18 @@ export default function QuestionsListClient() {
               items.map((q) => {
                 const canOpenThread = Number(q.question_id) > 0 && (!q.source || q.source === 'community');
                 const key = q.synthetic_key || String(q.question_id || normalizeQuestionKey(q.question));
+                const expanded = expandedKeys.has(key);
+                const preview = resolveQuestionDisplay(q, 'landing');
                 const showReplyCount = shouldShowReplyCount(q);
+                const expandable = !canOpenThread && isQuestionDisplayTruncated(q, 'landing');
+                const questionText = expanded ? q.question : preview.question;
+                const answerText = expanded ? q.answer : preview.answer;
                 const content = (
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex-1">
-                      <div className="text-sm font-semibold leading-snug">{q.question}</div>
-                      {q.answer ? (
-                        <div className="mt-2 text-sm leading-relaxed text-muted-foreground">{q.answer}</div>
+                      <div className="text-sm font-semibold leading-snug">{questionText}</div>
+                      {answerText ? (
+                        <div className="mt-2 text-sm leading-relaxed text-muted-foreground">{answerText}</div>
                       ) : null}
                       {q.source_label ? (
                         <div className="mt-2 text-[11px] font-medium text-muted-foreground">{q.source_label}</div>
@@ -318,6 +334,23 @@ export default function QuestionsListClient() {
                         <div className="mt-2 text-xs text-muted-foreground">
                           {q.replies === 1 ? '1 reply' : `${q.replies} replies`}
                         </div>
+                      ) : null}
+                      {expandable ? (
+                        <button
+                          type="button"
+                          className="mt-2 text-xs font-medium text-primary hover:underline"
+                          onClick={(event) => {
+                            event.preventDefault();
+                            setExpandedKeys((prev) => {
+                              const next = new Set(prev);
+                              if (next.has(key)) next.delete(key);
+                              else next.add(key);
+                              return next;
+                            });
+                          }}
+                        >
+                          {expanded ? 'Show less' : 'Read more'}
+                        </button>
                       ) : null}
                     </div>
                     {canOpenThread ? <ChevronRight className="h-4 w-4 text-muted-foreground mt-0.5" /> : null}
