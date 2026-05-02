@@ -2241,6 +2241,17 @@ export function PdpContainer({
   const hasNonOverviewDetails = Boolean(
     detailSectionParts.supplementalSections.length || detailSectionParts.brandStorySection,
   );
+  const hasDisplayableExternalSeedProductInformation = useMemo(
+    () =>
+      (Array.isArray(supplementalDetails?.sections) ? supplementalDetails.sections : []).some((section) => {
+        const heading = String(section.heading || '').trim().toLowerCase();
+        const content = String(section.content || '').trim();
+        if (!content) return false;
+        if (heading === 'category') return false;
+        return /^(details|how to pair|benefits?|clinical results?|results?)$/.test(heading) || content.length >= 180;
+      }),
+    [supplementalDetails?.sections],
+  );
   const hasDetailsSection = Boolean(
     (!suppressOverviewInDetails && details) ||
       hasStructuredDetailBlocks ||
@@ -4190,7 +4201,7 @@ export function PdpContainer({
                 hideLowConfidenceActiveIngredients={shouldHideLowConfidenceActiveIngredients}
                 suppressOverview={suppressOverviewInDetails}
                 showDetailMedia={!isExternalSeedProduct}
-                showProductInformation={!isExternalSeedProduct}
+                showProductInformation={!isExternalSeedProduct || hasDisplayableExternalSeedProductInformation}
               />
             ) : resolvedMode === 'generic' ? (
               <GenericDetailsSection

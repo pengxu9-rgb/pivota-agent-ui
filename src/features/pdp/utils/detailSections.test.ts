@@ -63,4 +63,31 @@ describe('partitionDetailSections', () => {
     expect(result.brandStorySection?.heading).toBe('Brand Story');
     expect(result.supplementalSections).toEqual([]);
   });
+
+  it('preserves a non-duplicate Details section alongside the overview', () => {
+    const result = partitionDetailSections([
+      {
+        heading: 'Overview',
+        content_type: 'text',
+        content: 'A balancing serum for breakout-prone skin.',
+      },
+      {
+        heading: 'Details',
+        content_type: 'text',
+        content:
+          'Targets the root cause of breakouts by balancing sebum production, supporting barrier health, and helping calm visible redness over time.',
+      },
+      {
+        heading: 'How to Pair',
+        content_type: 'text',
+        content: 'Pair with a gentle cleanser and a lightweight moisturizer.',
+      },
+    ]);
+
+    expect(result.overviewSection?.heading).toBe('Overview');
+    expect(result.supplementalSections).toEqual([
+      expect.objectContaining({ heading: 'Details' }),
+      expect.objectContaining({ heading: 'How to Pair' }),
+    ]);
+  });
 });

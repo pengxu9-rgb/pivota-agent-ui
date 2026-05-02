@@ -13,6 +13,15 @@ function normalizeKey(value: string): string {
     .trim();
 }
 
+function isNearDuplicateSectionContent(left: string, right: string): boolean {
+  const normalizedLeft = normalizeKey(left);
+  const normalizedRight = normalizeKey(right);
+  if (!normalizedLeft || !normalizedRight) return false;
+  if (normalizedLeft === normalizedRight) return true;
+  if (normalizedLeft.length < 32 || normalizedRight.length < 32) return false;
+  return normalizedLeft.includes(normalizedRight) || normalizedRight.includes(normalizedLeft);
+}
+
 function normalizeDetailSection(section: DetailSection | null | undefined): DetailSection | null {
   if (!section) return null;
   const content = formatDescriptionText(section.content);
@@ -75,7 +84,12 @@ export function partitionDetailSections(sections: DetailSection[] | null | undef
     if (index === selectedOverviewIndex) return false;
     if (BRAND_STORY_HEADING_RE.test(section.heading)) return false;
     if (STRUCTURED_SECTION_HEADING_RE.test(section.heading)) return false;
-    if (OVERVIEW_SECTION_HEADING_RE.test(section.heading)) return false;
+    if (
+      OVERVIEW_SECTION_HEADING_RE.test(section.heading) &&
+      isNearDuplicateSectionContent(section.content, overviewSection?.content || '')
+    ) {
+      return false;
+    }
     return true;
   });
 

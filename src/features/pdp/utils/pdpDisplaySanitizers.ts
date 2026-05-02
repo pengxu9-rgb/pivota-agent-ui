@@ -7,9 +7,10 @@ import type {
 } from '@/features/pdp/types';
 
 const DETAIL_HEADING_NOISE_RE =
-  /^(.*\bingredients?\b.*|active ingredients?|how to use|directions?|how to pair|materials?|material composition|fabric|composition|care|care instructions?|cleaning|wash(?:ing)? instructions?|storage|specifications?|specs?|dimensions?|capacity|weight|size(?: & fit)?|fit|sizing|size guide|measurements?|usage|safety|warranty|about|our story|brand story|faq|questions?|warnings?|warning|caution)$/i;
+  /^(.*\bingredients?\b.*|active ingredients?|how to use|directions?|materials?|material composition|fabric|composition|care|care instructions?|cleaning|wash(?:ing)? instructions?|storage|specifications?|specs?|dimensions?|capacity|weight|size(?: & fit)?|fit|sizing|size guide|measurements?|usage|safety|warranty|about|our story|brand story|faq|questions?|warnings?|warning|caution)$/i;
 const DETAIL_CONTENT_NOISE_RE =
-  /\b(shop now|pair with|our story|product philosophy|sustainability|inclusivity pledge)\b/i;
+  /\b(shop now|our story|product philosophy|sustainability|inclusivity pledge)\b/i;
+const HOW_TO_PAIR_HEADING_RE = /^how to pair$/i;
 const HOW_TO_USE_NOISE_RE =
   /\b(shop now|pair with|our story|product philosophy|sustainability|inclusivity pledge|faq|question(?:s)?|about)\b/i;
 const HOW_TO_USE_ACTION_RE =
@@ -138,6 +139,10 @@ function filterDetailSections(
     const content = normalizeWhitespace(section.content);
     if (!heading && !content) return false;
     if (options.hasStructuredBlocks && DETAIL_HEADING_NOISE_RE.test(heading)) return false;
+    if (HOW_TO_PAIR_HEADING_RE.test(heading)) {
+      if (DETAIL_CONTENT_NOISE_RE.test(content)) return false;
+      return true;
+    }
     if (DETAIL_CONTENT_NOISE_RE.test(content) && !OVERVIEW_LIKE_HEADING_RE.test(heading)) return false;
     return true;
   });

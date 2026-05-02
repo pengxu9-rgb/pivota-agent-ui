@@ -469,6 +469,49 @@ describe('PdpContainer structured PDP modules', () => {
     expect(screen.queryByRole('button', { name: 'Category' })).not.toBeInTheDocument();
   });
 
+  it('renders trusted external-seed product information when clean supplemental sections are present', () => {
+    const payload = buildBeautyPayload();
+    payload.product.product_id = 'ext_krave_oil_lala';
+    payload.product.title = 'Oil La La';
+    payload.product.description =
+      "Don't believe the rumors. Oils aren't the enemy of oily, breakout-prone skin.";
+    payload.modules.push({
+      module_id: 'm_supplemental',
+      type: 'supplemental_details',
+      priority: 69,
+      data: {
+        sections: [
+          {
+            heading: 'Details',
+            content_type: 'text',
+            content:
+              'Targets the root cause of breakouts by transforming acne-causing sebum with linoleic acid-rich oils to soothe and prevent congestion while supporting barrier health.',
+          },
+          {
+            heading: 'How to Pair',
+            content_type: 'text',
+            content:
+              'Matcha Hemp Hydrating Cleanser pairs well as a gentle first step, followed by Oat So Simple Water Cream for lightweight hydration.',
+          },
+          {
+            heading: 'Category',
+            content_type: 'text',
+            content: 'Serum',
+          },
+        ],
+      },
+    });
+
+    render(
+      <PdpContainer payload={payload} mode="beauty" onAddToCart={() => {}} onBuyNow={() => {}} />,
+    );
+
+    expect(screen.getByText('Product Information')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Details' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'How to Pair' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Category' })).toBeInTheDocument();
+  });
+
   it('keeps regulatory SPF active ingredients visible for external seeds', () => {
     const payload = buildBeautyPayload();
     payload.product.title = 'Daily Tinted Fluid Sunscreen SPF 40';
