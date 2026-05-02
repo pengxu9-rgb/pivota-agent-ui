@@ -1806,6 +1806,20 @@ export type QuestionListItem = {
   source?: 'merchant_faq' | 'review_derived' | 'community' | string;
   source_label?: string;
   support_count?: number;
+  display?: {
+    pdp?: {
+      question: string;
+      answer?: string;
+      question_truncated?: boolean;
+      answer_truncated?: boolean;
+    };
+    landing?: {
+      question: string;
+      answer?: string;
+      question_truncated?: boolean;
+      answer_truncated?: boolean;
+    };
+  };
 };
 
 export async function listQuestions(args: {
@@ -1844,6 +1858,7 @@ export async function listQuestions(args: {
       ...(Number.isFinite(Number(it?.support_count ?? it?.supportCount))
         ? { support_count: Number(it?.support_count ?? it?.supportCount) }
         : {}),
+      ...(it?.display && typeof it.display === 'object' ? { display: it.display } : {}),
     }))
     .filter((it: any) => it.question);
   const countRaw = Number(res?.count);
