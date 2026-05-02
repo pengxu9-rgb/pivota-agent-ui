@@ -67,10 +67,15 @@ describe('photoAnalysis client contract helpers', () => {
     ).toContain('10MB');
   });
 
-  it('keeps the beta flag disabled unless explicitly enabled', async () => {
+  it('keeps skin photo upload enabled by default with an explicit off switch', async () => {
     vi.resetModules();
     vi.stubEnv('NEXT_PUBLIC_SHOPPING_AGENT_PHOTO_UPLOAD_BETA', '');
     let mod = await import('@/lib/photoAnalysis');
+    expect(mod.isShoppingSkinPhotoUploadBetaEnabled()).toBe(true);
+
+    vi.resetModules();
+    vi.stubEnv('NEXT_PUBLIC_SHOPPING_AGENT_PHOTO_UPLOAD_BETA', 'false');
+    mod = await import('@/lib/photoAnalysis');
     expect(mod.isShoppingSkinPhotoUploadBetaEnabled()).toBe(false);
 
     vi.resetModules();
