@@ -7,18 +7,31 @@ import type { ReviewsPreviewData } from '@/features/pdp/types';
 import { resolveQuestionDisplay } from '@/lib/questionDisplay';
 import { cn } from '@/lib/utils';
 
-function StarRating({ value }: { value: number }) {
-  const rounded = Math.round(value);
+function StarRating({ value, sizeClass = 'h-3 w-3' }: { value: number; sizeClass?: string }) {
+  const clamped = Number.isFinite(value) ? Math.max(0, Math.min(5, value)) : 0;
   return (
-    <div className="flex items-center gap-0.5">
+    <div
+      className="flex items-center gap-0.5"
+      aria-label={`${clamped.toFixed(1)} out of 5 stars`}
+    >
       {Array.from({ length: 5 }).map((_, i) => (
-        <Star
-          key={i}
-          className={cn(
-            'h-3 w-3',
-            i < rounded ? 'fill-gold text-gold' : 'text-muted-foreground',
-          )}
-        />
+        (() => {
+          const fillRatio = Math.max(0, Math.min(1, clamped - i));
+          return (
+            <div key={i} className="relative">
+              <Star className={cn(sizeClass, 'text-muted-foreground')} />
+              {fillRatio > 0 ? (
+                <div
+                  className="absolute inset-0 overflow-hidden"
+                  style={{ width: `${fillRatio * 100}%` }}
+                  data-fill-ratio={fillRatio.toFixed(2)}
+                >
+                  <Star className={cn(sizeClass, 'fill-gold text-gold')} />
+                </div>
+              ) : null}
+            </div>
+          );
+        })()
       ))}
     </div>
   );
@@ -137,10 +150,8 @@ export function BeautyReviewsSection({
           <div className="flex gap-4">
             <div className="text-center">
               <div className="text-3xl font-bold">{ratingValue.toFixed(1)}</div>
-              <div className="flex gap-0.5 mt-1 justify-center">
-                {Array.from({ length: 5 }).map((_, i) => (
-                  <Star key={i} className="h-3 w-3 fill-gold text-gold" />
-                ))}
+              <div className="mt-1 flex justify-center">
+                <StarRating value={ratingValue} sizeClass="h-3 w-3" />
               </div>
               <p className="text-[11px] text-muted-foreground mt-1">{data.review_count} ratings</p>
             </div>

@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { hasLowQualityOverviewSection } from './pdpDisplaySanitizers';
+import {
+  chooseProductDetailsData,
+  hasLowQualityOverviewSection,
+} from './pdpDisplaySanitizers';
 
 describe('pdpDisplaySanitizers', () => {
   it('keeps normal overview prose that mentions ingredients and coverage', () => {
@@ -61,5 +64,52 @@ describe('pdpDisplaySanitizers', () => {
         ],
       }),
     ).toBe(true);
+  });
+
+  it('keeps the first trusted section when duplicate headings collide across facts and supplemental details', () => {
+    const result = chooseProductDetailsData({
+      productFacts: {
+        sections: [
+          {
+            heading: 'Clinical Results',
+            content_type: 'text',
+            content: 'Clinically shown to calm visible redness in 7 days.',
+          },
+        ],
+      },
+      productOverview: {
+        sections: [
+          {
+            heading: 'Overview',
+            content_type: 'text',
+            content: 'Barrier-support primer with niacinamide.',
+          },
+        ],
+      },
+      supplementalDetails: {
+        sections: [
+          {
+            heading: 'Clinical Results',
+            content_type: 'text',
+            content: 'Second merchant block that should not render as a duplicate accordion row.',
+          },
+          {
+            heading: 'How to Pair',
+            content_type: 'text',
+            content: 'Pair with a hydrating sunscreen.',
+          },
+        ],
+      },
+      hasStructuredBlocks: true,
+    });
+
+    expect(result?.sections).toEqual([
+      expect.objectContaining({ heading: 'Overview' }),
+      expect.objectContaining({
+        heading: 'Clinical Results',
+        content: 'Clinically shown to calm visible redness in 7 days.',
+      }),
+      expect.objectContaining({ heading: 'How to Pair' }),
+    ]);
   });
 });

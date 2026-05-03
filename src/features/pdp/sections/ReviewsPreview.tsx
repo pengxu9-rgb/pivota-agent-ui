@@ -3,17 +3,30 @@ import type { ReviewsPreviewData } from '@/features/pdp/types';
 import { cn } from '@/lib/utils';
 
 function StarRating({ value }: { value: number }) {
-  const rounded = Math.round(value);
+  const clamped = Number.isFinite(value) ? Math.max(0, Math.min(5, value)) : 0;
   return (
-    <div className="flex items-center gap-0.5">
+    <div
+      className="flex items-center gap-0.5"
+      aria-label={`${clamped.toFixed(1)} out of 5 stars`}
+    >
       {Array.from({ length: 5 }).map((_, i) => (
-        <Star
-          key={i}
-          className={cn(
-            'h-4 w-4',
-            i < rounded ? 'fill-gold text-gold' : 'text-muted-foreground',
-          )}
-        />
+        (() => {
+          const fillRatio = Math.max(0, Math.min(1, clamped - i));
+          return (
+            <div key={i} className="relative">
+              <Star className={cn('h-4 w-4', 'text-muted-foreground')} />
+              {fillRatio > 0 ? (
+                <div
+                  className="absolute inset-0 overflow-hidden"
+                  style={{ width: `${fillRatio * 100}%` }}
+                  data-fill-ratio={fillRatio.toFixed(2)}
+                >
+                  <Star className={cn('h-4 w-4', 'fill-gold text-gold')} />
+                </div>
+              ) : null}
+            </div>
+          );
+        })()
       ))}
     </div>
   );

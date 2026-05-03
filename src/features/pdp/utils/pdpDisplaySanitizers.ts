@@ -152,11 +152,23 @@ function sectionKey(section: DetailSection): string {
   return `${normalizeWhitespace(section.heading).toLowerCase()}::${normalizeWhitespace(section.content).toLowerCase()}`;
 }
 
-function pushUniqueSection(sections: DetailSection[], seen: Set<string>, section: DetailSection | null | undefined) {
+function sectionHeadingKey(section: DetailSection): string {
+  return normalizeWhitespace(section.heading).toLowerCase();
+}
+
+function pushUniqueSection(
+  sections: DetailSection[],
+  seen: Set<string>,
+  seenHeadings: Set<string>,
+  section: DetailSection | null | undefined,
+) {
   if (!section) return;
   const key = sectionKey(section);
+  const headingKey = sectionHeadingKey(section);
+  if (headingKey && seenHeadings.has(headingKey)) return;
   if (!key || seen.has(key)) return;
   seen.add(key);
+  if (headingKey) seenHeadings.add(headingKey);
   sections.push(section);
 }
 
@@ -255,18 +267,19 @@ export function chooseProductDetailsData(args: {
   if (factsSections.length > 0) {
     const mergedSections: DetailSection[] = [];
     const seen = new Set<string>();
+    const seenHeadings = new Set<string>();
 
-    pushUniqueSection(mergedSections, seen, overviewSection);
+    pushUniqueSection(mergedSections, seen, seenHeadings, overviewSection);
     for (const section of factsSections) {
-      pushUniqueSection(mergedSections, seen, section);
+      pushUniqueSection(mergedSections, seen, seenHeadings, section);
     }
     for (let index = 0; index < overviewSections.length; index += 1) {
       const section = overviewSections[index];
       if (!section || (overviewSection && section === overviewSection)) continue;
-      pushUniqueSection(mergedSections, seen, section);
+      pushUniqueSection(mergedSections, seen, seenHeadings, section);
     }
     for (const section of supplementalSections) {
-      pushUniqueSection(mergedSections, seen, section);
+      pushUniqueSection(mergedSections, seen, seenHeadings, section);
     }
 
     return mergedSections.length ? { sections: mergedSections } : { sections: factsSections };
@@ -274,11 +287,12 @@ export function chooseProductDetailsData(args: {
 
   const mergedSections: DetailSection[] = [];
   const seen = new Set<string>();
+  const seenHeadings = new Set<string>();
   for (const section of overviewSections) {
-    pushUniqueSection(mergedSections, seen, section);
+    pushUniqueSection(mergedSections, seen, seenHeadings, section);
   }
   for (const section of supplementalSections) {
-    pushUniqueSection(mergedSections, seen, section);
+    pushUniqueSection(mergedSections, seen, seenHeadings, section);
   }
   return mergedSections.length ? { sections: mergedSections } : null;
 }

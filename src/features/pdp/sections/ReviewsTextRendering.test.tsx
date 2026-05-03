@@ -152,4 +152,34 @@ describe('Reviews text rendering', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Exact item (12)' }));
     expect(onSelectScope).toHaveBeenCalledWith('exact_item');
   });
+
+  it('renders fractional aggregate stars instead of hardcoding five filled stars', () => {
+    const { container } = render(
+      <BeautyReviewsSection
+        data={{
+          ...baseReviewsData,
+          rating: 4.2,
+          review_count: 855,
+        }}
+      />,
+    );
+
+    expect(screen.getByLabelText('4.2 out of 5 stars')).toBeInTheDocument();
+    expect(container.querySelector('[data-fill-ratio="0.20"]')).not.toBeNull();
+  });
+
+  it('renders fractional stars in review preview summaries', () => {
+    const { container } = render(
+      <ReviewsPreview
+        data={{
+          ...baseReviewsData,
+          rating: 4.3,
+          review_count: 404,
+        }}
+      />,
+    );
+
+    expect(screen.getByLabelText('4.3 out of 5 stars')).toBeInTheDocument();
+    expect(container.querySelector('[data-fill-ratio="0.30"]')).not.toBeNull();
+  });
 });
