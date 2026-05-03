@@ -106,6 +106,7 @@ export interface Product {
 export interface ProductLineOption {
   option_id?: string;
   label: string;
+  secondary_label?: string;
   value?: string;
   option_name?: string;
   axis?: string;

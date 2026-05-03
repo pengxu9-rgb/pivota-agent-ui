@@ -817,6 +817,66 @@ describe('PdpContainer structured PDP modules', () => {
     });
   });
 
+  it('renders concrete size explanations for mini and full-size product-line options', () => {
+    const payload = buildBeautyPayload();
+    payload.product.product_id = 'ext_rb_primer_mini';
+    payload.product.merchant_id = 'external_seed';
+    payload.product.title = 'Always an Optimist Pore Diffusing Primer Mini';
+    payload.product.default_variant_id = 'v-mini';
+    payload.product.variants = [
+      {
+        variant_id: 'v-mini',
+        title: 'Default Title',
+        options: [],
+        price: { current: { amount: 17, currency: 'USD' } },
+        availability: { in_stock: true, available_quantity: 4 },
+      },
+    ];
+    payload.product.product_line_option_name = 'Size';
+    payload.product.product_line_options = [
+      {
+        option_id: 'external_seed:ext_rb_primer_full',
+        option_name: 'Size',
+        axis: 'size',
+        value: 'full size',
+        label: 'Full Size',
+        secondary_label: '0.94 fl oz / 28 mL',
+        product_id: 'ext_rb_primer_full',
+        merchant_id: 'external_seed',
+      },
+      {
+        option_id: 'external_seed:ext_rb_primer_mini',
+        option_name: 'Size',
+        axis: 'size',
+        value: 'mini',
+        label: 'Mini',
+        secondary_label: '0.50 fl oz / 15 mL',
+        product_id: 'ext_rb_primer_mini',
+        merchant_id: 'external_seed',
+        selected: true,
+      },
+    ];
+    payload.modules.push({
+      module_id: 'm_variant',
+      type: 'variant_selector',
+      priority: 95,
+      data: {
+        selected_variant_id: 'v-mini',
+        product_line_option_name: 'Size',
+        product_line_options: payload.product.product_line_options,
+      },
+    } as any);
+
+    render(
+      <PdpContainer payload={payload} mode="beauty" onAddToCart={() => {}} onBuyNow={() => {}} />,
+    );
+
+    expect(screen.getByText('Selected:')).toBeInTheDocument();
+    expect(screen.getByText('Mini · 0.50 fl oz / 15 mL')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Full Size · 0.94 fl oz / 28 mL' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Mini · 0.50 fl oz / 15 mL' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
   it('isolates legacy detail noise for external seeds when additive modules are absent', () => {
     const payload = buildBeautyPayload();
     payload.modules = payload.modules.filter(

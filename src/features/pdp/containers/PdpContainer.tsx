@@ -167,6 +167,7 @@ function normalizeProductLineOptions(options: ProductLineOption[] | undefined): 
     normalized.push({
       ...item,
       label,
+      secondary_label: String(item?.secondary_label || (item as any)?.secondaryLabel || '').trim() || undefined,
       value,
       product_id: productId,
       merchant_id: merchantId || undefined,
@@ -176,6 +177,14 @@ function normalizeProductLineOptions(options: ProductLineOption[] | undefined): 
     });
   }
   return normalized;
+}
+
+function formatProductLineOptionInlineLabel(option: ProductLineOption | null | undefined): string {
+  const label = String(option?.label || '').trim();
+  const secondary = String(option?.secondary_label || '').trim();
+  if (!label) return secondary;
+  if (!secondary) return label;
+  return `${label} · ${secondary}`;
 }
 
 function getProductLineSwatch(option: ProductLineOption): { imageUrl?: string; color?: string } {
@@ -2212,12 +2221,17 @@ export function PdpContainer({
       const variantLabel = isHiddenVariantForSelector(selectedVariant)
         ? ''
         : getDisplayVariantLabel(selectedVariant, '');
-      const lineLabel = selectedProductLineOption?.label || '';
+      const lineLabel = formatProductLineOptionInlineLabel(selectedProductLineOption);
       if (!lineLabel) return variantLabel;
       if (!variantLabel) return lineLabel;
+      const normalizedVariantLabel = variantLabel.trim().toLowerCase();
+      const normalizedSecondary = String(selectedProductLineOption?.secondary_label || '').trim().toLowerCase();
+      if (normalizedSecondary && (normalizedSecondary === normalizedVariantLabel || normalizedSecondary.includes(normalizedVariantLabel))) {
+        return lineLabel;
+      }
       return `${lineLabel} / ${variantLabel}`;
     },
-    [selectedProductLineOption?.label, selectedVariant],
+    [selectedProductLineOption, selectedVariant],
   );
   const selectorVariants = useMemo(
     () => variants.filter((variant) => !isHiddenVariantForSelector(variant)),
@@ -3659,7 +3673,7 @@ export function PdpContainer({
                       </div>
                     ) : selectedProductLineOption?.label ? (
                       <div className="truncate text-[11px] text-muted-foreground">
-                        Selected: {selectedProductLineOption.label}
+                        Selected: {formatProductLineOptionInlineLabel(selectedProductLineOption)}
                       </div>
                     ) : null}
                   </div>
@@ -3677,11 +3691,13 @@ export function PdpContainer({
                           ? getProductLineSwatch(option)
                           : {};
                         const hasSwatch = Boolean(swatch.imageUrl || swatch.color);
+                        const optionAriaLabel = formatProductLineOptionInlineLabel(option) || option.label;
                         return (
                           <button
                             key={option.option_id || `${option.product_id}-${option.value || option.label}`}
                             type="button"
                             disabled={isProductLineSwitching}
+                            aria-label={optionAriaLabel}
                             aria-pressed={isSelected}
                             aria-busy={isPending || undefined}
                             onMouseEnter={() => prefetchProductLineOption(option)}
@@ -3712,7 +3728,14 @@ export function PdpContainer({
                                 }}
                               />
                             ) : null}
-                            <span>{option.label}</span>
+                            <span className={cn('flex min-w-0 flex-col', hasSwatch ? 'items-start' : 'items-center')}>
+                              <span>{option.label}</span>
+                              {option.secondary_label ? (
+                                <span className="text-[10px] font-normal leading-tight text-muted-foreground">
+                                  {option.secondary_label}
+                                </span>
+                              ) : null}
+                            </span>
                           </button>
                         );
                       })}
