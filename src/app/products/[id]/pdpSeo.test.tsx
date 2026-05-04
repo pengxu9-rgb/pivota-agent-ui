@@ -247,6 +247,89 @@ describe('Pivota PDP SEO rendering', () => {
     expect(buildOfferJsonLd(data)).toBeNull();
   });
 
+  it('resolves canonical ProductEntity routes through explicit source alias bindings', async () => {
+    const requestedProductIds: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url, init) => {
+        const body = JSON.parse(String((init as RequestInit)?.body || '{}'));
+        const requestedProductId = body?.payload?.product_ref?.product_id;
+        requestedProductIds.push(requestedProductId);
+        if (requestedProductId === 'sig_7ad40676c42fb9c96e2a8136') {
+          return {
+            ok: false,
+            json: async () => ({}),
+          };
+        }
+        return {
+          ok: true,
+          json: async () => ({
+            subject: {
+              type: 'product_group',
+              id: 'sig_7ad40676c42fb9c96e2a8136',
+            },
+            modules: [
+              {
+                type: 'canonical',
+                data: {
+                  product_group_id: 'sig_7ad40676c42fb9c96e2a8136',
+                  pdp_payload: {
+                    product: {
+                      product_id: 'ext_d7c74bcb380cbc2bdd5d5d90',
+                      title: 'Multi-Peptide Lash and Brow Serum',
+                      brand: { name: 'the ordinary' },
+                      description:
+                        'A lightweight serum for fuller-looking lashes and brows.',
+                      category_path: ['Beauty', 'Serum'],
+                    },
+                    modules: [],
+                    offers: [
+                      {
+                        offer_id:
+                          'of:v1:external_seed:sig_7ad40676c42fb9c96e2a8136:merchant:default__ext_d7c74bcb380cbc2bdd5d5d90',
+                        merchant_name: 'the ordinary',
+                        price: { amount: 11.47, currency: 'USD' },
+                        inventory: { in_stock: true },
+                        action: {
+                          url: 'https://theordinary.com/en-us/multi-peptide-lash-brow-serum-100111.html',
+                        },
+                      },
+                    ],
+                    actions: [],
+                  },
+                },
+              },
+            ],
+          }),
+        };
+      }),
+    );
+
+    const data = await getPivotaProductSeoData('sig_7ad40676c42fb9c96e2a8136');
+
+    expect(requestedProductIds).toEqual([
+      'sig_7ad40676c42fb9c96e2a8136',
+      'ext_d7c74bcb380cbc2bdd5d5d90',
+    ]);
+    expect(data).toMatchObject({
+      productId: 'sig_7ad40676c42fb9c96e2a8136',
+      productEntityId: 'sig_7ad40676c42fb9c96e2a8136',
+      name: 'Multi-Peptide Lash and Brow Serum',
+      brand: 'the ordinary',
+      canonicalUrl: 'https://agent.pivota.cc/products/sig_7ad40676c42fb9c96e2a8136',
+    });
+    expect(data?.externalSeedIds).toContain('ext_d7c74bcb380cbc2bdd5d5d90');
+    expect(data?.sourceReferences).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          sourceType: 'external_seed',
+          sourceId: 'ext_d7c74bcb380cbc2bdd5d5d90',
+          mapsToProductEntityId: 'sig_7ad40676c42fb9c96e2a8136',
+        }),
+      ]),
+    );
+  });
+
   it('sitemap helper includes ProductEntity URLs only from configured or discovered main-path data', async () => {
     vi.stubGlobal(
       'fetch',

@@ -18,6 +18,12 @@ const SEO_INCLUDE_MODULES = [
 const DEFAULT_EXTERNAL_SEED_ALIASES: Record<string, string> = {
   ext_d7c74bcb380cbc2bdd5d5d90: 'sig_7ad40676c42fb9c96e2a8136',
 };
+const DEFAULT_PRODUCT_ENTITY_SOURCE_ALIASES: Record<string, string> = Object.fromEntries(
+  Object.entries(DEFAULT_EXTERNAL_SEED_ALIASES).map(([externalSeedId, productEntityId]) => [
+    productEntityId,
+    externalSeedId,
+  ]),
+);
 
 export type PivotaProductSeoData = {
   productId: string;
@@ -165,6 +171,10 @@ function externalSeedIdsForProduct(routeProductId: string, payload?: PDPPayload)
     payload?.canonical_payload_product_ref?.product_id,
   ];
   return uniqueStrings(refs.filter(isExternalSeedId), 12);
+}
+
+function seoLookupProductIds(routeProductId: string) {
+  return uniqueStrings([routeProductId, DEFAULT_PRODUCT_ENTITY_SOURCE_ALIASES[routeProductId]], 2);
 }
 
 function gatewayInvokeUrl() {
@@ -442,11 +452,13 @@ function seoDataFromPayload(productId: string, payload: PDPPayload): PivotaProdu
 }
 
 export async function getPivotaProductSeoData(productId: string): Promise<PivotaProductSeoData | null> {
-  const raw = await fetchPdpV2ForSeo(productId);
-  if (!raw) return null;
-  const payload = mapPdpV2ToPdpPayload(raw);
-  if (!payload?.product?.title) return null;
-  return seoDataFromPayload(productId, payload);
+  for (const lookupProductId of seoLookupProductIds(productId)) {
+    const raw = await fetchPdpV2ForSeo(lookupProductId);
+    if (!raw) continue;
+    const payload = mapPdpV2ToPdpPayload(raw);
+    if (payload?.product?.title) return seoDataFromPayload(productId, payload);
+  }
+  return null;
 }
 
 export function buildProductMetaDescription(data: PivotaProductSeoData) {
