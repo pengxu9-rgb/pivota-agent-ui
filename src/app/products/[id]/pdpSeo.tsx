@@ -15,10 +15,15 @@ const SEO_INCLUDE_MODULES = [
   'supplemental_details',
   'similar',
 ];
-const DEFAULT_INDEXABLE_PILOT_PRODUCT_IDS = ['ext_d7c74bcb380cbc2bdd5d5d90'];
+const DEFAULT_EXTERNAL_SEED_ALIASES: Record<string, string> = {
+  ext_d7c74bcb380cbc2bdd5d5d90: 'sig_7ad40676c42fb9c96e2a8136',
+};
 
 export type PivotaProductSeoData = {
   productId: string;
+  productEntityId: string;
+  canonicalProductSlug?: string;
+  externalSeedIds: string[];
   name: string;
   brand: string;
   sku?: string;
@@ -36,6 +41,15 @@ export type PivotaProductSeoData = {
   claimEvidence?: string;
   image?: string;
   canonicalUrl: string;
+  sourceReferences: Array<{
+    sourceType: 'external_seed' | 'official_merchant_pdp' | 'merchant_catalog' | 'manual_mapping';
+    sourceId?: string;
+    sourceUrl?: string;
+    merchantName?: string;
+    verifiedAt?: string;
+    confidence?: string;
+    mapsToProductEntityId?: string;
+  }>;
   merchantSource?: {
     merchantName?: string;
     sourceUrl?: string;
@@ -82,6 +96,10 @@ function uniqueStrings(values: unknown[], limit = 8): string[] {
   return out;
 }
 
+function isExternalSeedId(value: unknown): boolean {
+  return /^ext_[a-z0-9_]+$/i.test(readString(value));
+}
+
 function stripHtml(value: unknown): string {
   return readString(value)
     .replace(/<\s*br\s*\/?>/gi, ' ')
@@ -107,6 +125,46 @@ function publicBaseUrl() {
 
 export function canonicalPivotaProductUrl(productId: string) {
   return `${publicBaseUrl()}/products/${encodeURIComponent(String(productId || '').trim())}`;
+}
+
+export function canonicalPivotaProductEntityUrl(input: {
+  productEntityId?: string;
+  canonicalProductSlug?: string;
+}) {
+  const id = readString(input.canonicalProductSlug, input.productEntityId);
+  return canonicalPivotaProductUrl(id);
+}
+
+function canonicalProductPathId(input: {
+  routeProductId: string;
+  payload?: PDPPayload;
+  canonicalProductSlug?: string;
+}) {
+  const product = input.payload?.product;
+  return readString(
+    input.canonicalProductSlug,
+    input.payload?.product_group_id,
+    input.payload?.sellable_item_group_id,
+    (product as any)?.product_group_id,
+    (product as any)?.sellable_item_group_id,
+    !isExternalSeedId(product?.product_id) ? product?.product_id : '',
+    DEFAULT_EXTERNAL_SEED_ALIASES[input.routeProductId],
+    !isExternalSeedId(input.routeProductId) ? input.routeProductId : '',
+    input.routeProductId,
+  );
+}
+
+function externalSeedIdsForProduct(routeProductId: string, payload?: PDPPayload) {
+  const product = payload?.product;
+  const refs = [
+    routeProductId,
+    product?.product_id,
+    (product as any)?.external_seed_id,
+    (product as any)?.seed_id,
+    payload?.canonical_product_ref?.product_id,
+    payload?.canonical_payload_product_ref?.product_id,
+  ];
+  return uniqueStrings(refs.filter(isExternalSeedId), 12);
 }
 
 function gatewayInvokeUrl() {
@@ -278,71 +336,6 @@ function productSourceUrl(product: PDPPayload['product']): string {
   );
 }
 
-function buildFallbackSeoData(productId: string): PivotaProductSeoData {
-  if (productId === 'ext_d7c74bcb380cbc2bdd5d5d90') {
-    return {
-      productId,
-      name: 'Isntree Hyaluronic Acid Watery Sun Gel SPF50+ PA++++ 50ml',
-      brand: 'Isntree',
-      sku: 'isntree_watery_sun_gel_50ml',
-      variant: '50ml',
-      category: 'Skincare > Sunscreen',
-      overview:
-        'Agent-facing Pivota product page for Isntree Hyaluronic Acid Watery Sun Gel SPF50+ PA++++ 50ml, a lightweight daily sunscreen with hydrating watery gel texture.',
-      intelligenceSummary:
-        'Daily hydrating sunscreen positioned for lightweight UV protection, hyaluronic acid hydration, and all-skin-type wear.',
-      keyBenefits: ['SPF50+ PA++++ protection', 'hydrating watery gel texture', 'lightweight daily finish'],
-      useCases: ['daily sunscreen', 'hydrating UV protection', 'K-beauty sunscreen comparison'],
-      activeIngredients: ['hyaluronic acid', 'UV filters'],
-      texture: 'watery gel',
-      finish: 'lightweight hydrated finish',
-      skinType: 'all skin types',
-      differentiators: ['hydrating sunscreen texture', 'K-beauty daily SPF positioning'],
-      claimEvidence:
-        'Fallback pilot SEO data is used only when the live PDP API is unavailable; source references should be replaced by verified upstream PDP data when present.',
-      canonicalUrl: canonicalPivotaProductUrl(productId),
-      merchantSource: {
-        merchantName: 'Isntree Official',
-        sourceUrl: 'https://isntree-global.com/products/isntree-hyaluronic-acid-watery-sun-gel-50ml',
-        sourceType: 'official_merchant_pdp',
-        confidence: 'pilot_seed',
-      },
-      offers: [
-        {
-          offerId: 'offer_isntree_direct_50ml',
-          merchantName: 'Isntree Official',
-          sourceUrl: 'https://isntree-global.com/products/isntree-hyaluronic-acid-watery-sun-gel-50ml',
-          availability: 'https://schema.org/InStock',
-        },
-      ],
-      similarHighlights: [
-        'Comparable sunscreen searches may include Beauty of Joseon, COSRX, Laneige, and Anua products.',
-      ],
-      source: 'fallback',
-    };
-  }
-
-  return {
-    productId,
-    name: `Pivota product ${productId}`,
-    brand: 'Pivota',
-    sku: productId,
-    category: 'Product',
-    overview:
-      'Agent-facing Pivota product page with product identity, source, offer, and readiness signals when upstream product data is available.',
-    intelligenceSummary:
-      'Pivota product intelligence is generated from verified product and merchant source data when available.',
-    keyBenefits: [],
-    useCases: [],
-    activeIngredients: [],
-    differentiators: [],
-    canonicalUrl: canonicalPivotaProductUrl(productId),
-    offers: [],
-    similarHighlights: [],
-    source: 'fallback',
-  };
-}
-
 function seoDataFromPayload(productId: string, payload: PDPPayload): PivotaProductSeoData {
   const product = payload.product;
   const firstVariant = product.variants?.[0];
@@ -365,9 +358,33 @@ function seoDataFromPayload(productId: string, payload: PDPPayload): PivotaProdu
     `Agent-facing Pivota product page for ${product.title}.`;
   const sourceUrl = productSourceUrl(product) || offerSourceUrl(firstOffer);
   const merchantName = readString(firstOffer?.merchant_name, product.merchant_id);
+  const productEntityId = canonicalProductPathId({ routeProductId: productId, payload });
+  const canonicalUrl = canonicalPivotaProductEntityUrl({ productEntityId });
+  const externalSeedIds = externalSeedIdsForProduct(productId, payload);
+  const sourceReferences: PivotaProductSeoData['sourceReferences'] = [
+    ...externalSeedIds.map((sourceId) => ({
+      sourceType: 'external_seed' as const,
+      sourceId,
+      mapsToProductEntityId: productEntityId,
+      confidence: 'source_alias',
+    })),
+    ...(sourceUrl
+      ? [
+          {
+            sourceType: 'official_merchant_pdp' as const,
+            sourceUrl,
+            merchantName,
+            mapsToProductEntityId: productEntityId,
+            confidence: 'verified_source_reference',
+          },
+        ]
+      : []),
+  ];
 
   return {
     productId,
+    productEntityId,
+    externalSeedIds,
     name: product.title,
     brand: readString(product.brand?.name, product.merchant_id, merchantName, 'Pivota'),
     sku: readString(firstVariant?.sku_id, product.product_id, productId),
@@ -393,7 +410,8 @@ function seoDataFromPayload(productId: string, payload: PDPPayload): PivotaProdu
     differentiators: uniqueStrings(productIntelText, 5),
     claimEvidence: readString((productIntel?.data as any)?.evidence_profile),
     image: product.image_url,
-    canonicalUrl: canonicalPivotaProductUrl(productId),
+    canonicalUrl,
+    sourceReferences,
     merchantSource: sourceUrl
       ? {
           merchantName,
@@ -423,12 +441,11 @@ function seoDataFromPayload(productId: string, payload: PDPPayload): PivotaProdu
   };
 }
 
-export async function getPivotaProductSeoData(productId: string): Promise<PivotaProductSeoData> {
-  const fallback = buildFallbackSeoData(productId);
+export async function getPivotaProductSeoData(productId: string): Promise<PivotaProductSeoData | null> {
   const raw = await fetchPdpV2ForSeo(productId);
-  if (!raw) return fallback;
+  if (!raw) return null;
   const payload = mapPdpV2ToPdpPayload(raw);
-  if (!payload?.product?.title) return fallback;
+  if (!payload?.product?.title) return null;
   return seoDataFromPayload(productId, payload);
 }
 
@@ -439,7 +456,18 @@ export function buildProductMetaDescription(data: PivotaProductSeoData) {
   ).slice(0, 220);
 }
 
-export function buildPivotaProductMetadata(data: PivotaProductSeoData): Metadata {
+export function buildPivotaProductMetadata(data: PivotaProductSeoData | null): Metadata {
+  if (!data) {
+    return {
+      title: 'Pivota Shopping AI',
+      description: 'Pivota product page.',
+      robots: {
+        index: false,
+        follow: false,
+      },
+    };
+  }
+
   return {
     title: `${data.name} | Pivota`,
     description: buildProductMetaDescription(data),
@@ -460,7 +488,8 @@ export function buildPivotaProductMetadata(data: PivotaProductSeoData): Metadata
   };
 }
 
-export function buildProductJsonLd(data: PivotaProductSeoData) {
+export function buildProductJsonLd(data: PivotaProductSeoData | null) {
+  if (!data || data.source !== 'gateway') return null;
   return {
     '@context': 'https://schema.org',
     '@type': 'Product',
@@ -477,7 +506,8 @@ export function buildProductJsonLd(data: PivotaProductSeoData) {
   };
 }
 
-export function buildOfferJsonLd(data: PivotaProductSeoData) {
+export function buildOfferJsonLd(data: PivotaProductSeoData | null) {
+  if (!data || data.source !== 'gateway') return null;
   const offers = data.offers.filter((offer) => offer.merchantName || offer.sourceUrl);
   if (!offers.length) return null;
   if (offers.length === 1) {
@@ -485,6 +515,7 @@ export function buildOfferJsonLd(data: PivotaProductSeoData) {
     return {
       '@context': 'https://schema.org',
       '@type': 'Offer',
+      identifier: offer.offerId,
       url: offer.sourceUrl || data.canonicalUrl,
       availability: offer.availability || 'https://schema.org/InStock',
       seller: {
@@ -508,6 +539,7 @@ export function buildOfferJsonLd(data: PivotaProductSeoData) {
     },
     offers: offers.map((offer) => ({
       '@type': 'Offer',
+      identifier: offer.offerId,
       url: offer.sourceUrl || data.canonicalUrl,
       availability: offer.availability || 'https://schema.org/InStock',
       seller: {
@@ -544,133 +576,78 @@ export function JsonLdScript({
   );
 }
 
-export function PivotaProductSeoSummary({ data }: { data: PivotaProductSeoData }) {
+export function PivotaProductSeoSummary({ data }: { data: PivotaProductSeoData | null }) {
+  if (!data || data.source !== 'gateway') return null;
+
   return (
-    <section
+    <div
       data-pivota-public-product-summary
-      className="border-b border-slate-200 bg-white px-4 py-5 text-slate-950"
+      aria-hidden="true"
+      className="pointer-events-none absolute h-px w-px overflow-hidden whitespace-nowrap border-0 p-0"
+      style={{
+        clip: 'rect(0 0 0 0)',
+        clipPath: 'inset(50%)',
+        margin: -1,
+      }}
     >
-      <div className="mx-auto max-w-6xl space-y-4">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Pivota verified product page
-          </p>
-          <h1 className="mt-2 text-2xl font-semibold tracking-normal text-slate-950">
-            {data.name}
-          </h1>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-700">
-            {data.overview}
-          </p>
-        </div>
+      <span data-pivota-product-name>{data.name}</span>
+      <span data-pivota-product-brand>{data.brand}</span>
+      <span data-pivota-product-entity-id>{data.productEntityId}</span>
+      <span data-pivota-product-category>{data.category || 'Product'}</span>
+      <span data-pivota-product-overview>{data.overview}</span>
+      <span data-pivota-product-intelligence>{data.intelligenceSummary}</span>
+      <span data-pivota-product-benefits>{data.keyBenefits.join(', ')}</span>
+      <span data-pivota-product-use-cases>{data.useCases.join(', ')}</span>
+      <span data-pivota-product-active-components>{data.activeIngredients.join(', ')}</span>
+      <span data-pivota-product-texture-finish>
+        {[data.texture, data.finish].filter(Boolean).join(' / ')}
+      </span>
+      <span data-pivota-product-skin-type>{data.skinType || ''}</span>
+      <span data-pivota-product-differentiators>{data.differentiators.join(', ')}</span>
+      {data.externalSeedIds.length ? (
+        <span data-pivota-external-seed-aliases>{data.externalSeedIds.join(', ')}</span>
+      ) : null}
 
-        <dl className="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
-          <div>
-            <dt className="font-medium text-slate-500">Brand</dt>
-            <dd>{data.brand}</dd>
-          </div>
-          <div>
-            <dt className="font-medium text-slate-500">SKU / variant</dt>
-            <dd>{[data.sku, data.variant].filter(Boolean).join(' / ') || data.productId}</dd>
-          </div>
-          <div>
-            <dt className="font-medium text-slate-500">Category</dt>
-            <dd>{data.category || 'Product'}</dd>
-          </div>
-          <div>
-            <dt className="font-medium text-slate-500">Product object ID</dt>
-            <dd>{data.productId}</dd>
-          </div>
-        </dl>
+      {data.sourceReferences.length ? (
+        <script
+          type="application/json"
+          data-pivota-product-source-references
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify(
+              data.sourceReferences.map((source) => ({
+                source_type: source.sourceType,
+                source_id: source.sourceId,
+                source_url: source.sourceUrl,
+                source_merchant_name: source.merchantName,
+                source_verified_at: source.verifiedAt,
+                source_confidence: source.confidence,
+                maps_to_product_entity_id: source.mapsToProductEntityId,
+              })),
+            ),
+          }}
+        />
+      ) : null}
 
-        <div data-pivota-product-intelligence>
-          <h2 className="text-base font-semibold">Product intelligence</h2>
-          <p className="mt-1 text-sm leading-6 text-slate-700">
-            {data.intelligenceSummary}
-          </p>
-          <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-3">
-            <div>
-              <dt className="font-medium text-slate-500">Key benefits</dt>
-              <dd>{data.keyBenefits.join(', ') || 'Product benefit signals available when verified.'}</dd>
-            </div>
-            <div>
-              <dt className="font-medium text-slate-500">Use cases</dt>
-              <dd>{data.useCases.join(', ') || 'Use-case mapping available when verified.'}</dd>
-            </div>
-            <div>
-              <dt className="font-medium text-slate-500">Active components</dt>
-              <dd>{data.activeIngredients.join(', ') || 'Ingredient signals available when verified.'}</dd>
-            </div>
-            <div>
-              <dt className="font-medium text-slate-500">Texture / finish</dt>
-              <dd>{[data.texture, data.finish].filter(Boolean).join(' / ') || 'Not specified'}</dd>
-            </div>
-            <div>
-              <dt className="font-medium text-slate-500">Target customer / skin type</dt>
-              <dd>{data.skinType || 'Not specified'}</dd>
-            </div>
-            <div>
-              <dt className="font-medium text-slate-500">Differentiators</dt>
-              <dd>{data.differentiators.join(', ') || 'Differentiation evidence available when verified.'}</dd>
-            </div>
-          </dl>
-        </div>
+      {data.offers.length ? (
+        <span data-pivota-offer-summary>
+          {data.offers
+            .slice(0, 3)
+            .map((offer) =>
+              [
+                offer.offerId,
+                offer.merchantName || 'Pivota merchant offer',
+                offer.price != null && offer.currency ? `${offer.currency} ${offer.price}` : '',
+                offer.sourceUrl || '',
+              ]
+                .filter(Boolean)
+                .join(' | '),
+            )
+            .join(' ; ')}
+        </span>
+      ) : null}
 
-        {data.merchantSource?.sourceUrl ? (
-          <div data-pivota-source-reference>
-            <h2 className="text-base font-semibold">Verified merchant source</h2>
-            <p className="mt-1 text-sm text-slate-700">
-              {data.merchantSource.merchantName || 'Official merchant PDP'} · source type ={' '}
-              {data.merchantSource.sourceType} · confidence ={' '}
-              {data.merchantSource.confidence || 'verified'}
-            </p>
-            <a
-              className="mt-1 block break-all text-sm text-blue-700 underline"
-              href={data.merchantSource.sourceUrl}
-            >
-              {data.merchantSource.sourceUrl}
-            </a>
-            <script
-              type="application/json"
-              data-pivota-source-reference-payload
-              dangerouslySetInnerHTML={{
-                __html: JSON.stringify({
-                  source_url: data.merchantSource.sourceUrl,
-                  source_type: data.merchantSource.sourceType,
-                  source_merchant_name: data.merchantSource.merchantName,
-                  source_verified_at: data.merchantSource.verifiedAt,
-                  source_confidence: data.merchantSource.confidence,
-                }),
-              }}
-            />
-          </div>
-        ) : null}
-
-        {data.offers.length ? (
-          <div data-pivota-offer-summary>
-            <h2 className="text-base font-semibold">Offer summary</h2>
-            <ul className="mt-1 space-y-1 text-sm text-slate-700">
-              {data.offers.slice(0, 3).map((offer, index) => (
-                <li key={offer.offerId || `${offer.merchantName}-${index}`}>
-                  {offer.merchantName || 'Pivota merchant offer'}
-                  {offer.price != null && offer.currency
-                    ? ` · ${offer.currency} ${offer.price}`
-                    : ''}
-                  {offer.sourceUrl ? ` · ${offer.sourceUrl}` : ''}
-                </li>
-              ))}
-            </ul>
-          </div>
-        ) : null}
-
-        <div data-pivota-similar-highlight>
-          <h2 className="text-base font-semibold">Similar / substitute highlight</h2>
-          <p className="mt-1 text-sm text-slate-700">
-            {data.similarHighlights.join(' ') ||
-              'Pivota uses related product and query mapping signals when verified data is available.'}
-          </p>
-        </div>
-      </div>
-    </section>
+      <span data-pivota-similar-highlight>{data.similarHighlights.join(' ')}</span>
+    </div>
   );
 }
 
@@ -684,10 +661,7 @@ export async function getIndexableProductSitemapUrls(limit = 200): Promise<strin
     .filter(Boolean);
 
   const discovered = await fetchProductIdsForSitemap(limit);
-  return uniqueStrings(
-    [...configured, ...discovered, ...DEFAULT_INDEXABLE_PILOT_PRODUCT_IDS],
-    limit,
-  ).map(canonicalPivotaProductUrl);
+  return uniqueStrings([...configured, ...discovered], limit).map(canonicalPivotaProductUrl);
 }
 
 async function fetchProductIdsForSitemap(limit: number): Promise<string[]> {
@@ -734,7 +708,22 @@ async function fetchProductIdsForSitemap(limit: number): Promise<string[]> {
     const products = Array.isArray(json?.products) ? json.products : [];
     return products
       .map((product: unknown) =>
-        isRecord(product) ? readString(product.product_id, product.id) : ''
+        isRecord(product)
+          ? canonicalProductPathId({
+              routeProductId: readString(product.product_id, product.id),
+              payload: undefined,
+              canonicalProductSlug: readString(
+                product.canonical_product_slug,
+                product.canonicalProductSlug,
+                product.product_group_id,
+                product.productGroupId,
+                product.sellable_item_group_id,
+                product.sellableItemGroupId,
+                product.product_entity_id,
+                product.productEntityId,
+              ),
+            })
+          : ''
       )
       .filter(Boolean);
   } catch {
