@@ -29,8 +29,8 @@ export type PivotaProductSeoData = {
   sku?: string;
   variant?: string;
   category?: string;
-  overview: string;
-  intelligenceSummary: string;
+  overview?: string;
+  intelligenceSummary?: string;
   keyBenefits: string[];
   useCases: string[];
   activeIngredients: string[];
@@ -66,7 +66,7 @@ export type PivotaProductSeoData = {
     availability?: string;
   }>;
   similarHighlights: string[];
-  source: 'gateway' | 'fallback';
+  source: 'gateway';
 };
 
 function isRecord(value: unknown): value is Record<string, any> {
@@ -354,8 +354,7 @@ function seoDataFromPayload(productId: string, payload: PDPPayload): PivotaProdu
     stripHtml(product.description) ||
     overview.join(' ') ||
     supplemental.join(' ') ||
-    productIntelText[0] ||
-    `Agent-facing Pivota product page for ${product.title}.`;
+    productIntelText[0];
   const sourceUrl = productSourceUrl(product) || offerSourceUrl(firstOffer);
   const merchantName = readString(firstOffer?.merchant_name, product.merchant_id);
   const productEntityId = canonicalProductPathId({ routeProductId: productId, payload });
@@ -386,15 +385,14 @@ function seoDataFromPayload(productId: string, payload: PDPPayload): PivotaProdu
     productEntityId,
     externalSeedIds,
     name: product.title,
-    brand: readString(product.brand?.name, product.merchant_id, merchantName, 'Pivota'),
-    sku: readString(firstVariant?.sku_id, product.product_id, productId),
+    brand: readString(product.brand?.name, product.merchant_id, merchantName),
+    sku: readString(firstVariant?.sku_id),
     variant: readString(firstVariant?.title),
     category,
     overview: overviewText,
     intelligenceSummary:
       productIntelText.join(' ') ||
-      overview.join(' ') ||
-      `Pivota product intelligence summary for ${product.title}.`,
+      overview.join(' '),
     keyBenefits: uniqueStrings([
       ...(product.beauty_meta?.best_for || []),
       ...productIntelText.slice(0, 3),
@@ -424,9 +422,11 @@ function seoDataFromPayload(productId: string, payload: PDPPayload): PivotaProdu
       const amount = readPriceAmount(offer.price);
       const currency = readPriceCurrency(offer.price);
       const inStock =
-        offer.inventory?.in_stock === false
-          ? 'https://schema.org/OutOfStock'
-          : 'https://schema.org/InStock';
+        offer.inventory?.in_stock === true
+          ? 'https://schema.org/InStock'
+          : offer.inventory?.in_stock === false
+            ? 'https://schema.org/OutOfStock'
+            : undefined;
       return {
         offerId: offer.offer_id,
         merchantName: readString(offer.merchant_name, offer.merchant_id),
@@ -450,10 +450,7 @@ export async function getPivotaProductSeoData(productId: string): Promise<Pivota
 }
 
 export function buildProductMetaDescription(data: PivotaProductSeoData) {
-  return (
-    `Agent-facing Pivota product page for ${data.name}, with verified merchant source` +
-    ' and offer readiness signals.'
-  ).slice(0, 220);
+  return data.overview ? data.overview.slice(0, 220) : undefined;
 }
 
 export function buildPivotaProductMetadata(data: PivotaProductSeoData | null): Metadata {
@@ -468,9 +465,10 @@ export function buildPivotaProductMetadata(data: PivotaProductSeoData | null): M
     };
   }
 
+  const description = buildProductMetaDescription(data);
   return {
     title: `${data.name} | Pivota`,
-    description: buildProductMetaDescription(data),
+    ...(description ? { description } : {}),
     alternates: {
       canonical: data.canonicalUrl,
     },
@@ -480,9 +478,9 @@ export function buildPivotaProductMetadata(data: PivotaProductSeoData | null): M
     },
     openGraph: {
       title: `${data.name} | Pivota`,
-      description: buildProductMetaDescription(data),
       url: data.canonicalUrl,
       type: 'website',
+      ...(description ? { description } : {}),
       ...(data.image ? { images: [{ url: data.image }] } : {}),
     },
   };
@@ -494,14 +492,18 @@ export function buildProductJsonLd(data: PivotaProductSeoData | null) {
     '@context': 'https://schema.org',
     '@type': 'Product',
     name: data.name,
-    brand: {
-      '@type': 'Brand',
-      name: data.brand,
-    },
-    sku: data.sku || data.productId,
+    ...(data.brand
+      ? {
+          brand: {
+            '@type': 'Brand',
+            name: data.brand,
+          },
+        }
+      : {}),
+    ...(data.sku ? { sku: data.sku } : {}),
     url: data.canonicalUrl,
-    description: data.overview,
-    category: data.category,
+    ...(data.overview ? { description: data.overview } : {}),
+    ...(data.category ? { category: data.category } : {}),
     ...(data.image ? { image: data.image } : {}),
   };
 }
@@ -517,11 +519,15 @@ export function buildOfferJsonLd(data: PivotaProductSeoData | null) {
       '@type': 'Offer',
       identifier: offer.offerId,
       url: offer.sourceUrl || data.canonicalUrl,
-      availability: offer.availability || 'https://schema.org/InStock',
-      seller: {
-        '@type': 'Organization',
-        name: offer.merchantName || data.merchantSource?.merchantName || 'Pivota merchant',
-      },
+      ...(offer.availability ? { availability: offer.availability } : {}),
+      ...(offer.merchantName || data.merchantSource?.merchantName
+        ? {
+            seller: {
+              '@type': 'Organization',
+              name: offer.merchantName || data.merchantSource?.merchantName,
+            },
+          }
+        : {}),
       ...(offer.price != null ? { price: offer.price } : {}),
       ...(offer.currency ? { priceCurrency: offer.currency } : {}),
     };
@@ -533,19 +539,27 @@ export function buildOfferJsonLd(data: PivotaProductSeoData | null) {
     '@type': 'AggregateOffer',
     url: data.canonicalUrl,
     offerCount: offers.length,
-    seller: {
-      '@type': 'Organization',
-      name: data.merchantSource?.merchantName || offers[0]?.merchantName || 'Pivota merchant',
-    },
+    ...(data.merchantSource?.merchantName || offers[0]?.merchantName
+      ? {
+          seller: {
+            '@type': 'Organization',
+            name: data.merchantSource?.merchantName || offers[0]?.merchantName,
+          },
+        }
+      : {}),
     offers: offers.map((offer) => ({
       '@type': 'Offer',
       identifier: offer.offerId,
       url: offer.sourceUrl || data.canonicalUrl,
-      availability: offer.availability || 'https://schema.org/InStock',
-      seller: {
-        '@type': 'Organization',
-        name: offer.merchantName || 'Pivota merchant',
-      },
+      ...(offer.availability ? { availability: offer.availability } : {}),
+      ...(offer.merchantName
+        ? {
+            seller: {
+              '@type': 'Organization',
+              name: offer.merchantName,
+            },
+          }
+        : {}),
       ...(offer.price != null ? { price: offer.price } : {}),
       ...(offer.currency ? { priceCurrency: offer.currency } : {}),
     })),
@@ -591,11 +605,13 @@ export function PivotaProductSeoSummary({ data }: { data: PivotaProductSeoData |
       }}
     >
       <span data-pivota-product-name>{data.name}</span>
-      <span data-pivota-product-brand>{data.brand}</span>
+      {data.brand ? <span data-pivota-product-brand>{data.brand}</span> : null}
       <span data-pivota-product-entity-id>{data.productEntityId}</span>
-      <span data-pivota-product-category>{data.category || 'Product'}</span>
-      <span data-pivota-product-overview>{data.overview}</span>
-      <span data-pivota-product-intelligence>{data.intelligenceSummary}</span>
+      {data.category ? <span data-pivota-product-category>{data.category}</span> : null}
+      {data.overview ? <span data-pivota-product-overview>{data.overview}</span> : null}
+      {data.intelligenceSummary ? (
+        <span data-pivota-product-intelligence>{data.intelligenceSummary}</span>
+      ) : null}
       <span data-pivota-product-benefits>{data.keyBenefits.join(', ')}</span>
       <span data-pivota-product-use-cases>{data.useCases.join(', ')}</span>
       <span data-pivota-product-active-components>{data.activeIngredients.join(', ')}</span>
@@ -635,7 +651,7 @@ export function PivotaProductSeoSummary({ data }: { data: PivotaProductSeoData |
             .map((offer) =>
               [
                 offer.offerId,
-                offer.merchantName || 'Pivota merchant offer',
+                offer.merchantName || '',
                 offer.price != null && offer.currency ? `${offer.currency} ${offer.price}` : '',
                 offer.sourceUrl || '',
               ]

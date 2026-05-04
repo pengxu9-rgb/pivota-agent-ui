@@ -147,6 +147,44 @@ describe('Pivota PDP SEO rendering', () => {
     expect(withoutPrice).not.toHaveProperty('priceCurrency');
   });
 
+  it('does not fabricate missing PDP SEO fields from placeholders', () => {
+    const sparseData: PivotaProductSeoData = {
+      ...cleanSeoData,
+      brand: '',
+      sku: undefined,
+      category: undefined,
+      overview: '',
+      intelligenceSummary: '',
+      keyBenefits: [],
+      useCases: [],
+      activeIngredients: [],
+      differentiators: [],
+      offers: [
+        {
+          offerId: 'offer_without_verified_inventory',
+          sourceUrl: cleanSeoData.merchantSource?.sourceUrl,
+        },
+      ],
+    };
+    const metadata = buildPivotaProductMetadata(sparseData);
+    const productJsonLd = buildProductJsonLd(sparseData);
+    const offerJsonLd = buildOfferJsonLd(sparseData);
+    const { container } = render(<PivotaProductSeoSummary data={sparseData} />);
+
+    expect(metadata).not.toHaveProperty('description');
+    expect(metadata.openGraph).not.toHaveProperty('description');
+    expect(productJsonLd).not.toHaveProperty('brand');
+    expect(productJsonLd).not.toHaveProperty('sku');
+    expect(productJsonLd).not.toHaveProperty('description');
+    expect(productJsonLd).not.toHaveProperty('category');
+    expect(offerJsonLd).not.toHaveProperty('availability');
+    expect(container.querySelector('[data-pivota-product-brand]')).not.toBeInTheDocument();
+    expect(container.querySelector('[data-pivota-product-overview]')).not.toBeInTheDocument();
+    expect(container.querySelector('[data-pivota-product-intelligence]')).not.toBeInTheDocument();
+    expect(container.textContent).not.toContain('Pivota product intelligence summary');
+    expect(container.textContent).not.toContain('Agent-facing Pivota product page');
+  });
+
   it('renders AggregateOffer JSON-LD for ProductEntity PDPs with multiple merchant offers', () => {
     const jsonLd = buildOfferJsonLd({
       ...cleanSeoData,
