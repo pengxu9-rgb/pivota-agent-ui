@@ -95,6 +95,16 @@ describe('Pivota PDP SEO rendering', () => {
     });
   });
 
+  it('includes brand in metadata title when the product name omits it', () => {
+    const metadata = buildPivotaProductMetadata({
+      ...cleanSeoData,
+      name: 'Multi-Peptide Lash and Brow Serum',
+      brand: 'The Ordinary',
+    });
+
+    expect(metadata.title).toBe('The Ordinary Multi-Peptide Lash and Brow Serum | Pivota');
+  });
+
   it('canonical ProductEntity URLs strip return and tracking params by construction', () => {
     expect(
       canonicalPivotaProductEntityUrl({
@@ -219,14 +229,17 @@ describe('Pivota PDP SEO rendering', () => {
     const summary = container.querySelector('[data-pivota-public-product-summary]');
 
     expect(summary).toBeInTheDocument();
-    expect(summary).toHaveAttribute('aria-hidden', 'true');
     expect(summary?.textContent).toContain(cleanSeoData.name);
     expect(summary?.textContent).toContain('SKIN1004');
     expect(summary?.textContent).toContain('pe_skin1004_cleanser');
     expect(summary?.textContent).toContain('ext_skin1004_cleanser');
     expect(summary?.textContent).not.toContain('Pivota verified product page');
-    expect(screen.queryByRole('heading', { level: 1 })).not.toBeInTheDocument();
+    expect(container.querySelector('h1')).toHaveTextContent(cleanSeoData.name);
     expect(container.querySelector('[data-pivota-product-source-references]')).toBeInTheDocument();
+    expect(container.querySelector('[data-pivota-merchant-source-url]')).toHaveAttribute(
+      'href',
+      cleanSeoData.merchantSource?.sourceUrl,
+    );
   });
 
   it('returns no SEO success data and marks metadata noindex when gateway SEO data is unavailable', async () => {

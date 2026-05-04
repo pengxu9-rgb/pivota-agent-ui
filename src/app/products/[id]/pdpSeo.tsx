@@ -474,6 +474,13 @@ export function buildProductMetaDescription(data: PivotaProductSeoData) {
   return data.overview ? data.overview.slice(0, 220) : undefined;
 }
 
+function displayProductName(data: PivotaProductSeoData) {
+  const name = readString(data.name);
+  const brand = readString(data.brand);
+  if (!brand) return name;
+  return name.toLowerCase().includes(brand.toLowerCase()) ? name : `${brand} ${name}`;
+}
+
 export function buildPivotaProductMetadata(data: PivotaProductSeoData | null): Metadata {
   if (!data) {
     return {
@@ -487,8 +494,9 @@ export function buildPivotaProductMetadata(data: PivotaProductSeoData | null): M
   }
 
   const description = buildProductMetaDescription(data);
+  const title = displayProductName(data);
   return {
-    title: `${data.name} | Pivota`,
+    title: `${title} | Pivota`,
     ...(description ? { description } : {}),
     alternates: {
       canonical: data.canonicalUrl,
@@ -498,7 +506,7 @@ export function buildPivotaProductMetadata(data: PivotaProductSeoData | null): M
       follow: true,
     },
     openGraph: {
-      title: `${data.name} | Pivota`,
+      title: `${title} | Pivota`,
       url: data.canonicalUrl,
       type: 'website',
       ...(description ? { description } : {}),
@@ -613,34 +621,91 @@ export function JsonLdScript({
 
 export function PivotaProductSeoSummary({ data }: { data: PivotaProductSeoData | null }) {
   if (!data || data.source !== 'gateway') return null;
+  const source = data.merchantSource;
 
   return (
-    <div
+    <section
       data-pivota-public-product-summary
-      aria-hidden="true"
-      className="pointer-events-none absolute h-px w-px overflow-hidden whitespace-nowrap border-0 p-0"
-      style={{
-        clip: 'rect(0 0 0 0)',
-        clipPath: 'inset(50%)',
-        margin: -1,
-      }}
+      className="mx-auto max-w-5xl px-4 py-8 text-sm leading-6 text-slate-700"
     >
-      <span data-pivota-product-name>{data.name}</span>
-      {data.brand ? <span data-pivota-product-brand>{data.brand}</span> : null}
-      <span data-pivota-product-entity-id>{data.productEntityId}</span>
-      {data.category ? <span data-pivota-product-category>{data.category}</span> : null}
-      {data.overview ? <span data-pivota-product-overview>{data.overview}</span> : null}
-      {data.intelligenceSummary ? (
-        <span data-pivota-product-intelligence>{data.intelligenceSummary}</span>
+      <h1 data-pivota-product-name className="text-2xl font-semibold text-slate-950">
+        {displayProductName(data)}
+      </h1>
+      <dl className="mt-3 grid gap-2 sm:grid-cols-2">
+        {data.brand ? (
+          <div>
+            <dt className="font-medium text-slate-950">Brand</dt>
+            <dd data-pivota-product-brand>{data.brand}</dd>
+          </div>
+        ) : null}
+        <div>
+          <dt className="font-medium text-slate-950">ProductEntity ID</dt>
+          <dd data-pivota-product-entity-id>{data.productEntityId}</dd>
+        </div>
+        {data.category ? (
+          <div>
+            <dt className="font-medium text-slate-950">Category</dt>
+            <dd data-pivota-product-category>{data.category}</dd>
+          </div>
+        ) : null}
+        {source?.sourceUrl ? (
+          <div>
+            <dt className="font-medium text-slate-950">Merchant source</dt>
+            <dd>
+              <a
+                data-pivota-merchant-source-url
+                href={source.sourceUrl}
+                className="break-all underline"
+              >
+                {source.merchantName || source.sourceUrl}
+              </a>
+            </dd>
+          </div>
+        ) : null}
+      </dl>
+      {data.overview ? (
+        <p data-pivota-product-overview className="mt-4 max-w-3xl">
+          {data.overview}
+        </p>
       ) : null}
-      <span data-pivota-product-benefits>{data.keyBenefits.join(', ')}</span>
-      <span data-pivota-product-use-cases>{data.useCases.join(', ')}</span>
-      <span data-pivota-product-active-components>{data.activeIngredients.join(', ')}</span>
-      <span data-pivota-product-texture-finish>
-        {[data.texture, data.finish].filter(Boolean).join(' / ')}
-      </span>
-      <span data-pivota-product-skin-type>{data.skinType || ''}</span>
-      <span data-pivota-product-differentiators>{data.differentiators.join(', ')}</span>
+      {data.intelligenceSummary ? (
+        <p data-pivota-product-intelligence className="mt-3 max-w-3xl">
+          {data.intelligenceSummary}
+        </p>
+      ) : null}
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        {data.keyBenefits.length ? (
+          <p data-pivota-product-benefits>
+            <strong>Key benefits:</strong> {data.keyBenefits.join(', ')}
+          </p>
+        ) : null}
+        {data.useCases.length ? (
+          <p data-pivota-product-use-cases>
+            <strong>Use cases:</strong> {data.useCases.join(', ')}
+          </p>
+        ) : null}
+        {data.activeIngredients.length ? (
+          <p data-pivota-product-active-components>
+            <strong>Active components:</strong> {data.activeIngredients.join(', ')}
+          </p>
+        ) : null}
+        {[data.texture, data.finish].filter(Boolean).length ? (
+          <p data-pivota-product-texture-finish>
+            <strong>Texture / finish:</strong>{' '}
+            {[data.texture, data.finish].filter(Boolean).join(' / ')}
+          </p>
+        ) : null}
+        {data.skinType ? (
+          <p data-pivota-product-skin-type>
+            <strong>Skin type:</strong> {data.skinType}
+          </p>
+        ) : null}
+        {data.differentiators.length ? (
+          <p data-pivota-product-differentiators>
+            <strong>Differentiators:</strong> {data.differentiators.join(', ')}
+          </p>
+        ) : null}
+      </div>
       {data.externalSeedIds.length ? (
         <span data-pivota-external-seed-aliases>{data.externalSeedIds.join(', ')}</span>
       ) : null}
@@ -666,7 +731,8 @@ export function PivotaProductSeoSummary({ data }: { data: PivotaProductSeoData |
       ) : null}
 
       {data.offers.length ? (
-        <span data-pivota-offer-summary>
+        <p data-pivota-offer-summary className="mt-4 max-w-3xl">
+          <strong>Offer summary:</strong>{' '}
           {data.offers
             .slice(0, 3)
             .map((offer) =>
@@ -680,11 +746,15 @@ export function PivotaProductSeoSummary({ data }: { data: PivotaProductSeoData |
                 .join(' | '),
             )
             .join(' ; ')}
-        </span>
+        </p>
       ) : null}
 
-      <span data-pivota-similar-highlight>{data.similarHighlights.join(' ')}</span>
-    </div>
+      {data.similarHighlights.length ? (
+        <p data-pivota-similar-highlight className="mt-3 max-w-3xl">
+          <strong>Similar product context:</strong> {data.similarHighlights.join(' ')}
+        </p>
+      ) : null}
+    </section>
   );
 }
 

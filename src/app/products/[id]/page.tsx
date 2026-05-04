@@ -27,10 +27,10 @@ export default async function ProductDetailPage({ params }: Props) {
 
   return (
     <>
-      <PivotaProductSeoSummary data={data} />
       <JsonLdScript id="pivota-product-jsonld" data={buildProductJsonLd(data)} />
       <JsonLdScript id="pivota-offer-jsonld" data={buildOfferJsonLd(data)} />
       <ProductDetailClient id={id} />
+      <PivotaProductSeoSummary data={data} />
     </>
   );
 }
