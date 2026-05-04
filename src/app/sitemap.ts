@@ -1,11 +1,8 @@
 import { MetadataRoute } from 'next'
-import { getAllProducts } from '@/lib/api'
+import { getIndexableProductSitemapUrls } from '@/app/products/[id]/pdpSeo'
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const baseUrl = 'https://agent.pivota.cc'
-  const apiBase = (process.env.NEXT_PUBLIC_API_URL || '').trim()
-  const canFetchProducts = /^https?:\/\//.test(apiBase)
-
   const staticPages: MetadataRoute.Sitemap = [
     {
       url: baseUrl,
@@ -27,14 +24,10 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     },
   ]
 
-  if (!canFetchProducts) {
-    return staticPages
-  }
-
   try {
-    const products = await getAllProducts(200)
-    const productPages: MetadataRoute.Sitemap = products.map((product) => ({
-      url: `${baseUrl}/products/${product.product_id}`,
+    const productUrls = await getIndexableProductSitemapUrls(200)
+    const productPages: MetadataRoute.Sitemap = productUrls.map((url) => ({
+      url,
       lastModified: new Date(),
       changeFrequency: 'weekly',
       priority: 0.8,

@@ -2,7 +2,7 @@ import React from 'react';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import ProductDetailPage from './page';
+import ProductDetailClient from './ProductDetailClient';
 
 const pushMock = vi.fn();
 const replaceMock = vi.fn();
@@ -187,7 +187,7 @@ vi.mock('@/features/pdp/state/freezePolicy', () => ({
 }));
 
 function renderPage(productId = 'prod_1') {
-  return render(<ProductDetailPage params={{ id: productId } as any} />);
+  return render(<ProductDetailClient id={productId} />);
 }
 
 const canonicalPayload = {
