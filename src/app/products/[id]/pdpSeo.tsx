@@ -5,6 +5,7 @@ import type { Module, Offer, PDPPayload } from '@/features/pdp/types';
 const DEFAULT_PUBLIC_BASE_URL = 'https://agent.pivota.cc';
 const DEFAULT_GATEWAY_BASE_URL = 'https://pivota-agent-production.up.railway.app';
 const SEO_FETCH_TIMEOUT_MS = 6000;
+const SITEMAP_FETCH_TIMEOUT_MS = 750;
 const SEO_INCLUDE_MODULES = [
   'offers',
   'variant_selector',
@@ -18,6 +19,7 @@ const SEO_INCLUDE_MODULES = [
 const DEFAULT_EXTERNAL_SEED_ALIASES: Record<string, string> = {
   ext_d7c74bcb380cbc2bdd5d5d90: 'sig_7ad40676c42fb9c96e2a8136',
 };
+const DEFAULT_INDEXABLE_PRODUCT_ENTITY_IDS = ['sig_7ad40676c42fb9c96e2a8136'];
 const DEFAULT_PRODUCT_ENTITY_SOURCE_ALIASES: Record<string, string> = Object.fromEntries(
   Object.entries(DEFAULT_EXTERNAL_SEED_ALIASES).map(([externalSeedId, productEntityId]) => [
     productEntityId,
@@ -131,6 +133,13 @@ function publicBaseUrl() {
 
 export function canonicalPivotaProductUrl(productId: string) {
   return `${publicBaseUrl()}/products/${encodeURIComponent(String(productId || '').trim())}`;
+}
+
+function normalizeSitemapProductEntityId(value: unknown): string {
+  const id = readString(value);
+  if (!id) return '';
+  if (DEFAULT_EXTERNAL_SEED_ALIASES[id]) return DEFAULT_EXTERNAL_SEED_ALIASES[id];
+  return isExternalSeedId(id) ? '' : id;
 }
 
 export function canonicalPivotaProductEntityUrl(input: {
@@ -685,16 +694,25 @@ export async function getIndexableProductSitemapUrls(limit = 200): Promise<strin
     process.env.NEXT_PUBLIC_PIVOTA_SITEMAP_PRODUCT_IDS,
   )
     .split(',')
-    .map((item) => item.trim())
+    .map(normalizeSitemapProductEntityId)
     .filter(Boolean);
 
-  const discovered = await fetchProductIdsForSitemap(limit);
-  return uniqueStrings([...configured, ...discovered], limit).map(canonicalPivotaProductUrl);
+  const defaults = DEFAULT_INDEXABLE_PRODUCT_ENTITY_IDS.map(normalizeSitemapProductEntityId).filter(
+    Boolean,
+  );
+  const discovered =
+    process.env.PIVOTA_SITEMAP_DYNAMIC_PRODUCTS_ENABLED === 'true'
+      ? (await fetchProductIdsForSitemap(limit)).map(normalizeSitemapProductEntityId).filter(Boolean)
+      : [];
+
+  return uniqueStrings([...configured, ...defaults, ...discovered], limit).map(
+    canonicalPivotaProductUrl,
+  );
 }
 
 async function fetchProductIdsForSitemap(limit: number): Promise<string[]> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), SEO_FETCH_TIMEOUT_MS);
+  const timeout = setTimeout(() => controller.abort(), SITEMAP_FETCH_TIMEOUT_MS);
   try {
     const apiKey = readString(
       process.env.AGENT_API_KEY,

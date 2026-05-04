@@ -1,6 +1,8 @@
 import { MetadataRoute } from 'next'
 import { getIndexableProductSitemapUrls } from '@/app/products/[id]/pdpSeo'
 
+export const revalidate = 3600
+
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const baseUrl = 'https://agent.pivota.cc'
   const staticPages: MetadataRoute.Sitemap = [
@@ -15,6 +17,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       lastModified: new Date(),
       changeFrequency: 'daily',
       priority: 0.9,
+    },
+    {
+      url: `${baseUrl}/products/indexability`,
+      lastModified: new Date(),
+      changeFrequency: 'daily',
+      priority: 0.7,
     },
     {
       url: `${baseUrl}/order`,

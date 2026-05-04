@@ -79,6 +79,7 @@ const cleanSeoData: PivotaProductSeoData = {
 describe('Pivota PDP SEO rendering', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
   });
   it('uses product-specific metadata instead of the generic app shell title', () => {
     const metadata = buildPivotaProductMetadata(cleanSeoData);
@@ -331,6 +332,7 @@ describe('Pivota PDP SEO rendering', () => {
   });
 
   it('sitemap helper includes ProductEntity URLs only from configured or discovered main-path data', async () => {
+    vi.stubEnv('PIVOTA_SITEMAP_DYNAMIC_PRODUCTS_ENABLED', 'true');
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => ({
@@ -354,5 +356,19 @@ describe('Pivota PDP SEO rendering', () => {
     expect(urls).not.toContain(
       'https://agent.pivota.cc/products/ext_d7c74bcb380cbc2bdd5d5d90',
     );
+  });
+
+  it('sitemap helper uses the safe ProductEntity allowlist without gateway fallback content', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    const urls = await getIndexableProductSitemapUrls(20);
+
+    expect(urls).toContain(
+      'https://agent.pivota.cc/products/sig_7ad40676c42fb9c96e2a8136',
+    );
+    expect(urls.some((url) => url.includes('/products/ext_'))).toBe(false);
+    expect(urls.some((url) => url.includes('return='))).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
