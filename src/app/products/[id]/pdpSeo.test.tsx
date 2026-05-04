@@ -5,6 +5,7 @@ import {
   buildOfferJsonLd,
   buildPivotaProductMetadata,
   buildProductJsonLd,
+  canonicalProductEntityIdForRoute,
   canonicalPivotaProductEntityUrl,
   canonicalPivotaProductUrl,
   getIndexableProductSitemapUrls,
@@ -116,6 +117,15 @@ describe('Pivota PDP SEO rendering', () => {
     );
     expect(canonicalPivotaProductUrl('ext_skin1004_cleanser')).toBe(
       'https://agent.pivota.cc/products/ext_skin1004_cleanser',
+    );
+  });
+
+  it('maps external seed route IDs to canonical ProductEntity IDs', () => {
+    expect(canonicalProductEntityIdForRoute('ext_d7c74bcb380cbc2bdd5d5d90')).toBe(
+      'sig_7ad40676c42fb9c96e2a8136',
+    );
+    expect(canonicalProductEntityIdForRoute('sig_7ad40676c42fb9c96e2a8136')).toBe(
+      'sig_7ad40676c42fb9c96e2a8136',
     );
   });
 

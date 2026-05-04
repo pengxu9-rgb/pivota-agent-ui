@@ -6,6 +6,7 @@ const DEFAULT_PUBLIC_BASE_URL = 'https://agent.pivota.cc';
 const DEFAULT_GATEWAY_BASE_URL = 'https://pivota-agent-production.up.railway.app';
 const SEO_FETCH_TIMEOUT_MS = 6000;
 const SITEMAP_FETCH_TIMEOUT_MS = 750;
+const SEO_DATA_CACHE_TTL_MS = 60 * 60 * 1000;
 const SEO_INCLUDE_MODULES = [
   'offers',
   'variant_selector',
@@ -26,6 +27,10 @@ const DEFAULT_PRODUCT_ENTITY_SOURCE_ALIASES: Record<string, string> = Object.fro
     externalSeedId,
   ]),
 );
+const seoDataCache = new Map<
+  string,
+  { expiresAt: number; promise: Promise<PivotaProductSeoData | null> }
+>();
 
 export type PivotaProductSeoData = {
   productId: string;
@@ -133,6 +138,11 @@ function publicBaseUrl() {
 
 export function canonicalPivotaProductUrl(productId: string) {
   return `${publicBaseUrl()}/products/${encodeURIComponent(String(productId || '').trim())}`;
+}
+
+export function canonicalProductEntityIdForRoute(productId: string) {
+  const id = readString(productId);
+  return DEFAULT_EXTERNAL_SEED_ALIASES[id] || id;
 }
 
 function normalizeSitemapProductEntityId(value: unknown): string {
@@ -245,7 +255,8 @@ async function fetchPdpV2ForSeo(productId: string) {
           },
         },
       }),
-      cache: 'no-store',
+      cache: 'force-cache',
+      next: { revalidate: 3600 },
       signal: controller.signal,
     });
     if (!response.ok) return null;
@@ -460,7 +471,9 @@ function seoDataFromPayload(productId: string, payload: PDPPayload): PivotaProdu
   };
 }
 
-export async function getPivotaProductSeoData(productId: string): Promise<PivotaProductSeoData | null> {
+async function getPivotaProductSeoDataUncached(
+  productId: string,
+): Promise<PivotaProductSeoData | null> {
   for (const lookupProductId of seoLookupProductIds(productId)) {
     const raw = await fetchPdpV2ForSeo(lookupProductId);
     if (!raw) continue;
@@ -468,6 +481,32 @@ export async function getPivotaProductSeoData(productId: string): Promise<Pivota
     if (payload?.product?.title) return seoDataFromPayload(productId, payload);
   }
   return null;
+}
+
+export async function getPivotaProductSeoData(
+  productId: string,
+): Promise<PivotaProductSeoData | null> {
+  const key = readString(productId);
+  if (!key) return null;
+  const now = Date.now();
+  const cached = seoDataCache.get(key);
+  if (cached && cached.expiresAt > now) return cached.promise;
+
+  const promise = getPivotaProductSeoDataUncached(key).then(
+    (data) => {
+      if (!data) seoDataCache.delete(key);
+      return data;
+    },
+    (error) => {
+      seoDataCache.delete(key);
+      throw error;
+    },
+  );
+  seoDataCache.set(key, {
+    expiresAt: now + SEO_DATA_CACHE_TTL_MS,
+    promise,
+  });
+  return promise;
 }
 
 export function buildProductMetaDescription(data: PivotaProductSeoData) {
