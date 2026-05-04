@@ -104,6 +104,15 @@ const nextConfig = {
   // Optimize production builds
   // Enable React strict mode
   productionBrowserSourceMaps: false,
+  async redirects() {
+    return [
+      {
+        source: '/products/ext_d7c74bcb380cbc2bdd5d5d90',
+        destination: '/products/sig_7ad40676c42fb9c96e2a8136',
+        permanent: true,
+      },
+    ];
+  },
   async rewrites() {
     return [
       {
