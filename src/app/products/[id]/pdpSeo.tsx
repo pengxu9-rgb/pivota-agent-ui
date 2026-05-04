@@ -556,6 +556,14 @@ export function buildPivotaProductMetadata(data: PivotaProductSeoData | null): M
 
 export function buildProductJsonLd(data: PivotaProductSeoData | null) {
   if (!data || data.source !== 'gateway') return null;
+  const offerJsonLd = buildOfferJsonLd(data);
+  const productOfferJsonLd =
+    offerJsonLd && typeof offerJsonLd === 'object'
+      ? Object.fromEntries(
+          Object.entries(offerJsonLd).filter(([key]) => key !== '@context'),
+        )
+      : null;
+
   return {
     '@context': 'https://schema.org',
     '@type': 'Product',
@@ -573,6 +581,7 @@ export function buildProductJsonLd(data: PivotaProductSeoData | null) {
     ...(data.overview ? { description: data.overview } : {}),
     ...(data.category ? { category: data.category } : {}),
     ...(data.image ? { image: data.image } : {}),
+    ...(productOfferJsonLd ? { offers: productOfferJsonLd } : {}),
   };
 }
 

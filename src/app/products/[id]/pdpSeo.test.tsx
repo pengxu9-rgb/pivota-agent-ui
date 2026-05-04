@@ -140,8 +140,16 @@ describe('Pivota PDP SEO rendering', () => {
       url: cleanSeoData.canonicalUrl,
       description: cleanSeoData.overview,
       category: 'Skincare > Cleanser',
+      offers: {
+        '@type': 'Offer',
+        identifier: 'offer_skin1004_cleanser',
+        price: 18,
+        priceCurrency: 'USD',
+        url: cleanSeoData.merchantSource?.sourceUrl,
+      },
     });
     expect(jsonLd.brand).toEqual({ '@type': 'Brand', name: 'SKIN1004' });
+    expect(jsonLd.offers).not.toHaveProperty('@context');
   });
 
   it('renders Offer JSON-LD only with verified price fields when present', () => {
@@ -198,6 +206,7 @@ describe('Pivota PDP SEO rendering', () => {
     expect(productJsonLd).not.toHaveProperty('sku');
     expect(productJsonLd).not.toHaveProperty('description');
     expect(productJsonLd).not.toHaveProperty('category');
+    expect((productJsonLd as any).offers).not.toHaveProperty('price');
     expect(offerJsonLd).not.toHaveProperty('availability');
     expect(container.querySelector('[data-pivota-product-brand]')).not.toBeInTheDocument();
     expect(container.querySelector('[data-pivota-product-overview]')).not.toBeInTheDocument();
