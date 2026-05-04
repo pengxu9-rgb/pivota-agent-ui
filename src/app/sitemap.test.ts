@@ -1,30 +1,16 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import sitemap from './sitemap';
+import { describe, expect, it } from 'vitest';
+import { GET } from './sitemap.xml/route';
 
 describe('sitemap', () => {
-  afterEach(() => {
-    vi.unstubAllGlobals();
-    vi.unstubAllEnvs();
-  });
+  it('returns a sitemap index that points at the ProductEntity sitemap', async () => {
+    const response = await GET();
+    const xml = await response.text();
 
-  it('includes canonical ProductEntity URLs with lastmod, not external seed aliases or return params', async () => {
-    const fetchMock = vi.fn();
-    vi.stubGlobal('fetch', fetchMock);
-
-    const entries = await sitemap();
-    const urls = entries.map((entry) => entry.url);
-    const canonicalUrl =
-      'https://agent.pivota.cc/products/sig_7ad40676c42fb9c96e2a8136';
-
-    expect(urls).toContain(canonicalUrl);
-    expect(urls).toContain('https://agent.pivota.cc/products/indexability');
-    expect(urls).not.toContain(
-      'https://agent.pivota.cc/products/ext_d7c74bcb380cbc2bdd5d5d90',
-    );
-    expect(urls.some((url) => url.includes('return='))).toBe(false);
-    expect(fetchMock).not.toHaveBeenCalled();
-
-    const canonicalEntry = entries.find((entry) => entry.url === canonicalUrl);
-    expect(canonicalEntry?.lastModified).toBeInstanceOf(Date);
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toContain('application/xml');
+    expect(xml).toContain('<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">');
+    expect(xml).toContain('<loc>https://agent.pivota.cc/sitemap-products.xml</loc>');
+    expect(xml).not.toContain('https://agent.pivota.cc/products/ext_');
+    expect(xml).not.toContain('<urlset');
   });
 });

@@ -19,8 +19,104 @@ const SEO_INCLUDE_MODULES = [
 ];
 const DEFAULT_EXTERNAL_SEED_ALIASES: Record<string, string> = {
   ext_d7c74bcb380cbc2bdd5d5d90: 'sig_7ad40676c42fb9c96e2a8136',
+  ext_e4ad75bd225e370109c9adc9: 'sig_1bf9aa542630047f9b2f9f28',
+  ext_7d1ec8eed3a596dc5b03f435: 'sig_65c65851414613cc2df011ff',
+  ext_6421a5db3f2487dd74467ae4: 'sig_5edc907cefce71341747b10b',
+  ext_842fba29a0f549a326251957: 'sig_edfe833076a1233453822732',
+  ext_d51b678d1ffdff2ae544d053: 'sig_2ecfc6d1c4db7257ab5657e6',
+  ext_2b9e46d72a4d44b852a7a314: 'sig_0ccfed641401e390afc8d63d',
+  ext_595c852f615409c46226bd25: 'sig_992ce329d6a76c023980e299',
+  ext_91754eebe482933314201680: 'sig_259c7d68bfa29d935389abba',
+  ext_765470731d733687d200eaa2: 'sig_811f33f384281924b5a0738a',
+  ext_431fc8ff6539a0ebf3dad995: 'sig_452a9c8f57c8e0d16200e6b2',
+  ext_cd940cb0c891522f2b806d9b: 'sig_84b24b2d59174ea5fbf02d63',
+  ext_5d99f9da04f496bb844dcc05: 'sig_800f2a8dbf693323e63b7378',
+  ext_a60b4cd8b8316b22fea02e1c: 'sig_3bf3dcd770a6c99c396b57c8',
+  ext_f4fdbf6f77685c3a80a4fe96: 'sig_96502b0ca1c750d783af5ade',
+  ext_ee9bba934ff7dee557752a93: 'sig_c740a6bd7bce668c5f4f4271',
+  ext_adf54c1f4075889a95acf8b5: 'sig_7c81fc301d8d19e6d8871ba1',
+  ext_b46bad8dd8605cdd0642ab76: 'sig_69c6e2cd7a8375d30c409f32',
+  ext_b5becc2f19292f002368f3c3: 'sig_17bae2f30258e4acce50d1f9',
+  ext_b3db87a2f0832cd4815d77c2: 'sig_3e59da719f621d22e833145b',
 };
-const DEFAULT_INDEXABLE_PRODUCT_ENTITY_IDS = ['sig_7ad40676c42fb9c96e2a8136'];
+const DEFAULT_PRODUCT_ENTITY_LASTMOD = '2026-05-04T18:00:39Z';
+const DEFAULT_PUBLISHED_PRODUCT_ENTITIES = [
+  {
+    id: 'sig_7ad40676c42fb9c96e2a8136',
+    externalSeedId: 'ext_d7c74bcb380cbc2bdd5d5d90',
+    productName: 'The Ordinary Multi-Peptide Lash and Brow Serum',
+  },
+  {
+    id: 'sig_1bf9aa542630047f9b2f9f28',
+    externalSeedId: 'ext_e4ad75bd225e370109c9adc9',
+    productName: 'Hydra Vizor Broad Spectrum Mineral SPF 30 Sunscreen Moisturizer',
+  },
+  {
+    id: 'sig_65c65851414613cc2df011ff',
+    externalSeedId: 'ext_7d1ec8eed3a596dc5b03f435',
+    productName: 'Hydra Vizor Mini Broad Spectrum Mineral SPF 30 Sunscreen Moisturizer',
+  },
+  {
+    id: 'sig_5edc907cefce71341747b10b',
+    externalSeedId: 'ext_6421a5db3f2487dd74467ae4',
+    productName: 'Always an Optimist 4-In-1 Mist',
+  },
+  {
+    id: 'sig_edfe833076a1233453822732',
+    externalSeedId: 'ext_842fba29a0f549a326251957',
+    productName: 'Vitamin-C Tonic Travel Size',
+  },
+  {
+    id: 'sig_2ecfc6d1c4db7257ab5657e6',
+    externalSeedId: 'ext_d51b678d1ffdff2ae544d053',
+    productName: 'Rose Tonic Travel Size',
+  },
+  {
+    id: 'sig_0ccfed641401e390afc8d63d',
+    externalSeedId: 'ext_2b9e46d72a4d44b852a7a314',
+    productName: 'Retinol Tonic Travel Size',
+  },
+  {
+    id: 'sig_992ce329d6a76c023980e299',
+    externalSeedId: 'ext_595c852f615409c46226bd25',
+    productName: 'Mini Glow Mist',
+  },
+  {
+    id: 'sig_259c7d68bfa29d935389abba',
+    externalSeedId: 'ext_91754eebe482933314201680',
+    productName: 'Rose Tonic Mini Size',
+  },
+  {
+    id: 'sig_811f33f384281924b5a0738a',
+    externalSeedId: 'ext_765470731d733687d200eaa2',
+    productName: 'Mini Hydrating Milky Mist',
+  },
+  {
+    id: 'sig_452a9c8f57c8e0d16200e6b2',
+    externalSeedId: 'ext_431fc8ff6539a0ebf3dad995',
+    productName: 'Glow Tonic Travel Size',
+  },
+  {
+    id: 'sig_84b24b2d59174ea5fbf02d63',
+    externalSeedId: 'ext_cd940cb0c891522f2b806d9b',
+    productName: 'Milky Tonic Mini Size',
+  },
+  {
+    id: 'sig_800f2a8dbf693323e63b7378',
+    externalSeedId: 'ext_5d99f9da04f496bb844dcc05',
+    productName: 'Milky Tonic Travel Size',
+  },
+  {
+    id: 'sig_3bf3dcd770a6c99c396b57c8',
+    externalSeedId: 'ext_a60b4cd8b8316b22fea02e1c',
+    productName: 'Glow Tonic Mini Size',
+  },
+  {
+    id: 'sig_96502b0ca1c750d783af5ade',
+    externalSeedId: 'ext_f4fdbf6f77685c3a80a4fe96',
+    productName: 'Botanical Collagen Tonic Travel Size',
+  },
+] as const;
 const DEFAULT_PRODUCT_ENTITY_SOURCE_ALIASES: Record<string, string> = Object.fromEntries(
   Object.entries(DEFAULT_EXTERNAL_SEED_ALIASES).map(([externalSeedId, productEntityId]) => [
     productEntityId,
@@ -80,6 +176,16 @@ export type PivotaProductSeoData = {
   }>;
   similarHighlights: string[];
   source: 'gateway';
+};
+
+export type ProductEntitySitemapEntry = {
+  id: string;
+  canonicalUrl: string;
+  productName?: string;
+  hasPdpContent: boolean;
+  isIndexable: boolean;
+  updatedAt?: string;
+  sourceProductId?: string;
 };
 
 function isRecord(value: unknown): value is Record<string, any> {
@@ -807,6 +913,13 @@ export function PivotaProductSeoSummary({ data }: { data: PivotaProductSeoData |
 }
 
 export async function getIndexableProductSitemapUrls(limit = 200): Promise<string[]> {
+  const entries = await getProductEntitySitemapEntries(limit);
+  return entries.map((entry) => entry.canonicalUrl);
+}
+
+export async function getProductEntitySitemapEntries(
+  limit = 200,
+): Promise<ProductEntitySitemapEntry[]> {
   const configured = readString(
     process.env.PIVOTA_SITEMAP_PRODUCT_IDS,
     process.env.NEXT_PUBLIC_PIVOTA_SITEMAP_PRODUCT_IDS,
@@ -815,20 +928,111 @@ export async function getIndexableProductSitemapUrls(limit = 200): Promise<strin
     .map(normalizeSitemapProductEntityId)
     .filter(Boolean);
 
-  const defaults = DEFAULT_INDEXABLE_PRODUCT_ENTITY_IDS.map(normalizeSitemapProductEntityId).filter(
-    Boolean,
+  const configuredEntries = configured.map((id) =>
+    productEntitySitemapEntry({
+      id,
+      hasPdpContent: true,
+      isIndexable: true,
+      updatedAt: DEFAULT_PRODUCT_ENTITY_LASTMOD,
+    }),
+  );
+  const defaults = DEFAULT_PUBLISHED_PRODUCT_ENTITIES.map((product) =>
+    productEntitySitemapEntry({
+      id: product.id,
+      productName: product.productName,
+      sourceProductId: product.externalSeedId,
+      hasPdpContent: true,
+      isIndexable: true,
+      updatedAt: DEFAULT_PRODUCT_ENTITY_LASTMOD,
+    }),
   );
   const discovered =
     process.env.PIVOTA_SITEMAP_DYNAMIC_PRODUCTS_ENABLED === 'true'
-      ? (await fetchProductIdsForSitemap(limit)).map(normalizeSitemapProductEntityId).filter(Boolean)
+      ? await fetchProductEntitiesForSitemap(limit)
       : [];
 
-  return uniqueStrings([...configured, ...defaults, ...discovered], limit).map(
-    canonicalPivotaProductUrl,
-  );
+  return uniqueProductEntityEntries([...configuredEntries, ...defaults, ...discovered], limit);
 }
 
-async function fetchProductIdsForSitemap(limit: number): Promise<string[]> {
+function productEntitySitemapEntry(input: {
+  id: string;
+  productName?: string;
+  hasPdpContent: boolean;
+  isIndexable: boolean;
+  updatedAt?: string;
+  canonicalUrl?: string;
+  sourceProductId?: string;
+}): ProductEntitySitemapEntry | null {
+  const id = normalizeSitemapProductEntityId(input.id);
+  if (!id || !/^sig_[a-z0-9]+$/i.test(id)) return null;
+  const canonicalUrl = readString(input.canonicalUrl) || canonicalPivotaProductUrl(id);
+  if (!/^https:\/\/agent\.pivota\.cc\/products\/sig_[a-z0-9]+$/i.test(canonicalUrl)) return null;
+  if (canonicalUrl.includes('/products/ext_') || canonicalUrl.includes('?')) return null;
+  if (!input.hasPdpContent || !input.isIndexable) return null;
+  return {
+    id,
+    canonicalUrl,
+    productName: input.productName,
+    hasPdpContent: true,
+    isIndexable: true,
+    updatedAt: input.updatedAt || DEFAULT_PRODUCT_ENTITY_LASTMOD,
+    sourceProductId: input.sourceProductId,
+  };
+}
+
+function uniqueProductEntityEntries(
+  entries: Array<ProductEntitySitemapEntry | null>,
+  limit: number,
+): ProductEntitySitemapEntry[] {
+  const seen = new Set<string>();
+  const out: ProductEntitySitemapEntry[] = [];
+  for (const entry of entries) {
+    if (!entry) continue;
+    if (seen.has(entry.id)) continue;
+    seen.add(entry.id);
+    out.push(entry);
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
+function productEntitySitemapEntryFromGatewayProduct(product: Record<string, any>) {
+  const id = normalizeSitemapProductEntityId(
+    readString(
+      product.product_entity_id,
+      product.productEntityId,
+      product.product_group_id,
+      product.productGroupId,
+      product.sellable_item_group_id,
+      product.sellableItemGroupId,
+    ),
+  );
+  const sourceProductId = readString(product.product_id, product.id);
+  const explicitHasPdpContent =
+    typeof product.has_pdp_content === 'boolean'
+      ? product.has_pdp_content
+      : typeof product.hasPdpContent === 'boolean'
+        ? product.hasPdpContent
+        : Boolean(readString(product.title, product.name, product.description));
+  const explicitIndexable =
+    typeof product.is_indexable === 'boolean'
+      ? product.is_indexable
+      : typeof product.isIndexable === 'boolean'
+        ? product.isIndexable
+        : true;
+
+  return productEntitySitemapEntry({
+    id,
+    productName: readString(product.title, product.name),
+    sourceProductId: isExternalSeedId(sourceProductId) ? sourceProductId : undefined,
+    hasPdpContent: explicitHasPdpContent,
+    isIndexable: explicitIndexable,
+    updatedAt: readString(product.updated_at, product.updatedAt, product.last_modified, product.lastModified),
+    canonicalUrl: readString(product.canonical_url, product.canonicalUrl),
+  });
+}
+
+async function fetchProductEntitiesForSitemap(limit: number): Promise<ProductEntitySitemapEntry[]> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), SITEMAP_FETCH_TIMEOUT_MS);
   try {
@@ -870,26 +1074,12 @@ async function fetchProductIdsForSitemap(limit: number): Promise<string[]> {
     if (!response.ok) return [];
     const json = await response.json();
     const products = Array.isArray(json?.products) ? json.products : [];
-    return products
-      .map((product: unknown) =>
-        isRecord(product)
-          ? canonicalProductPathId({
-              routeProductId: readString(product.product_id, product.id),
-              payload: undefined,
-              canonicalProductSlug: readString(
-                product.canonical_product_slug,
-                product.canonicalProductSlug,
-                product.product_group_id,
-                product.productGroupId,
-                product.sellable_item_group_id,
-                product.sellableItemGroupId,
-                product.product_entity_id,
-                product.productEntityId,
-              ),
-            })
-          : ''
-      )
-      .filter(Boolean);
+    return uniqueProductEntityEntries(
+      products.map((product: unknown) =>
+        isRecord(product) ? productEntitySitemapEntryFromGatewayProduct(product) : null,
+      ),
+      limit,
+    );
   } catch {
     return [];
   } finally {

@@ -9,6 +9,7 @@ import {
   canonicalPivotaProductEntityUrl,
   canonicalPivotaProductUrl,
   getIndexableProductSitemapUrls,
+  getProductEntitySitemapEntries,
   getPivotaProductSeoData,
   type PivotaProductSeoData,
 } from './pdpSeo';
@@ -401,6 +402,20 @@ describe('Pivota PDP SEO rendering', () => {
     );
     expect(urls.some((url) => url.includes('/products/ext_'))).toBe(false);
     expect(urls.some((url) => url.includes('return='))).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('sitemap entries include at least ten canonical ProductEntity PDPs and no aliases', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    const entries = await getProductEntitySitemapEntries(20);
+
+    expect(entries.length).toBeGreaterThanOrEqual(10);
+    expect(entries.every((entry) => /^sig_[a-z0-9]+$/i.test(entry.id))).toBe(true);
+    expect(entries.every((entry) => entry.hasPdpContent && entry.isIndexable)).toBe(true);
+    expect(entries.some((entry) => entry.canonicalUrl.includes('/products/ext_'))).toBe(false);
+    expect(entries.some((entry) => entry.canonicalUrl.includes('return='))).toBe(false);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
