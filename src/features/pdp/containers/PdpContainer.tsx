@@ -1443,6 +1443,13 @@ export function PdpContainer({
   // resolves after the user has navigated to product B) is dropped instead
   // of merging product-A items into product-B's similar list.
   const similarLoadMoreRequestRef = useRef(0);
+  // Tracks the "session" identity of the current recommendations source
+  // (productId + strategy + first incoming item id). When this key changes
+  // (variant switch on the same product, strategy refresh, etc.) we
+  // REPLACE similarItems rather than mergeRecommendationItems-append, so
+  // load-more-grown items from the previous variant don't bleed into the
+  // new variant's similar list.
+  const similarRecommendationsSessionKeyRef = useRef<string>('');
 
   const offers = useMemo(() => payload.offers ?? [], [payload.offers]);
   const internalFirstDefaultOfferId = useMemo(
@@ -1661,6 +1668,10 @@ export function PdpContainer({
   useEffect(() => {
     if (similarResetProductIdRef.current === payloadProductId) return;
     similarResetProductIdRef.current = payloadProductId;
+    // Force the next recommendations sync to be treated as a new session
+    // (new product => always replace, never accumulate items from the
+    // previous product's similar list).
+    similarRecommendationsSessionKeyRef.current = '';
 
     // Invalidate any in-flight load-more fetch from the previous product so
     // its setState callbacks (which still hold the old `similarItems`
@@ -1694,7 +1705,33 @@ export function PdpContainer({
       recommendationCurrencyFallback,
     );
     if (!incomingItems.length) return;
-    setSimilarItems((prev) => mergeRecommendationItems(prev, incomingItems).items);
+
+    // Distinguish "new recommendations session" (variant switch, strategy
+    // refresh, backfill arrival on a different product line) from "same
+    // session, possibly re-emitted by upstream churn". The original code
+    // unconditionally appended via mergeRecommendationItems(prev, incoming),
+    // which caused old-variant items to accumulate into a new variant's
+    // similar list because the sibling reset effect at line 1662 only
+    // fires on payloadProductId change — variant switches on the same
+    // product never tripped it.
+    const productKey = String(payload?.product?.product_id || '').trim();
+    const merchantKey = String(payload?.product?.merchant_id || '').trim();
+    const strategyKey = String(payloadRecommendations?.strategy || '').trim();
+    const firstItemKey = String(incomingItems[0]?.product_id || '').trim();
+    const sessionKey = `${productKey}::${merchantKey}::${strategyKey}::${firstItemKey}`;
+    const isNewSession = similarRecommendationsSessionKeyRef.current !== sessionKey;
+    similarRecommendationsSessionKeyRef.current = sessionKey;
+
+    if (isNewSession) {
+      // Replace — drop any prior items (including loadMore-grown ones from
+      // the previous session) so the user sees only the new session's data.
+      setSimilarItems(incomingItems);
+    } else {
+      // Same session, payload churned (e.g. metadata-only update). Preserve
+      // any loadMore growth via the existing dedupe-merge.
+      setSimilarItems((prev) => mergeRecommendationItems(prev, incomingItems).items);
+    }
+
     if (
       typeof payloadRecommendations?.strategy === 'string' &&
       payloadRecommendations.strategy.trim()
@@ -1712,6 +1749,8 @@ export function PdpContainer({
     payloadRecommendations?.items,
     payloadRecommendations?.metadata,
     payloadRecommendations?.strategy,
+    payload?.product?.product_id,
+    payload?.product?.merchant_id,
     recommendationCurrencyFallback,
   ]);
 
