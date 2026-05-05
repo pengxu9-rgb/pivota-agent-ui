@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { mergeHistoryItems } from './page';
+import { mergeHistoryItems } from './historyItems';
 
 describe('mergeHistoryItems', () => {
   it('keeps remote account history but fills zero prices from matching local history', () => {
