@@ -24,9 +24,13 @@ describe('internal indexability check', () => {
                   </script>
                 </head>
                 <body>
-                  <h1 data-pivota-product-name>Serum</h1>
-                  <span data-pivota-product-brand>The Ordinary</span>
-                  <p data-pivota-product-overview>Lightweight lash and brow serum.</p>
+                  <script type="application/json" data-pivota-product-seo-signals>
+                    {
+                      "product_name":"Serum",
+                      "brand":"The Ordinary",
+                      "overview":"Lightweight lash and brow serum."
+                    }
+                  </script>
                 </body>
               </html>
             `,

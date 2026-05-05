@@ -59,6 +59,10 @@ function extractJsonLd(html: string): JsonLdResult {
   return { product, offer };
 }
 
+function hasNonEmptyJsonStringField(html: string, fieldName: string) {
+  return new RegExp(`"${fieldName}"\\s*:\\s*"[^"]{2,}"`, 'i').test(html);
+}
+
 async function fetchText(url: string, headers?: HeadersInit) {
   const response = await fetch(url, {
     headers,
@@ -98,10 +102,23 @@ export async function GET(request: Request) {
     `<link[^>]+rel=["']canonical["'][^>]+href=["']${url.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["']`,
     'i',
   ).test(html);
+  const hasSeoSignals = /data-pivota-product-seo-signals/i.test(html);
   const serverRenderedContent = {
-    product_name: /data-pivota-product-name/i.test(html) || /<h1[\s>]/i.test(html),
-    brand: /data-pivota-product-brand/i.test(html),
-    description: /data-pivota-product-overview/i.test(html),
+    product_name:
+      /data-pivota-product-name/i.test(html) ||
+      /<h1[\s>]/i.test(html) ||
+      (hasSeoSignals && hasNonEmptyJsonStringField(html, 'product_name')) ||
+      hasNonEmptyJsonStringField(html, 'name'),
+    brand:
+      /data-pivota-product-brand/i.test(html) ||
+      (hasSeoSignals && hasNonEmptyJsonStringField(html, 'brand')) ||
+      /"brand"\s*:\s*\{[^}]*"name"\s*:\s*"[^"]{2,}"/i.test(html),
+    description:
+      /data-pivota-product-overview/i.test(html) ||
+      (hasSeoSignals &&
+        (hasNonEmptyJsonStringField(html, 'overview') ||
+          hasNonEmptyJsonStringField(html, 'product_intelligence_summary'))) ||
+      hasNonEmptyJsonStringField(html, 'description'),
   };
   const jsonld = extractJsonLd(html);
   const sitemapIncluded = sitemap.includes(url);

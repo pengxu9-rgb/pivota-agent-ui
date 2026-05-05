@@ -244,21 +244,40 @@ describe('Pivota PDP SEO rendering', () => {
     expect((jsonLd as any).offers).toHaveLength(2);
   });
 
-  it('renders machine-readable SEO signals without adding a visible PDP header module', () => {
+  it('renders machine-readable SEO signals without adding a visible PDP footer module', () => {
     const { container } = render(<PivotaProductSeoSummary data={cleanSeoData} />);
-    const summary = container.querySelector('[data-pivota-public-product-summary]');
+    const signals = container.querySelector('[data-pivota-product-seo-signals]');
 
-    expect(summary).toBeInTheDocument();
-    expect(summary?.textContent).toContain(cleanSeoData.name);
-    expect(summary?.textContent).toContain('SKIN1004');
-    expect(summary?.textContent).toContain('pe_skin1004_cleanser');
-    expect(summary?.textContent).toContain('ext_skin1004_cleanser');
-    expect(summary?.textContent).not.toContain('Pivota verified product page');
-    expect(container.querySelector('h1')).toHaveTextContent(cleanSeoData.name);
-    expect(container.querySelector('[data-pivota-product-source-references]')).toBeInTheDocument();
-    expect(container.querySelector('[data-pivota-merchant-source-url]')).toHaveAttribute(
-      'href',
-      cleanSeoData.merchantSource?.sourceUrl,
+    expect(container.querySelector('[data-pivota-public-product-summary]')).not.toBeInTheDocument();
+    expect(container.querySelector('h1')).not.toBeInTheDocument();
+    expect(container.querySelector('[data-pivota-merchant-source-url]')).not.toBeInTheDocument();
+    expect(container.textContent).not.toContain('Offer summary');
+    expect(container.textContent).not.toContain('ProductEntity ID');
+    expect(signals).toBeInTheDocument();
+
+    const payload = JSON.parse(signals?.textContent || '{}');
+    expect(payload).toMatchObject({
+      product_entity_id: 'pe_skin1004_cleanser',
+      product_name: cleanSeoData.name,
+      brand: 'SKIN1004',
+      canonical_url: cleanSeoData.canonicalUrl,
+    });
+    expect(payload.external_seed_ids).toEqual(['ext_skin1004_cleanser']);
+    expect(payload.source_references).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source_type: 'official_merchant_pdp',
+          source_url: cleanSeoData.merchantSource?.sourceUrl,
+        }),
+      ]),
+    );
+    expect(payload.offers).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          offer_id: 'offer_skin1004_cleanser',
+          merchant_name: 'SKIN1004 Official',
+        }),
+      ]),
     );
   });
 
