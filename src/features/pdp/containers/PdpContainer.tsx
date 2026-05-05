@@ -1437,6 +1437,12 @@ export function PdpContainer({
   const similarNoGrowthCountRef = useRef(0);
   const similarAutoLoadSentinelRef = useRef<HTMLDivElement | null>(null);
   const similarAutoLoadPendingRef = useRef(false);
+  // Generation counter for in-flight `loadMoreSimilarProducts` calls. Each
+  // load increments it; pending fetches compare against it before writing
+  // state so a stale fetch (e.g. a load-more triggered for product A that
+  // resolves after the user has navigated to product B) is dropped instead
+  // of merging product-A items into product-B's similar list.
+  const similarLoadMoreRequestRef = useRef(0);
   // Tracks the "session" identity of the current recommendations source
   // (productId + strategy + first incoming item id). When this key changes
   // (variant switch on the same product, strategy refresh, etc.) we
@@ -1666,6 +1672,12 @@ export function PdpContainer({
     // (new product => always replace, never accumulate items from the
     // previous product's similar list).
     similarRecommendationsSessionKeyRef.current = '';
+
+    // Invalidate any in-flight load-more fetch from the previous product so
+    // its setState callbacks (which still hold the old `similarItems`
+    // closure and the old productId) are dropped rather than merging stale
+    // recommendations into the new product's similar list.
+    similarLoadMoreRequestRef.current += 1;
 
     setSimilarItems(initialSimilarState.items);
     setSimilarStrategy(initialSimilarState.strategy);
@@ -2594,6 +2606,15 @@ export function PdpContainer({
 
     if (similarLoadingMore || !productId) return;
 
+    // Snapshot the request identity at call time. After the await, we only
+    // commit setState if (a) no newer load-more was issued and (b) the page
+    // is still showing the same product. Without this, a load-more for
+    // product A that resolves after the user has navigated to product B
+    // would merge product-A items into product-B's similar list.
+    similarLoadMoreRequestRef.current += 1;
+    const requestId = similarLoadMoreRequestRef.current;
+    const requestProductId = productId;
+
     setSimilarLoadingMore(true);
     setSimilarLoadMoreError(false);
     try {
@@ -2607,6 +2628,15 @@ export function PdpContainer({
         })),
         timeout_ms: 8000,
       });
+
+      if (
+        similarLoadMoreRequestRef.current !== requestId ||
+        productId !== requestProductId
+      ) {
+        // Stale fetch — a newer load-more started, or the user navigated to
+        // a different product. Drop the result without touching state.
+        return;
+      }
 
       const incomingItems = normalizeRecommendationItems(
         result.items,
@@ -2638,9 +2668,23 @@ export function PdpContainer({
       setSimilarHasMore(Boolean(upstreamHasMore) && !stopForNoGrowth && mergedLength < SIMILAR_MAX);
       setSimilarVisibleCount(Math.min(targetVisibleCount, mergedLength));
     } catch {
-      setSimilarLoadMoreError(true);
+      // Even error toggling races: only flip the error flag if this request
+      // is still the active one.
+      if (
+        similarLoadMoreRequestRef.current === requestId &&
+        productId === requestProductId
+      ) {
+        setSimilarLoadMoreError(true);
+      }
     } finally {
-      setSimilarLoadingMore(false);
+      // Only clear the loading flag when we own it. A newer load-more
+      // started in the meantime is responsible for its own loading state.
+      if (
+        similarLoadMoreRequestRef.current === requestId &&
+        productId === requestProductId
+      ) {
+        setSimilarLoadingMore(false);
+      }
     }
   }, [
     merchantId,
