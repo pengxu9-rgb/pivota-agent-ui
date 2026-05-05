@@ -380,6 +380,54 @@ describe('PdpContainer product intel section', () => {
     expect(screen.getByText('Flexible shade system')).toBeInTheDocument();
   });
 
+  it('renders assistant-reviewed exfoliating cleanser insights with reviewed product-specific signals', () => {
+    const exfoliatingCleanserPayload: PDPPayload = {
+      ...payload,
+      modules: payload.modules.map((module) =>
+        module.type !== 'product_intel'
+          ? module
+          : {
+              ...module,
+              data: {
+                ...(module.data as any),
+                evidence_profile: 'seller_only',
+                quality_state: 'limited',
+                provenance: {
+                  generator: 'curated_override',
+                  reviewer_kind: 'assistant',
+                  review_status: 'completed',
+                  review_decision: 'pass',
+                  selection_strategy: 'curated_override',
+                },
+                product_intel_core: {
+                  ...(module.data as any).product_intel_core!,
+                  evidence_profile: 'seller_only',
+                  quality_state: 'limited',
+                  what_it_is: {
+                    headline: 'Exfoliating cleansing treatment',
+                    body: 'A succinic-acid-led cleansing treatment positioned for congestion-prone routines.',
+                  },
+                  best_for: [{ label: 'Congestion-prone skin' }],
+                },
+              },
+            },
+      ),
+    };
+
+    render(
+      <PdpContainer
+        payload={exfoliatingCleanserPayload}
+        mode="generic"
+        onAddToCart={() => {}}
+        onBuyNow={() => {}}
+      />,
+    );
+
+    expect(screen.getByText('Pivota Insights')).toBeInTheDocument();
+    expect(screen.getByText('Exfoliating cleansing treatment')).toBeInTheDocument();
+    expect(screen.getByText('Congestion-prone skin')).toBeInTheDocument();
+  });
+
   it('filters generic best-for title fallback labels from otherwise specific insights', () => {
     const filteredPayload: PDPPayload = {
       ...payload,
