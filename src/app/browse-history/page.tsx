@@ -7,8 +7,17 @@ import Link from 'next/link';
 import ProductCard from '@/components/product/ProductCard';
 import { Button } from '@/components/ui/button';
 import { useCartStore } from '@/store/cartStore';
-import { clearBrowseHistory as clearAccountBrowseHistory, getBrowseHistory } from '@/lib/api';
-import { mergeHistoryItems, type HistoryItem } from './historyItems';
+import {
+  clearBrowseHistory as clearAccountBrowseHistory,
+  getBrowseHistory,
+  resolveProductCandidates,
+} from '@/lib/api';
+import {
+  hasPositiveHistoryPrice,
+  historyKey,
+  mergeHistoryItems,
+  type HistoryItem,
+} from './historyItems';
 
 const LOCAL_HISTORY_KEY = 'browse_history';
 
@@ -68,6 +77,64 @@ function mapRemoteHistory(items: any[]): HistoryItem[] {
     .sort((a: HistoryItem, b: HistoryItem) => b.timestamp - a.timestamp);
 }
 
+function extractPriceAmount(value: any): number {
+  const candidates = [
+    value,
+    value?.amount,
+    value?.value,
+    value?.current,
+    value?.current?.amount,
+    value?.current?.value,
+    value?.sale,
+    value?.sale?.amount,
+    value?.min,
+    value?.min?.amount,
+  ];
+  for (const candidate of candidates) {
+    const amount =
+      typeof candidate === 'number'
+        ? candidate
+        : typeof candidate === 'string'
+          ? Number(candidate)
+          : NaN;
+    if (Number.isFinite(amount) && amount > 0) return amount;
+  }
+  return 0;
+}
+
+async function hydrateZeroPriceItems(items: HistoryItem[]): Promise<HistoryItem[]> {
+  const targets = items.filter((item) => !hasPositiveHistoryPrice(item)).slice(0, 24);
+  if (targets.length === 0) return items;
+
+  const pricesByKey = new Map<string, number>();
+  await Promise.all(
+    targets.map(async (item) => {
+      try {
+        const resolved = await resolveProductCandidates({
+          product_id: item.product_id,
+          merchant_id: item.merchant_id,
+          limit: 10,
+          timeout_ms: 4500,
+        });
+        const offers = Array.isArray(resolved?.offers) ? resolved.offers : [];
+        const merchantId = String(item.merchant_id || '').trim();
+        const matchingOffer =
+          offers.find((offer) => String(offer?.merchant_id || '').trim() === merchantId) || offers[0];
+        const price = extractPriceAmount(matchingOffer?.price);
+        if (price > 0) pricesByKey.set(historyKey(item), price);
+      } catch {
+        // Price hydration is best-effort; the stored history item still renders.
+      }
+    }),
+  );
+
+  if (pricesByKey.size === 0) return items;
+  return items.map((item) => {
+    const hydratedPrice = pricesByKey.get(historyKey(item));
+    return hydratedPrice ? { ...item, price: hydratedPrice } : item;
+  });
+}
+
 export default function BrowseHistoryPage() {
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -86,6 +153,11 @@ export default function BrowseHistoryPage() {
           const mergedItems = mergeHistoryItems(remoteItems, localItems);
           setHistory(mergedItems);
           writeLocalHistory(mergedItems);
+          void hydrateZeroPriceItems(mergedItems).then((hydratedItems) => {
+            if (cancelled || hydratedItems === mergedItems) return;
+            setHistory(hydratedItems);
+            writeLocalHistory(hydratedItems);
+          });
         } else {
           setHistory(localItems);
         }

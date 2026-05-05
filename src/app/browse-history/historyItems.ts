@@ -8,11 +8,11 @@ export interface HistoryItem {
   timestamp: number;
 }
 
-function historyKey(item: Pick<HistoryItem, 'product_id' | 'merchant_id'>): string {
+export function historyKey(item: Pick<HistoryItem, 'product_id' | 'merchant_id'>): string {
   return `${String(item.product_id || '').trim()}::${String(item.merchant_id || '').trim()}`;
 }
 
-function hasPositivePrice(item: Pick<HistoryItem, 'price'> | undefined): boolean {
+export function hasPositiveHistoryPrice(item: Pick<HistoryItem, 'price'> | undefined): boolean {
   return Boolean(item && Number.isFinite(Number(item.price)) && Number(item.price) > 0);
 }
 
@@ -32,10 +32,10 @@ export function mergeHistoryItems(remoteItems: HistoryItem[], localItems: Histor
     if (!key || seen.has(key)) continue;
     seen.add(key);
     const localMatch = localByKey.get(key);
-    const fallbackPrice = hasPositivePrice(localMatch) ? Number(localMatch?.price) : item.price;
+    const fallbackPrice = hasPositiveHistoryPrice(localMatch) ? Number(localMatch?.price) : item.price;
     merged.push({
       ...item,
-      price: hasPositivePrice(item) ? item.price : fallbackPrice,
+      price: hasPositiveHistoryPrice(item) ? item.price : fallbackPrice,
     });
   }
 
