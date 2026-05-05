@@ -21,6 +21,8 @@ describe('ProductEntity sitemap', () => {
       '<loc>https://agent.pivota.cc/products/sig_7ad40676c42fb9c96e2a8136</loc>',
     );
     expect(xml.match(/https:\/\/agent\.pivota\.cc\/products\/sig_/g)?.length || 0).toBeGreaterThanOrEqual(10);
+    expect(xml).not.toContain('https://agent.pivota.cc/products/sig_1bf9aa542630047f9b2f9f28');
+    expect(xml).not.toContain('https://agent.pivota.cc/products/sig_65c65851414613cc2df011ff');
     expect(xml).not.toContain('/products/ext_');
     expect(xml).not.toContain('return=');
     expect(xml).not.toContain('<html');

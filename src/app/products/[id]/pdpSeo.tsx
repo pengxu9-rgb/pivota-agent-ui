@@ -47,16 +47,6 @@ const DEFAULT_PUBLISHED_PRODUCT_ENTITIES = [
     productName: 'The Ordinary Multi-Peptide Lash and Brow Serum',
   },
   {
-    id: 'sig_1bf9aa542630047f9b2f9f28',
-    externalSeedId: 'ext_e4ad75bd225e370109c9adc9',
-    productName: 'Hydra Vizor Broad Spectrum Mineral SPF 30 Sunscreen Moisturizer',
-  },
-  {
-    id: 'sig_65c65851414613cc2df011ff',
-    externalSeedId: 'ext_7d1ec8eed3a596dc5b03f435',
-    productName: 'Hydra Vizor Mini Broad Spectrum Mineral SPF 30 Sunscreen Moisturizer',
-  },
-  {
     id: 'sig_5edc907cefce71341747b10b',
     externalSeedId: 'ext_6421a5db3f2487dd74467ae4',
     productName: 'Always an Optimist 4-In-1 Mist',

@@ -410,12 +410,15 @@ describe('Pivota PDP SEO rendering', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     const entries = await getProductEntitySitemapEntries(20);
+    const urls = entries.map((entry) => entry.canonicalUrl);
 
     expect(entries.length).toBeGreaterThanOrEqual(10);
     expect(entries.every((entry) => /^sig_[a-z0-9]+$/i.test(entry.id))).toBe(true);
     expect(entries.every((entry) => entry.hasPdpContent && entry.isIndexable)).toBe(true);
     expect(entries.some((entry) => entry.canonicalUrl.includes('/products/ext_'))).toBe(false);
     expect(entries.some((entry) => entry.canonicalUrl.includes('return='))).toBe(false);
+    expect(urls).not.toContain('https://agent.pivota.cc/products/sig_1bf9aa542630047f9b2f9f28');
+    expect(urls).not.toContain('https://agent.pivota.cc/products/sig_65c65851414613cc2df011ff');
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
