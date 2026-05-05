@@ -2,7 +2,7 @@ import React from 'react';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import ProductDetailPage from './page';
+import ProductDetailPage from './ProductDetailClient';
 
 const pushMock = vi.fn();
 const replaceMock = vi.fn();
