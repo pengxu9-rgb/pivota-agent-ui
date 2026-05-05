@@ -7,7 +7,27 @@ describe('ProductEntity sitemap', () => {
   });
 
   it('returns only canonical ProductEntity PDP URLs with lastmod', async () => {
-    const fetchMock = vi.fn();
+    vi.stubEnv(
+      'PIVOTA_PRODUCT_ENTITY_INDEX_REGISTRY_URL',
+      'https://portal.example.test/api/agent-center/product-entity-index/public',
+    );
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        product_entity_sitemap_entries: Array.from({ length: 12 }, (_, index) => ({
+          id:
+            index === 0
+              ? 'sig_7ad40676c42fb9c96e2a8136'
+              : `sig_registryready${index}`,
+          canonicalUrl:
+            index === 0
+              ? 'https://agent.pivota.cc/products/sig_7ad40676c42fb9c96e2a8136'
+              : `https://agent.pivota.cc/products/sig_registryready${index}`,
+          productName: `Registry Product ${index}`,
+          updatedAt: '2026-05-04T18:00:39Z',
+        })),
+      }),
+    }));
     vi.stubGlobal('fetch', fetchMock);
 
     const response = await GET();
@@ -27,6 +47,9 @@ describe('ProductEntity sitemap', () => {
     expect(xml).not.toContain('return=');
     expect(xml).not.toContain('<html');
     expect(xml).not.toContain('Pivota Shopping AI');
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://portal.example.test/api/agent-center/product-entity-index/public?limit=5000&shape=sitemap',
+      expect.objectContaining({ cache: 'no-store' }),
+    );
   });
 });

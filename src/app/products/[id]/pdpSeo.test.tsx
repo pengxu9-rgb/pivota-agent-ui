@@ -383,17 +383,22 @@ describe('Pivota PDP SEO rendering', () => {
     );
   });
 
-  it('sitemap helper includes ProductEntity URLs only from configured or discovered main-path data', async () => {
-    vi.stubEnv('PIVOTA_SITEMAP_DYNAMIC_PRODUCTS_ENABLED', 'true');
+  it('sitemap helper includes ProductEntity URLs only from verified registry data', async () => {
+    vi.stubEnv(
+      'PIVOTA_PRODUCT_ENTITY_INDEX_REGISTRY_URL',
+      'https://portal.example.test/api/agent-center/product-entity-index/public',
+    );
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => ({
         ok: true,
         json: async () => ({
-          products: [
+          product_entity_sitemap_entries: [
             {
-              product_id: 'ext_d7c74bcb380cbc2bdd5d5d90',
-              product_group_id: 'sig_7ad40676c42fb9c96e2a8136',
+              id: 'sig_7ad40676c42fb9c96e2a8136',
+              canonicalUrl: 'https://agent.pivota.cc/products/sig_7ad40676c42fb9c96e2a8136',
+              externalSeedId: 'ext_d7c74bcb380cbc2bdd5d5d90',
+              updatedAt: '2026-05-04T18:00:39Z',
             },
           ],
         }),
@@ -410,17 +415,28 @@ describe('Pivota PDP SEO rendering', () => {
     );
   });
 
-  it('sitemap helper uses the safe ProductEntity allowlist without gateway fallback content', async () => {
+  it('sitemap helper fails closed when registry data is unavailable', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
 
     const urls = await getIndexableProductSitemapUrls(20);
 
-    expect(urls).toContain(
-      'https://agent.pivota.cc/products/sig_7ad40676c42fb9c96e2a8136',
-    );
+    expect(urls).toEqual([]);
     expect(urls.some((url) => url.includes('/products/ext_'))).toBe(false);
     expect(urls.some((url) => url.includes('return='))).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('sitemap helper allows explicit canonical ProductEntity IDs without alias fallback', async () => {
+    vi.stubEnv('PIVOTA_SITEMAP_PRODUCT_IDS', 'sig_configured,ext_d7c74bcb380cbc2bdd5d5d90');
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    const urls = await getIndexableProductSitemapUrls(20);
+
+    expect(urls).toContain('https://agent.pivota.cc/products/sig_configured');
+    expect(urls).toContain('https://agent.pivota.cc/products/sig_7ad40676c42fb9c96e2a8136');
+    expect(urls.some((url) => url.includes('/products/ext_'))).toBe(false);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -464,7 +480,21 @@ describe('Pivota PDP SEO rendering', () => {
   });
 
   it('sitemap entries include at least ten canonical ProductEntity PDPs and no aliases', async () => {
-    const fetchMock = vi.fn();
+    vi.stubEnv(
+      'PIVOTA_PRODUCT_ENTITY_INDEX_REGISTRY_URL',
+      'https://portal.example.test/api/agent-center/product-entity-index/public',
+    );
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        product_entity_sitemap_entries: Array.from({ length: 12 }, (_, index) => ({
+          id: `sig_bulkready${index}`,
+          canonicalUrl: `https://agent.pivota.cc/products/sig_bulkready${index}`,
+          productName: `Bulk Ready ${index}`,
+          updatedAt: '2026-05-04T18:00:39Z',
+        })),
+      }),
+    }));
     vi.stubGlobal('fetch', fetchMock);
 
     const entries = await getProductEntitySitemapEntries(20);
@@ -477,6 +507,9 @@ describe('Pivota PDP SEO rendering', () => {
     expect(entries.some((entry) => entry.canonicalUrl.includes('return='))).toBe(false);
     expect(urls).not.toContain('https://agent.pivota.cc/products/sig_1bf9aa542630047f9b2f9f28');
     expect(urls).not.toContain('https://agent.pivota.cc/products/sig_65c65851414613cc2df011ff');
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://portal.example.test/api/agent-center/product-entity-index/public?limit=20&shape=sitemap',
+      expect.objectContaining({ cache: 'no-store' }),
+    );
   });
 });

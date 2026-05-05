@@ -9,6 +9,7 @@ const PING_THROTTLE_MS = 60 * 60 * 1000;
 let lastSitemapPingAt = 0;
 
 export const revalidate = 3600;
+export const dynamic = 'force-dynamic';
 
 function escapeXml(value: string) {
   return value
@@ -66,7 +67,7 @@ export async function GET() {
     status: 200,
     headers: {
       'content-type': 'application/xml; charset=utf-8',
-      'cache-control': 'public, max-age=3600, s-maxage=3600',
+      'cache-control': 'public, max-age=300, s-maxage=300, stale-while-revalidate=600',
     },
   });
 }

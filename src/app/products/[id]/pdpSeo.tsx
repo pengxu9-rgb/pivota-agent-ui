@@ -8,7 +8,7 @@ const DEFAULT_PRODUCT_ENTITY_INDEX_REGISTRY_URL =
   'https://pivota-merchants-portal-clean.vercel.app/api/agent-center/product-entity-index/public';
 const SEO_FETCH_TIMEOUT_MS = 12000;
 const SITEMAP_FETCH_TIMEOUT_MS = 750;
-const PRODUCT_ENTITY_REGISTRY_FETCH_TIMEOUT_MS = 5000;
+const PRODUCT_ENTITY_REGISTRY_FETCH_TIMEOUT_MS = 12000;
 const SEO_DATA_CACHE_TTL_MS = 60 * 60 * 1000;
 const SEO_INCLUDE_MODULES = [
   'offers',
@@ -182,13 +182,18 @@ export type ProductEntitySitemapEntry = {
 };
 
 type ProductEntityIndexRegistryRecord = {
+  id?: string;
   product_entity_id?: string;
+  canonicalUrl?: string;
   canonical_url?: string;
+  productName?: string;
   product_name?: string;
   brand?: string;
   category?: string;
+  updatedAt?: string;
   source_updated_at?: string;
   updated_at?: string;
+  externalSeedId?: string;
   external_seed_id?: string;
 };
 
@@ -867,24 +872,23 @@ export async function getProductEntitySitemapEntries(
       updatedAt: DEFAULT_PRODUCT_ENTITY_LASTMOD,
     }),
   );
-  const defaults = DEFAULT_PUBLISHED_PRODUCT_ENTITIES.map((product) =>
-    productEntitySitemapEntry({
-      id: product.id,
-      productName: product.productName,
-      sourceProductId: product.externalSeedId,
-      hasPdpContent: true,
-      isIndexable: true,
-      updatedAt: DEFAULT_PRODUCT_ENTITY_LASTMOD,
-    }),
-  );
   const registryEntries = await fetchProductEntitiesFromRegistry(limit);
-  const discovered =
-    process.env.PIVOTA_SITEMAP_DYNAMIC_PRODUCTS_ENABLED === 'true'
-      ? await fetchProductEntitiesForSitemap(limit)
+  const staticAllowlistEntries =
+    process.env.PIVOTA_SITEMAP_STATIC_ALLOWLIST_ENABLED === 'true'
+      ? DEFAULT_PUBLISHED_PRODUCT_ENTITIES.map((product) =>
+          productEntitySitemapEntry({
+            id: product.id,
+            productName: product.productName,
+            sourceProductId: product.externalSeedId,
+            hasPdpContent: true,
+            isIndexable: true,
+            updatedAt: DEFAULT_PRODUCT_ENTITY_LASTMOD,
+          }),
+        )
       : [];
 
   return uniqueProductEntityEntries(
-    [...configuredEntries, ...registryEntries, ...defaults, ...discovered],
+    [...configuredEntries, ...registryEntries, ...staticAllowlistEntries],
     limit,
   );
 }
@@ -1026,13 +1030,13 @@ function productEntitySitemapEntryFromRegistryRecord(
   record: ProductEntityIndexRegistryRecord,
 ) {
   return productEntitySitemapEntry({
-    id: readString(record.product_entity_id),
-    productName: readString(record.product_name),
-    sourceProductId: readString(record.external_seed_id),
+    id: readString(record.product_entity_id, record.id),
+    productName: readString(record.product_name, record.productName),
+    sourceProductId: readString(record.external_seed_id, record.externalSeedId),
     hasPdpContent: true,
     isIndexable: true,
-    updatedAt: readString(record.updated_at, record.source_updated_at),
-    canonicalUrl: readString(record.canonical_url),
+    updatedAt: readString(record.updated_at, record.updatedAt, record.source_updated_at),
+    canonicalUrl: readString(record.canonical_url, record.canonicalUrl),
   });
 }
 
@@ -1045,6 +1049,7 @@ function productEntityIndexRegistryUrl(limit: number) {
   const base = configured || DEFAULT_PRODUCT_ENTITY_INDEX_REGISTRY_URL;
   const url = new URL(base);
   url.searchParams.set('limit', String(limit));
+  url.searchParams.set('shape', 'sitemap');
   return url.toString();
 }
 
@@ -1065,7 +1070,9 @@ async function fetchProductEntitiesFromRegistry(
     });
     if (!response.ok) return [];
     const json = await response.json();
-    const records = Array.isArray(json?.product_entity_index_records)
+    const records = Array.isArray(json?.product_entity_sitemap_entries)
+      ? json.product_entity_sitemap_entries
+      : Array.isArray(json?.product_entity_index_records)
       ? json.product_entity_index_records
       : [];
     return uniqueProductEntityEntries(
