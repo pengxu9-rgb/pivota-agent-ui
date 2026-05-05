@@ -197,6 +197,12 @@ type ProductEntityIndexRegistryRecord = {
   external_seed_id?: string;
 };
 
+type ProductEntityRegistryLookupInput = {
+  productEntityId?: string;
+  externalSeedId?: string;
+  limit?: number;
+};
+
 function isRecord(value: unknown): value is Record<string, any> {
   return Boolean(value && typeof value === 'object' && !Array.isArray(value));
 }
@@ -266,7 +272,12 @@ export async function canonicalProductEntityIdForRouteAsync(productId: string) {
   if (staticCanonicalId !== id || !isExternalSeedId(id)) return staticCanonicalId;
   const registryEntries = await fetchProductEntitiesFromRegistry(5000);
   const match = registryEntries.find((entry) => entry.sourceProductId === id);
-  return match?.id || id;
+  if (match?.id) return match.id;
+  const resolverEntries = await fetchProductEntityResolverEntries({
+    externalSeedId: id,
+    limit: 5,
+  });
+  return resolverEntries[0]?.id || id;
 }
 
 function normalizeSitemapProductEntityId(value: unknown): string {
@@ -325,7 +336,15 @@ async function seoLookupProductIdsAsync(routeProductId: string) {
   if (ids.length > 1 || isExternalSeedId(routeProductId)) return ids;
   const registryEntries = await fetchProductEntitiesFromRegistry(5000);
   const match = registryEntries.find((entry) => entry.id === routeProductId);
-  return uniqueStrings([routeProductId, match?.sourceProductId], 2);
+  if (match?.sourceProductId) {
+    return uniqueStrings([routeProductId, match.sourceProductId], 2);
+  }
+  const resolverEntries = await fetchProductEntityResolverEntries({
+    productEntityId: routeProductId,
+    limit: 5,
+  });
+  const resolverMatch = resolverEntries.find((entry) => entry.id === routeProductId);
+  return uniqueStrings([routeProductId, resolverMatch?.sourceProductId], 2);
 }
 
 function gatewayInvokeUrl() {
@@ -893,6 +912,25 @@ export async function getProductEntitySitemapEntries(
   );
 }
 
+function productEntityResolverEntryFromRegistryRecord(
+  record: ProductEntityIndexRegistryRecord,
+): ProductEntitySitemapEntry | null {
+  const id = normalizeSitemapProductEntityId(readString(record.product_entity_id, record.id));
+  if (!id || !/^sig_[a-z0-9]+$/i.test(id)) return null;
+  const canonicalUrl = readString(record.canonical_url, record.canonicalUrl) || canonicalPivotaProductUrl(id);
+  if (!/^https:\/\/agent\.pivota\.cc\/products\/sig_[a-z0-9]+$/i.test(canonicalUrl)) return null;
+  if (canonicalUrl.includes('/products/ext_') || canonicalUrl.includes('?')) return null;
+  return {
+    id,
+    canonicalUrl,
+    productName: readString(record.product_name, record.productName),
+    hasPdpContent: true,
+    isIndexable: false,
+    updatedAt: readString(record.updated_at, record.updatedAt, record.source_updated_at) || DEFAULT_PRODUCT_ENTITY_LASTMOD,
+    sourceProductId: readString(record.external_seed_id, record.externalSeedId),
+  };
+}
+
 function productEntitySitemapEntry(input: {
   id: string;
   productName?: string;
@@ -1053,6 +1091,21 @@ function productEntityIndexRegistryUrl(limit: number) {
   return url.toString();
 }
 
+function productEntityIndexResolverUrl(input: ProductEntityRegistryLookupInput) {
+  const configured = readString(
+    process.env.PIVOTA_PRODUCT_ENTITY_INDEX_REGISTRY_URL,
+    process.env.PIVOTA_AGENT_CENTER_PRODUCT_ENTITY_INDEX_URL,
+    process.env.NEXT_PUBLIC_PIVOTA_PRODUCT_ENTITY_INDEX_REGISTRY_URL,
+  );
+  const base = configured || DEFAULT_PRODUCT_ENTITY_INDEX_REGISTRY_URL;
+  const url = new URL(base);
+  url.searchParams.set('limit', String(input.limit || 5));
+  url.searchParams.set('shape', 'resolver');
+  if (input.productEntityId) url.searchParams.set('product_entity_id', input.productEntityId);
+  if (input.externalSeedId) url.searchParams.set('external_seed_id', input.externalSeedId);
+  return url.toString();
+}
+
 async function fetchProductEntitiesFromRegistry(
   limit: number,
 ): Promise<ProductEntitySitemapEntry[]> {
@@ -1084,6 +1137,43 @@ async function fetchProductEntitiesFromRegistry(
           : null,
       ),
       limit,
+    );
+  } catch {
+    return [];
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function fetchProductEntityResolverEntries(
+  input: ProductEntityRegistryLookupInput,
+): Promise<ProductEntitySitemapEntry[]> {
+  if (process.env.NODE_ENV === 'test' && !process.env.PIVOTA_PRODUCT_ENTITY_INDEX_REGISTRY_URL) {
+    return [];
+  }
+  if (process.env.PIVOTA_PRODUCT_ENTITY_INDEX_REGISTRY_ENABLED === 'false') return [];
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), PRODUCT_ENTITY_REGISTRY_FETCH_TIMEOUT_MS);
+  try {
+    const response = await fetch(productEntityIndexResolverUrl(input), {
+      cache: 'no-store',
+      signal: controller.signal,
+    });
+    if (!response.ok) return [];
+    const json = await response.json();
+    const records = Array.isArray(json?.product_entity_resolver_records)
+      ? json.product_entity_resolver_records
+      : [];
+    return uniqueProductEntityEntries(
+      records.map((record: unknown) =>
+        isRecord(record)
+          ? productEntityResolverEntryFromRegistryRecord(
+              record as ProductEntityIndexRegistryRecord,
+            )
+          : null,
+      ),
+      input.limit || 5,
     );
   } catch {
     return [];

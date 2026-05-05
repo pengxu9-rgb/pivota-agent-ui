@@ -6,6 +6,7 @@ import {
   buildPivotaProductMetadata,
   buildProductJsonLd,
   canonicalProductEntityIdForRoute,
+  canonicalProductEntityIdForRouteAsync,
   canonicalPivotaProductEntityUrl,
   canonicalPivotaProductUrl,
   getIndexableProductSitemapUrls,
@@ -380,6 +381,113 @@ describe('Pivota PDP SEO rendering', () => {
           mapsToProductEntityId: 'sig_7ad40676c42fb9c96e2a8136',
         }),
       ]),
+    );
+  });
+
+  it('uses ready registry resolver aliases for ProductEntity SEO without adding them to sitemap', async () => {
+    vi.stubEnv(
+      'PIVOTA_PRODUCT_ENTITY_INDEX_REGISTRY_URL',
+      'https://portal.example.test/api/agent-center/product-entity-index/public',
+    );
+    const requestedProductIds: string[] = [];
+    const fetchMock = vi.fn(async (url, init) => {
+      const urlText = String(url);
+      if (urlText.includes('shape=sitemap')) {
+        return {
+          ok: true,
+          json: async () => ({
+            product_entity_sitemap_entries: [],
+          }),
+        };
+      }
+      if (urlText.includes('shape=resolver')) {
+        return {
+          ok: true,
+          json: async () => ({
+            product_entity_resolver_records: [
+              {
+                product_entity_id: 'sig_resolverready',
+                canonical_url: 'https://agent.pivota.cc/products/sig_resolverready',
+                product_name: 'Resolver Ready Product',
+                brand: 'Resolver Brand',
+                external_seed_id: 'ext_resolverready',
+                updated_at: '2026-05-05T00:00:00.000Z',
+              },
+            ],
+          }),
+        };
+      }
+      const body = JSON.parse(String((init as RequestInit)?.body || '{}'));
+      const requestedProductId = body?.payload?.product_ref?.product_id;
+      requestedProductIds.push(requestedProductId);
+      if (requestedProductId === 'sig_resolverready') {
+        return {
+          ok: false,
+          json: async () => ({}),
+        };
+      }
+      return {
+        ok: true,
+        json: async () => ({
+          subject: {
+            type: 'product_group',
+            id: 'sig_resolverready',
+          },
+          modules: [
+            {
+              type: 'canonical',
+              data: {
+                product_group_id: 'sig_resolverready',
+                pdp_payload: {
+                  product: {
+                    product_id: 'ext_resolverready',
+                    title: 'Resolver Ready Product',
+                    brand: { name: 'Resolver Brand' },
+                    description:
+                      'A real server-rendered PDP payload resolved through a source alias.',
+                    category_path: ['Beauty', 'Serum'],
+                  },
+                  modules: [],
+                  offers: [
+                    {
+                      offer_id: 'offer_resolver_ready',
+                      merchant_name: 'Resolver Merchant',
+                      inventory: { in_stock: true },
+                      action: {
+                        url: 'https://merchant.example.test/resolver-ready-product',
+                      },
+                    },
+                  ],
+                  actions: [],
+                },
+              },
+            },
+          ],
+        }),
+      };
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const canonicalId = await canonicalProductEntityIdForRouteAsync('ext_resolverready');
+    const data = await getPivotaProductSeoData('sig_resolverready');
+
+    expect(canonicalId).toBe('sig_resolverready');
+    expect(requestedProductIds).toEqual(['sig_resolverready', 'ext_resolverready']);
+    expect(data).toMatchObject({
+      productId: 'sig_resolverready',
+      productEntityId: 'sig_resolverready',
+      name: 'Resolver Ready Product',
+      brand: 'Resolver Brand',
+      canonicalUrl: 'https://agent.pivota.cc/products/sig_resolverready',
+    });
+    expect(data?.externalSeedIds).toContain('ext_resolverready');
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://portal.example.test/api/agent-center/product-entity-index/public?limit=5&shape=resolver&external_seed_id=ext_resolverready',
+      expect.objectContaining({ cache: 'no-store' }),
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://portal.example.test/api/agent-center/product-entity-index/public?limit=5&shape=resolver&product_entity_id=sig_resolverready',
+      expect.objectContaining({ cache: 'no-store' }),
     );
   });
 
