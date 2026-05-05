@@ -1,13 +1,5 @@
 import { getProductEntitySitemapEntries } from '@/app/products/[id]/pdpSeo';
 
-const PUBLIC_SITEMAP_URL = 'https://agent.pivota.cc/sitemap.xml';
-const GOOGLE_SITEMAP_PING_URL = `https://www.google.com/ping?sitemap=${encodeURIComponent(
-  PUBLIC_SITEMAP_URL,
-)}`;
-const PING_THROTTLE_MS = 60 * 60 * 1000;
-
-let lastSitemapPingAt = 0;
-
 export const revalidate = 3600;
 export const dynamic = 'force-dynamic';
 
@@ -18,30 +10,6 @@ function escapeXml(value: string) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&apos;');
-}
-
-function maybePingGoogleSitemap() {
-  if (process.env.NODE_ENV === 'test') return;
-  if (process.env.NEXT_PHASE === 'phase-production-build') return;
-  const now = Date.now();
-  if (now - lastSitemapPingAt < PING_THROTTLE_MS) return;
-  lastSitemapPingAt = now;
-
-  void fetch(GOOGLE_SITEMAP_PING_URL, { cache: 'no-store' })
-    .then((response) => {
-      console.info({
-        ping_status: 'sent',
-        timestamp: new Date().toISOString(),
-        status: response.status,
-      });
-    })
-    .catch((error) => {
-      console.warn({
-        ping_status: 'failed',
-        timestamp: new Date().toISOString(),
-        error: error instanceof Error ? error.message : String(error),
-      });
-    });
 }
 
 export async function GET() {
@@ -60,8 +28,6 @@ export async function GET() {
     ...urls,
     '</urlset>',
   ].join('\n');
-
-  maybePingGoogleSitemap();
 
   return new Response(xml, {
     status: 200,
