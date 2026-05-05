@@ -6,7 +6,7 @@ const DEFAULT_PUBLIC_BASE_URL = 'https://agent.pivota.cc';
 const DEFAULT_GATEWAY_BASE_URL = 'https://pivota-agent-production.up.railway.app';
 const DEFAULT_PRODUCT_ENTITY_INDEX_REGISTRY_URL =
   'https://pivota-merchants-portal-clean.vercel.app/api/agent-center/product-entity-index/public';
-const SEO_FETCH_TIMEOUT_MS = 6000;
+const SEO_FETCH_TIMEOUT_MS = 12000;
 const SITEMAP_FETCH_TIMEOUT_MS = 750;
 const PRODUCT_ENTITY_REGISTRY_FETCH_TIMEOUT_MS = 900;
 const SEO_DATA_CACHE_TTL_MS = 60 * 60 * 1000;
