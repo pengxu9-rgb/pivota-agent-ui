@@ -7,7 +7,7 @@ import {
   buildOfferJsonLd,
   buildPivotaProductMetadata,
   buildProductJsonLd,
-  canonicalProductEntityIdForRoute,
+  canonicalProductEntityIdForRouteAsync,
   getPivotaProductSeoData,
 } from './pdpSeo';
 
@@ -25,7 +25,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 export default async function ProductDetailPage({ params }: Props) {
   const { id } = await params;
-  const canonicalId = canonicalProductEntityIdForRoute(id);
+  const canonicalId = await canonicalProductEntityIdForRouteAsync(id);
   if (canonicalId && canonicalId !== id) {
     permanentRedirect(`/products/${encodeURIComponent(canonicalId)}`);
   }

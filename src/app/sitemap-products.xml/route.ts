@@ -44,7 +44,7 @@ function maybePingGoogleSitemap() {
 }
 
 export async function GET() {
-  const entries = await getProductEntitySitemapEntries(500);
+  const entries = await getProductEntitySitemapEntries(5000);
   const urls = entries.map((entry) =>
     [
       '  <url>',

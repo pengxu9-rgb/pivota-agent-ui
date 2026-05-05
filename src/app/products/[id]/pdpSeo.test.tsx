@@ -405,6 +405,45 @@ describe('Pivota PDP SEO rendering', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it('sitemap helper consumes registry records and rejects ext alias canonical URLs', async () => {
+    vi.stubEnv(
+      'PIVOTA_PRODUCT_ENTITY_INDEX_REGISTRY_URL',
+      'https://portal.example.test/api/agent-center/product-entity-index/public',
+    );
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({
+          product_entity_index_records: [
+            {
+              product_entity_id: 'sig_registryready',
+              canonical_url: 'https://agent.pivota.cc/products/sig_registryready',
+              product_name: 'Registry Ready Product',
+              external_seed_id: 'ext_registry_ready',
+              updated_at: '2026-05-04T18:00:39Z',
+            },
+            {
+              product_entity_id: 'sig_registrybad',
+              canonical_url: 'https://agent.pivota.cc/products/ext_registry_bad',
+              product_name: 'Registry Bad Alias',
+              external_seed_id: 'ext_registry_bad',
+            },
+          ],
+        }),
+      })),
+    );
+
+    const entries = await getProductEntitySitemapEntries(20);
+    const urls = entries.map((entry) => entry.canonicalUrl);
+
+    expect(urls).toContain('https://agent.pivota.cc/products/sig_registryready');
+    expect(urls).not.toContain('https://agent.pivota.cc/products/ext_registry_bad');
+    expect(entries.find((entry) => entry.id === 'sig_registryready')?.sourceProductId).toBe(
+      'ext_registry_ready',
+    );
+  });
+
   it('sitemap entries include at least ten canonical ProductEntity PDPs and no aliases', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);

@@ -4,8 +4,11 @@ import type { Module, Offer, PDPPayload } from '@/features/pdp/types';
 
 const DEFAULT_PUBLIC_BASE_URL = 'https://agent.pivota.cc';
 const DEFAULT_GATEWAY_BASE_URL = 'https://pivota-agent-production.up.railway.app';
+const DEFAULT_PRODUCT_ENTITY_INDEX_REGISTRY_URL =
+  'https://pivota-merchants-portal-clean.vercel.app/api/agent-center/product-entity-index/public';
 const SEO_FETCH_TIMEOUT_MS = 6000;
 const SITEMAP_FETCH_TIMEOUT_MS = 750;
+const PRODUCT_ENTITY_REGISTRY_FETCH_TIMEOUT_MS = 900;
 const SEO_DATA_CACHE_TTL_MS = 60 * 60 * 1000;
 const SEO_INCLUDE_MODULES = [
   'offers',
@@ -178,6 +181,17 @@ export type ProductEntitySitemapEntry = {
   sourceProductId?: string;
 };
 
+type ProductEntityIndexRegistryRecord = {
+  product_entity_id?: string;
+  canonical_url?: string;
+  product_name?: string;
+  brand?: string;
+  category?: string;
+  source_updated_at?: string;
+  updated_at?: string;
+  external_seed_id?: string;
+};
+
 function isRecord(value: unknown): value is Record<string, any> {
   return Boolean(value && typeof value === 'object' && !Array.isArray(value));
 }
@@ -241,6 +255,15 @@ export function canonicalProductEntityIdForRoute(productId: string) {
   return DEFAULT_EXTERNAL_SEED_ALIASES[id] || id;
 }
 
+export async function canonicalProductEntityIdForRouteAsync(productId: string) {
+  const id = readString(productId);
+  const staticCanonicalId = canonicalProductEntityIdForRoute(id);
+  if (staticCanonicalId !== id || !isExternalSeedId(id)) return staticCanonicalId;
+  const registryEntries = await fetchProductEntitiesFromRegistry(5000);
+  const match = registryEntries.find((entry) => entry.sourceProductId === id);
+  return match?.id || id;
+}
+
 function normalizeSitemapProductEntityId(value: unknown): string {
   const id = readString(value);
   if (!id) return '';
@@ -290,6 +313,14 @@ function externalSeedIdsForProduct(routeProductId: string, payload?: PDPPayload)
 
 function seoLookupProductIds(routeProductId: string) {
   return uniqueStrings([routeProductId, DEFAULT_PRODUCT_ENTITY_SOURCE_ALIASES[routeProductId]], 2);
+}
+
+async function seoLookupProductIdsAsync(routeProductId: string) {
+  const ids = seoLookupProductIds(routeProductId);
+  if (ids.length > 1 || isExternalSeedId(routeProductId)) return ids;
+  const registryEntries = await fetchProductEntitiesFromRegistry(5000);
+  const match = registryEntries.find((entry) => entry.id === routeProductId);
+  return uniqueStrings([routeProductId, match?.sourceProductId], 2);
 }
 
 function gatewayInvokeUrl() {
@@ -570,7 +601,7 @@ function seoDataFromPayload(productId: string, payload: PDPPayload): PivotaProdu
 async function getPivotaProductSeoDataUncached(
   productId: string,
 ): Promise<PivotaProductSeoData | null> {
-  for (const lookupProductId of seoLookupProductIds(productId)) {
+  for (const lookupProductId of await seoLookupProductIdsAsync(productId)) {
     const raw = await fetchPdpV2ForSeo(lookupProductId);
     if (!raw) continue;
     const payload = mapPdpV2ToPdpPayload(raw);
@@ -936,12 +967,16 @@ export async function getProductEntitySitemapEntries(
       updatedAt: DEFAULT_PRODUCT_ENTITY_LASTMOD,
     }),
   );
+  const registryEntries = await fetchProductEntitiesFromRegistry(limit);
   const discovered =
     process.env.PIVOTA_SITEMAP_DYNAMIC_PRODUCTS_ENABLED === 'true'
       ? await fetchProductEntitiesForSitemap(limit)
       : [];
 
-  return uniqueProductEntityEntries([...configuredEntries, ...defaults, ...discovered], limit);
+  return uniqueProductEntityEntries(
+    [...configuredEntries, ...registryEntries, ...defaults, ...discovered],
+    limit,
+  );
 }
 
 function productEntitySitemapEntry(input: {
@@ -1067,6 +1102,70 @@ async function fetchProductEntitiesForSitemap(limit: number): Promise<ProductEnt
     return uniqueProductEntityEntries(
       products.map((product: unknown) =>
         isRecord(product) ? productEntitySitemapEntryFromGatewayProduct(product) : null,
+      ),
+      limit,
+    );
+  } catch {
+    return [];
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function productEntitySitemapEntryFromRegistryRecord(
+  record: ProductEntityIndexRegistryRecord,
+) {
+  return productEntitySitemapEntry({
+    id: readString(record.product_entity_id),
+    productName: readString(record.product_name),
+    sourceProductId: readString(record.external_seed_id),
+    hasPdpContent: true,
+    isIndexable: true,
+    updatedAt: readString(record.updated_at, record.source_updated_at),
+    canonicalUrl: readString(record.canonical_url),
+  });
+}
+
+function productEntityIndexRegistryUrl(limit: number) {
+  const configured = readString(
+    process.env.PIVOTA_PRODUCT_ENTITY_INDEX_REGISTRY_URL,
+    process.env.PIVOTA_AGENT_CENTER_PRODUCT_ENTITY_INDEX_URL,
+    process.env.NEXT_PUBLIC_PIVOTA_PRODUCT_ENTITY_INDEX_REGISTRY_URL,
+  );
+  const base = configured || DEFAULT_PRODUCT_ENTITY_INDEX_REGISTRY_URL;
+  const url = new URL(base);
+  url.searchParams.set('limit', String(limit));
+  return url.toString();
+}
+
+async function fetchProductEntitiesFromRegistry(
+  limit: number,
+): Promise<ProductEntitySitemapEntry[]> {
+  if (process.env.NODE_ENV === 'test' && !process.env.PIVOTA_PRODUCT_ENTITY_INDEX_REGISTRY_URL) {
+    return [];
+  }
+  if (process.env.PIVOTA_PRODUCT_ENTITY_INDEX_REGISTRY_ENABLED === 'false') return [];
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), PRODUCT_ENTITY_REGISTRY_FETCH_TIMEOUT_MS);
+  try {
+    const response = await fetch(productEntityIndexRegistryUrl(limit), {
+      cache: 'force-cache',
+      next: { revalidate: 3600 },
+      signal: controller.signal,
+    });
+    if (!response.ok) return [];
+    const json = await response.json();
+    const records = Array.isArray(json?.product_entity_index_records)
+      ? json.product_entity_index_records
+      : [];
+    return uniqueProductEntityEntries(
+      records.map((record: unknown) =>
+        isRecord(record)
+          ? productEntitySitemapEntryFromRegistryRecord(
+              record as ProductEntityIndexRegistryRecord,
+            )
+          : null,
       ),
       limit,
     );
