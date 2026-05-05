@@ -50,6 +50,43 @@ const PDP_V2_UNSCOPED_TIMEOUT_MS = 9000;
 const PDP_V2_CORE_ONLY_RETRY_TIMEOUT_MS = 3500;
 const PDP_CORE_ONLY_INCLUDE: string[] = [];
 
+function extractMoneyAmount(value: any): number {
+  const candidates = [
+    value,
+    value?.amount,
+    value?.value,
+    value?.current,
+    value?.current?.amount,
+    value?.current?.value,
+    value?.sale,
+    value?.sale?.amount,
+    value?.min,
+    value?.min?.amount,
+  ];
+  for (const candidate of candidates) {
+    const amount =
+      typeof candidate === 'number'
+        ? candidate
+        : typeof candidate === 'string'
+          ? Number(candidate)
+          : NaN;
+    if (Number.isFinite(amount) && amount > 0) return amount;
+  }
+  return 0;
+}
+
+function extractMoneyCurrency(value: any, fallback = 'USD'): string {
+  return (
+    String(
+      value?.currency ||
+        value?.currency_code ||
+        value?.current?.currency ||
+        value?.current?.currency_code ||
+        fallback,
+    ).trim() || fallback
+  );
+}
+
 function normalizeHttpUrl(value: unknown): string | null {
   if (typeof value !== 'string') return null;
   const trimmed = value.trim();
@@ -342,14 +379,8 @@ function mapSellerCandidatesFromResolveCandidates(
     if (!merchantId || !productId) return candidates;
 
     const rawPrice = offer?.price;
-    const price =
-      typeof rawPrice === 'number'
-        ? rawPrice
-        : Number(rawPrice?.amount ?? 0) || 0;
-    const currency =
-      typeof rawPrice === 'object' && rawPrice
-        ? String(rawPrice.currency || 'USD').trim() || 'USD'
-        : 'USD';
+    const price = extractMoneyAmount(rawPrice);
+    const currency = extractMoneyCurrency(rawPrice);
     const inventory = offer?.inventory;
 
     candidates.push({
@@ -468,13 +499,7 @@ export default function ProductDetailPage({ params }: Props) {
       localBrowseHistoryRecordedRef.current = recordKey;
 
       const nowMs = Date.now();
-      const rawPrice = product?.price;
-      const normalizedPrice =
-        typeof rawPrice === 'number'
-          ? rawPrice
-          : typeof rawPrice === 'string'
-            ? Number(rawPrice) || 0
-            : Number(rawPrice?.amount) || 0;
+      const normalizedPrice = extractMoneyAmount(product?.price);
       const title = String(product?.title || 'Untitled product').trim() || 'Untitled product';
       const description = String(product?.description || '').trim() || undefined;
       const imageUrl = pickHistoryImage(product);
@@ -494,14 +519,8 @@ export default function ProductDetailPage({ params }: Props) {
 
     const nowMs = Date.now();
     const rawPrice = product?.price;
-    const normalizedPrice =
-      typeof rawPrice === 'number'
-        ? rawPrice
-        : typeof rawPrice === 'string'
-          ? Number(rawPrice) || 0
-          : Number(rawPrice?.amount) || 0;
-    const currency =
-      String(product?.currency || rawPrice?.currency || 'USD').trim() || 'USD';
+    const normalizedPrice = extractMoneyAmount(rawPrice);
+    const currency = String(product?.currency || extractMoneyCurrency(rawPrice)).trim() || 'USD';
     const title = String(product?.title || 'Untitled product').trim() || 'Untitled product';
     const description = String(product?.description || '').trim() || undefined;
     const imageUrl = pickHistoryImage(product);

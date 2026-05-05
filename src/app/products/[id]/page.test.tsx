@@ -623,6 +623,25 @@ describe('ProductDetailPage canonical PDP loading', () => {
     });
   });
 
+  it('posts canonical current price to account browse history for authenticated users', async () => {
+    authUser = { id: 'user_1' };
+    getPdpV2Mock.mockResolvedValue({ status: 'success', modules: [] });
+
+    renderPage();
+
+    await screen.findByTestId('generic-pdp');
+    await waitFor(() => {
+      expect(recordBrowseHistoryEventMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          product_id: 'prod_1',
+          merchant_id: 'external_seed',
+          price: 28,
+          currency: 'USD',
+        }),
+      );
+    });
+  });
+
   it('keeps reviews and similar on the main PDP request instead of client backfills', async () => {
     getPdpV2Mock.mockResolvedValue({ kind: 'initial' });
     mapPdpV2ToPdpPayloadMock.mockReturnValue(canonicalWithSimilarPayload);
