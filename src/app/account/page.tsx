@@ -68,6 +68,7 @@ export default function AccountPage() {
       setCurrentPassword('')
       setNewPassword('')
       setConfirmPassword('')
+      router.replace('/')
     } catch (err: any) {
       const code = err?.code
       if (code === 'CURRENT_PASSWORD_REQUIRED') {
@@ -140,13 +141,14 @@ export default function AccountPage() {
 
             {hasPassword && (
               <div>
-                <label className="text-sm font-medium text-foreground">
+                <label htmlFor="account-current-password" className="text-sm font-medium text-foreground">
                   Current password{' '}
                   <span className="font-normal text-xs text-muted-foreground">
                     (optional if you just signed in with email code)
                   </span>
                 </label>
                 <input
+                  id="account-current-password"
                   type="password"
                   className="mt-2 w-full rounded-xl border border-border bg-white/60 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   value={currentPassword}
@@ -157,8 +159,9 @@ export default function AccountPage() {
             )}
 
             <div>
-              <label className="text-sm font-medium text-foreground">New password</label>
+              <label htmlFor="account-new-password" className="text-sm font-medium text-foreground">New password</label>
               <input
+                id="account-new-password"
                 type="password"
                 required
                 className="mt-2 w-full rounded-xl border border-border bg-white/60 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
@@ -169,8 +172,9 @@ export default function AccountPage() {
             </div>
 
             <div>
-              <label className="text-sm font-medium text-foreground">Confirm password</label>
+              <label htmlFor="account-confirm-password" className="text-sm font-medium text-foreground">Confirm password</label>
               <input
+                id="account-confirm-password"
                 type="password"
                 required
                 className="mt-2 w-full rounded-xl border border-border bg-white/60 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
@@ -198,4 +202,3 @@ export default function AccountPage() {
     </div>
   )
 }
-
