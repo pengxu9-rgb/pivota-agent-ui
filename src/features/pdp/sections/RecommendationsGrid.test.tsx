@@ -157,21 +157,19 @@ describe('RecommendationsGrid', () => {
     expect(secondLink).toHaveAttribute('href', '/products/prod_2');
   });
 
-  it('renders a mainline-only status note when provided', () => {
+  it('renders a neutral status note when provided', () => {
     render(
       <RecommendationsGrid
         data={data}
         visibleCount={2}
-        statusNoteTitle="Mainline only"
-        statusNote="Exact like-for-like matches were limited, so this section stays on the mainline instead of being padded with fallback results."
+        statusNoteTitle="Recommendations are updating"
+        statusNote="Related products are still being prepared for this item."
       />,
     );
 
-    expect(screen.getByText('Mainline only')).toBeInTheDocument();
+    expect(screen.getByText('Recommendations are updating')).toBeInTheDocument();
     expect(
-      screen.getByText(
-        'Exact like-for-like matches were limited, so this section stays on the mainline instead of being padded with fallback results.',
-      ),
+      screen.getByText('Related products are still being prepared for this item.'),
     ).toBeInTheDocument();
   });
 

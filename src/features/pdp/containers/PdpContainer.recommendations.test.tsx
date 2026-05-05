@@ -281,7 +281,7 @@ describe('PdpContainer recommendations interactions', () => {
     expect(getPdpV2Mock).not.toHaveBeenCalled();
   });
 
-  it('shows a deferred mainline note instead of the legacy empty copy', async () => {
+  it('shows neutral deferred recommendation copy instead of internal mainline diagnostics', async () => {
     render(
       <PdpContainer
         payload={{
@@ -301,10 +301,12 @@ describe('PdpContainer recommendations interactions', () => {
       />,
     );
 
-    expect(screen.getByText('Mainline still resolving')).toBeInTheDocument();
+    expect(screen.getByText('Recommendations are updating')).toBeInTheDocument();
     expect(
-      screen.getByText(/This rail stays empty until mainline results are ready/i),
+      screen.getByText('Related products are still being prepared for this item.'),
     ).toBeInTheDocument();
+    expect(screen.queryByText(/mainline/i)).toBeNull();
+    expect(screen.queryByText(/fallback/i)).toBeNull();
     expect(screen.queryByText('No similar products yet.')).toBeNull();
   });
 

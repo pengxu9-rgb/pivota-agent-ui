@@ -11,7 +11,7 @@ describe('buildSimilarMainlineStatus', () => {
     ).toBeNull();
   });
 
-  it('explains underfill and nearby-category broadening without implying fallback success', () => {
+  it('keeps underfill diagnostics out of user-visible similar copy', () => {
     expect(
       buildSimilarMainlineStatus({
         low_confidence: true,
@@ -23,22 +23,17 @@ describe('buildSimilarMainlineStatus', () => {
           other_brand_same_category: 3,
         },
       }),
-    ).toEqual({
-      title: 'Mainline only',
-      body:
-        'Showing the strongest mainline matches available right now. Exact like-for-like matches were limited, so this set widens to nearby categories and leaves 2 recommendation slots unfilled instead of using fallback padding.',
-    });
+    ).toBeNull();
   });
 
-  it('explains deferred similar rails without pretending the set is empty', () => {
+  it('uses neutral deferred copy without exposing mainline or fallback internals', () => {
     expect(
       buildSimilarMainlineStatus({
         similar_status: 'deferred',
       }),
     ).toEqual({
-      title: 'Mainline still resolving',
-      body:
-        'We are still pulling the strongest like-for-like matches for this item. This rail stays empty until mainline results are ready instead of being padded with fallback picks.',
+      title: 'Recommendations are updating',
+      body: 'Related products are still being prepared for this item.',
     });
   });
 });
