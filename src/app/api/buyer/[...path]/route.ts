@@ -1,10 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
 import crypto from 'crypto'
+import { warnIfHardcodedFallbackUsed } from '@/lib/upstreamFallback'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 const DEFAULT_BUYER_BASE = 'https://web-production-fedb.up.railway.app/buyer/v1'
+
+if (!process.env.BUYER_UPSTREAM_BASE && !process.env.NEXT_PUBLIC_BUYER_BASE) {
+  warnIfHardcodedFallbackUsed({
+    routeLabel: 'api/buyer',
+    envVarsTried: ['BUYER_UPSTREAM_BASE', 'NEXT_PUBLIC_BUYER_BASE'],
+    fallback: DEFAULT_BUYER_BASE,
+  })
+}
 
 function getUpstreamBuyerBase(): string {
   const explicit = process.env.BUYER_UPSTREAM_BASE || process.env.NEXT_PUBLIC_BUYER_BASE || DEFAULT_BUYER_BASE

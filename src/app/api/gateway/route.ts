@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 import { resolveCheckoutPaymentContract } from '@/lib/checkoutPaymentContract';
+import { warnIfHardcodedFallbackUsed } from '@/lib/upstreamFallback';
 
 // This route is a backend-bound proxy, not a latency-sensitive edge personalization layer.
 // Keep it on the Node runtime in the project's home region so requests do not bounce from
@@ -7,6 +8,10 @@ import { resolveCheckoutPaymentContract } from '@/lib/checkoutPaymentContract';
 export const runtime = 'nodejs';
 export const preferredRegion = 'home';
 
+// `DEFAULT_SHOP_UPSTREAM_BASE` is intentionally a hardcoded production URL —
+// it's the recursion-prevention escape hatch when SHOP_UPSTREAM_API_URL is
+// configured to point at this same gateway's origin (see
+// resolveShopUpstreamBase below). NOT a misconfig fallback; do not warn on it.
 const DEFAULT_SHOP_UPSTREAM_BASE = 'https://pivota-agent-production.up.railway.app';
 
 const SHOP_UPSTREAM_BASE =
@@ -15,16 +20,42 @@ const SHOP_UPSTREAM_BASE =
   process.env.SHOP_GATEWAY_AGENT_BASE_URL ||
   DEFAULT_SHOP_UPSTREAM_BASE;
 
+const CHECKOUT_UPSTREAM_FALLBACK = 'https://web-production-fedb.up.railway.app';
 const CHECKOUT_UPSTREAM_BASE =
   process.env.PIVOTA_BACKEND_BASE_URL ||
   process.env.NEXT_PUBLIC_PIVOTA_BACKEND_BASE_URL ||
-  'https://web-production-fedb.up.railway.app';
+  CHECKOUT_UPSTREAM_FALLBACK;
 
+if (!process.env.PIVOTA_BACKEND_BASE_URL && !process.env.NEXT_PUBLIC_PIVOTA_BACKEND_BASE_URL) {
+  warnIfHardcodedFallbackUsed({
+    routeLabel: 'api/gateway:checkout',
+    envVarsTried: ['PIVOTA_BACKEND_BASE_URL', 'NEXT_PUBLIC_PIVOTA_BACKEND_BASE_URL'],
+    fallback: CHECKOUT_UPSTREAM_FALLBACK,
+  });
+}
+
+const REVIEWS_UPSTREAM_FALLBACK = 'https://web-production-fedb.up.railway.app';
 const REVIEWS_UPSTREAM_BASE =
   process.env.NEXT_PUBLIC_REVIEWS_API_URL ||
   process.env.NEXT_PUBLIC_REVIEWS_BACKEND_URL ||
   process.env.REVIEWS_BACKEND_URL ||
-  'https://web-production-fedb.up.railway.app';
+  REVIEWS_UPSTREAM_FALLBACK;
+
+if (
+  !process.env.NEXT_PUBLIC_REVIEWS_API_URL &&
+  !process.env.NEXT_PUBLIC_REVIEWS_BACKEND_URL &&
+  !process.env.REVIEWS_BACKEND_URL
+) {
+  warnIfHardcodedFallbackUsed({
+    routeLabel: 'api/gateway:reviews',
+    envVarsTried: [
+      'NEXT_PUBLIC_REVIEWS_API_URL',
+      'NEXT_PUBLIC_REVIEWS_BACKEND_URL',
+      'REVIEWS_BACKEND_URL',
+    ],
+    fallback: REVIEWS_UPSTREAM_FALLBACK,
+  });
+}
 
 const REVIEWS_OPERATIONS = new Set([
   'get_review_summary',

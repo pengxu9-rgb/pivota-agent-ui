@@ -1,13 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
+import { warnIfHardcodedFallbackUsed } from '@/lib/upstreamFallback';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+const PIVOTA_BACKEND_FALLBACK = 'https://web-production-fedb.up.railway.app';
 const PIVOTA_BACKEND_BASE =
   process.env.PIVOTA_BACKEND_BASE_URL ||
   process.env.NEXT_PUBLIC_PIVOTA_BACKEND_BASE_URL ||
-  'https://web-production-fedb.up.railway.app';
+  PIVOTA_BACKEND_FALLBACK;
+
+if (!process.env.PIVOTA_BACKEND_BASE_URL && !process.env.NEXT_PUBLIC_PIVOTA_BACKEND_BASE_URL) {
+  warnIfHardcodedFallbackUsed({
+    routeLabel: 'api/checkout/prefill',
+    envVarsTried: ['PIVOTA_BACKEND_BASE_URL', 'NEXT_PUBLIC_PIVOTA_BACKEND_BASE_URL'],
+    fallback: PIVOTA_BACKEND_FALLBACK,
+  });
+}
 
 const CHECKOUT_UI_KEY =
   process.env.CHECKOUT_UI_KEY ||
