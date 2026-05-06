@@ -14,6 +14,7 @@ import { OverviewSection } from '@/features/pdp/sections/OverviewSection';
 import { StructuredDetailsBlocks } from '@/features/pdp/sections/StructuredDetailsBlocks';
 import { partitionDetailSections } from '@/features/pdp/utils/detailSections';
 import { buildOverviewContent } from '@/features/pdp/utils/overviewContent';
+import { shouldBypassNextImageOptimizer } from '@/features/pdp/utils/pdpImageUrls';
 
 function hasSections(data?: ProductDetailsData | null): data is ProductDetailsData {
   return Array.isArray(data?.sections) && data.sections.length > 0;
@@ -114,6 +115,7 @@ export function GenericDetailsSection({
               sizes="(max-width: 768px) 100vw, 720px"
               loading="lazy"
               className="w-full h-auto rounded-lg"
+              unoptimized={shouldBypassNextImageOptimizer(item.url)}
             />
           ))}
         </div>

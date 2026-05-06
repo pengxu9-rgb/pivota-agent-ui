@@ -3,6 +3,7 @@
 import Image from 'next/image';
 import { Play } from 'lucide-react';
 import type { MediaItem } from '@/features/pdp/types';
+import { shouldBypassNextImageOptimizer } from '@/features/pdp/utils/pdpImageUrls';
 import { cn } from '@/lib/utils';
 
 export function GenericStyleGallery({
@@ -73,6 +74,7 @@ export function GenericStyleGallery({
                 className="object-cover"
                 sizes="(max-width: 768px) 33vw, 220px"
                 loading="lazy"
+                unoptimized={shouldBypassNextImageOptimizer(item.url)}
               />
               {item.type === 'video' ? (
                 <div className="absolute inset-0 flex items-center justify-center">

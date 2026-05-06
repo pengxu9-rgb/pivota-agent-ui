@@ -3,6 +3,7 @@
 import Image from 'next/image';
 import { Play } from 'lucide-react';
 import type { MediaItem } from '@/features/pdp/types';
+import { shouldBypassNextImageOptimizer } from '@/features/pdp/utils/pdpImageUrls';
 import { cn } from '@/lib/utils';
 
 export function BeautyUgcGallery({
@@ -73,6 +74,7 @@ export function BeautyUgcGallery({
                 className="object-cover"
                 sizes="(max-width: 768px) 33vw, 220px"
                 loading="lazy"
+                unoptimized={shouldBypassNextImageOptimizer(item.url)}
               />
               {item.type === 'video' ? (
                 <Play className="absolute top-2 right-2 h-4 w-4 text-white drop-shadow-lg" />

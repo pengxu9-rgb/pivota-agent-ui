@@ -19,6 +19,7 @@ import {
 } from '@/features/pdp/utils/formatDescriptionText';
 import { partitionDetailSections } from '@/features/pdp/utils/detailSections';
 import { buildOverviewContent } from '@/features/pdp/utils/overviewContent';
+import { shouldBypassNextImageOptimizer } from '@/features/pdp/utils/pdpImageUrls';
 
 export function BeautyDetailsSection({
   data,
@@ -73,6 +74,7 @@ export function BeautyDetailsSection({
             className="object-contain pointer-events-none"
             sizes="(max-width: 768px) 100vw, 640px"
             loading="lazy"
+            unoptimized={shouldBypassNextImageOptimizer(heroUrl)}
           />
         </div>
       ) : null}
@@ -94,6 +96,7 @@ export function BeautyDetailsSection({
                   className="object-cover pointer-events-none"
                   sizes="(max-width: 768px) 50vw, 320px"
                   loading="lazy"
+                  unoptimized={shouldBypassNextImageOptimizer(item.url)}
                 />
               </div>
             ))}

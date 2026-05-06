@@ -4,6 +4,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { Star, ChevronRight } from 'lucide-react';
 import type { ReviewsPreviewData } from '@/features/pdp/types';
+import { shouldBypassNextImageOptimizer } from '@/features/pdp/utils/pdpImageUrls';
 import { resolveQuestionDisplay } from '@/lib/questionDisplay';
 import { cn } from '@/lib/utils';
 
@@ -229,7 +230,15 @@ export function BeautyReviewsSection({
               </div>
               {review.media?.length ? (
                 <div className="relative h-16 w-16 rounded-lg overflow-hidden flex-shrink-0">
-                  <Image src={review.media[0].url} alt="" fill className="object-cover" sizes="64px" loading="lazy" />
+                  <Image
+                    src={review.media[0].url}
+                    alt=""
+                    fill
+                    className="object-cover"
+                    sizes="64px"
+                    loading="lazy"
+                    unoptimized={shouldBypassNextImageOptimizer(review.media[0].url)}
+                  />
                 </div>
               ) : null}
             </div>
