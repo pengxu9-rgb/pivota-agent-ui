@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import type { ChangeEvent } from 'react';
-import { ImagePlus, Menu, ShoppingCart, Send, Package, User } from 'lucide-react';
+import { ImagePlus, Menu, ShoppingCart, Send, Package, User, Sparkles, Mic } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -12,6 +12,10 @@ import { Badge } from '@/components/ui/badge';
 import ChatSidebar from '@/components/chat/ChatSidebar';
 import { ChatRecommendationCard, CARD_COLOR_VARIANTS } from '@/components/product/ChatRecommendationCard';
 import { ChatWideProductCard } from '@/components/product/ChatWideProductCard';
+import { FilterChips, type FilterChip } from '@/components/chat/FilterChips';
+import { AiTipBlock } from '@/components/chat/AiTipBlock';
+import { QuickFollowUpButtons, type FollowUp } from '@/components/chat/QuickFollowUpButtons';
+import { BottomTabBar } from '@/components/chat/BottomTabBar';
 import { useCartStore } from '@/store/cartStore';
 import { useAuthStore } from '@/store/authStore';
 import { useChatStore } from '@/store/chatStore';
@@ -38,6 +42,41 @@ import { toast } from 'sonner';
 const CHAT_RAIL_INITIAL_PAGE_SIZE = 12;
 const CHAT_RAIL_PAGE_STEP = 12;
 const NO_GROWTH_STOP_THRESHOLD = 2;
+
+const FOLLOWUP_DEFAULTS: FollowUp[] = [
+  { id: 'budget', label: 'Budget options',  icon: 'coins',   prompt: 'Show budget-friendly options under $50' },
+  { id: 'color',  label: 'Other colors',    icon: 'palette', prompt: 'Show me other color choices' },
+  { id: 'size',   label: 'Size guide',      icon: 'scale',   prompt: 'Help me pick the right size' },
+  { id: 'outfit', label: 'Outfit ideas',    icon: 'shirt',   prompt: 'Suggest outfits to pair with these' },
+];
+
+const CHIP_TONES: Array<FilterChip['tone']> = ['purple', 'coral', 'teal'];
+const CHIP_STOPWORDS = new Set([
+  'a','an','the','and','or','for','to','of','with','in','on','show','me','some','any','please',
+  'find','i','want','need','like','can','you','give','get','my','this','that','these','those',
+]);
+
+function deriveChipsFromQuery(query: string): FilterChip[] {
+  const tokens = query
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+    .split(/\s+/)
+    .map((t) => t.trim())
+    .filter((t) => t.length >= 3 && !CHIP_STOPWORDS.has(t));
+  const seen = new Set<string>();
+  const unique: string[] = [];
+  for (const t of tokens) {
+    if (seen.has(t)) continue;
+    seen.add(t);
+    unique.push(t);
+    if (unique.length >= 5) break;
+  }
+  return unique.map((label, i) => ({
+    id: `chip-${Date.now()}-${i}`,
+    label: label.charAt(0).toUpperCase() + label.slice(1),
+    tone: CHIP_TONES[i % CHIP_TONES.length],
+  }));
+}
 
 function buildProductKey(product: ProductResponse): string {
   return `${String(product?.merchant_id || '').trim()}::${String(product?.product_id || '').trim()}`;
@@ -125,6 +164,7 @@ function HomePageApp() {
   const [hotDealsStatus, setHotDealsStatus] = useState<'loading' | 'ready' | 'empty' | 'error'>('loading');
   const [recentViews, setRecentViews] = useState<DiscoveryRecentView[]>([]);
   const [recentViewsReady, setRecentViewsReady] = useState(false);
+  const [filterChips, setFilterChips] = useState<FilterChip[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
   
@@ -236,6 +276,7 @@ function HomePageApp() {
     };
 
     addMessage(userMessage);
+    setFilterChips(deriveChipsFromQuery(input.trim()));
     setInput('');
     setLoading(true);
 
@@ -504,66 +545,80 @@ function HomePageApp() {
       {/* Main Chat Area */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Header */}
-        <header className="h-16 px-4 flex items-center justify-between border-b border-border bg-card/70 backdrop-blur-xl">
-          <div className="flex items-center gap-3">
+        <header
+          className="flex items-center justify-between bg-white px-3"
+          style={{
+            height: '54px',
+            borderBottomWidth: '0.5px',
+            borderColor: 'rgba(44,44,42,0.08)',
+          }}
+        >
+          <div className="flex items-center gap-2">
             <button
               onClick={() => setSidebarOpen(true)}
-              className="h-10 w-10 rounded-full flex items-center justify-center hover:bg-secondary transition-colors lg:hidden"
+              className="h-9 w-9 rounded-full flex items-center justify-center transition-opacity active:opacity-60 lg:hidden"
+              aria-label="Open menu"
             >
-              <Menu className="h-5 w-5 text-muted-foreground" />
+              <Menu className="h-5 w-5" style={{ color: '#2C2C2A' }} />
             </button>
+            <div className="flex items-center gap-2">
+              <span
+                className="flex h-7 w-7 items-center justify-center rounded-full"
+                style={{ backgroundColor: '#534AB7' }}
+              >
+                <Sparkles className="h-3.5 w-3.5 text-white" strokeWidth={2.2} />
+              </span>
+              <div className="flex flex-col leading-tight">
+                <span className="text-[13px] font-semibold" style={{ color: '#2C2C2A' }}>Pivota</span>
+                <span className="flex items-center gap-1 text-[10px]" style={{ color: '#1D9E75' }}>
+                  <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: '#1D9E75' }} />
+                  AI online
+                </span>
+              </div>
+            </div>
           </div>
-          <div className="flex items-center gap-3">
-            {user ? (
-              <>
-                <Link
-                  href="/account"
-                  className="hidden sm:flex items-center gap-2 px-3 py-1 rounded-full border border-border bg-card/60 hover:bg-card/80 transition-colors"
-                >
-                  <User className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm text-muted-foreground truncate max-w-[160px]">
-                    {user.email || user.id}
-                  </span>
-                </Link>
-                <Link href="/account" className="sm:hidden">
-                  <Button variant="ghost" size="icon" aria-label="Account">
-                    <User className="h-5 w-5 text-muted-foreground" />
-                  </Button>
-                </Link>
-              </>
-            ) : (
-              <>
-                <Link href="/login" className="hidden sm:block">
-                  <Button variant="outline" size="sm">
-                    Login
-                  </Button>
-                </Link>
-              </>
-            )}
-            <Link href="/products">
-              <Button variant="ghost" size="icon">
-                <Package className="h-5 w-5 text-muted-foreground" />
-              </Button>
-            </Link>
+          <div className="flex items-center gap-1">
+            {!user ? (
+              <Link href="/login" className="hidden sm:block">
+                <Button variant="outline" size="sm">Login</Button>
+              </Link>
+            ) : null}
             <button
               onClick={open}
-              className="relative h-10 w-10 rounded-full flex items-center justify-center bg-secondary hover:bg-secondary/80 transition-colors"
+              className="relative h-9 w-9 rounded-full flex items-center justify-center transition-opacity active:opacity-60"
+              aria-label="Cart"
             >
-              <ShoppingCart className="h-5 w-5 text-muted-foreground" />
+              <ShoppingCart className="h-5 w-5" style={{ color: '#2C2C2A' }} strokeWidth={1.7} />
               {itemCount > 0 && (
                 <span
-                  className="absolute -top-1 -right-1 h-5 w-5 rounded-full flex items-center justify-center text-xs font-semibold text-white"
+                  className="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[9px] font-semibold text-white"
                   style={{ backgroundColor: '#D85A30' }}
                 >
-                  {itemCount}
+                  {itemCount > 9 ? '9+' : itemCount}
                 </span>
               )}
             </button>
           </div>
         </header>
 
+        {/* Filter chips — derived from latest user query */}
+        {filterChips.length > 0 ? (
+          <div
+            className="bg-white"
+            style={{
+              borderBottomWidth: '0.5px',
+              borderColor: 'rgba(44,44,42,0.08)',
+            }}
+          >
+            <FilterChips
+              chips={filterChips}
+              onRemove={(id) => setFilterChips((prev) => prev.filter((c) => c.id !== id))}
+            />
+          </div>
+        ) : null}
+
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4 flex flex-col">
+        <div className="flex-1 overflow-y-auto p-3 space-y-3.5 flex flex-col">
           <AnimatePresence>
             {messages.map((message, idx) => (
               <motion.div
@@ -590,62 +645,100 @@ function HomePageApp() {
                   </div>
                 ) : (
                   <div
-                    className={`space-y-2 ${
-                      message.role === 'assistant' && Array.isArray(message.products) && message.products.length > 0
-                        ? 'max-w-[99%] md:max-w-[97%]'
-                        : 'max-w-[80%]'
+                    className={`flex w-full gap-2 ${
+                      message.role === 'user' ? 'flex-row-reverse' : 'flex-row'
                     }`}
                   >
+                    {/* Avatar */}
                     <div
-                      className={
-                        message.role === 'user'
-                          ? 'bg-secondary border border-border rounded-3xl rounded-br-sm px-4 py-3 text-sm'
-                          : 'bg-primary text-primary-foreground rounded-3xl rounded-bl-sm px-4 py-3 text-sm shadow-lg'
-                      }
+                      className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full"
+                      style={{
+                        backgroundColor: message.role === 'user' ? '#FAECE7' : '#534AB7',
+                      }}
+                      aria-hidden
                     >
-                      {message.content}
+                      {message.role === 'user' ? (
+                        <span className="text-[10px] font-semibold" style={{ color: '#993C1D' }}>
+                          You
+                        </span>
+                      ) : (
+                        <Sparkles className="h-3.5 w-3.5 text-white" strokeWidth={2.2} />
+                      )}
                     </div>
 
-                    {message.products && message.products.length > 0 && (
-                      <div className="space-y-2">
-                        <p className="text-[11px] text-muted-foreground px-0.5">
-                          Recommended for you:
-                        </p>
-                        {/* 2-col grid for first 2 products */}
-                        <div className="grid grid-cols-2 gap-2">
-                          {message.products.slice(0, 2).map((product, i) => (
-                            <ChatRecommendationCard
+                    <div
+                      className={`min-w-0 space-y-2 ${
+                        message.role === 'assistant' && Array.isArray(message.products) && message.products.length > 0
+                          ? 'flex-1'
+                          : 'max-w-[80%]'
+                      }`}
+                    >
+                      {message.content ? (
+                        <div
+                          className="rounded-2xl px-3 py-2 text-[13px] leading-[1.45]"
+                          style={
+                            message.role === 'user'
+                              ? { backgroundColor: '#F4F4F2', color: '#2C2C2A' }
+                              : {
+                                  backgroundColor: '#FFFFFF',
+                                  color: '#2C2C2A',
+                                  borderWidth: '0.5px',
+                                  borderColor: 'rgba(44,44,42,0.08)',
+                                }
+                          }
+                        >
+                          {message.content}
+                        </div>
+                      ) : null}
+
+                      {message.products && message.products.length > 0 && (
+                        <div className="space-y-2">
+                          {/* 2-col grid for first 2 products */}
+                          <div className="grid grid-cols-2 gap-2">
+                            {message.products.slice(0, 2).map((product, i) => (
+                              <ChatRecommendationCard
+                                key={buildProductKey(product)}
+                                product={product}
+                                onAddToCart={handleAddToCart}
+                                colorVariant={CARD_COLOR_VARIANTS[i % CARD_COLOR_VARIANTS.length]}
+                              />
+                            ))}
+                          </div>
+                          {/* Wide horizontal cards for 3rd+ */}
+                          {message.products.slice(2).map((product, i) => (
+                            <ChatWideProductCard
                               key={buildProductKey(product)}
                               product={product}
                               onAddToCart={handleAddToCart}
-                              colorVariant={CARD_COLOR_VARIANTS[i % CARD_COLOR_VARIANTS.length]}
+                              colorVariant={CARD_COLOR_VARIANTS[(i + 2) % CARD_COLOR_VARIANTS.length]}
                             />
                           ))}
-                        </div>
-                        {/* Wide horizontal cards for 3rd+ */}
-                        {message.products.slice(2).map((product, i) => (
-                          <ChatWideProductCard
-                            key={buildProductKey(product)}
-                            product={product}
-                            onAddToCart={handleAddToCart}
-                            colorVariant={CARD_COLOR_VARIANTS[(i + 2) % CARD_COLOR_VARIANTS.length]}
+
+                          <AiTipBlock>
+                            Picked these because they match your search and have the strongest in-stock signal. Tap a card for full details.
+                          </AiTipBlock>
+
+                          <QuickFollowUpButtons
+                            items={FOLLOWUP_DEFAULTS}
+                            onSelect={(prompt) => setInput(prompt)}
                           />
-                        ))}
-                        {message.recommendation_paging?.hasMore ? (
-                          <button
-                            type="button"
-                            className="w-full rounded-xl border py-2 text-xs text-muted-foreground transition-colors hover:text-foreground disabled:opacity-60"
-                            style={{ borderColor: 'rgba(44,44,42,0.08)', borderWidth: '0.5px' }}
-                            disabled={Boolean(message.recommendation_paging?.isLoadingMore)}
-                            onClick={() => handleLoadMoreMessageProducts(message.id)}
-                          >
-                            {message.recommendation_paging?.isLoadingMore
-                              ? 'Loading...'
-                              : 'Load more recommendations'}
-                          </button>
-                        ) : null}
-                      </div>
-                    )}
+
+                          {message.recommendation_paging?.hasMore ? (
+                            <button
+                              type="button"
+                              className="w-full rounded-xl bg-white py-2 text-[11px] text-[#2C2C2A]/60 transition-colors active:text-[#2C2C2A] disabled:opacity-60"
+                              style={{ borderColor: 'rgba(44,44,42,0.08)', borderWidth: '0.5px' }}
+                              disabled={Boolean(message.recommendation_paging?.isLoadingMore)}
+                              onClick={() => handleLoadMoreMessageProducts(message.id)}
+                            >
+                              {message.recommendation_paging?.isLoadingMore
+                                ? 'Loading...'
+                                : 'Load more recommendations'}
+                            </button>
+                          ) : null}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
               </motion.div>
@@ -656,10 +749,20 @@ function HomePageApp() {
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              className="flex justify-start"
+              className="flex gap-2 items-start"
             >
-              <div className="max-w-[80%] bg-primary text-primary-foreground rounded-3xl rounded-bl-sm px-4 py-3 text-sm shadow-lg">
-                <div className="flex gap-1">
+              <div
+                className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full"
+                style={{ backgroundColor: '#534AB7' }}
+                aria-hidden
+              >
+                <Sparkles className="h-3.5 w-3.5 text-white" strokeWidth={2.2} />
+              </div>
+              <div
+                className="rounded-2xl bg-white px-3 py-2"
+                style={{ borderWidth: '0.5px', borderColor: 'rgba(44,44,42,0.08)' }}
+              >
+                <div className="flex gap-1 text-[#534AB7]">
                   <span className="animate-bounce">●</span>
                   <span className="animate-bounce" style={{ animationDelay: '0.1s' }}>●</span>
                   <span className="animate-bounce" style={{ animationDelay: '0.2s' }}>●</span>
@@ -672,7 +775,10 @@ function HomePageApp() {
         </div>
 
         {/* Input Area */}
-        <div className="p-4 border-t border-border space-y-3 bg-card/70 backdrop-blur-xl">
+        <div
+          className="px-3 pt-2.5 pb-3 space-y-2.5 bg-white"
+          style={{ borderTopWidth: '0.5px', borderColor: 'rgba(44,44,42,0.08)' }}
+        >
           {/* Hot Deals - Trending Products */}
           {!hasUserMessages && (
             <motion.div
@@ -749,7 +855,14 @@ function HomePageApp() {
             </motion.div>
           )}
 
-          <div className="flex items-center gap-2 bg-secondary border border-border rounded-2xl px-3 py-2">
+          <div
+            className="flex items-center gap-2 rounded-full px-3 py-1.5"
+            style={{
+              backgroundColor: '#F4F4F2',
+              borderWidth: '0.5px',
+              borderColor: 'rgba(44,44,42,0.08)',
+            }}
+          >
             {photoUploadEnabled ? (
               <>
                 <input
@@ -763,11 +876,11 @@ function HomePageApp() {
                   type="button"
                   onClick={handleSkinPhotoUploadClick}
                   disabled={composerBusy}
-                  className="h-8 w-8 rounded-lg flex flex-shrink-0 items-center justify-center border border-border/70 bg-background/70 text-muted-foreground hover:text-foreground hover:bg-background transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  aria-label="Upload skin photo"
-                  title="Upload skin photo"
+                  className="h-7 w-7 flex-shrink-0 flex items-center justify-center rounded-full transition-opacity active:opacity-60 disabled:opacity-40"
+                  aria-label="Upload photo"
+                  title="Upload photo"
                 >
-                  <ImagePlus className="h-4 w-4" />
+                  <ImagePlus className="h-4 w-4" style={{ color: '#2C2C2A99' }} strokeWidth={1.7} />
                 </button>
               </>
             ) : null}
@@ -776,20 +889,32 @@ function HomePageApp() {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyPress={(e) => e.key === 'Enter' && handleSend()}
-              placeholder="Ask me anything..."
-              className="flex-1 bg-transparent outline-none text-sm text-foreground placeholder:text-muted-foreground"
+              placeholder="Tell Pivota what you want…"
+              className="flex-1 bg-transparent outline-none text-[13px] py-1.5"
+              style={{ color: '#2C2C2A' }}
               disabled={composerBusy}
             />
             <button
+              type="button"
+              className="h-7 w-7 flex-shrink-0 flex items-center justify-center rounded-full transition-opacity active:opacity-60"
+              aria-label="Voice input"
+              title="Voice input"
+            >
+              <Mic className="h-4 w-4" style={{ color: '#2C2C2A99' }} strokeWidth={1.7} />
+            </button>
+            <button
               onClick={handleSend}
               disabled={composerBusy || !input.trim()}
-              className="h-8 w-8 rounded-full flex items-center justify-center hover:opacity-90 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+              className="h-8 w-8 flex-shrink-0 rounded-full flex items-center justify-center text-white transition-opacity active:opacity-75 disabled:opacity-40"
               style={{ backgroundColor: '#534AB7' }}
+              aria-label="Send"
             >
-              <Send className="h-4 w-4" />
+              <Send className="h-3.5 w-3.5" />
             </button>
           </div>
         </div>
+
+        <BottomTabBar active="chat" orderBadge={0} />
       </div>
     </div>
   );
