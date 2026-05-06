@@ -24,6 +24,25 @@ export const SITEMAP_SEED_PRODUCT_IDS: ReadonlyArray<string> = Object.freeze([
   // the ordinary Multi-Peptide Lash and Brow Serum — used as the
   // POSITIVE baseline for the Demand Test Agent credibility check.
   'sig_7ad40676c42fb9c96e2a8136',
+  // Tom Ford Beauty — Eau d'Ombré Leather Eau de Toilette. Luxury
+  // fragrance with strong distinctive product name; high baseline
+  // visibility on the live web.
+  'sig_7ed140c61dfa79d1c2876a7a',
+  // Supergoop! — Unseen Sunscreen SPF 50. Heavily reviewed across the
+  // beauty-blog ecosystem; a good test of whether grounding cites the
+  // canonical Pivota PDP vs the merchant's own page.
+  'sig_7d3a5ec03e4e70ce239eaa0c',
+  // rhode — barrier restore cream. Hailey Bieber's brand; high
+  // social-search volume, useful for measuring attribution against
+  // celebrity-driven discovery flows.
+  'sig_29ed2e5f318a5d70a2f645ed',
+  // COSRX — Poreless Clarifying Charcoal Mask Pink. K-beauty mass-
+  // market staple; long product name + viral hashtag presence.
+  'sig_d89c869821249a14d3edbf25',
+  // Beauty of Joseon — Revive Under Eye Patch: Ginseng + Retinal.
+  // K-beauty premium with strong distinctive title (rare ingredient
+  // pair) — good signal-to-noise for query disambiguation.
+  'sig_dacaf022d6c6a9ed86ecab1f',
 ] as const);
 
 export const SITEMAP_BASE_URL = 'https://agent.pivota.cc';

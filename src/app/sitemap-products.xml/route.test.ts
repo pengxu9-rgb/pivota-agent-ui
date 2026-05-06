@@ -93,14 +93,21 @@ describe('/sitemap-products.xml — products-only sitemap', () => {
   });
 
   it('reports url count via X-Pivota-Sitemap-Url-Count header', async () => {
+    // Robust against seed-list growth: load the seeds module and assert
+    // the count = (eligible seeds) + (distinct eligible dynamic products
+    // that aren't already in the seed list).
+    const { SITEMAP_SEED_PRODUCT_IDS, isProductIdSitemapEligible } =
+      await import('../sitemap-seeds');
+    const eligibleSeeds = SITEMAP_SEED_PRODUCT_IDS.filter(isProductIdSitemapEligible);
+
     process.env.NEXT_PUBLIC_API_URL = 'https://api.example.com';
     getAllProductsMock.mockResolvedValueOnce([
-      { product_id: SEED_ID },
-      { product_id: 'sig_a' },
-      { product_id: 'sig_b' },
+      { product_id: SEED_ID }, // already in seeds → de-duped
+      { product_id: 'sig_dynamic_a' },
+      { product_id: 'sig_dynamic_b' },
     ]);
     const res = await GET();
-    // Seed (1) + 2 distinct dynamic products = 3
-    expect(res.headers.get('x-pivota-sitemap-url-count')).toBe('3');
+    const expected = String(eligibleSeeds.length + 2);
+    expect(res.headers.get('x-pivota-sitemap-url-count')).toBe(expected);
   });
 });
