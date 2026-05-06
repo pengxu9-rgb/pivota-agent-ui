@@ -8,7 +8,6 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import ChatSidebar from '@/components/chat/ChatSidebar';
 import { ChatRecommendationCard, CARD_COLOR_VARIANTS } from '@/components/product/ChatRecommendationCard';
 import { ChatWideProductCard } from '@/components/product/ChatWideProductCard';
@@ -831,27 +830,6 @@ function HomePageApp() {
                   )}
                 </div>
               </div>
-            </motion.div>
-          )}
-
-          {/* Quick Suggestions */}
-          {!hasUserMessages && (
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.1 }}
-              className="flex gap-2 flex-wrap"
-            >
-              {['Water bottle', 'Hoodies', 'Electronics'].map((suggestion) => (
-                <Badge
-                  key={suggestion}
-                  variant="secondary"
-                  className="cursor-pointer hover:bg-secondary/80 transition-colors"
-                  onClick={() => setInput(suggestion)}
-                >
-                  {suggestion}
-                </Badge>
-              ))}
             </motion.div>
           )}
 
