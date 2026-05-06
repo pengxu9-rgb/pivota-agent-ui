@@ -59,6 +59,16 @@ describe('product page metadata', () => {
         method: 'POST',
       }),
     );
+    // Phase 1a fixes: canonical link, robots index/follow, og:type=product, og:url
+    expect((metadata.alternates as any)?.canonical).toBe(
+      'https://agent.pivota.cc/products/sig_7ad40676c42fb9c96e2a8136',
+    );
+    expect((metadata.robots as any)?.index).toBe(true);
+    expect((metadata.robots as any)?.follow).toBe(true);
+    expect((metadata.openGraph as any)?.type).toBe('product');
+    expect((metadata.openGraph as any)?.url).toBe(
+      'https://agent.pivota.cc/products/sig_7ad40676c42fb9c96e2a8136',
+    );
   });
 
   it('falls back to the site title when PDP metadata cannot be resolved', async () => {
