@@ -2,10 +2,10 @@
 
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { History, Sparkles, ShoppingCart, Trash2 } from 'lucide-react';
+import { ChevronLeft, History, ShoppingCart, Trash2 } from 'lucide-react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import ProductCard from '@/components/product/ProductCard';
-import { Button } from '@/components/ui/button';
 import { useCartStore } from '@/store/cartStore';
 import {
   clearBrowseHistory as clearAccountBrowseHistory,
@@ -93,6 +93,7 @@ function resolvedHistoryItems(items: HistoryItem[]): HistoryItem[] {
 }
 
 export default function BrowseHistoryPage() {
+  const router = useRouter();
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const { items, open } = useCartStore();
@@ -149,107 +150,107 @@ export default function BrowseHistoryPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-mesh overflow-x-hidden relative">
-      {/* Animated background */}
-      <div className="absolute top-1/4 left-1/4 w-72 h-72 sm:w-96 sm:h-96 bg-gradient-to-r from-indigo-500/20 via-purple-500/20 to-cyan-400/10 blur-3xl -z-10 animate-pulse" />
-
-      {/* Header */}
-      <header className="sticky top-0 z-40 bg-card/70 backdrop-blur-xl border-b border-border">
-        <div className="max-w-7xl mx-auto px-4 lg:px-8 h-16 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2 group">
-            <Sparkles className="h-6 w-6 text-cyan-400 group-hover:rotate-12 transition-transform" />
-            <span className="text-xl font-semibold gradient-text">Pivota</span>
-          </Link>
-
-          <div className="flex items-center gap-3">
-            <button
-              onClick={open}
-              className="relative h-10 w-10 rounded-full flex items-center justify-center bg-secondary hover:bg-secondary/80 transition-colors"
+    <div className="flex min-h-screen w-full flex-col bg-white">
+      {/* Top bar */}
+      <header
+        className="sticky top-0 z-40 flex items-center justify-between bg-white px-3"
+        style={{
+          height: '54px',
+          borderBottomWidth: '0.5px',
+          borderColor: 'rgba(44,44,42,0.08)',
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => router.back()}
+          className="h-9 w-9 rounded-full flex items-center justify-center transition-opacity active:opacity-60"
+          aria-label="Back"
+        >
+          <ChevronLeft className="h-5 w-5" style={{ color: '#2C2C2A' }} />
+        </button>
+        <h1 className="text-[14px] font-semibold" style={{ color: '#2C2C2A' }}>Browse history</h1>
+        <button
+          onClick={open}
+          className="relative h-9 w-9 rounded-full flex items-center justify-center transition-opacity active:opacity-60"
+          aria-label="Cart"
+        >
+          <ShoppingCart className="h-5 w-5" style={{ color: '#2C2C2A' }} strokeWidth={1.7} />
+          {itemCount > 0 && (
+            <span
+              className="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[9px] font-semibold text-white"
+              style={{ backgroundColor: '#D85A30' }}
             >
-              <ShoppingCart className="h-5 w-5 text-muted-foreground" />
-              {itemCount > 0 && (
-                <span className="absolute -top-1 -right-1 h-5 w-5 rounded-full bg-gradient-to-r from-indigo-500 to-purple-500 flex items-center justify-center text-xs font-semibold text-white">
-                  {itemCount}
-                </span>
-              )}
-            </button>
-          </div>
-        </div>
+              {itemCount > 9 ? '9+' : itemCount}
+            </span>
+          )}
+        </button>
       </header>
 
-      {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 lg:px-8 py-6">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="mb-6"
-        >
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-3">
-              <History className="h-8 w-8 text-cyan-400" />
-              <div>
-                <h1 className="text-3xl md:text-4xl font-semibold">
-                  Browse History
-                </h1>
-                <p className="text-muted-foreground mt-1">
-                  {history.length} {history.length === 1 ? 'product' : 'products'} viewed
-                </p>
-              </div>
-            </div>
-
-            {history.length > 0 && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={clearHistory}
-                className="flex items-center gap-2"
-              >
-                <Trash2 className="h-4 w-4" />
-                Clear History
-              </Button>
-            )}
-          </div>
-        </motion.div>
+      <main className="flex-1 mx-auto w-full max-w-7xl px-3 lg:px-6 py-4">
+        {/* Section header with count + clear */}
+        <div className="mb-3 flex items-center justify-between">
+          <p className="text-[12px]" style={{ color: '#2C2C2A99' }}>
+            {history.length} {history.length === 1 ? 'product' : 'products'} viewed
+          </p>
+          {history.length > 0 && (
+            <button
+              onClick={clearHistory}
+              className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors active:bg-[#FAECE7]"
+              style={{
+                color: '#993C1D',
+                borderWidth: '0.5px',
+                borderColor: 'rgba(216, 90, 48, 0.3)',
+              }}
+            >
+              <Trash2 className="h-3 w-3" />
+              Clear
+            </button>
+          )}
+        </div>
 
         {/* History Grid */}
         {loading ? (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="text-center py-16 text-muted-foreground"
-          >
-            Loading browse history...
-          </motion.div>
+          <div className="text-center py-16 text-[13px]" style={{ color: '#2C2C2A99' }}>
+            Loading browse history…
+          </div>
         ) : history.length === 0 ? (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="text-center py-16"
+            className="text-center py-16 space-y-3"
           >
-            <History className="h-16 w-16 mx-auto text-muted-foreground/50 mb-4" />
-            <h2 className="text-xl font-semibold mb-2">No browsing history yet</h2>
-            <p className="text-muted-foreground mb-6">
-              Start exploring products to see them here
-            </p>
-            <Link href="/products">
-              <Button variant="gradient">
-                Browse Products
-              </Button>
+            <span
+              className="mx-auto flex h-14 w-14 items-center justify-center rounded-full"
+              style={{ backgroundColor: '#EEEDFE' }}
+            >
+              <History className="h-6 w-6" style={{ color: '#534AB7' }} strokeWidth={1.6} />
+            </span>
+            <div className="space-y-1">
+              <p className="text-[15px] font-semibold" style={{ color: '#2C2C2A' }}>No browsing history yet</p>
+              <p className="text-[12px]" style={{ color: '#2C2C2A99' }}>
+                Start exploring products to see them here
+              </p>
+            </div>
+            <Link
+              href="/products"
+              className="inline-flex items-center justify-center rounded-full px-4 py-2 text-[13px] font-semibold text-white transition-opacity active:opacity-85"
+              style={{ backgroundColor: '#534AB7' }}
+            >
+              Browse products
             </Link>
           </motion.div>
         ) : (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            transition={{ delay: 0.2 }}
-            className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3"
+            className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2.5"
           >
             {history.map((item, index) => (
               <motion.div
                 key={`${item.product_id}-${item.timestamp}`}
-                initial={{ opacity: 0, y: 20 }}
+                initial={{ opacity: 0, y: 12 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: index * 0.05 }}
+                transition={{ delay: Math.min(index * 0.03, 0.4) }}
               >
                 <ProductCard
                   product_id={item.product_id}
