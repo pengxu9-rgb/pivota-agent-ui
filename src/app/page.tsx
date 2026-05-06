@@ -495,8 +495,8 @@ function HomePageApp() {
     <div className="flex h-screen w-full bg-gradient-mesh overflow-x-hidden relative">
       {/* Animated background gradients */}
       <div className="absolute inset-0 -z-10 opacity-40" />
-      <div className="absolute top-1/4 left-1/4 w-72 h-72 sm:w-96 sm:h-96 bg-gradient-to-r from-indigo-500/30 via-purple-500/30 to-cyan-400/20 blur-3xl -z-10 animate-pulse" />
-      <div className="absolute bottom-1/4 right-1/4 w-72 h-72 sm:w-96 sm:h-96 bg-gradient-to-l from-cyan-400/20 via-purple-500/30 to-indigo-500/30 blur-3xl -z-10 animate-pulse" />
+      <div className="absolute top-1/4 left-1/4 w-72 h-72 sm:w-96 sm:h-96 blur-3xl -z-10 animate-pulse" style={{ background: 'radial-gradient(circle, #534AB730 0%, #1D9E7520 100%)' }} />
+      <div className="absolute bottom-1/4 right-1/4 w-72 h-72 sm:w-96 sm:h-96 blur-3xl -z-10 animate-pulse" style={{ background: 'radial-gradient(circle, #1D9E7520 0%, #534AB730 100%)' }} />
 
       {/* Sidebar */}
       <ChatSidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
@@ -783,7 +783,8 @@ function HomePageApp() {
             <button
               onClick={handleSend}
               disabled={composerBusy || !input.trim()}
-              className="h-8 w-8 rounded-lg flex items-center justify-center bg-gradient-to-r from-indigo-500 to-purple-500 hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              className="h-8 w-8 rounded-full flex items-center justify-center hover:opacity-90 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+              style={{ backgroundColor: '#534AB7' }}
             >
               <Send className="h-4 w-4" />
             </button>
