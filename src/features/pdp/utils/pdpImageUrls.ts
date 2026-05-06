@@ -86,6 +86,14 @@ function isDemandwareImageAsset(parsed: URL): boolean {
   return isKnownRemoteHost(hostname, ['guerlain.com']) && pathname.includes('/dw/image/');
 }
 
+function isPivotaCatalogImageCacheAsset(parsed: URL): boolean {
+  const pathname = parsed.pathname.toLowerCase();
+  return (
+    isKnownRemoteHost(parsed.hostname, ['pivota-agent-production.up.railway.app']) &&
+    pathname.startsWith('/catalog-image-cache/')
+  );
+}
+
 function normalizeShopifyLikeFilename(
   filename: string,
   options?: {
@@ -282,6 +290,7 @@ export function shouldBypassNextImageOptimizer(rawUrl: unknown): boolean {
 
   try {
     const parsed = new URL(unwrapped);
+    if (isPivotaCatalogImageCacheAsset(parsed)) return true;
     if (isDemandwareImageAsset(parsed)) return false;
     // Keep browser-direct bypass reserved for hosts verified to be hotlink-safe.
     return false;

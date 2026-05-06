@@ -93,4 +93,12 @@ describe('normalizePdpImageUrl', () => {
       ),
     ).toBe(false);
   });
+
+  it('bypasses the Next image optimizer for Pivota catalog image cache assets', () => {
+    expect(
+      shouldBypassNextImageOptimizer(
+        'https://pivota-agent-production.up.railway.app/catalog-image-cache/4f/4f5867bf9011ada573a9d7ed588a76f63617aa39828d962deeeef0a82d512d92.avif',
+      ),
+    ).toBe(true);
+  });
 });
