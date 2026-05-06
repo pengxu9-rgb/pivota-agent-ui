@@ -9,16 +9,13 @@ import { Button } from '@/components/ui/button';
 import { useCartStore } from '@/store/cartStore';
 import {
   clearBrowseHistory as clearAccountBrowseHistory,
-  getPdpV2,
   getBrowseHistory,
-  resolveProductCandidates,
 } from '@/lib/api';
 import {
-  hasPositiveHistoryPrice,
-  historyKey,
   mergeHistoryItems,
   type HistoryItem,
 } from './historyItems';
+import { hydrateZeroPriceItems } from './priceHydration';
 
 const LOCAL_HISTORY_KEY = 'browse_history';
 
@@ -78,110 +75,6 @@ function mapRemoteHistory(items: any[]): HistoryItem[] {
     .sort((a: HistoryItem, b: HistoryItem) => b.timestamp - a.timestamp);
 }
 
-function extractPriceAmount(value: any): number {
-  const candidates = [
-    value,
-    value?.amount,
-    value?.value,
-    value?.current,
-    value?.current?.amount,
-    value?.current?.value,
-    value?.sale,
-    value?.sale?.amount,
-    value?.min,
-    value?.min?.amount,
-  ];
-  for (const candidate of candidates) {
-    const amount =
-      typeof candidate === 'number'
-        ? candidate
-        : typeof candidate === 'string'
-          ? Number(candidate)
-          : NaN;
-    if (Number.isFinite(amount) && amount > 0) return amount;
-  }
-  return 0;
-}
-
-function extractPdpPriceAmount(response: any, merchantId: string): number {
-  const canonicalModule = Array.isArray(response?.modules)
-    ? response.modules.find((module: any) => String(module?.type || '').trim() === 'canonical')
-    : null;
-  const payload = canonicalModule?.data?.pdp_payload;
-  const product = payload?.product;
-  const candidates = [
-    product?.price,
-    product?.pricing,
-    ...(Array.isArray(product?.variants) ? product.variants.map((variant: any) => variant?.price) : []),
-    ...(Array.isArray(payload?.offers)
-      ? payload.offers
-          .filter((offer: any) => {
-            if (!merchantId) return true;
-            return String(offer?.merchant_id || '').trim() === merchantId;
-          })
-          .map((offer: any) => offer?.price)
-      : []),
-    ...(Array.isArray(payload?.offers) ? payload.offers.map((offer: any) => offer?.price) : []),
-  ];
-
-  for (const candidate of candidates) {
-    const price = extractPriceAmount(candidate);
-    if (price > 0) return price;
-  }
-  return 0;
-}
-
-async function resolveHistoryItemPrice(item: HistoryItem): Promise<number> {
-  const merchantId = String(item.merchant_id || '').trim();
-
-  try {
-    const resolved = await resolveProductCandidates({
-      product_id: item.product_id,
-      merchant_id: item.merchant_id,
-      limit: 10,
-      timeout_ms: 4500,
-    });
-    const offers = Array.isArray(resolved?.offers) ? resolved.offers : [];
-    const matchingOffer =
-      offers.find((offer) => String(offer?.merchant_id || '').trim() === merchantId) || offers[0];
-    const price = extractPriceAmount(matchingOffer?.price);
-    if (price > 0) return price;
-  } catch {
-    // Fall through to PDP price lookup.
-  }
-
-  try {
-    const pdp = await getPdpV2({
-      product_id: item.product_id,
-      merchant_id: item.merchant_id,
-      include: ['offers', 'variant_selector'],
-      timeout_ms: 6500,
-    });
-    return extractPdpPriceAmount(pdp, merchantId);
-  } catch {
-    return 0;
-  }
-}
-
-async function hydrateZeroPriceItems(items: HistoryItem[]): Promise<HistoryItem[]> {
-  const targets = items.filter((item) => !hasPositiveHistoryPrice(item)).slice(0, 24);
-  if (targets.length === 0) return items;
-
-  const pricesByKey = new Map<string, number>();
-  await Promise.all(
-    targets.map(async (item) => {
-      const price = await resolveHistoryItemPrice(item);
-      if (price > 0) pricesByKey.set(historyKey(item), price);
-    }),
-  );
-
-  if (pricesByKey.size === 0) return items;
-  return items.map((item) => {
-    const hydratedPrice = pricesByKey.get(historyKey(item));
-    return hydratedPrice ? { ...item, price: hydratedPrice } : item;
-  });
-}
-
 export default function BrowseHistoryPage() {
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -198,15 +91,14 @@ export default function BrowseHistoryPage() {
         const remoteItems = mapRemoteHistory(remote?.items || []);
         if (remoteItems.length > 0) {
           const mergedItems = mergeHistoryItems(remoteItems, localItems);
-          setHistory(mergedItems);
-          writeLocalHistory(mergedItems);
-          void hydrateZeroPriceItems(mergedItems).then((hydratedItems) => {
-            if (cancelled || hydratedItems === mergedItems) return;
-            setHistory(hydratedItems);
-            writeLocalHistory(hydratedItems);
-          });
+          const hydratedItems = await hydrateZeroPriceItems(mergedItems);
+          if (cancelled) return;
+          setHistory(hydratedItems);
+          writeLocalHistory(hydratedItems);
         } else {
-          setHistory(localItems);
+          const hydratedItems = await hydrateZeroPriceItems(localItems);
+          if (cancelled) return;
+          setHistory(hydratedItems);
         }
       } catch (error) {
         if (cancelled) return;
