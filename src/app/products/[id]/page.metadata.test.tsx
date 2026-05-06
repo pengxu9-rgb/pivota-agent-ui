@@ -59,13 +59,14 @@ describe('product page metadata', () => {
         method: 'POST',
       }),
     );
-    // Phase 1a fixes: canonical link, robots index/follow, og:type=product, og:url
+    // Phase 1a fixes: canonical link, robots index/follow, supported og:type, og:url.
+    // Product-specific search/LLM indexing is covered by server-rendered JSON-LD.
     expect((metadata.alternates as any)?.canonical).toBe(
       'https://agent.pivota.cc/products/sig_7ad40676c42fb9c96e2a8136',
     );
     expect((metadata.robots as any)?.index).toBe(true);
     expect((metadata.robots as any)?.follow).toBe(true);
-    expect((metadata.openGraph as any)?.type).toBe('product');
+    expect((metadata.openGraph as any)?.type).toBe('website');
     expect((metadata.openGraph as any)?.url).toBe(
       'https://agent.pivota.cc/products/sig_7ad40676c42fb9c96e2a8136',
     );
