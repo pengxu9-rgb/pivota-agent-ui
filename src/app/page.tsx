@@ -10,7 +10,8 @@ import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import ChatSidebar from '@/components/chat/ChatSidebar';
-import { ChatRecommendationCard } from '@/components/product/ChatRecommendationCard';
+import { ChatRecommendationCard, CARD_COLOR_VARIANTS } from '@/components/product/ChatRecommendationCard';
+import { ChatWideProductCard } from '@/components/product/ChatWideProductCard';
 import { useCartStore } from '@/store/cartStore';
 import { useAuthStore } from '@/store/authStore';
 import { useChatStore } from '@/store/chatStore';
@@ -550,7 +551,10 @@ function HomePageApp() {
             >
               <ShoppingCart className="h-5 w-5 text-muted-foreground" />
               {itemCount > 0 && (
-                <span className="absolute -top-1 -right-1 h-5 w-5 rounded-full bg-gradient-to-r from-indigo-500 to-purple-500 flex items-center justify-center text-xs font-semibold text-white">
+                <span
+                  className="absolute -top-1 -right-1 h-5 w-5 rounded-full flex items-center justify-center text-xs font-semibold text-white"
+                  style={{ backgroundColor: '#D85A30' }}
+                >
                   {itemCount}
                 </span>
               )}
@@ -604,26 +608,34 @@ function HomePageApp() {
 
                     {message.products && message.products.length > 0 && (
                       <div className="space-y-2">
-                        <p className="text-[11px] text-muted-foreground">
-                          Recommended pieces based on this chat:
+                        <p className="text-[11px] text-muted-foreground px-0.5">
+                          Recommended for you:
                         </p>
-                        <div className="flex gap-3 overflow-x-auto pb-1 pr-1 snap-x snap-mandatory scroll-smooth">
-                          {message.products.map((product) => (
-                            <div
+                        {/* 2-col grid for first 2 products */}
+                        <div className="grid grid-cols-2 gap-2">
+                          {message.products.slice(0, 2).map((product, i) => (
+                            <ChatRecommendationCard
                               key={buildProductKey(product)}
-                              className="w-[280px] md:w-[320px] flex-shrink-0 snap-start"
-                            >
-                              <ChatRecommendationCard
-                                product={product}
-                                onAddToCart={handleAddToCart}
-                              />
-                            </div>
+                              product={product}
+                              onAddToCart={handleAddToCart}
+                              colorVariant={CARD_COLOR_VARIANTS[i % CARD_COLOR_VARIANTS.length]}
+                            />
                           ))}
                         </div>
+                        {/* Wide horizontal cards for 3rd+ */}
+                        {message.products.slice(2).map((product, i) => (
+                          <ChatWideProductCard
+                            key={buildProductKey(product)}
+                            product={product}
+                            onAddToCart={handleAddToCart}
+                            colorVariant={CARD_COLOR_VARIANTS[(i + 2) % CARD_COLOR_VARIANTS.length]}
+                          />
+                        ))}
                         {message.recommendation_paging?.hasMore ? (
                           <button
                             type="button"
-                            className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2 disabled:opacity-60"
+                            className="w-full rounded-xl border py-2 text-xs text-muted-foreground transition-colors hover:text-foreground disabled:opacity-60"
+                            style={{ borderColor: 'rgba(44,44,42,0.08)', borderWidth: '0.5px' }}
                             disabled={Boolean(message.recommendation_paging?.isLoadingMore)}
                             onClick={() => handleLoadMoreMessageProducts(message.id)}
                           >
