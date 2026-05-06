@@ -285,3 +285,56 @@ describe('helpers', () => {
     expect(out).not.toContain('</script>');
   });
 });
+
+describe('buildProductJsonLd — BreadcrumbList', () => {
+  // Why we always emit a breadcrumb: Gemini grounding + Google rich
+  // results use the chain to answer "best {category}" queries. Without
+  // BreadcrumbList the model can't easily decide which category bucket
+  // this PDP belongs to — even when category_path is present in the
+  // gateway response.
+
+  it('emits 3-step BreadcrumbList with category from category_path', () => {
+    const out = buildProductJsonLd({
+      product: { title: 'X', category_path: ['Serum', 'Eye'] },
+      productId: PRODUCT_ID,
+    });
+    const parsed = JSON.parse(out!);
+    expect(parsed.breadcrumb).toEqual({
+      '@type': 'BreadcrumbList',
+      itemListElement: [
+        { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://agent.pivota.cc' },
+        { '@type': 'ListItem', position: 2, name: 'Serum', item: 'https://agent.pivota.cc/products' },
+        { '@type': 'ListItem', position: 3, name: 'X', item: URL },
+      ],
+    });
+  });
+
+  it('falls back to product_type when category_path is missing', () => {
+    const out = buildProductJsonLd({
+      product: { title: 'X', product_type: 'serum' },
+      productId: PRODUCT_ID,
+    });
+    const parsed = JSON.parse(out!);
+    expect(parsed.breadcrumb.itemListElement[1].name).toBe('serum');
+  });
+
+  it('uses generic "Products" when no category info is available', () => {
+    const out = buildProductJsonLd({
+      product: { title: 'X' },
+      productId: PRODUCT_ID,
+    });
+    const parsed = JSON.parse(out!);
+    expect(parsed.breadcrumb.itemListElement[1].name).toBe('Products');
+    expect(parsed.breadcrumb.itemListElement).toHaveLength(3);
+  });
+
+  it('breadcrumb ListItem positions are sequential 1..N', () => {
+    const out = buildProductJsonLd({
+      product: { title: 'X', category_path: ['Y'] },
+      productId: PRODUCT_ID,
+    });
+    const parsed = JSON.parse(out!);
+    const positions = parsed.breadcrumb.itemListElement.map((i: any) => i.position);
+    expect(positions).toEqual([1, 2, 3]);
+  });
+});

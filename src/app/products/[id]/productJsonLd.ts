@@ -246,6 +246,51 @@ export function buildProductJsonLd(args: {
     };
   }
 
+  // BreadcrumbList — helps Gemini grounding + Google rich results
+  // categorize the product. The breadcrumb chain is what lets the model
+  // answer "best {category}" queries correctly: it knows this PDP is
+  // a {category_path[0]}, not just a generic page. We always emit a
+  // 3-step crumb (Home → Products[/category] → Product) when name is
+  // present; the category step is omitted only if no category is known.
+  const categoryName = _firstString(
+    Array.isArray(product.category_path) && product.category_path[0],
+    product.product_type,
+    product.category,
+  );
+  const breadcrumbItems: Array<Record<string, any>> = [
+    {
+      '@type': 'ListItem',
+      position: 1,
+      name: 'Home',
+      item: PIVOTA_SITE_BASE,
+    },
+  ];
+  if (categoryName) {
+    breadcrumbItems.push({
+      '@type': 'ListItem',
+      position: breadcrumbItems.length + 1,
+      name: categoryName,
+      item: `${PIVOTA_SITE_BASE}/products`,
+    });
+  } else {
+    breadcrumbItems.push({
+      '@type': 'ListItem',
+      position: breadcrumbItems.length + 1,
+      name: 'Products',
+      item: `${PIVOTA_SITE_BASE}/products`,
+    });
+  }
+  breadcrumbItems.push({
+    '@type': 'ListItem',
+    position: breadcrumbItems.length + 1,
+    name,
+    item: url,
+  });
+  ldRecord.breadcrumb = {
+    '@type': 'BreadcrumbList',
+    itemListElement: breadcrumbItems,
+  };
+
   return _safeJsonForScriptTag(ldRecord);
 }
 

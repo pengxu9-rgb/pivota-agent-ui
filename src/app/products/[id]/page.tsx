@@ -140,21 +140,47 @@ async function fetchProductForServerRender(
   }
 }
 
-function buildMetadataFromProduct(product: Record<string, any>): Metadata {
+const SITE_BASE = 'https://agent.pivota.cc';
+
+function buildMetadataFromProduct(
+  product: Record<string, any>,
+  productId: string,
+): Metadata {
   const title = buildProductTitle(product);
   const description = buildProductDescription(product);
   const image = readProductImage(product);
   const images = image ? [{ url: image, alt: firstString(product.title, product.name) || title }] : [];
+  const canonicalUrl = `${SITE_BASE}/products/${productId}`;
 
   return {
     title,
     description,
+    // Canonical link prevents Gemini / Google from conflating ext_*
+    // alias URLs with the canonical sig_* PDP. Without it the same
+    // product can split index signal across multiple URLs.
+    alternates: {
+      canonical: canonicalUrl,
+    },
+    // Defense-in-depth on top of robots.txt — explicit page-level
+    // permission for crawlers like GoogleOther / Google-Extended that
+    // sometimes treat robots.txt as advisory.
+    robots: { index: true, follow: true },
+    // og:type=product is what Gemini's product extractor + Facebook /
+    // LinkedIn / Twitter card scrapers expect for PDPs. `website`
+    // (the previous value) gets down-weighted as a generic landing
+    // page. Next.js 15.5's OpenGraphType union doesn't include
+    // 'product' (only article/book/profile/website/music/video), but
+    // the OG spec does, and Next.js renders the string verbatim into
+    // <meta property="og:type" content="...">. The cast is a known
+    // workaround until Next bumps the union; flagged in the
+    // pivota-pdp-indexing-discoverability runbook.
     openGraph: {
       title,
       description,
-      type: 'website',
+      type: 'product',
+      url: canonicalUrl,
       ...(images.length ? { images } : {}),
-    },
+    } as Metadata['openGraph'],
     twitter: {
       card: image ? 'summary_large_image' : 'summary',
       title,
@@ -178,7 +204,7 @@ export async function generateMetadata({
   });
 
   return product
-    ? buildMetadataFromProduct(product)
+    ? buildMetadataFromProduct(product, productId)
     : { title: DEFAULT_TITLE, description: 'Shop products with Pivota Shopping AI.' };
 }
 
