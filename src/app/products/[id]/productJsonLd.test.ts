@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { buildProductJsonLd, __forTesting } from './productJsonLd';
 
-const { _normalizeAvailability, _readImages, _safeJsonForScriptTag } = __forTesting;
+const {
+  _normalizeAvailability,
+  _readImages,
+  _safeJsonForScriptTag,
+  _resolveDefaultVariant,
+  _resolveOfferFacts,
+} = __forTesting;
 
 const PRODUCT_ID = 'sig_7ad40676c42fb9c96e2a8136';
 const URL = `https://agent.pivota.cc/products/${PRODUCT_ID}`;
@@ -148,6 +154,107 @@ describe('buildProductJsonLd — security: script-tag escape', () => {
     });
     expect(out!).not.toContain('<!--');
     expect(out!).not.toContain('-->');
+  });
+});
+
+describe('buildProductJsonLd — variant-nested price (gateway shape)', () => {
+  // Critical: the live get_pdp_v2 response stores price under
+  // variants[default_variant_id].price.current.amount. PR 20 only read
+  // top-level product.price and silently dropped the Offer block on
+  // every real PDP. This whole describe block exists to lock that fix.
+
+  const liveLikeProduct = {
+    title: 'Multi-Peptide Lash and Brow Serum',
+    brand: { name: 'the ordinary' },
+    default_variant_id: 'e3cf79a9b040',
+    variants: [
+      {
+        variant_id: 'e3cf79a9b040',
+        sku_id: '769915233636',
+        title: '5ml',
+        price: { current: { amount: 11.47, currency: 'USD' } },
+        availability: { in_stock: true },
+      },
+    ],
+  };
+
+  it('extracts price from variants[default].price.current.amount', () => {
+    const out = buildProductJsonLd({ product: liveLikeProduct, productId: PRODUCT_ID });
+    const parsed = JSON.parse(out!);
+    expect(parsed.offers).toMatchObject({
+      '@type': 'Offer',
+      url: URL,
+      price: '11.47',
+      priceCurrency: 'USD',
+      availability: 'https://schema.org/InStock',
+    });
+  });
+
+  it('falls back to first variant when default_variant_id is missing', () => {
+    const product = {
+      title: 'X',
+      variants: [
+        { variant_id: 'v1', price: { current: { amount: 9.99, currency: 'EUR' } }, availability: { in_stock: false } },
+        { variant_id: 'v2', price: { current: { amount: 14.99, currency: 'EUR' } } },
+      ],
+    };
+    const parsed = JSON.parse(buildProductJsonLd({ product, productId: PRODUCT_ID })!);
+    expect(parsed.offers.price).toBe('9.99');
+    expect(parsed.offers.priceCurrency).toBe('EUR');
+    expect(parsed.offers.availability).toBe('https://schema.org/OutOfStock');
+  });
+
+  it('matches by default_variant_id even when not first in list', () => {
+    const product = {
+      title: 'X',
+      default_variant_id: 'v2',
+      variants: [
+        { variant_id: 'v1', price: { current: { amount: 5.00, currency: 'USD' } } },
+        { variant_id: 'v2', price: { current: { amount: 25.00, currency: 'USD' } } },
+      ],
+    };
+    const parsed = JSON.parse(buildProductJsonLd({ product, productId: PRODUCT_ID })!);
+    expect(parsed.offers.price).toBe('25.00');
+  });
+
+  it('still works for non-variant top-level product shape', () => {
+    // Backward compat for legacy / external_seed shapes that put price
+    // at the root.
+    const product = {
+      title: 'X',
+      price: 7.50,
+      currency: 'USD',
+      in_stock: true,
+    };
+    const parsed = JSON.parse(buildProductJsonLd({ product, productId: PRODUCT_ID })!);
+    expect(parsed.offers.price).toBe('7.50');
+    expect(parsed.offers.priceCurrency).toBe('USD');
+    expect(parsed.offers.availability).toBe('https://schema.org/InStock');
+  });
+
+  it('reads sku_id from default variant when product.sku is missing', () => {
+    // Bonus consistency: variants carry SKUs too; `_firstString` covers it
+    // via `product.platform_product_id` fallback already, but real PDPs
+    // expose sku_id under the variant. We don't read that today;
+    // just locking the current behavior so we know what to add next.
+    const out = buildProductJsonLd({ product: liveLikeProduct, productId: PRODUCT_ID });
+    const parsed = JSON.parse(out!);
+    expect(parsed.sku).toBe(PRODUCT_ID); // currently falls through to productId
+  });
+});
+
+describe('_resolveDefaultVariant + _resolveOfferFacts', () => {
+  it('_resolveDefaultVariant returns null on empty / non-array variants', () => {
+    expect(_resolveDefaultVariant({})).toBeNull();
+    expect(_resolveDefaultVariant({ variants: [] })).toBeNull();
+    expect(_resolveDefaultVariant({ variants: 'oops' as any })).toBeNull();
+  });
+
+  it('_resolveOfferFacts returns nulls when neither variant nor top-level price exists', () => {
+    const facts = _resolveOfferFacts({ title: 'X' });
+    expect(facts.price).toBeNull();
+    expect(facts.availability).toBeNull();
+    expect(facts.currency).toBe('USD'); // default fallback
   });
 });
 

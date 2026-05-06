@@ -58,6 +58,74 @@ function _firstNumber(...values: unknown[]): number | null {
   return null;
 }
 
+/**
+ * The gateway's get_pdp_v2 response stores price + availability under the
+ * default variant (`variants[default_variant_id].price.current.amount`),
+ * not at the top-level product. Earlier versions of this builder only
+ * read top-level fields and silently dropped the Offer block on every
+ * real PDP. This helper resolves the right variant.
+ *
+ * Order:
+ *   1. Variant whose `variant_id` equals `product.default_variant_id`
+ *   2. First variant in `variants[]`
+ *   3. null
+ */
+function _resolveDefaultVariant(product: Record<string, any>): Record<string, any> | null {
+  const variants = Array.isArray(product.variants) ? product.variants : [];
+  if (variants.length === 0) return null;
+  const defaultId = typeof product.default_variant_id === 'string'
+    ? product.default_variant_id.trim()
+    : '';
+  if (defaultId) {
+    const match = variants.find(
+      (v: any) => v && typeof v === 'object' && String(v.variant_id || '') === defaultId,
+    );
+    if (match && typeof match === 'object') return match;
+  }
+  const first = variants[0];
+  return first && typeof first === 'object' ? first : null;
+}
+
+/**
+ * Extract a normalized { price, currency, availability } triple from a
+ * product. Reads the default variant first, then top-level fields as a
+ * fallback for non-variant catalog shapes.
+ */
+function _resolveOfferFacts(product: Record<string, any>): {
+  price: number | null;
+  currency: string;
+  availability: string | null;
+} {
+  const variant = _resolveDefaultVariant(product);
+
+  // Variant-style: variants[].price.current.amount + .currency + .availability.in_stock
+  const variantPrice = _firstNumber(
+    variant?.price?.current?.amount,
+    variant?.price?.amount,
+    variant?.price_amount,
+  );
+  const variantCurrency = _firstString(
+    variant?.price?.current?.currency,
+    variant?.price?.currency,
+    variant?.currency,
+  );
+  const variantAvailability = variant?.availability?.in_stock ?? variant?.in_stock;
+
+  // Top-level fallbacks for non-variant shapes (legacy / external seeds).
+  const price = variantPrice ?? _firstNumber(product.price, product.price_amount, product.offer_price);
+  const currency = variantCurrency || _firstString(product.currency, product.price_currency, 'USD');
+  const availabilityRaw =
+    variantAvailability !== undefined
+      ? variantAvailability
+      : (product.availability ?? product.in_stock ?? product.stock_status);
+
+  return {
+    price,
+    currency,
+    availability: _normalizeAvailability(availabilityRaw),
+  };
+}
+
 function _readImages(product: Record<string, any>): string[] {
   const out: string[] = [];
   const main = _firstString(product.image_url);
@@ -118,11 +186,7 @@ export function buildProductJsonLd(args: {
   const sku = _firstString(product.sku, product.platform_product_id, productId);
   const url = `${PIVOTA_SITE_BASE}/products/${productId}`;
 
-  const price = _firstNumber(product.price, product.price_amount, product.offer_price);
-  const currency = _firstString(product.currency, product.price_currency, 'USD');
-  const availability = _normalizeAvailability(
-    product.availability ?? product.in_stock ?? product.stock_status,
-  );
+  const { price, currency, availability } = _resolveOfferFacts(product);
 
   const ldRecord: Record<string, any> = {
     '@context': SCHEMA_CONTEXT,
@@ -209,4 +273,6 @@ export const __forTesting = {
   _readImages,
   _readBrand,
   _safeJsonForScriptTag,
+  _resolveDefaultVariant,
+  _resolveOfferFacts,
 };
