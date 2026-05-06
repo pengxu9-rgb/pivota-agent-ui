@@ -3,8 +3,8 @@
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { ArrowLeft, ArrowRight, Loader2, Package, ShoppingCart, XCircle } from 'lucide-react'
-import { Badge } from '@/components/ui/badge'
+import { ArrowRight, ChevronLeft, Loader2, Package, ShoppingCart, XCircle } from 'lucide-react'
+import { BottomTabBar } from '@/components/chat/BottomTabBar'
 import { cancelAccountOrder, listMyOrders } from '@/lib/api'
 import { ensureAuroraSession, shouldUseAuroraAutoExchange } from '@/lib/auroraOrdersAuth'
 import { isAuroraEmbedMode } from '@/lib/auroraEmbed'
@@ -27,11 +27,11 @@ import {
 import { useAuthStore } from '@/store/authStore'
 import { toast } from 'sonner'
 
-const toneClasses: Record<'success' | 'warning' | 'danger' | 'neutral', string> = {
-  success: 'border border-emerald-200 bg-emerald-50 text-emerald-700',
-  warning: 'border border-amber-200 bg-amber-50 text-amber-700',
-  danger: 'border border-rose-200 bg-rose-50 text-rose-700',
-  neutral: 'border border-slate-200 bg-slate-100 text-slate-700',
+const toneStyles: Record<'success' | 'warning' | 'danger' | 'neutral', { bg: string; fg: string }> = {
+  success: { bg: '#E1F5EE', fg: '#1D9E75' },
+  warning: { bg: '#FAEEDA', fg: '#633806' },
+  danger:  { bg: '#FAECE7', fg: '#993C1D' },
+  neutral: { bg: '#F4F4F2', fg: '#2C2C2A99' },
 }
 
 const formatMoney = (minor: number, currency: string): string => {
@@ -502,33 +502,55 @@ function OrdersPageContent() {
   )
 
   return (
-    <div className="min-h-screen bg-gradient-mesh">
-      <div className="mx-auto max-w-5xl px-4 py-8">
-        {!isEmbed && (
-          <div className="mb-6 flex items-center justify-between gap-4">
-            <div>
-              <h1 className="text-3xl font-bold">My Orders</h1>
-              <p className="text-sm text-muted-foreground">Track and manage your purchases</p>
-            </div>
-            <div className="flex items-center gap-3">
-              {user?.email && <Badge variant="secondary">{user.email}</Badge>}
-              <Link href="/" className="inline-flex items-center gap-2 text-sm text-indigo-600 hover:underline">
-                <ArrowLeft className="h-4 w-4" />
-                Back to Home
-              </Link>
-            </div>
-          </div>
+    <div className="flex min-h-screen w-full flex-col bg-white">
+      {!isEmbed && (
+        <header
+          className="sticky top-0 z-40 flex items-center justify-between bg-white px-3"
+          style={{
+            height: '54px',
+            borderBottomWidth: '0.5px',
+            borderColor: 'rgba(44,44,42,0.08)',
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => router.back()}
+            className="h-9 w-9 rounded-full flex items-center justify-center transition-opacity active:opacity-60"
+            aria-label="Back"
+          >
+            <ChevronLeft className="h-5 w-5" style={{ color: '#2C2C2A' }} />
+          </button>
+          <h1 className="text-[14px] font-semibold" style={{ color: '#2C2C2A' }}>My orders</h1>
+          <div className="w-9" />
+        </header>
+      )}
+
+      <main className="flex-1 mx-auto w-full max-w-5xl px-3 py-4">
+        {!isEmbed && user?.email && (
+          <p className="mb-3 text-[11px]" style={{ color: '#2C2C2A99' }}>{user.email}</p>
         )}
 
         {isBusy && (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            {isRecovering ? 'Recovering session...' : 'Loading orders...'}
+          <div className="flex items-center gap-2 text-[12px] mb-3" style={{ color: '#2C2C2A99' }}>
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            {isRecovering ? 'Recovering session…' : 'Loading orders…'}
           </div>
         )}
-        {error && <div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</div>}
+        {error && (
+          <div
+            className="mb-3 rounded-xl px-3 py-2 text-[12px]"
+            style={{
+              backgroundColor: '#FAECE7',
+              color: '#993C1D',
+              borderWidth: '0.5px',
+              borderColor: 'rgba(216,90,48,0.3)',
+            }}
+          >
+            {error}
+          </div>
+        )}
         {loadState === 'failed' && (
-          <div className="mb-4 flex flex-wrap gap-2">
+          <div className="mb-3 flex flex-wrap gap-2">
             <button
               onClick={() =>
                 void loadOrders({
@@ -537,7 +559,8 @@ function OrdersPageContent() {
                   trigger: 'manual_retry',
                 })
               }
-              className="rounded-lg border border-border px-3 py-2 text-xs font-medium hover:bg-muted"
+              className="rounded-full bg-[#F4F4F2] px-3 py-1.5 text-[12px] font-medium transition-colors active:bg-[#EEEDFE]"
+              style={{ color: '#2C2C2A' }}
             >
               Retry
             </button>
@@ -545,7 +568,8 @@ function OrdersPageContent() {
               onClick={() =>
                 router.replace(`/login?redirect=${encodeURIComponent(currentListUrl)}`)
               }
-              className="rounded-lg border border-border px-3 py-2 text-xs font-medium hover:bg-muted"
+              className="rounded-full bg-[#F4F4F2] px-3 py-1.5 text-[12px] font-medium transition-colors active:bg-[#EEEDFE]"
+              style={{ color: '#2C2C2A' }}
             >
               Log in again
             </button>
@@ -553,15 +577,29 @@ function OrdersPageContent() {
         )}
 
         {isEmpty ? (
-          <div className="rounded-3xl border border-border bg-card/60 p-12 text-center">
-            <Package className="mx-auto mb-4 h-14 w-14 text-muted-foreground" />
-            <h2 className="text-xl font-semibold">No orders yet</h2>
-            <p className="mt-2 text-muted-foreground">Start shopping to see your order history here.</p>
+          <div
+            className="rounded-2xl bg-white p-10 text-center space-y-3"
+            style={{ borderWidth: '0.5px', borderColor: 'rgba(44,44,42,0.08)' }}
+          >
+            <span
+              className="mx-auto flex h-14 w-14 items-center justify-center rounded-full"
+              style={{ backgroundColor: '#EEEDFE' }}
+            >
+              <Package className="h-6 w-6" style={{ color: '#534AB7' }} strokeWidth={1.6} />
+            </span>
+            <div className="space-y-1">
+              <p className="text-[15px] font-semibold" style={{ color: '#2C2C2A' }}>No orders yet</p>
+              <p className="text-[12px]" style={{ color: '#2C2C2A99' }}>
+                Start shopping to see your order history here.
+              </p>
+            </div>
             {!isEmbed && (
-              <Link href="/products">
-                <button className="mt-5 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-500 px-6 py-3 text-sm font-medium text-white shadow transition hover:shadow-lg">
-                  Browse Products
-                </button>
+              <Link
+                href="/products"
+                className="inline-flex items-center justify-center rounded-full px-4 py-2 text-[13px] font-semibold text-white transition-opacity active:opacity-85"
+                style={{ backgroundColor: '#534AB7' }}
+              >
+                Browse products
               </Link>
             )}
           </div>
@@ -599,14 +637,23 @@ function OrdersPageContent() {
                     ? 'Refund requested'
                     : 'Refunded'
 
+              const tone = toneStyles[statusTone]
               return (
                 <div
                   key={order.id}
-                  className="rounded-2xl border border-border bg-card/60 p-4 transition hover:shadow-glass-hover sm:p-5"
+                  className="rounded-2xl bg-white p-3 sm:p-4"
+                  style={{ borderWidth: '0.5px', borderColor: 'rgba(44,44,42,0.08)' }}
                 >
-                  <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div className="flex min-w-0 gap-3">
-                      <div className="h-14 w-14 shrink-0 overflow-hidden rounded-xl border border-border bg-muted">
+                      <div
+                        className="h-14 w-14 shrink-0 overflow-hidden rounded-xl"
+                        style={{
+                          backgroundColor: '#F4F4F2',
+                          borderWidth: '0.5px',
+                          borderColor: 'rgba(44,44,42,0.08)',
+                        }}
+                      >
                         {order.firstItemImageUrl ? (
                           // eslint-disable-next-line @next/next/no-img-element
                           <img
@@ -617,47 +664,58 @@ function OrdersPageContent() {
                             className="h-full w-full object-cover"
                           />
                         ) : (
-                          <div className="flex h-full w-full items-center justify-center text-muted-foreground">
-                            <ShoppingCart className="h-5 w-5" />
+                          <div className="flex h-full w-full items-center justify-center" style={{ color: '#2C2C2A66' }}>
+                            <ShoppingCart className="h-5 w-5" strokeWidth={1.6} />
                           </div>
                         )}
                       </div>
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
-                          <h3 className="text-sm font-semibold text-foreground sm:text-base">Order #{order.id}</h3>
-                          <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${toneClasses[statusTone]}`}>
+                          <h3 className="text-[13px] font-semibold sm:text-[14px]" style={{ color: '#2C2C2A' }}>
+                            Order #{order.id}
+                          </h3>
+                          <span
+                            className="inline-flex rounded-full px-2 py-0.5 text-[10px] font-medium"
+                            style={{ backgroundColor: tone.bg, color: tone.fg }}
+                          >
                             {displayStatus}
                           </span>
                         </div>
-                        <p className="mt-1 text-xs text-muted-foreground">{formatDate(order.createdAt)}</p>
-                        <p className="mt-1 truncate text-sm text-muted-foreground">
+                        <p className="mt-1 text-[11px]" style={{ color: '#2C2C2A99' }}>{formatDate(order.createdAt)}</p>
+                        <p className="mt-1 truncate text-[12px]" style={{ color: '#2C2C2A' }}>
                           {order.itemsSummary || 'Order from shopping agent'}
                         </p>
                         {order.creatorName && (
-                          <p className="mt-1 text-xs text-muted-foreground">Creator: {order.creatorName}</p>
+                          <p className="mt-0.5 text-[11px]" style={{ color: '#2C2C2A99' }}>Creator: {order.creatorName}</p>
                         )}
-                        {locationText && <p className="mt-1 text-xs text-muted-foreground">{locationText}</p>}
+                        {locationText && <p className="mt-0.5 text-[11px]" style={{ color: '#2C2C2A99' }}>{locationText}</p>}
                       </div>
                     </div>
 
                     <div className="flex shrink-0 flex-col items-start gap-2 sm:items-end">
-                      <div className="text-lg font-semibold text-foreground">{formatMoney(order.totalAmountMinor, order.currency)}</div>
+                      <div className="text-[16px] font-semibold" style={{ color: '#2C2C2A' }}>
+                        {formatMoney(order.totalAmountMinor, order.currency)}
+                      </div>
                       {hasRefundSummary && (
-                        <div className="text-xs font-medium text-amber-700">
+                        <div className="text-[11px] font-medium" style={{ color: '#993C1D' }}>
                           {refundSummaryLabel} {formatMoney(order.totalRefundedMinor, order.currency)}
                         </div>
                       )}
-                      <div className="flex flex-wrap gap-2 sm:justify-end">
+                      <div className="flex flex-wrap gap-1.5 sm:justify-end">
                         <Link href={buildOrderDetailHref(order.id, scopedSearchParams, currentListUrl)}>
-                          <button className="inline-flex items-center gap-1 rounded-lg border border-border px-3 py-2 text-xs font-medium hover:bg-muted">
+                          <button
+                            className="inline-flex items-center gap-1 rounded-full bg-[#F4F4F2] px-3 py-1.5 text-[11px] font-medium transition-colors active:bg-[#EEEDFE]"
+                            style={{ color: '#2C2C2A' }}
+                          >
                             View details
-                            <ArrowRight className="h-3.5 w-3.5" />
+                            <ArrowRight className="h-3 w-3" />
                           </button>
                         </Link>
                         {canPay && (
                           <button
                             onClick={() => onContinuePayment(order)}
-                            className="rounded-lg bg-gradient-to-r from-indigo-500 to-purple-500 px-3 py-2 text-xs font-medium text-white shadow hover:shadow-lg"
+                            className="rounded-full px-3 py-1.5 text-[11px] font-medium text-white transition-opacity active:opacity-85"
+                            style={{ backgroundColor: '#534AB7' }}
                           >
                             Continue payment
                           </button>
@@ -665,18 +723,23 @@ function OrdersPageContent() {
                         {canCancel && (
                           <button
                             onClick={() => onCancelOrder(order)}
-                            className="inline-flex items-center gap-1 rounded-lg border border-border px-3 py-2 text-xs font-medium hover:bg-muted disabled:opacity-60"
+                            className="inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-[11px] font-medium transition-colors active:bg-[#FAECE7] disabled:opacity-50"
+                            style={{
+                              color: '#993C1D',
+                              borderWidth: '0.5px',
+                              borderColor: 'rgba(216,90,48,0.3)',
+                            }}
                             disabled={cancellingOrderId === order.id}
                           >
                             {cancellingOrderId === order.id ? (
                               <>
-                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                Cancelling...
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                                Cancelling…
                               </>
                             ) : (
                               <>
-                                <XCircle className="h-3.5 w-3.5" />
-                                Cancel order
+                                <XCircle className="h-3 w-3" />
+                                Cancel
                               </>
                             )}
                           </button>
@@ -685,9 +748,10 @@ function OrdersPageContent() {
                           <button
                             onClick={() => onReorder(order)}
                             disabled
-                            className="rounded-lg border border-border px-3 py-2 text-xs font-medium hover:bg-muted disabled:opacity-60"
+                            className="rounded-full bg-[#F4F4F2] px-3 py-1.5 text-[11px] font-medium opacity-60"
+                            style={{ color: '#2C2C2A' }}
                           >
-                            Reorder (coming soon)
+                            Reorder (soon)
                           </button>
                         )}
                       </div>
@@ -698,7 +762,7 @@ function OrdersPageContent() {
             })}
 
             {hasMore && (
-              <div className="flex justify-center">
+              <div className="flex justify-center pt-2">
                 <button
                   onClick={() =>
                     void loadOrders({
@@ -708,15 +772,18 @@ function OrdersPageContent() {
                     })
                   }
                   disabled={loadingMore || isRecovering}
-                  className="rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-muted disabled:opacity-60"
+                  className="rounded-full bg-[#F4F4F2] px-4 py-2 text-[12px] font-medium transition-colors active:bg-[#EEEDFE] disabled:opacity-50"
+                  style={{ color: '#2C2C2A' }}
                 >
-                  {loadingMore ? 'Loading...' : 'Load more'}
+                  {loadingMore ? 'Loading…' : 'Load more'}
                 </button>
               </div>
             )}
           </div>
         )}
-      </div>
+      </main>
+
+      {!isEmbed && <BottomTabBar active="orders" />}
     </div>
   )
 }
