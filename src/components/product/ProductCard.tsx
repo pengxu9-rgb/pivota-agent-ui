@@ -58,6 +58,7 @@ export default function ProductCard({
   const resetTimerRef = useRef<number | null>(null);
   const { addItem } = useCartStore();
   const isExternal = Boolean(external_redirect_url);
+  const hasDisplayPrice = Number.isFinite(Number(price)) && Number(price) > 0;
 
   const href = buildProductHref(product_id, merchant_id);
 
@@ -201,7 +202,7 @@ export default function ProductCard({
           )}
 
           <div className={compact ? 'text-base font-bold text-primary' : 'text-lg font-bold text-primary'}>
-            ${price.toFixed(2)}
+            {hasDisplayPrice ? `$${price.toFixed(2)}` : 'View price'}
           </div>
 
           <div className="flex gap-2">
