@@ -642,6 +642,44 @@ describe('ProductDetailPage canonical PDP loading', () => {
     });
   });
 
+  it('posts variant or offer price when canonical product price is missing', async () => {
+    authUser = { id: 'user_1' };
+    getPdpV2Mock.mockResolvedValue({ status: 'success', modules: [] });
+    mapPdpV2ToPdpPayloadMock.mockReturnValue({
+      ...canonicalPayload,
+      product: {
+        ...canonicalPayload.product,
+        price: undefined,
+        variants: [
+          {
+            variant_id: 'v_1',
+            price: { price_amount: 37, price_currency: 'USD' },
+          },
+        ],
+      },
+      offers: [
+        {
+          offer_id: 'offer_1',
+          merchant_id: 'external_seed',
+          product_id: 'prod_1',
+          price: { amount: 37, currency: 'USD' },
+        },
+      ],
+    });
+
+    renderPage();
+
+    await screen.findByTestId('generic-pdp');
+    await waitFor(() => {
+      expect(recordBrowseHistoryEventMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          product_id: 'prod_1',
+          price: 37,
+        }),
+      );
+    });
+  });
+
   it('keeps reviews and similar on the main PDP request instead of client backfills', async () => {
     getPdpV2Mock.mockResolvedValue({ kind: 'initial' });
     mapPdpV2ToPdpPayloadMock.mockReturnValue(canonicalWithSimilarPayload);

@@ -3,6 +3,10 @@ import {
   resolveProductCandidates,
 } from '@/lib/api';
 import {
+  extractPositivePriceAmount,
+  extractPositivePriceFromProductLike,
+} from '@/lib/price';
+import {
   hasPositiveHistoryPrice,
   historyKey,
   type HistoryItem,
@@ -16,29 +20,7 @@ function lookupMerchantId(value: string | undefined): string | undefined {
 }
 
 export function extractPriceAmount(value: any): number {
-  const candidates = [
-    value,
-    value?.amount,
-    value?.value,
-    value?.price_amount,
-    value?.current,
-    value?.current?.amount,
-    value?.current?.value,
-    value?.sale,
-    value?.sale?.amount,
-    value?.min,
-    value?.min?.amount,
-  ];
-  for (const candidate of candidates) {
-    const amount =
-      typeof candidate === 'number'
-        ? candidate
-        : typeof candidate === 'string'
-          ? Number(candidate)
-          : NaN;
-    if (Number.isFinite(amount) && amount > 0) return amount;
-  }
-  return 0;
+  return extractPositivePriceAmount(value);
 }
 
 export function extractPdpPriceAmount(response: any, merchantId: string): number {
@@ -46,27 +28,7 @@ export function extractPdpPriceAmount(response: any, merchantId: string): number
     ? response.modules.find((module: any) => String(module?.type || '').trim() === 'canonical')
     : null;
   const payload = canonicalModule?.data?.pdp_payload || response?.pdp_payload || response;
-  const product = payload?.product || response?.product;
-  const offers = [
-    ...(Array.isArray(payload?.offers) ? payload.offers : []),
-    ...(Array.isArray(response?.offers) ? response.offers : []),
-  ];
-  const matchingOffers = merchantId
-    ? offers.filter((offer: any) => String(offer?.merchant_id || '').trim() === merchantId)
-    : offers;
-  const candidates = [
-    product?.price,
-    product?.pricing,
-    ...(Array.isArray(product?.variants) ? product.variants.map((variant: any) => variant?.price) : []),
-    ...matchingOffers.map((offer: any) => offer?.price),
-    ...offers.map((offer: any) => offer?.price),
-  ];
-
-  for (const candidate of candidates) {
-    const price = extractPriceAmount(candidate);
-    if (price > 0) return price;
-  }
-  return 0;
+  return extractPositivePriceFromProductLike(payload, { merchantId });
 }
 
 export async function resolveHistoryItemPrice(item: HistoryItem): Promise<number> {
@@ -103,7 +65,7 @@ export async function resolveHistoryItemPrice(item: HistoryItem): Promise<number
 }
 
 export async function hydrateZeroPriceItems(items: HistoryItem[]): Promise<HistoryItem[]> {
-  const targets = items.filter((item) => !hasPositiveHistoryPrice(item)).slice(0, 24);
+  const targets = items.filter((item) => !hasPositiveHistoryPrice(item));
   if (targets.length === 0) return items;
 
   const pricesByKey = new Map<string, number>();

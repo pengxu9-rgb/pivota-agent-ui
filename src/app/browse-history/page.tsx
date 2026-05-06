@@ -13,16 +13,27 @@ import {
 } from '@/lib/api';
 import {
   mergeHistoryItems,
+  hasPositiveHistoryPrice,
   type HistoryItem,
 } from './historyItems';
 import { hydrateZeroPriceItems } from './priceHydration';
+import { extractPositivePriceAmount } from '@/lib/price';
 
 const LOCAL_HISTORY_KEY = 'browse_history';
+const LOCAL_HISTORY_VERSION_KEY = 'browse_history_version';
+const LOCAL_HISTORY_VERSION = 'positive-price-v1';
+
+function priceFromHistoryItem(item: any): number {
+  return extractPositivePriceAmount(item?.price);
+}
 
 function readLocalHistory(): HistoryItem[] {
   if (typeof window === 'undefined') return [];
   const savedHistory = localStorage.getItem(LOCAL_HISTORY_KEY);
-  if (!savedHistory) return [];
+  if (!savedHistory) {
+    localStorage.setItem(LOCAL_HISTORY_VERSION_KEY, LOCAL_HISTORY_VERSION);
+    return [];
+  }
   try {
     const parsed = JSON.parse(savedHistory);
     if (!Array.isArray(parsed)) return [];
@@ -32,7 +43,7 @@ function readLocalHistory(): HistoryItem[] {
         merchant_id:
           item?.merchant_id == null ? undefined : String(item.merchant_id).trim() || undefined,
         title: String(item?.title || 'Untitled product').trim() || 'Untitled product',
-        price: Number(item?.price) || 0,
+        price: priceFromHistoryItem(item),
         image: String(item?.image || item?.image_url || '/placeholder.svg').trim() || '/placeholder.svg',
         description:
           item?.description == null ? undefined : String(item.description).trim() || undefined,
@@ -49,7 +60,9 @@ function readLocalHistory(): HistoryItem[] {
 function writeLocalHistory(items: HistoryItem[]) {
   if (typeof window === 'undefined') return;
   try {
-    localStorage.setItem(LOCAL_HISTORY_KEY, JSON.stringify(items));
+    const positiveItems = items.filter(hasPositiveHistoryPrice);
+    localStorage.setItem(LOCAL_HISTORY_VERSION_KEY, LOCAL_HISTORY_VERSION);
+    localStorage.setItem(LOCAL_HISTORY_KEY, JSON.stringify(positiveItems));
   } catch {
     // ignore storage errors
   }
@@ -62,7 +75,7 @@ function mapRemoteHistory(items: any[]): HistoryItem[] {
       merchant_id:
         item?.merchant_id == null ? undefined : String(item.merchant_id).trim() || undefined,
       title: String(item?.title || 'Untitled product').trim() || 'Untitled product',
-      price: Number(item?.price) || 0,
+      price: priceFromHistoryItem(item),
       image: String(item?.image_url || '/placeholder.svg').trim() || '/placeholder.svg',
       description:
         item?.description == null ? undefined : String(item.description).trim() || undefined,
@@ -70,9 +83,13 @@ function mapRemoteHistory(items: any[]): HistoryItem[] {
         Number(item?.timestamp) ||
         (item?.viewed_at ? new Date(item.viewed_at).getTime() : Date.now()) ||
         Date.now(),
-    }))
-    .filter((item: HistoryItem) => Boolean(item.product_id))
-    .sort((a: HistoryItem, b: HistoryItem) => b.timestamp - a.timestamp);
+      }))
+      .filter((item: HistoryItem) => Boolean(item.product_id))
+      .sort((a: HistoryItem, b: HistoryItem) => b.timestamp - a.timestamp);
+}
+
+function resolvedHistoryItems(items: HistoryItem[]): HistoryItem[] {
+  return items.filter(hasPositiveHistoryPrice);
 }
 
 export default function BrowseHistoryPage() {
@@ -92,18 +109,25 @@ export default function BrowseHistoryPage() {
         if (remoteItems.length > 0) {
           const mergedItems = mergeHistoryItems(remoteItems, localItems);
           const hydratedItems = await hydrateZeroPriceItems(mergedItems);
+          const resolvedItems = resolvedHistoryItems(hydratedItems);
           if (cancelled) return;
-          setHistory(hydratedItems);
-          writeLocalHistory(hydratedItems);
+          setHistory(resolvedItems);
+          writeLocalHistory(resolvedItems);
         } else {
           const hydratedItems = await hydrateZeroPriceItems(localItems);
+          const resolvedItems = resolvedHistoryItems(hydratedItems);
           if (cancelled) return;
-          setHistory(hydratedItems);
+          setHistory(resolvedItems);
+          writeLocalHistory(resolvedItems);
         }
       } catch (error) {
         if (cancelled) return;
         console.error('Failed to load account browse history:', error);
-        setHistory(localItems);
+        const hydratedItems = await hydrateZeroPriceItems(localItems);
+        if (cancelled) return;
+        const resolvedItems = resolvedHistoryItems(hydratedItems);
+        setHistory(resolvedItems);
+        writeLocalHistory(resolvedItems);
       } finally {
         if (!cancelled) setLoading(false);
       }

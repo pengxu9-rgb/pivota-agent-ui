@@ -3441,6 +3441,8 @@ export type BrowseHistoryItem = {
   currency: string;
   image_url: string;
   description?: string | null;
+  price_source?: string | null;
+  price_resolution_status?: string | null;
   timestamp: number;
   viewed_at: string;
 };
@@ -3448,6 +3450,8 @@ export type BrowseHistoryItem = {
 export type BrowseHistoryListResult = {
   items: BrowseHistoryItem[];
   total: number;
+  unresolved_total?: number;
+  price_source_counts?: Record<string, number>;
 };
 
 export async function recordBrowseHistoryEvent(
@@ -3464,7 +3468,7 @@ export async function recordBrowseHistoryEvent(
         merchant_id: payload.merchant_id == null ? null : String(payload.merchant_id).trim() || null,
         title: payload.title == null ? null : String(payload.title),
         price:
-          typeof payload.price === 'number' && Number.isFinite(payload.price)
+          typeof payload.price === 'number' && Number.isFinite(payload.price) && payload.price > 0
             ? payload.price
             : null,
         currency: payload.currency == null ? null : String(payload.currency),
@@ -3494,6 +3498,13 @@ export async function getBrowseHistory(limit = 50): Promise<BrowseHistoryListRes
         : Array.isArray(res?.items)
           ? res.items.length
           : 0,
+      unresolved_total: Number.isFinite(Number(res?.unresolved_total))
+        ? Number(res.unresolved_total)
+        : undefined,
+      price_source_counts:
+        res?.price_source_counts && typeof res.price_source_counts === 'object'
+          ? (res.price_source_counts as Record<string, number>)
+          : undefined,
     };
   } catch (err: any) {
     if (isUnauthenticatedAccountsError(err)) return { items: [], total: 0 };

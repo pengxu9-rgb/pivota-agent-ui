@@ -3,6 +3,7 @@ import type {
   ResolveProductCandidatesOffer,
   ResolveProductCandidatesResponse,
 } from './api';
+import { extractMoneyCurrency, extractPositivePriceAmount } from './price';
 
 function normalizeResolvedOffers(
   resolution: ResolveProductCandidatesResponse | null | undefined,
@@ -78,14 +79,8 @@ export function mapResolvedOffersToSellerCandidates(
       const productId = String(offer.product_id || '').trim();
       if (!merchantId) return null;
 
-      const rawPrice =
-        typeof offer.price === 'number'
-          ? offer.price
-          : Number(offer.price?.amount ?? 0);
-      const currency =
-        typeof offer.price === 'number'
-          ? 'USD'
-          : String(offer.price?.currency || 'USD');
+      const rawPrice = extractPositivePriceAmount(offer.price || (offer as any).price_amount);
+      const currency = extractMoneyCurrency(offer.price, String((offer as any)?.currency || 'USD'));
 
       return {
         product_id: productId || merchantId,
@@ -93,7 +88,7 @@ export function mapResolvedOffersToSellerCandidates(
         merchant_name: String(offer.merchant_name || '').trim() || undefined,
         title: 'Seller option',
         description: '',
-        price: Number.isFinite(rawPrice) ? rawPrice : 0,
+        price: rawPrice,
         currency,
         in_stock:
           typeof offer.inventory?.in_stock === 'boolean'

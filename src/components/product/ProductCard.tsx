@@ -58,6 +58,8 @@ export default function ProductCard({
   const resetTimerRef = useRef<number | null>(null);
   const { addItem } = useCartStore();
   const isExternal = Boolean(external_redirect_url);
+  const displayPrice = Number(price);
+  const hasValidDisplayPrice = Number.isFinite(displayPrice) && displayPrice > 0;
 
   const href = buildProductHref(product_id, merchant_id);
 
@@ -78,7 +80,7 @@ export default function ProductCard({
         variant_id: resolvedVariantId,
         sku,
         title,
-        price,
+        price: displayPrice,
         currency,
         imageUrl: resolvedImage,
         merchant_id,
@@ -141,6 +143,15 @@ export default function ProductCard({
     };
   }, []);
 
+  if (!hasValidDisplayPrice) {
+    console.error('ProductCard received a non-positive price and will not render', {
+      product_id,
+      merchant_id,
+      price,
+    });
+    return null;
+  }
+
   return (
     <Link
       href={href}
@@ -201,7 +212,7 @@ export default function ProductCard({
           )}
 
           <div className={compact ? 'text-base font-bold text-primary' : 'text-lg font-bold text-primary'}>
-            ${price.toFixed(2)}
+            ${displayPrice.toFixed(2)}
           </div>
 
           <div className="flex gap-2">

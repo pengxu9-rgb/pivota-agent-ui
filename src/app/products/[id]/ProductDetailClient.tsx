@@ -40,6 +40,11 @@ import {
   pickHistoryImage,
   upsertLocalBrowseHistory,
 } from '@/lib/browseHistoryStorage';
+import {
+  extractMoneyCurrency,
+  extractPositivePriceAmount,
+  extractPositivePriceFromProductLike,
+} from '@/lib/price';
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -51,39 +56,17 @@ const PDP_V2_CORE_ONLY_RETRY_TIMEOUT_MS = 3500;
 const PDP_CORE_ONLY_INCLUDE: string[] = [];
 
 function extractMoneyAmount(value: any): number {
-  const candidates = [
-    value,
-    value?.amount,
-    value?.value,
-    value?.current,
-    value?.current?.amount,
-    value?.current?.value,
-    value?.sale,
-    value?.sale?.amount,
-    value?.min,
-    value?.min?.amount,
-  ];
-  for (const candidate of candidates) {
-    const amount =
-      typeof candidate === 'number'
-        ? candidate
-        : typeof candidate === 'string'
-          ? Number(candidate)
-          : NaN;
-    if (Number.isFinite(amount) && amount > 0) return amount;
-  }
-  return 0;
+  return extractPositivePriceAmount(value);
 }
 
-function extractMoneyCurrency(value: any, fallback = 'USD'): string {
-  return (
-    String(
-      value?.currency ||
-        value?.currency_code ||
-        value?.current?.currency ||
-        value?.current?.currency_code ||
-        fallback,
-    ).trim() || fallback
+function resolveBrowseHistoryPrice(pdpPayload: PDPPayload, product: any, productId: string, merchantId?: string): number {
+  return extractPositivePriceFromProductLike(
+    {
+      product,
+      offers: Array.isArray((pdpPayload as any)?.offers) ? (pdpPayload as any).offers : [],
+      modules: Array.isArray((pdpPayload as any)?.modules) ? (pdpPayload as any).modules : [],
+    },
+    { productId, merchantId },
   );
 }
 
@@ -488,7 +471,9 @@ export default function ProductDetailPage({ params }: Props) {
   }, [id, merchantIdParam, rawMerchantIdParam, router, searchParamsString]);
 
   useEffect(() => {
-    const product = (pdpPayload as any)?.product;
+    const currentPayload = pdpPayload;
+    if (!currentPayload) return;
+    const product = (currentPayload as any)?.product;
     if (!product) return;
 
     const productId = String(product?.product_id || id || '').trim();
@@ -496,35 +481,36 @@ export default function ProductDetailPage({ params }: Props) {
     const merchantId = String(product?.merchant_id || merchantIdParam || '').trim() || undefined;
     const recordKey = `${productId}::${merchantId || ''}`;
     if (localBrowseHistoryRecordedRef.current !== recordKey) {
-      localBrowseHistoryRecordedRef.current = recordKey;
-
       const nowMs = Date.now();
-      const normalizedPrice = extractMoneyAmount(product?.price);
+      const normalizedPrice = resolveBrowseHistoryPrice(currentPayload, product, productId, merchantId);
       const title = String(product?.title || 'Untitled product').trim() || 'Untitled product';
       const description = String(product?.description || '').trim() || undefined;
       const imageUrl = pickHistoryImage(product);
 
-      upsertLocalBrowseHistory({
-        product_id: productId,
-        merchant_id: merchantId,
-        title,
-        price: normalizedPrice,
-        image: imageUrl,
-        description,
-        timestamp: nowMs,
-      });
+      if (normalizedPrice > 0) {
+        localBrowseHistoryRecordedRef.current = recordKey;
+        upsertLocalBrowseHistory({
+          product_id: productId,
+          merchant_id: merchantId,
+          title,
+          price: normalizedPrice,
+          image: imageUrl,
+          description,
+          timestamp: nowMs,
+        });
+      }
     }
 
     if (!userId) return;
 
     const nowMs = Date.now();
+    const normalizedPrice = resolveBrowseHistoryPrice(currentPayload, product, productId, merchantId);
     const rawPrice = product?.price;
-    const normalizedPrice = extractMoneyAmount(rawPrice);
     const currency = String(product?.currency || extractMoneyCurrency(rawPrice)).trim() || 'USD';
     const title = String(product?.title || 'Untitled product').trim() || 'Untitled product';
     const description = String(product?.description || '').trim() || undefined;
     const imageUrl = pickHistoryImage(product);
-    const remoteRecordKey = `${recordKey}::${userId}`;
+    const remoteRecordKey = `${recordKey}::${userId}::${normalizedPrice > 0 ? normalizedPrice : 'missing'}`;
     if (remoteBrowseHistoryRecordedRef.current === remoteRecordKey) return;
     remoteBrowseHistoryRecordedRef.current = remoteRecordKey;
 
@@ -532,7 +518,7 @@ export default function ProductDetailPage({ params }: Props) {
       product_id: productId,
       merchant_id: merchantId,
       title,
-      price: normalizedPrice,
+      price: normalizedPrice > 0 ? normalizedPrice : undefined,
       currency,
       image_url: imageUrl,
       description,
@@ -877,13 +863,9 @@ export default function ProductDetailPage({ params }: Props) {
           : undefined;
 
       const offerItemPrice = offer
-        ? Number(
-            purchaseVariant.price?.current.amount ??
-              offer?.price?.amount ??
-              offer?.price_amount ??
-              offer?.price ??
-              0,
-          )
+        ? extractMoneyAmount(purchaseVariant.price) ||
+          extractMoneyAmount(offer?.price) ||
+          extractMoneyAmount(offer?.price_amount)
         : undefined;
       const offerCurrency = offer
         ? String(
@@ -898,9 +880,9 @@ export default function ProductDetailPage({ params }: Props) {
         ? Number(offer?.shipping?.cost?.amount ?? offer?.shipping_cost ?? offer?.shippingFee ?? 0)
         : 0;
       const displayPrice =
-        offerItemPrice != null
+        offerItemPrice != null && offerItemPrice > 0
           ? offerItemPrice + offerShipping
-          : purchaseVariant.price?.current.amount ?? pdpPayload.product.price?.current.amount ?? 0;
+          : extractMoneyAmount(purchaseVariant.price) || extractMoneyAmount(pdpPayload.product.price);
 
       const resolvedVariantId = String(purchaseVariant.variant_id || '').trim() || resolvedProductId;
       const cartItemId = `${resolvedMerchantId}:${resolvedVariantId}`;
@@ -1014,13 +996,9 @@ export default function ProductDetailPage({ params }: Props) {
           : undefined;
 
       const offerItemPrice = offer
-        ? Number(
-            purchaseVariant.price?.current.amount ??
-              offer?.price?.amount ??
-              offer?.price_amount ??
-              offer?.price ??
-              0,
-          )
+        ? extractMoneyAmount(purchaseVariant.price) ||
+          extractMoneyAmount(offer?.price) ||
+          extractMoneyAmount(offer?.price_amount)
         : undefined;
 
       const checkoutItems = [
@@ -1030,9 +1008,9 @@ export default function ProductDetailPage({ params }: Props) {
           title: pdpPayload.product.title,
           quantity,
           unit_price:
-            offerItemPrice != null
+            offerItemPrice != null && offerItemPrice > 0
               ? offerItemPrice
-              : purchaseVariant.price?.current.amount ?? pdpPayload.product.price?.current.amount ?? 0,
+              : extractMoneyAmount(purchaseVariant.price) || extractMoneyAmount(pdpPayload.product.price),
           currency:
             String(
               purchaseVariant.price?.current.currency ||

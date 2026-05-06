@@ -77,4 +77,26 @@ describe('browse history price hydration', () => {
 
     expect(hydrated[0].price).toBe(32);
   });
+
+  it('hydrates every zero price item instead of stopping at the first 24', async () => {
+    resolveProductCandidatesMock.mockImplementation(({ product_id }: { product_id: string }) =>
+      Promise.resolve({
+        offers: [{ merchant_id: 'merchant_1', price: { amount: Number(product_id.replace('prod_', '')) + 1 } }],
+      }),
+    );
+
+    const items = Array.from({ length: 30 }, (_, index) => ({
+      product_id: `prod_${index}`,
+      merchant_id: 'merchant_1',
+      title: `Product ${index}`,
+      price: 0,
+      image: '/placeholder.svg',
+      timestamp: 1000 + index,
+    }));
+
+    const hydrated = await hydrateZeroPriceItems(items);
+
+    expect(hydrated.every((item) => item.price > 0)).toBe(true);
+    expect(hydrated[29].price).toBe(30);
+  });
 });

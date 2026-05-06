@@ -1,3 +1,5 @@
+import { extractPositivePriceAmount } from './price';
+
 const BROWSE_HISTORY_STORAGE_KEY = 'browse_history';
 const BROWSE_HISTORY_MAX_ITEMS = 100;
 
@@ -65,6 +67,8 @@ export function upsertLocalBrowseHistory(item: LocalBrowseHistoryItem) {
   if (typeof window === 'undefined') return;
   const productId = String(item?.product_id || '').trim();
   if (!productId) return;
+  const price = extractPositivePriceAmount(item?.price);
+  if (price <= 0) return;
 
   try {
     const raw = window.localStorage.getItem(BROWSE_HISTORY_STORAGE_KEY);
@@ -81,6 +85,7 @@ export function upsertLocalBrowseHistory(item: LocalBrowseHistoryItem) {
       {
         ...item,
         product_id: productId,
+        price,
         ...(merchantId ? { merchant_id: merchantId } : {}),
       },
       ...deduped,
@@ -160,7 +165,7 @@ export function readLocalBrowseHistory(limit = 50): LocalBrowseHistoryItem[] {
             normalizeHistoryImageCandidate(item?.image_url) ||
             normalizeHistoryImageCandidate(item?.image) ||
             '/placeholder.svg',
-          price: Number.isFinite(Number(item?.price)) ? Number(item.price) : null,
+          price: extractPositivePriceAmount(item?.price) || null,
         } satisfies LocalBrowseHistoryItem;
       })
       .filter(Boolean)
