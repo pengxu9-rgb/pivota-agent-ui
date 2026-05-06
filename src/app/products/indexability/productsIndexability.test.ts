@@ -1,5 +1,12 @@
-import { describe, expect, it } from 'vitest';
-import { buildPaginationLinks } from './productsIndexability';
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
+import { buildPaginationLinks, fetchIndexabilityPage } from './productsIndexability';
+import { SITEMAP_SEED_PRODUCT_IDS } from '../../sitemap-seeds';
+
+vi.mock('next/headers', () => ({
+  headers: async () => ({
+    get: () => null,
+  }),
+}));
 
 describe('buildPaginationLinks', () => {
   it('returns dense list when totalPages ≤ 7', () => {
@@ -33,5 +40,94 @@ describe('buildPaginationLinks', () => {
   it('returns minimal anchor list when totalPages is unknown', () => {
     expect(buildPaginationLinks(1, null)).toEqual([1]);
     expect(buildPaginationLinks(5, null)).toEqual([4, 5]);
+  });
+});
+
+describe('fetchIndexabilityPage — seed fallback', () => {
+  const originalFetch = global.fetch;
+
+  beforeEach(() => {
+    global.fetch = vi.fn();
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  it('falls back to seeds when fetch throws (timeout, network error)', async () => {
+    (global.fetch as any).mockRejectedValueOnce(new Error('aborted'));
+    const out = await fetchIndexabilityPage(1);
+    expect(out.source).toBe('seeds');
+    expect(out.products.length).toBe(SITEMAP_SEED_PRODUCT_IDS.length);
+    expect(out.products[0].product_entity_id).toBe(SITEMAP_SEED_PRODUCT_IDS[0]);
+    expect(out.errorMessage).toContain('Registry fetch failed');
+  });
+
+  it('falls back to seeds when registry returns 5xx', async () => {
+    (global.fetch as any).mockResolvedValueOnce({
+      ok: false,
+      status: 503,
+    });
+    const out = await fetchIndexabilityPage(1);
+    expect(out.source).toBe('seeds');
+    expect(out.errorMessage).toContain('HTTP 503');
+  });
+
+  it('falls back to seeds when registry returns empty products', async () => {
+    (global.fetch as any).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ products: [] }),
+    });
+    const out = await fetchIndexabilityPage(1);
+    expect(out.source).toBe('seeds');
+    expect(out.products.length).toBe(SITEMAP_SEED_PRODUCT_IDS.length);
+  });
+
+  it('seed fallback returns empty products for page > 1', async () => {
+    // Seeds fit on one page; crawlers shouldn't get a duplicated seed
+    // list across pagination when registry is down.
+    (global.fetch as any).mockRejectedValueOnce(new Error('aborted'));
+    const out = await fetchIndexabilityPage(2);
+    expect(out.source).toBe('seeds');
+    expect(out.products).toEqual([]);
+    expect(out.hasMore).toBe(false);
+  });
+
+  it('happy path: registry feed contributes when 200 + non-empty', async () => {
+    (global.fetch as any).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        products: [
+          { product_entity_id: 'sig_dynamic_1', title: 'Dynamic Product One', brand: 'Acme' },
+          { product_entity_id: 'sig_dynamic_2', title: 'Dynamic Product Two' },
+        ],
+        total: 2,
+      }),
+    });
+    const out = await fetchIndexabilityPage(1);
+    expect(out.source).toBe('registry');
+    expect(out.products.map((p) => p.product_entity_id)).toEqual([
+      'sig_dynamic_1',
+      'sig_dynamic_2',
+    ]);
+    expect(out.totalPages).toBe(1);
+    expect(out.hasMore).toBe(false);
+  });
+
+  it('skips non-sig product entries in registry response', async () => {
+    (global.fetch as any).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        products: [
+          { product_entity_id: 'sig_real', title: 'Real' },
+          { product_entity_id: 'ext_alias', title: 'Alias' }, // dropped
+          { title: 'No ID' }, // dropped
+        ],
+      }),
+    });
+    const out = await fetchIndexabilityPage(1);
+    // ext_* and entries without sig_ id should be dropped — sitemap
+    // canonicality requirement bleeds through.
+    expect(out.products.map((p) => p.product_entity_id)).toEqual(['sig_real']);
   });
 });
