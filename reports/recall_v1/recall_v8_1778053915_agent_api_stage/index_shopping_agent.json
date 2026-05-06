@@ -1,0 +1,435 @@
+{
+  "run_id": "recall_v8_1778053915_agent_api_stage",
+  "source": "shopping_agent",
+  "entry": "chat",
+  "invoke_url": "https://agent.pivota.cc/api/gateway",
+  "rows": 53,
+  "duration_ms": 225679,
+  "started_at": "2026-05-06T07:51:55.581Z",
+  "results": [
+    {
+      "query": "acne cleanser",
+      "bucket": "skincare_cleanser",
+      "lang": "en",
+      "n_products": 10,
+      "ok": true,
+      "file": "/Users/pengchydan/dev/pivota-agent-ui/reports/recall_v1/recall_v8_1778053915_agent_api_stage/shopping_agent/skincare_cleanser/f975fcc843_en.json"
+    },
+    {
+      "query": "salicylic acid serum for acne and pores",
+      "bucket": "skincare_serum",
+      "lang": "en",
+      "n_products": 0,
+      "ok": true,
+      "file": "/Users/pengchydan/dev/pivota-agent-ui/reports/recall_v1/recall_v8_1778053915_agent_api_stage/shopping_agent/skincare_serum/91c9b5e93a_en.json"
+    },
+    {
+      "query": "gentle cleanser",
+      "bucket": "skincare_cleanser",
+      "lang": "en",
+      "n_products": 11,
+      "ok": true,
+      "file": "/Users/pengchydan/dev/pivota-agent-ui/reports/recall_v1/recall_v8_1778053915_agent_api_stage/shopping_agent/skincare_cleanser/e243f35f20_en.json"
+    },
+    {
+      "query": "hyaluronic acid hydrating serum",
+      "bucket": "skincare_serum",
+      "lang": "en",
+      "n_products": 2,
+      "ok": true,
+      "file": "/Users/pengchydan/dev/pivota-agent-ui/reports/recall_v1/recall_v8_1778053915_agent_api_stage/shopping_agent/skincare_serum/fb8ab10988_en.json"
+    },
+    {
+      "query": "barrier moisturizer",
+      "bucket": "skincare_moisturizer",
+      "lang": "en",
+      "n_products": 9,
+      "ok": true,
+      "file": "/Users/pengchydan/dev/pivota-agent-ui/reports/recall_v1/recall_v8_1778053915_agent_api_stage/shopping_agent/skincare_moisturizer/a74524b860_en.json"
+    },
+    {
+      "query": "hydrating barrier moisturizer fragrance free",
+      "bucket": "skincare_moisturizer",
+      "lang": "en",
+      "n_products": 9,
+      "ok": true,
+      "file": "/Users/pengchydan/dev/pivota-agent-ui/reports/recall_v1/recall_v8_1778053915_agent_api_stage/shopping_agent/skincare_moisturizer/8419ab1eea_en.json"
+    },
+    {
+      "query": "lightweight gel moisturizer for acne-prone skin",
+      "bucket": "skincare_moisturizer",
+      "lang": "en",
+      "n_products": 10,
+      "ok": true,
+      "file": "/Users/pengchydan/dev/pivota-agent-ui/reports/recall_v1/recall_v8_1778053915_agent_api_stage/shopping_agent/skincare_moisturizer/3e250f482a_en.json"
+    },
+    {
+      "query": "moisturizer",
+      "bucket": "skincare_bare_noun",
+      "lang": "en",
+      "n_products": 12,
+      "ok": true,
+      "file": "/Users/pengchydan/dev/pivota-agent-ui/reports/recall_v1/recall_v8_1778053915_agent_api_stage/shopping_agent/skincare_bare_noun/a189d6f84e_en.json"
+    },
+    {
+      "query": "sunscreen",
+      "bucket": "skincare_bare_noun",
+      "lang": "en",
+      "n_products": 12,
+      "ok": true,
+      "file": "/Users/pengchydan/dev/pivota-agent-ui/reports/recall_v1/recall_v8_1778053915_agent_api_stage/shopping_agent/skincare_bare_noun/d205a5bffb_en.json"
+    },
+    {
+      "query": "spf 50",
+      "bucket": "skincare_sun",
+      "lang": "en",
+      "n_products": 12,
+      "ok": true,
+      "file": "/Users/pengchydan/dev/pivota-agent-ui/reports/recall_v1/recall_v8_1778053915_agent_api_stage/shopping_agent/skincare_sun/8c95fb952a_en.json"
+    },
+    {
+      "query": "lipstick",
+      "bucket": "makeup_lip_bare_noun",
+      "lang": "en",
+      "n_products": 0,
+      "ok": true,
+      "file": "/Users/pengchydan/dev/pivota-agent-ui/reports/recall_v1/recall_v8_1778053915_agent_api_stage/shopping_agent/makeup_lip_bare_noun/7379952ae8_en.json"
+    },
+    {
+      "query": "matte lipstick under $30",
+      "bucket": "makeup_lip",
+      "lang": "en",
+      "n_products": 0,
+      "ok": true,
+      "file": "/Users/pengchydan/dev/pivota-agent-ui/reports/recall_v1/recall_v8_1778053915_agent_api_stage/shopping_agent/makeup_lip/87626f34fe_en.json"
+    },
+    {
+      "query": "nude lipstick everyday",
+      "bucket": "makeup_lip",
+      "lang": "en",
+      "n_products": 0,
+      "ok": true,
+      "file": "/Users/pengchydan/dev/pivota-agent-ui/reports/recall_v1/recall_v8_1778053915_agent_api_stage/shopping_agent/makeup_lip/68e54b64ed_en.json"
+    },
+    {
+      "query": "red lipstick long-lasting",
+      "bucket": "makeup_lip",
+      "lang": "en",
+      "n_products": 0,
+      "ok": true,
+      "file": "/Users/pengchydan/dev/pivota-agent-ui/reports/recall_v1/recall_v8_1778053915_agent_api_stage/shopping_agent/makeup_lip/2481f6bf17_en.json"
+    },
+    {
+      "query": "cushion foundation",
+      "bucket": "makeup_face",
+      "lang": "en",
+      "n_products": 11,
+      "ok": true,
+      "file": "/Users/pengchydan/dev/pivota-agent-ui/reports/recall_v1/recall_v8_1778053915_agent_api_stage/shopping_agent/makeup_face/42423381aa_en.json"
+    },
+    {
+      "query": "full coverage foundation oily skin",
+      "bucket": "makeup_face",
+      "lang": "en",
+      "n_products": 10,
+      "ok": true,
+      "file": "/Users/pengchydan/dev/pivota-agent-ui/reports/recall_v1/recall_v8_1778053915_agent_api_stage/shopping_agent/makeup_face/e3c2c672e8_en.json"
+    },
+    {
+      "query": "concealer for dark circles",
+      "bucket": "makeup_face",
+      "lang": "en",
+      "n_products": 0,
+      "ok": true,
+      "file": "/Users/pengchydan/dev/pivota-agent-ui/reports/recall_v1/recall_v8_1778053915_agent_api_stage/shopping_agent/makeup_face/eede6cd117_en.json"
+    },
+    {
+      "query": "mascara",
+      "bucket": "makeup_eye_bare_noun",
+      "lang": "en",
+      "n_products": 0,
+      "ok": true,
+      "file": "/Users/pengchydan/dev/pivota-agent-ui/reports/recall_v1/recall_v8_1778053915_agent_api_stage/shopping_agent/makeup_eye_bare_noun/684aafca72_en.json"
+    },
+    {
+      "query": "waterproof volumizing mascara",
+      "bucket": "makeup_eye",
+      "lang": "en",
+      "n_products": 2,
+      "ok": true,
+      "file": "/Users/pengchydan/dev/pivota-agent-ui/reports/recall_v1/recall_v8_1778053915_agent_api_stage/shopping_agent/makeup_eye/adbca28c75_en.json"
+    },
+    {
+      "query": "neutral eyeshadow palette",
+      "bucket": "makeup_eye",
+      "lang": "en",
+      "n_products": 0,
+      "ok": true,
+      "file": "/Users/pengchydan/dev/pivota-agent-ui/reports/recall_v1/recall_v8_1778053915_agent_api_stage/shopping_agent/makeup_eye/77f78eae0a_en.json"
+    },
+    {
+      "query": "unisex fragrance for daily wear",
+      "bucket": "fragrance",
+      "lang": "en",
+      "n_products": 0,
+      "ok": true,
+      "file": "/Users/pengchydan/dev/pivota-agent-ui/reports/recall_v1/recall_v8_1778053915_agent_api_stage/shopping_agent/fragrance/890fc157fa_en.json"
+    },
+    {
+      "query": "vanilla perfume",
+      "bucket": "fragrance",
+      "lang": "en",
+      "n_products": 0,
+      "ok": true,
+      "file": "/Users/pengchydan/dev/pivota-agent-ui/reports/recall_v1/recall_v8_1778053915_agent_api_stage/shopping_agent/fragrance/36039326f4_en.json"
+    },
+    {
+      "query": "woody fragrance under $80",
+      "bucket": "fragrance",
+      "lang": "en",
+      "n_products": 0,
+      "ok": true,
+      "file": "/Users/pengchydan/dev/pivota-agent-ui/reports/recall_v1/recall_v8_1778053915_agent_api_stage/shopping_agent/fragrance/79a7ada468_en.json"
+    },
+    {
+      "query": "oversized hoodie",
+      "bucket": "fashion_top",
+      "lang": "en",
+      "n_products": 1,
+      "ok": true,
+      "file": "/Users/pengchydan/dev/pivota-agent-ui/reports/recall_v1/recall_v8_1778053915_agent_api_stage/shopping_agent/fashion_top/c1c8d1b935_en.json"
+    },
+    {
+      "query": "linen summer dress",
+      "bucket": "fashion_dress",
+      "lang": "en",
+      "n_products": 5,
+      "ok": true,
+      "file": "/Users/pengchydan/dev/pivota-agent-ui/reports/recall_v1/recall_v8_1778053915_agent_api_stage/shopping_agent/fashion_dress/5f26802636_en.json"
+    },
+    {
+      "query": "running shoes",
+      "bucket": "fashion_shoes",
+      "lang": "en",
+      "n_products": 0,
+      "ok": true,
+      "file": "/Users/pengchydan/dev/pivota-agent-ui/reports/recall_v1/recall_v8_1778053915_agent_api_stage/shopping_agent/fashion_shoes/fa380f9f86_en.json"
+    },
+    {
+      "query": "black leather sneakers",
+      "bucket": "fashion_shoes",
+      "lang": "en",
+      "n_products": 1,
+      "ok": true,
+      "file": "/Users/pengchydan/dev/pivota-agent-ui/reports/recall_v1/recall_v8_1778053915_agent_api_stage/shopping_agent/fashion_shoes/d34bc89dbf_en.json"
+    },
+    {
+      "query": "bluetooth earbuds",
+      "bucket": "electronics",
+      "lang": "en",
+      "n_products": 0,
+      "ok": true,
+      "file": "/Users/pengchydan/dev/pivota-agent-ui/reports/recall_v1/recall_v8_1778053915_agent_api_stage/shopping_agent/electronics/4624b9638f_en.json"
+    },
+    {
+      "query": "noise cancelling headphones under $200",
+      "bucket": "electronics",
+      "lang": "en",
+      "n_products": 10,
+      "ok": true,
+      "file": "/Users/pengchydan/dev/pivota-agent-ui/reports/recall_v1/recall_v8_1778053915_agent_api_stage/shopping_agent/electronics/c5ed88bc61_en.json"
+    },
+    {
+      "query": "kindle alternative e-reader",
+      "bucket": "electronics",
+      "lang": "en",
+      "n_products": 0,
+      "ok": true,
+      "file": "/Users/pengchydan/dev/pivota-agent-ui/reports/recall_v1/recall_v8_1778053915_agent_api_stage/shopping_agent/electronics/e59b00bcba_en.json"
+    },
+    {
+      "query": "aroma diffuser",
+      "bucket": "home",
+      "lang": "en",
+      "n_products": 0,
+      "ok": true,
+      "file": "/Users/pengchydan/dev/pivota-agent-ui/reports/recall_v1/recall_v8_1778053915_agent_api_stage/shopping_agent/home/3131d57706_en.json"
+    },
+    {
+      "query": "insulated water bottle",
+      "bucket": "home",
+      "lang": "en",
+      "n_products": 0,
+      "ok": true,
+      "file": "/Users/pengchydan/dev/pivota-agent-ui/reports/recall_v1/recall_v8_1778053915_agent_api_stage/shopping_agent/home/4744cd9738_en.json"
+    },
+    {
+      "query": "推荐口红",
+      "bucket": "makeup_lip_bare_noun",
+      "lang": "zh",
+      "n_products": 0,
+      "ok": true,
+      "file": "/Users/pengchydan/dev/pivota-agent-ui/reports/recall_v1/recall_v8_1778053915_agent_api_stage/shopping_agent/makeup_lip_bare_noun/2eeaa963c0_zh.json"
+    },
+    {
+      "query": "口红",
+      "bucket": "makeup_lip_bare_noun",
+      "lang": "zh",
+      "n_products": 0,
+      "ok": true,
+      "file": "/Users/pengchydan/dev/pivota-agent-ui/reports/recall_v1/recall_v8_1778053915_agent_api_stage/shopping_agent/makeup_lip_bare_noun/774df0bc26_zh.json"
+    },
+    {
+      "query": "平价口红",
+      "bucket": "makeup_lip",
+      "lang": "zh",
+      "n_products": 0,
+      "ok": true,
+      "file": "/Users/pengchydan/dev/pivota-agent-ui/reports/recall_v1/recall_v8_1778053915_agent_api_stage/shopping_agent/makeup_lip/2ab21438e9_zh.json"
+    },
+    {
+      "query": "适合黄皮的口红",
+      "bucket": "makeup_lip",
+      "lang": "zh",
+      "n_products": 0,
+      "ok": true,
+      "file": "/Users/pengchydan/dev/pivota-agent-ui/reports/recall_v1/recall_v8_1778053915_agent_api_stage/shopping_agent/makeup_lip/33ed35e607_zh.json"
+    },
+    {
+      "query": "哑光口红",
+      "bucket": "makeup_lip",
+      "lang": "zh",
+      "n_products": 0,
+      "ok": true,
+      "file": "/Users/pengchydan/dev/pivota-agent-ui/reports/recall_v1/recall_v8_1778053915_agent_api_stage/shopping_agent/makeup_lip/1c98ef7e86_zh.json"
+    },
+    {
+      "query": "气垫粉底",
+      "bucket": "makeup_face",
+      "lang": "zh",
+      "n_products": 2,
+      "ok": true,
+      "file": "/Users/pengchydan/dev/pivota-agent-ui/reports/recall_v1/recall_v8_1778053915_agent_api_stage/shopping_agent/makeup_face/9524e717f2_zh.json"
+    },
+    {
+      "query": "控油遮瑕粉底液",
+      "bucket": "makeup_face",
+      "lang": "zh",
+      "n_products": 2,
+      "ok": true,
+      "file": "/Users/pengchydan/dev/pivota-agent-ui/reports/recall_v1/recall_v8_1778053915_agent_api_stage/shopping_agent/makeup_face/42708baa8e_zh.json"
+    },
+    {
+      "query": "睫毛膏",
+      "bucket": "makeup_eye_bare_noun",
+      "lang": "zh",
+      "n_products": 0,
+      "ok": true,
+      "file": "/Users/pengchydan/dev/pivota-agent-ui/reports/recall_v1/recall_v8_1778053915_agent_api_stage/shopping_agent/makeup_eye_bare_noun/4989e489b3_zh.json"
+    },
+    {
+      "query": "防水睫毛膏",
+      "bucket": "makeup_eye",
+      "lang": "zh",
+      "n_products": 0,
+      "ok": true,
+      "file": "/Users/pengchydan/dev/pivota-agent-ui/reports/recall_v1/recall_v8_1778053915_agent_api_stage/shopping_agent/makeup_eye/47b1d07b2d_zh.json"
+    },
+    {
+      "query": "精华",
+      "bucket": "skincare_bare_noun",
+      "lang": "zh",
+      "n_products": 1,
+      "ok": true,
+      "file": "/Users/pengchydan/dev/pivota-agent-ui/reports/recall_v1/recall_v8_1778053915_agent_api_stage/shopping_agent/skincare_bare_noun/7de02c5749_zh.json"
+    },
+    {
+      "query": "面霜",
+      "bucket": "skincare_bare_noun",
+      "lang": "zh",
+      "n_products": 1,
+      "ok": true,
+      "file": "/Users/pengchydan/dev/pivota-agent-ui/reports/recall_v1/recall_v8_1778053915_agent_api_stage/shopping_agent/skincare_bare_noun/4848e350da_zh.json"
+    },
+    {
+      "query": "防晒霜",
+      "bucket": "skincare_sun",
+      "lang": "zh",
+      "n_products": 12,
+      "ok": true,
+      "file": "/Users/pengchydan/dev/pivota-agent-ui/reports/recall_v1/recall_v8_1778053915_agent_api_stage/shopping_agent/skincare_sun/fc6f1ec119_zh.json"
+    },
+    {
+      "query": "木质香水",
+      "bucket": "fragrance",
+      "lang": "zh",
+      "n_products": 0,
+      "ok": true,
+      "file": "/Users/pengchydan/dev/pivota-agent-ui/reports/recall_v1/recall_v8_1778053915_agent_api_stage/shopping_agent/fragrance/41aeaa6868_zh.json"
+    },
+    {
+      "query": "小众淡香水",
+      "bucket": "fragrance",
+      "lang": "zh",
+      "n_products": 0,
+      "ok": true,
+      "file": "/Users/pengchydan/dev/pivota-agent-ui/reports/recall_v1/recall_v8_1778053915_agent_api_stage/shopping_agent/fragrance/6af9422844_zh.json"
+    },
+    {
+      "query": "卫衣",
+      "bucket": "fashion_top",
+      "lang": "zh",
+      "n_products": 0,
+      "ok": true,
+      "file": "/Users/pengchydan/dev/pivota-agent-ui/reports/recall_v1/recall_v8_1778053915_agent_api_stage/shopping_agent/fashion_top/36d00d3242_zh.json"
+    },
+    {
+      "query": "亚麻连衣裙",
+      "bucket": "fashion_dress",
+      "lang": "zh",
+      "n_products": 0,
+      "ok": true,
+      "file": "/Users/pengchydan/dev/pivota-agent-ui/reports/recall_v1/recall_v8_1778053915_agent_api_stage/shopping_agent/fashion_dress/db4af24bb0_zh.json"
+    },
+    {
+      "query": "跑鞋",
+      "bucket": "fashion_shoes",
+      "lang": "zh",
+      "n_products": 0,
+      "ok": true,
+      "file": "/Users/pengchydan/dev/pivota-agent-ui/reports/recall_v1/recall_v8_1778053915_agent_api_stage/shopping_agent/fashion_shoes/d8a858eb85_zh.json"
+    },
+    {
+      "query": "蓝牙耳机",
+      "bucket": "electronics",
+      "lang": "zh",
+      "n_products": 0,
+      "ok": true,
+      "file": "/Users/pengchydan/dev/pivota-agent-ui/reports/recall_v1/recall_v8_1778053915_agent_api_stage/shopping_agent/electronics/c165ba296a_zh.json"
+    },
+    {
+      "query": "电子阅读器",
+      "bucket": "electronics",
+      "lang": "zh",
+      "n_products": 0,
+      "ok": true,
+      "file": "/Users/pengchydan/dev/pivota-agent-ui/reports/recall_v1/recall_v8_1778053915_agent_api_stage/shopping_agent/electronics/67212bdfb8_zh.json"
+    },
+    {
+      "query": "加湿器",
+      "bucket": "home",
+      "lang": "zh",
+      "n_products": 0,
+      "ok": true,
+      "file": "/Users/pengchydan/dev/pivota-agent-ui/reports/recall_v1/recall_v8_1778053915_agent_api_stage/shopping_agent/home/0b545fa15a_zh.json"
+    },
+    {
+      "query": "保温杯",
+      "bucket": "home",
+      "lang": "zh",
+      "n_products": 0,
+      "ok": true,
+      "file": "/Users/pengchydan/dev/pivota-agent-ui/reports/recall_v1/recall_v8_1778053915_agent_api_stage/shopping_agent/home/bcb99cfa74_zh.json"
+    }
+  ]
+}
