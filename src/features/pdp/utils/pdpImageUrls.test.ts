@@ -80,12 +80,12 @@ describe('normalizePdpImageUrl', () => {
     );
   });
 
-  it('marks Guerlain Demandware product media as needing browser-direct image loading', () => {
+  it('keeps Guerlain Demandware product media on the Next image optimizer path', () => {
     expect(
       shouldBypassNextImageOptimizer(
         'https://www.guerlain.com/dw/image/v2/BDCZ_PRD/on/demandware.static/-/Sites-GSA_master_catalog/default/dw0da3bbae/01-ProductsViewer/P062209/P062209_G062209_E01_hi-res.png?sw=655&sh=655',
       ),
-    ).toBe(true);
+    ).toBe(false);
 
     expect(
       shouldBypassNextImageOptimizer(

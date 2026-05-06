@@ -281,7 +281,10 @@ export function shouldBypassNextImageOptimizer(rawUrl: unknown): boolean {
   if (!isAbsoluteHttpUrl(unwrapped)) return false;
 
   try {
-    return isDemandwareImageAsset(new URL(unwrapped));
+    const parsed = new URL(unwrapped);
+    if (isDemandwareImageAsset(parsed)) return false;
+    // Keep browser-direct bypass reserved for hosts verified to be hotlink-safe.
+    return false;
   } catch {
     return false;
   }
