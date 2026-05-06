@@ -273,4 +273,18 @@ export function optimizePdpImageUrl(rawUrl: string, width = 480): string {
   return isAbsoluteHttpUrl(normalized) ? applyKnownHostWidthHint(normalized, width) : normalized;
 }
 
+export function shouldBypassNextImageOptimizer(rawUrl: unknown): boolean {
+  if (typeof rawUrl !== 'string') return false;
+  const normalized = normalizePdpImageUrl(rawUrl);
+  if (!normalized) return false;
+  const unwrapped = unwrapPdpImageProxyTarget(normalized);
+  if (!isAbsoluteHttpUrl(unwrapped)) return false;
+
+  try {
+    return isDemandwareImageAsset(new URL(unwrapped));
+  } catch {
+    return false;
+  }
+}
+
 export { IMAGE_PROXY_PATH };

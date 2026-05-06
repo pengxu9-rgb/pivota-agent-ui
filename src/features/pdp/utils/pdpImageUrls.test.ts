@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { applyKnownHostWidthHint, normalizePdpImageUrl } from './pdpImageUrls';
+import {
+  applyKnownHostWidthHint,
+  normalizePdpImageUrl,
+  shouldBypassNextImageOptimizer,
+} from './pdpImageUrls';
 
 describe('normalizePdpImageUrl', () => {
   it('canonicalizes Tom Ford tfb_sku assets onto official Shopify files URLs without stripping valid hash suffixes', () => {
@@ -74,5 +78,19 @@ describe('normalizePdpImageUrl', () => {
     ).toBe(
       'https://www.guerlain.com/dw/image/v2/BDCZ_PRD/on/demandware.static/-/Sites-GSA_master_catalog/default/dw6179c233/ABR_YEUX_15ML_F24_G061758_E01_hi-res.png?sw=655&sh=655',
     );
+  });
+
+  it('marks Guerlain Demandware product media as needing browser-direct image loading', () => {
+    expect(
+      shouldBypassNextImageOptimizer(
+        'https://www.guerlain.com/dw/image/v2/BDCZ_PRD/on/demandware.static/-/Sites-GSA_master_catalog/default/dw0da3bbae/01-ProductsViewer/P062209/P062209_G062209_E01_hi-res.png?sw=655&sh=655',
+      ),
+    ).toBe(true);
+
+    expect(
+      shouldBypassNextImageOptimizer(
+        'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_TC7Y09_3000x3000_4.jpg',
+      ),
+    ).toBe(false);
   });
 });

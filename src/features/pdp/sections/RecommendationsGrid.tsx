@@ -6,7 +6,10 @@ import { useRouter } from 'next/navigation';
 import type { MouseEvent } from 'react';
 import { ArrowUpRight, LoaderCircle, ShoppingBag, Star } from 'lucide-react';
 import type { RecommendationsData } from '@/features/pdp/types';
-import { optimizePdpImageUrl } from '@/features/pdp/utils/pdpImageUrls';
+import {
+  optimizePdpImageUrl,
+  shouldBypassNextImageOptimizer,
+} from '@/features/pdp/utils/pdpImageUrls';
 import { buildProductHref } from '@/lib/productHref';
 import { resolveProductCardPresentation } from '@/lib/productCardPresentation';
 import { appendCurrentPathAsReturn } from '@/lib/returnUrl';
@@ -105,6 +108,7 @@ export function RecommendationsGrid({
                       loading={idx < 2 ? 'eager' : 'lazy'}
                       fetchPriority={idx < 2 ? 'high' : 'auto'}
                       quality={idx < 2 ? 72 : 65}
+                      unoptimized={shouldBypassNextImageOptimizer(p.image_url)}
                     />
                   ) : (
                     <div className="absolute inset-0 flex items-center justify-center text-xs text-muted-foreground">

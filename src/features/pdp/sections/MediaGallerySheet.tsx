@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { Grid3X3, Play, X } from 'lucide-react';
 import { useEffect } from 'react';
 import type { MediaItem } from '@/features/pdp/types';
+import { shouldBypassNextImageOptimizer } from '@/features/pdp/utils/pdpImageUrls';
 import { cn } from '@/lib/utils';
 
 export function MediaGallerySheet({
@@ -94,7 +95,15 @@ export function MediaGallerySheet({
                       )}
                       aria-label={`Select media ${idx + 1}`}
                     >
-                      <Image src={item.url} alt={item.alt_text || ''} fill className="object-cover" sizes="(max-width: 768px) 33vw, 220px" loading="lazy" />
+                      <Image
+                        src={item.url}
+                        alt={item.alt_text || ''}
+                        fill
+                        className="object-cover"
+                        sizes="(max-width: 768px) 33vw, 220px"
+                        loading="lazy"
+                        unoptimized={shouldBypassNextImageOptimizer(item.url)}
+                      />
                       {item.type === 'video' ? (
                         <div className="absolute inset-0 flex items-center justify-center bg-foreground/15">
                           <Play className="h-8 w-8 text-white drop-shadow-lg" fill="white" fillOpacity={0.35} />

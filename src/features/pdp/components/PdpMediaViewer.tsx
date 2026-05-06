@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 import Image from 'next/image';
 import { ChevronLeft, ChevronRight, Grid3X3, Play, X } from 'lucide-react';
 import type { MediaItem } from '@/features/pdp/types';
+import { shouldBypassNextImageOptimizer } from '@/features/pdp/utils/pdpImageUrls';
 import { cn } from '@/lib/utils';
 
 type ViewerMode = 'official' | 'ugc';
@@ -280,7 +281,15 @@ export function PdpMediaViewer({
 
   const renderImage = (item: MediaItem, imageAlt: string, sizes = '100vw') => (
     <>
-      <Image src={item.url} alt={imageAlt} fill className="object-contain" sizes={sizes} loading="lazy" />
+      <Image
+        src={item.url}
+        alt={imageAlt}
+        fill
+        className="object-contain"
+        sizes={sizes}
+        loading="lazy"
+        unoptimized={shouldBypassNextImageOptimizer(item.url)}
+      />
       {item.type === 'video' ? (
         <div className="absolute inset-0 flex items-center justify-center bg-black/25">
           <Play className="h-10 w-10 text-white drop-shadow-lg" fill="white" fillOpacity={0.35} />
@@ -519,6 +528,7 @@ export function PdpMediaViewer({
                         fill
                         className="object-cover"
                         sizes="(max-width: 768px) 33vw, 220px"
+                        unoptimized={shouldBypassNextImageOptimizer(item.url)}
                       />
                       {item.type === 'video' ? (
                         <div className="absolute inset-0 flex items-center justify-center bg-black/25">
