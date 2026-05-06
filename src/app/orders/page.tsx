@@ -4,7 +4,6 @@ import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { ArrowRight, ChevronLeft, Loader2, Package, ShoppingCart, XCircle } from 'lucide-react'
-import { BottomTabBar } from '@/components/chat/BottomTabBar'
 import { cancelAccountOrder, listMyOrders } from '@/lib/api'
 import { ensureAuroraSession, shouldUseAuroraAutoExchange } from '@/lib/auroraOrdersAuth'
 import { isAuroraEmbedMode } from '@/lib/auroraEmbed'
@@ -782,8 +781,6 @@ function OrdersPageContent() {
           </div>
         )}
       </main>
-
-      {!isEmbed && <BottomTabBar active="orders" />}
     </div>
   )
 }

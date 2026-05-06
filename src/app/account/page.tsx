@@ -6,7 +6,6 @@ import { useRouter } from 'next/navigation';
 import { ChevronLeft, LogOut, ShieldCheck, Sparkles, User as UserIcon } from 'lucide-react';
 import { accountsLogout, accountsMe, accountsSetPassword } from '@/lib/api';
 import { useAuthStore } from '@/store/authStore';
-import { BottomTabBar } from '@/components/chat/BottomTabBar';
 import { toast } from 'sonner';
 
 export default function AccountPage() {
@@ -311,8 +310,6 @@ export default function AccountPage() {
           </>
         )}
       </main>
-
-      <BottomTabBar active="me" />
     </div>
   );
 }

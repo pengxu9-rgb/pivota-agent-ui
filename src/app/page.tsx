@@ -14,7 +14,6 @@ import { ChatWideProductCard } from '@/components/product/ChatWideProductCard';
 import { FilterChips, type FilterChip } from '@/components/chat/FilterChips';
 import { AiTipBlock } from '@/components/chat/AiTipBlock';
 import { QuickFollowUpButtons, type FollowUp } from '@/components/chat/QuickFollowUpButtons';
-import { BottomTabBar } from '@/components/chat/BottomTabBar';
 import { useCartStore } from '@/store/cartStore';
 import { useAuthStore } from '@/store/authStore';
 import { useChatStore } from '@/store/chatStore';
@@ -891,8 +890,6 @@ function HomePageApp() {
             </button>
           </div>
         </div>
-
-        <BottomTabBar active="chat" orderBadge={0} />
       </div>
     </div>
   );
