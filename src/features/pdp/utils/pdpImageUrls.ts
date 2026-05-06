@@ -29,6 +29,7 @@ const DIRECT_REMOTE_IMAGE_HOSTS = [
   'sdcdn.io',
   'assets.sdcdn.io',
   'drjart.com',
+  'guerlain.com',
   'static.wixstatic.com',
   'wixstatic.com',
   'images.unsplash.com',
@@ -77,6 +78,12 @@ function isShopifyLikeAsset(parsed: URL): boolean {
     pathname.includes('/cdn/shop/files/') ||
     pathname.includes('/s/files/')
   );
+}
+
+function isDemandwareImageAsset(parsed: URL): boolean {
+  const hostname = parsed.hostname.toLowerCase();
+  const pathname = parsed.pathname.toLowerCase();
+  return isKnownRemoteHost(hostname, ['guerlain.com']) && pathname.includes('/dw/image/');
 }
 
 function normalizeShopifyLikeFilename(
@@ -157,6 +164,17 @@ export function applyKnownHostWidthHint(rawUrl: string, width: number): string {
       }
       if (host.includes('images.unsplash.com') && !parsed.searchParams.has('auto')) {
         parsed.searchParams.set('auto', 'format');
+      }
+      return parsed.toString();
+    }
+
+    if (isDemandwareImageAsset(parsed)) {
+      const size = String(Math.floor(width));
+      if (!parsed.searchParams.has('sw')) {
+        parsed.searchParams.set('sw', size);
+      }
+      if (!parsed.searchParams.has('sh')) {
+        parsed.searchParams.set('sh', size);
       }
       return parsed.toString();
     }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { normalizePdpImageUrl } from './pdpImageUrls';
+import { applyKnownHostWidthHint, normalizePdpImageUrl } from './pdpImageUrls';
 
 describe('normalizePdpImageUrl', () => {
   it('canonicalizes Tom Ford tfb_sku assets onto official Shopify files URLs without stripping valid hash suffixes', () => {
@@ -43,6 +43,36 @@ describe('normalizePdpImageUrl', () => {
       ),
     ).toBe(
       'https://www.drjart.com/media/export/cms/products/1000x1000/dj_sku_H7T901_1000x1000_0.jpg',
+    );
+  });
+
+  it('keeps Guerlain Demandware product media on the official remote host instead of routing through the local proxy', () => {
+    expect(
+      normalizePdpImageUrl(
+        'https://www.guerlain.com/dw/image/v2/BDCZ_PRD/on/demandware.static/-/Sites-GSA_master_catalog/default/dw6179c233/ABR_YEUX_15ML_F24_G061758_E01_hi-res.png?sw=655&sh=655',
+      ),
+    ).toBe(
+      'https://www.guerlain.com/dw/image/v2/BDCZ_PRD/on/demandware.static/-/Sites-GSA_master_catalog/default/dw6179c233/ABR_YEUX_15ML_F24_G061758_E01_hi-res.png?sw=655&sh=655',
+    );
+  });
+
+  it('adds square Demandware width hints for Guerlain product media without overriding existing sizing', () => {
+    expect(
+      applyKnownHostWidthHint(
+        'https://www.guerlain.com/dw/image/v2/BDCZ_PRD/on/demandware.static/-/Sites-GSA_master_catalog/default/dw6179c233/ABR_YEUX_15ML_F24_G061758_E01_hi-res.png',
+        720,
+      ),
+    ).toBe(
+      'https://www.guerlain.com/dw/image/v2/BDCZ_PRD/on/demandware.static/-/Sites-GSA_master_catalog/default/dw6179c233/ABR_YEUX_15ML_F24_G061758_E01_hi-res.png?sw=720&sh=720',
+    );
+
+    expect(
+      applyKnownHostWidthHint(
+        'https://www.guerlain.com/dw/image/v2/BDCZ_PRD/on/demandware.static/-/Sites-GSA_master_catalog/default/dw6179c233/ABR_YEUX_15ML_F24_G061758_E01_hi-res.png?sw=655&sh=655',
+        720,
+      ),
+    ).toBe(
+      'https://www.guerlain.com/dw/image/v2/BDCZ_PRD/on/demandware.static/-/Sites-GSA_master_catalog/default/dw6179c233/ABR_YEUX_15ML_F24_G061758_E01_hi-res.png?sw=655&sh=655',
     );
   });
 });

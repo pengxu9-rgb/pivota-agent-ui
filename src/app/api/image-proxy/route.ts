@@ -64,6 +64,19 @@ function applyWidthHint(url: URL, width: number | null): URL {
     return out;
   }
 
+  if (
+    (host === 'guerlain.com' || host.endsWith('.guerlain.com')) &&
+    out.pathname.toLowerCase().includes('/dw/image/')
+  ) {
+    if (!out.searchParams.has('sw')) {
+      out.searchParams.set('sw', String(width));
+    }
+    if (!out.searchParams.has('sh')) {
+      out.searchParams.set('sh', String(width));
+    }
+    return out;
+  }
+
   return out;
 }
 
