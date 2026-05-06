@@ -54,6 +54,14 @@ const IMAGE_REMOTE_PATTERNS = [
   },
   {
     protocol: 'https',
+    hostname: 'guerlain.com',
+  },
+  {
+    protocol: 'https',
+    hostname: 'www.guerlain.com',
+  },
+  {
+    protocol: 'https',
     hostname: 'static.wixstatic.com',
   },
   {
