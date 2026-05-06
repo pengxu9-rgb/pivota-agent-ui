@@ -1,6 +1,7 @@
 import { headers } from 'next/headers';
 import type { Metadata } from 'next';
 import ProductDetailClient from './ProductDetailClient';
+import { buildProductJsonLd } from './productJsonLd';
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -81,10 +82,19 @@ function readProductImage(product: Record<string, any>): string {
   return firstString(product.image_url, imageUrls[0]);
 }
 
-async function fetchProductMetadata(args: {
-  productId: string;
-  merchantId?: string;
-}): Promise<Metadata | null> {
+/**
+ * Fetch the canonical product object for server-render. Called twice per
+ * PDP render (once from `generateMetadata`, once from the page itself
+ * for JSON-LD). The downstream `/api/gateway` has its own short-TTL
+ * cache so the second hit is cheap. We don't use React's `cache()`
+ * because it's a server-component-only API that breaks vitest SSR.
+ *
+ * Returns the raw product object (or null) — callers shape it into
+ * Metadata, Schema.org, or whatever they need.
+ */
+async function fetchProductForServerRender(
+  args: { productId: string; merchantId?: string },
+): Promise<Record<string, any> | null> {
   const productId = args.productId.trim();
   if (!productId) return null;
 
@@ -122,35 +132,36 @@ async function fetchProductMetadata(args: {
 
     if (!res.ok) return null;
     const data = await res.json().catch(() => null);
-    const product = readCanonicalPdpProduct(data);
-    if (!product) return null;
-
-    const title = buildProductTitle(product);
-    const description = buildProductDescription(product);
-    const image = readProductImage(product);
-    const images = image ? [{ url: image, alt: firstString(product.title, product.name) || title }] : [];
-
-    return {
-      title,
-      description,
-      openGraph: {
-        title,
-        description,
-        type: 'website',
-        ...(images.length ? { images } : {}),
-      },
-      twitter: {
-        card: image ? 'summary_large_image' : 'summary',
-        title,
-        description,
-        ...(image ? { images: [image] } : {}),
-      },
-    };
+    return readCanonicalPdpProduct(data);
   } catch {
     return null;
   } finally {
     clearTimeout(timeoutId);
   }
+}
+
+function buildMetadataFromProduct(product: Record<string, any>): Metadata {
+  const title = buildProductTitle(product);
+  const description = buildProductDescription(product);
+  const image = readProductImage(product);
+  const images = image ? [{ url: image, alt: firstString(product.title, product.name) || title }] : [];
+
+  return {
+    title,
+    description,
+    openGraph: {
+      title,
+      description,
+      type: 'website',
+      ...(images.length ? { images } : {}),
+    },
+    twitter: {
+      card: image ? 'summary_large_image' : 'summary',
+      title,
+      description,
+      ...(image ? { images: [image] } : {}),
+    },
+  };
 }
 
 export async function generateMetadata({
@@ -161,17 +172,46 @@ export async function generateMetadata({
   const resolvedSearchParams = searchParams ? await searchParams : {};
   const productId = String(resolvedParams.id || '').trim();
   const merchantId = readSearchParam(resolvedSearchParams.merchant_id);
-  const metadata = await fetchProductMetadata({
+  const product = await fetchProductForServerRender({
     productId,
     ...(merchantId ? { merchantId } : {}),
   });
 
-  return metadata || {
-    title: DEFAULT_TITLE,
-    description: 'Shop products with Pivota Shopping AI.',
-  };
+  return product
+    ? buildMetadataFromProduct(product)
+    : { title: DEFAULT_TITLE, description: 'Shop products with Pivota Shopping AI.' };
 }
 
-export default function ProductDetailPage(props: Props) {
-  return <ProductDetailClient params={props.params} />;
+export default async function ProductDetailPage(props: Props) {
+  // Try to render JSON-LD server-side. Best-effort: when the gateway
+  // call fails we still ship the client component (which fetches its
+  // own data on hydration). Schema markup is purely additive.
+  const resolvedParams = await props.params;
+  const resolvedSearchParams = props.searchParams ? await props.searchParams : {};
+  const productId = String(resolvedParams.id || '').trim();
+  const merchantId = readSearchParam(resolvedSearchParams.merchant_id);
+
+  const product = productId
+    ? await fetchProductForServerRender({
+        productId,
+        ...(merchantId ? { merchantId } : {}),
+      })
+    : null;
+
+  const jsonLd = product ? buildProductJsonLd({ product, productId }) : null;
+
+  return (
+    <>
+      {jsonLd ? (
+        <script
+          type="application/ld+json"
+          // Pre-serialized + sanitized inside buildProductJsonLd; we use
+          // dangerouslySetInnerHTML so Next.js doesn't escape the angle
+          // brackets that schema validators expect to see literally.
+          dangerouslySetInnerHTML={{ __html: jsonLd }}
+        />
+      ) : null}
+      <ProductDetailClient params={props.params} />
+    </>
+  );
 }
