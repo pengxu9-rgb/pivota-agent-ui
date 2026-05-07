@@ -64,41 +64,98 @@ function buildSitemapXml(urls: ReadonlyArray<{
   )
 }
 
+const PIVOTA_CANONICAL_PAGE_SIZE = 1000
+
+/**
+ * Pull every sig_* the pivota-backend canonical resolver knows about.
+ * One page (1000) is enough for current scale; if we cross that bar
+ * we'll add cursor-style pagination — for now any merchant ramp will
+ * surface in monitoring before we hit 1000 onboarded SKUs.
+ */
+async function fetchCanonicalSigIds(): Promise<string[]> {
+  const base = (
+    process.env.PIVOTA_BACKEND_BASE_URL ||
+    process.env.NEXT_PUBLIC_PIVOTA_BACKEND_BASE_URL ||
+    ''
+  )
+    .trim()
+    .replace(/\/+$/, '')
+  if (!/^https?:\/\//.test(base)) return []
+
+  try {
+    const res = await fetch(
+      `${base}/api/canonical/products?limit=${PIVOTA_CANONICAL_PAGE_SIZE}&offset=0`,
+      {
+        method: 'GET',
+        headers: { Accept: 'application/json' },
+        cache: 'no-store',
+      },
+    )
+    if (!res.ok) return []
+    const data: unknown = await res.json().catch(() => null)
+    const items = Array.isArray((data as any)?.items) ? (data as any).items : []
+    return items
+      .map((item: any) => (typeof item?.sig_id === 'string' ? item.sig_id.trim() : ''))
+      .filter((id: string) => Boolean(id))
+      .filter(isProductIdSitemapEligible)
+  } catch (error) {
+    console.error(
+      'sitemap-products.xml: canonical resolver fetch failed, continuing without it:',
+      error,
+    )
+    return []
+  }
+}
+
 async function collectProductIds(): Promise<{
   ids: string[]
-  source: 'seeds' | 'seeds+dynamic'
+  source: 'seeds' | 'seeds+dynamic' | 'seeds+canonical' | 'seeds+dynamic+canonical'
 }> {
   const seeds = SITEMAP_SEED_PRODUCT_IDS.filter(isProductIdSitemapEligible)
 
   const apiBase = (process.env.NEXT_PUBLIC_API_URL || '').trim()
   const canFetchProducts = /^https?:\/\//.test(apiBase)
-  if (!canFetchProducts) {
-    return { ids: [...seeds], source: 'seeds' }
+
+  const [dynamicIds, canonicalSigIds] = await Promise.all([
+    canFetchProducts
+      ? getAllProducts(200)
+          .then((products) =>
+            products
+              .map((p) => p.product_id)
+              .filter((id): id is string => typeof id === 'string')
+              .filter(isProductIdSitemapEligible),
+          )
+          .catch((error) => {
+            console.error(
+              'sitemap-products.xml: dynamic registry fetch failed, continuing without it:',
+              error,
+            )
+            return [] as string[]
+          })
+      : Promise.resolve([] as string[]),
+    fetchCanonicalSigIds(),
+  ])
+
+  // De-dupe; seeds first (highest priority), then registry, then canonical.
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const id of [...seeds, ...dynamicIds, ...canonicalSigIds]) {
+    if (seen.has(id)) continue
+    seen.add(id)
+    out.push(id)
   }
 
-  try {
-    const products = await getAllProducts(200)
-    const dynamicIds = products
-      .map((p) => p.product_id)
-      .filter((id): id is string => typeof id === 'string')
-      .filter(isProductIdSitemapEligible)
-
-    // De-dupe while preserving seed order first (they're highest priority).
-    const seen = new Set<string>()
-    const out: string[] = []
-    for (const id of [...seeds, ...dynamicIds]) {
-      if (seen.has(id)) continue
-      seen.add(id)
-      out.push(id)
-    }
-    return { ids: out, source: 'seeds+dynamic' }
-  } catch (error) {
-    console.error(
-      'sitemap-products.xml: dynamic fetch failed, falling back to seeds only:',
-      error,
-    )
-    return { ids: [...seeds], source: 'seeds' }
-  }
+  const usedDynamic = canFetchProducts && dynamicIds.length > 0
+  const usedCanonical = canonicalSigIds.length > 0
+  const source: 'seeds' | 'seeds+dynamic' | 'seeds+canonical' | 'seeds+dynamic+canonical' =
+    usedDynamic && usedCanonical
+      ? 'seeds+dynamic+canonical'
+      : usedDynamic
+        ? 'seeds+dynamic'
+        : usedCanonical
+          ? 'seeds+canonical'
+          : 'seeds'
+  return { ids: out, source }
 }
 
 export async function GET() {

@@ -23,6 +23,9 @@ describe('/sitemap-products.xml — products-only sitemap', () => {
 
   afterEach(() => {
     delete process.env.NEXT_PUBLIC_API_URL;
+    delete process.env.PIVOTA_BACKEND_BASE_URL;
+    delete process.env.NEXT_PUBLIC_PIVOTA_BACKEND_BASE_URL;
+    vi.restoreAllMocks();
   });
 
   it('returns 200 with application/xml content-type', async () => {
@@ -90,6 +93,37 @@ describe('/sitemap-products.xml — products-only sitemap', () => {
     const xml = await readBody(res);
     expect(xml).toContain('sig_with&amp;special');
     expect(xml).not.toContain('sig_with&special</loc>');
+  });
+
+  it('merges canonical resolver sigs when PIVOTA_BACKEND_BASE_URL is set', async () => {
+    // Phase C-2: merchant-onboarded SKUs that the audit lazy-mints into
+    // sig_* canonical URLs must show up in the products sitemap so
+    // Google can index them.
+    delete process.env.NEXT_PUBLIC_API_URL;
+    process.env.PIVOTA_BACKEND_BASE_URL = 'https://canonical.example.com';
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          items: [
+            { sig_id: 'sig_canonical_aaa', canonical_url: 'x', last_modified: null },
+            { sig_id: 'sig_canonical_bbb', canonical_url: 'x', last_modified: null },
+          ],
+          total: 2,
+          limit: 1000,
+          offset: 0,
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
+
+    const res = await GET();
+    const xml = await readBody(res);
+    expect(xml).toContain('https://agent.pivota.cc/products/sig_canonical_aaa');
+    expect(xml).toContain('https://agent.pivota.cc/products/sig_canonical_bbb');
+    expect(res.headers.get('x-pivota-sitemap-source')).toBe('seeds+canonical');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toContain('https://canonical.example.com/api/canonical/products');
   });
 
   it('reports url count via X-Pivota-Sitemap-Url-Count header', async () => {
