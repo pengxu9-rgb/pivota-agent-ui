@@ -1256,7 +1256,28 @@ export function PdpContainer({
     productLinePayloadCacheRef.current.set(cacheKey, payload);
   }, [payload, pendingProductLineProductId]);
 
-  const variants = useMemo(() => payload.product.variants ?? [], [payload.product.variants]);
+  const variants = useMemo(() => {
+    const rawVariants = Array.isArray(payload.product.variants)
+      ? payload.product.variants.filter(Boolean)
+      : [];
+    if (rawVariants.length) return rawVariants;
+
+    const fallbackVariantId =
+      String(payload.product.default_variant_id || payload.product.product_id || 'default').trim() || 'default';
+    return [
+      {
+        variant_id: fallbackVariantId,
+        sku_id: fallbackVariantId,
+        title: '',
+        options: [],
+        hidden_from_selector: true,
+        source_quality_status: 'quarantined',
+        ...(payload.product.price ? { price: payload.product.price } : {}),
+        ...(payload.product.availability ? { availability: payload.product.availability } : {}),
+        ...(payload.product.image_url ? { image_url: payload.product.image_url } : {}),
+      } as Variant,
+    ];
+  }, [payload.product]);
 
   const selectedVariant = useMemo(() => {
     return variants.find((v) => v.variant_id === selectedVariantId) || variants[0];

@@ -165,22 +165,16 @@ function buildMetadataFromProduct(
     // permission for crawlers like GoogleOther / Google-Extended that
     // sometimes treat robots.txt as advisory.
     robots: { index: true, follow: true },
-    // og:type=product is what Gemini's product extractor + Facebook /
-    // LinkedIn / Twitter card scrapers expect for PDPs. `website`
-    // (the previous value) gets down-weighted as a generic landing
-    // page. Next.js 15.5's OpenGraphType union doesn't include
-    // 'product' (only article/book/profile/website/music/video), but
-    // the OG spec does, and Next.js renders the string verbatim into
-    // <meta property="og:type" content="...">. The cast is a known
-    // workaround until Next bumps the union; flagged in the
-    // pivota-pdp-indexing-discoverability runbook.
     openGraph: {
       title,
       description,
-      type: 'product',
+      // Keep this on a Next-supported OG type. Product semantics are carried by
+      // the JSON-LD Product block rendered by the page; forcing og:type=product
+      // can crash metadata rendering in the current production Next runtime.
+      type: 'website',
       url: canonicalUrl,
       ...(images.length ? { images } : {}),
-    } as Metadata['openGraph'],
+    },
     twitter: {
       card: image ? 'summary_large_image' : 'summary',
       title,
