@@ -57,6 +57,25 @@ if (
   });
 }
 
+// Pivota canonical PDP resolver (Phase C-2). Routes get_pdp_v2 calls
+// for sig_* product IDs to pivota-backend's /api/canonical/products/{sig_id}
+// instead of the shop upstream — sig_* products are merchant-onboarded
+// catalog rows, not PIVOTA-Agent products, so the shop upstream has
+// nothing to return for them.
+const PIVOTA_CANONICAL_FALLBACK = 'https://web-production-fedb.up.railway.app';
+const PIVOTA_CANONICAL_BASE =
+  process.env.PIVOTA_BACKEND_BASE_URL ||
+  process.env.NEXT_PUBLIC_PIVOTA_BACKEND_BASE_URL ||
+  PIVOTA_CANONICAL_FALLBACK;
+
+if (!process.env.PIVOTA_BACKEND_BASE_URL && !process.env.NEXT_PUBLIC_PIVOTA_BACKEND_BASE_URL) {
+  warnIfHardcodedFallbackUsed({
+    routeLabel: 'api/gateway:pivota-canonical',
+    envVarsTried: ['PIVOTA_BACKEND_BASE_URL', 'NEXT_PUBLIC_PIVOTA_BACKEND_BASE_URL'],
+    fallback: PIVOTA_CANONICAL_FALLBACK,
+  });
+}
+
 const REVIEWS_OPERATIONS = new Set([
   'get_review_summary',
   'list_sku_reviews',
@@ -437,6 +456,83 @@ function buildGetOrderStatusRequest(body: JsonRecord): CheckoutSafeRequest {
   };
 }
 
+function isPivotaCanonicalSignature(value: unknown): boolean {
+  if (typeof value !== 'string') return false;
+  const trimmed = value.trim();
+  return /^sig_[a-f0-9]{6,}$/i.test(trimmed);
+}
+
+function readGetPdpV2ProductId(body: JsonRecord): string {
+  const payload = isPlainObject(body.payload) ? body.payload : {};
+  const ref = isPlainObject(payload.product_ref) ? payload.product_ref : {};
+  return firstNonEmptyString(ref.product_id, ref.productId, payload.product_id, payload.productId) || '';
+}
+
+/**
+ * Fetch a canonical PDP from pivota-backend and shape the response so
+ * the existing PDP mapper (`mapPdpV2ToPdpPayload`) sees the same envelope
+ * shape it gets from PIVOTA-Agent's get_pdp_v2 — a `modules: [{type: 'canonical', data: {pdp_payload: {...}}}]`
+ * structure. The shape lock here is enforced by the consumer at
+ * pivota-agent-ui/src/features/pdp/adapter/mapPdpV2ToPdpPayload.ts:273-287.
+ */
+async function fetchPivotaCanonicalPdpResponse(sigId: string): Promise<{
+  status: number;
+  payload: JsonRecord;
+}> {
+  const base = String(PIVOTA_CANONICAL_BASE || '').trim().replace(/\/+$/, '');
+  const url = `${base}/api/canonical/products/${encodeURIComponent(sigId)}`;
+  const upstreamRes = await fetch(url, {
+    method: 'GET',
+    headers: { Accept: 'application/json' },
+    cache: 'no-store',
+  });
+  const text = await upstreamRes.text();
+  let json: any = null;
+  try {
+    json = text ? JSON.parse(text) : null;
+  } catch {
+    json = null;
+  }
+
+  if (!upstreamRes.ok || !isPlainObject(json) || !isPlainObject(json.product)) {
+    return {
+      status: upstreamRes.status === 404 ? 404 : upstreamRes.status || 502,
+      payload: {
+        error: upstreamRes.status === 404 ? 'NOT_FOUND' : 'CANONICAL_RESOLVER_ERROR',
+        message:
+          upstreamRes.status === 404
+            ? `No canonical PDP for ${sigId}`
+            : 'Pivota canonical resolver returned an unexpected response',
+        sig_id: sigId,
+      },
+    };
+  }
+
+  const product = json.product as JsonRecord;
+  return {
+    status: 200,
+    payload: {
+      subject: { type: 'product', id: sigId },
+      modules: [
+        {
+          type: 'canonical',
+          data: {
+            pdp_payload: {
+              product,
+              modules: [],
+              actions: [],
+            },
+          },
+        },
+      ],
+      // Top-level product mirror so SSR readers (page.tsx) that look for
+      // response.product directly also work — see
+      // pivota-agent-ui/src/app/products/[id]/page.tsx:43-52.
+      product,
+    },
+  };
+}
+
 function buildCheckoutSafeRequest(operation: string, body: JsonRecord): CheckoutSafeRequest {
   switch (operation) {
     case 'preview_quote':
@@ -682,6 +778,22 @@ export async function POST(req: NextRequest) {
     const operation = String(body?.operation || '').trim();
     const normalizedOperation = operation.toLowerCase();
     const useCheckoutSafeProxy = CHECKOUT_SAFE_OPERATIONS.has(normalizedOperation);
+
+    // Pivota canonical PDP short-circuit: get_pdp_v2 with a sig_* product
+    // id resolves against pivota-backend, not the shop upstream.
+    if (normalizedOperation === 'get_pdp_v2') {
+      const productId = readGetPdpV2ProductId(isPlainObject(body) ? body : {});
+      if (isPivotaCanonicalSignature(productId)) {
+        const canonicalStartedAt = Date.now();
+        const canonicalRes = await fetchPivotaCanonicalPdpResponse(productId);
+        const canonicalMs = Math.max(0, Date.now() - canonicalStartedAt);
+        return jsonProxyResponse(canonicalRes.payload, {
+          status: canonicalRes.status,
+          serverTiming: `pivota_canonical;dur=${canonicalMs}`,
+          extraHeaders: { 'x-gateway-route': 'pivota-canonical' },
+        });
+      }
+    }
     const checkoutSafeRequest = useCheckoutSafeProxy
       ? buildCheckoutSafeRequest(normalizedOperation, isPlainObject(body) ? body : {})
       : null;

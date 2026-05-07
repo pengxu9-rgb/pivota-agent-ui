@@ -594,4 +594,122 @@ describe('/api/gateway checkout-safe proxy', () => {
     const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe('https://pivota-agent-production.up.railway.app/agent/shop/v1/invoke');
   });
+
+  // -------------------------------------------------------------------------
+  // Pivota canonical PDP short-circuit (sig_*) — get_pdp_v2 with a sig_*
+  // product id resolves against pivota-backend, not the shop upstream.
+  // -------------------------------------------------------------------------
+
+  it('routes get_pdp_v2 for sig_* product ids to pivota-backend canonical resolver', async () => {
+    vi.stubEnv('PIVOTA_BACKEND_BASE_URL', 'https://canonical.example.com');
+
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      jsonResponse({
+        product: {
+          id: 'sig_abc123',
+          title: 'Test Canonical Product',
+          brand: 'Test Brand',
+          canonical_url: 'https://agent.pivota.cc/products/sig_abc123',
+          merchant_canonical_url: 'https://example.com/p/abc',
+          image_url: 'https://example.com/img/abc.jpg',
+        },
+        updated_at: '2026-05-06T00:00:00+00:00',
+      }),
+    );
+
+    const { POST } = await import('@/app/api/gateway/route');
+
+    const req = new Request('http://localhost/api/gateway', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        operation: 'get_pdp_v2',
+        payload: {
+          product_ref: { product_id: 'sig_abc123' },
+        },
+      }),
+    });
+
+    const res = await POST(req as any);
+    const data = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('https://canonical.example.com/api/canonical/products/sig_abc123');
+    expect((init.method || 'GET').toUpperCase()).toBe('GET');
+
+    // The mapper at mapPdpV2ToPdpPayload.ts:273-287 looks for this exact
+    // envelope shape — break this contract and the PDP page silently 404s.
+    expect(data).toMatchObject({
+      modules: [
+        expect.objectContaining({
+          type: 'canonical',
+          data: expect.objectContaining({
+            pdp_payload: expect.objectContaining({
+              product: expect.objectContaining({
+                id: 'sig_abc123',
+                title: 'Test Canonical Product',
+              }),
+            }),
+          }),
+        }),
+      ],
+    });
+    // Top-level product mirror for the SSR reader (page.tsx:43-52).
+    expect(data.product).toMatchObject({ id: 'sig_abc123' });
+    expect(res.headers.get('x-gateway-route')).toBe('pivota-canonical');
+  });
+
+  it('forwards 404 from canonical resolver for unknown sig_*', async () => {
+    vi.stubEnv('PIVOTA_BACKEND_BASE_URL', 'https://canonical.example.com');
+
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      jsonResponse({ detail: { sig_id: 'sig_deadbeef' } }, 404),
+    );
+
+    const { POST } = await import('@/app/api/gateway/route');
+
+    const req = new Request('http://localhost/api/gateway', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        operation: 'get_pdp_v2',
+        payload: { product_ref: { product_id: 'sig_deadbeef' } },
+      }),
+    });
+
+    const res = await POST(req as any);
+    const data = await res.json();
+    expect(res.status).toBe(404);
+    expect(data.error).toBe('NOT_FOUND');
+    expect(data.sig_id).toBe('sig_deadbeef');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('does NOT short-circuit get_pdp_v2 for non-sig_ product ids', async () => {
+    vi.stubEnv('SHOP_UPSTREAM_API_URL', 'https://invoke.example.com');
+    vi.stubEnv('PIVOTA_BACKEND_BASE_URL', 'https://canonical.example.com');
+
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      jsonResponse({ subject: { type: 'product', id: 'ext_legacy' }, modules: [] }),
+    );
+
+    const { POST } = await import('@/app/api/gateway/route');
+
+    const req = new Request('http://localhost/api/gateway', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        operation: 'get_pdp_v2',
+        payload: { product_ref: { product_id: 'ext_legacy' } },
+      }),
+    });
+
+    await POST(req as any);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
+    // Must hit the shop upstream (not the canonical resolver) for ext_*.
+    expect(url).toBe('https://invoke.example.com/agent/shop/v1/invoke');
+  });
 });
