@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState, useEffect } from 'react';
+import { memo, useRef, useState, useEffect } from 'react';
 import { Heart, ShoppingCart } from 'lucide-react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
@@ -40,7 +40,7 @@ function pickOfferSavingsSource(product: ProductResponse): any | null {
   ) || null;
 }
 
-export function ChatWideProductCard({ product, onAddToCart, colorVariant = 'teal' }: Props) {
+function ChatWideProductCardComponent({ product, onAddToCart, colorVariant = 'teal' }: Props) {
   const router = useRouter();
   const [isNavigating, setIsNavigating] = useState(false);
   const [isFavorited, setIsFavorited] = useState(false);
@@ -209,3 +209,6 @@ export function ChatWideProductCard({ product, onAddToCart, colorVariant = 'teal
     </div>
   );
 }
+
+export const ChatWideProductCard = memo(ChatWideProductCardComponent);
+ChatWideProductCard.displayName = 'ChatWideProductCard';

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import { Heart, ShoppingCart, Star } from 'lucide-react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
@@ -83,7 +83,7 @@ function StarRating({ rating, count }: { rating: number; count?: number }) {
   );
 }
 
-export function ChatRecommendationCard({ product, onAddToCart, colorVariant = 'coral' }: Props) {
+function ChatRecommendationCardComponent({ product, onAddToCart, colorVariant = 'coral' }: Props) {
   const router = useRouter();
   const [isNavigating, setIsNavigating] = useState(false);
   const [isFavorited, setIsFavorited] = useState(false);
@@ -289,3 +289,6 @@ export function ChatRecommendationCard({ product, onAddToCart, colorVariant = 'c
     </div>
   );
 }
+
+export const ChatRecommendationCard = memo(ChatRecommendationCardComponent);
+ChatRecommendationCard.displayName = 'ChatRecommendationCard';

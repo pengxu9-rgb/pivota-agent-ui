@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import { memo, useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import type { ChangeEvent } from 'react';
 import { ImagePlus, Menu, ShoppingCart, Send, Package, User, Sparkles, Mic } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -79,6 +79,38 @@ function deriveChipsFromQuery(query: string): FilterChip[] {
 function buildProductKey(product: ProductResponse): string {
   return `${String(product?.merchant_id || '').trim()}::${String(product?.product_id || '').trim()}`;
 }
+
+const HotDealCard = memo(function HotDealCard({ product }: { product: ProductResponse }) {
+  const router = useRouter();
+  const cardHref = buildProductHref(product.product_id, product.merchant_id);
+  return (
+    <Link
+      href={cardHref}
+      prefetch={false}
+      className="flex-shrink-0 w-24 group"
+      onClick={(event) => {
+        if (event.defaultPrevented) return;
+        if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
+        event.preventDefault();
+        router.push(appendCurrentPathAsReturn(cardHref));
+      }}
+    >
+      <div className="relative aspect-square rounded-2xl overflow-hidden mb-2 ring-1 ring-border group-hover:ring-primary transition-all">
+        <Image
+          src={normalizeDisplayImageUrl(product.image_url, '/placeholder.svg')}
+          alt={product.title}
+          fill
+          className="object-cover group-hover:scale-110 transition-transform duration-300"
+          unoptimized
+        />
+      </div>
+      <p className="text-xs text-muted-foreground line-clamp-1 group-hover:text-foreground transition-colors">
+        {product.title}
+      </p>
+      <p className="text-xs font-semibold">${typeof product.price === 'number' ? product.price.toFixed(2) : product.price}</p>
+    </Link>
+  );
+});
 
 function mergeUniqueProducts(current: ProductResponse[], incoming: ProductResponse[]) {
   const map = new Map<string, ProductResponse>();
@@ -494,7 +526,7 @@ function HomePageApp() {
     [messages, updateMessage, user?.id],
   );
 
-  const handleAddToCart = (product: any) => {
+  const handleAddToCart = useCallback((product: any) => {
     const defaultVariant =
       Array.isArray(product?.variants) && product.variants.length > 0
         ? product.variants[0]
@@ -528,7 +560,7 @@ function HomePageApp() {
       quantity: 1,
     });
     toast.success(`✓ Added to cart! ${product.title}`);
-  };
+  }, [addItem]);
 
   return (
     <div className="flex h-screen w-full bg-gradient-mesh overflow-x-hidden relative">
@@ -788,38 +820,9 @@ function HomePageApp() {
               <div className="overflow-x-auto pb-2 -mx-2 px-2">
                 <div className="flex gap-3 min-w-max">
                   {hotDeals.length > 0 ? (
-                    hotDeals.map((product) => {
-                      const isExternal = Boolean(product.external_redirect_url);
-                      const cardHref = buildProductHref(product.product_id, product.merchant_id);
-                      return (
-                      <Link
-                        key={product.product_id}
-                        href={cardHref}
-                        prefetch={false}
-                        className="flex-shrink-0 w-24 group"
-                        onClick={(event) => {
-                          if (event.defaultPrevented) return;
-                          if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
-                          event.preventDefault();
-                          router.push(appendCurrentPathAsReturn(cardHref));
-                        }}
-                      >
-                        <div className="relative aspect-square rounded-2xl overflow-hidden mb-2 ring-1 ring-border group-hover:ring-primary transition-all">
-                          <Image
-                            src={normalizeDisplayImageUrl(product.image_url, '/placeholder.svg')}
-                            alt={product.title}
-                            fill
-                            className="object-cover group-hover:scale-110 transition-transform duration-300"
-                            unoptimized
-                          />
-                        </div>
-                        <p className="text-xs text-muted-foreground line-clamp-1 group-hover:text-foreground transition-colors">
-                          {product.title}
-                        </p>
-                        <p className="text-xs font-semibold">${typeof product.price === 'number' ? product.price.toFixed(2) : product.price}</p>
-                      </Link>
-                      );
-                    })
+                    hotDeals.map((product) => (
+                      <HotDealCard key={buildProductKey(product)} product={product} />
+                    ))
                   ) : hotDealsStatus === 'loading' ? (
                     <p className="text-xs text-muted-foreground">Loading products...</p>
                   ) : hotDealsStatus === 'error' ? (

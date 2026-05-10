@@ -149,6 +149,7 @@ interface RealAPIProduct {
 // Normalized product used across the UI
 export interface ProductResponse {
   product_id: string;
+  pivota_signature_id?: string;
   product_group_id?: string;
   merchant_id?: string;
   merchant_name?: string;
@@ -170,6 +171,10 @@ export interface ProductResponse {
   disclosure_text?: string;
   platform?: string;
   platform_product_id?: string;
+  source_product_id?: string;
+  external_product_id?: string;
+  external_seed_product_id?: string;
+  pivota_canonical_url?: string;
   // Some backends include a "primary" variant id / sku id at the product level.
   variant_id?: string;
   sku_id?: string;
@@ -405,6 +410,71 @@ function normalizeMarketSignalBadges(
   return rows.length ? rows : undefined;
 }
 
+function readSigLikeId(...values: unknown[]): string {
+  for (const value of values) {
+    const text = readFirstString(value) || '';
+    if (/^sig[_:]/i.test(text)) return text;
+  }
+  return '';
+}
+
+function readSigFromProductUrl(...values: unknown[]): string {
+  for (const value of values) {
+    const text = readFirstString(value);
+    if (!text) continue;
+    const match = text.match(/\/products\/(sig[_:][^/?#]+)/i);
+    if (match?.[1]) {
+      try {
+        return decodeURIComponent(match[1]);
+      } catch {
+        return match[1];
+      }
+    }
+  }
+  return '';
+}
+
+function resolveCanonicalProductId(anyP: any): string {
+  const rawDetail = isRecord(anyP?.raw_detail) ? anyP.raw_detail : null;
+  const productRef = isRecord(anyP?.product_ref)
+    ? anyP.product_ref
+    : isRecord(anyP?.productRef)
+      ? anyP.productRef
+      : null;
+  return (
+    readSigLikeId(
+      anyP?.pivota_signature_id,
+      anyP?.pivotaSignatureId,
+      anyP?.signature_id,
+      anyP?.signatureId,
+      anyP?.sellable_item_group_id,
+      anyP?.sellableItemGroupId,
+      anyP?.product_group_id,
+      anyP?.productGroupId,
+      anyP?.id,
+      anyP?.product_id,
+      productRef?.product_id,
+      rawDetail?.pivota_signature_id,
+      rawDetail?.signature_id,
+      rawDetail?.sellable_item_group_id,
+      rawDetail?.product_group_id,
+      rawDetail?.id,
+      rawDetail?.product_id,
+    ) ||
+    readSigFromProductUrl(
+      anyP?.pivota_canonical_url,
+      anyP?.pivotaCanonicalUrl,
+      anyP?.canonical_url,
+      anyP?.canonicalUrl,
+      anyP?.url,
+      rawDetail?.pivota_canonical_url,
+      rawDetail?.canonical_url,
+      rawDetail?.url,
+    ) ||
+    readFirstString(anyP?.product_id, anyP?.productId, anyP?.id) || ''
+  );
+}
+
 export function normalizeProduct(
   p: RealAPIProduct | ProductResponse,
 ): ProductResponse {
@@ -596,9 +666,31 @@ export function normalizeProduct(
     rawSearchCard?.intro,
     rawShoppingCard?.intro,
   );
+  const normalizedProductId = resolveCanonicalProductId(anyP);
+  const sourceProductId = readFirstString(
+    anyP.source_product_id,
+    anyP.sourceProductId,
+    anyP.external_product_id,
+    anyP.externalProductId,
+    anyP.external_seed_product_id,
+    anyP.externalSeedProductId,
+    anyP.platform_product_id,
+    anyP.product_id,
+    anyP.id,
+  );
+  const pivotaSignatureId = readSigLikeId(
+    anyP.pivota_signature_id,
+    anyP.pivotaSignatureId,
+    anyP.signature_id,
+    anyP.signatureId,
+    anyP.sellable_item_group_id,
+    anyP.sellableItemGroupId,
+    normalizedProductId,
+  );
 
   return {
-    product_id: anyP.product_id || anyP.id,
+    product_id: normalizedProductId,
+    ...(pivotaSignatureId ? { pivota_signature_id: pivotaSignatureId } : {}),
     product_group_id:
       typeof anyP.product_group_id === 'string'
         ? anyP.product_group_id
@@ -615,11 +707,17 @@ export function normalizeProduct(
       anyP.external_redirect_url ||
       anyP.redirect_url ||
       anyP.action?.redirect_url,
-    external_seed_id: anyP.external_seed_id || anyP.seed_id,
+    external_seed_id: anyP.external_seed_id || anyP.seed_id || anyP.external_product_id,
     source: anyP.source,
     disclosure_text: anyP.disclosure_text,
     platform: anyP.platform,
-    platform_product_id: anyP.platform_product_id || anyP.product_id || anyP.id,
+    platform_product_id: anyP.platform_product_id || sourceProductId || anyP.product_id || anyP.id,
+    ...(sourceProductId ? { source_product_id: sourceProductId } : {}),
+    ...(anyP.external_product_id ? { external_product_id: anyP.external_product_id } : {}),
+    ...(anyP.external_seed_product_id ? { external_seed_product_id: anyP.external_seed_product_id } : {}),
+    ...(readFirstString(anyP.pivota_canonical_url, anyP.pivotaCanonicalUrl)
+      ? { pivota_canonical_url: readFirstString(anyP.pivota_canonical_url, anyP.pivotaCanonicalUrl) }
+      : {}),
     variant_id:
       anyP.variant_id ||
       anyP.variantId ||
@@ -2024,7 +2122,7 @@ function normalizeRecommendationItem(
   input: any,
   fallbackCurrency = 'USD',
 ): RecommendationsData['items'][number] | null {
-  const productId = String(input?.product_id || input?.productId || input?.id || '').trim();
+  const productId = resolveCanonicalProductId(input);
   if (!productId) return null;
 
   const normalized = normalizeProduct({
