@@ -354,6 +354,7 @@ function HomePageApp() {
       }
 
       const userQuery = input.trim();
+      const conversationState = useChatStore.getState();
       const searchResult = await sendMessage(
         input,
         undefined,
@@ -361,6 +362,8 @@ function HomePageApp() {
           ...(evalMetadata ? { metadata: evalMetadata } : {}),
           pagination: { page: 1, limit: CHAT_RAIL_INITIAL_PAGE_SIZE },
           userId: user?.id || null,
+          conversationId: conversationState.currentConversationId,
+          conversationMessages: conversationState.messages,
         },
       );
       const products = Array.isArray(searchResult?.products) ? searchResult.products : [];
@@ -488,12 +491,15 @@ function HomePageApp() {
 
       try {
         const nextPage = paging.page + 1;
+        const conversationState = useChatStore.getState();
         const result = await sendMessage(paging.query, undefined, {
           pagination: {
             page: nextPage,
             limit: Math.max(CHAT_RAIL_PAGE_STEP, Number(paging.limit || CHAT_RAIL_INITIAL_PAGE_SIZE)),
           },
           userId: user?.id || null,
+          conversationId: conversationState.currentConversationId,
+          conversationMessages: conversationState.messages,
         });
 
         const incoming = Array.isArray(result?.products) ? result.products : [];
