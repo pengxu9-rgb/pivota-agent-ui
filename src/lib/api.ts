@@ -900,6 +900,13 @@ type ShoppingEvalMeta = {
   turn_id?: number;
 };
 
+export type ConversationContextMessage = {
+  id?: string | number | null;
+  role: 'user' | 'assistant' | string;
+  content: string;
+  timestamp?: string | number | Date | null;
+};
+
 type ShoppingEntry =
   | 'home'
   | 'search'
@@ -1096,6 +1103,29 @@ function normalizeRecentQueries(input: unknown, limit = MAX_RECENT_QUERIES): str
     .map((v) => (typeof v === 'string' ? v.trim() : ''))
     .filter(Boolean)
     .slice(0, limit);
+}
+
+function normalizeConversationContextMessages(
+  input: ConversationContextMessage[] | undefined,
+  limit = 12,
+): Array<{ id?: string; role: string; content: string; timestamp?: string }> {
+  if (!Array.isArray(input)) return [];
+  return input
+    .map((message) => {
+      const role = String(message?.role || '').trim().toLowerCase();
+      const content = String(message?.content || '').trim();
+      if (!role || !content) return null;
+      return {
+        ...(message?.id != null ? { id: String(message.id) } : {}),
+        role,
+        content,
+        ...(message?.timestamp != null ? { timestamp: String(message.timestamp) } : {}),
+      };
+    })
+    .filter((message): message is { id?: string; role: string; content: string; timestamp?: string } =>
+      Boolean(message),
+    )
+    .slice(-limit);
 }
 
 function resolveRecentQueries(
@@ -2270,11 +2300,15 @@ export async function sendMessage(
     signal?: AbortSignal;
     pagination?: { page?: number; limit?: number };
     userId?: string | null;
+    conversationId?: string | null;
+    conversationMessages?: ConversationContextMessage[];
   },
 ): Promise<SendMessageResult> {
   const query = message.trim();
   const userId = String(options?.userId || '').trim() || null;
   const recentQueries = getEvalVariant() === 'A' ? [] : readRecentQueries(userId);
+  const conversationId = String(options?.conversationId || '').trim();
+  const conversationMessages = normalizeConversationContextMessages(options?.conversationMessages);
   const requestedPage = Math.max(1, Math.floor(Number(options?.pagination?.page || 1) || 1));
   const requestedLimit = clampSearchLimit(options?.pagination?.limit, 24);
 
@@ -2297,10 +2331,13 @@ export async function sendMessage(
         },
         user: {
           // Provide lightweight context to stabilize intent/constraint extraction
-          // across follow-up queries (aligned with creator-agent contract).
+          // across follow-up queries. Session history is diagnostics only; the
+          // Agent binds context from conversation-bound messages.
           ...(userId ? { id: userId } : {}),
-          recent_queries: recentQueries,
+          ...(recentQueries.length ? { session_recent_queries: recentQueries } : {}),
+          ...(conversationId ? { conversation_id: conversationId } : {}),
         },
+        ...(conversationMessages.length ? { messages: conversationMessages } : {}),
       },
       ...(isPlainObject(options?.metadata) ? { metadata: options?.metadata } : {}),
     },
