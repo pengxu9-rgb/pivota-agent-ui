@@ -725,6 +725,67 @@ function toFiniteNumber(value: unknown): number | null {
   return null;
 }
 
+function readSigLikeProductId(...values: unknown[]): string {
+  for (const value of values) {
+    const text = String(value || '').trim();
+    if (/^sig[_:]/i.test(text)) return text;
+  }
+  return '';
+}
+
+function readSigFromProductUrl(...values: unknown[]): string {
+  for (const value of values) {
+    const text = String(value || '').trim();
+    if (!text) continue;
+    const match = text.match(/\/products\/(sig[_:][^/?#]+)/i);
+    if (match?.[1]) {
+      try {
+        return decodeURIComponent(match[1]);
+      } catch {
+        return match[1];
+      }
+    }
+  }
+  return '';
+}
+
+function resolveRecommendationProductId(source: Record<string, unknown>): string {
+  const productRef =
+    source.productRef && typeof source.productRef === 'object'
+      ? (source.productRef as Record<string, unknown>)
+      : source.product_ref && typeof source.product_ref === 'object'
+        ? (source.product_ref as Record<string, unknown>)
+        : null;
+  return (
+    readSigLikeProductId(
+      source.pivota_signature_id,
+      source.pivotaSignatureId,
+      source.signature_id,
+      source.signatureId,
+      source.sellable_item_group_id,
+      source.sellableItemGroupId,
+      source.product_group_id,
+      source.productGroupId,
+      source.id,
+      source.product_id,
+      productRef?.product_id,
+    ) ||
+    readSigFromProductUrl(
+      source.pivota_canonical_url,
+      source.pivotaCanonicalUrl,
+      source.canonical_url,
+      source.canonicalUrl,
+      source.url,
+    ) ||
+    String(
+      source.product_id ||
+        source.id ||
+        productRef?.product_id ||
+        '',
+    ).trim()
+  );
+}
+
 function normalizeRecommendationItems(
   items: unknown[],
   fallbackCurrency: string,
@@ -733,13 +794,7 @@ function normalizeRecommendationItems(
     .map((item) => {
       if (!item || typeof item !== 'object') return null;
       const source = item as Record<string, unknown>;
-      const productId = String(
-        source.product_id ||
-          source.id ||
-          (source.productRef as any)?.product_id ||
-          (source.product_ref as any)?.product_id ||
-          '',
-      ).trim();
+      const productId = resolveRecommendationProductId(source);
       if (!productId) return null;
 
       const merchantId = String(

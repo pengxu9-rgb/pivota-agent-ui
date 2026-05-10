@@ -99,6 +99,38 @@ describe('normalizeProduct', () => {
     );
   });
 
+  it('prefers migrated sig product ids while preserving the source external id', () => {
+    const normalized = normalizeProduct({
+      product_id: 'ext_853c9104752ad8d2f857f754',
+      pivota_signature_id: 'sig_fenty_lipstick_001',
+      merchant_id: 'external_seed',
+      title: 'Fenty lipstick',
+      price: { amount: 28, currency: 'USD' },
+      image_url: 'https://example.com/lipstick.png',
+      source_product_id: 'ext_853c9104752ad8d2f857f754',
+      description: 'Longwear lipstick',
+    } as any);
+
+    expect(normalized.product_id).toBe('sig_fenty_lipstick_001');
+    expect(normalized.pivota_signature_id).toBe('sig_fenty_lipstick_001');
+    expect(normalized.source_product_id).toBe('ext_853c9104752ad8d2f857f754');
+    expect(normalized.platform_product_id).toBe('ext_853c9104752ad8d2f857f754');
+  });
+
+  it('extracts sig ids from Pivota canonical URLs when similar cards still carry ext ids', () => {
+    const normalized = normalizeProduct({
+      product_id: 'ext_853c9104752ad8d2f857f754',
+      merchant_id: 'external_seed',
+      title: 'Fenty lipstick',
+      price: { amount: 28, currency: 'USD' },
+      image_url: 'https://example.com/lipstick.png',
+      pivota_canonical_url: 'https://agent.pivota.cc/products/sig_fenty_lipstick_001',
+      description: 'Longwear lipstick',
+    } as any);
+
+    expect(normalized.product_id).toBe('sig_fenty_lipstick_001');
+  });
+
   it('unwraps legacy local image-proxy URLs back to their upstream target', () => {
     const normalized = normalizeProduct({
       product_id: 'ext_4',
