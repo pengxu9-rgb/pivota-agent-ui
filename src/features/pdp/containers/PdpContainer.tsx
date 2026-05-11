@@ -1852,11 +1852,15 @@ export function PdpContainer({
   }, [isInStock]);
 
   useEffect(() => {
+    const tracking = payload.tracking || ({} as PDPPayload['tracking']);
+    const productId = String(payload.product.product_id || '').trim();
     pdpTracking.setBaseContext({
-      page_request_id: payload.tracking.page_request_id,
-      entry_point: payload.tracking.entry_point,
-      experiment: payload.tracking.experiment,
-      product_id: payload.product.product_id,
+      page_request_id:
+        String(tracking.page_request_id || '').trim() ||
+        `pdp_${productId || 'unknown'}`,
+      entry_point: String(tracking.entry_point || '').trim() || 'agent',
+      experiment: tracking.experiment,
+      product_id: productId,
     });
     pdpTracking.track('pdp_view', { pdp_mode: resolvedMode });
     pdpTracking.track('placeholder_cta_click_removed', {

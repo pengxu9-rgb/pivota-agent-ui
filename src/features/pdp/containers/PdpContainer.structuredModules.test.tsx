@@ -1013,6 +1013,7 @@ describe('PdpContainer structured PDP modules', () => {
     payload.product.product_id = 'sig_no_variants';
     payload.product.default_variant_id = '';
     payload.product.variants = [];
+    delete (payload as any).tracking;
 
     render(
       <PdpContainer
