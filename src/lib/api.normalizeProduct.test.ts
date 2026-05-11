@@ -117,6 +117,41 @@ describe('normalizeProduct', () => {
     expect(normalized.platform_product_id).toBe('ext_853c9104752ad8d2f857f754');
   });
 
+  it('does not treat identity group ids as public PDP signatures', () => {
+    const normalized = normalizeProduct({
+      product_id: 'ext_3f08175bbe2382f68e78aee6',
+      sellable_item_group_id: 'sig_internal_group_not_public',
+      product_group_id: 'sig_internal_product_group',
+      merchant_id: 'external_seed',
+      title: 'Fenty toner serum',
+      price: { amount: 34, currency: 'USD' },
+      image_url: 'https://example.com/toner.png',
+      description: 'Pore-refining toner serum',
+    } as any);
+
+    expect(normalized.product_id).toBe('ext_3f08175bbe2382f68e78aee6');
+    expect(normalized.pivota_signature_id).toBeUndefined();
+    expect(normalized.sellable_item_group_id).toBe('sig_internal_group_not_public');
+    expect(normalized.product_group_id).toBe('sig_internal_product_group');
+  });
+
+  it('preserves deterministic recommendation reasons for chat cards', () => {
+    const normalized = normalizeProduct({
+      product_id: 'sig_acne_pick',
+      merchant_id: 'external_seed',
+      title: 'Azelaic Acid 10 Ampoule',
+      price: { amount: 22, currency: 'USD' },
+      image_url: 'https://example.com/azelaic.png',
+      description: 'Azelaic acid ampoule',
+      recommendation_reason: 'Recommended because it has azelaic-acid support for blemish-prone skin.',
+    } as any);
+
+    expect(normalized.recommendation_reason).toBe(
+      'Recommended because it has azelaic-acid support for blemish-prone skin.',
+    );
+    expect(normalized.match_reason).toBe(normalized.recommendation_reason);
+  });
+
   it('extracts sig ids from Pivota canonical URLs when similar cards still carry ext ids', () => {
     const normalized = normalizeProduct({
       product_id: 'ext_853c9104752ad8d2f857f754',

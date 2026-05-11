@@ -54,6 +54,14 @@ function ChatWideProductCardComponent({ product, onAddToCart, colorVariant = 'te
 
   const href = buildProductHref(product.product_id, product.merchant_id);
   const offerSavingsSource = pickOfferSavingsSource(product);
+  const recommendationReason = String(
+    product.recommendation_reason ||
+      product.match_reason ||
+      product.card_highlight ||
+      product.search_card?.highlight_candidate ||
+      product.shopping_card?.highlight ||
+      '',
+  ).trim();
   const savingsBadges = getSummaryBadges(
     buildSavingsPresentation({
       product: product as any,
@@ -157,6 +165,11 @@ function ChatWideProductCardComponent({ product, onAddToCart, colorVariant = 'te
         <p className="line-clamp-2 text-[12px] font-medium leading-[1.35] text-[#2C2C2A]">
           {product.title}
         </p>
+        {recommendationReason ? (
+          <p className="mt-0.5 line-clamp-2 text-[10px] leading-[1.25] text-[#534AB7]">
+            {recommendationReason}
+          </p>
+        ) : null}
         <div className="mt-1 flex flex-wrap items-center gap-1">
           <span className="text-[13px] font-medium text-[#2C2C2A]">{formatPrice(product)}</span>
           {savingsBadges.map((badge) => (
