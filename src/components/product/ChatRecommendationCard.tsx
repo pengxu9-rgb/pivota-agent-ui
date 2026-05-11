@@ -123,6 +123,14 @@ function ChatRecommendationCardComponent({ product, onAddToCart, colorVariant = 
   const rating = Number((product as any).rating ?? product.review_summary?.rating ?? product.review_summary?.average_rating);
   const reviewCount = Number((product as any).review_count ?? product.review_summary?.review_count ?? product.review_summary?.count);
   const hasRating = Number.isFinite(rating) && rating > 0;
+  const recommendationReason = String(
+    product.recommendation_reason ||
+      product.match_reason ||
+      product.card_highlight ||
+      product.search_card?.highlight_candidate ||
+      product.shopping_card?.highlight ||
+      '',
+  ).trim();
 
   const colors = COLOR_MAP[colorVariant];
 
@@ -240,6 +248,12 @@ function ChatRecommendationCardComponent({ product, onAddToCart, colorVariant = 
         <p className="line-clamp-2 text-[12px] font-medium leading-[1.35] text-[#2C2C2A]">
           {product.title}
         </p>
+
+        {recommendationReason ? (
+          <p className="line-clamp-2 text-[10px] leading-[1.25] text-[#534AB7]">
+            {recommendationReason}
+          </p>
+        ) : null}
 
         {/* Rating */}
         {hasRating ? (

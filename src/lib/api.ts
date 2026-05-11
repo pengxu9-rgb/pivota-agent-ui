@@ -236,6 +236,8 @@ export interface ProductResponse {
   card_highlight?: string;
   card_badge?: string;
   card_intro?: string;
+  recommendation_reason?: string;
+  match_reason?: string;
   store_discount_evidence?: Record<string, any>;
   store_discount_summary?: Record<string, any>;
   store_discount_badges?: string[];
@@ -447,17 +449,11 @@ function resolveCanonicalProductId(anyP: any): string {
       anyP?.pivotaSignatureId,
       anyP?.signature_id,
       anyP?.signatureId,
-      anyP?.sellable_item_group_id,
-      anyP?.sellableItemGroupId,
-      anyP?.product_group_id,
-      anyP?.productGroupId,
       anyP?.id,
       anyP?.product_id,
       productRef?.product_id,
       rawDetail?.pivota_signature_id,
       rawDetail?.signature_id,
-      rawDetail?.sellable_item_group_id,
-      rawDetail?.product_group_id,
       rawDetail?.id,
       rawDetail?.product_id,
     ) ||
@@ -666,6 +662,18 @@ export function normalizeProduct(
     rawSearchCard?.intro,
     rawShoppingCard?.intro,
   );
+  const recommendationReason = readFirstString(
+    anyP.recommendation_reason,
+    anyP.recommendationReason,
+    anyP.why_recommended,
+    anyP.whyRecommended,
+    anyP.match_reason,
+    anyP.matchReason,
+    rawSearchCard?.recommendation_reason,
+    rawSearchCard?.match_reason,
+    rawShoppingCard?.recommendation_reason,
+    rawShoppingCard?.match_reason,
+  );
   const normalizedProductId = resolveCanonicalProductId(anyP);
   const sourceProductId = readFirstString(
     anyP.source_product_id,
@@ -683,8 +691,6 @@ export function normalizeProduct(
     anyP.pivotaSignatureId,
     anyP.signature_id,
     anyP.signatureId,
-    anyP.sellable_item_group_id,
-    anyP.sellableItemGroupId,
     normalizedProductId,
   );
 
@@ -799,6 +805,9 @@ export function normalizeProduct(
     ...(cardHighlight ? { card_highlight: cardHighlight } : {}),
     ...(cardBadge ? { card_badge: cardBadge } : {}),
     ...(cardIntro ? { card_intro: cardIntro } : {}),
+    ...(recommendationReason
+      ? { recommendation_reason: recommendationReason, match_reason: recommendationReason }
+      : {}),
     ...(isRecord(anyP.store_discount_evidence) ? { store_discount_evidence: anyP.store_discount_evidence } : {}),
     ...(isRecord(anyP.store_discount_summary) ? { store_discount_summary: anyP.store_discount_summary } : {}),
     ...(Array.isArray(anyP.store_discount_badges) ? { store_discount_badges: anyP.store_discount_badges } : {}),
