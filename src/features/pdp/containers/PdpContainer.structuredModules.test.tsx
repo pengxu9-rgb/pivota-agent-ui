@@ -1008,6 +1008,26 @@ describe('PdpContainer structured PDP modules', () => {
     expect(screen.queryAllByText('Product Details')).toHaveLength(1);
   });
 
+  it('renders canonical single-SKU products even when variants are absent', () => {
+    const payload = buildGenericSingleVariantPayload();
+    payload.product.product_id = 'sig_no_variants';
+    payload.product.default_variant_id = '';
+    payload.product.variants = [];
+
+    render(
+      <PdpContainer
+        payload={payload}
+        mode="generic"
+        onAddToCart={() => {}}
+        onBuyNow={() => {}}
+      />,
+    );
+
+    expect(screen.getByText(payload.product.title)).toBeInTheDocument();
+    expect(screen.queryByText('Options')).not.toBeInTheDocument();
+    expect(screen.queryAllByText('Default option')).toHaveLength(0);
+  });
+
   it('keeps variant pricing visible for single-offer external-seed products', () => {
     render(
       <PdpContainer
