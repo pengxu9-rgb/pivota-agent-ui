@@ -1312,10 +1312,33 @@ export function PdpContainer({
   }, [payload, pendingProductLineProductId]);
 
   const variants = useMemo(() => payload.product.variants ?? [], [payload.product.variants]);
+  const fallbackSingleSkuVariant = useMemo<Variant>(
+    () => ({
+      variant_id:
+        String(payload.product.default_variant_id || '').trim() ||
+        String(payload.product.product_id || '').trim() ||
+        'single-sku',
+      title: String(payload.product.title || 'Single SKU').trim() || 'Single SKU',
+      options: [],
+      hidden_from_selector: true,
+      source_quality_status: 'fallback_runtime_hidden',
+      ...(payload.product.price ? { price: payload.product.price } : {}),
+      ...(payload.product.availability ? { availability: payload.product.availability } : {}),
+      ...(payload.product.image_url ? { image_url: payload.product.image_url } : {}),
+    }),
+    [
+      payload.product.availability,
+      payload.product.default_variant_id,
+      payload.product.image_url,
+      payload.product.price,
+      payload.product.product_id,
+      payload.product.title,
+    ],
+  );
 
   const selectedVariant = useMemo(() => {
-    return variants.find((v) => v.variant_id === selectedVariantId) || variants[0];
-  }, [variants, selectedVariantId]);
+    return variants.find((v) => v.variant_id === selectedVariantId) || variants[0] || fallbackSingleSkuVariant;
+  }, [fallbackSingleSkuVariant, variants, selectedVariantId]);
   const variantSelectorData = getModuleData<VariantSelectorModuleData>(payload, 'variant_selector');
   const productLineOptions = useMemo(
     () =>
