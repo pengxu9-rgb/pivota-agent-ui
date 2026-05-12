@@ -87,7 +87,6 @@ function readServerCanonicalRouteId(
   const shouldUseGroup =
     isPublicProductGroupRouteId(groupId) &&
     (
-      subject?.type === 'product_group' ||
       requestedIsGroup ||
       canonicalScope === 'multi_merchant_canonical' ||
       (Number.isFinite(offersCount) && offersCount > 1)

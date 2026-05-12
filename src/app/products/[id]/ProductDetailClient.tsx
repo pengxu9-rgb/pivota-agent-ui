@@ -30,6 +30,7 @@ import {
 import {
   buildProductHref,
   inferCanonicalPdpMerchantId,
+  isPivotaSignatureRouteId,
   isPublicProductGroupRouteId,
   isProductGroupRouteId,
   normalizeProductRouteMerchantId,
@@ -459,6 +460,7 @@ export default function ProductDetailPage({ params }: Props) {
   const { addItem, open } = useCartStore();
   const inferredMerchantId = inferCanonicalPdpMerchantId(id, merchantIdParam);
   const routeIsProductGroup = isProductGroupRouteId(id);
+  const routeIsPivotaSignature = isPivotaSignatureRouteId(id);
   useEffect(() => {
     if (loading && !error && !pdpPayload) return;
     hideProductRouteLoading();
@@ -533,8 +535,7 @@ export default function ProductDetailPage({ params }: Props) {
 
   useEffect(() => {
     const productGroupId = String((pdpPayload as any)?.product_group_id || '').trim();
-    if (!productGroupId || routeIsProductGroup || !isPublicProductGroupRouteId(productGroupId)) return;
-    if (productGroupId === id) return;
+    if (routeIsProductGroup) return;
     const canonicalScope = String((pdpPayload as any)?.canonical_scope || '').trim();
     const distinctOfferMerchants = new Set(
       (Array.isArray((pdpPayload as any)?.offers) ? (pdpPayload as any).offers : [])
@@ -542,16 +543,23 @@ export default function ProductDetailPage({ params }: Props) {
         .filter(Boolean),
     );
     const shouldCanonicalizeToGroup =
-      isPublicProductGroupRouteId(productGroupId) ||
       canonicalScope === 'multi_merchant_canonical' ||
       Number((pdpPayload as any)?.offers_count || 0) > 1 ||
       distinctOfferMerchants.size > 1;
-    if (!shouldCanonicalizeToGroup) return;
+    const product = (pdpPayload as any)?.product || {};
+    const signatureId = String(product?.pivota_signature_id || product?.signature_id || '').trim();
+    const targetRouteId =
+      shouldCanonicalizeToGroup && isPublicProductGroupRouteId(productGroupId)
+        ? productGroupId
+        : !routeIsPivotaSignature && isPivotaSignatureRouteId(signatureId)
+          ? signatureId
+          : '';
+    if (!targetRouteId || targetRouteId === id) return;
     const nextParams = new URLSearchParams(searchParamsString);
     nextParams.delete('merchant_id');
     const nextQuery = nextParams.toString();
-    router.replace(`${buildProductHref(productGroupId)}${nextQuery ? `?${nextQuery}` : ''}`);
-  }, [id, pdpPayload, routeIsProductGroup, router, searchParamsString]);
+    router.replace(`${buildProductHref(targetRouteId)}${nextQuery ? `?${nextQuery}` : ''}`);
+  }, [id, pdpPayload, routeIsPivotaSignature, routeIsProductGroup, router, searchParamsString]);
 
   useEffect(() => {
     let cancelled = false;

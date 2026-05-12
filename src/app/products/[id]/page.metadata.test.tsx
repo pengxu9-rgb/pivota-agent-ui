@@ -128,7 +128,7 @@ describe('product page metadata', () => {
     );
   });
 
-  it('uses resolved public product-group subjects as canonical metadata', async () => {
+  it('uses signature canonical metadata for singleton product-group responses', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async () =>
@@ -144,6 +144,7 @@ describe('product page metadata', () => {
                     product: {
                       title: 'Singleton Serum',
                       description: 'A grouped catalog product.',
+                      pivota_signature_id: 'sig_singleton123',
                     },
                   },
                 },
@@ -161,7 +162,7 @@ describe('product page metadata', () => {
     });
 
     expect((metadata.alternates as any)?.canonical).toBe(
-      'https://agent.pivota.cc/products/pg_catalog_singleton',
+      'https://agent.pivota.cc/products/sig_singleton123',
     );
   });
 });

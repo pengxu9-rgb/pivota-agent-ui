@@ -501,7 +501,7 @@ describe('ProductDetailPage canonical PDP loading', () => {
     );
   });
 
-  it('canonicalizes merchant product routes to public group URLs even for singleton groups', async () => {
+  it('canonicalizes singleton merchant product routes to signature URLs when catalog identity is present', async () => {
     searchParamsValue = 'merchant_id=merchant_a&return=%2F';
     getPdpV2Mock.mockResolvedValue({ status: 'success', modules: [] });
     mapPdpV2ToPdpPayloadMock.mockReturnValue({
@@ -512,6 +512,7 @@ describe('ProductDetailPage canonical PDP loading', () => {
       product: {
         ...canonicalPayload.product,
         merchant_id: 'merchant_a',
+        pivota_signature_id: 'sig_singleton123',
       },
       offers: [
         {
@@ -525,7 +526,7 @@ describe('ProductDetailPage canonical PDP loading', () => {
 
     await screen.findByTestId('generic-pdp');
     await waitFor(() =>
-      expect(replaceMock).toHaveBeenCalledWith('/products/pg_catalog_singleton?return=%2F'),
+      expect(replaceMock).toHaveBeenCalledWith('/products/sig_singleton123?return=%2F'),
     );
   });
 
