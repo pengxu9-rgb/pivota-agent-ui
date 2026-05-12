@@ -159,6 +159,161 @@ function _readBrand(product: Record<string, any>): string {
 }
 
 /**
+ * Extract a positive price number from a Pivota offer's price field.
+ * The gateway's offer.price can be:
+ *   - a number (rare; legacy)
+ *   - a string (current Path B mirror shape: "95.00")
+ *   - a Money-like object: {amount, currency} or {current:{amount,currency}}
+ * Returns null for missing / zero / negative values.
+ */
+function _readOfferPrice(price: unknown): number | null {
+  if (typeof price === 'number' && Number.isFinite(price) && price > 0) return price;
+  if (typeof price === 'string') {
+    const n = Number(price);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  }
+  if (price && typeof price === 'object') {
+    const p = price as Record<string, unknown>;
+    // {current: {amount, currency}}
+    if (p.current && typeof p.current === 'object') {
+      const cur = p.current as Record<string, unknown>;
+      const amt = _firstNumber(cur.amount);
+      if (amt !== null && amt > 0) return amt;
+    }
+    // {amount, currency}
+    const amt = _firstNumber(p.amount);
+    if (amt !== null && amt > 0) return amt;
+  }
+  return null;
+}
+
+
+function _readOfferCurrency(price: unknown): string {
+  if (price && typeof price === 'object') {
+    const p = price as Record<string, unknown>;
+    if (p.current && typeof p.current === 'object') {
+      const cur = _firstString((p.current as Record<string, unknown>).currency);
+      if (cur) return cur;
+    }
+    const cur = _firstString(p.currency);
+    if (cur) return cur;
+  }
+  return '';
+}
+
+
+function _readOfferAvailability(offer: Record<string, any>): string | null {
+  // Inventory shape from get_pdp_v2 offers: {availability: "in_stock", ...}
+  // or top-level {in_stock: true} on legacy rows.
+  const inv = offer.inventory && typeof offer.inventory === 'object'
+    ? offer.inventory as Record<string, unknown>
+    : null;
+  const raw =
+    inv?.availability ??
+    inv?.in_stock ??
+    offer.availability ??
+    offer.in_stock;
+  return _normalizeAvailability(raw);
+}
+
+
+/**
+ * Build a single Offer node within an AggregateOffer.offers array.
+ * Each multi-seller offer becomes one Offer with a typed Organization
+ * seller — Google's Product rich-results renders this as the
+ * "Available at: {merchant1}, {merchant2}..." widget. LLMs use it to
+ * answer "where can I buy X?" with concrete seller attribution.
+ */
+function _buildSellerOfferNode(
+  offer: Record<string, any>,
+  parentUrl: string,
+): Record<string, any> | null {
+  const price = _readOfferPrice(offer.price);
+  // No-price offers can still serve a useful purpose for LLM grounding
+  // (the seller IS the answer to "who carries this") but Google's
+  // structured-data linter rejects priceless Offer blocks. Drop them.
+  if (price === null) return null;
+
+  const currency = _readOfferCurrency(offer.price) || 'USD';
+  const merchantId = _firstString(offer.merchant_id);
+  const merchantName = _firstString(offer.merchant_name);
+  const availability = _readOfferAvailability(offer);
+
+  const node: Record<string, any> = {
+    '@type': SCHEMA_TYPE_OFFER,
+    url: parentUrl,
+    priceCurrency: currency,
+    price: price.toFixed(2),
+  };
+  if (availability) node.availability = availability;
+  if (merchantName) {
+    node.seller = { '@type': 'Organization', name: merchantName };
+  } else if (merchantId) {
+    // Fall back to the merchant_id when display name is missing; better
+    // than no seller attribution at all.
+    node.seller = { '@type': 'Organization', name: merchantId };
+  }
+  return node;
+}
+
+
+/**
+ * Build a schema.org/AggregateOffer node when product has multiple
+ * sellers. Returns null when offers array is empty, has 0 priced
+ * entries, or has only 1 priced entry (in which case the caller
+ * should keep the regular single-Offer block).
+ *
+ * Why AggregateOffer matters: Google's Product rich-results uses it
+ * to render the "Available from N sellers, starting at $X" widget
+ * — visually distinct from single-seller listings and biases LLM
+ * citations toward the canonical Pivota PDP over individual merchant
+ * pages. Stage 2b-i's product_group_members data finally makes this
+ * possible (pre-2b-i, multi-seller groups were 100% operator-curated).
+ */
+function _buildAggregateOffer(
+  product: Record<string, any>,
+  parentUrl: string,
+): Record<string, any> | null {
+  const rawOffers = product._pivota_offers;
+  if (!Array.isArray(rawOffers) || rawOffers.length < 2) return null;
+
+  const sellerNodes: Array<Record<string, any>> = [];
+  for (const offer of rawOffers) {
+    if (!offer || typeof offer !== 'object') continue;
+    const node = _buildSellerOfferNode(offer, parentUrl);
+    if (node) sellerNodes.push(node);
+  }
+  // Need ≥2 priced sellers to justify AggregateOffer
+  if (sellerNodes.length < 2) return null;
+
+  // Compute lowPrice / highPrice from the actual emitted nodes (not
+  // the raw input — keeps the aggregate consistent with the offers
+  // array we're emitting).
+  const prices = sellerNodes.map((n) => Number(n.price)).filter((p) => Number.isFinite(p));
+  const lowPrice = prices.length ? Math.min(...prices) : null;
+  const highPrice = prices.length ? Math.max(...prices) : null;
+
+  // Currency: pick the most common one. Mixed-currency aggregates
+  // would render badly; in practice every Pivota cluster is single-
+  // currency (same market). Defensive: log a TODO when mixed.
+  const currencies = new Set(sellerNodes.map((n) => String(n.priceCurrency)));
+  const currency = currencies.size === 1
+    ? Array.from(currencies)[0]
+    : (sellerNodes[0].priceCurrency || 'USD');
+
+  const aggregate: Record<string, any> = {
+    '@type': 'AggregateOffer',
+    url: parentUrl,
+    priceCurrency: currency,
+    offerCount: sellerNodes.length,
+    offers: sellerNodes,
+  };
+  if (lowPrice !== null) aggregate.lowPrice = lowPrice.toFixed(2);
+  if (highPrice !== null) aggregate.highPrice = highPrice.toFixed(2);
+  return aggregate;
+}
+
+/**
  * GTIN-13 (and friends) lookup. Schema.org accepts gtin / gtin8 / gtin12
  * / gtin13 / gtin14 / mpn. Backend stores under `barcode` (catalog_skus
  * column from the Phase 7d mirror) or sometimes `gtin13` directly when
@@ -374,9 +529,23 @@ export function buildProductJsonLd(args: {
   const parentGtin = _readGtin(product);
   if (parentGtin) ldRecord.gtin13 = parentGtin;
 
-  // Offers — only emit when we have a real price. Google flags
-  // priceless `Offer` blocks as spam.
-  if (price !== null && price > 0) {
+  // Offers — Stage 3b-2 added AggregateOffer for multi-seller groups.
+  //
+  // Order of preference:
+  //   1. AggregateOffer (≥2 priced sellers from product_group_members)
+  //      — Google renders this as "Available from N sellers, from $X".
+  //   2. Single Offer with price (legacy + single-seller path)
+  //   3. Single Offer with only availability (no-price + known-stock)
+  //
+  // Google's structured-data linter prefers AggregateOffer for
+  // multi-seller products and downranks pages that ship N separate
+  // Product nodes for the same canonical SKU. Pre-3b-2 we were the
+  // latter — the same physical product appeared as 4 separate
+  // Pivota PDPs across the 4 group members. This unifies the signal.
+  const aggregate = _buildAggregateOffer(product, url);
+  if (aggregate) {
+    ldRecord.offers = aggregate;
+  } else if (price !== null && price > 0) {
     const offer: Record<string, any> = {
       '@type': SCHEMA_TYPE_OFFER,
       url,
@@ -386,7 +555,6 @@ export function buildProductJsonLd(args: {
     if (availability) offer.availability = availability;
     ldRecord.offers = offer;
   } else if (availability) {
-    // No price but availability known — still useful signal.
     ldRecord.offers = {
       '@type': SCHEMA_TYPE_OFFER,
       url,
@@ -510,4 +678,9 @@ export const __forTesting = {
   _flattenVariantOptions,
   _buildVariantNode,
   _buildHasVariant,
+  _readOfferPrice,
+  _readOfferCurrency,
+  _readOfferAvailability,
+  _buildSellerOfferNode,
+  _buildAggregateOffer,
 };

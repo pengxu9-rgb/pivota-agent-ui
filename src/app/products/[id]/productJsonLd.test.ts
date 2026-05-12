@@ -528,3 +528,195 @@ describe('Stage 3b-1: buildProductJsonLd with hasVariant + gtin13', () => {
     expect(parsed.gtin13).toBe('0773602443796');
   });
 });
+
+// ---------------------------------------------------------------------------
+// Stage 3b-2 additions: AggregateOffer for multi-seller product_groups
+// ---------------------------------------------------------------------------
+
+const {
+  _readOfferPrice,
+  _readOfferAvailability,
+  _buildSellerOfferNode,
+  _buildAggregateOffer,
+} = __forTesting;
+
+describe('Stage 3b-2: _readOfferPrice', () => {
+  it('reads numeric price directly', () => {
+    expect(_readOfferPrice(95.0)).toBe(95.0);
+  });
+
+  it('parses string price (mirror script shape)', () => {
+    expect(_readOfferPrice('95.00')).toBe(95.0);
+  });
+
+  it('reads price.current.amount Money shape', () => {
+    expect(_readOfferPrice({ current: { amount: 95.0, currency: 'USD' } })).toBe(95.0);
+  });
+
+  it('reads flat {amount, currency} Money shape', () => {
+    expect(_readOfferPrice({ amount: 95.0, currency: 'USD' })).toBe(95.0);
+  });
+
+  it('rejects zero, negative, missing, garbage', () => {
+    expect(_readOfferPrice(0)).toBeNull();
+    expect(_readOfferPrice(-5)).toBeNull();
+    expect(_readOfferPrice(null)).toBeNull();
+    expect(_readOfferPrice(undefined)).toBeNull();
+    expect(_readOfferPrice('not_a_number')).toBeNull();
+    expect(_readOfferPrice({})).toBeNull();
+  });
+});
+
+describe('Stage 3b-2: _readOfferAvailability', () => {
+  it('reads inventory.availability string', () => {
+    expect(_readOfferAvailability({ inventory: { availability: 'in_stock' } })).toBe(
+      'https://schema.org/InStock',
+    );
+  });
+
+  it('reads inventory.in_stock boolean', () => {
+    expect(_readOfferAvailability({ inventory: { in_stock: true } })).toBe(
+      'https://schema.org/InStock',
+    );
+    expect(_readOfferAvailability({ inventory: { in_stock: false } })).toBe(
+      'https://schema.org/OutOfStock',
+    );
+  });
+
+  it('falls back to top-level availability', () => {
+    expect(_readOfferAvailability({ availability: 'out_of_stock' })).toBe(
+      'https://schema.org/OutOfStock',
+    );
+  });
+
+  it('returns null when no availability signal present', () => {
+    expect(_readOfferAvailability({})).toBeNull();
+  });
+});
+
+describe('Stage 3b-2: _buildSellerOfferNode', () => {
+  it('rejects priceless offers (Google rich-results spam flag)', () => {
+    expect(
+      _buildSellerOfferNode({ merchant_id: 'm', merchant_name: 'Sephora' }, URL),
+    ).toBeNull();
+  });
+
+  it('emits Offer with Organization seller from merchant_name', () => {
+    const node = _buildSellerOfferNode(
+      {
+        merchant_id: 'm_sephora',
+        merchant_name: 'Sephora',
+        price: { current: { amount: 95.0, currency: 'USD' } },
+        inventory: { availability: 'in_stock' },
+      },
+      URL,
+    );
+    expect(node).not.toBeNull();
+    expect(node!.seller).toEqual({ '@type': 'Organization', name: 'Sephora' });
+    expect(node!.price).toBe('95.00');
+    expect(node!.priceCurrency).toBe('USD');
+    expect(node!.availability).toBe('https://schema.org/InStock');
+  });
+
+  it('falls back to merchant_id as seller name when display name missing', () => {
+    const node = _buildSellerOfferNode(
+      { merchant_id: 'merch_anonymous', price: '12.50' },
+      URL,
+    );
+    expect(node!.seller).toEqual({ '@type': 'Organization', name: 'merch_anonymous' });
+  });
+});
+
+describe('Stage 3b-2: _buildAggregateOffer', () => {
+  it('returns null when product has no _pivota_offers attached', () => {
+    expect(_buildAggregateOffer({}, URL)).toBeNull();
+  });
+
+  it('returns null when only 1 seller offer present (single-Offer path takes over)', () => {
+    const product = {
+      _pivota_offers: [
+        {
+          merchant_id: 'm1',
+          merchant_name: 'Sephora',
+          price: { current: { amount: 95, currency: 'USD' } },
+        },
+      ],
+    };
+    expect(_buildAggregateOffer(product, URL)).toBeNull();
+  });
+
+  it('returns null when 2 offers present but only 1 has a price', () => {
+    const product = {
+      _pivota_offers: [
+        { merchant_id: 'm1', merchant_name: 'Sephora', price: '95.00' },
+        { merchant_id: 'm2', merchant_name: 'Ulta' },  // priceless → dropped
+      ],
+    };
+    expect(_buildAggregateOffer(product, URL)).toBeNull();
+  });
+
+  it('emits AggregateOffer with lowPrice/highPrice/offerCount for 3 sellers', () => {
+    const product = {
+      _pivota_offers: [
+        {
+          merchant_id: 'm_sephora', merchant_name: 'Sephora',
+          price: { current: { amount: 95.0, currency: 'USD' } },
+          inventory: { availability: 'in_stock' },
+        },
+        {
+          merchant_id: 'm_ulta', merchant_name: 'Ulta',
+          price: { current: { amount: 92.0, currency: 'USD' } },
+          inventory: { availability: 'in_stock' },
+        },
+        {
+          merchant_id: 'm_nordstrom', merchant_name: 'Nordstrom',
+          price: { current: { amount: 99.0, currency: 'USD' } },
+        },
+      ],
+    };
+    const agg = _buildAggregateOffer(product, URL);
+    expect(agg).not.toBeNull();
+    expect(agg!['@type']).toBe('AggregateOffer');
+    expect(agg!.offerCount).toBe(3);
+    expect(agg!.lowPrice).toBe('92.00');
+    expect(agg!.highPrice).toBe('99.00');
+    expect(agg!.priceCurrency).toBe('USD');
+    expect(agg!.offers).toHaveLength(3);
+    expect(agg!.offers[0].seller.name).toBe('Sephora');
+  });
+
+  it('integrates with buildProductJsonLd: multi-seller → AggregateOffer replaces single Offer', () => {
+    const out = buildProductJsonLd({
+      product: {
+        title: 'Architecture Radiance Foundation',
+        brand: 'Tom Ford Beauty',
+        price: 95.0,
+        currency: 'USD',
+        _pivota_offers: [
+          { merchant_id: 'm_a', merchant_name: 'Sephora', price: '95.00' },
+          { merchant_id: 'm_b', merchant_name: 'Ulta', price: '92.00' },
+        ],
+      },
+      productId: PRODUCT_ID,
+    });
+    const parsed = JSON.parse(out!);
+    expect(parsed.offers['@type']).toBe('AggregateOffer');
+    expect(parsed.offers.offerCount).toBe(2);
+    expect(parsed.offers.price).toBeUndefined();
+    expect(parsed.offers.offers[0].price).toBeDefined();
+  });
+
+  it('falls back to single Offer when _pivota_offers absent (single-seller path)', () => {
+    const out = buildProductJsonLd({
+      product: {
+        title: 'Single-Seller Product',
+        price: 19.99,
+        currency: 'USD',
+      },
+      productId: PRODUCT_ID,
+    });
+    const parsed = JSON.parse(out!);
+    expect(parsed.offers['@type']).toBe('Offer');
+    expect(parsed.offers.price).toBe('19.99');
+  });
+});
