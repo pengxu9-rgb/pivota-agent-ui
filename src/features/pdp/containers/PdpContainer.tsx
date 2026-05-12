@@ -3934,14 +3934,21 @@ export function PdpContainer({
                   </div>
                   <div className="mt-1.5 overflow-x-auto">
                     <div className="flex gap-1.5 pb-1">
-                      {colorOptions.slice(0, 8).map((color) => {
+                      {colorSheetOptions.slice(0, 8).map((option) => {
+                        const color = option.value;
                         const isSelected = selectedColor === color;
+                        const swatchImageUrl = option.label_image_url || option.image_url;
+                        const hasSwatchPreview = Boolean(swatchImageUrl || option.swatch_hex);
                         return (
                           <button
                             key={color}
+                            type="button"
                             onClick={() => handleColorSelect(color)}
                             className={cn(
-                              'flex-shrink-0 rounded-full border bg-card px-3 py-1 text-xs text-foreground transition-colors',
+                              'flex-shrink-0 border bg-card text-xs text-foreground transition-colors',
+                              hasSwatchPreview
+                                ? 'inline-flex min-h-11 min-w-[84px] items-center gap-2 rounded-lg px-2 py-1.5'
+                                : 'rounded-full px-3 py-1',
                               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]',
                               'disabled:cursor-not-allowed disabled:opacity-50 disabled:bg-muted/30 disabled:text-muted-foreground',
                               isSelected
@@ -3949,7 +3956,31 @@ export function PdpContainer({
                                 : 'border-border hover:bg-muted/30 hover:border-muted-foreground/40',
                             )}
                           >
-                            {color}
+                            {hasSwatchPreview ? (
+                              <span
+                                aria-hidden="true"
+                                className={cn(
+                                  'relative h-8 w-8 flex-shrink-0 overflow-hidden rounded-md border bg-muted',
+                                  isSelected ? 'border-[color:var(--accent-600)]' : 'border-border',
+                                )}
+                              >
+                                {swatchImageUrl ? (
+                                  <Image
+                                    src={swatchImageUrl}
+                                    alt=""
+                                    fill
+                                    className="object-cover"
+                                    sizes="32px"
+                                    loading="lazy"
+                                  />
+                                ) : option.swatch_hex ? (
+                                  <span className="absolute inset-0" style={{ backgroundColor: option.swatch_hex }} />
+                                ) : null}
+                              </span>
+                            ) : null}
+                            <span className={cn(hasSwatchPreview ? 'max-w-[92px] truncate text-left leading-tight' : '')}>
+                              {color}
+                            </span>
                           </button>
                         );
                       })}

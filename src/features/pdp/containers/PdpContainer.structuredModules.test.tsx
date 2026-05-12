@@ -605,6 +605,7 @@ describe('PdpContainer structured PDP modules', () => {
         variant_id: 'shade_grape',
         title: 'Grape Fizz',
         options: [{ name: 'Shade', value: 'Grape Fizz' }],
+        label_image_url: 'https://example.com/swatch-grape.jpg',
         price: { current: { amount: 22, currency: 'USD' } },
         availability: { in_stock: true, available_quantity: 9 },
       },
@@ -612,13 +613,14 @@ describe('PdpContainer structured PDP modules', () => {
         variant_id: 'shade_citrus',
         title: 'Citrus Sunshine',
         options: [{ name: 'Shade', value: 'Citrus Sunshine' }],
+        beauty_meta: { shade_hex: '#f6a11a' },
         price: { current: { amount: 24, currency: 'USD' } },
         availability: { in_stock: true, available_quantity: 9 },
       },
     ];
     payload.product.price = { current: { amount: 22, currency: 'USD' } };
 
-    render(
+    const { container } = render(
       <PdpContainer payload={payload} mode="beauty" onAddToCart={() => {}} onBuyNow={() => {}} />,
     );
 
@@ -628,6 +630,7 @@ describe('PdpContainer structured PDP modules', () => {
     expect(screen.queryByText('Shade Gallery')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Grape Fizz' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Citrus Sunshine' })).toBeInTheDocument();
+    expect(container.querySelector('img[src="https://example.com/swatch-grape.jpg"]')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Citrus Sunshine' }));
 
