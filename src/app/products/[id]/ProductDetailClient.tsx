@@ -30,6 +30,7 @@ import {
 import {
   buildProductHref,
   inferCanonicalPdpMerchantId,
+  isPublicProductGroupRouteId,
   isProductGroupRouteId,
   normalizeProductRouteMerchantId,
 } from '@/lib/productHref';
@@ -532,7 +533,7 @@ export default function ProductDetailPage({ params }: Props) {
 
   useEffect(() => {
     const productGroupId = String((pdpPayload as any)?.product_group_id || '').trim();
-    if (!productGroupId || routeIsProductGroup || !isProductGroupRouteId(productGroupId)) return;
+    if (!productGroupId || routeIsProductGroup || !isPublicProductGroupRouteId(productGroupId)) return;
     if (productGroupId === id) return;
     const canonicalScope = String((pdpPayload as any)?.canonical_scope || '').trim();
     const distinctOfferMerchants = new Set(
@@ -541,6 +542,7 @@ export default function ProductDetailPage({ params }: Props) {
         .filter(Boolean),
     );
     const shouldCanonicalizeToGroup =
+      isPublicProductGroupRouteId(productGroupId) ||
       canonicalScope === 'multi_merchant_canonical' ||
       Number((pdpPayload as any)?.offers_count || 0) > 1 ||
       distinctOfferMerchants.size > 1;

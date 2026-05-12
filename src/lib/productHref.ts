@@ -30,6 +30,14 @@ export function isProductGroupRouteId(productId: unknown): boolean {
   return normalizedProductId.startsWith('pg_') || normalizedProductId.startsWith('pg:');
 }
 
+export function isSelfFallbackProductGroupRouteId(productId: unknown): boolean {
+  return String(productId || '').trim().toLowerCase().startsWith('pg:pid:');
+}
+
+export function isPublicProductGroupRouteId(productId: unknown): boolean {
+  return isProductGroupRouteId(productId) && !isSelfFallbackProductGroupRouteId(productId);
+}
+
 export function isPivotaSignatureRouteId(productId: unknown): boolean {
   return String(productId || '').trim().toLowerCase().startsWith('sig_');
 }
@@ -109,7 +117,7 @@ export function resolveProductRouteId(product: ProductRouteLike): string {
     product.sellable_item_group_id,
     product.sellableItemGroupId,
   );
-  if (isProductGroupRouteId(productGroupId)) return productGroupId;
+  if (isPublicProductGroupRouteId(productGroupId)) return productGroupId;
 
   return firstNonEmptyString(product.product_id, product.productId);
 }

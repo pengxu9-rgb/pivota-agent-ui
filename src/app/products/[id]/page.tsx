@@ -4,6 +4,7 @@ import ProductDetailClient from './ProductDetailClient';
 import { buildProductJsonLd } from './productJsonLd';
 import {
   isProductGroupRouteId,
+  isPublicProductGroupRouteId,
   resolveProductRouteId,
 } from '@/lib/productHref';
 
@@ -84,8 +85,9 @@ function readServerCanonicalRouteId(
   const offersCount = Number(offersData.offers_count ?? (response as any)?.offers_count);
   const requestedIsGroup = isProductGroupRouteId(requestedProductId);
   const shouldUseGroup =
-    isProductGroupRouteId(groupId) &&
+    isPublicProductGroupRouteId(groupId) &&
     (
+      subject?.type === 'product_group' ||
       requestedIsGroup ||
       canonicalScope === 'multi_merchant_canonical' ||
       (Number.isFinite(offersCount) && offersCount > 1)

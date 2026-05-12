@@ -501,6 +501,34 @@ describe('ProductDetailPage canonical PDP loading', () => {
     );
   });
 
+  it('canonicalizes merchant product routes to public group URLs even for singleton groups', async () => {
+    searchParamsValue = 'merchant_id=merchant_a&return=%2F';
+    getPdpV2Mock.mockResolvedValue({ status: 'success', modules: [] });
+    mapPdpV2ToPdpPayloadMock.mockReturnValue({
+      ...canonicalPayload,
+      product_group_id: 'pg_catalog_singleton',
+      canonical_scope: null,
+      offers_count: 1,
+      product: {
+        ...canonicalPayload.product,
+        merchant_id: 'merchant_a',
+      },
+      offers: [
+        {
+          ...canonicalPayload.offers[0],
+          merchant_id: 'merchant_a',
+        },
+      ],
+    });
+
+    renderPage('prod_1');
+
+    await screen.findByTestId('generic-pdp');
+    await waitFor(() =>
+      expect(replaceMock).toHaveBeenCalledWith('/products/pg_catalog_singleton?return=%2F'),
+    );
+  });
+
   it('does not canonicalize self fallback group ids into public group URLs', async () => {
     searchParamsValue = 'merchant_id=merchant_a';
     getPdpV2Mock.mockResolvedValue({ status: 'success', modules: [] });

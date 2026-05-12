@@ -5,6 +5,8 @@ import {
   buildProductHrefForProduct,
   inferCanonicalPdpMerchantId,
   isPivotaSignatureRouteId,
+  isPublicProductGroupRouteId,
+  isSelfFallbackProductGroupRouteId,
   isProductGroupRouteId,
   normalizeProductRouteMerchantId,
   resolveProductRouteId,
@@ -28,6 +30,9 @@ describe('productHref helpers', () => {
   it('keeps product group route ids unscoped', () => {
     expect(isProductGroupRouteId('pg_catalog_abc123')).toBe(true);
     expect(isProductGroupRouteId('pg:pid:prod_1')).toBe(true);
+    expect(isPublicProductGroupRouteId('pg_catalog_abc123')).toBe(true);
+    expect(isSelfFallbackProductGroupRouteId('pg:pid:prod_1')).toBe(true);
+    expect(isPublicProductGroupRouteId('pg:pid:prod_1')).toBe(false);
     expect(inferCanonicalPdpMerchantId('pg_catalog_abc123')).toBeUndefined();
     expect(buildProductHref('pg_catalog_abc123', 'external_seed')).toBe('/products/pg_catalog_abc123');
   });

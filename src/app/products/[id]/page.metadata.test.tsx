@@ -127,4 +127,41 @@ describe('product page metadata', () => {
       'https://agent.pivota.cc/products/pg_catalog_abc123',
     );
   });
+
+  it('uses resolved public product-group subjects as canonical metadata', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            subject: { type: 'product_group', id: 'pg_catalog_singleton' },
+            modules: [
+              {
+                type: 'canonical',
+                data: {
+                  product_group_id: 'pg_catalog_singleton',
+                  pdp_payload: {
+                    product: {
+                      title: 'Singleton Serum',
+                      description: 'A grouped catalog product.',
+                    },
+                  },
+                },
+              },
+            ],
+          }),
+          { status: 200 },
+        ),
+      ),
+    );
+
+    const metadata = await generateMetadata({
+      params: Promise.resolve({ id: '10064558129449' }),
+      searchParams: Promise.resolve({ merchant_id: 'merch_1' }),
+    });
+
+    expect((metadata.alternates as any)?.canonical).toBe(
+      'https://agent.pivota.cc/products/pg_catalog_singleton',
+    );
+  });
 });
