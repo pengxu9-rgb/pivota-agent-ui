@@ -98,7 +98,9 @@ describe('llms.txt — seed section', () => {
 
   it('attaches stable static titles to known seed IDs', () => {
     const seeds = _buildSeedSection();
-    const lashSeed = seeds.find((s) => s.product_id === 'sig_7ad40676c42fb9c96e2a8136');
+    // Updated 2026-05-12 to the current prod sig (was sig_7ad40676…
+    // which 404'd because it predated mig 071's sig schema change).
+    const lashSeed = seeds.find((s) => s.product_id === 'sig_8b17eff870a4cd631ea61c56f99b5f99');
     expect(lashSeed?.title).toBe('Multi-Peptide Lash and Brow Serum');
   });
 });
@@ -169,6 +171,20 @@ describe('llms.txt — GET endpoint', () => {
     const body = await res.text();
     expect(body).not.toContain('/products/ext_alias_x');
     expect(body).toContain('/products/sig_canonical_y');
+  });
+
+  it('excludes test-merchant PDPs from the runtime enrichment list', async () => {
+    // MOYU products would fail checkout if LLMs cited them. Filter
+    // matches sitemap.ts — TEST_MERCHANT_IDS exclusion.
+    process.env.NEXT_PUBLIC_API_URL = 'https://api.example.com';
+    getAllProductsMock.mockResolvedValueOnce([
+      { product_id: 'sig_moyu_test', merchant_id: 'merch_efbc46b4619cfbdf', title: 'MOYU Test', brand: 'MOYU' },
+      { product_id: 'sig_ext_seed_real', merchant_id: 'external_seed', title: 'Real External', brand: 'TomFord' },
+    ]);
+    const res = await GET();
+    const body = await res.text();
+    expect(body).not.toContain('/products/sig_moyu_test');
+    expect(body).toContain('/products/sig_ext_seed_real');
   });
 
   it('caps total products to keep llms.txt under context-window-friendly size', async () => {

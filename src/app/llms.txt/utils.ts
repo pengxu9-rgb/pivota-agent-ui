@@ -9,6 +9,7 @@ import { getAllProducts } from '@/lib/api';
 import {
   SITEMAP_BASE_URL,
   SITEMAP_SEED_PRODUCT_IDS,
+  isMerchantIndexable,
   isProductIdSitemapEligible,
 } from '../sitemap-seeds';
 
@@ -40,18 +41,22 @@ export function _buildSeedSection(): IndexedProduct[] {
     .filter(isProductIdSitemapEligible)
     .map((id) => ({
       product_id: id,
+      // Static title fallbacks for the curated baseline. Used only
+      // when the runtime API fetch fails — in normal operation
+      // _enrichWithRuntimeProducts overwrites these with fresh names
+      // from the backend.
       title:
-        id === 'sig_7ad40676c42fb9c96e2a8136'
+        id === 'sig_8b17eff870a4cd631ea61c56f99b5f99'
           ? 'Multi-Peptide Lash and Brow Serum'
-          : id === 'sig_7ed140c61dfa79d1c2876a7a'
-          ? "Eau d'Ombré Leather Eau de Toilette"
-          : id === 'sig_7d3a5ec03e4e70ce239eaa0c'
-          ? 'Unseen Sunscreen SPF 50'
-          : id === 'sig_29ed2e5f318a5d70a2f645ed'
-          ? 'Barrier Restore Cream'
-          : id === 'sig_d89c869821249a14d3edbf25'
+          : id === 'sig_bb9cdc5375aad0da780364a3a5df0b3f'
+          ? 'Café Rose and Ombré Leather Duo Mini Set'
+          : id === 'sig_811f3a4d781db76ad4a60768b1691b29'
+          ? 'Mineral Unseen Sunscreen SPF 40'
+          : id === 'sig_5241fe1b9ccca9f57cbffb4408395a3d'
+          ? 'barrier restore cream'
+          : id === 'sig_951fdc3a391d7878556e2ad3e7e58320'
           ? 'Poreless Clarifying Charcoal Mask Pink'
-          : id === 'sig_dacaf022d6c6a9ed86ecab1f'
+          : id === 'sig_a4dde0770eb3b4757016e2a10b8fe978'
           ? 'Revive Under Eye Patch: Ginseng + Retinal'
           : '',
       brand: '',
@@ -72,6 +77,9 @@ export async function _enrichWithRuntimeProducts(
     const byId = new Map<string, IndexedProduct>();
     for (const p of products) {
       if (!isProductIdSitemapEligible(p.product_id)) continue;
+      // Same indexability filter as sitemap.ts — test merchants
+      // shouldn't appear in any LLM-facing surface.
+      if (!isMerchantIndexable(p.merchant_id)) continue;
       const pAny = p as unknown as Record<string, unknown>;
       const title = (pAny.title as string | undefined) || (pAny.name as string | undefined) || '';
       const brandRaw = (pAny.brand as Record<string, unknown> | string | undefined);
