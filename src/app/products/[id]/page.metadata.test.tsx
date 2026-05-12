@@ -82,4 +82,49 @@ describe('product page metadata', () => {
 
     expect(metadata.title).toBe('Pivota Shopping AI');
   });
+
+  it('uses product-group canonical metadata for multi-merchant PDP responses', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            subject: { type: 'product_group', id: 'pg_catalog_abc123' },
+            modules: [
+              {
+                type: 'canonical',
+                data: {
+                  product_group_id: 'pg_catalog_abc123',
+                  canonical_scope: 'multi_merchant_canonical',
+                  pdp_payload: {
+                    product: {
+                      title: 'Barrier Serum',
+                      description: 'A serum with multiple sellers.',
+                    },
+                  },
+                },
+              },
+              {
+                type: 'offers',
+                data: { offers_count: 2 },
+              },
+            ],
+          }),
+          { status: 200 },
+        ),
+      ),
+    );
+
+    const metadata = await generateMetadata({
+      params: Promise.resolve({ id: '10064558129449' }),
+      searchParams: Promise.resolve({ merchant_id: 'merch_1' }),
+    });
+
+    expect((metadata.alternates as any)?.canonical).toBe(
+      'https://agent.pivota.cc/products/pg_catalog_abc123',
+    );
+    expect((metadata.openGraph as any)?.url).toBe(
+      'https://agent.pivota.cc/products/pg_catalog_abc123',
+    );
+  });
 });

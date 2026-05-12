@@ -10,7 +10,7 @@ import {
   optimizePdpImageUrl,
   shouldBypassNextImageOptimizer,
 } from '@/features/pdp/utils/pdpImageUrls';
-import { buildProductHref } from '@/lib/productHref';
+import { buildProductHrefForProduct } from '@/lib/productHref';
 import { resolveProductCardPresentation } from '@/lib/productCardPresentation';
 import { appendCurrentPathAsReturn } from '@/lib/returnUrl';
 
@@ -78,7 +78,7 @@ export function RecommendationsGrid({
           const badge = isVariantCountBadge(card.badge) ? null : card.badge;
           const subtitle = card.subtitle;
           const highlight = card.highlight;
-          const baseHref = buildProductHref(p.product_id, p.merchant_id);
+          const baseHref = buildProductHrefForProduct(p as any);
           const handleClick = (event: MouseEvent<HTMLAnchorElement>) => {
             onItemClick?.(p, idx);
             if (event.defaultPrevented) return;

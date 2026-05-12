@@ -2,6 +2,10 @@ import { headers } from 'next/headers';
 import type { Metadata } from 'next';
 import ProductDetailClient from './ProductDetailClient';
 import { buildProductJsonLd } from './productJsonLd';
+import {
+  isProductGroupRouteId,
+  resolveProductRouteId,
+} from '@/lib/productHref';
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -51,6 +55,46 @@ function readCanonicalPdpProduct(response: unknown): Record<string, any> | null 
   return product && typeof product === 'object' ? product : null;
 }
 
+function readPdpModule(response: unknown, type: string): Record<string, any> | null {
+  const modules = Array.isArray((response as any)?.modules) ? (response as any).modules : [];
+  const module = modules.find((item: any) => item?.type === type);
+  return module && typeof module === 'object' ? module : null;
+}
+
+function readServerCanonicalRouteId(
+  response: unknown,
+  product: Record<string, any>,
+  requestedProductId: string,
+): string {
+  const canonicalData = readPdpModule(response, 'canonical')?.data || {};
+  const offersData = readPdpModule(response, 'offers')?.data || {};
+  const subject = (response as any)?.subject || {};
+  const groupId = firstString(
+    canonicalData.product_group_id,
+    (response as any)?.product_group_id,
+    subject?.type === 'product_group' ? subject.id : '',
+    product.product_group_id,
+    product.sellable_item_group_id,
+  );
+  const canonicalScope = firstString(
+    canonicalData.canonical_scope,
+    (response as any)?.canonical_scope,
+    (response as any)?.metadata?.identity_graph?.canonical_scope,
+  );
+  const offersCount = Number(offersData.offers_count ?? (response as any)?.offers_count);
+  const requestedIsGroup = isProductGroupRouteId(requestedProductId);
+  const shouldUseGroup =
+    isProductGroupRouteId(groupId) &&
+    (
+      requestedIsGroup ||
+      canonicalScope === 'multi_merchant_canonical' ||
+      (Number.isFinite(offersCount) && offersCount > 1)
+    );
+  if (shouldUseGroup) return groupId;
+
+  return resolveProductRouteId(product) || requestedProductId;
+}
+
 function buildProductTitle(product: Record<string, any>): string {
   const title = firstString(product.title, product.name);
   if (!title) return DEFAULT_TITLE;
@@ -94,7 +138,7 @@ function readProductImage(product: Record<string, any>): string {
  */
 async function fetchProductForServerRender(
   args: { productId: string; merchantId?: string },
-): Promise<Record<string, any> | null> {
+): Promise<{ product: Record<string, any>; canonicalRouteId: string } | null> {
   const productId = args.productId.trim();
   if (!productId) return null;
 
@@ -132,7 +176,13 @@ async function fetchProductForServerRender(
 
     if (!res.ok) return null;
     const data = await res.json().catch(() => null);
-    return readCanonicalPdpProduct(data);
+    const product = readCanonicalPdpProduct(data);
+    return product
+      ? {
+          product,
+          canonicalRouteId: readServerCanonicalRouteId(data, product, productId),
+        }
+      : null;
   } catch {
     return null;
   } finally {
@@ -144,13 +194,13 @@ const SITE_BASE = 'https://agent.pivota.cc';
 
 function buildMetadataFromProduct(
   product: Record<string, any>,
-  productId: string,
+  canonicalRouteId: string,
 ): Metadata {
   const title = buildProductTitle(product);
   const description = buildProductDescription(product);
   const image = readProductImage(product);
   const images = image ? [{ url: image, alt: firstString(product.title, product.name) || title }] : [];
-  const canonicalUrl = `${SITE_BASE}/products/${productId}`;
+  const canonicalUrl = `${SITE_BASE}/products/${canonicalRouteId}`;
 
   return {
     title,
@@ -192,13 +242,13 @@ export async function generateMetadata({
   const resolvedSearchParams = searchParams ? await searchParams : {};
   const productId = String(resolvedParams.id || '').trim();
   const merchantId = readSearchParam(resolvedSearchParams.merchant_id);
-  const product = await fetchProductForServerRender({
+  const renderData = await fetchProductForServerRender({
     productId,
     ...(merchantId ? { merchantId } : {}),
   });
 
-  return product
-    ? buildMetadataFromProduct(product, productId)
+  return renderData
+    ? buildMetadataFromProduct(renderData.product, renderData.canonicalRouteId)
     : { title: DEFAULT_TITLE, description: 'Shop products with Pivota Shopping AI.' };
 }
 
@@ -211,14 +261,19 @@ export default async function ProductDetailPage(props: Props) {
   const productId = String(resolvedParams.id || '').trim();
   const merchantId = readSearchParam(resolvedSearchParams.merchant_id);
 
-  const product = productId
+  const renderData = productId
     ? await fetchProductForServerRender({
         productId,
         ...(merchantId ? { merchantId } : {}),
       })
     : null;
 
-  const jsonLd = product ? buildProductJsonLd({ product, productId }) : null;
+  const jsonLd = renderData
+    ? buildProductJsonLd({
+        product: renderData.product,
+        productId: renderData.canonicalRouteId || productId,
+      })
+    : null;
 
   return (
     <>

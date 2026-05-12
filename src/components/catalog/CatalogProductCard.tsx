@@ -8,7 +8,7 @@ import { Plus } from 'lucide-react';
 import type { ProductResponse } from '@/lib/api';
 import { normalizeDisplayImageUrl } from '@/lib/displayImage';
 import { resolveProductCardPresentation } from '@/lib/productCardPresentation';
-import { buildProductHref } from '@/lib/productHref';
+import { buildProductHrefForProduct } from '@/lib/productHref';
 import { appendCurrentPathAsReturn } from '@/lib/returnUrl';
 import {
   buildSavingsPresentation,
@@ -104,7 +104,7 @@ export function CatalogProductCard({ product }: { product: ProductResponse }) {
   const resolvedImage = normalizeDisplayImageUrl(product.image_url, '/placeholder.svg');
   const [imageSrc, setImageSrc] = useState(resolvedImage);
 
-  const href = buildProductHref(product.product_id, product.merchant_id);
+  const href = buildProductHrefForProduct(product);
   const hrefWithReturn = appendCurrentPathAsReturn(href);
   const card = resolveProductCardPresentation(product);
   const offerSavingsSource = pickOfferSavingsSource(product);

@@ -114,4 +114,21 @@ describe('CatalogProductCard savings display', () => {
     expect(screen.getByText('Offers vary by seller')).toBeInTheDocument();
     expect(screen.queryByText('3% card benefit')).not.toBeInTheDocument();
   });
+
+  it('links canonical signature products without merchant-scoped numeric ids', () => {
+    render(
+      <CatalogProductCard
+        product={product({
+          product_id: '10064558129449',
+          merchant_id: 'merch_1',
+          pivota_signature_id: 'sig_174dca24d4ffc297db0c3865d54b712b',
+        })}
+      />,
+    );
+
+    expect(screen.getByRole('link')).toHaveAttribute(
+      'href',
+      '/products/sig_174dca24d4ffc297db0c3865d54b712b?return=%2F',
+    );
+  });
 });

@@ -2,9 +2,12 @@ import { describe, expect, it } from 'vitest';
 
 import {
   buildProductHref,
+  buildProductHrefForProduct,
   inferCanonicalPdpMerchantId,
+  isPivotaSignatureRouteId,
   isProductGroupRouteId,
   normalizeProductRouteMerchantId,
+  resolveProductRouteId,
 } from './productHref';
 
 describe('productHref helpers', () => {
@@ -27,5 +30,38 @@ describe('productHref helpers', () => {
     expect(isProductGroupRouteId('pg:pid:prod_1')).toBe(true);
     expect(inferCanonicalPdpMerchantId('pg_catalog_abc123')).toBeUndefined();
     expect(buildProductHref('pg_catalog_abc123', 'external_seed')).toBe('/products/pg_catalog_abc123');
+  });
+
+  it('keeps pivota signature route ids unscoped', () => {
+    expect(isPivotaSignatureRouteId('sig_abc123')).toBe(true);
+    expect(buildProductHref('sig_abc123', 'merchant_a')).toBe('/products/sig_abc123');
+  });
+
+  it('prefers canonical URL and signature ids over raw merchant product ids', () => {
+    expect(
+      resolveProductRouteId({
+        product_id: '10064558129449',
+        merchant_id: 'merch_1',
+        pivota_canonical_url: 'https://agent.pivota.cc/products/sig_from_url',
+        pivota_signature_id: 'sig_from_product',
+      }),
+    ).toBe('sig_from_url');
+
+    expect(
+      buildProductHrefForProduct({
+        product_id: '10064558129449',
+        merchant_id: 'merch_1',
+        pivota_signature_id: 'sig_from_product',
+      }),
+    ).toBe('/products/sig_from_product');
+  });
+
+  it('falls back to merchant-scoped numeric URLs only when no canonical id exists', () => {
+    expect(
+      buildProductHrefForProduct({
+        product_id: '10064558129449',
+        merchant_id: 'merch_1',
+      }),
+    ).toBe('/products/10064558129449?merchant_id=merch_1');
   });
 });
