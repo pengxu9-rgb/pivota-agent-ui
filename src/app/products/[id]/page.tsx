@@ -57,8 +57,8 @@ function readCanonicalPdpProduct(response: unknown): Record<string, any> | null 
 
 function readPdpModule(response: unknown, type: string): Record<string, any> | null {
   const modules = Array.isArray((response as any)?.modules) ? (response as any).modules : [];
-  const module = modules.find((item: any) => item?.type === type);
-  return module && typeof module === 'object' ? module : null;
+  const matchedModule = modules.find((item: any) => item?.type === type);
+  return matchedModule && typeof matchedModule === 'object' ? matchedModule : null;
 }
 
 function readServerCanonicalRouteId(
