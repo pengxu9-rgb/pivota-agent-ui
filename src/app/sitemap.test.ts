@@ -85,4 +85,55 @@ describe('sitemap.ts — main sitemap (seed product IDs always included)', () =>
     expect(seed!.priority).toBe(0.8);
     expect(seed!.changeFrequency).toBe('weekly');
   });
+
+  // -------------------------------------------------------------------
+  // Stage 3b-1: dedupe by product_group_id + real lastmod
+  // -------------------------------------------------------------------
+
+  it('dedupes by product_group_id — Tom Ford-style group produces 1 sitemap URL', async () => {
+    process.env.NEXT_PUBLIC_API_URL = 'https://api.example.com';
+    getAllProductsMock.mockResolvedValueOnce([
+      { product_id: 'sig_a', product_group_id: 'pg_tom_ford_foundation' },
+      { product_id: 'sig_b', product_group_id: 'pg_tom_ford_foundation' },
+      { product_id: 'sig_c', product_group_id: 'pg_tom_ford_foundation' },
+      { product_id: 'sig_d', product_group_id: 'pg_other_product' },
+    ]);
+    const entries = await sitemap();
+    const urls = entries.map((e) => e.url);
+    // Only the FIRST of the 3 grouped members survives — one canonical
+    // URL per group, as Stage 2b-i intended.
+    const tfUrls = urls.filter((u) =>
+      u === 'https://agent.pivota.cc/products/sig_a' ||
+      u === 'https://agent.pivota.cc/products/sig_b' ||
+      u === 'https://agent.pivota.cc/products/sig_c',
+    );
+    expect(tfUrls).toHaveLength(1);
+    expect(urls).toContain('https://agent.pivota.cc/products/sig_d');
+  });
+
+  it('uses product.updated_at as lastmod instead of build-time now()', async () => {
+    process.env.NEXT_PUBLIC_API_URL = 'https://api.example.com';
+    const realDate = '2026-03-15T10:30:00.000Z';
+    getAllProductsMock.mockResolvedValueOnce([
+      { product_id: 'sig_with_date', updated_at: realDate },
+    ]);
+    const entries = await sitemap();
+    const e = entries.find((x) => x.url === 'https://agent.pivota.cc/products/sig_with_date');
+    expect(e).toBeDefined();
+    expect((e!.lastModified as Date).toISOString()).toBe(realDate);
+  });
+
+  it('falls back to current time when updated_at is missing or malformed', async () => {
+    process.env.NEXT_PUBLIC_API_URL = 'https://api.example.com';
+    getAllProductsMock.mockResolvedValueOnce([
+      { product_id: 'sig_no_date' },
+      { product_id: 'sig_bad_date', updated_at: 'not-a-date' },
+    ]);
+    const entries = await sitemap();
+    for (const id of ['sig_no_date', 'sig_bad_date']) {
+      const e = entries.find((x) => x.url === `https://agent.pivota.cc/products/${id}`);
+      expect(e).toBeDefined();
+      expect((e!.lastModified as Date).getTime()).toBeGreaterThan(0);
+    }
+  });
 });

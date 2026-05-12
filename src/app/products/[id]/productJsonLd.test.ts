@@ -338,3 +338,193 @@ describe('buildProductJsonLd — BreadcrumbList', () => {
     expect(positions).toEqual([1, 2, 3]);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Stage 3b-1 additions: gtin13 + hasVariant
+// ---------------------------------------------------------------------------
+
+const { _readGtin, _flattenVariantOptions, _buildVariantNode } = __forTesting;
+
+describe('Stage 3b-1: _readGtin', () => {
+  it('reads gtin13 directly when present', () => {
+    expect(_readGtin({ gtin13: '0773602443796' })).toBe('0773602443796');
+  });
+
+  it('reads barcode as a fallback (Path B mirror shape)', () => {
+    expect(_readGtin({ barcode: '0773602443796' })).toBe('0773602443796');
+  });
+
+  it('strips non-digit separators', () => {
+    expect(_readGtin({ barcode: '0773-602-443796' })).toBe('0773602443796');
+    expect(_readGtin({ barcode: '  0773 602 443796  ' })).toBe('0773602443796');
+  });
+
+  it('rejects sub-8-digit garbage (Google rich-results linter rule)', () => {
+    expect(_readGtin({ barcode: '123' })).toBe('');
+    expect(_readGtin({ barcode: 'abc' })).toBe('');
+  });
+
+  it('rejects 15+ digit oversize (malformed)', () => {
+    expect(_readGtin({ barcode: '123456789012345' })).toBe('');
+  });
+
+  it('returns empty string when neither field present', () => {
+    expect(_readGtin({})).toBe('');
+    expect(_readGtin({ gtin13: '', barcode: '' })).toBe('');
+  });
+});
+
+describe('Stage 3b-1: _flattenVariantOptions', () => {
+  it('handles Path B options shape (list of {name, value, axis_kind})', () => {
+    const out = _flattenVariantOptions([
+      { name: 'Shade', value: '8.5N Vellum', axis_kind: 'shade' },
+      { name: 'Size', value: '30.0 ml', axis_kind: 'size' },
+    ]);
+    expect(out).toEqual({ shade: '8.5N Vellum', size: '30.0 ml' });
+  });
+
+  it('handles Path A options shape (flat dict)', () => {
+    const out = _flattenVariantOptions({ Color: 'Red', Size: '30ml' });
+    expect(out).toEqual({ color: 'Red', size: '30ml' });
+  });
+
+  it('returns empty for malformed input (defensive)', () => {
+    expect(_flattenVariantOptions(null as any)).toEqual({});
+    expect(_flattenVariantOptions('garbage' as any)).toEqual({});
+    expect(_flattenVariantOptions([])).toEqual({});
+  });
+});
+
+describe('Stage 3b-1: _buildVariantNode', () => {
+  const PARENT = {
+    parentName: 'Architecture Radiance Foundation',
+    parentBrand: 'Tom Ford Beauty',
+    parentUrl: URL,
+  };
+
+  it('rejects Default-Title placeholders (matches Stage 2b-ii filter)', () => {
+    const node = _buildVariantNode({
+      variant: {
+        variant_id: 'x',
+        title: 'Default Title',
+        options: { Title: 'Default Title' },
+      },
+      ...PARENT,
+    });
+    expect(node).toBeNull();
+  });
+
+  it('accepts a real Tom Ford shade variant with full schema fields', () => {
+    const node = _buildVariantNode({
+      variant: {
+        variant_id: '53059916267733',
+        sku: 'TCT117',
+        title: '8.5N Vellum / 30.0 ml',
+        barcode: '0773602443796',
+        image_url: 'https://cdn/.../tf_TCT117.png',
+        options: [
+          { name: 'Shade', value: '8.5N Vellum', axis_kind: 'shade' },
+          { name: 'Size', value: '30.0 ml', axis_kind: 'size' },
+        ],
+        price: { current: { amount: '95.00', currency: 'USD' } },
+        availability: { in_stock: true },
+      },
+      ...PARENT,
+    });
+    expect(node).not.toBeNull();
+    expect(node!.name).toBe('8.5N Vellum / 30.0 ml');
+    expect(node!.sku).toBe('TCT117');
+    expect(node!.gtin13).toBe('0773602443796');
+    expect(node!.image).toBe('https://cdn/.../tf_TCT117.png');
+    expect(node!.size).toBe('30.0 ml');
+    // shade isn't a typed schema.org field → additionalProperty
+    expect(node!.additionalProperty).toEqual([
+      { '@type': 'PropertyValue', name: 'shade', value: '8.5N Vellum' },
+    ]);
+    expect(node!.offers.price).toBe('95.00');
+    expect(node!.offers.priceCurrency).toBe('USD');
+    expect(node!.offers.availability).toBe('https://schema.org/InStock');
+    // url carries variant=<id> so LLMs cite a deep-link instead of
+    // the canonical parent URL when a shade is the target.
+    expect(node!.url).toContain('variant=53059916267733');
+  });
+
+  it('returns null when variant has no variant_id (can\'t build deep link)', () => {
+    const node = _buildVariantNode({
+      variant: { title: 'Real shade', options: [{ name: 'shade', value: 'Red', axis_kind: 'shade' }] },
+      ...PARENT,
+    });
+    expect(node).toBeNull();
+  });
+
+  it('omits offers when variant has no price (avoids Google spam flag for priceless Offer)', () => {
+    const node = _buildVariantNode({
+      variant: {
+        variant_id: 'v1',
+        title: 'Real shade',
+        options: [{ name: 'shade', value: 'Red', axis_kind: 'shade' }],
+      },
+      ...PARENT,
+    });
+    expect(node!.offers).toBeUndefined();
+  });
+});
+
+describe('Stage 3b-1: buildProductJsonLd with hasVariant + gtin13', () => {
+  it('emits hasVariant for a Tom Ford-style 40-shade product', () => {
+    const out = buildProductJsonLd({
+      product: {
+        title: 'Architecture Radiance Foundation',
+        brand: 'Tom Ford Beauty',
+        variants: [
+          {
+            variant_id: 'V1', sku: 'TCT117', title: '8.5N Vellum / 30.0 ml',
+            options: [{ name: 'Shade', value: '8.5N Vellum', axis_kind: 'shade' }],
+            price: { current: { amount: '95.00', currency: 'USD' } },
+            barcode: '0773602443796',
+          },
+          {
+            variant_id: 'V2', sku: 'TCT118', title: '9.0N Beech / 30.0 ml',
+            options: [{ name: 'Shade', value: '9.0N Beech', axis_kind: 'shade' }],
+            price: { current: { amount: '95.00', currency: 'USD' } },
+            barcode: '0773602443797',
+          },
+        ],
+      },
+      productId: PRODUCT_ID,
+    });
+    const parsed = JSON.parse(out!);
+    expect(parsed.hasVariant).toHaveLength(2);
+    expect(parsed.hasVariant[0].gtin13).toBe('0773602443796');
+    expect(parsed.hasVariant[1].gtin13).toBe('0773602443797');
+  });
+
+  it('omits hasVariant when only Default-Title placeholders exist (MOYU foundation brush)', () => {
+    const out = buildProductJsonLd({
+      product: {
+        title: 'Foundation Brush',
+        brand: 'MOYU',
+        variants: [
+          { variant_id: 'V1', title: 'Default Title', options: { Title: 'Default Title' } },
+        ],
+      },
+      productId: PRODUCT_ID,
+    });
+    const parsed = JSON.parse(out!);
+    // hasVariant key absent (not empty array — Google flags empties)
+    expect(parsed.hasVariant).toBeUndefined();
+  });
+
+  it('emits parent-level gtin13 when product has a barcode', () => {
+    const out = buildProductJsonLd({
+      product: {
+        title: 'Lipstick Russian Red',
+        brand: 'MAC',
+        barcode: '0773602443796',
+      },
+      productId: PRODUCT_ID,
+    });
+    const parsed = JSON.parse(out!);
+    expect(parsed.gtin13).toBe('0773602443796');
+  });
+});

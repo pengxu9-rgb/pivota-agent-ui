@@ -159,6 +159,171 @@ function _readBrand(product: Record<string, any>): string {
 }
 
 /**
+ * GTIN-13 (and friends) lookup. Schema.org accepts gtin / gtin8 / gtin12
+ * / gtin13 / gtin14 / mpn. Backend stores under `barcode` (catalog_skus
+ * column from the Phase 7d mirror) or sometimes `gtin13` directly when
+ * the agent enrichment pipeline normalized it. Read both.
+ *
+ * Stripped of non-digit characters so "0773-602-443796" surfaces as
+ * "0773602443796" — matches the canonical GTIN form the search engines
+ * recognize.
+ */
+function _readGtin(record: Record<string, any>): string {
+  const raw = _firstString(record.gtin13, record.gtin, record.barcode);
+  if (!raw) return '';
+  const digits = raw.replace(/\D/g, '');
+  // Real GTIN lengths: 8, 12, 13, 14. Reject obviously-bad values to
+  // avoid emitting a spam-flagged structured-data field. Google's
+  // structured-data linter rejects sub-8-digit "GTINs" — better to
+  // omit than emit garbage.
+  if (digits.length < 8 || digits.length > 14) return '';
+  return digits;
+}
+
+/**
+ * Flatten variant.options into a {color, size, shade, ...} dict so we
+ * can map to schema.org Product's typed properties. Path B options
+ * shape: [{name, value, axis_kind}, ...]. Path A shape: {Title: "..."}.
+ * Both handled.
+ *
+ * Returns lowercase-keyed structured options; caller decides which keys
+ * map to Product#color / Product#size / additionalProperty.
+ */
+function _flattenVariantOptions(options: unknown): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (Array.isArray(options)) {
+    for (const opt of options) {
+      if (!opt || typeof opt !== 'object') continue;
+      const key = _firstString(
+        (opt as any).axis_kind,
+        (opt as any).name,
+      ).toLowerCase();
+      const value = _firstString((opt as any).value);
+      if (key && value) out[key] = value;
+    }
+  } else if (options && typeof options === 'object') {
+    for (const [k, v] of Object.entries(options as Record<string, unknown>)) {
+      if (typeof v === 'string' && v.trim()) {
+        out[String(k).toLowerCase()] = v.trim();
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * Build one schema.org Product node for a variant. Used by the parent's
+ * `hasVariant` array — Google's Product Variants feature reads this to
+ * render the shade/size selector on rich result cards. Each variant
+ * gets its own gtin13 + sku + offers when available.
+ *
+ * Why a flat Product type (not ProductModel / ProductGroup): keeps the
+ * parent ProductGroup-vs-Product decision out of this layer. Google
+ * accepts `Product#hasVariant: [Product, Product]` and renders it the
+ * same way as `ProductGroup#hasVariant`.
+ */
+function _buildVariantNode(args: {
+  variant: Record<string, any>;
+  parentName: string;
+  parentBrand: string;
+  parentUrl: string;
+}): Record<string, any> | null {
+  const { variant, parentName, parentBrand, parentUrl } = args;
+  if (!variant || typeof variant !== 'object') return null;
+
+  // Variant must have either a meaningful title or non-default options.
+  // Skip Shopify Default-Title placeholders — see Stage 2b-ii filter.
+  const variantTitle = _firstString(variant.title);
+  const titleIsMeaningful = variantTitle && variantTitle.toLowerCase() !== 'default title';
+  const opts = _flattenVariantOptions(variant.options);
+  const optsMeaningful = Object.values(opts).some(
+    (v) => v && v.toLowerCase() !== 'default title' && v.toLowerCase() !== 'default',
+  );
+  if (!titleIsMeaningful && !optsMeaningful) return null;
+
+  const variantId = _firstString(variant.variant_id, variant.id);
+  if (!variantId) return null;
+
+  const variantUrl = parentUrl + (parentUrl.includes('?') ? '&' : '?') + 'variant=' + encodeURIComponent(variantId);
+  const node: Record<string, any> = {
+    '@type': SCHEMA_TYPE_PRODUCT,
+    name: titleIsMeaningful ? variantTitle : `${parentName} (${Object.values(opts).join(' / ')})`,
+    url: variantUrl,
+    sku: _firstString(variant.sku, variantId),
+  };
+  if (parentBrand) {
+    node.brand = { '@type': SCHEMA_TYPE_BRAND, name: parentBrand };
+  }
+  const variantImage = _firstString(variant.image_url, variant.image);
+  if (variantImage) node.image = variantImage;
+
+  // Map structured options to schema.org typed fields where possible.
+  if (opts.color) node.color = opts.color;
+  if (opts.size) node.size = opts.size;
+  // shade isn't a standard schema.org property — surface via
+  // additionalProperty so Google can still index it.
+  const additionalProps: Array<Record<string, any>> = [];
+  for (const [k, v] of Object.entries(opts)) {
+    if (k === 'color' || k === 'size' || k === 'title') continue;
+    additionalProps.push({ '@type': 'PropertyValue', name: k, value: v });
+  }
+  if (additionalProps.length) node.additionalProperty = additionalProps;
+
+  const gtin = _readGtin(variant);
+  if (gtin) node.gtin13 = gtin;
+
+  // Per-variant Offer
+  const price = _firstNumber(
+    variant.price?.current?.amount,
+    variant.price?.amount,
+    variant.price_amount,
+  );
+  if (price !== null && price > 0) {
+    const offer: Record<string, any> = {
+      '@type': SCHEMA_TYPE_OFFER,
+      url: variantUrl,
+      priceCurrency: _firstString(
+        variant.price?.current?.currency,
+        variant.price?.currency,
+        variant.currency,
+        'USD',
+      ),
+      price: price.toFixed(2),
+    };
+    const availability = _normalizeAvailability(
+      variant.availability?.in_stock ?? variant.in_stock ?? variant.availability,
+    );
+    if (availability) offer.availability = availability;
+    node.offers = offer;
+  }
+
+  return node;
+}
+
+/**
+ * Build the parent's hasVariant array. Drops Default-Title placeholders
+ * — same filter as Stage 2b-ii's variant promoter. Returns [] when no
+ * real variants exist, in which case the caller omits hasVariant from
+ * the JSON-LD (don't emit empty arrays — Google's parser logs them as
+ * partial-data warnings).
+ */
+function _buildHasVariant(args: {
+  product: Record<string, any>;
+  parentName: string;
+  parentBrand: string;
+  parentUrl: string;
+}): Array<Record<string, any>> {
+  const { product, parentName, parentBrand, parentUrl } = args;
+  const variants = Array.isArray(product.variants) ? product.variants : [];
+  const nodes: Array<Record<string, any>> = [];
+  for (const v of variants) {
+    const node = _buildVariantNode({ variant: v, parentName, parentBrand, parentUrl });
+    if (node) nodes.push(node);
+  }
+  return nodes;
+}
+
+/**
  * Build the JSON-LD payload as a serialized string ready to drop into a
  * `<script type="application/ld+json">{...}</script>` block.
  *
@@ -201,6 +366,13 @@ export function buildProductJsonLd(args: {
     ldRecord.brand = { '@type': SCHEMA_TYPE_BRAND, name: brand };
   }
   if (sku) ldRecord.sku = sku;
+
+  // GTIN at the parent level (Stage 3b-1). Used by Google Shopping
+  // for product matching across merchants — same GTIN across stores
+  // → same canonical product in their dedup graph. Read from
+  // product.gtin13 (preferred) or product.barcode.
+  const parentGtin = _readGtin(product);
+  if (parentGtin) ldRecord.gtin13 = parentGtin;
 
   // Offers — only emit when we have a real price. Google flags
   // priceless `Offer` blocks as spam.
@@ -291,6 +463,20 @@ export function buildProductJsonLd(args: {
     itemListElement: breadcrumbItems,
   };
 
+  // hasVariant (Stage 3b-1) — emit one Product node per real variant
+  // so Google's Product Variants feature can render the shade/size
+  // selector + LLM grounding sees the full variant catalog. Pre-3b
+  // the JSON-LD said "1 Tom Ford Foundation"; now it says "1 Tom
+  // Ford Foundation with 40 shades, each with its own GTIN and price".
+  // Skipped when product has no real variants (Default-Title-only).
+  const variantNodes = _buildHasVariant({
+    product,
+    parentName: name,
+    parentBrand: brand,
+    parentUrl: url,
+  });
+  if (variantNodes.length > 0) ldRecord.hasVariant = variantNodes;
+
   return _safeJsonForScriptTag(ldRecord);
 }
 
@@ -317,7 +503,11 @@ export const __forTesting = {
   _normalizeAvailability,
   _readImages,
   _readBrand,
+  _readGtin,
   _safeJsonForScriptTag,
   _resolveDefaultVariant,
   _resolveOfferFacts,
+  _flattenVariantOptions,
+  _buildVariantNode,
+  _buildHasVariant,
 };
