@@ -48,12 +48,25 @@ function firstString(...values: unknown[]): string {
 function readCanonicalPdpProduct(response: unknown): Record<string, any> | null {
   const modules = Array.isArray((response as any)?.modules) ? (response as any).modules : [];
   const canonical = modules.find((module: any) => module?.type === 'canonical');
+  const pdpPayload = canonical?.data?.pdp_payload;
   const product =
-    canonical?.data?.pdp_payload?.product ||
+    pdpPayload?.product ||
     canonical?.data?.product ||
     (response as any)?.product ||
     null;
-  return product && typeof product === 'object' ? product : null;
+  if (!product || typeof product !== 'object') return null;
+
+  // Stage 3b-2: attach the multi-seller offers array (same array
+  // ProductDetailClient renders for the "Multiple sellers match this
+  // product. Select one." card) under a namespaced key on the product
+  // object so buildProductJsonLd can read it for AggregateOffer
+  // emission. The underscore prefix keeps schema.org-emitting code
+  // from accidentally treating it as a Product field. Read-only.
+  const offers = pdpPayload?.offers;
+  if (Array.isArray(offers) && offers.length > 0) {
+    product._pivota_offers = offers;
+  }
+  return product;
 }
 
 function readPdpModule(response: unknown, type: string): Record<string, any> | null {
