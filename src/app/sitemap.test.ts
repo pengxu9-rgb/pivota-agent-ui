@@ -8,7 +8,11 @@ vi.mock('@/lib/api', () => ({
 
 import sitemap from './sitemap';
 
-const SEED_ID = 'sig_7ad40676c42fb9c96e2a8136';
+// Updated 2026-05-12 to match the refreshed SITEMAP_SEED_PRODUCT_IDS
+// in sitemap-seeds.ts. The pre-2026-05-12 sig (sig_7ad40676…) used
+// the legacy 24-char-hex format that predated mig 071 and 404'd in
+// current prod.
+const SEED_ID = 'sig_8b17eff870a4cd631ea61c56f99b5f99';
 const SEED_URL = `https://agent.pivota.cc/products/${SEED_ID}`;
 const STATIC_URLS = new Set([
   'https://agent.pivota.cc',
@@ -135,5 +139,33 @@ describe('sitemap.ts — main sitemap (seed product IDs always included)', () =>
       expect(e).toBeDefined();
       expect((e!.lastModified as Date).getTime()).toBeGreaterThan(0);
     }
+  });
+
+  // -------------------------------------------------------------------
+  // Pre-submission: exclude test merchants
+  // -------------------------------------------------------------------
+
+  it('excludes test-merchant PDPs (non-transactable) from dynamic feed', async () => {
+    process.env.NEXT_PUBLIC_API_URL = 'https://api.example.com';
+    getAllProductsMock.mockResolvedValueOnce([
+      { product_id: 'sig_moyu_x', merchant_id: 'merch_efbc46b4619cfbdf' },
+      { product_id: 'sig_ext_seed_y', merchant_id: 'external_seed' },
+      { product_id: 'sig_real_merchant_z', merchant_id: 'merch_real_other' },
+    ]);
+    const entries = await sitemap();
+    const urls = entries.map((e) => e.url);
+    expect(urls).not.toContain('https://agent.pivota.cc/products/sig_moyu_x');
+    expect(urls).toContain('https://agent.pivota.cc/products/sig_ext_seed_y');
+    expect(urls).toContain('https://agent.pivota.cc/products/sig_real_merchant_z');
+  });
+
+  it('keeps products with no merchant_id (defensive include)', async () => {
+    process.env.NEXT_PUBLIC_API_URL = 'https://api.example.com';
+    getAllProductsMock.mockResolvedValueOnce([
+      { product_id: 'sig_no_merchant' },
+    ]);
+    const entries = await sitemap();
+    const urls = entries.map((e) => e.url);
+    expect(urls).toContain('https://agent.pivota.cc/products/sig_no_merchant');
   });
 });

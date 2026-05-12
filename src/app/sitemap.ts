@@ -3,6 +3,7 @@ import { getAllProducts } from '@/lib/api'
 import {
   SITEMAP_BASE_URL,
   SITEMAP_SEED_PRODUCT_IDS,
+  isMerchantIndexable,
   isProductIdSitemapEligible,
 } from './sitemap-seeds'
 
@@ -65,6 +66,11 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     const dynamicProductPages: MetadataRoute.Sitemap = []
     for (const product of products) {
       if (!isProductIdSitemapEligible(product.product_id)) continue
+      // Pre-submission filter: exclude test merchants whose PDPs
+      // can't actually fulfill checkout. external_seed (referral
+      // redirect) is intentionally indexable. MOYU and any future
+      // test stores live in TEST_MERCHANT_IDS.
+      if (!isMerchantIndexable(product.merchant_id)) continue
       // product.product_group_id is declared optional on ProductResponse
       // (src/lib/api.ts) so direct access works.
       const groupId = product.product_group_id
