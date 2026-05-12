@@ -543,9 +543,10 @@ export default function ProductDetailPage({ params }: Props) {
         .filter(Boolean),
     );
     const shouldCanonicalizeToGroup =
-      canonicalScope === 'multi_merchant_canonical' ||
-      Number((pdpPayload as any)?.offers_count || 0) > 1 ||
-      distinctOfferMerchants.size > 1;
+      !routeIsPivotaSignature &&
+      (canonicalScope === 'multi_merchant_canonical' ||
+        Number((pdpPayload as any)?.offers_count || 0) > 1 ||
+        distinctOfferMerchants.size > 1);
     const product = (pdpPayload as any)?.product || {};
     const signatureId = String(product?.pivota_signature_id || product?.signature_id || '').trim();
     const targetRouteId =

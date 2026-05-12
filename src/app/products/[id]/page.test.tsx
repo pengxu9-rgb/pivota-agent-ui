@@ -501,6 +501,26 @@ describe('ProductDetailPage canonical PDP loading', () => {
     );
   });
 
+  it('keeps signature alias routes stable even when PDP returns a multi-seller group', async () => {
+    getPdpV2Mock.mockResolvedValue({ status: 'success', modules: [] });
+    mapPdpV2ToPdpPayloadMock.mockReturnValue({
+      ...canonicalPayload,
+      product_group_id: 'pg_ext_mac_russian_red',
+      canonical_scope: 'multi_merchant_canonical',
+      offers_count: 2,
+      product: {
+        ...canonicalPayload.product,
+        product_id: 'sig_mac_russian_red',
+        pivota_signature_id: 'sig_mac_russian_red',
+      },
+    });
+
+    renderPage('sig_mac_russian_red');
+
+    await screen.findByTestId('generic-pdp');
+    expect(replaceMock).not.toHaveBeenCalledWith('/products/pg_ext_mac_russian_red');
+  });
+
   it('canonicalizes singleton merchant product routes to signature URLs when catalog identity is present', async () => {
     searchParamsValue = 'merchant_id=merchant_a&return=%2F';
     getPdpV2Mock.mockResolvedValue({ status: 'success', modules: [] });

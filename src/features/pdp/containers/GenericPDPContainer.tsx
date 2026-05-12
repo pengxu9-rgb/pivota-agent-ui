@@ -13,8 +13,20 @@ export function GenericPDPContainer({
   ugcCapabilities,
 }: {
   payload: PDPPayload;
-  onAddToCart: (args: { variant: Variant; quantity: number }) => void;
-  onBuyNow: (args: { variant: Variant; quantity: number }) => void;
+  onAddToCart: (args: {
+    variant: Variant;
+    quantity: number;
+    merchant_id?: string;
+    product_id?: string;
+    offer_id?: string;
+  }) => void;
+  onBuyNow: (args: {
+    variant: Variant;
+    quantity: number;
+    merchant_id?: string;
+    product_id?: string;
+    offer_id?: string;
+  }) => void;
   onWriteReview?: () => void;
   onSeeAllReviews?: () => void;
   ugcCapabilities?: UgcCapabilities | null;

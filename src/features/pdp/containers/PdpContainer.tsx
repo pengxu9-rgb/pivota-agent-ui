@@ -554,6 +554,9 @@ function offerSupportsVariant(
   variant: Variant | null | undefined,
 ): boolean {
   if (!offer || !variant) return true;
+  const merchantId = String(offer.merchant_id || '').trim().toLowerCase();
+  const sourceKind = String((offer as any).source_kind || (offer as any).sourceKind || '').trim().toLowerCase();
+  if (merchantId === 'external_seed' || sourceKind === 'external_seed') return true;
   const rawVariants = Array.isArray((offer as any)?.variants) ? (offer as any).variants : [];
   if (!rawVariants.length) return true;
   return Boolean(resolveOfferPricing(offer, variant).matchedVariant);
@@ -1558,6 +1561,14 @@ export function PdpContainer({
       null
     );
   }, [offers, selectedOfferId, internalFirstDefaultOfferId]);
+  const selectedOfferInStock =
+    typeof selectedOffer?.inventory?.in_stock === 'boolean'
+      ? selectedOffer.inventory.in_stock
+      : typeof (selectedOffer as any)?.in_stock === 'boolean'
+        ? Boolean((selectedOffer as any).in_stock)
+        : undefined;
+  const effectiveIsInStock =
+    typeof selectedOfferInStock === 'boolean' ? selectedOfferInStock : isInStock;
   const variantAwareDefaultOfferId = useMemo(() => {
     if (!offers.length) return payload.default_offer_id || internalFirstDefaultOfferId;
     const variantEligibleOffers = offers.filter((offer) => offerSupportsVariant(offer, selectedVariant));
@@ -1846,10 +1857,10 @@ export function PdpContainer({
   );
 
   useEffect(() => {
-    if (!isInStock) {
+    if (!effectiveIsInStock) {
       setQuantity(1);
     }
-  }, [isInStock]);
+  }, [effectiveIsInStock]);
 
   useEffect(() => {
     const tracking = payload.tracking || ({} as PDPPayload['tracking']);
@@ -4085,7 +4096,7 @@ export function PdpContainer({
                   <Button
                     variant="outline"
                     className="flex-1 h-11 rounded-full font-semibold text-sm"
-                    disabled={!isInStock}
+                    disabled={!effectiveIsInStock}
                     onClick={() => {
                       pdpTracking.track('pdp_action_click', { action_type: 'add_to_cart', variant_id: selectedVariant.variant_id });
                       dispatchPdpAction('add_to_cart', {
@@ -4102,7 +4113,7 @@ export function PdpContainer({
                   </Button>
                   <Button
                     className="flex-[1.5] h-11 rounded-full bg-primary hover:bg-primary/90 font-semibold text-sm"
-                    disabled={!isInStock}
+                    disabled={!effectiveIsInStock}
                     onClick={() => {
                       pdpTracking.track('pdp_action_click', { action_type: 'buy_now', variant_id: selectedVariant.variant_id });
                       dispatchPdpAction('buy_now', {
@@ -4539,7 +4550,7 @@ export function PdpContainer({
                       <Button
                         variant="outline"
                         className="flex-1 h-10 rounded-full font-semibold text-sm"
-                        disabled={!isInStock}
+                        disabled={!effectiveIsInStock}
                         onClick={() => {
                           pdpTracking.track('pdp_action_click', { action_type: 'add_to_cart', variant_id: selectedVariant.variant_id });
                           dispatchPdpAction('add_to_cart', {
@@ -4556,7 +4567,7 @@ export function PdpContainer({
                       </Button>
                       <Button
                         className="flex-[1.5] h-10 rounded-full bg-primary hover:bg-primary/90 font-semibold text-sm"
-                        disabled={!isInStock}
+                        disabled={!effectiveIsInStock}
                         onClick={() => {
                           pdpTracking.track('pdp_action_click', { action_type: 'buy_now', variant_id: selectedVariant.variant_id });
                           dispatchPdpAction('buy_now', {

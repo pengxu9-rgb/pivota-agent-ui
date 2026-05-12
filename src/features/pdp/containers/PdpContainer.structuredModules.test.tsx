@@ -1077,6 +1077,42 @@ describe('PdpContainer structured PDP modules', () => {
     expect(externalOffer).not.toHaveTextContent('Best price');
   });
 
+  it('keeps an external seller selected when seller variants use different ids', async () => {
+    const payload = buildMultiOfferVariantPricingPayload();
+    payload.offers = [
+      payload.offers![0],
+      {
+        ...payload.offers![1],
+        price: { amount: 55, currency: 'EUR' },
+        variants: [
+          {
+            variant_id: 'ULTA_SELLER_ONLY',
+            title: 'Seller catalog default',
+            options: [{ name: 'seller_sku', value: 'ULTA_SELLER_ONLY' }],
+            price: { current: { amount: 55, currency: 'EUR' } },
+            availability: { in_stock: true, available_quantity: 4 },
+          },
+        ],
+      },
+    ];
+
+    render(
+      <PdpContainer
+        payload={payload}
+        mode="generic"
+        onAddToCart={() => {}}
+        onBuyNow={() => {}}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Other offers (1)' }));
+    fireEvent.click(screen.getByRole('button', { name: /KraveBeauty/ }));
+
+    await waitFor(() => {
+      expect(screen.getAllByText('€55.00').length).toBeGreaterThan(0);
+    });
+  });
+
   it('renders FAQ and review-derived source labels in the questions rail', () => {
     const payload = buildBeautyPayload();
     payload.modules.push({
