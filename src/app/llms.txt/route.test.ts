@@ -6,11 +6,14 @@ vi.mock('@/lib/api', () => ({
   getAllProducts: (...args: unknown[]) => getAllProductsMock(...args),
 }));
 
-import { GET, __forTesting } from './route';
+import { GET } from './route';
+import {
+  _buildSeedSection,
+  _escapeMarkdown,
+  _renderMarkdown,
+  _renderProductLine,
+} from './utils';
 import { SITEMAP_BASE_URL, SITEMAP_SEED_PRODUCT_IDS } from '../sitemap-seeds';
-
-const { _renderProductLine, _renderMarkdown, _escapeMarkdown, _buildSeedSection } =
-  __forTesting;
 
 
 describe('llms.txt — markdown shape', () => {
