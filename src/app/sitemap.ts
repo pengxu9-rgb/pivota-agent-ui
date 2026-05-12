@@ -65,9 +65,9 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     const dynamicProductPages: MetadataRoute.Sitemap = []
     for (const product of products) {
       if (!isProductIdSitemapEligible(product.product_id)) continue
-      const groupId = (product as Record<string, unknown>).product_group_id as
-        | string
-        | undefined
+      // product.product_group_id is declared optional on ProductResponse
+      // (src/lib/api.ts) so direct access works.
+      const groupId = product.product_group_id
       if (groupId && seenGroupIds.has(groupId)) continue
       if (groupId) seenGroupIds.add(groupId)
       const url = `${SITEMAP_BASE_URL}/products/${product.product_id}`
@@ -78,7 +78,11 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       // crawlers + Google use lastmod as a freshness signal — a
       // uniform "now" timestamp tells them nothing actually changed
       // recently, so they re-crawl less aggressively than warranted.
-      const productAny = product as Record<string, unknown>
+      //
+      // updated_at isn't on the strict ProductResponse interface
+      // (varies by backend); cast through unknown to read it
+      // defensively without widening the public type.
+      const productAny = product as unknown as Record<string, unknown>
       const updatedAtRaw =
         (productAny.updated_at as string | undefined) ||
         (productAny.last_modified as string | undefined)
