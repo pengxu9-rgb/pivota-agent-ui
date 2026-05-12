@@ -1,5 +1,10 @@
 const EXTERNAL_SEED_MERCHANT_ID = 'external_seed';
 
+export function isProductGroupRouteId(productId: unknown): boolean {
+  const normalizedProductId = String(productId || '').trim().toLowerCase();
+  return normalizedProductId.startsWith('pg_') || normalizedProductId.startsWith('pg:');
+}
+
 export function normalizeProductRouteMerchantId(value: unknown): string | undefined {
   const merchantId = String(value || '').trim();
   if (!merchantId) return undefined;
@@ -15,6 +20,7 @@ export function inferCanonicalPdpMerchantId(
 
   const normalizedProductId = String(productId || '').trim().toLowerCase();
   if (!normalizedProductId) return undefined;
+  if (isProductGroupRouteId(normalizedProductId)) return undefined;
   if (normalizedProductId.startsWith('ext_') || normalizedProductId.startsWith('ext:')) {
     return EXTERNAL_SEED_MERCHANT_ID;
   }

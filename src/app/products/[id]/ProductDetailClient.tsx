@@ -30,6 +30,7 @@ import {
 import {
   buildProductHref,
   inferCanonicalPdpMerchantId,
+  isProductGroupRouteId,
   normalizeProductRouteMerchantId,
 } from '@/lib/productHref';
 import { DEFAULT_MODULE_SOURCE_LOCKS } from '@/features/pdp/state/freezePolicy';
@@ -456,6 +457,7 @@ export default function ProductDetailPage({ params }: Props) {
 
   const { addItem, open } = useCartStore();
   const inferredMerchantId = inferCanonicalPdpMerchantId(id, merchantIdParam);
+  const routeIsProductGroup = isProductGroupRouteId(id);
   useEffect(() => {
     if (loading && !error && !pdpPayload) return;
     hideProductRouteLoading();
@@ -527,6 +529,27 @@ export default function ProductDetailPage({ params }: Props) {
       // keep local history as fallback even when account history API is unavailable
     });
   }, [pdpPayload, id, merchantIdParam, userId]);
+
+  useEffect(() => {
+    const productGroupId = String((pdpPayload as any)?.product_group_id || '').trim();
+    if (!productGroupId || routeIsProductGroup || !isProductGroupRouteId(productGroupId)) return;
+    if (productGroupId === id) return;
+    const canonicalScope = String((pdpPayload as any)?.canonical_scope || '').trim();
+    const distinctOfferMerchants = new Set(
+      (Array.isArray((pdpPayload as any)?.offers) ? (pdpPayload as any).offers : [])
+        .map((offer: any) => String(offer?.merchant_id || '').trim())
+        .filter(Boolean),
+    );
+    const shouldCanonicalizeToGroup =
+      canonicalScope === 'multi_merchant_canonical' ||
+      Number((pdpPayload as any)?.offers_count || 0) > 1 ||
+      distinctOfferMerchants.size > 1;
+    if (!shouldCanonicalizeToGroup) return;
+    const nextParams = new URLSearchParams(searchParamsString);
+    nextParams.delete('merchant_id');
+    const nextQuery = nextParams.toString();
+    router.replace(`${buildProductHref(productGroupId)}${nextQuery ? `?${nextQuery}` : ''}`);
+  }, [id, pdpPayload, routeIsProductGroup, router, searchParamsString]);
 
   useEffect(() => {
     let cancelled = false;
@@ -642,7 +665,11 @@ export default function ProductDetailPage({ params }: Props) {
         const startedAt = Date.now();
         const v2 = await getPdpV2({
           product_id: id,
-          ...(explicitMerchantId ? { merchant_id: explicitMerchantId } : {}),
+          ...(routeIsProductGroup
+            ? { subject: { type: 'product_group' as const, id } }
+            : explicitMerchantId
+              ? { merchant_id: explicitMerchantId }
+              : {}),
           include: request.include,
           timeout_ms: request.timeoutMs,
         });
@@ -701,7 +728,7 @@ export default function ProductDetailPage({ params }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [id, inferredMerchantId, merchantIdParam, reloadKey]);
+  }, [id, inferredMerchantId, merchantIdParam, reloadKey, routeIsProductGroup]);
 
   useEffect(() => {
     let cancelled = false;

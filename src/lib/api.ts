@@ -3017,6 +3017,7 @@ export async function resolveProductGroup(args: {
 export async function getPdpV2(args: {
   product_id: string;
   merchant_id?: string | null;
+  subject?: { type: 'product_group'; id: string } | null;
   include?: string[] | string | null;
   timeout_ms?: number;
   debug?: boolean;
@@ -3031,15 +3032,26 @@ export async function getPdpV2(args: {
     args.include == null
       ? ['offers', 'variant_selector', 'active_ingredients', 'ingredients_inci', 'how_to_use', 'product_overview', 'supplemental_details', 'reviews_preview']
       : args.include;
+  const rawSubject = args.subject && typeof args.subject === 'object' ? args.subject : null;
+  const subject =
+    rawSubject &&
+    rawSubject.type === 'product_group' &&
+    String(rawSubject.id || '').trim()
+      ? { type: 'product_group' as const, id: String(rawSubject.id).trim() }
+      : null;
 
   const data = await callGatewayWithTimeout(
     {
       operation: 'get_pdp_v2',
       payload: {
-        product_ref: {
-          product_id: productId,
-          ...(args.merchant_id ? { merchant_id: args.merchant_id } : {}),
-        },
+        ...(subject
+          ? { subject }
+          : {
+              product_ref: {
+                product_id: productId,
+                ...(args.merchant_id ? { merchant_id: args.merchant_id } : {}),
+              },
+            }),
         ...(include ? { include } : {}),
         options: {
           ...(args.debug ? { debug: true } : {}),

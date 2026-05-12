@@ -464,6 +464,69 @@ describe('ProductDetailPage canonical PDP loading', () => {
     expect(resolveProductCandidatesMock).not.toHaveBeenCalled();
   });
 
+  it('requests product group subjects for group canonical product routes', async () => {
+    getPdpV2Mock.mockResolvedValue({ status: 'success', modules: [] });
+
+    renderPage('pg_catalog_abc123');
+
+    await screen.findByTestId('generic-pdp');
+    expect(getPdpV2Mock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        product_id: 'pg_catalog_abc123',
+        subject: { type: 'product_group', id: 'pg_catalog_abc123' },
+      }),
+    );
+    expect(getPdpV2Mock.mock.calls[0]?.[0]).not.toHaveProperty('merchant_id');
+  });
+
+  it('canonicalizes merchant product routes to group product URLs when PDP returns a group id', async () => {
+    searchParamsValue = 'merchant_id=merchant_a&return=%2F';
+    getPdpV2Mock.mockResolvedValue({ status: 'success', modules: [] });
+    mapPdpV2ToPdpPayloadMock.mockReturnValue({
+      ...canonicalPayload,
+      product_group_id: 'pg_catalog_abc123',
+      canonical_scope: 'multi_merchant_canonical',
+      offers_count: 2,
+      product: {
+        ...canonicalPayload.product,
+        merchant_id: 'merchant_a',
+      },
+    });
+
+    renderPage('prod_1');
+
+    await screen.findByTestId('generic-pdp');
+    await waitFor(() =>
+      expect(replaceMock).toHaveBeenCalledWith('/products/pg_catalog_abc123?return=%2F'),
+    );
+  });
+
+  it('does not canonicalize self fallback group ids into public group URLs', async () => {
+    searchParamsValue = 'merchant_id=merchant_a';
+    getPdpV2Mock.mockResolvedValue({ status: 'success', modules: [] });
+    mapPdpV2ToPdpPayloadMock.mockReturnValue({
+      ...canonicalPayload,
+      product_group_id: 'pg:pid:prod_1',
+      offer_source: 'self',
+      offers_count: 1,
+      product: {
+        ...canonicalPayload.product,
+        merchant_id: 'merchant_a',
+      },
+      offers: [
+        {
+          ...canonicalPayload.offers[0],
+          merchant_id: 'merchant_a',
+        },
+      ],
+    });
+
+    renderPage('prod_1');
+
+    await screen.findByTestId('generic-pdp');
+    expect(replaceMock).not.toHaveBeenCalledWith('/products/pg%3Apid%3Aprod_1');
+  });
+
   it('opens external seed merchant URLs from PDP v2 offer metadata', async () => {
     const merchantUrl = 'https://merchant.example/products/ext-seed-1';
     const openMock = vi.spyOn(window, 'open').mockImplementation(() => null);
