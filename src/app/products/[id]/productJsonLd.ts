@@ -457,10 +457,18 @@ function _buildVariantNode(args: {
 
 /**
  * Build the parent's hasVariant array. Drops Default-Title placeholders
- * — same filter as Stage 2b-ii's variant promoter. Returns [] when no
- * real variants exist, in which case the caller omits hasVariant from
- * the JSON-LD (don't emit empty arrays — Google's parser logs them as
- * partial-data warnings).
+ * — same filter as Stage 2b-ii's variant promoter. Returns [] when:
+ *   - no real variants exist, OR
+ *   - only 1 real variant remains (Google's Product Variants feature
+ *     and Rich Results Test flag single-element hasVariant arrays as
+ *     partial Product Variants markup; the seed PDPs we shipped on
+ *     2026-05-12 each had 1 size variant like "5ml" / "110g" and
+ *     Rich Results Test reported "2 items detected: Some are invalid"
+ *     because of this).
+ *
+ * Caller is responsible for promoting the parent's @type from "Product"
+ * to "ProductGroup" when nodes.length >= 2 (Google's blessed pattern
+ * for variant markup — see _addProductGroupShape).
  */
 function _buildHasVariant(args: {
   product: Record<string, any>;
@@ -475,7 +483,61 @@ function _buildHasVariant(args: {
     const node = _buildVariantNode({ variant: v, parentName, parentBrand, parentUrl });
     if (node) nodes.push(node);
   }
+  // Require >=2 real variants. A lone "5ml" or "110g" variant doesn't
+  // produce a useful shade/size selector and trips Google's validator.
+  if (nodes.length < 2) return [];
   return nodes;
+}
+
+
+/**
+ * When hasVariant is non-empty, the parent SHOULD use ProductGroup
+ * @type rather than Product, with productGroupID + variesBy +
+ * inProductGroupWithID on children. Per Google's Product Variants
+ * docs (developers.google.com/search/docs/appearance/structured-data
+ * /product-variants), this is the blessed pattern; using Product +
+ * hasVariant works at schema.org level but Rich Results Test flags
+ * it as a warning. Mutates ldRecord and variantNodes in place.
+ */
+function _addProductGroupShape(
+  ldRecord: Record<string, any>,
+  variantNodes: Array<Record<string, any>>,
+  product: Record<string, any>,
+  productId: string,
+): void {
+  if (variantNodes.length === 0) return;
+
+  ldRecord['@type'] = 'ProductGroup';
+
+  // productGroupID — prefer the backend's product_group_id (set by
+  // Stage 2b-i autogrouper for clustered products). Fall back to the
+  // signature-derived pg_<hex> form so single-merchant variant
+  // products without a group still get a valid productGroupID.
+  const groupId = _firstString(
+    product.product_group_id,
+    `pg_${productId.replace(/^sig_/, '')}`,
+  );
+  ldRecord.productGroupID = groupId;
+
+  // variesBy — union of axis kinds across variants. Required by
+  // ProductGroup for the variant selector to render correctly.
+  const axes = new Set<string>();
+  for (const v of variantNodes) {
+    if (v.color) axes.add('color');
+    if (v.size) axes.add('size');
+    const props = Array.isArray(v.additionalProperty) ? v.additionalProperty : [];
+    for (const p of props) {
+      const axisName = _firstString(p?.name);
+      if (axisName) axes.add(axisName);
+    }
+  }
+  if (axes.size) ldRecord.variesBy = Array.from(axes);
+
+  // Each child Product carries inProductGroupWithID linking back to
+  // the parent.
+  for (const v of variantNodes) {
+    v.inProductGroupWithID = groupId;
+  }
 }
 
 /**
@@ -631,19 +693,24 @@ export function buildProductJsonLd(args: {
     itemListElement: breadcrumbItems,
   };
 
-  // hasVariant (Stage 3b-1) — emit one Product node per real variant
-  // so Google's Product Variants feature can render the shade/size
-  // selector + LLM grounding sees the full variant catalog. Pre-3b
-  // the JSON-LD said "1 Tom Ford Foundation"; now it says "1 Tom
-  // Ford Foundation with 40 shades, each with its own GTIN and price".
-  // Skipped when product has no real variants (Default-Title-only).
+  // hasVariant + ProductGroup shape (Stage 3b-1 + 2026-05-12 fix).
+  // Emit one Product node per real variant so Google's Product
+  // Variants feature can render the shade/size selector. Skipped
+  // when product has <2 real variants — single-variant arrays trip
+  // Rich Results Test ("Some are invalid"). When >=2 variants do
+  // qualify, promote the parent from Product to ProductGroup with
+  // productGroupID + variesBy + inProductGroupWithID per child
+  // (Google's blessed pattern).
   const variantNodes = _buildHasVariant({
     product,
     parentName: name,
     parentBrand: brand,
     parentUrl: url,
   });
-  if (variantNodes.length > 0) ldRecord.hasVariant = variantNodes;
+  if (variantNodes.length > 0) {
+    _addProductGroupShape(ldRecord, variantNodes, product, productId);
+    ldRecord.hasVariant = variantNodes;
+  }
 
   return _safeJsonForScriptTag(ldRecord);
 }
@@ -678,6 +745,7 @@ export const __forTesting = {
   _flattenVariantOptions,
   _buildVariantNode,
   _buildHasVariant,
+  _addProductGroupShape,
   _readOfferPrice,
   _readOfferCurrency,
   _readOfferAvailability,

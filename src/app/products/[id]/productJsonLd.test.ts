@@ -471,7 +471,7 @@ describe('Stage 3b-1: _buildVariantNode', () => {
 });
 
 describe('Stage 3b-1: buildProductJsonLd with hasVariant + gtin13', () => {
-  it('emits hasVariant for a Tom Ford-style 40-shade product', () => {
+  it('emits hasVariant + ProductGroup shape for a Tom Ford-style 40-shade product', () => {
     const out = buildProductJsonLd({
       product: {
         title: 'Architecture Radiance Foundation',
@@ -494,9 +494,43 @@ describe('Stage 3b-1: buildProductJsonLd with hasVariant + gtin13', () => {
       productId: PRODUCT_ID,
     });
     const parsed = JSON.parse(out!);
+    // Parent @type promoted to ProductGroup (Google's blessed pattern
+    // for variant markup; fixes the 2026-05-12 Rich Results Test
+    // "Some are invalid" warning).
+    expect(parsed['@type']).toBe('ProductGroup');
+    expect(parsed.productGroupID).toBeDefined();
+    expect(parsed.variesBy).toContain('shade');
     expect(parsed.hasVariant).toHaveLength(2);
     expect(parsed.hasVariant[0].gtin13).toBe('0773602443796');
     expect(parsed.hasVariant[1].gtin13).toBe('0773602443797');
+    // Each child carries inProductGroupWithID matching parent
+    expect(parsed.hasVariant[0].inProductGroupWithID).toBe(parsed.productGroupID);
+    expect(parsed.hasVariant[1].inProductGroupWithID).toBe(parsed.productGroupID);
+  });
+
+  it('omits hasVariant when only ONE real variant exists (regression fix 2026-05-12)', () => {
+    // The 6 seed PDPs each had 1 size variant like "5ml" or "110g".
+    // Google's Rich Results Test flagged this as "2 items detected:
+    // Some are invalid" because Product#hasVariant with one element
+    // is partial Product Variants markup. Drop the singleton — a
+    // single size variant doesn't render a useful selector anyway.
+    const out = buildProductJsonLd({
+      product: {
+        title: 'Multi-Peptide Lash and Brow Serum',
+        brand: 'the ordinary',
+        variants: [
+          {
+            variant_id: 'e3cf79a9b040', title: '5ml',
+            price: { current: { amount: 11.47, currency: 'USD' } },
+          },
+        ],
+      },
+      productId: PRODUCT_ID,
+    });
+    const parsed = JSON.parse(out!);
+    expect(parsed.hasVariant).toBeUndefined();
+    // @type stays Product (no ProductGroup promotion when no variants)
+    expect(parsed['@type']).toBe('Product');
   });
 
   it('omits hasVariant when only Default-Title placeholders exist (MOYU foundation brush)', () => {
@@ -513,6 +547,41 @@ describe('Stage 3b-1: buildProductJsonLd with hasVariant + gtin13', () => {
     const parsed = JSON.parse(out!);
     // hasVariant key absent (not empty array — Google flags empties)
     expect(parsed.hasVariant).toBeUndefined();
+    expect(parsed['@type']).toBe('Product');
+  });
+
+  it('uses backend product_group_id as productGroupID when present (Stage 2b-i link)', () => {
+    const out = buildProductJsonLd({
+      product: {
+        title: 'X', brand: 'Y',
+        product_group_id: 'pg_real_backend_groupid_abc',
+        variants: [
+          { variant_id: 'V1', title: 'Red 30ml', options: [{ name: 'color', value: 'Red' }, { name: 'size', value: '30ml' }] },
+          { variant_id: 'V2', title: 'Blue 30ml', options: [{ name: 'color', value: 'Blue' }, { name: 'size', value: '30ml' }] },
+        ],
+      },
+      productId: PRODUCT_ID,
+    });
+    const parsed = JSON.parse(out!);
+    expect(parsed.productGroupID).toBe('pg_real_backend_groupid_abc');
+    expect(parsed.variesBy).toContain('color');
+    expect(parsed.variesBy).toContain('size');
+  });
+
+  it('falls back to sig-derived productGroupID when backend group_id missing', () => {
+    const out = buildProductJsonLd({
+      product: {
+        title: 'X', brand: 'Y',
+        // No product_group_id from backend
+        variants: [
+          { variant_id: 'V1', title: 'A', options: [{ name: 'shade', value: 'A' }] },
+          { variant_id: 'V2', title: 'B', options: [{ name: 'shade', value: 'B' }] },
+        ],
+      },
+      productId: PRODUCT_ID,  // sig_7ad40676c42fb9c96e2a8136
+    });
+    const parsed = JSON.parse(out!);
+    expect(parsed.productGroupID).toBe('pg_7ad40676c42fb9c96e2a8136');
   });
 
   it('emits parent-level gtin13 when product has a barcode', () => {
