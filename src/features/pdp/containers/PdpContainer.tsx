@@ -4701,6 +4701,12 @@ export function PdpContainer({
                   {resolvedMode === 'beauty' ? (
                     <BeautyMobileBuyBar
                       unitPrice={buyBarUnitPrice || 0}
+                      shippingCost={
+                        typeof selectedOffer?.shipping?.cost?.amount === 'number' &&
+                        Number.isFinite(selectedOffer.shipping.cost.amount)
+                          ? selectedOffer.shipping.cost.amount
+                          : 0
+                      }
                       currency={displayCurrency}
                       quantity={resolvedQuantity}
                       onQtyChange={(next) => setQuantity(next)}

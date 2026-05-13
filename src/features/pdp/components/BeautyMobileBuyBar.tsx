@@ -4,6 +4,7 @@ import { cn } from '@/lib/utils';
 
 export function BeautyMobileBuyBar({
   unitPrice,
+  shippingCost = 0,
   currency,
   quantity,
   onQtyChange,
@@ -13,6 +14,7 @@ export function BeautyMobileBuyBar({
   buyNowLabel = 'Buy now',
 }: {
   unitPrice: number;
+  shippingCost?: number;
   currency: string;
   quantity: number;
   onQtyChange: (next: number) => void;
@@ -21,7 +23,9 @@ export function BeautyMobileBuyBar({
   disabled?: boolean;
   buyNowLabel?: string;
 }) {
-  const total = Math.max(0, unitPrice) * Math.max(1, quantity);
+  const itemsSubtotal = Math.max(0, unitPrice) * Math.max(1, quantity);
+  const shipping = Math.max(0, shippingCost || 0);
+  const total = itemsSubtotal + shipping;
   let formattedTotal: string;
   try {
     formattedTotal = new Intl.NumberFormat('en-US', {
