@@ -1284,11 +1284,13 @@ function getCheckoutRestartMessage(source: string): string {
 
 type GatewayCallOptions = {
   signal?: AbortSignal;
+  gatewayBaseUrl?: string | null;
 };
 
 type GatewayTimeoutOptions = {
   signal?: AbortSignal;
   timeoutMs?: number;
+  gatewayBaseUrl?: string | null;
 };
 
 function normalizeGatewayTimeoutOptions(
@@ -1351,7 +1353,7 @@ function buildGatewayRequestHeaders(args: {
 }
 
 async function callGateway(body: InvokeBody, options: GatewayCallOptions = {}) {
-  const proxyUrl = resolveGatewayInvokeUrl(API_BASE);
+  const proxyUrl = resolveGatewayInvokeUrl(options.gatewayBaseUrl || API_BASE);
   const checkoutContext = getCheckoutContext()
   let checkoutToken = checkoutContext.token
   const defaultScope = getDefaultShoppingScope();
@@ -3020,6 +3022,7 @@ export async function getPdpV2(args: {
   subject?: { type: 'product_group'; id: string } | null;
   include?: string[] | string | null;
   timeout_ms?: number;
+  gatewayBaseUrl?: string | null;
   debug?: boolean;
   cache_bypass?: boolean;
 }): Promise<GetPdpV2Response> {
@@ -3063,7 +3066,10 @@ export async function getPdpV2(args: {
         },
       },
     },
-    args.timeout_ms,
+    {
+      timeoutMs: args.timeout_ms,
+      gatewayBaseUrl: args.gatewayBaseUrl,
+    },
   );
 
   return data as GetPdpV2Response;

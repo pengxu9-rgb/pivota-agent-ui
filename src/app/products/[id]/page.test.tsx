@@ -186,8 +186,8 @@ vi.mock('@/features/pdp/state/freezePolicy', () => ({
   ),
 }));
 
-function renderPage(productId = 'prod_1') {
-  return render(<ProductDetailPage params={{ id: productId } as any} />);
+function renderPage(productId = 'prod_1', initialPayload?: any) {
+  return render(<ProductDetailPage params={{ id: productId } as any} initialPayload={initialPayload} />);
 }
 
 const canonicalPayload = {
@@ -332,6 +332,23 @@ describe('ProductDetailPage canonical PDP loading', () => {
 
     expect(screen.getByTestId('pdp-loading-scrim')).toBeInTheDocument();
     expect(screen.getByRole('status')).toHaveTextContent('Loading products');
+  });
+
+  it('renders an initial server PDP payload immediately without a cold-start get_pdp_v2 call', () => {
+    renderPage('prod_1', canonicalPayload);
+
+    expect(screen.getByTestId('generic-pdp')).toHaveTextContent('Canonical PDP Product');
+    expect(screen.queryByTestId('pdp-loading-scrim')).not.toBeInTheDocument();
+    expect(getPdpV2Mock).not.toHaveBeenCalled();
+  });
+
+  it('falls back to the client get_pdp_v2 fetch when the initial server payload is null', async () => {
+    getPdpV2Mock.mockResolvedValue({ status: 'success', modules: [] });
+
+    renderPage('prod_1', null);
+
+    await screen.findByTestId('generic-pdp');
+    expect(getPdpV2Mock).toHaveBeenCalledTimes(1);
   });
 
   it('requests canonical PDP modules on the first get_pdp_v2 call', async () => {
