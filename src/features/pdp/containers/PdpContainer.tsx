@@ -1667,6 +1667,8 @@ export function PdpContainer({
   const colorOptions = useMemo(() => collectColorOptions(variants), [variants]);
   const shouldUseProductLineColorSelector =
     productLineOptions.length > 1 && ['shade', 'color', 'colour', 'tone', 'hue'].includes(productLineOptionAxis);
+  const shouldWrapProductLineColorOptions =
+    shouldUseProductLineColorSelector && productLineOptions.length <= 12;
   const isProductLineSwitching = shouldUseProductLineColorSelector && pendingProductLineProductId !== null;
   const shouldRenderColorOptions = colorOptions.length > 0 && !shouldUseProductLineColorSelector;
   const productLinePrefetchTargets = useMemo(() => {
@@ -3856,8 +3858,13 @@ export function PdpContainer({
                       </div>
                     ) : null}
                   </div>
-                  <div className="mt-1.5 overflow-x-auto">
-                    <div className="flex gap-1.5 pb-1">
+                  <div className={cn('mt-1.5', shouldWrapProductLineColorOptions ? '' : 'overflow-x-auto')}>
+                    <div
+                      className={cn(
+                        'flex gap-1.5 pb-1',
+                        shouldWrapProductLineColorOptions ? 'flex-wrap' : 'flex-nowrap',
+                      )}
+                    >
                       {productLineOptions.map((option, index) => {
                         const isSelected =
                           option.selected ||
