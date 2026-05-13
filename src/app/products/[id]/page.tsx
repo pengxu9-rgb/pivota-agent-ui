@@ -142,11 +142,10 @@ function readProductImage(product: Record<string, any>): string {
  * PDP render (once from `generateMetadata`, once from the page itself
  * for JSON-LD).
  *
- * Performance note (2026-05-12): each call is a 200-700ms POST to the
- * backend gateway. Pre-cache(), a cold PDP load did 2× round-trips,
- * adding 400-1400ms to TTFB. Wrapping with React's `cache()` shares the
- * promise across `generateMetadata` + the page render within a single
- * request — halves the backend load.
+ * Performance note (2026-05-13): each call reads the denormalized
+ * agent PDP view through /api/agent/pdp/{id}. Wrapping with React's
+ * `cache()` shares the promise across `generateMetadata` + the page
+ * render within a single request, avoiding duplicate backend reads.
  *
  * The cache() wrapper is added at module scope below; the inner
  * function stays separate so vitest can still call it directly without
@@ -166,31 +165,17 @@ async function _fetchProductForServerRenderUncached(
   const timeoutId = setTimeout(() => controller.abort(), METADATA_FETCH_TIMEOUT_MS);
 
   try {
-    const res = await fetch(`${baseUrl}/api/gateway`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      cache: 'no-store',
-      signal: controller.signal,
-      body: JSON.stringify({
-        operation: 'get_pdp_v2',
-        payload: {
-          product_ref: {
-            product_id: productId,
-            ...(args.merchantId ? { merchant_id: args.merchantId } : {}),
-          },
-          include: [],
-          options: {
-            cache_bypass: false,
-          },
-          capabilities: {
-            client: 'metadata',
-            client_version: process.env.NEXT_PUBLIC_APP_VERSION || null,
-          },
+    const res = await fetch(
+      `${baseUrl}/api/agent/pdp/${encodeURIComponent(productId)}`,
+      {
+        method: 'GET',
+        headers: {
+          Accept: 'application/json',
         },
-      }),
-    });
+        cache: 'no-store',
+        signal: controller.signal,
+      },
+    );
 
     if (!res.ok) return null;
     const data = await res.json().catch(() => null);
@@ -215,10 +200,10 @@ async function _fetchProductForServerRenderUncached(
  * same arguments share one Promise. Cuts the 2× backend round-trip
  * (generateMetadata + ProductDetailPage) to 1×.
  *
- * The cache uses a stable string key (productId + merchantId) so the
- * dedup works for the common case (generateMetadata + the page render
- * pass the same args). Different merchant_id → different cache key,
- * correct behavior.
+ * The function still accepts merchantId because the callers already
+ * derive it from the route, but /api/agent/pdp/{id} is keyed on the
+ * canonical product identity and does not carry merchant_id over the
+ * wire.
  *
  * Test compatibility: when React.cache() is invoked outside a server
  * render context (e.g. vitest), it falls back to passthrough — the
@@ -294,7 +279,7 @@ export async function generateMetadata({
 }
 
 export default async function ProductDetailPage(props: Props) {
-  // Try to render JSON-LD server-side. Best-effort: when the gateway
+  // Try to render JSON-LD server-side. Best-effort: when the PDP endpoint
   // call fails we still ship the client component (which fetches its
   // own data on hydration). Schema markup is purely additive.
   const resolvedParams = await props.params;
