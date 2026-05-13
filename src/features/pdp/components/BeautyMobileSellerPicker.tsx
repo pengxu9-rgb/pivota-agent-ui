@@ -1,19 +1,19 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import type { Offer } from '@/features/pdp/types';
+import type { Offer, Variant } from '@/features/pdp/types';
+import { resolveOfferPricing } from '@/features/pdp/utils/offerVariantMatching';
 import { cn } from '@/lib/utils';
 
-function formatMoney(amount: number | undefined, currency: string | undefined): string {
+function formatMoney(amount: number | null | undefined, currency: string | null | undefined): string {
   if (amount == null || !Number.isFinite(amount)) return '';
   try {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: currency || 'USD',
-      maximumFractionDigits: 0,
     }).format(amount);
   } catch {
-    return `$${amount.toFixed(0)}`;
+    return `$${amount.toFixed(2)}`;
   }
 }
 
@@ -47,6 +47,7 @@ function offerTag(
 
 function SellerRow({
   offer,
+  selectedVariant,
   selected,
   tag,
   inStock,
@@ -54,13 +55,20 @@ function SellerRow({
   onClick,
 }: {
   offer: Offer;
+  selectedVariant: Variant | null;
   selected: boolean;
   tag: string | null;
   inStock: boolean;
   ship: string;
   onClick: () => void;
 }) {
-  const price = formatMoney(offer.price?.amount, offer.price?.currency);
+  const pricing = resolveOfferPricing(offer, selectedVariant ?? null);
+  const priceAmount =
+    typeof pricing.itemAmount === 'number' && Number.isFinite(pricing.itemAmount)
+      ? pricing.itemAmount
+      : offer.price?.amount;
+  const priceCurrency = pricing.currency || offer.price?.currency;
+  const price = formatMoney(priceAmount, priceCurrency);
   const merchantLabel = offer.merchant_name || offer.merchant_id || 'Seller';
 
   return (
@@ -108,12 +116,14 @@ function SellerRow({
 
 export function BeautyMobileSellerPicker({
   offers,
+  selectedVariant,
   selectedOfferId,
   bestPriceOfferId,
   primaryMerchantId,
   onSelect,
 }: {
   offers: Offer[];
+  selectedVariant: Variant | null;
   selectedOfferId: string | null;
   bestPriceOfferId: string | null;
   primaryMerchantId: string | null;
@@ -130,7 +140,11 @@ export function BeautyMobileSellerPicker({
     for (let i = 0; i < offers.length; i += 1) {
       const o = offers[i];
       if (!offerInStock(o)) continue;
-      const amount = o.price?.amount;
+      const pricing = resolveOfferPricing(o, selectedVariant ?? null);
+      const amount =
+        typeof pricing.itemAmount === 'number' && Number.isFinite(pricing.itemAmount)
+          ? pricing.itemAmount
+          : o.price?.amount;
       if (typeof amount === 'number' && Number.isFinite(amount) && amount < bestPrice) {
         bestPrice = amount;
         bestIdx = i;
@@ -138,7 +152,7 @@ export function BeautyMobileSellerPicker({
     }
     if (bestIdx >= 0) return bestIdx;
     return 0;
-  }, [offers, bestPriceOfferId]);
+  }, [offers, bestPriceOfferId, selectedVariant]);
 
   const [expanded, setExpanded] = useState(false);
 
@@ -163,6 +177,7 @@ export function BeautyMobileSellerPicker({
       <div className="flex flex-col gap-1.5">
         <SellerRow
           offer={recommended}
+          selectedVariant={selectedVariant}
           selected={effectiveSelectedId === recommended.offer_id}
           tag={offerTag(recommended, bestPriceOfferId, primaryMerchantId)}
           inStock={offerInStock(recommended)}
@@ -174,6 +189,7 @@ export function BeautyMobileSellerPicker({
               <SellerRow
                 key={offer.offer_id}
                 offer={offer}
+                selectedVariant={selectedVariant}
                 selected={effectiveSelectedId === offer.offer_id}
                 tag={offerTag(offer, bestPriceOfferId, primaryMerchantId)}
                 inStock={offerInStock(offer)}

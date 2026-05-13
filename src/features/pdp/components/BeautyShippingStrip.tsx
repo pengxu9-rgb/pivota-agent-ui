@@ -16,15 +16,23 @@ const RETURN = (
   </svg>
 );
 
-function shippingHeadline(etaRange?: [number, number] | null, methodLabel?: string | null): string {
+function shippingHeadline(
+  etaRange?: [number, number] | null,
+  methodLabel?: string | null,
+  freeShipping?: boolean | null,
+): string {
   if (methodLabel) return methodLabel;
   if (etaRange && etaRange.length === 2) {
-    if (etaRange[0] === etaRange[1]) return `${etaRange[0]}-day shipping`;
-    if (etaRange[1] <= 2) return 'Free 2-day shipping';
-    if (etaRange[1] <= 5) return 'Free standard shipping';
-    return `Ships in ${etaRange[0]}–${etaRange[1]} days`;
+    if (etaRange[0] === etaRange[1]) {
+      return freeShipping ? `Free ${etaRange[0]}-day shipping` : `${etaRange[0]}-day shipping`;
+    }
+    if (etaRange[1] <= 2) return freeShipping ? 'Free 2-day shipping' : '2-day shipping';
+    if (etaRange[1] <= 5) return freeShipping ? 'Free standard shipping' : 'Standard shipping';
+    return freeShipping
+      ? `Free shipping in ${etaRange[0]}–${etaRange[1]} days`
+      : `Ships in ${etaRange[0]}–${etaRange[1]} days`;
   }
-  return 'Standard shipping';
+  return freeShipping ? 'Free standard shipping' : 'Standard shipping';
 }
 
 function returnsCopy(windowDays?: number | null, freeReturns?: boolean | null): string {
@@ -36,13 +44,17 @@ function returnsCopy(windowDays?: number | null, freeReturns?: boolean | null): 
 export function BeautyShippingStrip({
   etaRange,
   methodLabel,
+  freeShipping,
   returnWindowDays,
   freeReturns,
+  sellerLabel,
 }: {
   etaRange?: [number, number] | null;
   methodLabel?: string | null;
+  freeShipping?: boolean | null;
   returnWindowDays?: number | null;
   freeReturns?: boolean | null;
+  sellerLabel?: string | null;
 }) {
   const hasShipping = Boolean(methodLabel || (etaRange && etaRange.length === 2));
   const hasReturns = Boolean(returnWindowDays);
@@ -58,7 +70,7 @@ export function BeautyShippingStrip({
             </span>
             <div className="flex-1 leading-tight">
               <div className="text-[13px] font-semibold text-foreground">
-                {shippingHeadline(etaRange, methodLabel)}
+                {shippingHeadline(etaRange, methodLabel, freeShipping)}
               </div>
               {etaRange && etaRange.length === 2 ? (
                 <div className="mt-0.5 text-[12px] text-muted-foreground">
@@ -79,7 +91,7 @@ export function BeautyShippingStrip({
                 {returnsCopy(returnWindowDays, freeReturns)}
               </div>
               <div className="mt-0.5 text-[12px] text-muted-foreground">
-                Applies to every seller above
+                {sellerLabel ? `Applies to your selected seller (${sellerLabel})` : 'Applies to your selected seller'}
               </div>
             </div>
           </div>

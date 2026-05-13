@@ -3,7 +3,7 @@
 import { cn } from '@/lib/utils';
 
 export function BeautyMobileBuyBar({
-  price,
+  unitPrice,
   currency,
   quantity,
   onQtyChange,
@@ -12,7 +12,7 @@ export function BeautyMobileBuyBar({
   disabled = false,
   buyNowLabel = 'Buy now',
 }: {
-  price: number;
+  unitPrice: number;
   currency: string;
   quantity: number;
   onQtyChange: (next: number) => void;
@@ -21,16 +21,15 @@ export function BeautyMobileBuyBar({
   disabled?: boolean;
   buyNowLabel?: string;
 }) {
-  const total = Math.max(0, price) * Math.max(1, quantity);
+  const total = Math.max(0, unitPrice) * Math.max(1, quantity);
   let formattedTotal: string;
   try {
     formattedTotal = new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: currency || 'USD',
-      maximumFractionDigits: 0,
     }).format(total);
   } catch {
-    formattedTotal = `$${total.toFixed(0)}`;
+    formattedTotal = `$${total.toFixed(2)}`;
   }
 
   const decrement = () => {

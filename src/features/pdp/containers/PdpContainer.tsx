@@ -4145,6 +4145,7 @@ export function PdpContainer({
           {resolvedMode === 'beauty' && !isDesktop && offers.length > 1 ? (
             <BeautyMobileSellerPicker
               offers={offers}
+              selectedVariant={selectedVariant}
               selectedOfferId={selectedOffer?.offer_id || null}
               bestPriceOfferId={variantAwareBestPriceOfferId || payload.best_price_offer_id || null}
               primaryMerchantId={payload.product.merchant_id || null}
@@ -4162,8 +4163,14 @@ export function PdpContainer({
             <BeautyShippingStrip
               etaRange={effectiveShippingEta as [number, number] | undefined}
               methodLabel={selectedOffer?.shipping?.method_label || null}
+              freeShipping={
+                typeof selectedOffer?.shipping?.cost?.amount === 'number'
+                  ? selectedOffer.shipping.cost.amount === 0
+                  : null
+              }
               returnWindowDays={effectiveReturns?.return_window_days || null}
               freeReturns={effectiveReturns?.free_returns ?? null}
+              sellerLabel={selectedOffer?.merchant_name || null}
             />
           ) : showTrustBadges ? (
             <div className="mx-2.5 mt-1.5 flex items-center gap-2 rounded-lg bg-muted/50 px-3 py-1.5 text-[10px] sm:mx-3 lg:mx-0">
@@ -4683,7 +4690,11 @@ export function PdpContainer({
 
                   {resolvedMode === 'beauty' ? (
                     <BeautyMobileBuyBar
-                      price={displayPriceAmount}
+                      unitPrice={
+                        (typeof offerItemPrice === 'number' && Number.isFinite(offerItemPrice)
+                          ? offerItemPrice
+                          : basePriceAmount) || 0
+                      }
                       currency={displayCurrency}
                       quantity={resolvedQuantity}
                       onQtyChange={(next) => setQuantity(next)}
