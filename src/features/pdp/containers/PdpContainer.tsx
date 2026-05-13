@@ -154,6 +154,8 @@ function normalizeProductLineOptions(options: ProductLineOption[] | undefined): 
       normalizePdpImageUrl(
         item?.swatch_image_url ||
           item?.label_image_url ||
+          item?.image_url ||
+          (item as any)?.image ||
           item?.swatch?.image_url ||
           item?.swatch?.imageUrl ||
           item?.swatch?.url,
@@ -193,6 +195,7 @@ function getProductLineSwatch(option: ProductLineOption): { imageUrl?: string; c
       normalizePdpImageUrl(
         option.swatch_image_url ||
           option.label_image_url ||
+          option.image_url ||
           option.swatch?.image_url ||
           option.swatch?.imageUrl ||
           option.swatch?.url,
