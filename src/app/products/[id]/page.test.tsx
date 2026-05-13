@@ -101,6 +101,7 @@ vi.mock('@/features/pdp/containers/GenericPDPContainer', () => ({
   }) => (
     <div data-testid="generic-pdp">
       <div>{payload.product.title}</div>
+      <div data-testid="merchant-id">{payload.product.merchant_id}</div>
       <button
         type="button"
         onClick={() => {
@@ -192,14 +193,16 @@ function renderPage(productId = 'prod_1', initialPayload?: any) {
 
 function KeyedProductDetailPage({
   productId,
+  merchantId,
   initialPayload,
 }: {
   productId: string;
+  merchantId?: string;
   initialPayload: any;
 }) {
   return (
     <ProductDetailPage
-      key={productId || undefined}
+      key={JSON.stringify([productId || null, merchantId || null])}
       params={{ id: productId } as any}
       initialPayload={initialPayload}
     />
@@ -380,6 +383,63 @@ describe('ProductDetailPage canonical PDP loading', () => {
       expect(screen.getByTestId('generic-pdp')).toHaveTextContent('Second PDP Product');
     });
     expect(screen.queryByText('Canonical PDP Product')).not.toBeInTheDocument();
+    expect(getPdpV2Mock).not.toHaveBeenCalled();
+  });
+
+  it('remounts with the next initial server payload on same-product seller navigation', async () => {
+    const merchantAPayload = {
+      ...canonicalPayload,
+      product: {
+        ...canonicalPayload.product,
+        merchant_id: 'merch_A',
+        title: 'Merchant A PDP Product',
+      },
+      offers: [
+        {
+          ...canonicalPayload.offers[0],
+          merchant_id: 'merch_A',
+        },
+      ],
+    };
+    const merchantBPayload = {
+      ...canonicalPayload,
+      product: {
+        ...canonicalPayload.product,
+        merchant_id: 'merch_B',
+        title: 'Merchant B PDP Product',
+      },
+      offers: [
+        {
+          ...canonicalPayload.offers[0],
+          merchant_id: 'merch_B',
+        },
+      ],
+    };
+
+    const { rerender } = render(
+      <KeyedProductDetailPage
+        productId="prod_1"
+        merchantId="merch_A"
+        initialPayload={merchantAPayload}
+      />,
+    );
+
+    expect(screen.getByTestId('generic-pdp')).toHaveTextContent('Merchant A PDP Product');
+    expect(screen.getByTestId('merchant-id')).toHaveTextContent('merch_A');
+
+    rerender(
+      <KeyedProductDetailPage
+        productId="prod_1"
+        merchantId="merch_B"
+        initialPayload={merchantBPayload}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('generic-pdp')).toHaveTextContent('Merchant B PDP Product');
+    });
+    expect(screen.getByTestId('merchant-id')).toHaveTextContent('merch_B');
+    expect(screen.queryByText('Merchant A PDP Product')).not.toBeInTheDocument();
     expect(getPdpV2Mock).not.toHaveBeenCalled();
   });
 
