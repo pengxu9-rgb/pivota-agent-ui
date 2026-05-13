@@ -105,7 +105,6 @@ export function MediaGallery({
             className={cn(
               'relative touch-pan-y lg:rounded-xl lg:overflow-hidden',
               aspectClass,
-              'lg:aspect-square',
               isContain ? 'bg-muted/30' : 'bg-black/5',
             )}
             onTouchStart={(event) => {

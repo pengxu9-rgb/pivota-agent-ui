@@ -86,4 +86,24 @@ describe('MediaGallery swipe behavior', () => {
 
     expect(onSelect).toHaveBeenCalledWith(0);
   });
+
+  it('preserves the requested hero aspect ratio on desktop', () => {
+    render(
+      <MediaGallery
+        title="Product C"
+        aspectClass="aspect-[6/5]"
+        data={{
+          items: [
+            { type: 'image', url: 'https://example.com/1.jpg', alt_text: 'Hero 1' },
+          ],
+        }}
+      />,
+    );
+
+    const heroImage = screen.getAllByAltText('Hero 1')[0] as HTMLElement;
+    const heroFrame = heroImage.parentElement;
+
+    expect(heroFrame).toHaveClass('aspect-[6/5]');
+    expect(heroFrame).not.toHaveClass('lg:aspect-square');
+  });
 });

@@ -4225,7 +4225,7 @@ export function PdpContainer({
                 state={moduleStates.ugc_preview}
                 height={pdpViewModel.heightSpec.ugc_preview}
                 skeleton={(
-                  <div className="mt-4 px-2.5 sm:px-3">
+                  <div className="mt-2 px-2.5 sm:px-3 lg:mt-3">
                     <div className="h-4 w-32 rounded bg-muted/20 animate-pulse" />
                     <div className="mt-2 grid grid-cols-3 gap-1">
                       {Array.from({ length: 9 }).map((_, idx) => (
