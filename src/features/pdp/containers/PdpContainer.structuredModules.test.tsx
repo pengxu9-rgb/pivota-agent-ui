@@ -750,6 +750,7 @@ describe('PdpContainer structured PDP modules', () => {
     const dn310Swatch = dn310Button.querySelector('[aria-hidden="true"]');
     expect(dn310Swatch?.getAttribute('style')).toContain('dn310-swatch.jpg');
     expect(dn310Swatch).toHaveClass('h-14', 'w-14');
+    expect(dn310Button.parentElement).toHaveClass('flex-wrap');
     const dn350Button = screen.getByRole('button', { name: 'DN350' });
     expect(dn350Button).toHaveAttribute('aria-pressed', 'true');
     expect(dn350Button).toHaveClass('border-foreground');
