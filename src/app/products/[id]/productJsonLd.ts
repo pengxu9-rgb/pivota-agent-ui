@@ -18,12 +18,15 @@
  * penalizes spam-flagged JSON-LD by removing rich snippets sitewide.
  */
 
+import { buildProductDescription } from './productDescription';
+
 const SCHEMA_CONTEXT = 'https://schema.org/';
 const SCHEMA_TYPE_PRODUCT = 'Product';
 const SCHEMA_TYPE_OFFER = 'Offer';
 const SCHEMA_TYPE_BRAND = 'Brand';
 
 const PIVOTA_SITE_BASE = 'https://agent.pivota.cc';
+const PRODUCT_JSON_LD_DESCRIPTION_MAX_LENGTH = 5000;
 
 // Schema.org availability vocabulary the major search engines understand.
 const AVAILABILITY_VOCAB: Record<string, string> = {
@@ -579,12 +582,9 @@ export function buildProductJsonLd(args: {
   const name = _firstString(product.title, product.name);
   if (!name) return null;
 
-  const description = _firstString(
-    product.description,
-    product.short_description,
-    product.subtitle,
-    product.summary,
-  );
+  const description = buildProductDescription(product, {
+    maxLength: PRODUCT_JSON_LD_DESCRIPTION_MAX_LENGTH,
+  });
   const images = _readImages(product);
   const brand = _readBrand(product);
   const sku = _firstString(product.sku, product.platform_product_id, productId);
@@ -599,7 +599,7 @@ export function buildProductJsonLd(args: {
     url,
   };
 
-  if (description) ldRecord.description = description.slice(0, 5000);
+  ldRecord.description = description;
   if (images.length) ldRecord.image = images.length === 1 ? images[0] : images;
   if (brand) {
     ldRecord.brand = { '@type': SCHEMA_TYPE_BRAND, name: brand };
