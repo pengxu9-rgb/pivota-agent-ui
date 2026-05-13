@@ -660,6 +660,7 @@ describe('PdpContainer structured PDP modules', () => {
         axis: 'shade',
         value: 'dn310',
         label: 'DN310',
+        secondary_label: 'Deep neutral',
         product_id: 'ext_boj_dn310',
         merchant_id: 'external_seed',
         image_url: 'https://example.com/dn310-swatch.jpg',
@@ -745,11 +746,13 @@ describe('PdpContainer structured PDP modules', () => {
     );
 
     expect(screen.getAllByText('Shade').length).toBeGreaterThan(0);
-    const dn310Button = screen.getByRole('button', { name: 'DN310' });
+    const dn310Button = screen.getByRole('button', { name: 'DN310 · Deep neutral' });
     expect(dn310Button).toBeInTheDocument();
+    expect(dn310Button).toHaveTextContent('Deep neutral');
+    expect(dn310Button).not.toHaveTextContent('DN310');
     const dn310Swatch = dn310Button.querySelector('[aria-hidden="true"]');
     expect(dn310Swatch?.getAttribute('style')).toContain('dn310-swatch.jpg');
-    expect(dn310Swatch).toHaveClass('h-11', 'w-11');
+    expect(dn310Swatch).toHaveClass('h-10', 'w-10');
     expect(dn310Button.parentElement).toHaveClass('flex-nowrap');
     const dn350Button = screen.getByRole('button', { name: 'DN350' });
     expect(dn350Button).toHaveAttribute('aria-pressed', 'true');
@@ -775,8 +778,8 @@ describe('PdpContainer structured PDP modules', () => {
       );
     });
 
-    fireEvent.click(screen.getByRole('button', { name: 'DN310' }));
-    fireEvent.click(screen.getByRole('button', { name: 'DN310' }));
+    fireEvent.click(screen.getByRole('button', { name: 'DN310 · Deep neutral' }));
+    fireEvent.click(screen.getByRole('button', { name: 'DN310 · Deep neutral' }));
 
     expect(getPdpV2Mock).toHaveBeenCalledTimes(2);
     expect(getPdpV2Mock).toHaveBeenNthCalledWith(
@@ -789,7 +792,7 @@ describe('PdpContainer structured PDP modules', () => {
     );
     expect(routerPush).not.toHaveBeenCalled();
     expect(screen.getByText('Switching to DN310...')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'DN310' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'DN310 · Deep neutral' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'DN350' })).toBeDisabled();
 
     fireEvent.click(screen.getByRole('button', { name: 'DN350' }));
@@ -808,7 +811,7 @@ describe('PdpContainer structured PDP modules', () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'DN310' })).toHaveAttribute('aria-pressed', 'true');
+      expect(screen.getByRole('button', { name: 'DN310 · Deep neutral' })).toHaveAttribute('aria-pressed', 'true');
     });
     await waitFor(() => {
       expect(
