@@ -32,6 +32,38 @@ describe('buildProductJsonLd — minimum viable schema', () => {
     expect(parsed.sku).toBe(PRODUCT_ID);
   });
 
+  it('falls back to a branded description when catalog description fields are absent', () => {
+    const out = buildProductJsonLd({
+      product: { title: 'Multi-Peptide Lash and Brow Serum' },
+      productId: PRODUCT_ID,
+    });
+    const parsed = JSON.parse(out!);
+    expect(typeof parsed.description).toBe('string');
+    expect(parsed.description).toBe('Shop Multi-Peptide Lash and Brow Serum on Pivota.');
+  });
+
+  it('uses the catalog description before the branded fallback', () => {
+    const out = buildProductJsonLd({
+      product: {
+        title: 'X',
+        description: 'Real catalog description.',
+      },
+      productId: PRODUCT_ID,
+    });
+    const parsed = JSON.parse(out!);
+    expect(parsed.description).toBe('Real catalog description.');
+  });
+
+  it('caps fallback descriptions at the JSON-LD description limit', () => {
+    const out = buildProductJsonLd({
+      product: { title: 'A'.repeat(6000) },
+      productId: PRODUCT_ID,
+    });
+    const parsed = JSON.parse(out!);
+    expect(parsed.description).toHaveLength(5000);
+    expect(parsed.description.startsWith('Shop ')).toBe(true);
+  });
+
   it('includes brand block when brand name is available', () => {
     const out = buildProductJsonLd({
       product: { title: 'X', brand: { name: 'the ordinary' } },

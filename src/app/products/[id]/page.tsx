@@ -11,6 +11,7 @@ const cache: _CacheFn = typeof _reactCache === 'function'
   : ((fn) => fn);
 import type { Metadata } from 'next';
 import ProductDetailClient from './ProductDetailClient';
+import { buildProductDescription } from './productDescription';
 import { buildProductJsonLd } from './productJsonLd';
 import {
   isProductGroupRouteId,
@@ -129,20 +130,6 @@ function buildProductTitle(product: Record<string, any>): string {
     ? `${brand} ${title}`
     : title;
   return `${productTitle} | Pivota`;
-}
-
-function buildProductDescription(product: Record<string, any>): string {
-  const rawDescription = firstString(
-    product.description,
-    product.short_description,
-    product.subtitle,
-    product.summary,
-  );
-  const normalized = rawDescription.replace(/\s+/g, ' ').trim();
-  if (normalized) return normalized.slice(0, 220);
-
-  const title = firstString(product.title, product.name, 'this product');
-  return `Shop ${title} on Pivota.`;
 }
 
 function readProductImage(product: Record<string, any>): string {
