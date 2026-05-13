@@ -747,9 +747,9 @@ describe('PdpContainer structured PDP modules', () => {
     expect(screen.getAllByText('Shade').length).toBeGreaterThan(0);
     const dn310Button = screen.getByRole('button', { name: 'DN310' });
     expect(dn310Button).toBeInTheDocument();
-    expect(dn310Button.querySelector('[aria-hidden="true"]')?.getAttribute('style')).toContain(
-      'dn310-swatch.jpg',
-    );
+    const dn310Swatch = dn310Button.querySelector('[aria-hidden="true"]');
+    expect(dn310Swatch?.getAttribute('style')).toContain('dn310-swatch.jpg');
+    expect(dn310Swatch).toHaveClass('h-12', 'w-12');
     expect(screen.getByRole('button', { name: 'DN350' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.queryByText('Title: Default Title')).not.toBeInTheDocument();
     expect(screen.queryByText('Product Line')).not.toBeInTheDocument();

@@ -3870,6 +3870,7 @@ export function PdpContainer({
                           ? getProductLineSwatch(option)
                           : {};
                         const hasSwatch = Boolean(swatch.imageUrl || swatch.color);
+                        const useLargeSwatchCard = Boolean(shouldUseProductLineColorSelector && hasSwatch);
                         const optionAriaLabel = formatProductLineOptionInlineLabel(option) || option.label;
                         return (
                           <button
@@ -3883,8 +3884,12 @@ export function PdpContainer({
                             onFocus={() => prefetchProductLineOption(option)}
                             onClick={() => handleProductLineOptionSelect(option, index)}
                             className={cn(
-                              'flex min-h-8 flex-shrink-0 items-center gap-1.5 rounded-md border bg-card text-xs text-foreground transition-colors',
-                              hasSwatch ? 'px-2 py-1.5' : 'px-3 py-1',
+                              'flex flex-shrink-0 rounded-md border bg-card text-xs text-foreground transition-colors',
+                              useLargeSwatchCard
+                                ? 'h-[76px] w-[68px] flex-col items-center justify-start gap-1.5 px-2 py-2'
+                                : 'min-h-8 items-center gap-1.5',
+                              hasSwatch && !useLargeSwatchCard ? 'px-2 py-1.5' : '',
+                              !hasSwatch ? 'px-3 py-1' : '',
                               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)] disabled:cursor-wait disabled:opacity-100',
                               isSelected
                                 ? 'border-[color:var(--accent-600)] bg-[var(--accent-50)] text-[color:var(--accent-800)] font-semibold shadow-[inset_0_0_0_1px_var(--accent-600)]'
@@ -3896,7 +3901,8 @@ export function PdpContainer({
                               <span
                                 aria-hidden="true"
                                 className={cn(
-                                  'h-4 w-4 flex-shrink-0 overflow-hidden rounded-full border',
+                                  'flex-shrink-0 overflow-hidden border bg-muted',
+                                  useLargeSwatchCard ? 'h-12 w-12 rounded-md' : 'h-4 w-4 rounded-full',
                                   isSelected ? 'border-[color:var(--accent-600)]' : 'border-border',
                                 )}
                                 style={{
@@ -3907,8 +3913,17 @@ export function PdpContainer({
                                 }}
                               />
                             ) : null}
-                            <span className={cn('flex min-w-0 flex-col', hasSwatch ? 'items-start' : 'items-center')}>
-                              <span>{option.label}</span>
+                            <span
+                              className={cn(
+                                'flex min-w-0 flex-col',
+                                useLargeSwatchCard ? 'max-w-[60px] items-center text-center leading-tight' : '',
+                                hasSwatch && !useLargeSwatchCard ? 'items-start' : '',
+                                !hasSwatch ? 'items-center' : '',
+                              )}
+                            >
+                              <span className={cn(useLargeSwatchCard ? 'max-w-full truncate' : '')}>
+                                {option.label}
+                              </span>
                               {option.secondary_label ? (
                                 <span className="text-[10px] font-normal leading-tight text-muted-foreground">
                                   {option.secondary_label}
@@ -3950,7 +3965,7 @@ export function PdpContainer({
                             className={cn(
                               'flex-shrink-0 border bg-card text-xs text-foreground transition-colors',
                               hasSwatchPreview
-                                ? 'inline-flex min-h-11 min-w-[84px] items-center gap-2 rounded-lg px-2 py-1.5'
+                                ? 'inline-flex min-h-14 min-w-[96px] items-center gap-2 rounded-lg px-2 py-2'
                                 : 'rounded-full px-3 py-1',
                               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]',
                               'disabled:cursor-not-allowed disabled:opacity-50 disabled:bg-muted/30 disabled:text-muted-foreground',
@@ -3963,7 +3978,7 @@ export function PdpContainer({
                               <span
                                 aria-hidden="true"
                                 className={cn(
-                                  'relative h-8 w-8 flex-shrink-0 overflow-hidden rounded-md border bg-muted',
+                                  'relative h-10 w-10 flex-shrink-0 overflow-hidden rounded-md border bg-muted',
                                   isSelected ? 'border-[color:var(--accent-600)]' : 'border-border',
                                 )}
                               >
@@ -3973,7 +3988,7 @@ export function PdpContainer({
                                     alt=""
                                     fill
                                     className="object-cover"
-                                    sizes="32px"
+                                    sizes="40px"
                                     loading="lazy"
                                   />
                                 ) : option.swatch_hex ? (
