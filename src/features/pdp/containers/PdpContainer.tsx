@@ -169,7 +169,16 @@ function normalizeProductLineOptions(options: ProductLineOption[] | undefined): 
     normalized.push({
       ...item,
       label,
-      secondary_label: String(item?.secondary_label || (item as any)?.secondaryLabel || '').trim() || undefined,
+      secondary_label:
+        String(
+          item?.secondary_label ||
+            (item as any)?.secondaryLabel ||
+            (item as any)?.shade_name ||
+            (item as any)?.shadeName ||
+            (item as any)?.color_name ||
+            (item as any)?.colorName ||
+            '',
+        ).trim() || undefined,
       value,
       product_id: productId,
       merchant_id: merchantId || undefined,
@@ -187,6 +196,13 @@ function formatProductLineOptionInlineLabel(option: ProductLineOption | null | u
   if (!label) return secondary;
   if (!secondary) return label;
   return `${label} · ${secondary}`;
+}
+
+function formatProductLineOptionTileLabel(option: ProductLineOption | null | undefined): string {
+  const label = String(option?.label || '').trim();
+  const secondary = String(option?.secondary_label || '').trim();
+  if (secondary && secondary.toLowerCase() !== label.toLowerCase()) return secondary;
+  return label || secondary;
 }
 
 function getProductLineSwatch(option: ProductLineOption): { imageUrl?: string; color?: string } {
@@ -3872,6 +3888,7 @@ export function PdpContainer({
                         const hasSwatch = Boolean(swatch.imageUrl || swatch.color);
                         const useLargeSwatchCard = Boolean(shouldUseProductLineColorSelector && hasSwatch);
                         const optionAriaLabel = formatProductLineOptionInlineLabel(option) || option.label;
+                        const optionTileLabel = formatProductLineOptionTileLabel(option);
                         return (
                           <button
                             key={option.option_id || `${option.product_id}-${option.value || option.label}`}
@@ -3886,7 +3903,7 @@ export function PdpContainer({
                             className={cn(
                               'flex flex-shrink-0 rounded-md border bg-card text-xs text-foreground transition-colors',
                               useLargeSwatchCard
-                                ? 'h-[70px] w-[58px] flex-col items-center justify-start gap-1.5 px-1.5 py-1.5'
+                                ? 'h-[54px] min-w-[66px] max-w-[132px] flex-row items-center justify-start gap-2 px-1.5 py-1.5'
                                 : 'min-h-8 items-center gap-1.5',
                               hasSwatch && !useLargeSwatchCard ? 'px-2 py-1.5' : '',
                               !hasSwatch ? 'px-3 py-1' : '',
@@ -3904,7 +3921,7 @@ export function PdpContainer({
                                 aria-hidden="true"
                                 className={cn(
                                   'flex-shrink-0 overflow-hidden border bg-muted',
-                                  useLargeSwatchCard ? 'h-11 w-11 rounded-md' : 'h-4 w-4 rounded-full',
+                                  useLargeSwatchCard ? 'h-10 w-10 rounded-md' : 'h-4 w-4 rounded-full',
                                   isSelected
                                     ? useLargeSwatchCard
                                       ? 'border-foreground/70 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.85)]'
@@ -3922,15 +3939,15 @@ export function PdpContainer({
                             <span
                               className={cn(
                                 'flex min-w-0 flex-col',
-                                useLargeSwatchCard ? 'max-w-[52px] items-center text-center leading-tight' : '',
+                                useLargeSwatchCard ? 'max-w-[78px] items-start text-left leading-tight' : '',
                                 hasSwatch && !useLargeSwatchCard ? 'items-start' : '',
                                 !hasSwatch ? 'items-center' : '',
                               )}
                             >
                               <span className={cn(useLargeSwatchCard ? 'max-w-full truncate' : '')}>
-                                {option.label}
+                                {optionTileLabel}
                               </span>
-                              {option.secondary_label ? (
+                              {option.secondary_label && !useLargeSwatchCard ? (
                                 <span className="text-[10px] font-normal leading-tight text-muted-foreground">
                                   {option.secondary_label}
                                 </span>
