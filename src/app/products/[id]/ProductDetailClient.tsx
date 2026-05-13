@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 import { useCartStore } from '@/store/cartStore';
 import { useAuthStore } from '@/store/authStore';
+import { getCheckoutContextFromBrowser } from '@/lib/checkoutToken';
 import { hideProductRouteLoading } from '@/lib/productRouteLoading';
 import {
   getPdpV2,
@@ -510,6 +511,13 @@ export default function ProductDetailPage({ params, initialPayload }: Props) {
   const inferredMerchantId = inferCanonicalPdpMerchantId(id, merchantIdParam);
   const routeIsProductGroup = isProductGroupRouteId(id);
   const routeIsPivotaSignature = isPivotaSignatureRouteId(id);
+
+  useEffect(() => {
+    // Preserve the checkout-token handoff that used to happen as a side effect of
+    // getPdpV2 -> callGateway -> getCheckoutContext when no SSR payload existed.
+    getCheckoutContextFromBrowser();
+  }, []);
+
   useEffect(() => {
     if (loading && !error && !pdpPayload) return;
     hideProductRouteLoading();

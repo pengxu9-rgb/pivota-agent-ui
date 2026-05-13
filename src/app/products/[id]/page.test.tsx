@@ -332,6 +332,9 @@ describe('ProductDetailPage canonical PDP loading', () => {
     addItemMock.mockReset();
     openCartMock.mockReset();
     authUser = null;
+    window.sessionStorage.clear();
+    window.localStorage.clear();
+    window.history.replaceState({}, '', '/products/prod_1');
 
     getPdpV2PersonalizationMock.mockResolvedValue({});
     recordBrowseHistoryEventMock.mockResolvedValue(null);
@@ -358,6 +361,24 @@ describe('ProductDetailPage canonical PDP loading', () => {
 
     expect(screen.getByTestId('generic-pdp')).toHaveTextContent('Canonical PDP Product');
     expect(screen.queryByTestId('pdp-loading-scrim')).not.toBeInTheDocument();
+    expect(getPdpV2Mock).not.toHaveBeenCalled();
+  });
+
+  it('persists checkout context from the URL when an initial server payload skips the cold-start fetch', async () => {
+    window.history.pushState(
+      {},
+      '',
+      '/products/prod_1?checkout_token=abc&source=creator_agent',
+    );
+
+    renderPage('prod_1', canonicalPayload);
+
+    await waitFor(() => {
+      expect(window.sessionStorage.getItem('pivota_checkout_token')).toBe('abc');
+      expect(window.localStorage.getItem('pivota_checkout_token')).toBe('abc');
+      expect(window.sessionStorage.getItem('pivota_checkout_source')).toBe('creator_agent');
+      expect(window.localStorage.getItem('pivota_checkout_source')).toBe('creator_agent');
+    });
     expect(getPdpV2Mock).not.toHaveBeenCalled();
   });
 
