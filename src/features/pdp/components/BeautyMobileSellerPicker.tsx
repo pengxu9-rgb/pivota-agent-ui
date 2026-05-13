@@ -64,9 +64,11 @@ function SellerRow({
 }) {
   const pricing = resolveOfferPricing(offer, selectedVariant ?? null);
   const priceAmount =
-    typeof pricing.itemAmount === 'number' && Number.isFinite(pricing.itemAmount)
-      ? pricing.itemAmount
-      : offer.price?.amount;
+    typeof pricing.totalAmount === 'number' && Number.isFinite(pricing.totalAmount)
+      ? pricing.totalAmount
+      : typeof pricing.itemAmount === 'number' && Number.isFinite(pricing.itemAmount)
+        ? pricing.itemAmount
+        : offer.price?.amount;
   const priceCurrency = pricing.currency || offer.price?.currency;
   const price = formatMoney(priceAmount, priceCurrency);
   const merchantLabel = offer.merchant_name || offer.merchant_id || 'Seller';
@@ -142,9 +144,11 @@ export function BeautyMobileSellerPicker({
       if (!offerInStock(o)) continue;
       const pricing = resolveOfferPricing(o, selectedVariant ?? null);
       const amount =
-        typeof pricing.itemAmount === 'number' && Number.isFinite(pricing.itemAmount)
-          ? pricing.itemAmount
-          : o.price?.amount;
+        typeof pricing.totalAmount === 'number' && Number.isFinite(pricing.totalAmount)
+          ? pricing.totalAmount
+          : typeof pricing.itemAmount === 'number' && Number.isFinite(pricing.itemAmount)
+            ? pricing.itemAmount
+            : o.price?.amount;
       if (typeof amount === 'number' && Number.isFinite(amount) && amount < bestPrice) {
         bestPrice = amount;
         bestIdx = i;
@@ -158,10 +162,13 @@ export function BeautyMobileSellerPicker({
 
   if (!offers.length || recommendedIdx < 0) return null;
 
-  const recommended = offers[recommendedIdx];
-  const others = offers.filter((_, i) => i !== recommendedIdx);
+  const recommendedOffer = offers[recommendedIdx];
+  const effectiveSelectedId = selectedOfferId || recommendedOffer.offer_id;
+  const primaryIdx = offers.findIndex((o) => o.offer_id === effectiveSelectedId);
+  const primary = primaryIdx >= 0 ? offers[primaryIdx] : recommendedOffer;
+  const primaryEffectiveIdx = primaryIdx >= 0 ? primaryIdx : recommendedIdx;
+  const others = offers.filter((_, i) => i !== primaryEffectiveIdx);
   const inStockCount = offers.reduce((acc, o) => acc + (offerInStock(o) ? 1 : 0), 0);
-  const effectiveSelectedId = selectedOfferId || recommended.offer_id;
 
   return (
     <section className="mx-2.5 mt-4 sm:mx-3 lg:mx-0">
@@ -176,13 +183,13 @@ export function BeautyMobileSellerPicker({
 
       <div className="flex flex-col gap-1.5">
         <SellerRow
-          offer={recommended}
+          offer={primary}
           selectedVariant={selectedVariant}
-          selected={effectiveSelectedId === recommended.offer_id}
-          tag={offerTag(recommended, bestPriceOfferId, primaryMerchantId)}
-          inStock={offerInStock(recommended)}
-          ship={shipLabel(recommended)}
-          onClick={() => onSelect(recommended.offer_id)}
+          selected={effectiveSelectedId === primary.offer_id}
+          tag={offerTag(primary, bestPriceOfferId, primaryMerchantId)}
+          inStock={offerInStock(primary)}
+          ship={shipLabel(primary)}
+          onClick={() => onSelect(primary.offer_id)}
         />
         {expanded
           ? others.map((offer) => (
