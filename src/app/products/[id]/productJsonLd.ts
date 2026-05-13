@@ -286,27 +286,44 @@ function _buildAggregateOffer(
   // Need ≥2 priced sellers to justify AggregateOffer
   if (sellerNodes.length < 2) return null;
 
-  // Compute lowPrice / highPrice from the actual emitted nodes (not
-  // the raw input — keeps the aggregate consistent with the offers
-  // array we're emitting).
-  const prices = sellerNodes.map((n) => Number(n.price)).filter((p) => Number.isFinite(p));
+  // Currency normalization (codex review 2026-05-12 P1): if the
+  // sellers span multiple currencies, the previous behavior was to
+  // pick the first arbitrarily and compute low/high across mixed
+  // currencies — semantically wrong (a $12 USD offer and a €15 EUR
+  // offer aren't comparable). The correct move is to filter to the
+  // most-common currency cohort and drop the rest. If even the
+  // dominant cohort has only 1 seller after filtering, fall back to
+  // single Offer at the caller (return null here).
+  const currencyCounts = new Map<string, number>();
+  for (const n of sellerNodes) {
+    const c = String(n.priceCurrency || '').toUpperCase();
+    if (!c) continue;
+    currencyCounts.set(c, (currencyCounts.get(c) || 0) + 1);
+  }
+  if (currencyCounts.size === 0) return null;
+  // Pick the currency with the most sellers (deterministic tiebreak
+  // by lexicographic order to keep output stable across renders).
+  const dominantCurrency = Array.from(currencyCounts.entries())
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0][0];
+
+  const cohort = sellerNodes.filter(
+    (n) => String(n.priceCurrency || '').toUpperCase() === dominantCurrency,
+  );
+  if (cohort.length < 2) return null;
+
+  // Compute lowPrice / highPrice from the (now single-currency)
+  // cohort — keeps the aggregate consistent with the offers array
+  // we're emitting.
+  const prices = cohort.map((n) => Number(n.price)).filter((p) => Number.isFinite(p));
   const lowPrice = prices.length ? Math.min(...prices) : null;
   const highPrice = prices.length ? Math.max(...prices) : null;
-
-  // Currency: pick the most common one. Mixed-currency aggregates
-  // would render badly; in practice every Pivota cluster is single-
-  // currency (same market). Defensive: log a TODO when mixed.
-  const currencies = new Set(sellerNodes.map((n) => String(n.priceCurrency)));
-  const currency = currencies.size === 1
-    ? Array.from(currencies)[0]
-    : (sellerNodes[0].priceCurrency || 'USD');
 
   const aggregate: Record<string, any> = {
     '@type': 'AggregateOffer',
     url: parentUrl,
-    priceCurrency: currency,
-    offerCount: sellerNodes.length,
-    offers: sellerNodes,
+    priceCurrency: dominantCurrency,
+    offerCount: cohort.length,
+    offers: cohort,
   };
   if (lowPrice !== null) aggregate.lowPrice = lowPrice.toFixed(2);
   if (highPrice !== null) aggregate.highPrice = highPrice.toFixed(2);
@@ -510,13 +527,18 @@ function _addProductGroupShape(
   ldRecord['@type'] = 'ProductGroup';
 
   // productGroupID — prefer the backend's product_group_id (set by
-  // Stage 2b-i autogrouper for clustered products). Fall back to the
+  // Stage 2b-i autogrouper for clustered products). Fall back to a
   // signature-derived pg_<hex> form so single-merchant variant
   // products without a group still get a valid productGroupID.
-  const groupId = _firstString(
-    product.product_group_id,
-    `pg_${productId.replace(/^sig_/, '')}`,
-  );
+  //
+  // Defensive against the codex-flagged 2026-05-12 edge case: if
+  // productId is ALREADY a pg_-prefixed identifier (e.g. when the
+  // frontend renders /products/pg_catalog_abc directly), don't
+  // double-prefix to pg_pg_catalog_abc. Strip any leading sig_ or
+  // pg_ before applying the pg_ prefix exactly once.
+  const groupIdFromBackend = _firstString(product.product_group_id);
+  const groupIdFallback = `pg_${productId.replace(/^(sig_|pg_)/, '')}`;
+  const groupId = groupIdFromBackend || groupIdFallback;
   ldRecord.productGroupID = groupId;
 
   // variesBy — union of axis kinds across variants. Required by

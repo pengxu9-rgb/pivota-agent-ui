@@ -789,3 +789,108 @@ describe('Stage 3b-2: _buildAggregateOffer', () => {
     expect(parsed.offers.price).toBe('19.99');
   });
 });
+
+// ---------------------------------------------------------------------------
+// Codex review followup (2026-05-12 P1):
+// AggregateOffer mixed-currency must NOT pick-first; ProductGroup ID
+// fallback must not double-prefix.
+// ---------------------------------------------------------------------------
+
+describe('Codex P1 followup: AggregateOffer single-currency cohort', () => {
+  it('drops mixed-currency offers and keeps the dominant cohort', () => {
+    const out = buildProductJsonLd({
+      product: {
+        title: 'Cross-Currency Product',
+        brand: 'X',
+        _pivota_offers: [
+          { merchant_id: 'm_us1', merchant_name: 'Sephora US', price: { current: { amount: 95, currency: 'USD' } } },
+          { merchant_id: 'm_us2', merchant_name: 'Ulta US', price: { current: { amount: 92, currency: 'USD' } } },
+          { merchant_id: 'm_eu', merchant_name: 'Sephora EU', price: { current: { amount: 88, currency: 'EUR' } } },
+        ],
+      },
+      productId: PRODUCT_ID,
+    });
+    const parsed = JSON.parse(out!);
+    expect(parsed.offers['@type']).toBe('AggregateOffer');
+    expect(parsed.offers.priceCurrency).toBe('USD');
+    expect(parsed.offers.offerCount).toBe(2);
+    expect(parsed.offers.lowPrice).toBe('92.00');
+    expect(parsed.offers.highPrice).toBe('95.00');
+    for (const child of parsed.offers.offers) {
+      expect(child.priceCurrency).toBe('USD');
+    }
+  });
+
+  it('falls back to single Offer when no currency cohort has >=2 sellers', () => {
+    const out = buildProductJsonLd({
+      product: {
+        title: 'Three-Currency Product',
+        brand: 'X',
+        price: 50.0,
+        currency: 'USD',
+        _pivota_offers: [
+          { merchant_id: 'a', merchant_name: 'A', price: { current: { amount: 95, currency: 'USD' } } },
+          { merchant_id: 'b', merchant_name: 'B', price: { current: { amount: 88, currency: 'EUR' } } },
+          { merchant_id: 'c', merchant_name: 'C', price: { current: { amount: 75, currency: 'GBP' } } },
+        ],
+      },
+      productId: PRODUCT_ID,
+    });
+    const parsed = JSON.parse(out!);
+    expect(parsed.offers['@type']).toBe('Offer');
+  });
+
+  it('tie-breaks cohort selection lexicographically on currency code', () => {
+    const out = buildProductJsonLd({
+      product: {
+        title: 'Tied Cohorts',
+        brand: 'X',
+        _pivota_offers: [
+          { merchant_id: 'a', merchant_name: 'A', price: { current: { amount: 95, currency: 'EUR' } } },
+          { merchant_id: 'b', merchant_name: 'B', price: { current: { amount: 88, currency: 'EUR' } } },
+          { merchant_id: 'c', merchant_name: 'C', price: { current: { amount: 75, currency: 'USD' } } },
+          { merchant_id: 'd', merchant_name: 'D', price: { current: { amount: 72, currency: 'USD' } } },
+        ],
+      },
+      productId: PRODUCT_ID,
+    });
+    const parsed = JSON.parse(out!);
+    expect(parsed.offers.priceCurrency).toBe('EUR');
+    expect(parsed.offers.offerCount).toBe(2);
+  });
+});
+
+describe('Codex P1 followup: ProductGroup ID does not double-prefix pg_', () => {
+  it('strips existing pg_ prefix before applying the fallback pg_', () => {
+    const out = buildProductJsonLd({
+      product: {
+        title: 'Product Group Direct Render',
+        brand: 'X',
+        variants: [
+          { variant_id: 'V1', title: 'A', options: [{ name: 'shade', value: 'A' }] },
+          { variant_id: 'V2', title: 'B', options: [{ name: 'shade', value: 'B' }] },
+        ],
+      },
+      productId: 'pg_catalog_already_prefixed_abc',
+    });
+    const parsed = JSON.parse(out!);
+    expect(parsed.productGroupID).toBe('pg_catalog_already_prefixed_abc');
+    expect(parsed.productGroupID).not.toMatch(/^pg_pg_/);
+  });
+
+  it('strips sig_ prefix before applying the fallback pg_ (canonical case)', () => {
+    const out = buildProductJsonLd({
+      product: {
+        title: 'Sig Direct Render',
+        brand: 'X',
+        variants: [
+          { variant_id: 'V1', title: 'A', options: [{ name: 'shade', value: 'A' }] },
+          { variant_id: 'V2', title: 'B', options: [{ name: 'shade', value: 'B' }] },
+        ],
+      },
+      productId: 'sig_abcdef0123456789abcdef0123456789',
+    });
+    const parsed = JSON.parse(out!);
+    expect(parsed.productGroupID).toBe('pg_abcdef0123456789abcdef0123456789');
+  });
+});
