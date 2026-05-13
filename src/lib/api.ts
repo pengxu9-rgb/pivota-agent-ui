@@ -1297,10 +1297,14 @@ function normalizeGatewayTimeoutOptions(
   timeoutOrOptions?: number | GatewayTimeoutOptions,
 ): GatewayTimeoutOptions {
   if (typeof timeoutOrOptions === 'number') {
-    return { timeoutMs: timeoutOrOptions };
+    return { timeoutMs: timeoutOrOptions, gatewayBaseUrl: undefined };
   }
   if (timeoutOrOptions && typeof timeoutOrOptions === 'object') {
-    return timeoutOrOptions;
+    return {
+      signal: timeoutOrOptions.signal,
+      timeoutMs: timeoutOrOptions.timeoutMs,
+      gatewayBaseUrl: timeoutOrOptions.gatewayBaseUrl,
+    };
   }
   return {};
 }
@@ -1505,10 +1509,10 @@ async function callGatewayWithTimeout<T = any>(
   body: InvokeBody,
   timeoutOrOptions?: number | GatewayTimeoutOptions,
 ): Promise<T> {
-  const { signal, timeoutMs } = normalizeGatewayTimeoutOptions(timeoutOrOptions);
+  const { signal, timeoutMs, gatewayBaseUrl } = normalizeGatewayTimeoutOptions(timeoutOrOptions);
   const ms = Number(timeoutMs);
   const shouldTimeout = Number.isFinite(ms) && ms > 0;
-  if (!signal && !shouldTimeout) return (await callGateway(body)) as T;
+  if (!signal && !shouldTimeout) return (await callGateway(body, { gatewayBaseUrl })) as T;
 
   const controller = new AbortController();
   let didTimeout = false;
@@ -1534,7 +1538,7 @@ async function callGatewayWithTimeout<T = any>(
   }
 
   try {
-    return (await callGateway(body, { signal: controller.signal })) as T;
+    return (await callGateway(body, { signal: controller.signal, gatewayBaseUrl })) as T;
   } catch (err) {
     if ((err as any)?.name === 'AbortError' && didTimeout) {
       const timeoutErr = new Error('The request timed out. Please retry.') as ApiError;

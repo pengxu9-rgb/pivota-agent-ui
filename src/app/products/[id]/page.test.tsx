@@ -190,6 +190,22 @@ function renderPage(productId = 'prod_1', initialPayload?: any) {
   return render(<ProductDetailPage params={{ id: productId } as any} initialPayload={initialPayload} />);
 }
 
+function KeyedProductDetailPage({
+  productId,
+  initialPayload,
+}: {
+  productId: string;
+  initialPayload: any;
+}) {
+  return (
+    <ProductDetailPage
+      key={productId || undefined}
+      params={{ id: productId } as any}
+      initialPayload={initialPayload}
+    />
+  );
+}
+
 const canonicalPayload = {
   schema_version: '1.0.0',
   page_type: 'product_detail',
@@ -339,6 +355,31 @@ describe('ProductDetailPage canonical PDP loading', () => {
 
     expect(screen.getByTestId('generic-pdp')).toHaveTextContent('Canonical PDP Product');
     expect(screen.queryByTestId('pdp-loading-scrim')).not.toBeInTheDocument();
+    expect(getPdpV2Mock).not.toHaveBeenCalled();
+  });
+
+  it('remounts with the next initial server payload on client-side product navigation', async () => {
+    const nextPayload = {
+      ...canonicalPayload,
+      product: {
+        ...canonicalPayload.product,
+        product_id: 'prod_2',
+        title: 'Second PDP Product',
+      },
+    };
+
+    const { rerender } = render(
+      <KeyedProductDetailPage productId="prod_1" initialPayload={canonicalPayload} />,
+    );
+
+    expect(screen.getByTestId('generic-pdp')).toHaveTextContent('Canonical PDP Product');
+
+    rerender(<KeyedProductDetailPage productId="prod_2" initialPayload={nextPayload} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('generic-pdp')).toHaveTextContent('Second PDP Product');
+    });
+    expect(screen.queryByText('Canonical PDP Product')).not.toBeInTheDocument();
     expect(getPdpV2Mock).not.toHaveBeenCalled();
   });
 

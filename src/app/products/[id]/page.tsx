@@ -299,6 +299,7 @@ export default async function ProductDetailPage(props: Props) {
         />
       ) : null}
       <ProductDetailClient
+        key={productId || undefined}
         params={props.params}
         initialPayload={renderData?.initialPayload ?? null}
       />
