@@ -3892,10 +3892,9 @@ export function PdpContainer({
                               !hasSwatch ? 'px-3 py-1' : '',
                               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)] disabled:cursor-wait disabled:opacity-100',
                               isSelected
-                                ? cn(
-                                    'border-[color:var(--accent-600)] bg-[var(--accent-50)] text-[color:var(--accent-800)] font-semibold shadow-[inset_0_0_0_1px_var(--accent-600)]',
-                                    useLargeSwatchCard ? 'ring-2 ring-[var(--accent-600)] ring-offset-1 ring-offset-background' : '',
-                                  )
+                                ? useLargeSwatchCard
+                                  ? 'border-foreground bg-card text-foreground font-semibold shadow-[inset_0_0_0_1px_currentColor]'
+                                  : 'border-[color:var(--accent-600)] bg-[var(--accent-50)] text-[color:var(--accent-800)] font-semibold shadow-[inset_0_0_0_1px_var(--accent-600)]'
                                 : 'border-border hover:bg-muted/30 hover:border-muted-foreground/40',
                               isPending ? 'opacity-75' : '',
                             )}
@@ -3906,7 +3905,11 @@ export function PdpContainer({
                                 className={cn(
                                   'flex-shrink-0 overflow-hidden border bg-muted',
                                   useLargeSwatchCard ? 'h-14 w-14 rounded-lg' : 'h-4 w-4 rounded-full',
-                                  isSelected ? 'border-[color:var(--accent-600)]' : 'border-border',
+                                  isSelected
+                                    ? useLargeSwatchCard
+                                      ? 'border-foreground'
+                                      : 'border-[color:var(--accent-600)]'
+                                    : 'border-border',
                                 )}
                                 style={{
                                   backgroundColor: swatch.color || undefined,
@@ -3973,7 +3976,9 @@ export function PdpContainer({
                               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]',
                               'disabled:cursor-not-allowed disabled:opacity-50 disabled:bg-muted/30 disabled:text-muted-foreground',
                               isSelected
-                                ? 'border-[color:var(--accent-600)] bg-[var(--accent-50)] text-[color:var(--accent-800)] font-semibold'
+                                ? hasSwatchPreview
+                                  ? 'border-foreground bg-card text-foreground font-semibold shadow-[inset_0_0_0_1px_currentColor]'
+                                  : 'border-[color:var(--accent-600)] bg-[var(--accent-50)] text-[color:var(--accent-800)] font-semibold'
                                 : 'border-border hover:bg-muted/30 hover:border-muted-foreground/40',
                             )}
                           >
@@ -3982,7 +3987,11 @@ export function PdpContainer({
                                 aria-hidden="true"
                                 className={cn(
                                   'relative h-10 w-10 flex-shrink-0 overflow-hidden rounded-md border bg-muted',
-                                  isSelected ? 'border-[color:var(--accent-600)]' : 'border-border',
+                                  isSelected
+                                    ? hasSwatchPreview
+                                      ? 'border-foreground'
+                                      : 'border-[color:var(--accent-600)]'
+                                    : 'border-border',
                                 )}
                               >
                                 {swatchImageUrl ? (

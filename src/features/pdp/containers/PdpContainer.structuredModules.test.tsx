@@ -752,7 +752,8 @@ describe('PdpContainer structured PDP modules', () => {
     expect(dn310Swatch).toHaveClass('h-14', 'w-14');
     const dn350Button = screen.getByRole('button', { name: 'DN350' });
     expect(dn350Button).toHaveAttribute('aria-pressed', 'true');
-    expect(dn350Button).toHaveClass('ring-2');
+    expect(dn350Button).toHaveClass('border-foreground');
+    expect(dn350Button).not.toHaveClass('ring-offset-1');
     expect(screen.queryByText('Title: Default Title')).not.toBeInTheDocument();
     expect(screen.queryByText('Product Line')).not.toBeInTheDocument();
 
