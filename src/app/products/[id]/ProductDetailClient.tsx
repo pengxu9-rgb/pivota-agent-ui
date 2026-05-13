@@ -620,7 +620,12 @@ export default function ProductDetailPage({ params, initialPayload }: Props) {
   }, [id, pdpPayload, routeIsPivotaSignature, routeIsProductGroup, router, searchParamsString]);
 
   useEffect(() => {
-    if (hasInitialPayload && reloadKey === 0) return;
+    if (hasInitialPayload && reloadKey === 0) {
+      // Skip cold-start fetch unless we have a checkout token. Token-scoped
+      // PDP responses need the browser gateway call that carries X-Checkout-Token.
+      const ctx = getCheckoutContextFromBrowser();
+      if (!ctx.token) return;
+    }
 
     let cancelled = false;
     const candidateTimeoutMs = 4500;

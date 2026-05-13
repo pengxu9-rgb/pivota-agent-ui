@@ -364,12 +364,13 @@ describe('ProductDetailPage canonical PDP loading', () => {
     expect(getPdpV2Mock).not.toHaveBeenCalled();
   });
 
-  it('persists checkout context from the URL when an initial server payload skips the cold-start fetch', async () => {
+  it('refetches from the client when an initial server payload has checkout context in the URL', async () => {
     window.history.pushState(
       {},
       '',
       '/products/prod_1?checkout_token=abc&source=creator_agent',
     );
+    getPdpV2Mock.mockResolvedValue({ status: 'success', modules: [] });
 
     renderPage('prod_1', canonicalPayload);
 
@@ -379,7 +380,9 @@ describe('ProductDetailPage canonical PDP loading', () => {
       expect(window.sessionStorage.getItem('pivota_checkout_source')).toBe('creator_agent');
       expect(window.localStorage.getItem('pivota_checkout_source')).toBe('creator_agent');
     });
-    expect(getPdpV2Mock).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(getPdpV2Mock).toHaveBeenCalledTimes(1);
+    });
   });
 
   it('remounts with the next initial server payload on client-side product navigation', async () => {
