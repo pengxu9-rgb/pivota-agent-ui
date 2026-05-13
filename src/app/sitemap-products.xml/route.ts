@@ -3,6 +3,7 @@ import { getAllProducts } from '@/lib/api'
 import {
   SITEMAP_BASE_URL,
   SITEMAP_SEED_PRODUCT_IDS,
+  isMerchantIndexable,
   isProductIdSitemapEligible,
 } from '../sitemap-seeds'
 
@@ -119,12 +120,27 @@ async function collectProductIds(): Promise<{
   const [dynamicIds, canonicalSigIds] = await Promise.all([
     canFetchProducts
       ? getAllProducts(200)
-          .then((products) =>
-            products
-              .map((p) => p.product_id)
-              .filter((id): id is string => typeof id === 'string')
-              .filter(isProductIdSitemapEligible),
-          )
+          .then((products) => {
+            // Apply the same filters as src/app/sitemap.ts so this
+            // route — the one GSC actually submits PDPs from — doesn't
+            // leak test-merchant PDPs or product_group duplicates into
+            // the index. Caught by codex review 2026-05-12; the main
+            // sitemap.ts was filtered in #154 but this companion
+            // file (which the runbook calls the GSC-submitted product
+            // sitemap, see top of file) was missed.
+            const seenGroupIds = new Set<string>()
+            const out: string[] = []
+            for (const product of products) {
+              if (typeof product.product_id !== 'string') continue
+              if (!isProductIdSitemapEligible(product.product_id)) continue
+              if (!isMerchantIndexable(product.merchant_id)) continue
+              const groupId = product.product_group_id
+              if (groupId && seenGroupIds.has(groupId)) continue
+              if (groupId) seenGroupIds.add(groupId)
+              out.push(product.product_id)
+            }
+            return out
+          })
           .catch((error) => {
             console.error(
               'sitemap-products.xml: dynamic registry fetch failed, continuing without it:',

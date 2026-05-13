@@ -8,7 +8,10 @@ vi.mock('@/lib/api', () => ({
 
 import { GET } from './route';
 
-const SEED_ID = 'sig_7ad40676c42fb9c96e2a8136';
+// Updated 2026-05-12: refreshed to the current seed in sitemap-seeds.ts.
+// The legacy 24-char-hex sig predated mig 071's signature schema change
+// and 404 in current prod — caught by codex review.
+const SEED_ID = 'sig_8b17eff870a4cd631ea61c56f99b5f99';
 const SEED_URL = `https://agent.pivota.cc/products/${SEED_ID}`;
 
 async function readBody(res: Response): Promise<string> {
@@ -143,5 +146,42 @@ describe('/sitemap-products.xml — products-only sitemap', () => {
     const res = await GET();
     const expected = String(eligibleSeeds.length + 2);
     expect(res.headers.get('x-pivota-sitemap-url-count')).toBe(expected);
+  });
+
+  // -------------------------------------------------------------------
+  // Codex review followup (2026-05-12 P1):
+  // sitemap-products.xml is the route GSC actually crawls. The earlier
+  // PR #154 added test-merchant + product_group filters to /sitemap.xml
+  // but missed this companion file. Pin the filters here.
+  // -------------------------------------------------------------------
+
+  it('excludes test-merchant PDPs from dynamic feed (same as /sitemap.xml)', async () => {
+    process.env.NEXT_PUBLIC_API_URL = 'https://api.example.com';
+    getAllProductsMock.mockResolvedValueOnce([
+      { product_id: 'sig_moyu_x', merchant_id: 'merch_efbc46b4619cfbdf' },
+      { product_id: 'sig_ext_seed_y', merchant_id: 'external_seed' },
+      { product_id: 'sig_real_merchant_z', merchant_id: 'merch_real_other' },
+    ]);
+    const body = await readBody(await GET());
+    expect(body).not.toContain('/products/sig_moyu_x');
+    expect(body).toContain('/products/sig_ext_seed_y');
+    expect(body).toContain('/products/sig_real_merchant_z');
+  });
+
+  it('dedupes by product_group_id — Tom Ford-style cluster produces 1 URL', async () => {
+    // Use distinctive non-overlapping IDs (one seed starts with sig_a4...
+    // so plain "sig_a" substring matches it as a false positive).
+    process.env.NEXT_PUBLIC_API_URL = 'https://api.example.com';
+    getAllProductsMock.mockResolvedValueOnce([
+      { product_id: 'sig_dup_first', product_group_id: 'pg_tom_ford_foundation' },
+      { product_id: 'sig_dup_second', product_group_id: 'pg_tom_ford_foundation' },
+      { product_id: 'sig_dup_third', product_group_id: 'pg_tom_ford_foundation' },
+      { product_id: 'sig_unique_other', product_group_id: 'pg_other_product' },
+    ]);
+    const body = await readBody(await GET());
+    const tfMatches = ['sig_dup_first', 'sig_dup_second', 'sig_dup_third']
+      .filter((id) => body.includes(`<loc>https://agent.pivota.cc/products/${id}</loc>`));
+    expect(tfMatches).toHaveLength(1);
+    expect(body).toContain('<loc>https://agent.pivota.cc/products/sig_unique_other</loc>');
   });
 });
