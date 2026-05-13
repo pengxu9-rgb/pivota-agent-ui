@@ -1973,6 +1973,16 @@ export function PdpContainer({
       : selectedOffer && offerTotalPrice != null
         ? offerTotalPrice
         : basePriceAmount;
+  // Per-unit price for the beauty mobile buy bar — same branching as
+  // displayPriceAmount but with itemAmount instead of totalAmount so qty
+  // multiplication doesn't double-count rolled-in shipping.
+  const buyBarUnitPrice = shouldUseOfferVariantPrice
+    ? offerItemPrice ?? basePriceAmount
+    : shouldUseBaseVariantPrice
+      ? basePriceAmount
+      : selectedOffer && typeof offerItemPrice === 'number' && Number.isFinite(offerItemPrice)
+        ? offerItemPrice
+        : basePriceAmount;
 
   const effectiveMerchantId = selectedOffer?.merchant_id || payload.product.merchant_id;
   const effectiveProductId = String(selectedOffer?.product_id || payload.product.product_id || '').trim();
@@ -4690,11 +4700,7 @@ export function PdpContainer({
 
                   {resolvedMode === 'beauty' ? (
                     <BeautyMobileBuyBar
-                      unitPrice={
-                        (typeof offerItemPrice === 'number' && Number.isFinite(offerItemPrice)
-                          ? offerItemPrice
-                          : basePriceAmount) || 0
-                      }
+                      unitPrice={buyBarUnitPrice || 0}
                       currency={displayCurrency}
                       quantity={resolvedQuantity}
                       onQtyChange={(next) => setQuantity(next)}
