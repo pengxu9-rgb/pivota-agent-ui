@@ -3886,13 +3886,16 @@ export function PdpContainer({
                             className={cn(
                               'flex flex-shrink-0 rounded-md border bg-card text-xs text-foreground transition-colors',
                               useLargeSwatchCard
-                                ? 'h-[76px] w-[68px] flex-col items-center justify-start gap-1.5 px-2 py-2'
+                                ? 'h-[92px] w-[82px] flex-col items-center justify-start gap-2 px-2 py-2.5'
                                 : 'min-h-8 items-center gap-1.5',
                               hasSwatch && !useLargeSwatchCard ? 'px-2 py-1.5' : '',
                               !hasSwatch ? 'px-3 py-1' : '',
                               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)] disabled:cursor-wait disabled:opacity-100',
                               isSelected
-                                ? 'border-[color:var(--accent-600)] bg-[var(--accent-50)] text-[color:var(--accent-800)] font-semibold shadow-[inset_0_0_0_1px_var(--accent-600)]'
+                                ? cn(
+                                    'border-[color:var(--accent-600)] bg-[var(--accent-50)] text-[color:var(--accent-800)] font-semibold shadow-[inset_0_0_0_1px_var(--accent-600)]',
+                                    useLargeSwatchCard ? 'ring-2 ring-[var(--accent-600)] ring-offset-1 ring-offset-background' : '',
+                                  )
                                 : 'border-border hover:bg-muted/30 hover:border-muted-foreground/40',
                               isPending ? 'opacity-75' : '',
                             )}
@@ -3902,7 +3905,7 @@ export function PdpContainer({
                                 aria-hidden="true"
                                 className={cn(
                                   'flex-shrink-0 overflow-hidden border bg-muted',
-                                  useLargeSwatchCard ? 'h-12 w-12 rounded-md' : 'h-4 w-4 rounded-full',
+                                  useLargeSwatchCard ? 'h-14 w-14 rounded-lg' : 'h-4 w-4 rounded-full',
                                   isSelected ? 'border-[color:var(--accent-600)]' : 'border-border',
                                 )}
                                 style={{
@@ -3916,7 +3919,7 @@ export function PdpContainer({
                             <span
                               className={cn(
                                 'flex min-w-0 flex-col',
-                                useLargeSwatchCard ? 'max-w-[60px] items-center text-center leading-tight' : '',
+                                useLargeSwatchCard ? 'max-w-[74px] items-center text-center leading-tight' : '',
                                 hasSwatch && !useLargeSwatchCard ? 'items-start' : '',
                                 !hasSwatch ? 'items-center' : '',
                               )}
