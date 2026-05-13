@@ -1667,8 +1667,6 @@ export function PdpContainer({
   const colorOptions = useMemo(() => collectColorOptions(variants), [variants]);
   const shouldUseProductLineColorSelector =
     productLineOptions.length > 1 && ['shade', 'color', 'colour', 'tone', 'hue'].includes(productLineOptionAxis);
-  const shouldWrapProductLineColorOptions =
-    shouldUseProductLineColorSelector && productLineOptions.length <= 12;
   const isProductLineSwitching = shouldUseProductLineColorSelector && pendingProductLineProductId !== null;
   const shouldRenderColorOptions = colorOptions.length > 0 && !shouldUseProductLineColorSelector;
   const productLinePrefetchTargets = useMemo(() => {
@@ -3858,13 +3856,8 @@ export function PdpContainer({
                       </div>
                     ) : null}
                   </div>
-                  <div className={cn('mt-1.5', shouldWrapProductLineColorOptions ? '' : 'overflow-x-auto')}>
-                    <div
-                      className={cn(
-                        'flex gap-1.5 pb-1',
-                        shouldWrapProductLineColorOptions ? 'flex-wrap' : 'flex-nowrap',
-                      )}
-                    >
+                  <div className="mt-1.5 overflow-x-auto">
+                    <div className="flex flex-nowrap gap-1.5 pb-1">
                       {productLineOptions.map((option, index) => {
                         const isSelected =
                           option.selected ||
@@ -3893,14 +3886,14 @@ export function PdpContainer({
                             className={cn(
                               'flex flex-shrink-0 rounded-md border bg-card text-xs text-foreground transition-colors',
                               useLargeSwatchCard
-                                ? 'h-[92px] w-[82px] flex-col items-center justify-start gap-2 px-2 py-2.5'
+                                ? 'h-[70px] w-[58px] flex-col items-center justify-start gap-1.5 px-1.5 py-1.5'
                                 : 'min-h-8 items-center gap-1.5',
                               hasSwatch && !useLargeSwatchCard ? 'px-2 py-1.5' : '',
                               !hasSwatch ? 'px-3 py-1' : '',
                               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)] disabled:cursor-wait disabled:opacity-100',
                               isSelected
                                 ? useLargeSwatchCard
-                                  ? 'border-foreground bg-card text-foreground font-semibold shadow-[inset_0_0_0_1px_currentColor]'
+                                  ? 'border-muted-foreground/50 bg-card text-foreground font-semibold'
                                   : 'border-[color:var(--accent-600)] bg-[var(--accent-50)] text-[color:var(--accent-800)] font-semibold shadow-[inset_0_0_0_1px_var(--accent-600)]'
                                 : 'border-border hover:bg-muted/30 hover:border-muted-foreground/40',
                               isPending ? 'opacity-75' : '',
@@ -3911,10 +3904,10 @@ export function PdpContainer({
                                 aria-hidden="true"
                                 className={cn(
                                   'flex-shrink-0 overflow-hidden border bg-muted',
-                                  useLargeSwatchCard ? 'h-14 w-14 rounded-lg' : 'h-4 w-4 rounded-full',
+                                  useLargeSwatchCard ? 'h-11 w-11 rounded-md' : 'h-4 w-4 rounded-full',
                                   isSelected
                                     ? useLargeSwatchCard
-                                      ? 'border-foreground'
+                                      ? 'border-foreground/70 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.85)]'
                                       : 'border-[color:var(--accent-600)]'
                                     : 'border-border',
                                 )}
@@ -3929,7 +3922,7 @@ export function PdpContainer({
                             <span
                               className={cn(
                                 'flex min-w-0 flex-col',
-                                useLargeSwatchCard ? 'max-w-[74px] items-center text-center leading-tight' : '',
+                                useLargeSwatchCard ? 'max-w-[52px] items-center text-center leading-tight' : '',
                                 hasSwatch && !useLargeSwatchCard ? 'items-start' : '',
                                 !hasSwatch ? 'items-center' : '',
                               )}
