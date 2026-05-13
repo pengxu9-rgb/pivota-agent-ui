@@ -53,12 +53,15 @@ describe('product page metadata', () => {
       'the ordinary Multi-Peptide Lash and Brow Serum | Pivota',
     );
     expect((metadata.twitter as any)?.images).toEqual(['https://example.com/lash-serum.png']);
-    expect(fetchMock).toHaveBeenCalledWith(
-      'https://agent.pivota.cc/api/gateway',
-      expect.objectContaining({
-        method: 'POST',
-      }),
-    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe('https://agent.pivota.cc/api/agent/pdp/sig_7ad40676c42fb9c96e2a8136');
+    expect(init).toEqual(expect.objectContaining({
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+      cache: 'no-store',
+    }));
+    expect(init).not.toHaveProperty('body');
     // Phase 1a fixes: canonical link, robots index/follow, supported og:type, og:url.
     // Product-specific search/LLM indexing is covered by server-rendered JSON-LD.
     expect((metadata.alternates as any)?.canonical).toBe(
