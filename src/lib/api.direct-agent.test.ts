@@ -137,4 +137,29 @@ describe('direct Agent read routing', () => {
       }),
     );
   });
+
+  it('threads get_pdp_v2 gatewayBaseUrl through gateway calls with and without timeouts', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async () =>
+      jsonResponse({
+        status: 'success',
+        modules: [],
+      }),
+    );
+
+    const { getPdpV2 } = await import('./api');
+
+    await getPdpV2({
+      product_id: 'prod_123',
+      gatewayBaseUrl: 'http://example.com',
+    });
+    await getPdpV2({
+      product_id: 'prod_456',
+      timeout_ms: 9000,
+      gatewayBaseUrl: 'http://example.org/api/gateway',
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('http://example.com/agent/shop/v1/invoke');
+    expect(fetchMock.mock.calls[1]?.[0]).toBe('http://example.org/api/gateway');
+  });
 });

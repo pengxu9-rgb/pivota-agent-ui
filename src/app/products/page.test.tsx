@@ -158,6 +158,8 @@ describe('ProductsPage', () => {
           timeout_ms: 15000,
         }),
       );
+      expect(screen.getByText('Barrier Serum')).toBeInTheDocument();
+      expect(intersectionCallback).not.toBeNull();
     });
 
     await act(async () => {
@@ -289,6 +291,6 @@ describe('ProductsPage', () => {
 
     expect(getShoppingDiscoveryFeedMock).not.toHaveBeenCalled();
     expect(screen.getByText('Merchant products')).toBeInTheDocument();
-    expect(screen.getByText('Shopify Serum')).toBeInTheDocument();
+    expect(await screen.findByText('Shopify Serum')).toBeInTheDocument();
   });
 });

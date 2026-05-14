@@ -13,9 +13,14 @@ import type { Metadata } from 'next';
 import ProductDetailClient from './ProductDetailClient';
 import { buildProductDescription } from './productDescription';
 import { buildProductJsonLd } from './productJsonLd';
+import { getPdpV2 } from '@/lib/api';
+import { mapPdpV2ToPdpPayload } from '@/features/pdp/adapter/mapPdpV2ToPdpPayload';
+import type { PDPPayload } from '@/features/pdp/types';
 import {
+  inferCanonicalPdpMerchantId,
   isProductGroupRouteId,
   isPublicProductGroupRouteId,
+  normalizeProductRouteMerchantId,
   resolveProductRouteId,
 } from '@/lib/productHref';
 
@@ -25,7 +30,19 @@ interface Props {
 }
 
 const DEFAULT_TITLE = 'Pivota Shopping AI';
-const METADATA_FETCH_TIMEOUT_MS = 6000;
+const PDP_SERVER_FETCH_TIMEOUT_MS = 9000;
+const PDP_SERVER_INCLUDE = [
+  'offers',
+  'variant_selector',
+  'product_intel',
+  'active_ingredients',
+  'ingredients_inci',
+  'how_to_use',
+  'product_overview',
+  'supplemental_details',
+  'reviews_preview',
+  'similar',
+] as const;
 
 function readSearchParam(value: string | string[] | undefined): string {
   if (Array.isArray(value)) return String(value[0] || '').trim();
@@ -47,6 +64,10 @@ function resolveServerBaseUrl(headerList: Headers): string {
   return 'https://agent.pivota.cc';
 }
 
+function resolveServerGatewayBaseUrl(headerList: Headers): string {
+  return `${resolveServerBaseUrl(headerList).replace(/\/+$/, '')}/api/gateway`;
+}
+
 function firstString(...values: unknown[]): string {
   for (const value of values) {
     if (typeof value !== 'string') continue;
@@ -54,30 +75,6 @@ function firstString(...values: unknown[]): string {
     if (trimmed) return trimmed;
   }
   return '';
-}
-
-function readCanonicalPdpProduct(response: unknown): Record<string, any> | null {
-  const modules = Array.isArray((response as any)?.modules) ? (response as any).modules : [];
-  const canonical = modules.find((module: any) => module?.type === 'canonical');
-  const pdpPayload = canonical?.data?.pdp_payload;
-  const product =
-    pdpPayload?.product ||
-    canonical?.data?.product ||
-    (response as any)?.product ||
-    null;
-  if (!product || typeof product !== 'object') return null;
-
-  // Stage 3b-2: attach the multi-seller offers array (same array
-  // ProductDetailClient renders for the "Multiple sellers match this
-  // product. Select one." card) under a namespaced key on the product
-  // object so buildProductJsonLd can read it for AggregateOffer
-  // emission. The underscore prefix keeps schema.org-emitting code
-  // from accidentally treating it as a Product field. Read-only.
-  const offers = pdpPayload?.offers;
-  if (Array.isArray(offers) && offers.length > 0) {
-    product._pivota_offers = offers;
-  }
-  return product;
 }
 
 function readPdpModule(response: unknown, type: string): Record<string, any> | null {
@@ -88,14 +85,16 @@ function readPdpModule(response: unknown, type: string): Record<string, any> | n
 
 function readServerCanonicalRouteId(
   response: unknown,
-  product: Record<string, any>,
+  payload: PDPPayload,
   requestedProductId: string,
 ): string {
   const canonicalData = readPdpModule(response, 'canonical')?.data || {};
   const offersData = readPdpModule(response, 'offers')?.data || {};
   const subject = (response as any)?.subject || {};
+  const product = payload.product as Record<string, any>;
   const groupId = firstString(
     canonicalData.product_group_id,
+    payload.product_group_id,
     (response as any)?.product_group_id,
     subject?.type === 'product_group' ? subject.id : '',
     product.product_group_id,
@@ -103,10 +102,11 @@ function readServerCanonicalRouteId(
   );
   const canonicalScope = firstString(
     canonicalData.canonical_scope,
+    payload.canonical_scope,
     (response as any)?.canonical_scope,
     (response as any)?.metadata?.identity_graph?.canonical_scope,
   );
-  const offersCount = Number(offersData.offers_count ?? (response as any)?.offers_count);
+  const offersCount = Number(offersData.offers_count ?? payload.offers_count ?? (response as any)?.offers_count);
   const requestedIsGroup = isProductGroupRouteId(requestedProductId);
   const shouldUseGroup =
     isPublicProductGroupRouteId(groupId) &&
@@ -137,82 +137,74 @@ function readProductImage(product: Record<string, any>): string {
   return firstString(product.image_url, imageUrls[0]);
 }
 
-/**
- * Fetch the canonical product object for server-render. Called twice per
- * PDP render (once from `generateMetadata`, once from the page itself
- * for JSON-LD).
- *
- * Performance note (2026-05-13): each call reads the denormalized
- * agent PDP view through /api/agent/pdp/{id}. Wrapping with React's
- * `cache()` shares the promise across `generateMetadata` + the page
- * render within a single request, avoiding duplicate backend reads.
- *
- * The cache() wrapper is added at module scope below; the inner
- * function stays separate so vitest can still call it directly without
- * needing a React render context. (Vitest tests `vi.stubGlobal('fetch',
- * ...)` to intercept the wire call, not the wrapped function — both
- * forms work the same way for tests.)
- */
-async function _fetchProductForServerRenderUncached(
-  args: { productId: string; merchantId?: string },
-): Promise<{ product: Record<string, any>; canonicalRouteId: string } | null> {
-  const productId = args.productId.trim();
+function buildJsonLdProduct(payload: PDPPayload): Record<string, any> {
+  const product = payload.product as Record<string, any>;
+  const offers = Array.isArray(payload.offers) ? payload.offers : [];
+  return offers.length > 0
+    ? { ...product, _pivota_offers: offers }
+    : product;
+}
+
+type ServerPdpRenderData = {
+  initialPayload: PDPPayload;
+  product: Record<string, any>;
+  canonicalRouteId: string;
+};
+
+async function _fetchPdpForServerRenderUncached(
+  productIdInput: string,
+  merchantIdInput: string,
+): Promise<ServerPdpRenderData | null> {
+  const productId = String(productIdInput || '').trim();
   if (!productId) return null;
 
   const headerList = await headers();
-  const baseUrl = resolveServerBaseUrl(headerList);
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), METADATA_FETCH_TIMEOUT_MS);
+  const normalizedMerchantId = normalizeProductRouteMerchantId(merchantIdInput);
+  const explicitMerchantId = inferCanonicalPdpMerchantId(productId, normalizedMerchantId);
+  const routeIsProductGroup = isProductGroupRouteId(productId);
 
   try {
-    const res = await fetch(
-      `${baseUrl}/api/agent/pdp/${encodeURIComponent(productId)}`,
-      {
-        method: 'GET',
-        headers: {
-          Accept: 'application/json',
-        },
-        cache: 'no-store',
-        signal: controller.signal,
-      },
-    );
-
-    if (!res.ok) return null;
-    const data = await res.json().catch(() => null);
-    const product = readCanonicalPdpProduct(data);
-    return product
-      ? {
-          product,
-          canonicalRouteId: readServerCanonicalRouteId(data, product, productId),
-        }
-      : null;
+    const v2 = await getPdpV2({
+      product_id: productId,
+      ...(routeIsProductGroup
+        ? { subject: { type: 'product_group' as const, id: productId } }
+        : explicitMerchantId
+          ? { merchant_id: explicitMerchantId }
+          : {}),
+      include: [...PDP_SERVER_INCLUDE],
+      timeout_ms: PDP_SERVER_FETCH_TIMEOUT_MS,
+      gatewayBaseUrl: resolveServerGatewayBaseUrl(headerList),
+    });
+    const initialPayload = mapPdpV2ToPdpPayload(v2);
+    if (!initialPayload?.product) return null;
+    const product = buildJsonLdProduct(initialPayload);
+    return {
+      initialPayload,
+      product,
+      canonicalRouteId: readServerCanonicalRouteId(v2, initialPayload, productId),
+    };
   } catch {
     return null;
-  } finally {
-    clearTimeout(timeoutId);
   }
 }
 
 
 /**
- * Request-scoped cached wrapper. React's cache() memoizes the function
- * call within a single server render — multiple invocations with the
- * same arguments share one Promise. Cuts the 2× backend round-trip
- * (generateMetadata + ProductDetailPage) to 1×.
+ * Request-scoped cached wrapper. React's cache() memoizes this full PDP
+ * fetch within a single server render, so generateMetadata and the page
+ * share one get_pdp_v2 operation.
  *
- * The function still accepts merchantId because the callers already
- * derive it from the route, but /api/agent/pdp/{id} is keyed on the
- * canonical product identity and does not carry merchant_id over the
- * wire.
+ * Keep the cache key primitive. Passing fresh object literals would miss
+ * React.cache's argument identity map and could reintroduce duplicate
+ * backend reads.
  *
  * Test compatibility: when React.cache() is invoked outside a server
  * render context (e.g. vitest), it falls back to passthrough — the
- * inner function still executes, just without memoization. Tests
- * `vi.stubGlobal('fetch', ...)` intercept the wire call regardless.
+ * inner function still executes, just without memoization.
  */
-const fetchProductForServerRender = cache(
-  async (args: { productId: string; merchantId?: string }) => {
-    return _fetchProductForServerRenderUncached(args);
+const fetchPdpForServerRender = cache(
+  async (productId: string, merchantId: string) => {
+    return _fetchPdpForServerRenderUncached(productId, merchantId);
   },
 );
 
@@ -268,10 +260,7 @@ export async function generateMetadata({
   const resolvedSearchParams = searchParams ? await searchParams : {};
   const productId = String(resolvedParams.id || '').trim();
   const merchantId = readSearchParam(resolvedSearchParams.merchant_id);
-  const renderData = await fetchProductForServerRender({
-    productId,
-    ...(merchantId ? { merchantId } : {}),
-  });
+  const renderData = await fetchPdpForServerRender(productId, merchantId);
 
   return renderData
     ? buildMetadataFromProduct(renderData.product, renderData.canonicalRouteId)
@@ -288,10 +277,7 @@ export default async function ProductDetailPage(props: Props) {
   const merchantId = readSearchParam(resolvedSearchParams.merchant_id);
 
   const renderData = productId
-    ? await fetchProductForServerRender({
-        productId,
-        ...(merchantId ? { merchantId } : {}),
-      })
+    ? await fetchPdpForServerRender(productId, merchantId)
     : null;
 
   const jsonLd = renderData
@@ -312,7 +298,11 @@ export default async function ProductDetailPage(props: Props) {
           dangerouslySetInnerHTML={{ __html: jsonLd }}
         />
       ) : null}
-      <ProductDetailClient params={props.params} />
+      <ProductDetailClient
+        key={JSON.stringify([productId || null, merchantId || null])}
+        params={props.params}
+        initialPayload={renderData?.initialPayload ?? null}
+      />
     </>
   );
 }

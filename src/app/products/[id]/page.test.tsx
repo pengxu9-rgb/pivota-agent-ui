@@ -101,6 +101,7 @@ vi.mock('@/features/pdp/containers/GenericPDPContainer', () => ({
   }) => (
     <div data-testid="generic-pdp">
       <div>{payload.product.title}</div>
+      <div data-testid="merchant-id">{payload.product.merchant_id}</div>
       <button
         type="button"
         onClick={() => {
@@ -186,8 +187,26 @@ vi.mock('@/features/pdp/state/freezePolicy', () => ({
   ),
 }));
 
-function renderPage(productId = 'prod_1') {
-  return render(<ProductDetailPage params={{ id: productId } as any} />);
+function renderPage(productId = 'prod_1', initialPayload?: any) {
+  return render(<ProductDetailPage params={{ id: productId } as any} initialPayload={initialPayload} />);
+}
+
+function KeyedProductDetailPage({
+  productId,
+  merchantId,
+  initialPayload,
+}: {
+  productId: string;
+  merchantId?: string;
+  initialPayload: any;
+}) {
+  return (
+    <ProductDetailPage
+      key={JSON.stringify([productId || null, merchantId || null])}
+      params={{ id: productId } as any}
+      initialPayload={initialPayload}
+    />
+  );
 }
 
 const canonicalPayload = {
@@ -313,6 +332,9 @@ describe('ProductDetailPage canonical PDP loading', () => {
     addItemMock.mockReset();
     openCartMock.mockReset();
     authUser = null;
+    window.sessionStorage.clear();
+    window.localStorage.clear();
+    window.history.replaceState({}, '', '/products/prod_1');
 
     getPdpV2PersonalizationMock.mockResolvedValue({});
     recordBrowseHistoryEventMock.mockResolvedValue(null);
@@ -332,6 +354,126 @@ describe('ProductDetailPage canonical PDP loading', () => {
 
     expect(screen.getByTestId('pdp-loading-scrim')).toBeInTheDocument();
     expect(screen.getByRole('status')).toHaveTextContent('Loading products');
+  });
+
+  it('renders an initial server PDP payload immediately without a cold-start get_pdp_v2 call', () => {
+    renderPage('prod_1', canonicalPayload);
+
+    expect(screen.getByTestId('generic-pdp')).toHaveTextContent('Canonical PDP Product');
+    expect(screen.queryByTestId('pdp-loading-scrim')).not.toBeInTheDocument();
+    expect(getPdpV2Mock).not.toHaveBeenCalled();
+  });
+
+  it('refetches from the client when an initial server payload has checkout context in the URL', async () => {
+    window.history.pushState(
+      {},
+      '',
+      '/products/prod_1?checkout_token=abc&source=creator_agent',
+    );
+    getPdpV2Mock.mockResolvedValue({ status: 'success', modules: [] });
+
+    renderPage('prod_1', canonicalPayload);
+
+    await waitFor(() => {
+      expect(window.sessionStorage.getItem('pivota_checkout_token')).toBe('abc');
+      expect(window.localStorage.getItem('pivota_checkout_token')).toBe('abc');
+      expect(window.sessionStorage.getItem('pivota_checkout_source')).toBe('creator_agent');
+      expect(window.localStorage.getItem('pivota_checkout_source')).toBe('creator_agent');
+    });
+    await waitFor(() => {
+      expect(getPdpV2Mock).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it('remounts with the next initial server payload on client-side product navigation', async () => {
+    const nextPayload = {
+      ...canonicalPayload,
+      product: {
+        ...canonicalPayload.product,
+        product_id: 'prod_2',
+        title: 'Second PDP Product',
+      },
+    };
+
+    const { rerender } = render(
+      <KeyedProductDetailPage productId="prod_1" initialPayload={canonicalPayload} />,
+    );
+
+    expect(screen.getByTestId('generic-pdp')).toHaveTextContent('Canonical PDP Product');
+
+    rerender(<KeyedProductDetailPage productId="prod_2" initialPayload={nextPayload} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('generic-pdp')).toHaveTextContent('Second PDP Product');
+    });
+    expect(screen.queryByText('Canonical PDP Product')).not.toBeInTheDocument();
+    expect(getPdpV2Mock).not.toHaveBeenCalled();
+  });
+
+  it('remounts with the next initial server payload on same-product seller navigation', async () => {
+    const merchantAPayload = {
+      ...canonicalPayload,
+      product: {
+        ...canonicalPayload.product,
+        merchant_id: 'merch_A',
+        title: 'Merchant A PDP Product',
+      },
+      offers: [
+        {
+          ...canonicalPayload.offers[0],
+          merchant_id: 'merch_A',
+        },
+      ],
+    };
+    const merchantBPayload = {
+      ...canonicalPayload,
+      product: {
+        ...canonicalPayload.product,
+        merchant_id: 'merch_B',
+        title: 'Merchant B PDP Product',
+      },
+      offers: [
+        {
+          ...canonicalPayload.offers[0],
+          merchant_id: 'merch_B',
+        },
+      ],
+    };
+
+    const { rerender } = render(
+      <KeyedProductDetailPage
+        productId="prod_1"
+        merchantId="merch_A"
+        initialPayload={merchantAPayload}
+      />,
+    );
+
+    expect(screen.getByTestId('generic-pdp')).toHaveTextContent('Merchant A PDP Product');
+    expect(screen.getByTestId('merchant-id')).toHaveTextContent('merch_A');
+
+    rerender(
+      <KeyedProductDetailPage
+        productId="prod_1"
+        merchantId="merch_B"
+        initialPayload={merchantBPayload}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('generic-pdp')).toHaveTextContent('Merchant B PDP Product');
+    });
+    expect(screen.getByTestId('merchant-id')).toHaveTextContent('merch_B');
+    expect(screen.queryByText('Merchant A PDP Product')).not.toBeInTheDocument();
+    expect(getPdpV2Mock).not.toHaveBeenCalled();
+  });
+
+  it('falls back to the client get_pdp_v2 fetch when the initial server payload is null', async () => {
+    getPdpV2Mock.mockResolvedValue({ status: 'success', modules: [] });
+
+    renderPage('prod_1', null);
+
+    await screen.findByTestId('generic-pdp');
+    expect(getPdpV2Mock).toHaveBeenCalledTimes(1);
   });
 
   it('requests canonical PDP modules on the first get_pdp_v2 call', async () => {

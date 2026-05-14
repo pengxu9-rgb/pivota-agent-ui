@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 import { useCartStore } from '@/store/cartStore';
 import { useAuthStore } from '@/store/authStore';
+import { getCheckoutContextFromBrowser } from '@/lib/checkoutToken';
 import { hideProductRouteLoading } from '@/lib/productRouteLoading';
 import {
   getPdpV2,
@@ -51,6 +52,7 @@ import {
 
 interface Props {
   params: Promise<{ id: string }>;
+  initialPayload?: PDPPayload | null;
 }
 
 const PDP_V2_SCOPED_TIMEOUT_MS = 9000;
@@ -355,6 +357,52 @@ const PDP_INITIAL_INCLUDE = [
   'similar',
 ] as const;
 
+function prepareLoadedPdpPayload(assembled: PDPPayload) {
+  const offerRows = Array.isArray((assembled as any).offers) ? (assembled as any).offers : [];
+  const expectedOffersCount = Number((assembled as any).offers_count);
+  const hasReviewsModule = hasModule(assembled, 'reviews_preview');
+  const hasSimilarModule = hasModule(assembled, 'recommendations');
+  const hasRecommendations = hasRecommendationsItems(assembled);
+  const similarModule = Array.isArray(assembled.modules)
+    ? assembled.modules.find((m) => isRecommendationModuleType(m?.type))
+    : null;
+  const similarItems = Array.isArray((similarModule as any)?.data?.items)
+    ? (similarModule as any).data.items
+    : [];
+
+  const nextPayload = { ...assembled } as PDPPayload;
+  delete (nextPayload as any).x_offers_state;
+  delete (nextPayload as any).x_reviews_state;
+  delete (nextPayload as any).x_recommendations_state;
+
+  return {
+    payload: {
+      ...nextPayload,
+      ...(offerRows.length > 0 || Number.isFinite(expectedOffersCount)
+        ? { x_offers_state: 'ready' as const }
+        : {}),
+      ...(hasReviewsModule ? { x_reviews_state: 'ready' as const } : {}),
+      ...(hasSimilarModule ? { x_recommendations_state: 'ready' as const } : {}),
+      x_source_locks: {
+        reviews: hasReviewsModule,
+        similar: hasSimilarModule,
+        ugc: false,
+      },
+    },
+    sourceLocks: {
+      ...DEFAULT_MODULE_SOURCE_LOCKS,
+      reviews: hasReviewsModule,
+      similar: hasSimilarModule,
+    },
+    offerRows,
+    expectedOffersCount,
+    hasReviewsModule,
+    hasSimilarModule,
+    hasRecommendations,
+    similarCount: similarItems.length,
+  };
+}
+
 function mapSellerCandidatesFromResolveCandidates(
   resolved: Awaited<ReturnType<typeof resolveProductCandidates>>,
 ): ProductResponse[] {
@@ -427,7 +475,7 @@ function shouldRetryWithCoreOnlyPdp(err: unknown): boolean {
   const message = String((err as Error)?.message || '').toLowerCase();
   return message.includes('timed out') || message.includes('timeout') || message.includes('temporarily unavailable');
 }
-export default function ProductDetailPage({ params }: Props) {
+export default function ProductDetailPage({ params, initialPayload }: Props) {
   const { id } = use(params);
   const searchParams = useSearchParams();
   const searchParamsString = searchParams.toString();
@@ -437,15 +485,17 @@ export default function ProductDetailPage({ params }: Props) {
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
   const userId = user?.id;
+  const initialLoadState = initialPayload ? prepareLoadedPdpPayload(initialPayload) : null;
+  const hasInitialPayload = Boolean(initialLoadState);
 
-  const [pdpPayload, setPdpPayload] = useState<PDPPayload | null>(null);
+  const [pdpPayload, setPdpPayload] = useState<PDPPayload | null>(() => initialLoadState?.payload ?? null);
   const [sellerCandidates, setSellerCandidates] = useState<ProductResponse[] | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => !hasInitialPayload);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const localBrowseHistoryRecordedRef = useRef<string | null>(null);
   const remoteBrowseHistoryRecordedRef = useRef<string | null>(null);
-  const moduleSourceLocksRef = useRef({ ...DEFAULT_MODULE_SOURCE_LOCKS });
+  const moduleSourceLocksRef = useRef(initialLoadState?.sourceLocks ?? { ...DEFAULT_MODULE_SOURCE_LOCKS });
   const [ugcCapabilities, setUgcCapabilities] = useState<UgcCapabilities | null>({
     canUploadMedia: false,
     canWriteReview: false,
@@ -461,6 +511,13 @@ export default function ProductDetailPage({ params }: Props) {
   const inferredMerchantId = inferCanonicalPdpMerchantId(id, merchantIdParam);
   const routeIsProductGroup = isProductGroupRouteId(id);
   const routeIsPivotaSignature = isPivotaSignatureRouteId(id);
+
+  useEffect(() => {
+    // Preserve the checkout-token handoff that used to happen as a side effect of
+    // getPdpV2 -> callGateway -> getCheckoutContext when no SSR payload existed.
+    getCheckoutContextFromBrowser();
+  }, []);
+
   useEffect(() => {
     if (loading && !error && !pdpPayload) return;
     hideProductRouteLoading();
@@ -563,6 +620,13 @@ export default function ProductDetailPage({ params }: Props) {
   }, [id, pdpPayload, routeIsPivotaSignature, routeIsProductGroup, router, searchParamsString]);
 
   useEffect(() => {
+    if (hasInitialPayload && reloadKey === 0) {
+      // Skip cold-start fetch unless we have a checkout token. Token-scoped
+      // PDP responses need the browser gateway call that carries X-Checkout-Token.
+      const ctx = getCheckoutContextFromBrowser();
+      if (!ctx.token) return;
+    }
+
     let cancelled = false;
     const candidateTimeoutMs = 4500;
     const v2TimeoutMs = merchantIdParam
@@ -604,65 +668,29 @@ export default function ProductDetailPage({ params }: Props) {
         source: 'get_pdp_v2' | 'get_pdp_v2_core_retry',
         startedAt: number,
       ) => {
-        const offerRows = Array.isArray((assembled as any).offers) ? (assembled as any).offers : [];
-        const expectedOffersCount = Number((assembled as any).offers_count);
-        const hasReviewsModule = hasModule(assembled, 'reviews_preview');
-        const hasSimilarModule = hasModule(assembled, 'recommendations');
-        const hasRecommendations = hasRecommendationsItems(assembled);
-        const similarCount = Array.isArray(
-          (assembled.modules.find((m) => isRecommendationModuleType(m?.type)) as any)?.data?.items,
-        )
-          ? (
-              assembled.modules.find(
-                (m) => isRecommendationModuleType(m?.type),
-              ) as any
-            ).data.items.length
-          : 0;
-
-        moduleSourceLocksRef.current = {
-          ...DEFAULT_MODULE_SOURCE_LOCKS,
-          reviews: hasReviewsModule,
-          similar: hasSimilarModule,
-        };
-
-        const nextPayload = { ...assembled } as PDPPayload;
-        delete (nextPayload as any).x_offers_state;
-        delete (nextPayload as any).x_reviews_state;
-        delete (nextPayload as any).x_recommendations_state;
-
-        setPdpPayload({
-          ...nextPayload,
-          ...(offerRows.length > 0 || Number.isFinite(expectedOffersCount)
-            ? { x_offers_state: 'ready' as const }
-            : {}),
-          ...(hasReviewsModule ? { x_reviews_state: 'ready' as const } : {}),
-          ...(hasSimilarModule ? { x_recommendations_state: 'ready' as const } : {}),
-          x_source_locks: {
-            reviews: hasReviewsModule,
-            similar: hasSimilarModule,
-            ugc: false,
-          },
-        });
+        const prepared = prepareLoadedPdpPayload(assembled);
+        moduleSourceLocksRef.current = prepared.sourceLocks;
+        setPdpPayload(prepared.payload);
         pdpTracking.track('pdp_core_ready', {
           source,
           latency_ms: Date.now() - startedAt,
-          has_offers: offerRows.length > 0,
-          offers_count: Number.isFinite(expectedOffersCount) ? expectedOffersCount : null,
-          offers_loaded_count: offerRows.length,
-          has_reviews_module: hasReviewsModule,
-          has_similar_module: hasSimilarModule,
+          has_offers: prepared.offerRows.length > 0,
+          offers_count: Number.isFinite(prepared.expectedOffersCount) ? prepared.expectedOffersCount : null,
+          offers_loaded_count: prepared.offerRows.length,
+          has_reviews_module: prepared.hasReviewsModule,
+          has_similar_module: prepared.hasSimilarModule,
         });
-        if (hasReviewsModule) {
+        if (prepared.hasReviewsModule) {
           pdpTracking.track('pdp_module_ready', {
             module: 'reviews_preview',
             source,
           });
         }
-        if (hasRecommendations) {
+        if (prepared.hasRecommendations) {
           pdpTracking.track('pdp_module_ready', {
             module: 'similar',
             source,
-            count: similarCount,
+            count: prepared.similarCount,
           });
         }
         setLoading(false);
@@ -739,7 +767,7 @@ export default function ProductDetailPage({ params }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [id, inferredMerchantId, merchantIdParam, reloadKey, routeIsProductGroup]);
+  }, [hasInitialPayload, id, inferredMerchantId, merchantIdParam, reloadKey, routeIsProductGroup]);
 
   useEffect(() => {
     let cancelled = false;

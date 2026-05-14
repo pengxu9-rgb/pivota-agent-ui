@@ -1284,21 +1284,27 @@ function getCheckoutRestartMessage(source: string): string {
 
 type GatewayCallOptions = {
   signal?: AbortSignal;
+  gatewayBaseUrl?: string | null;
 };
 
 type GatewayTimeoutOptions = {
   signal?: AbortSignal;
   timeoutMs?: number;
+  gatewayBaseUrl?: string | null;
 };
 
 function normalizeGatewayTimeoutOptions(
   timeoutOrOptions?: number | GatewayTimeoutOptions,
 ): GatewayTimeoutOptions {
   if (typeof timeoutOrOptions === 'number') {
-    return { timeoutMs: timeoutOrOptions };
+    return { timeoutMs: timeoutOrOptions, gatewayBaseUrl: undefined };
   }
   if (timeoutOrOptions && typeof timeoutOrOptions === 'object') {
-    return timeoutOrOptions;
+    return {
+      signal: timeoutOrOptions.signal,
+      timeoutMs: timeoutOrOptions.timeoutMs,
+      gatewayBaseUrl: timeoutOrOptions.gatewayBaseUrl,
+    };
   }
   return {};
 }
@@ -1351,7 +1357,7 @@ function buildGatewayRequestHeaders(args: {
 }
 
 async function callGateway(body: InvokeBody, options: GatewayCallOptions = {}) {
-  const proxyUrl = resolveGatewayInvokeUrl(API_BASE);
+  const proxyUrl = resolveGatewayInvokeUrl(options.gatewayBaseUrl || API_BASE);
   const checkoutContext = getCheckoutContext()
   let checkoutToken = checkoutContext.token
   const defaultScope = getDefaultShoppingScope();
@@ -1503,10 +1509,10 @@ async function callGatewayWithTimeout<T = any>(
   body: InvokeBody,
   timeoutOrOptions?: number | GatewayTimeoutOptions,
 ): Promise<T> {
-  const { signal, timeoutMs } = normalizeGatewayTimeoutOptions(timeoutOrOptions);
+  const { signal, timeoutMs, gatewayBaseUrl } = normalizeGatewayTimeoutOptions(timeoutOrOptions);
   const ms = Number(timeoutMs);
   const shouldTimeout = Number.isFinite(ms) && ms > 0;
-  if (!signal && !shouldTimeout) return (await callGateway(body)) as T;
+  if (!signal && !shouldTimeout) return (await callGateway(body, { gatewayBaseUrl })) as T;
 
   const controller = new AbortController();
   let didTimeout = false;
@@ -1532,7 +1538,7 @@ async function callGatewayWithTimeout<T = any>(
   }
 
   try {
-    return (await callGateway(body, { signal: controller.signal })) as T;
+    return (await callGateway(body, { signal: controller.signal, gatewayBaseUrl })) as T;
   } catch (err) {
     if ((err as any)?.name === 'AbortError' && didTimeout) {
       const timeoutErr = new Error('The request timed out. Please retry.') as ApiError;
@@ -3020,6 +3026,7 @@ export async function getPdpV2(args: {
   subject?: { type: 'product_group'; id: string } | null;
   include?: string[] | string | null;
   timeout_ms?: number;
+  gatewayBaseUrl?: string | null;
   debug?: boolean;
   cache_bypass?: boolean;
 }): Promise<GetPdpV2Response> {
@@ -3063,7 +3070,10 @@ export async function getPdpV2(args: {
         },
       },
     },
-    args.timeout_ms,
+    {
+      timeoutMs: args.timeout_ms,
+      gatewayBaseUrl: args.gatewayBaseUrl,
+    },
   );
 
   return data as GetPdpV2Response;
