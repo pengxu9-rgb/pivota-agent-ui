@@ -191,8 +191,16 @@ export function BeautyMobileSellerPicker({
           ship={shipLabel(primary)}
           onClick={() => onSelect(primary.offer_id)}
         />
-        {expanded
-          ? others.map((offer) => (
+        {/*
+          Render every seller row in the DOM regardless of `expanded` so
+          the SSR HTML carries the full multi-seller list for crawlers and
+          AI shopping agents. The HTML `hidden` attribute collapses it
+          visually and removes it from tab order / the a11y tree, matching
+          the render-always-with-hidden pattern used elsewhere on the PDP.
+        */}
+        {others.length > 0 ? (
+          <div hidden={!expanded} className="flex flex-col gap-1.5">
+            {others.map((offer) => (
               <SellerRow
                 key={offer.offer_id}
                 offer={offer}
@@ -203,8 +211,9 @@ export function BeautyMobileSellerPicker({
                 ship={shipLabel(offer)}
                 onClick={() => onSelect(offer.offer_id)}
               />
-            ))
-          : null}
+            ))}
+          </div>
+        ) : null}
       </div>
 
       {others.length > 0 ? (
