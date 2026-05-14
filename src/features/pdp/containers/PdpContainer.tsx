@@ -72,9 +72,6 @@ import { GenericDetailsSection } from '@/features/pdp/sections/GenericDetailsSec
 import { PivotaInsightsSection, isDisplayableProductIntelData } from '@/features/pdp/sections/PivotaInsightsSection';
 import { OfferSheet } from '@/features/pdp/offers/OfferSheet';
 import { WaysToSave } from '@/features/pdp/components/WaysToSave';
-import { BeautyMobileBuyBar } from '@/features/pdp/components/BeautyMobileBuyBar';
-import { BeautyMobileSellerPicker } from '@/features/pdp/components/BeautyMobileSellerPicker';
-import { BeautyShippingStrip } from '@/features/pdp/components/BeautyShippingStrip';
 import { ModuleShell } from '@/features/pdp/components/ModuleShell';
 import { DEFAULT_UGC_SNAPSHOT, lockFirstUgcSource, mergeUgcItems } from '@/features/pdp/state/freezePolicy';
 import { getStableGalleryItems, resolveHeroMediaUrl } from '@/features/pdp/state/heroMedia';
@@ -1973,16 +1970,6 @@ export function PdpContainer({
       : selectedOffer && offerTotalPrice != null
         ? offerTotalPrice
         : basePriceAmount;
-  // Per-unit price for the beauty mobile buy bar — same branching as
-  // displayPriceAmount but with itemAmount instead of totalAmount so qty
-  // multiplication doesn't double-count rolled-in shipping.
-  const buyBarUnitPrice = shouldUseOfferVariantPrice
-    ? offerItemPrice ?? basePriceAmount
-    : shouldUseBaseVariantPrice
-      ? basePriceAmount
-      : selectedOffer && typeof offerItemPrice === 'number' && Number.isFinite(offerItemPrice)
-        ? offerItemPrice
-        : basePriceAmount;
 
   const effectiveMerchantId = selectedOffer?.merchant_id || payload.product.merchant_id;
   const effectiveProductId = String(selectedOffer?.product_id || payload.product.product_id || '').trim();
@@ -2168,14 +2155,6 @@ export function PdpContainer({
     : [];
 
   const tabs = useMemo(() => {
-    if (resolvedMode === 'beauty' && !isDesktop) {
-      return [
-        { id: 'product', label: 'Overview' },
-        ...(hasInsights ? [{ id: 'insights', label: 'Insights' }] : []),
-        ...(hasReviews ? [{ id: 'reviews', label: 'Reviews' }] : []),
-        ...(showRecommendationsSection ? [{ id: 'similar', label: 'Similar' }] : []),
-      ];
-    }
     return [
       { id: 'product', label: 'Product' },
       ...(hasInsights ? [{ id: 'insights', label: 'Insights' }] : []),
@@ -2184,7 +2163,7 @@ export function PdpContainer({
       { id: 'details', label: 'Details' },
       ...(showRecommendationsSection ? [{ id: 'similar', label: 'Similar' }] : []),
     ];
-  }, [hasInsights, hasReviews, showSizeGuide, showRecommendationsSection, resolvedMode, isDesktop]);
+  }, [hasInsights, hasReviews, showSizeGuide, showRecommendationsSection]);
 
   const handleTabChange = (tabId: string) => {
     setActiveTab(tabId);
@@ -3816,7 +3795,7 @@ export function PdpContainer({
                     -{discountPercent}%
                   </span>
                 ) : null}
-                {offers.length > 1 && !(resolvedMode === 'beauty' && !isDesktop) ? (
+                {offers.length > 1 ? (
                   <button
                     type="button"
                     className="ml-auto text-[11px] font-semibold text-primary"
@@ -3830,30 +3809,12 @@ export function PdpContainer({
                 ) : null}
               </div>
 
-              {resolvedMode === 'beauty' && !isDesktop ? (
-                <>
-                  {payload.product.brand?.name ? (
-                    <div className="mt-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-primary">
-                      {payload.product.brand.name}
-                    </div>
-                  ) : null}
-                  <h1 className="mt-1.5 font-serif text-[26px] font-medium leading-[1.12] tracking-[-0.01em] text-foreground">
-                    {payload.product.title}
-                  </h1>
-                  {payload.product.subtitle ? (
-                    <p className="mt-1 text-[13px] leading-[1.4] text-muted-foreground">{payload.product.subtitle}</p>
-                  ) : null}
-                </>
-              ) : (
-                <>
-                  <h1 className="mt-1 text-[17px] font-semibold leading-snug text-foreground">
-                    {payload.product.brand?.name ? `${payload.product.brand.name} ` : ''}{payload.product.title}
-                  </h1>
-                  {payload.product.subtitle ? (
-                    <p className="mt-0.5 text-[11px] text-muted-foreground">{payload.product.subtitle}</p>
-                  ) : null}
-                </>
-              )}
+              <h1 className="mt-1 text-[17px] font-semibold leading-snug text-foreground">
+                {payload.product.brand?.name ? `${payload.product.brand.name} ` : ''}{payload.product.title}
+              </h1>
+              {payload.product.subtitle ? (
+                <p className="mt-0.5 text-[11px] text-muted-foreground">{payload.product.subtitle}</p>
+              ) : null}
               {selectedVariant && selectedVariantHeaderLabel ? (
                 <div className="mt-0.5 text-xs text-muted-foreground">
                   Selected: <span className="text-foreground">{selectedVariantHeaderLabel}</span>
@@ -4152,37 +4113,7 @@ export function PdpContainer({
               ) : null}
             </div>
 
-          {resolvedMode === 'beauty' && !isDesktop && offers.length > 1 ? (
-            <BeautyMobileSellerPicker
-              offers={offers}
-              selectedVariant={selectedVariant}
-              selectedOfferId={selectedOffer?.offer_id || null}
-              bestPriceOfferId={variantAwareBestPriceOfferId || payload.best_price_offer_id || null}
-              primaryMerchantId={payload.product.merchant_id || null}
-              onSelect={(offerId) => {
-                setSelectedOfferId(offerId);
-                pdpTracking.track('pdp_action_click', {
-                  action_type: 'select_offer',
-                  offer_id: offerId,
-                });
-              }}
-            />
-          ) : null}
-
-          {resolvedMode === 'beauty' && !isDesktop ? (
-            <BeautyShippingStrip
-              etaRange={effectiveShippingEta as [number, number] | undefined}
-              methodLabel={selectedOffer?.shipping?.method_label || null}
-              freeShipping={
-                typeof selectedOffer?.shipping?.cost?.amount === 'number'
-                  ? selectedOffer.shipping.cost.amount === 0
-                  : null
-              }
-              returnWindowDays={effectiveReturns?.return_window_days || null}
-              freeReturns={effectiveReturns?.free_returns ?? null}
-              sellerLabel={selectedOffer?.merchant_name || null}
-            />
-          ) : showTrustBadges ? (
+          {showTrustBadges ? (
             <div className="mx-2.5 mt-1.5 flex items-center gap-2 rounded-lg bg-muted/50 px-3 py-1.5 text-[10px] sm:mx-3 lg:mx-0">
               {trustBadges.map((badge, idx) => (
                 <div key={`${badge}-${idx}`} className="flex items-center gap-2">
@@ -4698,84 +4629,45 @@ export function PdpContainer({
                     </div>
                   ) : null}
 
-                  {resolvedMode === 'beauty' ? (
-                    <BeautyMobileBuyBar
-                      unitPrice={buyBarUnitPrice || 0}
-                      shippingCost={
-                        typeof selectedOffer?.shipping?.cost?.amount === 'number' &&
-                        Number.isFinite(selectedOffer.shipping.cost.amount)
-                          ? selectedOffer.shipping.cost.amount
-                          : 0
-                      }
-                      currency={displayCurrency}
-                      quantity={resolvedQuantity}
-                      onQtyChange={(next) => setQuantity(next)}
-                      disabled={!effectiveIsInStock}
-                      buyNowLabel={actionsByType.buy_now || 'Buy now'}
-                      onAddToCart={() => {
-                        pdpTracking.track('pdp_action_click', { action_type: 'add_to_cart', variant_id: selectedVariant.variant_id });
-                        dispatchPdpAction('add_to_cart', {
-                          variant: selectedVariant,
-                          quantity: resolvedQuantity,
-                          merchant_id: effectiveMerchantId,
-                          product_id: effectiveProductId || undefined,
-                          offer_id: selectedOffer?.offer_id || undefined,
-                          onAddToCart,
-                        });
-                      }}
-                      onBuyNow={() => {
-                        pdpTracking.track('pdp_action_click', { action_type: 'buy_now', variant_id: selectedVariant.variant_id });
-                        dispatchPdpAction('buy_now', {
-                          variant: selectedVariant,
-                          quantity: resolvedQuantity,
-                          merchant_id: effectiveMerchantId,
-                          product_id: effectiveProductId || undefined,
-                          offer_id: selectedOffer?.offer_id || undefined,
-                          onBuyNow,
-                        });
-                      }}
-                    />
-                  ) : (
-                    <div className="flex items-center gap-3 px-3 py-2.5">
-                      <div className="flex flex-1 gap-2">
-                        <Button
-                          variant="outline"
-                          className="flex-1 h-10 rounded-full font-semibold text-sm"
-                          disabled={!effectiveIsInStock}
-                          onClick={() => {
-                            pdpTracking.track('pdp_action_click', { action_type: 'add_to_cart', variant_id: selectedVariant.variant_id });
-                            dispatchPdpAction('add_to_cart', {
-                              variant: selectedVariant,
-                              quantity: resolvedQuantity,
-                              merchant_id: effectiveMerchantId,
-                              product_id: effectiveProductId || undefined,
-                              offer_id: selectedOffer?.offer_id || undefined,
-                              onAddToCart,
-                            });
-                          }}
-                        >
-                          {actionsByType.add_to_cart || 'Add to Cart'}
-                        </Button>
-                        <Button
-                          className="flex-[1.5] h-10 rounded-full bg-primary hover:bg-primary/90 font-semibold text-sm"
-                          disabled={!effectiveIsInStock}
-                          onClick={() => {
-                            pdpTracking.track('pdp_action_click', { action_type: 'buy_now', variant_id: selectedVariant.variant_id });
-                            dispatchPdpAction('buy_now', {
-                              variant: selectedVariant,
-                              quantity: resolvedQuantity,
-                              merchant_id: effectiveMerchantId,
-                              product_id: effectiveProductId || undefined,
-                              offer_id: selectedOffer?.offer_id || undefined,
-                              onBuyNow,
-                            });
-                          }}
-                        >
-                          {actionsByType.buy_now || 'Buy Now'}
-                        </Button>
-                      </div>
+                  <div className="flex items-center gap-3 px-3 py-2.5">
+                    <div className="flex flex-1 gap-2">
+                      <Button
+                        variant="outline"
+                        className="flex-1 h-10 rounded-full font-semibold text-sm"
+                        disabled={!effectiveIsInStock}
+                        onClick={() => {
+                          pdpTracking.track('pdp_action_click', { action_type: 'add_to_cart', variant_id: selectedVariant.variant_id });
+                          dispatchPdpAction('add_to_cart', {
+                            variant: selectedVariant,
+                            quantity: resolvedQuantity,
+                            merchant_id: effectiveMerchantId,
+                            product_id: effectiveProductId || undefined,
+                            offer_id: selectedOffer?.offer_id || undefined,
+                            onAddToCart,
+                          });
+                        }}
+                      >
+                        {actionsByType.add_to_cart || 'Add to Cart'}
+                      </Button>
+                      <Button
+                        className="flex-[1.5] h-10 rounded-full bg-primary hover:bg-primary/90 font-semibold text-sm"
+                        disabled={!effectiveIsInStock}
+                        onClick={() => {
+                          pdpTracking.track('pdp_action_click', { action_type: 'buy_now', variant_id: selectedVariant.variant_id });
+                          dispatchPdpAction('buy_now', {
+                            variant: selectedVariant,
+                            quantity: resolvedQuantity,
+                            merchant_id: effectiveMerchantId,
+                            product_id: effectiveProductId || undefined,
+                            offer_id: selectedOffer?.offer_id || undefined,
+                            onBuyNow,
+                          });
+                        }}
+                      >
+                        {actionsByType.buy_now || 'Buy Now'}
+                      </Button>
                     </div>
-                  )}
+                  </div>
                 </div>
               </div>
             </div>,
