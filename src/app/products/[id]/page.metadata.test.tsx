@@ -253,7 +253,8 @@ describe('product page metadata', () => {
 
     expect(scriptMatch).not.toBeNull();
     const parsed = JSON.parse(scriptMatch![1]);
-    expect(parsed.itemList).toMatchObject({
+    const itemListNode = parsed['@graph']?.find((node: any) => node['@type'] === 'ItemList');
+    expect(itemListNode).toMatchObject({
       '@type': 'ItemList',
       numberOfItems: 1,
       itemListElement: [

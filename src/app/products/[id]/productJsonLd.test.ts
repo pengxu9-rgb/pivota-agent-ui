@@ -418,7 +418,19 @@ describe('buildProductJsonLd — recommendations ItemList', () => {
       },
     );
     const parsed = JSON.parse(out!);
-    expect(parsed.itemList).toEqual({
+    expect(parsed['@context']).toBe('https://schema.org/');
+    expect(parsed['@graph']).toHaveLength(2);
+
+    const productNode = parsed['@graph'].find((node: any) => node['@type'] === 'Product');
+    const itemListNode = parsed['@graph'].find((node: any) => node['@type'] === 'ItemList');
+    expect(productNode).toMatchObject({
+      '@type': 'Product',
+      name: 'X',
+      url: URL,
+    });
+    expect(productNode['@context']).toBeUndefined();
+    expect(productNode.itemList).toBeUndefined();
+    expect(itemListNode).toEqual({
       '@type': 'ItemList',
       name: 'Similar products',
       numberOfItems: 3,
@@ -443,6 +455,18 @@ describe('buildProductJsonLd — recommendations ItemList', () => {
         },
       ],
     });
+  });
+
+  it('keeps flat Product JSON-LD when recommendations are absent', () => {
+    const out = buildProductJsonLd({
+      product: { title: 'X' },
+      productId: PRODUCT_ID,
+    });
+    const parsed = JSON.parse(out!);
+    expect(parsed['@context']).toBe('https://schema.org/');
+    expect(parsed['@type']).toBe('Product');
+    expect(parsed['@graph']).toBeUndefined();
+    expect(parsed.itemList).toBeUndefined();
   });
 });
 
@@ -988,6 +1012,24 @@ describe('Stage 3b-2: _buildAggregateOffer', () => {
     };
     const agg = _buildAggregateOffer(product, URL);
     expect(agg!.offers.map((offer: any) => offer.url)).toEqual([URL, URL]);
+  });
+
+  it('uses affiliate_url as a child Offer deep link when no higher-priority URL fields exist', () => {
+    const affiliateUrl = 'https://affiliate.example.com/products/abc';
+    const product = {
+      _pivota_offers: [
+        {
+          merchant_id: 'm_affiliate',
+          merchant_name: 'Affiliate Merchant',
+          affiliate_url: affiliateUrl,
+          price: { amount: 25, currency: 'USD' },
+        },
+        { merchant_id: 'm_b', merchant_name: 'B', price: { amount: 26, currency: 'USD' } },
+      ],
+    };
+    const agg = _buildAggregateOffer(product, URL);
+    expect(agg!.offers[0].url).toBe(affiliateUrl);
+    expect(agg!.offers[0].url).not.toBe(URL);
   });
 
   it('integrates with buildProductJsonLd: multi-seller → AggregateOffer replaces single Offer', () => {

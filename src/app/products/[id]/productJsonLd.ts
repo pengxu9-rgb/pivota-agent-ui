@@ -244,6 +244,8 @@ function _readOfferDeepLink(offer: Record<string, any>, parentUrl: string): stri
     offer.external_redirect_url,
     offer.externalRedirectUrl,
     offer.external_url,
+    offer.affiliate_url,
+    offer.affiliateUrl,
     offer.canonical_url,
     offer.url,
     offer.product_url,
@@ -891,7 +893,6 @@ export function buildProductJsonLd(args: {
   };
 
   const recommendationsItemList = _buildRecommendationsItemList(context.recommendationsModule);
-  if (recommendationsItemList) ldRecord.itemList = recommendationsItemList;
 
   // hasVariant + ProductGroup shape (Stage 3b-1 + 2026-05-12 fix).
   // Emit one Product node per real variant so Google's Product
@@ -910,6 +911,15 @@ export function buildProductJsonLd(args: {
   if (variantNodes.length > 0) {
     _addProductGroupShape(ldRecord, variantNodes, product, productId);
     ldRecord.hasVariant = variantNodes;
+  }
+
+  if (recommendationsItemList) {
+    const productNode = { ...ldRecord };
+    delete productNode['@context'];
+    return _safeJsonForScriptTag({
+      '@context': SCHEMA_CONTEXT,
+      '@graph': [productNode, recommendationsItemList],
+    });
   }
 
   return _safeJsonForScriptTag(ldRecord);
