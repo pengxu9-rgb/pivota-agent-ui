@@ -985,6 +985,45 @@ describe('Stage 3b-2: _buildSellerOfferNode', () => {
     expect(node!.url).toBe('https://www.sephora.com/product/abc');
   });
 
+  it('falls back to the PDP URL when offer.url is a relative path', () => {
+    const node = _buildSellerOfferNode(
+      {
+        merchant_id: 'm_pivota',
+        merchant_name: 'Pivota',
+        url: '/order?sessionId=abc123',
+        price: { amount: 24, currency: 'USD' },
+      },
+      URL,
+    );
+    expect(node!.url).toBe(URL);
+  });
+
+  it('falls back to the PDP URL when offer.url uses a non-HTTP scheme', () => {
+    const node = _buildSellerOfferNode(
+      {
+        merchant_id: 'm_ftp',
+        merchant_name: 'FTP Merchant',
+        url: 'ftp://example.com/foo',
+        price: { amount: 24, currency: 'USD' },
+      },
+      URL,
+    );
+    expect(node!.url).toBe(URL);
+  });
+
+  it('uses offer.url when it is an absolute HTTP(S) URL', () => {
+    const node = _buildSellerOfferNode(
+      {
+        merchant_id: 'm_merchant',
+        merchant_name: 'Merchant',
+        url: 'https://merchant.com/p/123',
+        price: { amount: 24, currency: 'USD' },
+      },
+      URL,
+    );
+    expect(node!.url).toBe('https://merchant.com/p/123');
+  });
+
   it('falls back to the PDP URL when only internal checkout URLs are present', () => {
     const node = _buildSellerOfferNode(
       {

@@ -245,7 +245,7 @@ function _readOfferAvailability(offer: Record<string, any>): string | null {
 }
 
 function _readOfferDeepLink(offer: Record<string, any>, parentUrl: string): string {
-  return _firstString(
+  const candidate = _firstString(
     offer.merchant_checkout_url,
     offer.external_redirect_url,
     offer.externalRedirectUrl,
@@ -257,7 +257,13 @@ function _readOfferDeepLink(offer: Record<string, any>, parentUrl: string): stri
     offer.product_url,
     offer.destination_url,
     offer.redirect_url,
-  ) || parentUrl;
+  );
+  // Reject relative paths or non-HTTP schemes: those would send crawlers
+  // to internal/local endpoints instead of the external seller.
+  if (candidate && /^https?:\/\//i.test(candidate.trim())) {
+    return candidate;
+  }
+  return parentUrl;
 }
 
 function _readDayRange(value: unknown): { minValue: number; maxValue: number } | null {
