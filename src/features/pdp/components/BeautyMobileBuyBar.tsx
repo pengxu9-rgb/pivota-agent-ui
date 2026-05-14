@@ -6,7 +6,8 @@ import { cn } from '@/lib/utils';
  * Sticky bottom buy bar for the Beauty mobile PDP.
  * Faithful to redesign/pivota-pdp.jsx → StickyBuyBar.
  *
- * Layout: [ qty stepper ] [ 48×48 bag icon ] [ "Buy now · $X" pill ]
+ * Layout: [ qty stepper ] [ 44×44 bag icon ] [ "Buy now · $X" pill ]
+ * - Compact vertical rhythm so the bar takes minimal first-screen height.
  * - Glass: rgba(255,255,255,0.95) + saturate(180%) blur(20px), 1px top hairline
  * - The "Buy now" total is unitPrice × qty + shipping (shipping counted once,
  *   not per unit). Per the handoff, the bar reuses the existing onAddToCart /
@@ -48,8 +49,8 @@ export function BeautyMobileBuyBar({
 
   return (
     <div
-      className="flex items-center gap-2 border-t border-border bg-white/95 px-3.5 pt-2.5 backdrop-blur-xl backdrop-saturate-[1.8]"
-      style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 16px)' }}
+      className="flex items-center gap-1.5 border-t border-border bg-white/95 px-3 pt-2 backdrop-blur-xl backdrop-saturate-[1.8]"
+      style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 10px)' }}
     >
       {/* Qty stepper */}
       <div className="flex flex-shrink-0 items-center overflow-hidden rounded-full border-[1.5px] border-border bg-white">
@@ -58,7 +59,7 @@ export function BeautyMobileBuyBar({
           onClick={() => onQtyChange(Math.max(1, quantity - 1))}
           disabled={disabled || quantity <= 1}
           aria-label="Decrease quantity"
-          className="flex h-[38px] w-[38px] items-center justify-center text-foreground disabled:opacity-40"
+          className="flex h-9 w-9 items-center justify-center text-foreground disabled:opacity-40"
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
             <line x1="5" y1="12" x2="19" y2="12" />
@@ -72,7 +73,7 @@ export function BeautyMobileBuyBar({
           onClick={() => onQtyChange(quantity + 1)}
           disabled={disabled}
           aria-label="Increase quantity"
-          className="flex h-[38px] w-[38px] items-center justify-center text-foreground disabled:opacity-40"
+          className="flex h-9 w-9 items-center justify-center text-foreground disabled:opacity-40"
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <line x1="12" y1="5" x2="12" y2="19" />
@@ -81,13 +82,13 @@ export function BeautyMobileBuyBar({
         </button>
       </div>
 
-      {/* Add-to-bag icon button — 48×48, white with foreground hairline + corner + */}
+      {/* Add-to-bag icon button — 44×44, white with foreground hairline + corner + */}
       <button
         type="button"
         onClick={onAddToCart}
         disabled={disabled}
         aria-label="Add to bag"
-        className="relative flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full border-[1.5px] border-foreground bg-white text-foreground disabled:opacity-50"
+        className="relative flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full border-[1.5px] border-foreground bg-white text-foreground disabled:opacity-50"
       >
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z" />
@@ -108,7 +109,7 @@ export function BeautyMobileBuyBar({
         onClick={onBuyNow}
         disabled={disabled}
         className={cn(
-          'flex h-12 flex-1 items-center justify-center gap-1.5 rounded-full bg-foreground text-[15px] font-semibold text-white shadow-md',
+          'flex h-11 flex-1 items-center justify-center gap-1.5 rounded-full bg-foreground text-[14px] font-semibold text-white shadow-md',
           'disabled:opacity-50',
         )}
       >

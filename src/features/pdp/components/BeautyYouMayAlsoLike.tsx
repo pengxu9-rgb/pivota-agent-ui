@@ -35,7 +35,9 @@ export function BeautyYouMayAlsoLike({
       <div className="mb-2.5 flex items-center justify-between">
         <h3 className="text-[14px] font-semibold text-foreground">You May Also Like</h3>
       </div>
-      <div className="grid grid-cols-2 gap-2.5">
+      {/* 2-up on mobile; the desktop tree (≥lg) widens it to a 4-up rail
+          so it spans the full content width. */}
+      <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-4">
         {items.map((p, idx) => (
           <div
             key={p.id}

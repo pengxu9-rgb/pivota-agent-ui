@@ -158,75 +158,82 @@ export function BeautyPDPDesktop(props: BeautyPDPMobileProps) {
           </div>
         </div>
 
-        {/* ── Long-form content — centred column below the hero ───────── */}
-        <div className="mx-auto mt-14 max-w-[860px]">
-          {props.recentPurchases?.length ? (
-            <BeautyRecentPurchasesRows
-              items={props.recentPurchases}
-              totalLabel={props.recentPurchasesTotal}
-            />
-          ) : null}
-          {props.customerPhotos?.length ? (
-            <BeautyCustomerPhotos
-              photos={props.customerPhotos}
-              totalLabel={props.customerPhotosTotal}
-              onViewAll={props.onUgcViewAll}
-              onShare={props.onUgcShare}
-              onPhotoClick={props.onUgcPhotoClick}
-            />
-          ) : null}
-
-          {props.insights ? (
-            <div className="mt-10">
+        {/* ── Long-form content — full-width two-column block below the
+            hero so it spans the screen instead of a narrow centred rail:
+            Insights + detail accordions in the main column, social proof
+            + brand in the side column, recommendations as a full-width
+            rail underneath. ─────────────────────────────────────────── */}
+        <div className="mt-14 grid grid-cols-1 gap-x-12 gap-y-10 lg:grid-cols-[minmax(0,1fr)_340px]">
+          <div className="min-w-0">
+            {props.insights ? (
               <BeautyPivotaInsights insights={props.insights} />
-            </div>
-          ) : null}
+            ) : null}
 
-          <div ref={reviewsAnchorRef} className="mt-10 scroll-mt-20">
-            {props.reviews?.length ? (
-              <BeautyAccordion
-                title="Reviews"
-                count={props.reviewCount ?? props.reviews.length}
-                defaultOpen
-              >
-                <BeautyReviewsPreview
-                  rating={props.rating ?? 0}
-                  reviewCount={props.reviewCount ?? props.reviews.length}
-                  reviews={props.reviews}
-                  onSeeAll={props.onSeeAllReviews}
-                />
-              </BeautyAccordion>
-            ) : null}
-            {props.ingredients ? (
-              <BeautyAccordion title="Ingredients">{props.ingredients}</BeautyAccordion>
-            ) : null}
-            {props.howToUse ? (
-              <BeautyAccordion title="How to use">{props.howToUse}</BeautyAccordion>
-            ) : null}
-            {props.shippingReturnsText ? (
-              <BeautyAccordion title="Shipping &amp; returns">
-                {props.shippingReturnsText}
-              </BeautyAccordion>
-            ) : null}
-            <BeautyQuestions
-              questions={props.questions ?? []}
-              onAsk={props.onAskQuestion}
-              onSeeAll={props.onSeeAllQuestions}
-              onOpen={props.onOpenQuestion}
-              canAsk={props.canAskQuestion}
-            />
+            <div ref={reviewsAnchorRef} className="mt-8 scroll-mt-20">
+              {props.reviews?.length ? (
+                <BeautyAccordion
+                  title="Reviews"
+                  count={props.reviewCount ?? props.reviews.length}
+                  defaultOpen
+                >
+                  <BeautyReviewsPreview
+                    rating={props.rating ?? 0}
+                    reviewCount={props.reviewCount ?? props.reviews.length}
+                    reviews={props.reviews}
+                    onSeeAll={props.onSeeAllReviews}
+                  />
+                </BeautyAccordion>
+              ) : null}
+              {props.ingredients ? (
+                <BeautyAccordion title="Ingredients">{props.ingredients}</BeautyAccordion>
+              ) : null}
+              {props.howToUse ? (
+                <BeautyAccordion title="How to use">{props.howToUse}</BeautyAccordion>
+              ) : null}
+              {props.shippingReturnsText ? (
+                <BeautyAccordion title="Shipping &amp; returns">
+                  {props.shippingReturnsText}
+                </BeautyAccordion>
+              ) : null}
+              <BeautyQuestions
+                questions={props.questions ?? []}
+                onAsk={props.onAskQuestion}
+                onSeeAll={props.onSeeAllQuestions}
+                onOpen={props.onOpenQuestion}
+                canAsk={props.canAskQuestion}
+              />
+            </div>
           </div>
 
-          <BeautyBrandCard brandName={props.brandName} brandHref={props.brandHref} />
+          <div className="flex flex-col gap-2">
+            {props.recentPurchases?.length ? (
+              <BeautyRecentPurchasesRows
+                items={props.recentPurchases}
+                totalLabel={props.recentPurchasesTotal}
+              />
+            ) : null}
+            {props.customerPhotos?.length ? (
+              <BeautyCustomerPhotos
+                photos={props.customerPhotos}
+                totalLabel={props.customerPhotosTotal}
+                onViewAll={props.onUgcViewAll}
+                onShare={props.onUgcShare}
+                onPhotoClick={props.onUgcPhotoClick}
+              />
+            ) : null}
+            <BeautyBrandCard brandName={props.brandName} brandHref={props.brandHref} />
+          </div>
+        </div>
 
-          {props.similar?.length ? (
+        {props.similar?.length ? (
+          <div className="mt-12">
             <BeautyYouMayAlsoLike
               items={props.similar}
               onItemClick={props.onSimilarClick}
               onBuy={props.onSimilarBuy}
             />
-          ) : null}
-        </div>
+          </div>
+        ) : null}
       </div>
     </div>
   );
