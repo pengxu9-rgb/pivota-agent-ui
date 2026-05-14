@@ -943,6 +943,44 @@ describe('Stage 3b-2: _buildSellerOfferNode', () => {
       returnFees: 'https://schema.org/FreeReturn',
     });
   });
+
+  it('emits MerchantReturnPolicy with customer-paid return fees for non-free returns', () => {
+    const node = _buildSellerOfferNode(
+      {
+        merchant_id: 'm_a',
+        merchant_name: 'Merchant A',
+        price: { amount: 24, currency: 'USD' },
+        returns: { return_window_days: 30, free_returns: false },
+      },
+      URL,
+    );
+    expect(node!.hasMerchantReturnPolicy).toEqual({
+      '@type': 'MerchantReturnPolicy',
+      applicableCountry: 'US',
+      merchantReturnDays: 30,
+      returnPolicyCategory: 'https://schema.org/MerchantReturnFiniteReturnWindow',
+      returnFees: 'https://schema.org/ReturnFeesCustomerResponsibility',
+    });
+  });
+
+  it('omits MerchantReturnPolicy returnFees when free returns data is absent', () => {
+    const node = _buildSellerOfferNode(
+      {
+        merchant_id: 'm_a',
+        merchant_name: 'Merchant A',
+        price: { amount: 24, currency: 'USD' },
+        returns: { return_window_days: 30 },
+      },
+      URL,
+    );
+    expect(node!.hasMerchantReturnPolicy).toEqual({
+      '@type': 'MerchantReturnPolicy',
+      applicableCountry: 'US',
+      merchantReturnDays: 30,
+      returnPolicyCategory: 'https://schema.org/MerchantReturnFiniteReturnWindow',
+    });
+    expect(node!.hasMerchantReturnPolicy).not.toHaveProperty('returnFees');
+  });
 });
 
 describe('Stage 3b-2: _buildAggregateOffer', () => {

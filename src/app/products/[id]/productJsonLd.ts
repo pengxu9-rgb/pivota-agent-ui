@@ -315,15 +315,19 @@ function _buildMerchantReturnPolicy(offer: Record<string, any>): Record<string, 
   const returnWindow = _firstNumber(returns?.return_window_days);
   if (returnWindow === null || returnWindow <= 0) return null;
 
-  return {
+  const node: Record<string, any> = {
     '@type': 'MerchantReturnPolicy',
     applicableCountry: DEFAULT_LOCALE_COUNTRY,
     merchantReturnDays: returnWindow,
     returnPolicyCategory: 'https://schema.org/MerchantReturnFiniteReturnWindow',
-    returnFees: returns?.free_returns === true
-      ? 'https://schema.org/FreeReturn'
-      : 'https://schema.org/ReturnFeesCustomerResponsibility',
   };
+  if (returns?.free_returns === true) {
+    node.returnFees = 'https://schema.org/FreeReturn';
+  } else if (returns?.free_returns === false) {
+    node.returnFees = 'https://schema.org/ReturnFeesCustomerResponsibility';
+  }
+
+  return node;
 }
 
 
