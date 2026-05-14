@@ -55,7 +55,7 @@ export function BeautyBenefitsStrip({ benefits }: { benefits: BenefitInput[] }) 
   });
 
   return (
-    <div className="mx-[18px] mt-[18px]">
+    <div className="mx-[18px] mt-2.5">
       <div className="flex gap-0 rounded-xl bg-[var(--accent-50)] p-1">
         {items.map((item) => (
           <div

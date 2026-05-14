@@ -99,7 +99,7 @@ export function BeautyPivotaInsights({ insights }: { insights: BeautyInsightsDat
   if (!hasBody) return null;
 
   return (
-    <div className="mt-4 bg-[#FCFAF6] px-3 py-3">
+    <div className="mt-2.5 bg-[#FCFAF6] px-3 py-3">
       <div className="rounded-[24px] border border-[#E7DFD2] bg-white px-4 py-3.5 shadow-[0_1px_2px_rgba(20,10,40,0.04)]">
         {/* Header */}
         <div className="flex items-center gap-2">

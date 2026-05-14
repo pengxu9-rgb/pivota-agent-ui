@@ -32,7 +32,7 @@ export function BeautyShadeSelector({
   const selected = shades.find((s) => s.id === selectedId) || shades[0];
 
   return (
-    <div className="pt-3.5">
+    <div className="pt-2.5">
       <div className="flex items-baseline justify-between px-[18px]">
         <div>
           <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">

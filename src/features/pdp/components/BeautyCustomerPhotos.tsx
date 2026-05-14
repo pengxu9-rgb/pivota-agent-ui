@@ -24,7 +24,7 @@ export function BeautyCustomerPhotos({
   const tiles = photos.slice(0, 9);
 
   return (
-    <div className="mt-4 px-3.5">
+    <div className="mt-2.5 px-3.5">
       <div className="mb-2.5 flex items-center justify-between">
         <h3 className="text-[14px] font-semibold text-foreground">
           Customer Photos{totalLabel != null ? ` (${totalLabel})` : ''}

@@ -35,7 +35,7 @@ export function BeautyProductHeader({
   onSeeReviews?: () => void;
 }) {
   return (
-    <div className="px-[18px] pt-3.5">
+    <div className="px-[18px] pt-2.5">
       {brand ? (
         <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-primary">
           {brand}

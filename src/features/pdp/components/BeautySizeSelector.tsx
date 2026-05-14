@@ -25,7 +25,7 @@ export function BeautySizeSelector({
   const selected = sizes.find((s) => s.id === selectedId)?.id || sizes[0].id;
 
   return (
-    <div className="px-[18px] pt-3.5">
+    <div className="px-[18px] pt-2.5">
       <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
         Size
       </div>

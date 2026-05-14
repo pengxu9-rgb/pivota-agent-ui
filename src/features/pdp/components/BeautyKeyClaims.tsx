@@ -17,7 +17,7 @@ export function BeautyKeyClaims({
 }) {
   if (!claims?.length) return null;
   return (
-    <section className="mx-[18px] mt-3.5">
+    <section className="mx-[18px] mt-2.5">
       <div className="mb-2.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
         {title}
       </div>

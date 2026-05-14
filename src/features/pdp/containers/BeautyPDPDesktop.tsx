@@ -123,7 +123,7 @@ export function BeautyPDPDesktop(props: BeautyPDPMobileProps) {
               />
             ) : null}
             {props.variantSelector ? (
-              <div className="px-[18px] pt-3.5">{props.variantSelector}</div>
+              <div className="px-[18px] pt-2.5">{props.variantSelector}</div>
             ) : null}
             {props.benefits?.length ? <BeautyBenefitsStrip benefits={props.benefits} /> : null}
             {props.offers.length > 1 ? (
