@@ -2,26 +2,12 @@
 
 /*
  * TEMPORARY dev-only preview harness for the Beauty mobile PDP rebuild.
- * Renders the redesigned sections with mock data matching
- * redesign/pivota-pdp.jsx so they can be screenshot-verified against the
- * design reference in isolation. DELETE before the PR is marked ready.
+ * Renders the assembled BeautyPDPMobile with mock data matching
+ * redesign/pivota-pdp.jsx for screenshot verification against the design
+ * reference. DELETE before the PR is marked ready.
  */
 import { useState } from 'react';
-import { BeautyMobileGallery } from '@/features/pdp/components/BeautyMobileGallery';
-import { BeautyProductHeader } from '@/features/pdp/components/BeautyProductHeader';
-import { BeautyPriceRow } from '@/features/pdp/components/BeautyPriceRow';
-import { BeautyShadeSelector } from '@/features/pdp/components/BeautyShadeSelector';
-import { BeautySizeSelector } from '@/features/pdp/components/BeautySizeSelector';
-import { BeautyBenefitsStrip } from '@/features/pdp/components/BeautyBenefitsStrip';
-import { BeautyMobileSellerPicker } from '@/features/pdp/components/BeautyMobileSellerPicker';
-import { BeautyShippingStrip } from '@/features/pdp/components/BeautyShippingStrip';
-import { BeautyKeyClaims } from '@/features/pdp/components/BeautyKeyClaims';
-import { BeautyRecentPurchasesRows } from '@/features/pdp/components/BeautyRecentPurchasesRows';
-import { BeautyCustomerPhotos } from '@/features/pdp/components/BeautyCustomerPhotos';
-import { BeautyPivotaInsights } from '@/features/pdp/components/BeautyPivotaInsights';
-import { BeautyAccordion } from '@/features/pdp/components/BeautyAccordion';
-import { BeautyReviewsPreview } from '@/features/pdp/components/BeautyReviewsPreview';
-import { BeautyYouMayAlsoLike } from '@/features/pdp/components/BeautyYouMayAlsoLike';
+import { BeautyPDPMobile } from '@/features/pdp/containers/BeautyPDPMobile';
 
 const PHOTOS = [
   'https://images.unsplash.com/photo-1556228720-195a672e8a03?w=900&q=70&auto=format&fit=crop',
@@ -91,8 +77,8 @@ const INSIGHTS = {
   },
   bestFor: ['Dry / dehydrated skin', 'Mineral SPF preference', 'Sheer everyday coverage'],
   highlights: [
-    { headline: 'No white cast on deep skin', body: 'Tested by reviewers from shade 110 through 480 — the non-nano zinc is dispersed in a tinted base that flexes with undertone rather than masking it.' },
-    { headline: 'Hydrating, not slippery', body: 'Glycerin + hyaluronic acid sit under the SPF layer; the result wears 6–8 hours without separating around the nose.' },
+    { headline: 'No white cast on deep skin', body: 'Tested by reviewers from shade 110 through 480 — the non-nano zinc is dispersed in a tinted base that flexes with undertone.' },
+    { headline: 'Hydrating, not slippery', body: 'Glycerin + hyaluronic acid sit under the SPF layer; wears 6–8 hours without separating around the nose.' },
     { headline: 'Refill cuts packaging ~60%', body: 'The refill pod fits the original Hydra Vizor compact. Same formula, ~$6 less, less plastic per ml.' },
   ],
   routine: {
@@ -110,14 +96,8 @@ const INSIGHTS = {
     { label: 'Reapplication blurs initial coverage — use a stick SPF on top instead.', severity: 'Note' },
   ],
   community: {
-    loves: [
-      'No white cast even at maximum coverage build-up.',
-      'The refill design is actually well-engineered — clicks in flush.',
-    ],
-    complaints: [
-      'Pump can be finicky in cold rooms; warm it in your hand first.',
-      'Shade range is wide but jumps between mid-tones (210→260) feel large.',
-    ],
+    loves: ['No white cast even at maximum coverage build-up.', 'The refill design is well-engineered — clicks in flush.'],
+    complaints: ['Pump can be finicky in cold rooms; warm it in your hand first.', 'Shade jumps between mid-tones (210→260) feel large.'],
   },
 };
 const REVIEWS = [
@@ -129,71 +109,77 @@ export default function BeautyPreviewPage() {
   const [shade, setShade] = useState('210');
   const [size, setSize] = useState('refill');
   const [offerId, setOfferId] = useState('ulta');
+  const [qty, setQty] = useState(1);
 
   return (
-    <div
-      className="lovable-pdp overflow-hidden bg-background pb-12 text-foreground"
-      style={{ width: 393 }}
-    >
-      <BeautyMobileGallery images={PHOTOS} alt="Hydra Vizor Huez Tinted Moisturizer" />
-      <BeautyProductHeader
+    <div style={{ width: 393, height: 852, position: 'relative', overflow: 'hidden', margin: '0 auto' }}>
+      <BeautyPDPMobile
         brand="Fenty Beauty"
         title="Hydra Vizor Huez Tinted Moisturizer"
         subtitle="Broad Spectrum Mineral SPF 30 Sunscreen — Refill"
         rating={4.7}
         reviewCount={1284}
-        onSeeReviews={() => {}}
-      />
-      <BeautyPriceRow price={32} compareAt={38} discountPct={16} currency="USD" />
-      <BeautyShadeSelector shades={SHADES} selectedId={shade} onSelect={setShade} onFindShade={() => {}} />
-      <BeautySizeSelector sizes={SIZES} selectedId={size} onSelect={setSize} />
-      <BeautyBenefitsStrip benefits={['Hydrating', 'SPF 30', 'Mineral', 'Vegan']} />
-      <BeautyMobileSellerPicker
+        price={32}
+        compareAt={38}
+        discountPct={16}
+        currency="USD"
+        galleryImages={PHOTOS}
+        shades={SHADES}
+        selectedShadeId={shade}
+        onSelectShade={setShade}
+        sizes={SIZES}
+        selectedSizeId={size}
+        onSelectSize={setSize}
+        benefits={['Hydrating', 'SPF 30', 'Mineral', 'Vegan']}
+        claims={CLAIMS}
         offers={OFFERS}
         selectedVariant={null}
         selectedOfferId={offerId}
         bestPriceOfferId="ulta"
         primaryMerchantId="m_fenty"
-        onSelect={setOfferId}
-      />
-      <BeautyShippingStrip
+        onSelectOffer={setOfferId}
         etaRange={[2, 2]}
-        methodLabel={null}
         freeShipping
         returnWindowDays={60}
         freeReturns
-        sellerLabel="Ulta"
-      />
-      <BeautyKeyClaims claims={CLAIMS} />
-      <BeautyRecentPurchasesRows items={RECENT} totalLabel={420} />
-      <BeautyCustomerPhotos photos={UGC} totalLabel={72} onViewAll={() => {}} onShare={() => {}} />
-      <BeautyPivotaInsights insights={INSIGHTS} />
-      <div className="mt-6">
-        <BeautyAccordion title="Reviews" count={1284} defaultOpen>
-          <BeautyReviewsPreview rating={4.7} reviewCount={1284} reviews={REVIEWS} onSeeAll={() => {}} />
-        </BeautyAccordion>
-        <BeautyAccordion title="Ingredients">
+        shippingSellerLabel="Ulta"
+        recentPurchases={RECENT}
+        recentPurchasesTotal={420}
+        customerPhotos={UGC}
+        customerPhotosTotal={72}
+        onUgcViewAll={() => {}}
+        onUgcShare={() => {}}
+        insights={INSIGHTS}
+        reviews={REVIEWS}
+        onSeeAllReviews={() => {}}
+        ingredients={
           <div className="text-[13px] leading-[1.55] text-muted-foreground">
             <div className="mb-1 font-semibold text-foreground">Active</div>
             Zinc Oxide 12.0% (Sunscreen)
             <div className="mb-1 mt-2.5 font-semibold text-foreground">Inactive</div>
             Water/Aqua, Caprylic/Capric Triglyceride, Glycerin, Niacinamide, Hyaluronic Acid…
           </div>
-        </BeautyAccordion>
-        <BeautyAccordion title="How to use">
+        }
+        howToUse={
           <div className="text-[13px] leading-[1.55] text-muted-foreground">
             After moisturizer, dispense 1–2 pumps and blend evenly over face and neck. Reapply
             every 2 hours when outdoors.
           </div>
-        </BeautyAccordion>
-        <BeautyAccordion title="Shipping & returns">
+        }
+        shippingReturnsText={
           <div className="text-[13px] leading-[1.55] text-muted-foreground">
-            Each seller above ships and accepts returns under their own policy. Pivota guarantees
-            the same 60-day return window regardless of seller.
+            Each seller above ships and accepts returns under their own policy.
           </div>
-        </BeautyAccordion>
-      </div>
-      <BeautyYouMayAlsoLike items={SIMILAR} />
+        }
+        similar={SIMILAR}
+        inStock
+        quantity={qty}
+        onQtyChange={setQty}
+        onAddToCart={() => {}}
+        onBuyNow={() => {}}
+        onBack={() => {}}
+        onShare={() => {}}
+      />
     </div>
   );
 }
