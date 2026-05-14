@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { generateMetadata } from './page';
+import { renderToStaticMarkup } from 'react-dom/server';
+import ProductDetailPage, { generateMetadata } from './page';
 
 const getPdpV2Mock = vi.hoisted(() => vi.fn());
 const mapPdpV2ToPdpPayloadMock = vi.hoisted(() => vi.fn());
@@ -215,5 +216,55 @@ describe('product page metadata', () => {
     expect((metadata.alternates as any)?.canonical).toBe(
       'https://agent.pivota.cc/products/sig_singleton123',
     );
+  });
+
+  it('renders recommendations ItemList from the mapped server payload', async () => {
+    const v2Response = { modules: [] };
+    getPdpV2Mock.mockResolvedValue(v2Response);
+    mapPdpV2ToPdpPayloadMock.mockReturnValue(buildPayload(
+      {
+        product_id: 'sig_jsonld_recommendations',
+        title: 'Mapped Serum',
+      },
+      {
+        modules: [
+          {
+            type: 'recommendations',
+            data: {
+              items: [
+                {
+                  product_id: 'prod_similar1',
+                  merchant_id: 'merchant_a',
+                  title: 'Similar Serum',
+                },
+              ],
+            },
+          },
+        ],
+      },
+    ));
+
+    const element = await ProductDetailPage({
+      params: Promise.resolve({ id: 'sig_jsonld_recommendations' }),
+      searchParams: Promise.resolve({}),
+    });
+    const html = renderToStaticMarkup(element as any);
+    const scriptMatch = html.match(/<script type="application\/ld\+json">(.*?)<\/script>/);
+
+    expect(scriptMatch).not.toBeNull();
+    const parsed = JSON.parse(scriptMatch![1]);
+    const itemListNode = parsed['@graph']?.find((node: any) => node['@type'] === 'ItemList');
+    expect(itemListNode).toMatchObject({
+      '@type': 'ItemList',
+      numberOfItems: 1,
+      itemListElement: [
+        {
+          '@type': 'ListItem',
+          position: 1,
+          url: 'https://agent.pivota.cc/products/prod_similar1?merchant_id=merchant_a',
+          name: 'Similar Serum',
+        },
+      ],
+    });
   });
 });
