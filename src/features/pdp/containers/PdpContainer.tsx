@@ -74,6 +74,7 @@ import { OfferSheet } from '@/features/pdp/offers/OfferSheet';
 import { WaysToSave } from '@/features/pdp/components/WaysToSave';
 import { ModuleShell } from '@/features/pdp/components/ModuleShell';
 import { BeautyPDPMobile } from '@/features/pdp/containers/BeautyPDPMobile';
+import { BeautyPDPDesktop } from '@/features/pdp/containers/BeautyPDPDesktop';
 import type { BeautyInsightsData } from '@/features/pdp/components/BeautyPivotaInsights';
 import { DEFAULT_UGC_SNAPSHOT, lockFirstUgcSource, mergeUgcItems } from '@/features/pdp/state/freezePolicy';
 import { getStableGalleryItems, resolveHeroMediaUrl } from '@/features/pdp/state/heroMedia';
@@ -1444,11 +1445,12 @@ export function PdpContainer({
   }, [maxQuantity, selectedVariantId]);
 
   const resolvedMode: 'beauty' | 'generic' = mode || (isBeautyProduct(payload.product) ? 'beauty' : 'generic');
-  // Beauty mobile PDP redesign gate. Mobile renders the dedicated
-  // BeautyPDPMobile tree (early return below); desktop + generic are
-  // untouched. `isDesktop` is false during SSR / first client render, so
-  // mobile hydrates straight into the redesign with no shift.
+  // Beauty PDP redesign gate. Beauty products render the dedicated redesign
+  // tree (BeautyPDPMobile / BeautyPDPDesktop, early return below); the
+  // generic path is untouched. `isDesktop` is false during SSR / first
+  // client render, so beauty hydrates into the mobile tree first.
   const isBeautyMobile = resolvedMode === 'beauty' && !isDesktop;
+  const isBeautyDesktop = resolvedMode === 'beauty' && isDesktop;
 
   const media = getModuleData<MediaGalleryData>(payload, 'media_gallery');
   const pricePromo = getModuleData<PricePromoData>(payload, 'price_promo');
@@ -3764,12 +3766,13 @@ export function PdpContainer({
       </div>
     ) : null;
 
-  // ── Beauty mobile PDP redesign ──────────────────────────────────────────
-  // Early-return into the dedicated from-scratch BeautyPDPMobile tree.
-  // Desktop + generic paths fall through to the existing render below,
-  // untouched. `isBeautyMobile` is false during SSR / first client render,
-  // so mobile hydrates straight into the redesign with no shift.
-  if (isBeautyMobile) {
+  // ── Beauty PDP redesign ─────────────────────────────────────────────────
+  // Early-return into the dedicated redesign tree. Mobile (<1024px) renders
+  // BeautyPDPMobile; desktop renders the derived two-column BeautyPDPDesktop.
+  // Both accept the same prop object, so the wiring below is shared and only
+  // the shell component swaps on the breakpoint. The generic path falls
+  // through to the existing render below, untouched.
+  if (isBeautyMobile || isBeautyDesktop) {
     const intelCore = (productIntel as any)?.product_intel_core;
     const intelCommunity = (productIntel as any)?.community_signals;
     const beautyInsights: BeautyInsightsData | null = intelCore
@@ -3838,6 +3841,23 @@ export function PdpContainer({
       ? sizeOptions.map((s) => ({ id: s, label: s }))
       : null;
 
+    // §6 flag (owner-settled): BenefitsStrip / KeyClaims derive from existing
+    // payload data only — never fabricated, no data-shape change.
+    //   • BenefitsStrip ← variant beauty attributes (finish / coverage /
+    //     undertone), already extracted as `beautyAttributes`.
+    //   • KeyClaims    ← product-level `beauty_meta.important_info`, a
+    //     structured string[] carried through the adapter.
+    // When a product has neither source, the prop is null and the section
+    // renders nothing.
+    const beautyBenefits = beautyAttributes.length
+      ? beautyAttributes.map((attr) =>
+          attr.value ? attr.value.charAt(0).toUpperCase() + attr.value.slice(1) : attr.value,
+        )
+      : null;
+    const beautyClaims = payload.product.beauty_meta?.important_info?.length
+      ? payload.product.beauty_meta.important_info
+      : null;
+
     // General variant/SKU selector — only when neither shades nor sizes
     // apply, matching the legacy desktop/generic gating so it never
     // double-renders alongside the dedicated shade/size selectors.
@@ -3860,9 +3880,13 @@ export function PdpContainer({
         />
       ) : null;
 
+    // Same prop object feeds both trees — only the shell swaps on the
+    // viewport breakpoint (mobile redesign vs. derived desktop layout).
+    const BeautyShell = isBeautyDesktop ? BeautyPDPDesktop : BeautyPDPMobile;
+
     return (
       <>
-      <BeautyPDPMobile
+      <BeautyShell
         brand={payload.product.brand?.name}
         title={payload.product.title}
         subtitle={payload.product.subtitle}
@@ -3890,8 +3914,8 @@ export function PdpContainer({
             </>
           ) : null
         }
-        benefits={null}
-        claims={null}
+        benefits={beautyBenefits}
+        claims={beautyClaims}
         offers={offers}
         selectedVariant={selectedVariant}
         selectedOfferId={selectedOffer?.offer_id || null}

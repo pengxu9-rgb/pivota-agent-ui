@@ -3,11 +3,13 @@
 /**
  * Price row for the Beauty mobile PDP.
  * Faithful to redesign/pivota-pdp.jsx → PriceRow:
- *   bold price, strikethrough compare-at, and a coral "SAVE N%" badge.
- *   Coral matches the design reference (the JSX is the source of truth);
- *   it has no .lovable-pdp token so it's an inline value, not a new CSS
- *   variable. Price size and top padding are tightened from the design
- *   spec so more info sits above the fold (owner request).
+ *   bold price, strikethrough compare-at, and a "SAVE N%" badge.
+ *   The design reference draws the badge in coral (#D85A30), but
+ *   .lovable-pdp has no coral token and handoff §2 requires every color to
+ *   map to an existing token — so the badge uses the repo's existing teal
+ *   discount-badge convention (`bg-primary/10 text-primary`), per the
+ *   owner's settled §6 flag. Price size and top padding are tightened from
+ *   the design spec so more info sits above the fold (owner request).
  */
 function fmt(amount: number, currency: string): string {
   try {
@@ -45,7 +47,7 @@ export function BeautyPriceRow({
         </div>
       ) : null}
       {discountPct && discountPct > 0 ? (
-        <div className="rounded-[4px] bg-[#FAECE7] px-[7px] py-[3px] text-[11px] font-bold tracking-[0.02em] text-[#D85A30]">
+        <div className="rounded-[4px] bg-primary/10 px-[7px] py-[3px] text-[11px] font-bold tracking-[0.02em] text-primary">
           SAVE {Math.round(discountPct)}%
         </div>
       ) : null}

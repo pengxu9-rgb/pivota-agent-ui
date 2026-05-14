@@ -32,8 +32,10 @@ import { BeautyBrandCard } from '@/features/pdp/components/BeautyBrandCard';
  * `isBeautyMobile` is true and supplies every prop from its in-scope data;
  * desktop and generic paths are untouched.
  *
- * Sections with no clean PDPPayload data source (BenefitsStrip, KeyClaims)
- * are simply not passed data and render nothing — never fabricated content.
+ * BenefitsStrip / KeyClaims are wired to derived payload data only
+ * (variant beauty attributes / product `beauty_meta.important_info`); when a
+ * product has no derivable source the prop is null and the section renders
+ * nothing — never fabricated content.
  */
 
 export type BeautyPDPMobileProps = {
@@ -307,6 +309,11 @@ export function BeautyPDPMobile(props: BeautyPDPMobileProps) {
           />
         </div>
 
+        {/* Brand "explore the full collection" card sits directly under
+            Questions — not at the page tail — so the You-May-Also-Like rail
+            stays the last thing before the buy bar as recommendations grow. */}
+        <BeautyBrandCard brandName={props.brandName} brandHref={props.brandHref} />
+
         {props.similar?.length ? (
           <div ref={similarRef}>
             <BeautyYouMayAlsoLike
@@ -316,8 +323,6 @@ export function BeautyPDPMobile(props: BeautyPDPMobileProps) {
             />
           </div>
         ) : null}
-
-        <BeautyBrandCard brandName={props.brandName} brandHref={props.brandHref} />
 
         <div className="h-3" />
       </div>

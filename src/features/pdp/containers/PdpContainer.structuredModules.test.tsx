@@ -422,7 +422,13 @@ describe('PdpContainer structured PDP modules', () => {
     vi.unstubAllGlobals();
   });
 
-  it('renders additive beauty modules ahead of facts and prefers product_facts over overview copy', () => {
+  it('renders beauty ingredient + how-to-use accordions and suppresses structured detail sections', () => {
+    // The redesign collapses structured detail modules into the Ingredients
+    // and How-to-use accordions. The brand-story field still renders, but
+    // structured detail sections (Overview, Clinical Results, product_overview
+    // copy) are intentionally not rendered — Pivota Insights replaces merchant
+    // marketing copy. The product_facts-vs-overview preference logic is
+    // unit-covered in pdpDisplaySanitizers.test.ts.
     const payload = buildBeautyPayload();
     payload.product.merchant_id = 'merchant_beauty';
 
@@ -435,24 +441,32 @@ describe('PdpContainer structured PDP modules', () => {
       />,
     );
 
+    const ingredientsAccordion = screen.getByRole('button', { name: 'Ingredients' });
+    const howToUseAccordion = screen.getByRole('button', { name: 'How to use' });
+
+    fireEvent.click(ingredientsAccordion);
     expect(screen.getByText('Active ingredients')).toBeInTheDocument();
     expect(screen.getAllByText('Ceramide NP').length).toBeGreaterThan(0);
-    expect(screen.getByText('Ingredients')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Show full INCI' })).not.toBeInTheDocument();
     expect(screen.getByText(/Water/)).toBeInTheDocument();
     expect(screen.getAllByText(/Glycerin/).length).toBeGreaterThan(0);
     expect(screen.getByText(/Cholesterol/)).toBeInTheDocument();
-    expect(screen.getByText('How to use')).toBeInTheDocument();
+
+    fireEvent.click(howToUseAccordion);
     expect(screen.getByText('Apply after cleansing.')).toBeInTheDocument();
-    expect(screen.getByText('Brand Story')).toBeInTheDocument();
-    expect(screen.getByText('Overview')).toBeInTheDocument();
+
+    // The brand-story product field still renders inside the detail
+    // accordion; structured product_facts / product_overview sections do not.
+    expect(screen.getAllByText('Brand Story').length).toBeGreaterThan(0);
+    expect(screen.queryByText('Overview')).not.toBeInTheDocument();
+    expect(screen.queryByText('Clinical Results')).not.toBeInTheDocument();
+    expect(screen.queryByText('Rice-Infused Hydration')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Legacy Ingredients' })).not.toBeInTheDocument();
     expect(screen.queryByText('Retail PDP')).not.toBeInTheDocument();
     expect(screen.queryByText('PDP Section')).not.toBeInTheDocument();
-    expect(screen.getByText('Clinical Results')).toBeInTheDocument();
-    expect(screen.getByText('Rice-Infused Hydration')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Legacy Ingredients' })).not.toBeInTheDocument();
-    expect(screen.getAllByRole('button', { name: 'Add to Cart' }).length).toBeGreaterThan(0);
-    expect(screen.getAllByRole('button', { name: 'Buy Now' }).length).toBeGreaterThan(0);
+
+    expect(screen.getByRole('button', { name: 'Add to bag' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Buy Now/ })).toBeInTheDocument();
   });
 
   it('isolates external-seed beauty PDPs from legacy detail media and product information', () => {
@@ -481,14 +495,14 @@ describe('PdpContainer structured PDP modules', () => {
       <PdpContainer payload={payload} mode="beauty" onAddToCart={() => {}} onBuyNow={() => {}} />,
     );
 
-    expect(screen.getByText('Active ingredients')).toBeInTheDocument();
-    expect(screen.getByText('How to use')).toBeInTheDocument();
-    expect(screen.getByText('Rice extract helps replenish moisture.')).toBeInTheDocument();
-    expect(screen.getByAltText('Barrier Support Cream overview')).toHaveAttribute(
-      'src',
-      'https://example.com/hero.jpg',
-    );
+    // The redesign renders the detail accordions and the gallery hero, but
+    // never the legacy "Product Information" supplemental block or the
+    // captured merchant marketing copy it would have carried.
+    expect(screen.getByRole('button', { name: 'Ingredients' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'How to use' })).toBeInTheDocument();
+    expect(screen.getByAltText('Barrier Support Cream')).toBeInTheDocument();
     expect(screen.queryByText('Product Information')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Captured merchant marketing copy/i)).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Effortless Skin Enhancement' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Category' })).not.toBeInTheDocument();
   });
@@ -526,11 +540,15 @@ describe('PdpContainer structured PDP modules', () => {
       },
     });
 
+    // The beauty redesign intentionally drops the legacy "Product
+    // Information" supplemental block (Pivota Insights replaces it), so this
+    // external-seed supplemental-section logic is now exercised through the
+    // generic PDP path, which still renders it.
     render(
-      <PdpContainer payload={payload} mode="beauty" onAddToCart={() => {}} onBuyNow={() => {}} />,
+      <PdpContainer payload={payload} mode="generic" onAddToCart={() => {}} onBuyNow={() => {}} />,
     );
 
-    expect(screen.getByText('Product Information')).toBeInTheDocument();
+    expect(screen.getByText('Product Details')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Details' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'How to Pair' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Category' })).toBeInTheDocument();
@@ -578,6 +596,9 @@ describe('PdpContainer structured PDP modules', () => {
       <PdpContainer payload={payload} mode="beauty" onAddToCart={() => {}} onBuyNow={() => {}} />,
     );
 
+    // Regulatory/authoritative actives stay available — they live inside the
+    // redesign's Ingredients accordion rather than a standalone module.
+    fireEvent.click(screen.getByRole('button', { name: 'Ingredients' }));
     expect(screen.getByText('Active ingredients')).toBeInTheDocument();
     expect(screen.getAllByText('Zinc Oxide').length).toBeGreaterThan(0);
   });
@@ -644,21 +665,25 @@ describe('PdpContainer structured PDP modules', () => {
     ];
     payload.product.price = { current: { amount: 22, currency: 'USD' } };
 
-    const { container } = render(
+    render(
       <PdpContainer payload={payload} mode="beauty" onAddToCart={() => {}} onBuyNow={() => {}} />,
     );
 
+    // Legacy shade-merchandising modules never render in the redesign...
     expect(screen.queryByText('Shade Matching')).not.toBeInTheDocument();
     expect(screen.queryByText('Popular Looks')).not.toBeInTheDocument();
     expect(screen.queryByText('Best For')).not.toBeInTheDocument();
     expect(screen.queryByText('Shade Gallery')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Grape Fizz' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Citrus Sunshine' })).toBeInTheDocument();
-    expect(container.querySelector('img[src="https://example.com/swatch-grape.jpg"]')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Citrus Sunshine' }));
+    // ...but shades stay selectable through the redesign's swatch selector,
+    // and selecting one still drives the headline price.
+    expect(screen.getByRole('button', { name: 'Shade Grape Fizz' })).toBeInTheDocument();
+    const citrus = screen.getByRole('button', { name: 'Shade Citrus Sunshine' });
+    expect(citrus).toBeInTheDocument();
 
-    expect(screen.getAllByText('$24.00').length).toBeGreaterThan(0);
+    fireEvent.click(citrus);
+
+    expect(screen.getAllByText('$24').length).toBeGreaterThan(0);
   });
 
   it('renders cross-url product-line shades as swatches and switches in place', async () => {
@@ -905,8 +930,10 @@ describe('PdpContainer structured PDP modules', () => {
       <PdpContainer payload={payload} mode="beauty" onAddToCart={() => {}} onBuyNow={() => {}} />,
     );
 
-    expect(screen.getByText('Selected:')).toBeInTheDocument();
-    expect(screen.getByText('Mini · 0.50 fl oz / 15 mL')).toBeInTheDocument();
+    expect(screen.getByText(/^Selected:/)).toHaveTextContent(
+      'Selected: Mini · 0.50 fl oz / 15 mL',
+    );
+    expect(screen.getByRole('button', { name: 'Mini · 0.50 fl oz / 15 mL' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Full Size · 0.94 fl oz / 28 mL' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Mini · 0.50 fl oz / 15 mL' })).toHaveAttribute('aria-pressed', 'true');
   });
@@ -921,8 +948,11 @@ describe('PdpContainer structured PDP modules', () => {
         module.type !== 'product_facts',
     );
 
+    // The legacy detail-noise isolation + clean-overview fallback is
+    // mode-agnostic; the beauty redesign no longer renders an Overview
+    // section, so this is exercised through the generic PDP path.
     render(
-      <PdpContainer payload={payload} mode="beauty" onAddToCart={() => {}} onBuyNow={() => {}} />,
+      <PdpContainer payload={payload} mode="generic" onAddToCart={() => {}} onBuyNow={() => {}} />,
     );
 
     expect(screen.queryByText('Active ingredients')).toBeNull();
@@ -1012,8 +1042,12 @@ describe('PdpContainer structured PDP modules', () => {
       return module;
     });
 
+    // The polluted-block dropping + clean-overview fallback in
+    // chooseProductDetailsData is mode-agnostic; the beauty redesign no
+    // longer renders an Overview section, so this is exercised through the
+    // generic PDP path.
     render(
-      <PdpContainer payload={payload} mode="beauty" onAddToCart={() => {}} onBuyNow={() => {}} />,
+      <PdpContainer payload={payload} mode="generic" onAddToCart={() => {}} onBuyNow={() => {}} />,
     );
 
     expect(screen.getAllByText('This reparative serum helps soothe and restore your skin barrier.').length).toBeGreaterThan(0);
