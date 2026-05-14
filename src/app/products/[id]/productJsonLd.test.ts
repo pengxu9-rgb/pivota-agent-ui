@@ -177,6 +177,24 @@ describe('buildProductJsonLd — aggregateRating', () => {
       reviewCount: 42,
     });
   });
+
+  it('treats zero rating placeholders as absent before reviews_preview fallback', () => {
+    const out = buildProductJsonLd(
+      {
+        product: { title: 'X', rating: 0, review_count: 0 },
+        productId: PRODUCT_ID,
+      },
+      {
+        reviewsModule: { rating: 4.6, review_count: 124 },
+      },
+    );
+    const parsed = JSON.parse(out!);
+    expect(parsed.aggregateRating).toEqual({
+      '@type': 'AggregateRating',
+      ratingValue: '4.6',
+      reviewCount: 124,
+    });
+  });
 });
 
 describe('buildProductJsonLd — security: script-tag escape', () => {
@@ -455,6 +473,50 @@ describe('buildProductJsonLd — recommendations ItemList', () => {
         },
       ],
     });
+  });
+
+  it('uses canonical recommendation hrefs when route fields are present', () => {
+    const out = buildProductJsonLd(
+      {
+        product: { title: 'X' },
+        productId: PRODUCT_ID,
+      },
+      {
+        recommendationsModule: {
+          items: [
+            {
+              product_id: '10064558129449',
+              merchant_id: 'merchant_a',
+              title: 'Canonical URL serum',
+              pivota_canonical_url: 'https://agent.pivota.cc/products/sig_from_url',
+            },
+            {
+              product_id: '10064558129450',
+              merchant_id: 'merchant_b',
+              title: 'Signature serum',
+              pivota_signature_id: 'sig_from_signature',
+            },
+          ],
+        },
+      },
+    );
+    const parsed = JSON.parse(out!);
+    const itemListNode = parsed['@graph'].find((node: any) => node['@type'] === 'ItemList');
+
+    expect(itemListNode.itemListElement).toEqual([
+      {
+        '@type': 'ListItem',
+        position: 1,
+        url: 'https://agent.pivota.cc/products/sig_from_url',
+        name: 'Canonical URL serum',
+      },
+      {
+        '@type': 'ListItem',
+        position: 2,
+        url: 'https://agent.pivota.cc/products/sig_from_signature',
+        name: 'Signature serum',
+      },
+    ]);
   });
 
   it('keeps flat Product JSON-LD when recommendations are absent', () => {

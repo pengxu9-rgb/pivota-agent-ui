@@ -19,7 +19,7 @@
  */
 
 import { buildProductDescription } from './productDescription';
-import { buildProductHref } from '@/lib/productHref';
+import { buildProductHrefForProduct } from '@/lib/productHref';
 
 const SCHEMA_CONTEXT = 'https://schema.org/';
 const SCHEMA_TYPE_PRODUCT = 'Product';
@@ -68,6 +68,14 @@ function _firstNumber(...values: unknown[]): number | null {
       const n = Number(value);
       if (Number.isFinite(n)) return n;
     }
+  }
+  return null;
+}
+
+function _firstPositiveNumber(...values: unknown[]): number | null {
+  for (const value of values) {
+    const n = _firstNumber(value);
+    if (n !== null && n > 0) return n;
   }
   return null;
 }
@@ -700,24 +708,19 @@ function _resolveAggregateRating(
     : null;
 
   return {
-    ratingValue: _firstNumber(
+    ratingValue: _firstPositiveNumber(
       product.aggregate_rating?.value,
       product.rating,
       product.average_rating,
       moduleRating,
     ),
-    ratingCount: _firstNumber(
+    ratingCount: _firstPositiveNumber(
       product.aggregate_rating?.count,
       product.rating_count,
       product.review_count,
       reviewsModule?.review_count,
     ),
   };
-}
-
-function _absolutePdpUrl(productId: string, merchantId: string): string {
-  const href = buildProductHref(productId, merchantId || undefined);
-  return `${PIVOTA_SITE_BASE}${href}`;
 }
 
 function _buildRecommendationsItemList(
@@ -736,11 +739,12 @@ function _buildRecommendationsItemList(
     const productId = _firstString(record.product_id, record.productId);
     const name = _firstString(record.title, record.name, record.card_title);
     if (!productId || !name) continue;
+    const href = buildProductHrefForProduct(record);
 
     itemListElement.push({
       '@type': 'ListItem',
       position: itemListElement.length + 1,
-      url: _absolutePdpUrl(productId, _firstString(record.merchant_id, record.merchantId)),
+      url: `${PIVOTA_SITE_BASE}${href}`,
       name,
     });
     if (itemListElement.length >= 20) break;
