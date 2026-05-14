@@ -20,6 +20,8 @@ import { BeautyYouMayAlsoLike, type BeautySimilarItem } from '@/features/pdp/com
 import { BeautyStickyTabs, type BeautyTab } from '@/features/pdp/components/BeautyStickyTabs';
 import { BeautyStickyTopBar } from '@/features/pdp/components/BeautyStickyTopBar';
 import { BeautyMobileBuyBar } from '@/features/pdp/components/BeautyMobileBuyBar';
+import { BeautyQuestions, type BeautyQuestion } from '@/features/pdp/components/BeautyQuestions';
+import { BeautyBrandCard } from '@/features/pdp/components/BeautyBrandCard';
 
 /**
  * BeautyPDPMobile — the from-scratch redesigned Beauty mobile PDP.
@@ -55,6 +57,8 @@ export type BeautyPDPMobileProps = {
   sizes?: BeautySize[] | null;
   selectedSizeId?: string | null;
   onSelectSize?: (id: string) => void;
+  // general variant/SKU selector — used when shades/sizes do not apply
+  variantSelector?: React.ReactNode;
   // benefits / claims (render nothing when absent)
   benefits?: string[] | null;
   claims?: string[] | null;
@@ -88,10 +92,19 @@ export type BeautyPDPMobileProps = {
   ingredients?: React.ReactNode;
   howToUse?: React.ReactNode;
   shippingReturnsText?: React.ReactNode;
+  // questions
+  questions?: BeautyQuestion[] | null;
+  onAskQuestion?: () => void;
+  onSeeAllQuestions?: () => void;
+  onOpenQuestion?: (questionId: number) => void;
+  canAskQuestion?: boolean;
   // recommendations
   similar?: BeautySimilarItem[] | null;
   onSimilarClick?: (item: BeautySimilarItem, index: number) => void;
   onSimilarBuy?: (item: BeautySimilarItem, index: number) => void;
+  // brand
+  brandName?: string | null;
+  brandHref?: string | null;
   // buy bar
   buyNowLabel?: string;
   inStock: boolean;
@@ -219,6 +232,9 @@ export function BeautyPDPMobile(props: BeautyPDPMobileProps) {
               onSelect={props.onSelectSize || (() => {})}
             />
           ) : null}
+          {props.variantSelector ? (
+            <div className="px-[18px] pt-3.5">{props.variantSelector}</div>
+          ) : null}
           {props.benefits?.length ? <BeautyBenefitsStrip benefits={props.benefits} /> : null}
           {props.offers.length > 1 ? (
             <BeautyMobileSellerPicker
@@ -282,6 +298,15 @@ export function BeautyPDPMobile(props: BeautyPDPMobileProps) {
           {props.shippingReturnsText ? (
             <BeautyAccordion title="Shipping &amp; returns">{props.shippingReturnsText}</BeautyAccordion>
           ) : null}
+          {props.questions?.length ? (
+            <BeautyQuestions
+              questions={props.questions}
+              onAsk={props.onAskQuestion}
+              onSeeAll={props.onSeeAllQuestions}
+              onOpen={props.onOpenQuestion}
+              canAsk={props.canAskQuestion}
+            />
+          ) : null}
         </div>
 
         {props.similar?.length ? (
@@ -293,6 +318,8 @@ export function BeautyPDPMobile(props: BeautyPDPMobileProps) {
             />
           </div>
         ) : null}
+
+        <BeautyBrandCard brandName={props.brandName} brandHref={props.brandHref} />
 
         <div className="h-3" />
       </div>

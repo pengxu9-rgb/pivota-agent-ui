@@ -3730,6 +3730,28 @@ export function PdpContainer({
       ? sizeOptions.map((s) => ({ id: s, label: s }))
       : null;
 
+    // General variant/SKU selector — only when neither shades nor sizes
+    // apply, matching the legacy desktop/generic gating so it never
+    // double-renders alongside the dedicated shade/size selectors.
+    const beautyVariantSelector =
+      !sizeOptions.length &&
+      !shouldRenderColorOptions &&
+      selectorVariants.length > 0 &&
+      !(productLineOptions.length > 1 && selectorVariants.length === 1) ? (
+        <VariantSelector
+          variants={selectorVariants}
+          selectedVariantId={selectedVariant.variant_id}
+          onChange={(variantId) => {
+            handleVariantSelect(variantId);
+            pdpTracking.track('pdp_action_click', {
+              action_type: 'select_variant',
+              variant_id: variantId,
+            });
+          }}
+          mode={resolvedMode}
+        />
+      ) : null;
+
     return (
       <>
       <BeautyPDPMobile
@@ -3752,6 +3774,7 @@ export function PdpContainer({
         sizes={beautySizes}
         selectedSizeId={selectedSize}
         onSelectSize={handleSizeSelect}
+        variantSelector={beautyVariantSelector}
         benefits={null}
         claims={null}
         offers={offers}
@@ -3800,6 +3823,19 @@ export function PdpContainer({
             : null
         }
         onSeeAllReviews={onSeeAllReviews}
+        questions={mergedQuestions}
+        onAskQuestion={handleAskQuestion}
+        canAskQuestion={canAskQuestion}
+        onSeeAllQuestions={() => {
+          pdpTracking.track('pdp_action_click', { action_type: 'open_embed', target: 'open_questions' });
+          openQuestionsHub();
+        }}
+        onOpenQuestion={(questionId) => {
+          pdpTracking.track('pdp_action_click', { action_type: 'open_embed', target: 'open_question_thread' });
+          openQuestionThread(questionId);
+        }}
+        brandName={payload.product.brand?.name}
+        brandHref={brandHref}
         ingredients={
           ingredientsInci?.items?.length || activeIngredients?.items?.length ? (
             <BeautyDetailsSection
