@@ -214,6 +214,19 @@ describe('buildProductJsonLd — aggregateRating', () => {
     });
   });
 
+  it('uses product rating with product review_count when rating_count is missing', () => {
+    const out = buildProductJsonLd({
+      product: { title: 'X', rating: 4.5, review_count: 80 },
+      productId: PRODUCT_ID,
+    });
+    const parsed = JSON.parse(out!);
+    expect(parsed.aggregateRating).toEqual({
+      '@type': 'AggregateRating',
+      ratingValue: '4.5',
+      reviewCount: 80,
+    });
+  });
+
   it('omits aggregateRating when neither product nor module has a complete pair', () => {
     const out = buildProductJsonLd(
       {

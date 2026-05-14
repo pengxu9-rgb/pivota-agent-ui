@@ -710,6 +710,7 @@ function _resolveAggregateRating(
   const pairs: Array<{ value: unknown; count: unknown }> = [
     { value: product.aggregate_rating?.value, count: product.aggregate_rating?.count },
     { value: product.rating, count: product.rating_count },
+    { value: product.rating, count: product.review_count },
     { value: product.average_rating, count: product.review_count },
     { value: moduleRating, count: reviewsModule?.review_count },
   ];
