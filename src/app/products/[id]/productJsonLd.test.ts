@@ -391,19 +391,30 @@ describe('buildProductJsonLd — BreadcrumbList', () => {
 
 describe('buildProductJsonLd — recommendations ItemList', () => {
   it('emits ItemList with absolute PDP URLs and sequential positions', () => {
+    const mappedPayload = {
+      modules: [
+        {
+          type: 'recommendations',
+          data: {
+            items: [
+              { product_id: 'prod_1', merchant_id: 'merchant_a', title: 'Similar one' },
+              { product_id: 'prod_2', merchant_id: 'merchant_b', title: 'Similar two' },
+              { product_id: 'prod_3', merchant_id: 'merchant_c', title: 'Similar three' },
+            ],
+          },
+        },
+      ],
+    };
+    const recommendationsModule = mappedPayload.modules.find(
+      (module) => module.type === 'recommendations',
+    )?.data;
     const out = buildProductJsonLd(
       {
         product: { title: 'X' },
         productId: PRODUCT_ID,
       },
       {
-        recommendationsModule: {
-          items: [
-            { product_id: 'prod_1', merchant_id: 'merchant_a', title: 'Similar one' },
-            { product_id: 'prod_2', merchant_id: 'merchant_b', title: 'Similar two' },
-            { product_id: 'prod_3', merchant_id: 'merchant_c', title: 'Similar three' },
-          ],
-        },
+        recommendationsModule,
       },
     );
     const parsed = JSON.parse(out!);
@@ -829,6 +840,10 @@ describe('Stage 3b-2: _buildSellerOfferNode', () => {
     );
     expect(node!.shippingDetails).toEqual({
       '@type': 'OfferShippingDetails',
+      shippingDestination: {
+        '@type': 'DefinedRegion',
+        addressCountry: 'US',
+      },
       shippingLabel: 'Standard shipping',
       deliveryTime: {
         '@type': 'ShippingDeliveryTime',
@@ -865,6 +880,25 @@ describe('Stage 3b-2: _buildSellerOfferNode', () => {
       value: '6.50',
       currency: 'USD',
     });
+    expect(node!.shippingDetails.shippingDestination).toEqual({
+      '@type': 'DefinedRegion',
+      addressCountry: 'US',
+    });
+  });
+
+  it('omits shippingDetails when only ETA is present without a cost', () => {
+    const node = _buildSellerOfferNode(
+      {
+        merchant_id: 'm_a',
+        merchant_name: 'Merchant A',
+        price: { amount: 24, currency: 'USD' },
+        shipping: {
+          eta_days_range: [4, 7],
+        },
+      },
+      URL,
+    );
+    expect(node!.shippingDetails).toBeUndefined();
   });
 
   it('emits MerchantReturnPolicy with FreeReturn for free returns', () => {
@@ -879,6 +913,7 @@ describe('Stage 3b-2: _buildSellerOfferNode', () => {
     );
     expect(node!.hasMerchantReturnPolicy).toEqual({
       '@type': 'MerchantReturnPolicy',
+      applicableCountry: 'US',
       merchantReturnDays: 30,
       returnPolicyCategory: 'https://schema.org/MerchantReturnFiniteReturnWindow',
       returnFees: 'https://schema.org/FreeReturn',

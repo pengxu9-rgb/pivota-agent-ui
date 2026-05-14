@@ -28,6 +28,11 @@ const SCHEMA_TYPE_BRAND = 'Brand';
 
 const PIVOTA_SITE_BASE = 'https://agent.pivota.cc';
 const PRODUCT_JSON_LD_DESCRIPTION_MAX_LENGTH = 5000;
+// Default locale country for Pivota Product Rich Results. Replace with
+// offer-level shipping and return zones when the gateway exposes them.
+// US is Pivota's primary market today, so this prevents Google Search
+// Console from flagging every Product while preserving per-offer overrides.
+const DEFAULT_LOCALE_COUNTRY = 'US';
 
 type ProductJsonLdContext = {
   reviewsModule?: Record<string, any> | null;
@@ -276,9 +281,17 @@ function _buildOfferShippingDetails(
 
   const etaRange = _readDayRange(shipping.eta_days_range);
   const methodLabel = _firstString(shipping.method_label);
-  if (!etaRange && !methodLabel) return null;
+  const cost = _asRecord(shipping.cost);
+  const costAmount = _firstNumber(cost?.amount);
+  if (costAmount === null || costAmount < 0) return null;
 
-  const node: Record<string, any> = { '@type': 'OfferShippingDetails' };
+  const node: Record<string, any> = {
+    '@type': 'OfferShippingDetails',
+    shippingDestination: {
+      '@type': 'DefinedRegion',
+      addressCountry: DEFAULT_LOCALE_COUNTRY,
+    },
+  };
   if (methodLabel) node.shippingLabel = methodLabel;
   if (etaRange) {
     node.deliveryTime = {
@@ -286,16 +299,11 @@ function _buildOfferShippingDetails(
       transitTime: _buildShippingDuration(etaRange),
     };
   }
-
-  const cost = _asRecord(shipping.cost);
-  const costAmount = _firstNumber(cost?.amount);
-  if (costAmount !== null && costAmount >= 0) {
-    node.shippingRate = {
-      '@type': 'MonetaryAmount',
-      value: costAmount === 0 ? '0' : costAmount.toFixed(2),
-      currency: _firstString(cost?.currency, currency),
-    };
-  }
+  node.shippingRate = {
+    '@type': 'MonetaryAmount',
+    value: costAmount === 0 ? '0' : costAmount.toFixed(2),
+    currency: _firstString(cost?.currency, currency),
+  };
 
   return node;
 }
@@ -307,6 +315,7 @@ function _buildMerchantReturnPolicy(offer: Record<string, any>): Record<string, 
 
   return {
     '@type': 'MerchantReturnPolicy',
+    applicableCountry: DEFAULT_LOCALE_COUNTRY,
     merchantReturnDays: returnWindow,
     returnPolicyCategory: 'https://schema.org/MerchantReturnFiniteReturnWindow',
     returnFees: returns?.free_returns === true
