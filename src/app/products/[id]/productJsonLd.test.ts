@@ -159,6 +159,24 @@ describe('buildProductJsonLd — aggregateRating', () => {
     });
     expect(JSON.parse(out!).aggregateRating).toBeUndefined();
   });
+
+  it('falls back to reviews_preview module rating and review_count', () => {
+    const out = buildProductJsonLd(
+      {
+        product: { title: 'X' },
+        productId: PRODUCT_ID,
+      },
+      {
+        reviewsModule: { scale: 10, rating: 9, review_count: 42 },
+      },
+    );
+    const parsed = JSON.parse(out!);
+    expect(parsed.aggregateRating).toEqual({
+      '@type': 'AggregateRating',
+      ratingValue: '4.5',
+      reviewCount: 42,
+    });
+  });
 });
 
 describe('buildProductJsonLd — security: script-tag escape', () => {
@@ -368,6 +386,52 @@ describe('buildProductJsonLd — BreadcrumbList', () => {
     const parsed = JSON.parse(out!);
     const positions = parsed.breadcrumb.itemListElement.map((i: any) => i.position);
     expect(positions).toEqual([1, 2, 3]);
+  });
+});
+
+describe('buildProductJsonLd — recommendations ItemList', () => {
+  it('emits ItemList with absolute PDP URLs and sequential positions', () => {
+    const out = buildProductJsonLd(
+      {
+        product: { title: 'X' },
+        productId: PRODUCT_ID,
+      },
+      {
+        recommendationsModule: {
+          items: [
+            { product_id: 'prod_1', merchant_id: 'merchant_a', title: 'Similar one' },
+            { product_id: 'prod_2', merchant_id: 'merchant_b', title: 'Similar two' },
+            { product_id: 'prod_3', merchant_id: 'merchant_c', title: 'Similar three' },
+          ],
+        },
+      },
+    );
+    const parsed = JSON.parse(out!);
+    expect(parsed.itemList).toEqual({
+      '@type': 'ItemList',
+      name: 'Similar products',
+      numberOfItems: 3,
+      itemListElement: [
+        {
+          '@type': 'ListItem',
+          position: 1,
+          url: 'https://agent.pivota.cc/products/prod_1?merchant_id=merchant_a',
+          name: 'Similar one',
+        },
+        {
+          '@type': 'ListItem',
+          position: 2,
+          url: 'https://agent.pivota.cc/products/prod_2?merchant_id=merchant_b',
+          name: 'Similar two',
+        },
+        {
+          '@type': 'ListItem',
+          position: 3,
+          url: 'https://agent.pivota.cc/products/prod_3?merchant_id=merchant_c',
+          name: 'Similar three',
+        },
+      ],
+    });
   });
 });
 
@@ -713,10 +777,15 @@ describe('Stage 3b-2: _buildSellerOfferNode', () => {
       URL,
     );
     expect(node).not.toBeNull();
-    expect(node!.seller).toEqual({ '@type': 'Organization', name: 'Sephora' });
+    expect(node!.seller).toEqual({
+      '@type': 'Organization',
+      name: 'Sephora',
+      identifier: 'm_sephora',
+    });
     expect(node!.price).toBe('95.00');
     expect(node!.priceCurrency).toBe('USD');
     expect(node!.availability).toBe('https://schema.org/InStock');
+    expect(node!.itemCondition).toBe('https://schema.org/NewCondition');
   });
 
   it('falls back to merchant_id as seller name when display name missing', () => {
@@ -724,7 +793,96 @@ describe('Stage 3b-2: _buildSellerOfferNode', () => {
       { merchant_id: 'merch_anonymous', price: '12.50' },
       URL,
     );
-    expect(node!.seller).toEqual({ '@type': 'Organization', name: 'merch_anonymous' });
+    expect(node!.seller).toEqual({
+      '@type': 'Organization',
+      name: 'merch_anonymous',
+      identifier: 'merch_anonymous',
+    });
+  });
+
+  it('uses merchant_checkout_url as the child Offer deep link', () => {
+    const node = _buildSellerOfferNode(
+      {
+        merchant_id: 'm_sephora',
+        merchant_name: 'Sephora',
+        merchant_checkout_url: 'https://www.sephora.com/product/abc',
+        price: { amount: 24, currency: 'USD' },
+      },
+      URL,
+    );
+    expect(node!.url).toBe('https://www.sephora.com/product/abc');
+  });
+
+  it('emits shippingDetails with free shippingRate when eta and zero cost are present', () => {
+    const node = _buildSellerOfferNode(
+      {
+        merchant_id: 'm_a',
+        merchant_name: 'Merchant A',
+        price: { amount: 24, currency: 'USD' },
+        shipping: {
+          eta_days_range: [2, 5],
+          method_label: 'Standard shipping',
+          cost: { amount: 0, currency: 'USD' },
+        },
+      },
+      URL,
+    );
+    expect(node!.shippingDetails).toEqual({
+      '@type': 'OfferShippingDetails',
+      shippingLabel: 'Standard shipping',
+      deliveryTime: {
+        '@type': 'ShippingDeliveryTime',
+        transitTime: {
+          '@type': 'QuantitativeValue',
+          minValue: 2,
+          maxValue: 5,
+          unitCode: 'DAY',
+        },
+      },
+      shippingRate: {
+        '@type': 'MonetaryAmount',
+        value: '0',
+        currency: 'USD',
+      },
+    });
+  });
+
+  it('emits shippingDetails with non-zero shippingRate', () => {
+    const node = _buildSellerOfferNode(
+      {
+        merchant_id: 'm_a',
+        merchant_name: 'Merchant A',
+        price: { amount: 24, currency: 'USD' },
+        shipping: {
+          eta_days_range: [4, 7],
+          cost: { amount: 6.5, currency: 'USD' },
+        },
+      },
+      URL,
+    );
+    expect(node!.shippingDetails.shippingRate).toEqual({
+      '@type': 'MonetaryAmount',
+      value: '6.50',
+      currency: 'USD',
+    });
+  });
+
+  it('emits MerchantReturnPolicy with FreeReturn for free returns', () => {
+    const node = _buildSellerOfferNode(
+      {
+        merchant_id: 'm_a',
+        merchant_name: 'Merchant A',
+        price: { amount: 24, currency: 'USD' },
+        returns: { return_window_days: 30, free_returns: true },
+      },
+      URL,
+    );
+    expect(node!.hasMerchantReturnPolicy).toEqual({
+      '@type': 'MerchantReturnPolicy',
+      merchantReturnDays: 30,
+      returnPolicyCategory: 'https://schema.org/MerchantReturnFiniteReturnWindow',
+      returnFees: 'https://schema.org/FreeReturn',
+    });
   });
 });
 
@@ -784,6 +942,17 @@ describe('Stage 3b-2: _buildAggregateOffer', () => {
     expect(agg!.priceCurrency).toBe('USD');
     expect(agg!.offers).toHaveLength(3);
     expect(agg!.offers[0].seller.name).toBe('Sephora');
+  });
+
+  it('uses the parent PDP URL for multiple child offers with no deep link fields', () => {
+    const product = {
+      _pivota_offers: [
+        { merchant_id: 'm_a', merchant_name: 'A', price: { amount: 25, currency: 'USD' } },
+        { merchant_id: 'm_b', merchant_name: 'B', price: { amount: 26, currency: 'USD' } },
+      ],
+    };
+    const agg = _buildAggregateOffer(product, URL);
+    expect(agg!.offers.map((offer: any) => offer.url)).toEqual([URL, URL]);
   });
 
   it('integrates with buildProductJsonLd: multi-seller → AggregateOffer replaces single Offer', () => {

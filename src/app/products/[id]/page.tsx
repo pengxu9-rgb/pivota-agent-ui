@@ -280,11 +280,23 @@ export default async function ProductDetailPage(props: Props) {
     ? await fetchPdpForServerRender(productId, merchantId)
     : null;
 
+  const reviewsModule = renderData
+    ? readPdpModule(renderData.initialPayload, 'reviews_preview')?.data || null
+    : null;
+  const recommendationsModule = renderData
+    ? readPdpModule(renderData.initialPayload, 'recommendations')?.data || null
+    : null;
   const jsonLd = renderData
-    ? buildProductJsonLd({
-        product: renderData.product,
-        productId: renderData.canonicalRouteId || productId,
-      })
+    ? buildProductJsonLd(
+        {
+          product: renderData.product,
+          productId: renderData.canonicalRouteId || productId,
+        },
+        {
+          reviewsModule,
+          recommendationsModule,
+        },
+      )
     : null;
 
   return (

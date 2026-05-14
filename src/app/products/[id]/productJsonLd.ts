@@ -19,6 +19,7 @@
  */
 
 import { buildProductDescription } from './productDescription';
+import { buildProductHref } from '@/lib/productHref';
 
 const SCHEMA_CONTEXT = 'https://schema.org/';
 const SCHEMA_TYPE_PRODUCT = 'Product';
@@ -27,6 +28,11 @@ const SCHEMA_TYPE_BRAND = 'Brand';
 
 const PIVOTA_SITE_BASE = 'https://agent.pivota.cc';
 const PRODUCT_JSON_LD_DESCRIPTION_MAX_LENGTH = 5000;
+
+type ProductJsonLdContext = {
+  reviewsModule?: Record<string, any> | null;
+  recommendationsModule?: Record<string, any> | null;
+};
 
 // Schema.org availability vocabulary the major search engines understand.
 const AVAILABILITY_VOCAB: Record<string, string> = {
@@ -59,6 +65,12 @@ function _firstNumber(...values: unknown[]): number | null {
     }
   }
   return null;
+}
+
+function _asRecord(value: unknown): Record<string, any> | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, any>
+    : null;
 }
 
 /**
@@ -219,6 +231,90 @@ function _readOfferAvailability(offer: Record<string, any>): string | null {
   return _normalizeAvailability(raw);
 }
 
+function _readOfferDeepLink(offer: Record<string, any>, parentUrl: string): string {
+  return _firstString(
+    offer.merchant_checkout_url,
+    offer.checkout_url,
+    offer.purchase_url,
+    offer.external_redirect_url,
+    offer.externalRedirectUrl,
+    offer.external_url,
+    offer.canonical_url,
+    offer.url,
+    offer.product_url,
+    offer.destination_url,
+    offer.redirect_url,
+  ) || parentUrl;
+}
+
+function _readDayRange(value: unknown): { minValue: number; maxValue: number } | null {
+  if (!Array.isArray(value) || value.length < 2) return null;
+  const first = _firstNumber(value[0]);
+  const second = _firstNumber(value[1]);
+  if (first === null || second === null || first < 0 || second < 0) return null;
+  return {
+    minValue: Math.min(first, second),
+    maxValue: Math.max(first, second),
+  };
+}
+
+function _buildShippingDuration(range: { minValue: number; maxValue: number }): Record<string, any> {
+  return {
+    '@type': 'QuantitativeValue',
+    minValue: range.minValue,
+    maxValue: range.maxValue,
+    unitCode: 'DAY',
+  };
+}
+
+function _buildOfferShippingDetails(
+  offer: Record<string, any>,
+  currency: string,
+): Record<string, any> | null {
+  const shipping = _asRecord(offer.shipping);
+  if (!shipping) return null;
+
+  const etaRange = _readDayRange(shipping.eta_days_range);
+  const methodLabel = _firstString(shipping.method_label);
+  if (!etaRange && !methodLabel) return null;
+
+  const node: Record<string, any> = { '@type': 'OfferShippingDetails' };
+  if (methodLabel) node.shippingLabel = methodLabel;
+  if (etaRange) {
+    node.deliveryTime = {
+      '@type': 'ShippingDeliveryTime',
+      transitTime: _buildShippingDuration(etaRange),
+    };
+  }
+
+  const cost = _asRecord(shipping.cost);
+  const costAmount = _firstNumber(cost?.amount);
+  if (costAmount !== null && costAmount >= 0) {
+    node.shippingRate = {
+      '@type': 'MonetaryAmount',
+      value: costAmount === 0 ? '0' : costAmount.toFixed(2),
+      currency: _firstString(cost?.currency, currency),
+    };
+  }
+
+  return node;
+}
+
+function _buildMerchantReturnPolicy(offer: Record<string, any>): Record<string, any> | null {
+  const returns = _asRecord(offer.returns);
+  const returnWindow = _firstNumber(returns?.return_window_days);
+  if (returnWindow === null || returnWindow <= 0) return null;
+
+  return {
+    '@type': 'MerchantReturnPolicy',
+    merchantReturnDays: returnWindow,
+    returnPolicyCategory: 'https://schema.org/MerchantReturnFiniteReturnWindow',
+    returnFees: returns?.free_returns === true
+      ? 'https://schema.org/FreeReturn'
+      : 'https://schema.org/ReturnFeesCustomerResponsibility',
+  };
+}
+
 
 /**
  * Build a single Offer node within an AggregateOffer.offers array.
@@ -244,18 +340,24 @@ function _buildSellerOfferNode(
 
   const node: Record<string, any> = {
     '@type': SCHEMA_TYPE_OFFER,
-    url: parentUrl,
+    url: _readOfferDeepLink(offer, parentUrl),
     priceCurrency: currency,
     price: price.toFixed(2),
+    itemCondition: 'https://schema.org/NewCondition',
   };
   if (availability) node.availability = availability;
   if (merchantName) {
     node.seller = { '@type': 'Organization', name: merchantName };
+    if (merchantId) node.seller.identifier = merchantId;
   } else if (merchantId) {
     // Fall back to the merchant_id when display name is missing; better
     // than no seller attribution at all.
-    node.seller = { '@type': 'Organization', name: merchantId };
+    node.seller = { '@type': 'Organization', name: merchantId, identifier: merchantId };
   }
+  const shippingDetails = _buildOfferShippingDetails(offer, currency);
+  if (shippingDetails) node.shippingDetails = shippingDetails;
+  const returnPolicy = _buildMerchantReturnPolicy(offer);
+  if (returnPolicy) node.hasMerchantReturnPolicy = returnPolicy;
   return node;
 }
 
@@ -565,6 +667,79 @@ function _addProductGroupShape(
   }
 }
 
+function _scaleRatingToFivePoint(rating: number, scale: number | null): number {
+  if (scale !== null && scale > 0 && scale !== 5) {
+    return (rating / scale) * 5;
+  }
+  return rating;
+}
+
+function _resolveAggregateRating(
+  product: Record<string, any>,
+  reviewsModule?: Record<string, any> | null,
+): { ratingValue: number | null; ratingCount: number | null } {
+  const moduleRatingRaw = _firstNumber(reviewsModule?.rating);
+  const moduleScale = _firstNumber(reviewsModule?.scale);
+  const moduleRating = moduleRatingRaw !== null
+    ? _scaleRatingToFivePoint(moduleRatingRaw, moduleScale)
+    : null;
+
+  return {
+    ratingValue: _firstNumber(
+      product.aggregate_rating?.value,
+      product.rating,
+      product.average_rating,
+      moduleRating,
+    ),
+    ratingCount: _firstNumber(
+      product.aggregate_rating?.count,
+      product.rating_count,
+      product.review_count,
+      reviewsModule?.review_count,
+    ),
+  };
+}
+
+function _absolutePdpUrl(productId: string, merchantId: string): string {
+  const href = buildProductHref(productId, merchantId || undefined);
+  return `${PIVOTA_SITE_BASE}${href}`;
+}
+
+function _buildRecommendationsItemList(
+  recommendationsModule?: Record<string, any> | null,
+): Record<string, any> | null {
+  const items = Array.isArray(recommendationsModule?.items)
+    ? recommendationsModule.items
+    : [];
+  if (!items.length) return null;
+
+  const itemListElement: Array<Record<string, any>> = [];
+  for (const item of items) {
+    const record = _asRecord(item);
+    if (!record) continue;
+
+    const productId = _firstString(record.product_id, record.productId);
+    const name = _firstString(record.title, record.name, record.card_title);
+    if (!productId || !name) continue;
+
+    itemListElement.push({
+      '@type': 'ListItem',
+      position: itemListElement.length + 1,
+      url: _absolutePdpUrl(productId, _firstString(record.merchant_id, record.merchantId)),
+      name,
+    });
+    if (itemListElement.length >= 20) break;
+  }
+
+  if (!itemListElement.length) return null;
+  return {
+    '@type': 'ItemList',
+    name: 'Similar products',
+    numberOfItems: itemListElement.length,
+    itemListElement,
+  };
+}
+
 /**
  * Build the JSON-LD payload as a serialized string ready to drop into a
  * `<script type="application/ld+json">{...}</script>` block.
@@ -577,7 +752,7 @@ function _addProductGroupShape(
 export function buildProductJsonLd(args: {
   product: Record<string, any>;
   productId: string;
-}): string | null {
+}, context: ProductJsonLdContext = {}): string | null {
   const { product, productId } = args;
   const name = _firstString(product.title, product.name);
   if (!name) return null;
@@ -647,16 +822,7 @@ export function buildProductJsonLd(args: {
   }
 
   // Aggregate rating — only if we genuinely have it.
-  const ratingValue = _firstNumber(
-    product.aggregate_rating?.value,
-    product.rating,
-    product.average_rating,
-  );
-  const ratingCount = _firstNumber(
-    product.aggregate_rating?.count,
-    product.rating_count,
-    product.review_count,
-  );
+  const { ratingValue, ratingCount } = _resolveAggregateRating(product, context.reviewsModule);
   if (
     ratingValue !== null &&
     ratingValue > 0 &&
@@ -715,6 +881,9 @@ export function buildProductJsonLd(args: {
     itemListElement: breadcrumbItems,
   };
 
+  const recommendationsItemList = _buildRecommendationsItemList(context.recommendationsModule);
+  if (recommendationsItemList) ldRecord.itemList = recommendationsItemList;
+
   // hasVariant + ProductGroup shape (Stage 3b-1 + 2026-05-12 fix).
   // Emit one Product node per real variant so Google's Product
   // Variants feature can render the shade/size selector. Skipped
@@ -771,6 +940,11 @@ export const __forTesting = {
   _readOfferPrice,
   _readOfferCurrency,
   _readOfferAvailability,
+  _readOfferDeepLink,
+  _buildOfferShippingDetails,
+  _buildMerchantReturnPolicy,
   _buildSellerOfferNode,
   _buildAggregateOffer,
+  _resolveAggregateRating,
+  _buildRecommendationsItemList,
 };
