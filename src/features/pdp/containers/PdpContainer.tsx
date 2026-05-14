@@ -73,6 +73,8 @@ import { PivotaInsightsSection, isDisplayableProductIntelData } from '@/features
 import { OfferSheet } from '@/features/pdp/offers/OfferSheet';
 import { WaysToSave } from '@/features/pdp/components/WaysToSave';
 import { ModuleShell } from '@/features/pdp/components/ModuleShell';
+import { BeautyPDPMobile } from '@/features/pdp/containers/BeautyPDPMobile';
+import type { BeautyInsightsData } from '@/features/pdp/components/BeautyPivotaInsights';
 import { DEFAULT_UGC_SNAPSHOT, lockFirstUgcSource, mergeUgcItems } from '@/features/pdp/state/freezePolicy';
 import { getStableGalleryItems, resolveHeroMediaUrl } from '@/features/pdp/state/heroMedia';
 import { buildPdpViewModel } from '@/features/pdp/state/viewModel';
@@ -1442,6 +1444,11 @@ export function PdpContainer({
   }, [maxQuantity, selectedVariantId]);
 
   const resolvedMode: 'beauty' | 'generic' = mode || (isBeautyProduct(payload.product) ? 'beauty' : 'generic');
+  // Beauty mobile PDP redesign gate. Mobile renders the dedicated
+  // BeautyPDPMobile tree (early return below); desktop + generic are
+  // untouched. `isDesktop` is false during SSR / first client render, so
+  // mobile hydrates straight into the redesign with no shift.
+  const isBeautyMobile = resolvedMode === 'beauty' && !isDesktop;
 
   const media = getModuleData<MediaGalleryData>(payload, 'media_gallery');
   const pricePromo = getModuleData<PricePromoData>(payload, 'price_promo');
@@ -3648,6 +3655,235 @@ export function PdpContainer({
       setQuestionSubmitting(false);
     }
   };
+
+  // ── Beauty mobile PDP redesign ──────────────────────────────────────────
+  // Early-return into the dedicated from-scratch BeautyPDPMobile tree.
+  // Desktop + generic paths fall through to the existing render below,
+  // untouched. `isBeautyMobile` is false during SSR / first client render,
+  // so mobile hydrates straight into the redesign with no shift.
+  if (isBeautyMobile) {
+    const intelCore = (productIntel as any)?.product_intel_core;
+    const intelCommunity = (productIntel as any)?.community_signals;
+    const beautyInsights: BeautyInsightsData | null = intelCore
+      ? {
+          displayName: productIntel?.display_name || 'Pivota Insights',
+          evidenceLabel:
+            (productIntel as any)?.evidence_label ||
+            'Includes product, review, and market signals',
+          whatItIs: intelCore.what_it_is
+            ? {
+                headline: intelCore.what_it_is.headline ?? intelCore.what_it_is.summary ?? null,
+                body: intelCore.what_it_is.body ?? intelCore.what_it_is.detail ?? null,
+              }
+            : null,
+          bestFor: Array.isArray(intelCore.best_for)
+            ? intelCore.best_for
+                .map((b: any) => (typeof b === 'string' ? b : b?.label ?? b?.value ?? ''))
+                .filter(Boolean)
+            : null,
+          highlights: Array.isArray(intelCore.why_it_stands_out)
+            ? intelCore.why_it_stands_out.map((h: any) => ({
+                headline: h?.headline ?? h?.title ?? null,
+                body: h?.body ?? h?.detail ?? null,
+              }))
+            : null,
+          routine: intelCore.routine_fit
+            ? {
+                step: intelCore.routine_fit.step ?? intelCore.routine_fit.routine_step ?? null,
+                amPm: Array.isArray(intelCore.routine_fit.am_pm)
+                  ? intelCore.routine_fit.am_pm
+                  : null,
+                texture:
+                  intelCore.routine_fit.texture ?? (productIntel as any)?.texture_finish?.texture ?? null,
+                finish:
+                  intelCore.routine_fit.finish ?? (productIntel as any)?.texture_finish?.finish ?? null,
+                pairingNotes: Array.isArray(intelCore.routine_fit.pairing_notes)
+                  ? intelCore.routine_fit.pairing_notes
+                  : null,
+              }
+            : null,
+          watchouts: Array.isArray(intelCore.watchouts)
+            ? intelCore.watchouts.map((w: any) => ({
+                label: w?.label ?? w?.text ?? null,
+                severity: w?.severity ?? null,
+              }))
+            : null,
+          community: intelCommunity
+            ? {
+                loves: Array.isArray(intelCommunity.top_loves) ? intelCommunity.top_loves : null,
+                complaints: Array.isArray(intelCommunity.top_complaints)
+                  ? intelCommunity.top_complaints
+                  : null,
+              }
+            : null,
+        }
+      : null;
+
+    const beautyShades = shouldRenderColorOptions
+      ? colorSheetOptions.map((opt) => ({
+          id: opt.value,
+          name: opt.value,
+          hex: opt.swatch_hex || '#cccccc',
+        }))
+      : null;
+    const beautySizes = sizeOptions.length
+      ? sizeOptions.map((s) => ({ id: s, label: s }))
+      : null;
+
+    return (
+      <BeautyPDPMobile
+        brand={payload.product.brand?.name}
+        title={payload.product.title}
+        subtitle={payload.product.subtitle}
+        rating={reviews ? (reviews.rating / (reviews.scale || 5)) * 5 : null}
+        reviewCount={reviews?.review_count}
+        price={displayPriceAmount}
+        compareAt={compareAmount}
+        discountPct={discountPercent}
+        currency={displayCurrency}
+        galleryImages={galleryItems.map((m) => m.url).filter(Boolean)}
+        onOpenViewer={(index) =>
+          setMediaViewer({ isOpen: true, mode: 'official', source: 'media_gallery', initialIndex: index })
+        }
+        shades={beautyShades}
+        selectedShadeId={selectedColor}
+        onSelectShade={handleColorSelect}
+        sizes={beautySizes}
+        selectedSizeId={selectedSize}
+        onSelectSize={handleSizeSelect}
+        benefits={null}
+        claims={null}
+        offers={offers}
+        selectedVariant={selectedVariant}
+        selectedOfferId={selectedOffer?.offer_id || null}
+        bestPriceOfferId={variantAwareBestPriceOfferId || payload.best_price_offer_id || null}
+        primaryMerchantId={payload.product.merchant_id || null}
+        onSelectOffer={(offerId) => {
+          setSelectedOfferId(offerId);
+          pdpTracking.track('pdp_action_click', { action_type: 'select_offer', offer_id: offerId });
+        }}
+        etaRange={effectiveShippingEta as [number, number] | undefined}
+        shippingMethodLabel={selectedOffer?.shipping?.method_label || null}
+        freeShipping={
+          typeof selectedOffer?.shipping?.cost?.amount === 'number'
+            ? selectedOffer.shipping.cost.amount === 0
+            : null
+        }
+        returnWindowDays={effectiveReturns?.return_window_days || null}
+        freeReturns={effectiveReturns?.free_returns ?? null}
+        shippingSellerLabel={selectedOffer?.merchant_name || null}
+        recentPurchases={recentPurchases.map((rp) => ({
+          user: rp.user_label,
+          variant: rp.variant_label || '',
+          time: rp.time_label || '',
+        }))}
+        recentPurchasesTotal={recentPurchases.length || null}
+        customerPhotos={ugcItems.map((u) => u.url).filter(Boolean)}
+        customerPhotosTotal={ugcItems.length || null}
+        onUgcViewAll={() =>
+          openViewer({ mode: 'ugc', source: ugcSnapshot.source || 'unknown', index: 0 })
+        }
+        onUgcShare={canUploadMedia ? handleUploadMedia : undefined}
+        onUgcPhotoClick={(index) =>
+          openViewer({ mode: 'ugc', source: ugcSnapshot.source || 'unknown', index, trackThumbnail: true })
+        }
+        insights={beautyInsights}
+        reviews={
+          reviews?.preview_items?.length
+            ? reviews.preview_items.map((pi) => ({
+                name: pi.author_label || 'Reviewer',
+                rating: pi.rating,
+                title: pi.title || null,
+                body: pi.text_snippet || null,
+              }))
+            : null
+        }
+        onSeeAllReviews={onSeeAllReviews}
+        ingredients={
+          ingredientsInci?.items?.length || activeIngredients?.items?.length ? (
+            <BeautyDetailsSection
+              data={details}
+              product={payload.product}
+              media={media}
+              activeIngredients={activeIngredients}
+              ingredientsInci={ingredientsInci}
+              howToUse={null}
+              hideLowConfidenceActiveIngredients={shouldHideLowConfidenceActiveIngredients}
+              suppressOverview
+              showDetailMedia={false}
+              showProductInformation={false}
+            />
+          ) : null
+        }
+        howToUse={
+          howToUse?.steps?.length || howToUse?.raw_text ? (
+            <BeautyDetailsSection
+              data={details}
+              product={payload.product}
+              media={media}
+              activeIngredients={null}
+              ingredientsInci={null}
+              howToUse={howToUse}
+              suppressOverview
+              showDetailMedia={false}
+              showProductInformation={false}
+            />
+          ) : null
+        }
+        similar={
+          hasRecommendationItems
+            ? recommendations.items.slice(0, similarVisibleCount).map((it) => ({
+                id: it.product_id,
+                title: it.title,
+                image: it.image_url || '',
+                priceLabel: it.price
+                  ? formatPrice(it.price.amount ?? 0, it.price.currency || displayCurrency)
+                  : '',
+                rating: it.rating ?? null,
+                reviews: it.review_count ?? null,
+                highlight: it.description || null,
+              }))
+            : null
+        }
+        onSimilarClick={(item, index) => {
+          pdpTracking.track('similar_click', {
+            index,
+            product_id: item.id,
+            source: pdpViewModel.sourceLocks.similar ? 'locked' : 'live',
+          });
+          router.push(buildProductHref(item.id));
+        }}
+        buyNowLabel={actionsByType.buy_now || 'Buy now'}
+        inStock={effectiveIsInStock}
+        quantity={resolvedQuantity}
+        onQtyChange={(next) => setQuantity(next)}
+        onAddToCart={() => {
+          pdpTracking.track('pdp_action_click', { action_type: 'add_to_cart', variant_id: selectedVariant.variant_id });
+          dispatchPdpAction('add_to_cart', {
+            variant: selectedVariant,
+            quantity: resolvedQuantity,
+            merchant_id: effectiveMerchantId,
+            product_id: effectiveProductId || undefined,
+            offer_id: selectedOffer?.offer_id || undefined,
+            onAddToCart,
+          });
+        }}
+        onBuyNow={() => {
+          pdpTracking.track('pdp_action_click', { action_type: 'buy_now', variant_id: selectedVariant.variant_id });
+          dispatchPdpAction('buy_now', {
+            variant: selectedVariant,
+            quantity: resolvedQuantity,
+            merchant_id: effectiveMerchantId,
+            product_id: effectiveProductId || undefined,
+            offer_id: selectedOffer?.offer_id || undefined,
+            onBuyNow,
+          });
+        }}
+        onBack={handleBack}
+        onShare={handleShare}
+      />
+    );
+  }
 
   return (
     <div

@@ -1,7 +1,7 @@
 /* eslint-disable @next/next/no-img-element */
 import React from 'react';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { PdpContainer } from './PdpContainer';
 import type { PDPPayload } from '@/features/pdp/types';
@@ -391,11 +391,35 @@ function buildMultiOfferVariantPricingPayload(): PDPPayload {
 }
 
 describe('PdpContainer structured PDP modules', () => {
+  // These tests exercise beauty-mode structured-module logic, which is
+  // identical on the desktop beauty path. Pin matchMedia to desktop so
+  // they render the (unchanged) desktop tree rather than the redesigned
+  // BeautyPDPMobile early-return.
+  beforeEach(() => {
+    const matchMedia = vi.fn().mockImplementation((query: string) => ({
+      matches: true,
+      media: query,
+      onchange: null,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }));
+    vi.stubGlobal('matchMedia', matchMedia);
+    Object.defineProperty(window, 'matchMedia', {
+      configurable: true,
+      writable: true,
+      value: matchMedia,
+    });
+  });
+
   afterEach(() => {
     cleanup();
     routerPush.mockReset();
     getPdpV2Mock.mockReset();
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
   it('renders additive beauty modules ahead of facts and prefers product_facts over overview copy', () => {

@@ -406,6 +406,11 @@ describe('PdpContainer gallery viewer wiring', () => {
   });
 
   it('shows the single option summary for beauty-mode external-seed products too', () => {
+    // Beauty-mode external-seed logic is shared with the desktop beauty
+    // path; pin matchMedia to desktop so this renders the unchanged tree
+    // rather than the redesigned BeautyPDPMobile early-return.
+    mockMatchMedia(true);
+
     const externalSeedPayload: PDPPayload = {
       ...payload,
       product: {
