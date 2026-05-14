@@ -82,6 +82,8 @@ export function VariantSelector({
           return (
             <button
               key={v.variant_id}
+              type="button"
+              aria-pressed={isSelected}
               onClick={() => onChange(v.variant_id)}
               className={cn(
                 'flex items-center gap-2 rounded-full border px-3 py-1 text-xs transition-colors whitespace-nowrap',

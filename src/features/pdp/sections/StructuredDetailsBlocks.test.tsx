@@ -25,8 +25,11 @@ describe('StructuredDetailsBlocks', () => {
 
     expect(screen.queryByText('Active Ingredients')).not.toBeInTheDocument();
     expect(screen.getByText('Ingredients')).toBeInTheDocument();
+    expect(screen.getByText('Zinc Stearate').closest('[hidden]')).not.toBeNull();
+
     fireEvent.click(screen.getByRole('button', { name: 'Show full INCI' }));
-    expect(screen.getByText('Zinc Stearate')).toBeInTheDocument();
+
+    expect(screen.getByText('Zinc Stearate').closest('[hidden]')).toBeNull();
   });
 
   it('renders ingredients as a collapsed INCI preview and expands on demand', () => {
@@ -52,10 +55,10 @@ describe('StructuredDetailsBlocks', () => {
       />,
     );
 
-    expect(screen.getByText(/Talc/)).toBeInTheDocument();
-    expect(screen.getByText(/Mica/)).toBeInTheDocument();
-    expect(screen.getByText(/Dimethicone/)).toBeInTheDocument();
-    expect(screen.queryByText('Yellow 5 Lake (CI 19140)')).not.toBeInTheDocument();
+    expect(screen.getAllByText(/Talc/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Mica/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Dimethicone/).length).toBeGreaterThan(0);
+    expect(screen.getByText('Yellow 5 Lake (CI 19140)').closest('[hidden]')).not.toBeNull();
     expect(screen.queryByText(/Key Ingredients Ingredients/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Please be aware that ingredient lists/i)).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Show full INCI' })).toBeInTheDocument();
@@ -63,7 +66,7 @@ describe('StructuredDetailsBlocks', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Show full INCI' }));
 
     expect(screen.getByRole('button', { name: 'Hide full INCI' })).toBeInTheDocument();
-    expect(screen.getByText(/Yellow 5 Lake \(CI 19140\)/)).toBeInTheDocument();
+    expect(screen.getByText(/Yellow 5 Lake \(CI 19140\)/).closest('[hidden]')).toBeNull();
     expect(screen.queryByText('-')).not.toBeInTheDocument();
     expect(screen.getByText('Apply dry for soft definition.')).toBeInTheDocument();
     expect(screen.getByText('Blend edges')).toBeInTheDocument();

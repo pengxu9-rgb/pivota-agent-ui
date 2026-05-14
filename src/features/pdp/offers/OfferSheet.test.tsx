@@ -165,4 +165,40 @@ describe('OfferSheet', () => {
     expect(within(externalRow as HTMLElement).queryByText('Pivota store code')).not.toBeInTheDocument();
     expect(within(externalRow as HTMLElement).queryByText('Variant store code')).not.toBeInTheDocument();
   });
+
+  it('exposes selected offer rows with aria-pressed', async () => {
+    render(
+      <OfferSheet
+        open
+        offers={[
+          {
+            offer_id: 'offer_internal_pivota_market',
+            product_id: '10064558096681',
+            merchant_id: 'merch_efbc46b4619cfbdf',
+            store_name: 'Pivota Market',
+            price: { amount: 28, currency: 'USD' },
+          } as any,
+          {
+            offer_id: 'offer_external_seed_default',
+            product_id: 'ext_670fd3f47ecd319d143f8c65',
+            merchant_id: 'external_seed',
+            merchant_name: 'KraveBeauty',
+            price: { amount: 30, currency: 'USD' },
+          } as any,
+        ]}
+        selectedOfferId="offer_external_seed_default"
+        defaultOfferId="offer_internal_pivota_market"
+        onClose={() => {}}
+        onSelect={() => {}}
+      />,
+    );
+
+    const internalRow = (await screen.findByText('Pivota Market')).closest('button');
+    const externalRow = screen.getByText('KraveBeauty').closest('button');
+
+    expect(internalRow).not.toBeNull();
+    expect(externalRow).not.toBeNull();
+    expect(internalRow as HTMLElement).toHaveAttribute('aria-pressed', 'false');
+    expect(externalRow as HTMLElement).toHaveAttribute('aria-pressed', 'true');
+  });
 });
