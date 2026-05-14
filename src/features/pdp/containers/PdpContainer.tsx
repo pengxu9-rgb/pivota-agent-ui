@@ -3786,6 +3786,7 @@ export function PdpContainer({
                 ) : null}
                 {compareAmount && compareAmount > displayPriceAmount ? (
                   <span className="text-[10px] text-muted-foreground line-through">
+                    <span className="sr-only">Compare at </span>
                     {formatPrice(compareAmount, displayCurrency)}
                   </span>
                 ) : null}
@@ -3984,6 +3985,7 @@ export function PdpContainer({
                           <button
                             key={color}
                             type="button"
+                            aria-pressed={isSelected}
                             onClick={() => handleColorSelect(color)}
                             className={cn(
                               'flex-shrink-0 border bg-card text-xs text-foreground transition-colors',
@@ -4071,6 +4073,8 @@ export function PdpContainer({
                       return (
                         <button
                           key={size}
+                          type="button"
+                          aria-pressed={isSelected}
                           onClick={() => handleSizeSelect(size)}
                           className={cn(
                             'relative inline-flex h-10 min-w-10 items-center justify-center rounded-full border bg-card px-3 text-xs leading-none text-foreground transition-colors',
@@ -4447,6 +4451,8 @@ export function PdpContainer({
                     return (
                       <button
                         key={size}
+                        type="button"
+                        aria-pressed={isSelected}
                         onClick={() => handleSizeSelect(size)}
                         className={cn(
                           'rounded-full border px-3 py-1 text-xs transition-colors',

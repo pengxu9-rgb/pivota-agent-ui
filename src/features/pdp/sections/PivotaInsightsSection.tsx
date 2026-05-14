@@ -93,6 +93,7 @@ function InsightCopy({
   return (
     <>
       <p className={className}>{item.display}</p>
+      {/* Native details keeps condensed overflow in the SSR HTML stream while closed. */}
       {item.condensed ? (
         <details className="mt-1.5 text-[12px] leading-[1.45] text-muted-foreground">
           <summary className="cursor-pointer select-none font-medium text-foreground/80">

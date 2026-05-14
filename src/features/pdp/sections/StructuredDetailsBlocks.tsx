@@ -447,9 +447,10 @@ export function StructuredDetailsBlocks({
               </p>
             </div>
           ) : null}
-          {isInciExpanded ? (
+          {hasExpandableIngredients ? (
             <div
               id={inciContentId}
+              hidden={!isInciExpanded}
               className="mt-3 rounded-lg border border-border/60 bg-background/40 px-3 py-3"
             >
               {ingredientsInciItems.length ? (

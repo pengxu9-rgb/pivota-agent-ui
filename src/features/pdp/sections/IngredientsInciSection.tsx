@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import type { IngredientsInciData } from '@/features/pdp/types';
 import { PdpSourceBadge } from '@/features/pdp/sections/PdpSourceBadge';
 import { cn } from '@/lib/utils';
@@ -22,6 +22,7 @@ function normalizeStructuredItemLabel(item: unknown): string {
 
 export function IngredientsInciSection({ data }: { data: IngredientsInciData }) {
   const [expanded, setExpanded] = useState(false);
+  const fullInciContentId = useId();
   const items = Array.isArray(data.items)
     ? data.items.map((item) => normalizeStructuredItemLabel(item)).filter(Boolean)
     : [];
@@ -42,15 +43,25 @@ export function IngredientsInciSection({ data }: { data: IngredientsInciData }) 
       </p>
       <div className="mt-3 rounded-2xl border border-border bg-card/70 px-3 py-3">
         <p
+          hidden={expanded}
           className={cn(
             'text-sm leading-relaxed text-muted-foreground',
-            expanded ? 'whitespace-pre-line' : 'line-clamp-3',
+            'line-clamp-3',
           )}
+        >
+          {ingredientText}
+        </p>
+        <p
+          id={fullInciContentId}
+          hidden={!expanded}
+          className="text-sm leading-relaxed text-muted-foreground whitespace-pre-line"
         >
           {ingredientText}
         </p>
         <button
           type="button"
+          aria-expanded={expanded}
+          aria-controls={fullInciContentId}
           onClick={() => setExpanded((value) => !value)}
           className="mt-3 text-xs font-medium text-primary hover:underline"
         >

@@ -172,6 +172,7 @@ export function OfferSheet({
             <button
               key={offer.offer_id}
               type="button"
+              aria-pressed={isSelected}
               className={cn(
                 'w-full rounded-2xl border px-4 py-3 text-left transition-colors',
                 isSelected
