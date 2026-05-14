@@ -161,9 +161,9 @@ describe('PdpContainer gallery viewer wiring', () => {
       />,
     );
 
-    expect(screen.getByText('1 / 3')).toBeInTheDocument();
+    expect(screen.getByText('1/3')).toBeInTheDocument();
     fireEvent.click(screen.getByLabelText('View media 2'));
-    expect(screen.getByText('2 / 3')).toBeInTheDocument();
+    expect(screen.getByText('2/3')).toBeInTheDocument();
     expect(screen.queryByTestId('viewer-counter')).toBeNull();
   });
 
