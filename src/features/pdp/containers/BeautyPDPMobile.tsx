@@ -298,15 +298,13 @@ export function BeautyPDPMobile(props: BeautyPDPMobileProps) {
           {props.shippingReturnsText ? (
             <BeautyAccordion title="Shipping &amp; returns">{props.shippingReturnsText}</BeautyAccordion>
           ) : null}
-          {props.questions?.length ? (
-            <BeautyQuestions
-              questions={props.questions}
-              onAsk={props.onAskQuestion}
-              onSeeAll={props.onSeeAllQuestions}
-              onOpen={props.onOpenQuestion}
-              canAsk={props.canAskQuestion}
-            />
-          ) : null}
+          <BeautyQuestions
+            questions={props.questions ?? []}
+            onAsk={props.onAskQuestion}
+            onSeeAll={props.onSeeAllQuestions}
+            onOpen={props.onOpenQuestion}
+            canAsk={props.canAskQuestion}
+          />
         </div>
 
         {props.similar?.length ? (

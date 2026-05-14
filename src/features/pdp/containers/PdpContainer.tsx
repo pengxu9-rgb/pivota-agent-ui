@@ -3656,6 +3656,114 @@ export function PdpContainer({
     }
   };
 
+  // Cross-SKU product-line selector ("Shade"/"Size" axis across separate
+  // product URLs). Shared verbatim between the legacy tree and the
+  // BeautyPDPMobile redesign so there is a single source of truth.
+  const productLineSelector =
+    productLineOptions.length > 1 ? (
+      <div className="mt-2">
+        <div className="flex items-center justify-between gap-3">
+          <div className="text-xs font-semibold">{productLineOptionName}</div>
+          {isProductLineSwitching && pendingProductLineOption?.label ? (
+            <div className="flex items-center gap-1.5 truncate text-[11px] text-muted-foreground">
+              <span aria-hidden="true" className="h-2 w-2 flex-shrink-0 rounded-full bg-current opacity-60 animate-pulse" />
+              <span>Switching to {pendingProductLineOption.label}...</span>
+            </div>
+          ) : selectedProductLineOption?.label ? (
+            <div className="truncate text-[11px] text-muted-foreground">
+              Selected: {formatProductLineOptionInlineLabel(selectedProductLineOption)}
+            </div>
+          ) : null}
+        </div>
+        <div className="mt-1.5 overflow-x-auto">
+          <div className="flex flex-nowrap gap-1.5 pb-1">
+            {productLineOptions.map((option, index) => {
+              const isSelected =
+                option.selected ||
+                (option.product_id === payload.product.product_id &&
+                  (!option.merchant_id ||
+                    !payload.product.merchant_id ||
+                    option.merchant_id === payload.product.merchant_id));
+              const isPending = pendingProductLineProductId === String(option.product_id || '').trim();
+              const swatch = shouldUseProductLineColorSelector
+                ? getProductLineSwatch(option)
+                : {};
+              const hasSwatch = Boolean(swatch.imageUrl || swatch.color);
+              const useLargeSwatchCard = Boolean(shouldUseProductLineColorSelector && hasSwatch);
+              const optionAriaLabel = formatProductLineOptionInlineLabel(option) || option.label;
+              const optionTileLabel = formatProductLineOptionTileLabel(option);
+              return (
+                <button
+                  key={option.option_id || `${option.product_id}-${option.value || option.label}`}
+                  type="button"
+                  disabled={isProductLineSwitching}
+                  aria-label={optionAriaLabel}
+                  aria-pressed={isSelected}
+                  aria-busy={isPending || undefined}
+                  onMouseEnter={() => prefetchProductLineOption(option)}
+                  onFocus={() => prefetchProductLineOption(option)}
+                  onClick={() => handleProductLineOptionSelect(option, index)}
+                  className={cn(
+                    'flex flex-shrink-0 rounded-md border bg-card text-xs text-foreground transition-colors',
+                    useLargeSwatchCard
+                      ? 'h-[54px] min-w-[66px] max-w-[132px] flex-row items-center justify-start gap-2 px-1.5 py-1.5'
+                      : 'min-h-8 items-center gap-1.5',
+                    hasSwatch && !useLargeSwatchCard ? 'px-2 py-1.5' : '',
+                    !hasSwatch ? 'px-3 py-1' : '',
+                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)] disabled:cursor-wait disabled:opacity-100',
+                    isSelected
+                      ? useLargeSwatchCard
+                        ? 'border-muted-foreground/50 bg-card text-foreground font-semibold'
+                        : 'border-[color:var(--accent-600)] bg-[var(--accent-50)] text-[color:var(--accent-800)] font-semibold shadow-[inset_0_0_0_1px_var(--accent-600)]'
+                      : 'border-border hover:bg-muted/30 hover:border-muted-foreground/40',
+                    isPending ? 'opacity-75' : '',
+                  )}
+                >
+                  {hasSwatch ? (
+                    <span
+                      aria-hidden="true"
+                      className={cn(
+                        'flex-shrink-0 overflow-hidden border bg-muted',
+                        useLargeSwatchCard ? 'h-10 w-10 rounded-md' : 'h-4 w-4 rounded-full',
+                        isSelected
+                          ? useLargeSwatchCard
+                            ? 'border-foreground/70 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.85)]'
+                            : 'border-[color:var(--accent-600)]'
+                          : 'border-border',
+                      )}
+                      style={{
+                        backgroundColor: swatch.color || undefined,
+                        backgroundImage: swatch.imageUrl ? `url("${swatch.imageUrl}")` : undefined,
+                        backgroundSize: 'cover',
+                        backgroundPosition: 'center',
+                      }}
+                    />
+                  ) : null}
+                  <span
+                    className={cn(
+                      'flex min-w-0 flex-col',
+                      useLargeSwatchCard ? 'max-w-[78px] items-start text-left leading-tight' : '',
+                      hasSwatch && !useLargeSwatchCard ? 'items-start' : '',
+                      !hasSwatch ? 'items-center' : '',
+                    )}
+                  >
+                    <span className={cn(useLargeSwatchCard ? 'max-w-full truncate' : '')}>
+                      {optionTileLabel}
+                    </span>
+                    {option.secondary_label && !useLargeSwatchCard ? (
+                      <span className="text-[10px] font-normal leading-tight text-muted-foreground">
+                        {option.secondary_label}
+                      </span>
+                    ) : null}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    ) : null;
+
   // ── Beauty mobile PDP redesign ──────────────────────────────────────────
   // Early-return into the dedicated from-scratch BeautyPDPMobile tree.
   // Desktop + generic paths fall through to the existing render below,
@@ -3774,7 +3882,14 @@ export function PdpContainer({
         sizes={beautySizes}
         selectedSizeId={selectedSize}
         onSelectSize={handleSizeSelect}
-        variantSelector={beautyVariantSelector}
+        variantSelector={
+          productLineSelector || beautyVariantSelector ? (
+            <>
+              {productLineSelector}
+              {beautyVariantSelector}
+            </>
+          ) : null
+        }
         benefits={null}
         claims={null}
         offers={offers}
@@ -4174,109 +4289,7 @@ export function PdpContainer({
                 </div>
               ) : null}
 
-              {productLineOptions.length > 1 ? (
-                <div className="mt-2">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="text-xs font-semibold">{productLineOptionName}</div>
-                    {isProductLineSwitching && pendingProductLineOption?.label ? (
-                      <div className="flex items-center gap-1.5 truncate text-[11px] text-muted-foreground">
-                        <span aria-hidden="true" className="h-2 w-2 flex-shrink-0 rounded-full bg-current opacity-60 animate-pulse" />
-                        <span>Switching to {pendingProductLineOption.label}...</span>
-                      </div>
-                    ) : selectedProductLineOption?.label ? (
-                      <div className="truncate text-[11px] text-muted-foreground">
-                        Selected: {formatProductLineOptionInlineLabel(selectedProductLineOption)}
-                      </div>
-                    ) : null}
-                  </div>
-                  <div className="mt-1.5 overflow-x-auto">
-                    <div className="flex flex-nowrap gap-1.5 pb-1">
-                      {productLineOptions.map((option, index) => {
-                        const isSelected =
-                          option.selected ||
-                          (option.product_id === payload.product.product_id &&
-                            (!option.merchant_id ||
-                              !payload.product.merchant_id ||
-                              option.merchant_id === payload.product.merchant_id));
-                        const isPending = pendingProductLineProductId === String(option.product_id || '').trim();
-                        const swatch = shouldUseProductLineColorSelector
-                          ? getProductLineSwatch(option)
-                          : {};
-                        const hasSwatch = Boolean(swatch.imageUrl || swatch.color);
-                        const useLargeSwatchCard = Boolean(shouldUseProductLineColorSelector && hasSwatch);
-                        const optionAriaLabel = formatProductLineOptionInlineLabel(option) || option.label;
-                        const optionTileLabel = formatProductLineOptionTileLabel(option);
-                        return (
-                          <button
-                            key={option.option_id || `${option.product_id}-${option.value || option.label}`}
-                            type="button"
-                            disabled={isProductLineSwitching}
-                            aria-label={optionAriaLabel}
-                            aria-pressed={isSelected}
-                            aria-busy={isPending || undefined}
-                            onMouseEnter={() => prefetchProductLineOption(option)}
-                            onFocus={() => prefetchProductLineOption(option)}
-                            onClick={() => handleProductLineOptionSelect(option, index)}
-                            className={cn(
-                              'flex flex-shrink-0 rounded-md border bg-card text-xs text-foreground transition-colors',
-                              useLargeSwatchCard
-                                ? 'h-[54px] min-w-[66px] max-w-[132px] flex-row items-center justify-start gap-2 px-1.5 py-1.5'
-                                : 'min-h-8 items-center gap-1.5',
-                              hasSwatch && !useLargeSwatchCard ? 'px-2 py-1.5' : '',
-                              !hasSwatch ? 'px-3 py-1' : '',
-                              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)] disabled:cursor-wait disabled:opacity-100',
-                              isSelected
-                                ? useLargeSwatchCard
-                                  ? 'border-muted-foreground/50 bg-card text-foreground font-semibold'
-                                  : 'border-[color:var(--accent-600)] bg-[var(--accent-50)] text-[color:var(--accent-800)] font-semibold shadow-[inset_0_0_0_1px_var(--accent-600)]'
-                                : 'border-border hover:bg-muted/30 hover:border-muted-foreground/40',
-                              isPending ? 'opacity-75' : '',
-                            )}
-                          >
-                            {hasSwatch ? (
-                              <span
-                                aria-hidden="true"
-                                className={cn(
-                                  'flex-shrink-0 overflow-hidden border bg-muted',
-                                  useLargeSwatchCard ? 'h-10 w-10 rounded-md' : 'h-4 w-4 rounded-full',
-                                  isSelected
-                                    ? useLargeSwatchCard
-                                      ? 'border-foreground/70 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.85)]'
-                                      : 'border-[color:var(--accent-600)]'
-                                    : 'border-border',
-                                )}
-                                style={{
-                                  backgroundColor: swatch.color || undefined,
-                                  backgroundImage: swatch.imageUrl ? `url("${swatch.imageUrl}")` : undefined,
-                                  backgroundSize: 'cover',
-                                  backgroundPosition: 'center',
-                                }}
-                              />
-                            ) : null}
-                            <span
-                              className={cn(
-                                'flex min-w-0 flex-col',
-                                useLargeSwatchCard ? 'max-w-[78px] items-start text-left leading-tight' : '',
-                                hasSwatch && !useLargeSwatchCard ? 'items-start' : '',
-                                !hasSwatch ? 'items-center' : '',
-                              )}
-                            >
-                              <span className={cn(useLargeSwatchCard ? 'max-w-full truncate' : '')}>
-                                {optionTileLabel}
-                              </span>
-                              {option.secondary_label && !useLargeSwatchCard ? (
-                                <span className="text-[10px] font-normal leading-tight text-muted-foreground">
-                                  {option.secondary_label}
-                                </span>
-                              ) : null}
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
-              ) : null}
+              {productLineSelector}
 
               {shouldRenderColorOptions ? (
                 <div className="mt-2">

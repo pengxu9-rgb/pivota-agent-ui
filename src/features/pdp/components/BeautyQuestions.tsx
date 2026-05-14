@@ -41,13 +41,17 @@ export function BeautyQuestions({
   askLabel?: string;
   seeAllLabel?: string;
 }) {
-  if (!questions?.length) return null;
+  const list = questions ?? [];
+  // Render the section even with no questions yet (the "ask" affordance
+  // still matters) — only drop it entirely when there is nothing to show
+  // and no way to ask.
+  if (!list.length && !onAsk) return null;
 
   return (
     <section className="mt-3.5">
       <div className="mb-2.5 flex items-center justify-between px-[18px]">
         <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-          Questions ({questions.length})
+          {list.length ? `Questions (${list.length})` : 'Questions'}
         </span>
         {onAsk ? (
           <button
@@ -65,7 +69,12 @@ export function BeautyQuestions({
       </div>
 
       <div className="flex gap-2.5 overflow-x-auto px-[18px] pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        {questions.map((q, idx) => {
+        {!list.length ? (
+          <div className="min-w-[230px] flex-shrink-0 rounded-[10px] border border-dashed border-border bg-white p-3 text-[12px] text-muted-foreground">
+            No questions yet. Be the first to ask.
+          </div>
+        ) : null}
+        {list.map((q, idx) => {
           const display = resolveQuestionDisplay(q, 'pdp');
           const showReplyCount = q.source === 'community' && q.replies != null;
           const body = (
@@ -114,7 +123,7 @@ export function BeautyQuestions({
             </div>
           );
         })}
-        {onSeeAll ? (
+        {onSeeAll && list.length ? (
           <button
             type="button"
             onClick={onSeeAll}
