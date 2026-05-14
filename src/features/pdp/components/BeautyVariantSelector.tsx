@@ -1,22 +1,20 @@
 'use client';
 
-import Image from 'next/image';
 import type { Variant } from '@/features/pdp/types';
 import { getDisplayVariantLabel, getDisplayableVariantOptions } from '@/features/pdp/utils/variantLabels';
-import { shouldBypassNextImageOptimizer } from '@/features/pdp/utils/pdpImageUrls';
 import { cn } from '@/lib/utils';
 
 /**
- * Variant selector for the Beauty PDP — used for non-shade / non-size
- * variant axes (Format, Refill, …) that the dedicated BeautyShadeSelector /
+ * Variant selector for the Beauty PDP — non-shade / non-size variant axes
+ * (Format, Refill, …) that the dedicated BeautyShadeSelector /
  * BeautySizeSelector don't cover.
  *
- * The Claude Design handoff has no spec for a generic-axis selector, so this
- * is derived in the same Beauty visual language as BeautySizeSelector:
- * uppercase eyebrow + option cards, selected = white fill + 1.5px foreground
- * border. It replaces the generic production `VariantSelector` (teal pill +
- * ring) on the beauty tree so non-shade/size variants stop visually
- * diverging from the rest of the redesign.
+ * It renders in the same slot as the cross-SKU product-line selector and
+ * **mirrors its markup exactly** (sentence-case `text-xs` label, scrollable
+ * `bg-card` option chips, accent-600 selected state) so the two generic-axis
+ * selectors are visually identical no matter which one a product gets. It
+ * carries no gutter padding of its own — the variant-selector wrapper in
+ * BeautyPDP{Mobile,Desktop} already provides `px-[18px]`.
  */
 
 function deriveAxisLabel(variants: Variant[]): string {
@@ -50,49 +48,50 @@ export function BeautyVariantSelector({
   const axisLabel = deriveAxisLabel(variants);
 
   return (
-    <div className="px-[18px] pt-2.5">
-      <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-        {axisLabel}
-      </div>
-      <div className="flex flex-wrap gap-2">
-        {variants.map((variant) => {
-          const isSel = variant.variant_id === selectedId;
-          const thumb = variant.label_image_url || null;
-          return (
-            <button
-              key={variant.variant_id}
-              type="button"
-              onClick={() => onChange(variant.variant_id)}
-              aria-pressed={isSel}
-              className={cn(
-                'flex items-center gap-2 rounded-[10px] border-[1.5px] px-3 py-2 text-left',
-                isSel ? 'border-foreground bg-white' : 'border-border bg-transparent',
-              )}
-            >
-              {thumb ? (
-                <span className="relative h-5 w-5 flex-shrink-0 overflow-hidden rounded-md bg-muted ring-1 ring-border">
-                  <Image
-                    src={thumb}
-                    alt=""
-                    fill
-                    className="object-cover"
-                    sizes="20px"
-                    loading="lazy"
-                    unoptimized={shouldBypassNextImageOptimizer(thumb)}
+    <div className="mt-2">
+      <div className="text-xs font-semibold">{axisLabel}</div>
+      <div className="mt-1.5 overflow-x-auto">
+        <div className="flex flex-nowrap gap-1.5 pb-1">
+          {variants.map((variant) => {
+            const isSel = variant.variant_id === selectedId;
+            const swatchHex = variant.swatch?.hex || null;
+            const swatchImg = variant.label_image_url || null;
+            const hasSwatch = Boolean(swatchHex || swatchImg);
+            return (
+              <button
+                key={variant.variant_id}
+                type="button"
+                aria-pressed={isSel}
+                onClick={() => onChange(variant.variant_id)}
+                className={cn(
+                  'flex min-h-8 flex-shrink-0 items-center gap-1.5 rounded-md border bg-card text-xs text-foreground transition-colors',
+                  hasSwatch ? 'px-2 py-1.5' : 'px-3 py-1',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]',
+                  isSel
+                    ? 'border-[color:var(--accent-600)] bg-[var(--accent-50)] text-[color:var(--accent-800)] font-semibold shadow-[inset_0_0_0_1px_var(--accent-600)]'
+                    : 'border-border hover:border-muted-foreground/40 hover:bg-muted/30',
+                )}
+              >
+                {hasSwatch ? (
+                  <span
+                    aria-hidden="true"
+                    className={cn(
+                      'h-4 w-4 flex-shrink-0 overflow-hidden rounded-full border bg-muted',
+                      isSel ? 'border-[color:var(--accent-600)]' : 'border-border',
+                    )}
+                    style={{
+                      backgroundColor: swatchHex || undefined,
+                      backgroundImage: swatchImg ? `url("${swatchImg}")` : undefined,
+                      backgroundSize: 'cover',
+                      backgroundPosition: 'center',
+                    }}
                   />
-                </span>
-              ) : variant.swatch?.hex ? (
-                <span
-                  className="h-5 w-5 flex-shrink-0 rounded-md ring-1 ring-border"
-                  style={{ backgroundColor: variant.swatch.hex }}
-                />
-              ) : null}
-              <span className="text-[13px] font-semibold text-foreground">
-                {getDisplayVariantLabel(variant)}
-              </span>
-            </button>
-          );
-        })}
+                ) : null}
+                <span>{getDisplayVariantLabel(variant)}</span>
+              </button>
+            );
+          })}
+        </div>
       </div>
     </div>
   );
