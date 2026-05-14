@@ -26,7 +26,9 @@ export function BeautySizeSelector({
 
   return (
     <div className="px-[18px] pt-2.5">
-      <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+      {/* Label font matches the product-line / variant selectors so every
+          variant-axis selector reads consistently (owner-flagged). */}
+      <div className="mb-1.5 text-xs font-semibold text-foreground">
         Size
       </div>
       <div className="flex gap-2">

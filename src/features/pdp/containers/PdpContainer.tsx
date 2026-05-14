@@ -3881,7 +3881,10 @@ export function PdpContainer({
       ) : null;
 
     // Same prop object feeds both trees — only the shell swaps on the
-    // viewport breakpoint (mobile redesign vs. derived desktop layout).
+    // viewport breakpoint. `useIsDesktop` reads the media query
+    // synchronously on the first client render (useSyncExternalStore), so
+    // the desktop tree is chosen reliably instead of via a post-mount
+    // effect that could be missed.
     const BeautyShell = isBeautyDesktop ? BeautyPDPDesktop : BeautyPDPMobile;
 
     return (
