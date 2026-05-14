@@ -75,6 +75,7 @@ import { WaysToSave } from '@/features/pdp/components/WaysToSave';
 import { ModuleShell } from '@/features/pdp/components/ModuleShell';
 import { BeautyPDPMobile } from '@/features/pdp/containers/BeautyPDPMobile';
 import { BeautyPDPDesktop } from '@/features/pdp/containers/BeautyPDPDesktop';
+import { BeautyVariantSelector } from '@/features/pdp/components/BeautyVariantSelector';
 import type { BeautyInsightsData } from '@/features/pdp/components/BeautyPivotaInsights';
 import { DEFAULT_UGC_SNAPSHOT, lockFirstUgcSource, mergeUgcItems } from '@/features/pdp/state/freezePolicy';
 import { getStableGalleryItems, resolveHeroMediaUrl } from '@/features/pdp/state/heroMedia';
@@ -3866,7 +3867,7 @@ export function PdpContainer({
       !shouldRenderColorOptions &&
       selectorVariants.length > 0 &&
       !(productLineOptions.length > 1 && selectorVariants.length === 1) ? (
-        <VariantSelector
+        <BeautyVariantSelector
           variants={selectorVariants}
           selectedVariantId={selectedVariant.variant_id}
           onChange={(variantId) => {
@@ -3876,7 +3877,6 @@ export function PdpContainer({
               variant_id: variantId,
             });
           }}
-          mode={resolvedMode}
         />
       ) : null;
 
