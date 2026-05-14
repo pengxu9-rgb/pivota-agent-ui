@@ -203,12 +203,15 @@ export function BeautyMobileSellerPicker({
           onClick={() => onSelect(primary.offer_id)}
         />
         {/*
-          All non-primary rows render in the DOM regardless of `expanded`
-          (collapsed via `hidden`) so the SSR HTML carries the full
-          multi-seller list for crawlers / AI shopping agents.
+          All non-primary rows stay in the DOM regardless of `expanded`
+          (collapsed via the `hidden` Tailwind utility, i.e. display:none)
+          so the SSR HTML carries the full multi-seller list for crawlers
+          / AI shopping agents. The display utility is applied
+          conditionally — a static `flex` class would override the `hidden`
+          attribute and leak the collapsed rows.
         */}
         {others.length > 0 ? (
-          <div hidden={!expanded} className="flex flex-col gap-1.5">
+          <div className={cn('flex-col gap-1.5', expanded ? 'flex' : 'hidden')}>
             {others.map((offer) => (
               <SellerCard
                 key={offer.offer_id}
