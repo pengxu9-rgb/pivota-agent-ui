@@ -178,6 +178,55 @@ describe('buildProductJsonLd — aggregateRating', () => {
     });
   });
 
+  it('uses module rating and count when product has rating but no count', () => {
+    const out = buildProductJsonLd(
+      {
+        product: { title: 'X', rating: 2 },
+        productId: PRODUCT_ID,
+      },
+      {
+        reviewsModule: { rating: 4.8, review_count: 100 },
+      },
+    );
+    const parsed = JSON.parse(out!);
+    expect(parsed.aggregateRating).toEqual({
+      '@type': 'AggregateRating',
+      ratingValue: '4.8',
+      reviewCount: 100,
+    });
+  });
+
+  it('uses product rating and count before module values', () => {
+    const out = buildProductJsonLd(
+      {
+        product: { title: 'X', rating: 2, rating_count: 8 },
+        productId: PRODUCT_ID,
+      },
+      {
+        reviewsModule: { rating: 4.8, review_count: 100 },
+      },
+    );
+    const parsed = JSON.parse(out!);
+    expect(parsed.aggregateRating).toEqual({
+      '@type': 'AggregateRating',
+      ratingValue: '2.0',
+      reviewCount: 8,
+    });
+  });
+
+  it('omits aggregateRating when neither product nor module has a complete pair', () => {
+    const out = buildProductJsonLd(
+      {
+        product: { title: 'X', rating: 2 },
+        productId: PRODUCT_ID,
+      },
+      {
+        reviewsModule: { review_count: 100 },
+      },
+    );
+    expect(JSON.parse(out!).aggregateRating).toBeUndefined();
+  });
+
   it('treats zero rating placeholders as absent before reviews_preview fallback', () => {
     const out = buildProductJsonLd(
       {

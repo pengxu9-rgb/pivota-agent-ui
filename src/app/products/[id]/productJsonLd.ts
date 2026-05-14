@@ -707,20 +707,22 @@ function _resolveAggregateRating(
     ? _scaleRatingToFivePoint(moduleRatingRaw, moduleScale)
     : null;
 
-  return {
-    ratingValue: _firstPositiveNumber(
-      product.aggregate_rating?.value,
-      product.rating,
-      product.average_rating,
-      moduleRating,
-    ),
-    ratingCount: _firstPositiveNumber(
-      product.aggregate_rating?.count,
-      product.rating_count,
-      product.review_count,
-      reviewsModule?.review_count,
-    ),
-  };
+  const pairs: Array<{ value: unknown; count: unknown }> = [
+    { value: product.aggregate_rating?.value, count: product.aggregate_rating?.count },
+    { value: product.rating, count: product.rating_count },
+    { value: product.average_rating, count: product.review_count },
+    { value: moduleRating, count: reviewsModule?.review_count },
+  ];
+
+  for (const pair of pairs) {
+    const ratingValue = _firstPositiveNumber(pair.value);
+    const ratingCount = _firstPositiveNumber(pair.count);
+    if (ratingValue !== null && ratingCount !== null) {
+      return { ratingValue, ratingCount };
+    }
+  }
+
+  return { ratingValue: null, ratingCount: null };
 }
 
 function _buildRecommendationsItemList(
