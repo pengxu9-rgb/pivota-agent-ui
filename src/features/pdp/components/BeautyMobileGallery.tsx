@@ -5,9 +5,12 @@ import { useRef, useState } from 'react';
 /**
  * Full-bleed swipe gallery for the Beauty mobile PDP.
  * Faithful to redesign/pivota-pdp.jsx → Gallery:
- *   cream vertical-gradient backdrop, horizontal scroll-snap strip at
- *   aspect 1/1.05, a bottom-right "{i} / {n}" blurred counter chip, and a
- *   centered dot indicator (the active dot is an elongated pill).
+ *   cream vertical-gradient backdrop, horizontal scroll-snap strip, a
+ *   bottom-right "{i} / {n}" blurred counter chip, and a centered dot
+ *   indicator (the active dot is an elongated pill).
+ *
+ * Aspect ratio is 4/3 rather than the design's near-square 20/21 so more
+ * of the product info sits above the fold on first paint (owner request).
  */
 export function BeautyMobileGallery({
   images,
@@ -33,7 +36,7 @@ export function BeautyMobileGallery({
           const w = e.currentTarget.clientWidth || 1;
           setIdx(Math.round(e.currentTarget.scrollLeft / w));
         }}
-        className="flex w-full snap-x snap-mandatory overflow-x-auto aspect-[20/21] [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+        className="flex w-full snap-x snap-mandatory overflow-x-auto aspect-[4/3] [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
       >
         {images.map((src, i) => (
           <button

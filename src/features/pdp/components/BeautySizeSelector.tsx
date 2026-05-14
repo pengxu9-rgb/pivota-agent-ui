@@ -25,8 +25,8 @@ export function BeautySizeSelector({
   const selected = sizes.find((s) => s.id === selectedId)?.id || sizes[0].id;
 
   return (
-    <div className="px-[18px] pt-[18px]">
-      <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+    <div className="px-[18px] pt-3.5">
+      <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
         Size
       </div>
       <div className="flex gap-2">
@@ -39,7 +39,7 @@ export function BeautySizeSelector({
               onClick={() => onSelect(sz.id)}
               aria-pressed={isSel}
               className={cn(
-                'flex-1 rounded-[10px] border-[1.5px] px-3 py-2.5 text-left',
+                'flex-1 rounded-[10px] border-[1.5px] px-3 py-2 text-left',
                 isSel ? 'border-foreground bg-white' : 'border-border bg-transparent',
               )}
             >

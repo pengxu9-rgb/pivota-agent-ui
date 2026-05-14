@@ -31,7 +31,7 @@ export function BeautyYouMayAlsoLike({
   if (!items?.length) return null;
 
   return (
-    <div className="mt-6 px-3.5 pb-1">
+    <div className="mt-4 px-3.5 pb-1">
       <div className="mb-2.5 flex items-center justify-between">
         <h3 className="text-[14px] font-semibold text-foreground">You May Also Like</h3>
       </div>

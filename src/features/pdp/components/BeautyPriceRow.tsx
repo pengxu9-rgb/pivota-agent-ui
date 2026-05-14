@@ -3,10 +3,11 @@
 /**
  * Price row for the Beauty mobile PDP.
  * Faithful to redesign/pivota-pdp.jsx → PriceRow:
- *   30px bold price, 15px strikethrough compare-at, and a coral "SAVE N%"
- *   badge. Coral matches the design reference (the JSX is the source of
- *   truth); it has no .lovable-pdp token so it's an inline value, not a
- *   new CSS variable.
+ *   bold price, strikethrough compare-at, and a coral "SAVE N%" badge.
+ *   Coral matches the design reference (the JSX is the source of truth);
+ *   it has no .lovable-pdp token so it's an inline value, not a new CSS
+ *   variable. Price size and top padding are tightened from the design
+ *   spec so more info sits above the fold (owner request).
  */
 function fmt(amount: number, currency: string): string {
   try {
@@ -33,8 +34,8 @@ export function BeautyPriceRow({
 }) {
   const hasCompare = typeof compareAt === 'number' && compareAt > price;
   return (
-    <div className="flex items-baseline gap-2.5 px-[18px] pt-[18px]">
-      <div className="text-[30px] font-bold tracking-[-0.02em] text-foreground">
+    <div className="flex items-baseline gap-2.5 px-[18px] pt-2.5">
+      <div className="text-[24px] font-bold tracking-[-0.02em] text-foreground">
         {fmt(price, currency)}
       </div>
       {hasCompare ? (

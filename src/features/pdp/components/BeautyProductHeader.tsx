@@ -3,9 +3,12 @@
 /**
  * Product header for the Beauty mobile PDP.
  * Faithful to redesign/pivota-pdp.jsx → ProductHeader:
- *   teal uppercase brand eyebrow, serif title (Cormorant Garamond 26/1.12),
- *   13px muted subtitle, then a rating row — gold stars + rating + count +
- *   a right-aligned "See reviews →" link.
+ *   teal uppercase brand eyebrow, serif title (Cormorant Garamond), 13px
+ *   muted subtitle, then a rating row — gold stars + rating + count + a
+ *   right-aligned "See reviews →" link.
+ *
+ * Title size and section padding are tightened from the design spec so
+ * more info sits above the fold on first paint (owner request).
  */
 
 function Star() {
@@ -32,21 +35,21 @@ export function BeautyProductHeader({
   onSeeReviews?: () => void;
 }) {
   return (
-    <div className="px-[18px] pt-5">
+    <div className="px-[18px] pt-3.5">
       {brand ? (
         <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-primary">
           {brand}
         </div>
       ) : null}
-      <h1 className="mt-1.5 mb-1 font-serif text-[26px] font-medium leading-[1.12] tracking-[-0.01em] text-foreground">
+      <h1 className="mt-1 mb-0.5 font-serif text-[22px] font-medium leading-[1.15] tracking-[-0.01em] text-foreground">
         {title}
       </h1>
       {subtitle ? (
-        <div className="text-[13px] leading-[1.4] text-muted-foreground">{subtitle}</div>
+        <div className="text-[12.5px] leading-[1.4] text-muted-foreground">{subtitle}</div>
       ) : null}
 
       {typeof rating === 'number' && rating > 0 ? (
-        <div className="mt-2.5 flex items-center gap-2">
+        <div className="mt-2 flex items-center gap-2">
           <div className="flex gap-px text-[hsl(var(--gold))]">
             {[1, 2, 3, 4, 5].map((n) => (
               <Star key={n} />

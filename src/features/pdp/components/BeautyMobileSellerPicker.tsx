@@ -183,7 +183,7 @@ export function BeautyMobileSellerPicker({
   const inStockCount = offers.reduce((acc, o) => acc + (offerInStock(o) ? 1 : 0), 0);
 
   return (
-    <section className="mx-[18px] mt-[22px]">
+    <section className="mx-[18px] mt-3.5">
       <div className="mb-2.5 flex items-center gap-1.5">
         <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
           Buy from

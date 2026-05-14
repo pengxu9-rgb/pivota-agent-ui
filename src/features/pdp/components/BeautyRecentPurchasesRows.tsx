@@ -24,7 +24,7 @@ export function BeautyRecentPurchasesRows({
   const visible = expanded ? items : items.slice(0, 3);
 
   return (
-    <div className="mt-[18px] px-3.5">
+    <div className="mt-3.5 px-3.5">
       <div className="mb-2 flex items-center justify-between">
         <h3 className="text-[14px] font-semibold text-foreground">
           Recent Purchases{totalLabel != null ? ` (${totalLabel})` : ''}

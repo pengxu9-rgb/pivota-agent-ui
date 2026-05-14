@@ -262,7 +262,7 @@ export function BeautyPDPMobile(props: BeautyPDPMobileProps) {
           </div>
         ) : null}
 
-        <div ref={reviewsRef} className="mt-6">
+        <div ref={reviewsRef} className="mt-4">
           {props.reviews?.length ? (
             <BeautyAccordion title="Reviews" count={props.reviewCount ?? props.reviews.length} defaultOpen>
               <BeautyReviewsPreview

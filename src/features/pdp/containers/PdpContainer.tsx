@@ -3731,6 +3731,7 @@ export function PdpContainer({
       : null;
 
     return (
+      <>
       <BeautyPDPMobile
         brand={payload.product.brand?.name}
         title={payload.product.title}
@@ -3882,6 +3883,49 @@ export function PdpContainer({
         onBack={handleBack}
         onShare={handleShare}
       />
+      <PdpMediaViewer
+        isOpen={mediaViewer.isOpen}
+        initialIndex={mediaViewer.initialIndex}
+        officialItems={galleryItems}
+        ugcItems={ugcItems}
+        defaultMode={mediaViewer.mode}
+        officialSource="media_gallery"
+        ugcSource={ugcSnapshot.source || mediaViewer.source || 'unknown'}
+        onClose={() =>
+          setMediaViewer((prev) => ({
+            ...prev,
+            isOpen: false,
+          }))
+        }
+        onCloseWithState={(viewerPayload) => {
+          pdpTracking.track('pdp_gallery_close_viewer', {
+            mode: viewerPayload.mode,
+            source: viewerPayload.source,
+            index: viewerPayload.index,
+          });
+        }}
+        onOpenGrid={(viewerPayload) => {
+          pdpTracking.track('pdp_gallery_open_grid', {
+            mode: viewerPayload.mode,
+            source: viewerPayload.source,
+          });
+        }}
+        onSwipe={(viewerPayload) => {
+          pdpTracking.track('pdp_gallery_swipe', {
+            mode: viewerPayload.mode,
+            source: viewerPayload.source,
+            from_index: viewerPayload.fromIndex,
+            to_index: viewerPayload.toIndex,
+            direction: viewerPayload.direction,
+          });
+        }}
+        onIndexChange={({ mode: viewerMode, index }) => {
+          if (viewerMode === 'official') {
+            setActiveMediaIndex(index);
+          }
+        }}
+      />
+      </>
     );
   }
 

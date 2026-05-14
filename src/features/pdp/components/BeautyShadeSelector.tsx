@@ -32,7 +32,7 @@ export function BeautyShadeSelector({
   const selected = shades.find((s) => s.id === selectedId) || shades[0];
 
   return (
-    <div className="pt-[22px]">
+    <div className="pt-3.5">
       <div className="flex items-baseline justify-between px-[18px]">
         <div>
           <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
@@ -47,7 +47,7 @@ export function BeautyShadeSelector({
         ) : null}
       </div>
 
-      <div className="flex gap-3 overflow-x-auto px-[18px] pb-2 pt-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <div className="flex gap-3 overflow-x-auto px-[18px] pb-1.5 pt-2.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {shades.map((s) => {
           const isSel = s.id === selected.id;
           return (
