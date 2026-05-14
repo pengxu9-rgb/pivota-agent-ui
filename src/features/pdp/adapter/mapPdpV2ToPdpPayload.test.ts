@@ -203,6 +203,34 @@ describe('mapPdpV2ToPdpPayload image normalization', () => {
     expect(payload?.x_recommendations_state).toBeUndefined();
   });
 
+  it('promotes response variant selector variants when canonical payload has no product variants', () => {
+    const response = buildMinimalResponse();
+    delete response.modules[0].data.pdp_payload.product.variants;
+    response.modules.push({
+      type: 'variant_selector',
+      data: {
+        selected_variant_id: 'v_17oz',
+        variants: [
+          {
+            variant_id: 'v_17oz',
+            title: '1.7 oz',
+            options: [{ name: 'Size', value: '1.7 oz', axis_kind: 'volume' }],
+            image_url: 'https://sdcdn.io/tf/size-main.png',
+            label_image_url: 'https://sdcdn.io/tf/size-swatch.png',
+          },
+        ],
+      },
+    } as any);
+
+    const payload = mapPdpV2ToPdpPayload(response as any);
+
+    expect(payload?.product.default_variant_id).toBe('v_17oz');
+    expect(payload?.product.variants).toHaveLength(1);
+    expect(payload?.product.variants?.[0]?.title).toBe('1.7 oz');
+    expect(payload?.product.variants?.[0]?.image_url).toBe('https://sdcdn.io/tf/size-main.png');
+    expect(payload?.modules.find((module) => module.type === 'variant_selector')).toBeTruthy();
+  });
+
   it('does not double-wrap already proxied URLs', () => {
     const response = buildMinimalResponse();
     response.modules[0].data.pdp_payload.product.image_url =

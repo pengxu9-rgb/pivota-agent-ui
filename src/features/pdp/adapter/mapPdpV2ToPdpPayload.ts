@@ -194,6 +194,17 @@ function normalizePdpPayloadImages(payload: PDPPayload): PDPPayload {
   };
 }
 
+function normalizeVariantImageFields(variant: unknown): unknown {
+  if (!isRecord(variant)) return variant;
+  const normalizedVariantImage = normalizePdpImageUrl(variant.image_url);
+  const normalizedVariantLabel = normalizePdpImageUrl(variant.label_image_url);
+  return {
+    ...variant,
+    ...(normalizedVariantImage ? { image_url: normalizedVariantImage } : {}),
+    ...(normalizedVariantLabel ? { label_image_url: normalizedVariantLabel } : {}),
+  };
+}
+
 function getModule(response: GetPdpV2Response, type: string): any | null {
   const modules = Array.isArray(response?.modules) ? response.modules : [];
   return modules.find((m) => m && typeof m === 'object' && m.type === type) || null;
@@ -515,6 +526,33 @@ export function mapPdpV2ToPdpPayload(response: GetPdpV2Response): PDPPayload | n
         | ProductDetailsData
         | Record<string, unknown>,
     }));
+  }
+
+  const variantSelectorModule = getModule(response, 'variant_selector');
+  const variantSelectorData = isRecord(variantSelectorModule?.data) ? variantSelectorModule.data : null;
+  const selectorVariants = Array.isArray(variantSelectorData?.variants)
+    ? variantSelectorData.variants.filter(isRecord)
+    : [];
+  if (
+    selectorVariants.length > 0 &&
+    (!Array.isArray(next.product?.variants) || next.product.variants.length === 0)
+  ) {
+    const selectedVariantId =
+      typeof variantSelectorData?.selected_variant_id === 'string'
+        ? variantSelectorData.selected_variant_id.trim()
+        : '';
+    next = {
+      ...next,
+      product: {
+        ...next.product,
+        variants: selectorVariants.map((variant: unknown) => normalizeVariantImageFields(variant)) as any[],
+        default_variant_id:
+          next.product.default_variant_id ||
+          selectedVariantId ||
+          String(selectorVariants[0]?.variant_id || '').trim() ||
+          undefined,
+      },
+    };
   }
 
   const reviewsModule = getModule(response, 'reviews_preview');

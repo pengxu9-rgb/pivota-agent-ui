@@ -73,6 +73,10 @@ import { PivotaInsightsSection, isDisplayableProductIntelData } from '@/features
 import { OfferSheet } from '@/features/pdp/offers/OfferSheet';
 import { WaysToSave } from '@/features/pdp/components/WaysToSave';
 import { ModuleShell } from '@/features/pdp/components/ModuleShell';
+import { BeautyPDPMobile } from '@/features/pdp/containers/BeautyPDPMobile';
+import { BeautyPDPDesktop } from '@/features/pdp/containers/BeautyPDPDesktop';
+import { BeautyVariantSelector } from '@/features/pdp/components/BeautyVariantSelector';
+import type { BeautyInsightsData } from '@/features/pdp/components/BeautyPivotaInsights';
 import { DEFAULT_UGC_SNAPSHOT, lockFirstUgcSource, mergeUgcItems } from '@/features/pdp/state/freezePolicy';
 import { getStableGalleryItems, resolveHeroMediaUrl } from '@/features/pdp/state/heroMedia';
 import { buildPdpViewModel } from '@/features/pdp/state/viewModel';
@@ -1442,6 +1446,12 @@ export function PdpContainer({
   }, [maxQuantity, selectedVariantId]);
 
   const resolvedMode: 'beauty' | 'generic' = mode || (isBeautyProduct(payload.product) ? 'beauty' : 'generic');
+  // Beauty PDP redesign gate. Beauty products render the dedicated redesign
+  // tree (BeautyPDPMobile / BeautyPDPDesktop, early return below); the
+  // generic path is untouched. `isDesktop` is false during SSR / first
+  // client render, so beauty hydrates into the mobile tree first.
+  const isBeautyMobile = resolvedMode === 'beauty' && !isDesktop;
+  const isBeautyDesktop = resolvedMode === 'beauty' && isDesktop;
 
   const media = getModuleData<MediaGalleryData>(payload, 'media_gallery');
   const pricePromo = getModuleData<PricePromoData>(payload, 'price_promo');
@@ -3649,6 +3659,451 @@ export function PdpContainer({
     }
   };
 
+  // Cross-SKU product-line selector ("Shade"/"Size" axis across separate
+  // product URLs). Shared verbatim between the legacy tree and the
+  // BeautyPDPMobile redesign so there is a single source of truth.
+  const productLineSelector =
+    productLineOptions.length > 1 ? (
+      <div className="mt-2">
+        <div className="flex items-center justify-between gap-3">
+          <div className="text-xs font-semibold">{productLineOptionName}</div>
+          {isProductLineSwitching && pendingProductLineOption?.label ? (
+            <div className="flex items-center gap-1.5 truncate text-[11px] text-muted-foreground">
+              <span aria-hidden="true" className="h-2 w-2 flex-shrink-0 rounded-full bg-current opacity-60 animate-pulse" />
+              <span>Switching to {pendingProductLineOption.label}...</span>
+            </div>
+          ) : selectedProductLineOption?.label ? (
+            <div className="truncate text-[11px] text-muted-foreground">
+              Selected: {formatProductLineOptionInlineLabel(selectedProductLineOption)}
+            </div>
+          ) : null}
+        </div>
+        <div className="mt-1.5 overflow-x-auto">
+          <div className="flex flex-nowrap gap-1.5 pb-1">
+            {productLineOptions.map((option, index) => {
+              const isSelected =
+                option.selected ||
+                (option.product_id === payload.product.product_id &&
+                  (!option.merchant_id ||
+                    !payload.product.merchant_id ||
+                    option.merchant_id === payload.product.merchant_id));
+              const isPending = pendingProductLineProductId === String(option.product_id || '').trim();
+              const swatch = shouldUseProductLineColorSelector
+                ? getProductLineSwatch(option)
+                : {};
+              const hasSwatch = Boolean(swatch.imageUrl || swatch.color);
+              const useLargeSwatchCard = Boolean(shouldUseProductLineColorSelector && hasSwatch);
+              const optionAriaLabel = formatProductLineOptionInlineLabel(option) || option.label;
+              const optionTileLabel = formatProductLineOptionTileLabel(option);
+              return (
+                <button
+                  key={option.option_id || `${option.product_id}-${option.value || option.label}`}
+                  type="button"
+                  disabled={isProductLineSwitching}
+                  aria-label={optionAriaLabel}
+                  aria-pressed={isSelected}
+                  aria-busy={isPending || undefined}
+                  onMouseEnter={() => prefetchProductLineOption(option)}
+                  onFocus={() => prefetchProductLineOption(option)}
+                  onClick={() => handleProductLineOptionSelect(option, index)}
+                  className={cn(
+                    'flex flex-shrink-0 rounded-md border bg-card text-xs text-foreground transition-colors',
+                    useLargeSwatchCard
+                      ? 'h-[54px] min-w-[66px] max-w-[132px] flex-row items-center justify-start gap-2 px-1.5 py-1.5'
+                      : 'min-h-8 items-center gap-1.5',
+                    hasSwatch && !useLargeSwatchCard ? 'px-2 py-1.5' : '',
+                    !hasSwatch ? 'px-3 py-1' : '',
+                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)] disabled:cursor-wait disabled:opacity-100',
+                    isSelected
+                      ? useLargeSwatchCard
+                        ? 'border-muted-foreground/50 bg-card text-foreground font-semibold'
+                        : 'border-[color:var(--accent-600)] bg-[var(--accent-50)] text-[color:var(--accent-800)] font-semibold shadow-[inset_0_0_0_1px_var(--accent-600)]'
+                      : 'border-border hover:bg-muted/30 hover:border-muted-foreground/40',
+                    isPending ? 'opacity-75' : '',
+                  )}
+                >
+                  {hasSwatch ? (
+                    <span
+                      aria-hidden="true"
+                      className={cn(
+                        'flex-shrink-0 overflow-hidden border bg-muted',
+                        useLargeSwatchCard ? 'h-10 w-10 rounded-md' : 'h-4 w-4 rounded-full',
+                        isSelected
+                          ? useLargeSwatchCard
+                            ? 'border-foreground/70 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.85)]'
+                            : 'border-[color:var(--accent-600)]'
+                          : 'border-border',
+                      )}
+                      style={{
+                        backgroundColor: swatch.color || undefined,
+                        backgroundImage: swatch.imageUrl ? `url("${swatch.imageUrl}")` : undefined,
+                        backgroundSize: 'cover',
+                        backgroundPosition: 'center',
+                      }}
+                    />
+                  ) : null}
+                  <span
+                    className={cn(
+                      'flex min-w-0 flex-col',
+                      useLargeSwatchCard ? 'max-w-[78px] items-start text-left leading-tight' : '',
+                      hasSwatch && !useLargeSwatchCard ? 'items-start' : '',
+                      !hasSwatch ? 'items-center' : '',
+                    )}
+                  >
+                    <span className={cn(useLargeSwatchCard ? 'max-w-full truncate' : '')}>
+                      {optionTileLabel}
+                    </span>
+                    {option.secondary_label && !useLargeSwatchCard ? (
+                      <span className="text-[10px] font-normal leading-tight text-muted-foreground">
+                        {option.secondary_label}
+                      </span>
+                    ) : null}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    ) : null;
+
+  // ── Beauty PDP redesign ─────────────────────────────────────────────────
+  // Early-return into the dedicated redesign tree. Mobile (<1024px) renders
+  // BeautyPDPMobile; desktop renders the derived two-column BeautyPDPDesktop.
+  // Both accept the same prop object, so the wiring below is shared and only
+  // the shell component swaps on the breakpoint. The generic path falls
+  // through to the existing render below, untouched.
+  if (isBeautyMobile || isBeautyDesktop) {
+    const intelCore = (productIntel as any)?.product_intel_core;
+    const intelCommunity = (productIntel as any)?.community_signals;
+    const beautyInsights: BeautyInsightsData | null = intelCore
+      ? {
+          displayName: productIntel?.display_name || 'Pivota Insights',
+          evidenceLabel:
+            (productIntel as any)?.evidence_label ||
+            'Includes product, review, and market signals',
+          whatItIs: intelCore.what_it_is
+            ? {
+                headline: intelCore.what_it_is.headline ?? intelCore.what_it_is.summary ?? null,
+                body: intelCore.what_it_is.body ?? intelCore.what_it_is.detail ?? null,
+              }
+            : null,
+          bestFor: Array.isArray(intelCore.best_for)
+            ? intelCore.best_for
+                .map((b: any) => (typeof b === 'string' ? b : b?.label ?? b?.value ?? ''))
+                .filter(Boolean)
+            : null,
+          highlights: Array.isArray(intelCore.why_it_stands_out)
+            ? intelCore.why_it_stands_out.map((h: any) => ({
+                headline: h?.headline ?? h?.title ?? null,
+                body: h?.body ?? h?.detail ?? null,
+              }))
+            : null,
+          routine: intelCore.routine_fit
+            ? {
+                step: intelCore.routine_fit.step ?? intelCore.routine_fit.routine_step ?? null,
+                amPm: Array.isArray(intelCore.routine_fit.am_pm)
+                  ? intelCore.routine_fit.am_pm
+                  : null,
+                texture:
+                  intelCore.routine_fit.texture ?? (productIntel as any)?.texture_finish?.texture ?? null,
+                finish:
+                  intelCore.routine_fit.finish ?? (productIntel as any)?.texture_finish?.finish ?? null,
+                pairingNotes: Array.isArray(intelCore.routine_fit.pairing_notes)
+                  ? intelCore.routine_fit.pairing_notes
+                  : null,
+              }
+            : null,
+          watchouts: Array.isArray(intelCore.watchouts)
+            ? intelCore.watchouts.map((w: any) => ({
+                label: w?.label ?? w?.text ?? null,
+                severity: w?.severity ?? null,
+              }))
+            : null,
+          community: intelCommunity
+            ? {
+                loves: Array.isArray(intelCommunity.top_loves) ? intelCommunity.top_loves : null,
+                complaints: Array.isArray(intelCommunity.top_complaints)
+                  ? intelCommunity.top_complaints
+                  : null,
+              }
+            : null,
+        }
+      : null;
+
+    const beautyShades = shouldRenderColorOptions
+      ? colorSheetOptions.map((opt) => ({
+          id: opt.value,
+          name: opt.value,
+          hex: opt.swatch_hex || '#cccccc',
+        }))
+      : null;
+    const beautySizes = sizeOptions.length
+      ? sizeOptions.map((s) => ({ id: s, label: s }))
+      : null;
+
+    // §6 flag (owner-settled): BenefitsStrip / KeyClaims derive from existing
+    // payload data only — never fabricated, no data-shape change.
+    //   • BenefitsStrip ← variant beauty attributes (finish / coverage /
+    //     undertone), already extracted as `beautyAttributes`.
+    //   • KeyClaims    ← product-level `beauty_meta.important_info`, a
+    //     structured string[] carried through the adapter.
+    // When a product has neither source, the prop is null and the section
+    // renders nothing.
+    const beautyBenefits = beautyAttributes.length
+      ? beautyAttributes.map((attr) =>
+          attr.value ? attr.value.charAt(0).toUpperCase() + attr.value.slice(1) : attr.value,
+        )
+      : null;
+    const beautyClaims = payload.product.beauty_meta?.important_info?.length
+      ? payload.product.beauty_meta.important_info
+      : null;
+
+    // General variant/SKU selector — only when neither shades nor sizes
+    // apply, matching the legacy desktop/generic gating so it never
+    // double-renders alongside the dedicated shade/size selectors.
+    const beautyVariantSelector =
+      !sizeOptions.length &&
+      !shouldRenderColorOptions &&
+      selectorVariants.length > 0 &&
+      !(productLineOptions.length > 1 && selectorVariants.length === 1) ? (
+        <BeautyVariantSelector
+          variants={selectorVariants}
+          selectedVariantId={selectedVariant.variant_id}
+          onChange={(variantId) => {
+            handleVariantSelect(variantId);
+            pdpTracking.track('pdp_action_click', {
+              action_type: 'select_variant',
+              variant_id: variantId,
+            });
+          }}
+        />
+      ) : null;
+
+    // Same prop object feeds both trees — only the shell swaps on the
+    // viewport breakpoint (mobile redesign vs. derived desktop layout).
+    const BeautyShell = isBeautyDesktop ? BeautyPDPDesktop : BeautyPDPMobile;
+
+    return (
+      <>
+      <BeautyShell
+        brand={payload.product.brand?.name}
+        title={payload.product.title}
+        subtitle={payload.product.subtitle}
+        rating={reviews ? (reviews.rating / (reviews.scale || 5)) * 5 : null}
+        reviewCount={reviews?.review_count}
+        price={displayPriceAmount}
+        compareAt={compareAmount}
+        discountPct={discountPercent}
+        currency={displayCurrency}
+        galleryImages={galleryItems.map((m) => m.url).filter(Boolean)}
+        onOpenViewer={(index) =>
+          setMediaViewer({ isOpen: true, mode: 'official', source: 'media_gallery', initialIndex: index })
+        }
+        shades={beautyShades}
+        selectedShadeId={selectedColor}
+        onSelectShade={handleColorSelect}
+        sizes={beautySizes}
+        selectedSizeId={selectedSize}
+        onSelectSize={handleSizeSelect}
+        variantSelector={
+          productLineSelector || beautyVariantSelector ? (
+            <>
+              {productLineSelector}
+              {beautyVariantSelector}
+            </>
+          ) : null
+        }
+        benefits={beautyBenefits}
+        claims={beautyClaims}
+        offers={offers}
+        selectedVariant={selectedVariant}
+        selectedOfferId={selectedOffer?.offer_id || null}
+        bestPriceOfferId={variantAwareBestPriceOfferId || payload.best_price_offer_id || null}
+        primaryMerchantId={payload.product.merchant_id || null}
+        onSelectOffer={(offerId) => {
+          setSelectedOfferId(offerId);
+          pdpTracking.track('pdp_action_click', { action_type: 'select_offer', offer_id: offerId });
+        }}
+        etaRange={effectiveShippingEta as [number, number] | undefined}
+        shippingMethodLabel={selectedOffer?.shipping?.method_label || null}
+        freeShipping={
+          typeof selectedOffer?.shipping?.cost?.amount === 'number'
+            ? selectedOffer.shipping.cost.amount === 0
+            : null
+        }
+        returnWindowDays={effectiveReturns?.return_window_days || null}
+        freeReturns={effectiveReturns?.free_returns ?? null}
+        shippingSellerLabel={selectedOffer?.merchant_name || null}
+        recentPurchases={recentPurchases.map((rp) => ({
+          user: rp.user_label,
+          variant: rp.variant_label || '',
+          time: rp.time_label || '',
+        }))}
+        recentPurchasesTotal={recentPurchases.length || null}
+        customerPhotos={ugcItems.map((u) => u.url).filter(Boolean)}
+        customerPhotosTotal={ugcItems.length || null}
+        onUgcViewAll={() =>
+          openViewer({ mode: 'ugc', source: ugcSnapshot.source || 'unknown', index: 0 })
+        }
+        onUgcShare={canUploadMedia ? handleUploadMedia : undefined}
+        onUgcPhotoClick={(index) =>
+          openViewer({ mode: 'ugc', source: ugcSnapshot.source || 'unknown', index, trackThumbnail: true })
+        }
+        insights={beautyInsights}
+        reviews={
+          reviews?.preview_items?.length
+            ? reviews.preview_items.map((pi) => ({
+                name: pi.author_label || 'Reviewer',
+                rating: pi.rating,
+                title: pi.title || null,
+                body: pi.text_snippet || null,
+              }))
+            : null
+        }
+        onSeeAllReviews={onSeeAllReviews}
+        questions={mergedQuestions}
+        onAskQuestion={handleAskQuestion}
+        canAskQuestion={canAskQuestion}
+        onSeeAllQuestions={() => {
+          pdpTracking.track('pdp_action_click', { action_type: 'open_embed', target: 'open_questions' });
+          openQuestionsHub();
+        }}
+        onOpenQuestion={(questionId) => {
+          pdpTracking.track('pdp_action_click', { action_type: 'open_embed', target: 'open_question_thread' });
+          openQuestionThread(questionId);
+        }}
+        brandName={payload.product.brand?.name}
+        brandHref={brandHref}
+        ingredients={
+          ingredientsInci?.items?.length || activeIngredients?.items?.length ? (
+            <BeautyDetailsSection
+              data={details}
+              product={payload.product}
+              media={media}
+              activeIngredients={activeIngredients}
+              ingredientsInci={ingredientsInci}
+              howToUse={null}
+              hideLowConfidenceActiveIngredients={shouldHideLowConfidenceActiveIngredients}
+              suppressOverview
+              showDetailMedia={false}
+              showProductInformation={false}
+            />
+          ) : null
+        }
+        howToUse={
+          howToUse?.steps?.length || howToUse?.raw_text ? (
+            <BeautyDetailsSection
+              data={details}
+              product={payload.product}
+              media={media}
+              activeIngredients={null}
+              ingredientsInci={null}
+              howToUse={howToUse}
+              suppressOverview
+              showDetailMedia={false}
+              showProductInformation={false}
+            />
+          ) : null
+        }
+        similar={
+          hasRecommendationItems
+            ? recommendations.items.slice(0, similarVisibleCount).map((it) => ({
+                id: it.product_id,
+                title: it.title,
+                image: it.image_url || '',
+                priceLabel: it.price
+                  ? formatPrice(it.price.amount ?? 0, it.price.currency || displayCurrency)
+                  : '',
+                rating: it.rating ?? null,
+                reviews: it.review_count ?? null,
+                highlight: it.description || null,
+              }))
+            : null
+        }
+        onSimilarClick={(item, index) => {
+          pdpTracking.track('similar_click', {
+            index,
+            product_id: item.id,
+            source: pdpViewModel.sourceLocks.similar ? 'locked' : 'live',
+          });
+          router.push(buildProductHref(item.id));
+        }}
+        buyNowLabel={actionsByType.buy_now || 'Buy now'}
+        inStock={effectiveIsInStock}
+        quantity={resolvedQuantity}
+        onQtyChange={(next) => setQuantity(next)}
+        onAddToCart={() => {
+          pdpTracking.track('pdp_action_click', { action_type: 'add_to_cart', variant_id: selectedVariant.variant_id });
+          dispatchPdpAction('add_to_cart', {
+            variant: selectedVariant,
+            quantity: resolvedQuantity,
+            merchant_id: effectiveMerchantId,
+            product_id: effectiveProductId || undefined,
+            offer_id: selectedOffer?.offer_id || undefined,
+            onAddToCart,
+          });
+        }}
+        onBuyNow={() => {
+          pdpTracking.track('pdp_action_click', { action_type: 'buy_now', variant_id: selectedVariant.variant_id });
+          dispatchPdpAction('buy_now', {
+            variant: selectedVariant,
+            quantity: resolvedQuantity,
+            merchant_id: effectiveMerchantId,
+            product_id: effectiveProductId || undefined,
+            offer_id: selectedOffer?.offer_id || undefined,
+            onBuyNow,
+          });
+        }}
+        onBack={handleBack}
+        onShare={handleShare}
+      />
+      <PdpMediaViewer
+        isOpen={mediaViewer.isOpen}
+        initialIndex={mediaViewer.initialIndex}
+        officialItems={galleryItems}
+        ugcItems={ugcItems}
+        defaultMode={mediaViewer.mode}
+        officialSource="media_gallery"
+        ugcSource={ugcSnapshot.source || mediaViewer.source || 'unknown'}
+        onClose={() =>
+          setMediaViewer((prev) => ({
+            ...prev,
+            isOpen: false,
+          }))
+        }
+        onCloseWithState={(viewerPayload) => {
+          pdpTracking.track('pdp_gallery_close_viewer', {
+            mode: viewerPayload.mode,
+            source: viewerPayload.source,
+            index: viewerPayload.index,
+          });
+        }}
+        onOpenGrid={(viewerPayload) => {
+          pdpTracking.track('pdp_gallery_open_grid', {
+            mode: viewerPayload.mode,
+            source: viewerPayload.source,
+          });
+        }}
+        onSwipe={(viewerPayload) => {
+          pdpTracking.track('pdp_gallery_swipe', {
+            mode: viewerPayload.mode,
+            source: viewerPayload.source,
+            from_index: viewerPayload.fromIndex,
+            to_index: viewerPayload.toIndex,
+            direction: viewerPayload.direction,
+          });
+        }}
+        onIndexChange={({ mode: viewerMode, index }) => {
+          if (viewerMode === 'official') {
+            setActiveMediaIndex(index);
+          }
+        }}
+      />
+      </>
+    );
+  }
+
   return (
     <div
       className={cn(
@@ -3858,109 +4313,7 @@ export function PdpContainer({
                 </div>
               ) : null}
 
-              {productLineOptions.length > 1 ? (
-                <div className="mt-2">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="text-xs font-semibold">{productLineOptionName}</div>
-                    {isProductLineSwitching && pendingProductLineOption?.label ? (
-                      <div className="flex items-center gap-1.5 truncate text-[11px] text-muted-foreground">
-                        <span aria-hidden="true" className="h-2 w-2 flex-shrink-0 rounded-full bg-current opacity-60 animate-pulse" />
-                        <span>Switching to {pendingProductLineOption.label}...</span>
-                      </div>
-                    ) : selectedProductLineOption?.label ? (
-                      <div className="truncate text-[11px] text-muted-foreground">
-                        Selected: {formatProductLineOptionInlineLabel(selectedProductLineOption)}
-                      </div>
-                    ) : null}
-                  </div>
-                  <div className="mt-1.5 overflow-x-auto">
-                    <div className="flex flex-nowrap gap-1.5 pb-1">
-                      {productLineOptions.map((option, index) => {
-                        const isSelected =
-                          option.selected ||
-                          (option.product_id === payload.product.product_id &&
-                            (!option.merchant_id ||
-                              !payload.product.merchant_id ||
-                              option.merchant_id === payload.product.merchant_id));
-                        const isPending = pendingProductLineProductId === String(option.product_id || '').trim();
-                        const swatch = shouldUseProductLineColorSelector
-                          ? getProductLineSwatch(option)
-                          : {};
-                        const hasSwatch = Boolean(swatch.imageUrl || swatch.color);
-                        const useLargeSwatchCard = Boolean(shouldUseProductLineColorSelector && hasSwatch);
-                        const optionAriaLabel = formatProductLineOptionInlineLabel(option) || option.label;
-                        const optionTileLabel = formatProductLineOptionTileLabel(option);
-                        return (
-                          <button
-                            key={option.option_id || `${option.product_id}-${option.value || option.label}`}
-                            type="button"
-                            disabled={isProductLineSwitching}
-                            aria-label={optionAriaLabel}
-                            aria-pressed={isSelected}
-                            aria-busy={isPending || undefined}
-                            onMouseEnter={() => prefetchProductLineOption(option)}
-                            onFocus={() => prefetchProductLineOption(option)}
-                            onClick={() => handleProductLineOptionSelect(option, index)}
-                            className={cn(
-                              'flex flex-shrink-0 rounded-md border bg-card text-xs text-foreground transition-colors',
-                              useLargeSwatchCard
-                                ? 'h-[54px] min-w-[66px] max-w-[132px] flex-row items-center justify-start gap-2 px-1.5 py-1.5'
-                                : 'min-h-8 items-center gap-1.5',
-                              hasSwatch && !useLargeSwatchCard ? 'px-2 py-1.5' : '',
-                              !hasSwatch ? 'px-3 py-1' : '',
-                              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)] disabled:cursor-wait disabled:opacity-100',
-                              isSelected
-                                ? useLargeSwatchCard
-                                  ? 'border-muted-foreground/50 bg-card text-foreground font-semibold'
-                                  : 'border-[color:var(--accent-600)] bg-[var(--accent-50)] text-[color:var(--accent-800)] font-semibold shadow-[inset_0_0_0_1px_var(--accent-600)]'
-                                : 'border-border hover:bg-muted/30 hover:border-muted-foreground/40',
-                              isPending ? 'opacity-75' : '',
-                            )}
-                          >
-                            {hasSwatch ? (
-                              <span
-                                aria-hidden="true"
-                                className={cn(
-                                  'flex-shrink-0 overflow-hidden border bg-muted',
-                                  useLargeSwatchCard ? 'h-10 w-10 rounded-md' : 'h-4 w-4 rounded-full',
-                                  isSelected
-                                    ? useLargeSwatchCard
-                                      ? 'border-foreground/70 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.85)]'
-                                      : 'border-[color:var(--accent-600)]'
-                                    : 'border-border',
-                                )}
-                                style={{
-                                  backgroundColor: swatch.color || undefined,
-                                  backgroundImage: swatch.imageUrl ? `url("${swatch.imageUrl}")` : undefined,
-                                  backgroundSize: 'cover',
-                                  backgroundPosition: 'center',
-                                }}
-                              />
-                            ) : null}
-                            <span
-                              className={cn(
-                                'flex min-w-0 flex-col',
-                                useLargeSwatchCard ? 'max-w-[78px] items-start text-left leading-tight' : '',
-                                hasSwatch && !useLargeSwatchCard ? 'items-start' : '',
-                                !hasSwatch ? 'items-center' : '',
-                              )}
-                            >
-                              <span className={cn(useLargeSwatchCard ? 'max-w-full truncate' : '')}>
-                                {optionTileLabel}
-                              </span>
-                              {option.secondary_label && !useLargeSwatchCard ? (
-                                <span className="text-[10px] font-normal leading-tight text-muted-foreground">
-                                  {option.secondary_label}
-                                </span>
-                              ) : null}
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
-              ) : null}
+              {productLineSelector}
 
               {shouldRenderColorOptions ? (
                 <div className="mt-2">
