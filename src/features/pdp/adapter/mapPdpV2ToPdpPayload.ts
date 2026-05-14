@@ -545,7 +545,7 @@ export function mapPdpV2ToPdpPayload(response: GetPdpV2Response): PDPPayload | n
       ...next,
       product: {
         ...next.product,
-        variants: selectorVariants.map((variant) => normalizeVariantImageFields(variant)) as any[],
+        variants: selectorVariants.map((variant: unknown) => normalizeVariantImageFields(variant)) as any[],
         default_variant_id:
           next.product.default_variant_id ||
           selectedVariantId ||
