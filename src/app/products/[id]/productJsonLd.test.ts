@@ -227,6 +227,19 @@ describe('buildProductJsonLd — aggregateRating', () => {
     });
   });
 
+  it('uses product average_rating with product rating_count when no other rating pair is present', () => {
+    const out = buildProductJsonLd({
+      product: { title: 'X', average_rating: 4.3, rating_count: 50 },
+      productId: PRODUCT_ID,
+    });
+    const parsed = JSON.parse(out!);
+    expect(parsed.aggregateRating).toEqual({
+      '@type': 'AggregateRating',
+      ratingValue: '4.3',
+      reviewCount: 50,
+    });
+  });
+
   it('omits aggregateRating when neither product nor module has a complete pair', () => {
     const out = buildProductJsonLd(
       {
@@ -970,6 +983,20 @@ describe('Stage 3b-2: _buildSellerOfferNode', () => {
       URL,
     );
     expect(node!.url).toBe('https://www.sephora.com/product/abc');
+  });
+
+  it('falls back to the PDP URL when only internal checkout URLs are present', () => {
+    const node = _buildSellerOfferNode(
+      {
+        merchant_id: 'm_pivota',
+        merchant_name: 'Pivota',
+        checkout_url: '/order?sessionId=abc123',
+        purchase_url: 'https://pivota.cc/checkout/abc123',
+        price: { amount: 24, currency: 'USD' },
+      },
+      URL,
+    );
+    expect(node!.url).toBe(URL);
   });
 
   it('emits shippingDetails with free shippingRate when eta and zero cost are present', () => {

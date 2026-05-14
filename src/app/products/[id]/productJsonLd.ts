@@ -247,8 +247,6 @@ function _readOfferAvailability(offer: Record<string, any>): string | null {
 function _readOfferDeepLink(offer: Record<string, any>, parentUrl: string): string {
   return _firstString(
     offer.merchant_checkout_url,
-    offer.checkout_url,
-    offer.purchase_url,
     offer.external_redirect_url,
     offer.externalRedirectUrl,
     offer.external_url,
@@ -711,7 +709,9 @@ function _resolveAggregateRating(
     { value: product.aggregate_rating?.value, count: product.aggregate_rating?.count },
     { value: product.rating, count: product.rating_count },
     { value: product.rating, count: product.review_count },
+    { value: product.average_rating, count: product.rating_count },
     { value: product.average_rating, count: product.review_count },
+    { value: product.avg_rating, count: product.review_count },
     { value: moduleRating, count: reviewsModule?.review_count },
   ];
 
