@@ -171,8 +171,8 @@ export function MediaGallery({
           ) : null}
 
           {items.length ? (
-            <div className="absolute top-3 right-3 rounded-full bg-foreground/60 px-2 py-0.5 text-[10px] text-white lg:hidden">
-              {Math.min(clampedIndex + 1, items.length)}/{items.length}
+            <div className="absolute bottom-3 right-3 rounded-full bg-foreground/55 px-2 py-1 text-[11px] font-semibold text-white backdrop-blur-sm lg:hidden">
+              {Math.min(clampedIndex + 1, items.length)} / {items.length}
             </div>
           ) : null}
         </div>

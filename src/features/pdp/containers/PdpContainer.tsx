@@ -73,6 +73,9 @@ import { PivotaInsightsSection, isDisplayableProductIntelData } from '@/features
 import { OfferSheet } from '@/features/pdp/offers/OfferSheet';
 import { WaysToSave } from '@/features/pdp/components/WaysToSave';
 import { ModuleShell } from '@/features/pdp/components/ModuleShell';
+import { BeautyMobileBuyBar } from '@/features/pdp/components/BeautyMobileBuyBar';
+import { BeautyMobileSellerPicker } from '@/features/pdp/components/BeautyMobileSellerPicker';
+import { BeautyShippingStrip } from '@/features/pdp/components/BeautyShippingStrip';
 import { DEFAULT_UGC_SNAPSHOT, lockFirstUgcSource, mergeUgcItems } from '@/features/pdp/state/freezePolicy';
 import { getStableGalleryItems, resolveHeroMediaUrl } from '@/features/pdp/state/heroMedia';
 import { buildPdpViewModel } from '@/features/pdp/state/viewModel';
@@ -1442,6 +1445,12 @@ export function PdpContainer({
   }, [maxQuantity, selectedVariantId]);
 
   const resolvedMode: 'beauty' | 'generic' = mode || (isBeautyProduct(payload.product) ? 'beauty' : 'generic');
+  // Beauty mobile PDP redesign gate. Mobile renders the redesigned layout;
+  // desktop and generic are unchanged. `isDesktop` is false during SSR and
+  // first client render, so mobile hydrates straight into the redesign with
+  // no shift; desktop (out of scope per the design handoff) settles to the
+  // existing layout after mount.
+  const isBeautyMobile = resolvedMode === 'beauty' && !isDesktop;
 
   const media = getModuleData<MediaGalleryData>(payload, 'media_gallery');
   const pricePromo = getModuleData<PricePromoData>(payload, 'price_promo');
@@ -2155,6 +2164,16 @@ export function PdpContainer({
     : [];
 
   const tabs = useMemo(() => {
+    // §3d — Beauty mobile uses the design's 4-tab nav: Overview / Insights /
+    // Reviews / Similar. Generic + desktop keep the full tab set.
+    if (isBeautyMobile) {
+      return [
+        { id: 'product', label: 'Overview' },
+        ...(hasInsights ? [{ id: 'insights', label: 'Insights' }] : []),
+        ...(hasReviews ? [{ id: 'reviews', label: 'Reviews' }] : []),
+        ...(showRecommendationsSection ? [{ id: 'similar', label: 'Similar' }] : []),
+      ];
+    }
     return [
       { id: 'product', label: 'Product' },
       ...(hasInsights ? [{ id: 'insights', label: 'Insights' }] : []),
@@ -2163,7 +2182,7 @@ export function PdpContainer({
       { id: 'details', label: 'Details' },
       ...(showRecommendationsSection ? [{ id: 'similar', label: 'Similar' }] : []),
     ];
-  }, [hasInsights, hasReviews, showSizeGuide, showRecommendationsSection]);
+  }, [isBeautyMobile, hasInsights, hasReviews, showSizeGuide, showRecommendationsSection]);
 
   const handleTabChange = (tabId: string) => {
     setActiveTab(tabId);
@@ -3766,6 +3785,26 @@ export function PdpContainer({
 
             <div className="lg:pt-3">
             <div className="px-2.5 py-1 sm:px-3 lg:px-0">
+              {/* §3f — Beauty mobile product header: brand eyebrow / serif H1 /
+                  subtitle, rendered above the price row per redesign/pivota-pdp.jsx
+                  → ProductHeader. */}
+              {isBeautyMobile ? (
+                <div className="mb-2">
+                  {payload.product.brand?.name ? (
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-primary">
+                      {payload.product.brand.name}
+                    </div>
+                  ) : null}
+                  <h1 className="mt-1.5 font-serif text-[26px] font-medium leading-[1.12] tracking-[-0.01em] text-foreground">
+                    {payload.product.title}
+                  </h1>
+                  {payload.product.subtitle ? (
+                    <p className="mt-1 text-[13px] leading-[1.4] text-muted-foreground">
+                      {payload.product.subtitle}
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
               <div className="flex items-baseline gap-2 flex-wrap">
                 <span className="text-[26px] font-semibold text-foreground leading-none lg:text-[30px]">{formatPrice(displayPriceAmount, displayCurrency)}</span>
                 {!isInStock ? (
@@ -3795,7 +3834,7 @@ export function PdpContainer({
                     -{discountPercent}%
                   </span>
                 ) : null}
-                {offers.length > 1 ? (
+                {offers.length > 1 && !isBeautyMobile ? (
                   <button
                     type="button"
                     className="ml-auto text-[11px] font-semibold text-primary"
@@ -3809,11 +3848,15 @@ export function PdpContainer({
                 ) : null}
               </div>
 
-              <h1 className="mt-1 text-[17px] font-semibold leading-snug text-foreground">
-                {payload.product.brand?.name ? `${payload.product.brand.name} ` : ''}{payload.product.title}
-              </h1>
-              {payload.product.subtitle ? (
-                <p className="mt-0.5 text-[11px] text-muted-foreground">{payload.product.subtitle}</p>
+              {!isBeautyMobile ? (
+                <>
+                  <h1 className="mt-1 text-[17px] font-semibold leading-snug text-foreground">
+                    {payload.product.brand?.name ? `${payload.product.brand.name} ` : ''}{payload.product.title}
+                  </h1>
+                  {payload.product.subtitle ? (
+                    <p className="mt-0.5 text-[11px] text-muted-foreground">{payload.product.subtitle}</p>
+                  ) : null}
+                </>
               ) : null}
               {selectedVariant && selectedVariantHeaderLabel ? (
                 <div className="mt-0.5 text-xs text-muted-foreground">
@@ -4113,7 +4156,43 @@ export function PdpContainer({
               ) : null}
             </div>
 
-          {showTrustBadges ? (
+          {/* §3b/§3c — Beauty mobile: inline seller picker + shipping strip,
+              inserted between the variant area and the social-proof sections
+              per redesign/pivota-pdp.jsx. They replace the trust-badges pill
+              and the WaysToSave panel below, both hidden for beauty mobile. */}
+          {isBeautyMobile && offers.length > 1 ? (
+            <BeautyMobileSellerPicker
+              offers={offers}
+              selectedVariant={selectedVariant}
+              selectedOfferId={selectedOffer?.offer_id || null}
+              bestPriceOfferId={variantAwareBestPriceOfferId || payload.best_price_offer_id || null}
+              primaryMerchantId={payload.product.merchant_id || null}
+              onSelect={(offerId) => {
+                setSelectedOfferId(offerId);
+                pdpTracking.track('pdp_action_click', {
+                  action_type: 'select_offer',
+                  offer_id: offerId,
+                });
+              }}
+            />
+          ) : null}
+
+          {isBeautyMobile ? (
+            <BeautyShippingStrip
+              etaRange={effectiveShippingEta as [number, number] | undefined}
+              methodLabel={selectedOffer?.shipping?.method_label || null}
+              freeShipping={
+                typeof selectedOffer?.shipping?.cost?.amount === 'number'
+                  ? selectedOffer.shipping.cost.amount === 0
+                  : null
+              }
+              returnWindowDays={effectiveReturns?.return_window_days || null}
+              freeReturns={effectiveReturns?.free_returns ?? null}
+              sellerLabel={selectedOffer?.merchant_name || null}
+            />
+          ) : null}
+
+          {!isBeautyMobile && showTrustBadges ? (
             <div className="mx-2.5 mt-1.5 flex items-center gap-2 rounded-lg bg-muted/50 px-3 py-1.5 text-[10px] sm:mx-3 lg:mx-0">
               {trustBadges.map((badge, idx) => (
                 <div key={`${badge}-${idx}`} className="flex items-center gap-2">
@@ -4122,7 +4201,7 @@ export function PdpContainer({
                 </div>
               ))}
             </div>
-          ) : (effectiveShippingEta?.length || effectiveReturns?.return_window_days) ? (
+          ) : !isBeautyMobile && (effectiveShippingEta?.length || effectiveReturns?.return_window_days) ? (
             <div className="mx-2.5 rounded-lg border border-border bg-card px-3 py-1.5 text-xs text-muted-foreground flex flex-wrap gap-x-3 gap-y-1 sm:mx-3 lg:mx-0">
               {effectiveShippingEta?.length ? (
                 <span>
@@ -4137,12 +4216,14 @@ export function PdpContainer({
             </div>
           ) : null}
 
-          <WaysToSave
-            product={payload.product}
-            selectedOffer={selectedOffer}
-            selectedVariant={selectedVariant}
-            quantity={resolvedQuantity}
-          />
+          {!isBeautyMobile ? (
+            <WaysToSave
+              product={payload.product}
+              selectedOffer={selectedOffer}
+              selectedVariant={selectedVariant}
+              quantity={resolvedQuantity}
+            />
+          ) : null}
 
           <div
             className="hidden lg:block mt-6"
@@ -4629,45 +4710,83 @@ export function PdpContainer({
                     </div>
                   ) : null}
 
-                  <div className="flex items-center gap-3 px-3 py-2.5">
-                    <div className="flex flex-1 gap-2">
-                      <Button
-                        variant="outline"
-                        className="flex-1 h-10 rounded-full font-semibold text-sm"
-                        disabled={!effectiveIsInStock}
-                        onClick={() => {
-                          pdpTracking.track('pdp_action_click', { action_type: 'add_to_cart', variant_id: selectedVariant.variant_id });
-                          dispatchPdpAction('add_to_cart', {
-                            variant: selectedVariant,
-                            quantity: resolvedQuantity,
-                            merchant_id: effectiveMerchantId,
-                            product_id: effectiveProductId || undefined,
-                            offer_id: selectedOffer?.offer_id || undefined,
-                            onAddToCart,
-                          });
-                        }}
-                      >
-                        {actionsByType.add_to_cart || 'Add to Cart'}
-                      </Button>
-                      <Button
-                        className="flex-[1.5] h-10 rounded-full bg-primary hover:bg-primary/90 font-semibold text-sm"
-                        disabled={!effectiveIsInStock}
-                        onClick={() => {
-                          pdpTracking.track('pdp_action_click', { action_type: 'buy_now', variant_id: selectedVariant.variant_id });
-                          dispatchPdpAction('buy_now', {
-                            variant: selectedVariant,
-                            quantity: resolvedQuantity,
-                            merchant_id: effectiveMerchantId,
-                            product_id: effectiveProductId || undefined,
-                            offer_id: selectedOffer?.offer_id || undefined,
-                            onBuyNow,
-                          });
-                        }}
-                      >
-                        {actionsByType.buy_now || 'Buy Now'}
-                      </Button>
+                  {/* §3a — Beauty mobile: sticky buy bar (qty stepper + bag
+                      icon + "Buy now · $X" pill) per redesign/pivota-pdp.jsx
+                      → StickyBuyBar. Generic mode keeps the existing pair of
+                      Add to Cart / Buy Now buttons. Both reuse the same
+                      dispatchPdpAction handler contract. */}
+                  {resolvedMode === 'beauty' ? (
+                    <BeautyMobileBuyBar
+                      unitPrice={displayPriceAmount}
+                      currency={displayCurrency}
+                      quantity={resolvedQuantity}
+                      disabled={!effectiveIsInStock}
+                      buyNowLabel={actionsByType.buy_now || 'Buy now'}
+                      onQtyChange={(next) => setQuantity(next)}
+                      onAddToCart={() => {
+                        pdpTracking.track('pdp_action_click', { action_type: 'add_to_cart', variant_id: selectedVariant.variant_id });
+                        dispatchPdpAction('add_to_cart', {
+                          variant: selectedVariant,
+                          quantity: resolvedQuantity,
+                          merchant_id: effectiveMerchantId,
+                          product_id: effectiveProductId || undefined,
+                          offer_id: selectedOffer?.offer_id || undefined,
+                          onAddToCart,
+                        });
+                      }}
+                      onBuyNow={() => {
+                        pdpTracking.track('pdp_action_click', { action_type: 'buy_now', variant_id: selectedVariant.variant_id });
+                        dispatchPdpAction('buy_now', {
+                          variant: selectedVariant,
+                          quantity: resolvedQuantity,
+                          merchant_id: effectiveMerchantId,
+                          product_id: effectiveProductId || undefined,
+                          offer_id: selectedOffer?.offer_id || undefined,
+                          onBuyNow,
+                        });
+                      }}
+                    />
+                  ) : (
+                    <div className="flex items-center gap-3 px-3 py-2.5">
+                      <div className="flex flex-1 gap-2">
+                        <Button
+                          variant="outline"
+                          className="flex-1 h-10 rounded-full font-semibold text-sm"
+                          disabled={!effectiveIsInStock}
+                          onClick={() => {
+                            pdpTracking.track('pdp_action_click', { action_type: 'add_to_cart', variant_id: selectedVariant.variant_id });
+                            dispatchPdpAction('add_to_cart', {
+                              variant: selectedVariant,
+                              quantity: resolvedQuantity,
+                              merchant_id: effectiveMerchantId,
+                              product_id: effectiveProductId || undefined,
+                              offer_id: selectedOffer?.offer_id || undefined,
+                              onAddToCart,
+                            });
+                          }}
+                        >
+                          {actionsByType.add_to_cart || 'Add to Cart'}
+                        </Button>
+                        <Button
+                          className="flex-[1.5] h-10 rounded-full bg-primary hover:bg-primary/90 font-semibold text-sm"
+                          disabled={!effectiveIsInStock}
+                          onClick={() => {
+                            pdpTracking.track('pdp_action_click', { action_type: 'buy_now', variant_id: selectedVariant.variant_id });
+                            dispatchPdpAction('buy_now', {
+                              variant: selectedVariant,
+                              quantity: resolvedQuantity,
+                              merchant_id: effectiveMerchantId,
+                              product_id: effectiveProductId || undefined,
+                              offer_id: selectedOffer?.offer_id || undefined,
+                              onBuyNow,
+                            });
+                          }}
+                        >
+                          {actionsByType.buy_now || 'Buy Now'}
+                        </Button>
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </div>
               </div>
             </div>,
