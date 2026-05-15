@@ -144,7 +144,7 @@ export interface Variant {
   options?: { name: string; value: string }[];
   hidden_from_selector?: boolean;
   source_quality_status?: string;
-  swatch?: { hex?: string };
+  swatch?: { hex?: string; image_url?: string; imageUrl?: string; url?: string };
   beauty_meta?: {
     shade_hex?: string;
     finish?: string;

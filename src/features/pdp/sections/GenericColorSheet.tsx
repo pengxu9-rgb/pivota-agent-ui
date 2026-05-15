@@ -7,6 +7,7 @@ import { shouldBypassNextImageOptimizer } from '@/features/pdp/utils/pdpImageUrl
 
 export type GenericColorOption = {
   value: string;
+  swatch_image_url?: string;
   label_image_url?: string;
   image_url?: string;
   swatch_hex?: string;
@@ -26,7 +27,7 @@ export function GenericColorSheet({
   onSelect: (value: string) => void;
 }) {
   const hasAnyPreview = options.some(
-    (option) => Boolean(option.label_image_url || option.image_url || option.swatch_hex),
+    (option) => Boolean(option.swatch_image_url || option.label_image_url || option.image_url || option.swatch_hex),
   );
   return (
     <ResponsiveSheet open={open} onClose={onClose} title={`Select Color (${options.length})`}>
@@ -38,7 +39,7 @@ export function GenericColorSheet({
       >
         {options.map((option) => {
           const isSelected = option.value === selectedValue;
-          const imageUrl = option.label_image_url || option.image_url;
+          const imageUrl = option.swatch_image_url || option.label_image_url || option.image_url;
           const hasPreview = Boolean(imageUrl) || Boolean(option.swatch_hex);
           return (
             <button
