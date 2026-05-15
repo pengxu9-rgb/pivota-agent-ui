@@ -319,7 +319,7 @@ function isLikelyProductOnlyImageUrl(url: unknown): boolean {
   const text = imageUrlSearchText(url);
   if (!text) return false;
   if (isLikelyPackShotImageUrl(text)) return true;
-  return /(?:^|[^a-z0-9])(t\d+product|product|primary|hero|main|model|silo|ecomm|ecommerce|flat[-_\s]?lay|packaging|package|box|bottle|tube|compact|closed|open[-_\s]?box|with[-_\s]?cap|concrete[-_\s]?shot)(?:[^a-z0-9]|$)/i.test(text);
+  return /(?:^|[^a-z0-9])(t\d+(?:product|beauty)|product|primary|hero|main|model|silo|ecomm|ecommerce|flat[-_\s]?lay|packaging|package|box|bottle|tube|compact|closed|open[-_\s]?box|with[-_\s]?cap|concrete[-_\s]?shot)(?:[^a-z0-9]|$)/i.test(text);
 }
 
 function deriveKnownSourceShadeSwatchUrl(
