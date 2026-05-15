@@ -117,6 +117,7 @@ export type BeautyPDPMobileProps = {
   // chrome
   onBack?: () => void;
   onShare?: () => void;
+  onSearch?: () => void;
 };
 
 const SECTION_TABS: BeautyTab[] = [
@@ -183,10 +184,10 @@ export function BeautyPDPMobile(props: BeautyPDPMobileProps) {
   return (
     <div className="lovable-pdp relative min-h-screen bg-background text-foreground">
       <BeautyStickyTopBar
-        scrolled={scrolled && !tabsVisible}
-        scrolledTitle={props.brand ? `${props.brand}` : props.title}
+        scrolled={scrolled}
         onBack={props.onBack}
         onShare={props.onShare}
+        onSearch={props.onSearch}
       />
       <BeautyStickyTabs
         visible={tabsVisible}

@@ -30,7 +30,10 @@ export function BeautyStickyTabs({
 }) {
   return (
     <div
-      className="absolute left-0 right-0 top-0 z-[9] flex items-center border-b border-border bg-white/95 px-2 backdrop-blur-md backdrop-saturate-150"
+      // Stacked BELOW the StickyTopBar (h-9 buttons + py-2 ≈ 52px) so the
+      // back · search · share row stays on top and the section tracker sits
+      // underneath it instead of overlapping at top-0.
+      className="absolute left-0 right-0 top-[52px] z-[9] flex items-center border-b border-border bg-white/95 px-2 backdrop-blur-md backdrop-saturate-150"
       style={{
         transform: visible ? 'translateY(0)' : 'translateY(-100%)',
         transition: 'transform 220ms cubic-bezier(.2,.7,.3,1)',

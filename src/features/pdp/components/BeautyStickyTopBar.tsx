@@ -2,7 +2,9 @@
 
 /**
  * Sticky top chrome for the Beauty mobile PDP.
- * Faithful to redesign/pivota-pdp.jsx → StickyTopBar:
+ * Faithful to redesign/pivota-pdp.jsx → StickyTopBar, plus a center
+ * search-pill (renders when `onSearch` is supplied) so this bar carries
+ * back · search · share instead of the section-tab tracker overlapping it.
  *   transparent over the hero, solidifying (white blur + hairline) once
  *   scrolled; glass-pill icon buttons. Back + Share are always shown;
  *   Save (heart) and Cart (bag) render only when a handler is supplied,
@@ -32,18 +34,20 @@ function IconBtn({
 
 export function BeautyStickyTopBar({
   scrolled,
-  scrolledTitle,
   onBack,
   onShare,
+  onSearch,
+  searchPlaceholder = 'Search products',
   saved,
   onToggleSave,
   cartCount,
   onOpenCart,
 }: {
   scrolled: boolean;
-  scrolledTitle?: string | null;
   onBack?: () => void;
   onShare?: () => void;
+  onSearch?: () => void;
+  searchPlaceholder?: string;
   saved?: boolean;
   onToggleSave?: () => void;
   cartCount?: number | null;
@@ -66,8 +70,30 @@ export function BeautyStickyTopBar({
         </svg>
       </IconBtn>
 
-      {scrolled && scrolledTitle ? (
-        <div className="min-w-0 flex-1 truncate px-3 text-[13px] font-semibold">{scrolledTitle}</div>
+      {onSearch ? (
+        <button
+          type="button"
+          onClick={onSearch}
+          aria-label={searchPlaceholder}
+          className="mx-2 flex h-9 flex-1 items-center gap-2 truncate rounded-full border border-white/50 bg-white/55 px-3.5 text-[13px] text-current backdrop-blur-md backdrop-saturate-150"
+        >
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+            className="flex-shrink-0 opacity-80"
+          >
+            <circle cx="11" cy="11" r="7" />
+            <path d="M21 21l-4.3-4.3" />
+          </svg>
+          <span className="truncate opacity-80">{searchPlaceholder}</span>
+        </button>
       ) : (
         <div className="flex-1" />
       )}
