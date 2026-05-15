@@ -9,10 +9,10 @@
  *   with the shade number labelled below.
  */
 
-export type BeautyShade = { id: string; name: string; hex: string };
+export type BeautyShade = { id: string; name: string; hex?: string; imageUrl?: string };
 
-function isLightHex(hex: string): boolean {
-  const h = hex.replace('#', '');
+function isLightHex(hex: string | undefined): boolean {
+  const h = String(hex || '#cccccc').replace('#', '');
   const r = parseInt(h.slice(0, 2) || '0', 16);
   return r > 160;
 }
@@ -51,6 +51,7 @@ export function BeautyShadeSelector({
       <div className="flex gap-3 overflow-x-auto px-[18px] pb-1.5 pt-2.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {shades.map((s) => {
           const isSel = s.id === selected.id;
+          const fallbackHex = s.hex || '#cccccc';
           return (
             <button
               key={s.id}
@@ -63,7 +64,10 @@ export function BeautyShadeSelector({
               <span
                 className="relative h-11 w-11 rounded-full transition-all duration-200"
                 style={{
-                  background: s.hex,
+                  backgroundColor: fallbackHex,
+                  backgroundImage: s.imageUrl ? `url("${s.imageUrl}")` : undefined,
+                  backgroundSize: 'cover',
+                  backgroundPosition: 'center',
                   boxShadow: isSel
                     ? '0 0 0 2px hsl(var(--background)), 0 0 0 4px hsl(var(--primary)), var(--shadow-sm)'
                     : '0 0 0 1px rgba(0,0,0,0.08), var(--shadow-sm)',
@@ -73,7 +77,10 @@ export function BeautyShadeSelector({
                   <span
                     aria-hidden="true"
                     className="absolute inset-0 flex items-center justify-center"
-                    style={{ color: isLightHex(s.hex) ? '#000' : '#fff' }}
+                    style={{
+                      color: s.imageUrl ? '#fff' : isLightHex(s.hex) ? '#000' : '#fff',
+                      filter: s.imageUrl ? 'drop-shadow(0 1px 1px rgba(0,0,0,0.65))' : undefined,
+                    }}
                   >
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
                       <polyline points="20 6 9 17 4 12" />

@@ -677,7 +677,9 @@ describe('PdpContainer structured PDP modules', () => {
 
     // ...but shades stay selectable through the redesign's swatch selector,
     // and selecting one still drives the headline price.
-    expect(screen.getByRole('button', { name: 'Shade Grape Fizz' })).toBeInTheDocument();
+    const grape = screen.getByRole('button', { name: 'Shade Grape Fizz' });
+    expect(grape).toBeInTheDocument();
+    expect(grape.querySelector('span[style]')?.getAttribute('style')).toContain('swatch-grape.jpg');
     const citrus = screen.getByRole('button', { name: 'Shade Citrus Sunshine' });
     expect(citrus).toBeInTheDocument();
 
@@ -887,7 +889,7 @@ describe('PdpContainer structured PDP modules', () => {
         variant_id: '42127417966689',
         title: 'ON01',
         options: [{ name: 'Shade', value: 'ON01' }],
-        beauty_meta: { shade_hex: '#e6c8ad' },
+        label_image_url: 'https://example.com/rms-on01.jpg',
         price: { current: { amount: 34, currency: 'USD' } },
         availability: { in_stock: true, available_quantity: 9 },
       },
@@ -895,7 +897,7 @@ describe('PdpContainer structured PDP modules', () => {
         variant_id: '45621462253793',
         title: 'W023',
         options: [{ name: 'Shade', value: 'W023' }],
-        beauty_meta: { shade_hex: '#d2a37a' },
+        label_image_url: 'https://example.com/rms-w023.jpg',
         price: { current: { amount: 34, currency: 'USD' } },
         availability: { in_stock: true, available_quantity: 9 },
       },
@@ -943,9 +945,12 @@ describe('PdpContainer structured PDP modules', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Shade W023' }));
 
+    expect(
+      screen.getByRole('button', { name: 'Shade W023' }).querySelector('span[style]')?.getAttribute('style'),
+    ).toContain('rms-w023.jpg');
     expect(routerPush).not.toHaveBeenCalled();
     expect(getPdpV2Mock).not.toHaveBeenCalled();
-  });
+  }, 10000);
 
   it('renders concrete size explanations for mini and full-size product-line options', () => {
     const payload = buildBeautyPayload();

@@ -3890,6 +3890,7 @@ export function PdpContainer({
           id: opt.value,
           name: opt.value,
           hex: opt.swatch_hex || '#cccccc',
+          imageUrl: opt.label_image_url || opt.image_url,
         }))
       : null;
     const beautySizes = sizeOptions.length
