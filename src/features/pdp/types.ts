@@ -147,6 +147,7 @@ export interface Variant {
   swatch?: { hex?: string; image_url?: string; imageUrl?: string; url?: string };
   beauty_meta?: {
     shade_hex?: string;
+    shade_image_url?: string;
     finish?: string;
     coverage?: string;
     undertone?: string;
@@ -155,6 +156,7 @@ export interface Variant {
   availability?: { in_stock: boolean; available_quantity?: number };
   image_url?: string;
   label_image_url?: string;
+  swatch_image_url?: string;
   store_discount_evidence?: Record<string, any>;
   store_discount_summary?: Record<string, any>;
   store_discount_badges?: string[];

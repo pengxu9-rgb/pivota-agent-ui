@@ -147,12 +147,28 @@ export function buildProductVariants(product: ProductResponse, raw?: any): Varia
         variant.beauty_meta?.shade_hex ||
         variant.shade_hex ||
         variant.hex;
+      const swatchImageUrl = normalizeImageUrl(
+        variant.swatch_image_url ||
+          variant.swatchImageUrl ||
+          variant.swatch?.image_url ||
+          variant.swatch?.imageUrl ||
+          variant.swatch?.url ||
+          variant.beauty_meta?.shade_image_url ||
+          variant.beautyMeta?.shade_image_url ||
+          variant.beautyMeta?.shadeImageUrl,
+      );
 
-      const beautyMeta = variant.beauty_meta || variant.beautyMeta || {
+      const baseBeautyMeta = variant.beauty_meta || variant.beautyMeta || {
         shade_hex: variant.shade_hex || variant.shadeHex,
         finish: variant.finish,
         coverage: variant.coverage,
         undertone: variant.undertone,
+      };
+      const beautyMeta = {
+        ...baseBeautyMeta,
+        ...(swatchImageUrl && !baseBeautyMeta?.shade_image_url && !baseBeautyMeta?.shadeImageUrl
+          ? { shade_image_url: swatchImageUrl }
+          : {}),
       };
 
       return {
@@ -162,7 +178,13 @@ export function buildProductVariants(product: ProductResponse, raw?: any): Varia
         options,
         ...(hiddenFromSelector ? { hidden_from_selector: true } : {}),
         ...(variant.source_quality_status ? { source_quality_status: String(variant.source_quality_status) } : {}),
-        swatch: swatchHex ? { hex: swatchHex } : undefined,
+        swatch:
+          swatchHex || swatchImageUrl
+            ? {
+                ...(swatchHex ? { hex: swatchHex } : {}),
+                ...(swatchImageUrl ? { image_url: swatchImageUrl } : {}),
+              }
+            : undefined,
         beauty_meta: beautyMeta,
         price,
         availability: {
@@ -172,12 +194,10 @@ export function buildProductVariants(product: ProductResponse, raw?: any): Varia
         image_url: normalizeImageUrl(variant.image_url || variant.image || variant.images?.[0]),
         label_image_url: normalizeImageUrl(
           variant.label_image_url ||
-            variant.swatch_image_url ||
             variant.thumbnail_url ||
-            variant.thumbnail ||
-            variant.swatch?.image_url ||
-            variant.swatch?.imageUrl,
+            variant.thumbnail,
         ),
+        swatch_image_url: swatchImageUrl,
         store_discount_evidence: variant.store_discount_evidence,
         store_discount_summary: variant.store_discount_summary,
         store_discount_badges: variant.store_discount_badges,

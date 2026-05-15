@@ -172,10 +172,22 @@ function normalizePdpPayloadImages(payload: PDPPayload): PDPPayload {
                 if (!isRecord(variant)) return variant;
                 const normalizedVariantImage = normalizePdpImageUrl(variant.image_url);
                 const normalizedVariantLabel = normalizePdpImageUrl(variant.label_image_url);
+                const normalizedVariantSwatch =
+                  normalizePdpImageUrl(
+                    variant.swatch_image_url ||
+                      variant.swatch?.image_url ||
+                      variant.swatch?.imageUrl ||
+                      variant.swatch?.url ||
+                      variant.beauty_meta?.shade_image_url,
+                  ) || undefined;
                 return {
                   ...variant,
                   ...(normalizedVariantImage ? { image_url: normalizedVariantImage } : {}),
                   ...(normalizedVariantLabel ? { label_image_url: normalizedVariantLabel } : {}),
+                  ...(normalizedVariantSwatch ? { swatch_image_url: normalizedVariantSwatch } : {}),
+                  ...(isRecord(variant.swatch) && normalizedVariantSwatch
+                    ? { swatch: { ...variant.swatch, image_url: normalizedVariantSwatch } }
+                    : {}),
                 };
               }),
             }
@@ -198,10 +210,22 @@ function normalizeVariantImageFields(variant: unknown): unknown {
   if (!isRecord(variant)) return variant;
   const normalizedVariantImage = normalizePdpImageUrl(variant.image_url);
   const normalizedVariantLabel = normalizePdpImageUrl(variant.label_image_url);
+  const normalizedVariantSwatch =
+    normalizePdpImageUrl(
+      variant.swatch_image_url ||
+        variant.swatch?.image_url ||
+        variant.swatch?.imageUrl ||
+        variant.swatch?.url ||
+        variant.beauty_meta?.shade_image_url,
+    ) || undefined;
   return {
     ...variant,
     ...(normalizedVariantImage ? { image_url: normalizedVariantImage } : {}),
     ...(normalizedVariantLabel ? { label_image_url: normalizedVariantLabel } : {}),
+    ...(normalizedVariantSwatch ? { swatch_image_url: normalizedVariantSwatch } : {}),
+    ...(isRecord(variant.swatch) && normalizedVariantSwatch
+      ? { swatch: { ...variant.swatch, image_url: normalizedVariantSwatch } }
+      : {}),
   };
 }
 
