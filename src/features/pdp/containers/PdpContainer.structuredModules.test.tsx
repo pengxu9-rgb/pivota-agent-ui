@@ -983,6 +983,17 @@ describe('PdpContainer structured PDP modules', () => {
         price: { current: { amount: 22, currency: 'USD' } },
         availability: { in_stock: true },
       },
+      {
+        variant_id: 'shade-1',
+        title: '1',
+        options: [{ name: 'Shade', value: '1' }],
+        swatch_image_url:
+          'https://cdn.shopify.com/files/FB_FALL23_T2PRODUCT_SMEAR_EAZEDROP_STICK_SHADE_01_1200X1500_72DPI.png',
+        image_url:
+          'https://cdn.shopify.com/files/FB_F23_T2PRODUCT_CONCRETE_EAZEDROPSTICK_SHADE_01_1200x1500.jpg',
+        price: { current: { amount: 22, currency: 'USD' } },
+        availability: { in_stock: true },
+      },
     ];
 
     render(
@@ -995,6 +1006,13 @@ describe('PdpContainer structured PDP modules', () => {
       ?.getAttribute('style');
     expect(crimsonStyle).toContain('crimson-swatch.png');
     expect(crimsonStyle).not.toContain('product-ecomm-silo');
+
+    const textureStyle = screen
+      .getByRole('button', { name: 'Shade 1' })
+      .querySelector('span[style]')
+      ?.getAttribute('style');
+    expect(textureStyle).toContain('T2PRODUCT_SMEAR_EAZEDROP_STICK_SHADE_01');
+    expect(textureStyle).not.toContain('CONCRETE_EAZEDROPSTICK');
   });
 
   it('does not render product or packaging images as shade swatches when no trusted swatch exists', () => {

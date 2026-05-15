@@ -315,6 +315,38 @@ function isLikelyShadeSwatchImageUrl(url: unknown): boolean {
   return false;
 }
 
+function urlMatchesShadeValue(url: unknown, shadeValue: unknown): boolean {
+  const text = imageUrlSearchText(url);
+  const shade = normalizeVariantAxisToken(shadeValue);
+  if (!text || !shade) return false;
+  if (/^\d+$/.test(shade)) {
+    const numeric = Number(shade);
+    if (!Number.isFinite(numeric)) return false;
+    const padded = String(numeric).padStart(2, '0');
+    return (
+      new RegExp(`(?:^|[^a-z0-9])(?:shade|sh)?[-_\\s]?0*${numeric}(?:[^a-z0-9]|$)`, 'i').test(text) ||
+      new RegExp(`(?:^|[^a-z0-9])${padded}(?:[^a-z0-9]|$)`, 'i').test(text)
+    );
+  }
+  const spaced = shade.replace(/[-_]+/g, ' ');
+  return text.includes(shade) || text.replace(/[^a-z0-9]+/g, ' ').includes(spaced);
+}
+
+function isTrustedSourceBackedShadeTextureUrl(url: unknown, shadeValue: unknown): boolean {
+  const text = imageUrlSearchText(url);
+  if (!text) return false;
+  const hasTextureSignal =
+    /(?:^|[^a-z0-9])(smear|texture|single[-_\s]?swatch|shade[-_\s]?swatch|color[-_\s]?swatch|colour[-_\s]?swatch)(?:[^a-z0-9]|$)/i.test(text);
+  if (!hasTextureSignal || !urlMatchesShadeValue(text, shadeValue)) return false;
+  if (/(?:^|[^a-z0-9])(model|arm[-_\s]?swatch|armswatch|shade[-_\s]?names?|infographic|chart|routine|pairing|before|after)(?:[^a-z0-9]|$)/i.test(text)) {
+    return false;
+  }
+  if (/(?:^|[^a-z0-9])(concrete|ecomm|ecommerce|pack[-_\s]?shot|packaging|package|box|bottle|tube|compact|silo|hero|primary)(?:[^a-z0-9]|$)/i.test(text)) {
+    return false;
+  }
+  return true;
+}
+
 function isLikelyProductOnlyImageUrl(url: unknown): boolean {
   const text = imageUrlSearchText(url);
   if (!text) return false;
@@ -353,15 +385,19 @@ function resolveBeautyShadeImageUrl(
   product: PDPPayload['product'],
 ): string | undefined {
   const explicitSwatchImageUrl = normalizePdpImageUrl(option.swatch_image_url) || undefined;
-  if (explicitSwatchImageUrl && !isLikelyProductOnlyImageUrl(explicitSwatchImageUrl)) {
+  if (
+    explicitSwatchImageUrl &&
+    (isTrustedSourceBackedShadeTextureUrl(explicitSwatchImageUrl, option.value) ||
+      !isLikelyProductOnlyImageUrl(explicitSwatchImageUrl))
+  ) {
     return explicitSwatchImageUrl;
   }
 
   const sourceImageUrl = normalizePdpImageUrl(option.label_image_url || option.image_url) || undefined;
   if (
     sourceImageUrl &&
-    isLikelyShadeSwatchImageUrl(sourceImageUrl) &&
-    !isLikelyProductOnlyImageUrl(sourceImageUrl)
+    (isTrustedSourceBackedShadeTextureUrl(sourceImageUrl, option.value) ||
+      (isLikelyShadeSwatchImageUrl(sourceImageUrl) && !isLikelyProductOnlyImageUrl(sourceImageUrl)))
   ) {
     return sourceImageUrl;
   }
