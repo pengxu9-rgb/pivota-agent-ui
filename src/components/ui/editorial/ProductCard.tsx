@@ -13,10 +13,32 @@ import { Pill } from './Chip';
  *  - Brand label sits in `pv-label`, title in `pv-title`, price as a `Num`.
  *  - Save heart toggles a parent-controlled `saved` state.
  *  - Optional `badge` renders as a top-left status `Pill`.
+ *  - Optional `summaryBadges` render below the title/price row as the
+ *    editorial answer to the legacy savings-badge strip — sage / paper-2 /
+ *    terracotta-bg tinted micro chips that surface real discount /
+ *    cart-unlock / payment-benefit signals without breaking the calm
+ *    typography.
+ *  - Optional `highlight` is a one-line italic-serif descriptor that sits
+ *    between brand and title (review-derived editorial copy etc.).
+ *  - `compareAtLabel` renders as a strikethrough next to the price.
+ *  - `discountLabel` renders as a terracotta accent tag near the price.
  *
  * The card itself is anchorless — wrap in `<Link>` at the call site so
  * the entire card is clickable while preserving the inline save action.
  */
+
+export type ProductSummaryBadgeTone =
+  | 'applied'
+  | 'store'
+  | 'unlock'
+  | 'shipping'
+  | 'payment'
+  | 'default';
+
+export interface ProductSummaryBadge {
+  label: string;
+  tone?: ProductSummaryBadgeTone;
+}
 
 export interface ProductCardProps {
   image: string;
@@ -24,7 +46,11 @@ export interface ProductCardProps {
   brand?: string | null;
   title: string;
   priceLabel?: string;
+  compareAtLabel?: string | null;
+  discountLabel?: string | null;
   badge?: { label: string; variant?: 'default' | 'sage' | 'accent' } | null;
+  highlight?: string | null;
+  summaryBadges?: ProductSummaryBadge[] | null;
   saved?: boolean;
   onSave?: (next: boolean) => void;
   aspect?: '4/5' | '1/1' | '3/4';
@@ -37,13 +63,26 @@ const aspectClass: Record<NonNullable<ProductCardProps['aspect']>, string> = {
   '3/4': 'aspect-[3/4]',
 };
 
+const summaryToneClass: Record<ProductSummaryBadgeTone, string> = {
+  applied: 'bg-sage-bg text-sage',
+  store: 'bg-terracotta-bg text-terracotta-ink',
+  unlock: 'bg-paper-2 text-ink',
+  shipping: 'bg-sage-bg text-sage',
+  payment: 'bg-terracotta-bg text-terracotta-ink',
+  default: 'bg-paper-2 text-ink-2',
+};
+
 export function ProductCard({
   image,
   imageAlt = '',
   brand,
   title,
   priceLabel,
+  compareAtLabel,
+  discountLabel,
   badge,
+  highlight,
+  summaryBadges,
   saved = false,
   onSave,
   aspect = '4/5',
@@ -54,6 +93,11 @@ export function ProductCard({
     event.stopPropagation();
     onSave?.(!saved);
   };
+
+  const trimmedHighlight = String(highlight || '').trim();
+  const trimmedCompareAt = String(compareAtLabel || '').trim();
+  const trimmedDiscount = String(discountLabel || '').trim();
+  const summary = (summaryBadges || []).filter((b) => b && String(b.label || '').trim());
 
   return (
     <div className={cn('group flex flex-col', className)}>
@@ -93,14 +137,51 @@ export function ProductCard({
 
       <div className="mt-3 flex flex-col gap-1.5">
         {brand ? <Mono className="text-ink-muted">{brand}</Mono> : null}
+        {trimmedHighlight ? (
+          <p className="font-editorial-serif italic text-[12.5px] leading-[1.35] text-ink-muted line-clamp-2">
+            {trimmedHighlight}
+          </p>
+        ) : null}
         <div className="flex items-start justify-between gap-3">
           <Title as="p" className="line-clamp-2 text-[14px] leading-[1.25]">
             {title}
           </Title>
-          {priceLabel ? (
-            <Num value={priceLabel} className="flex-shrink-0 text-[15px]" />
-          ) : null}
+          <div className="flex flex-shrink-0 items-baseline gap-1.5">
+            {priceLabel ? <Num value={priceLabel} className="text-[15px]" /> : null}
+            {trimmedCompareAt ? (
+              <span className="font-editorial-sans text-[11px] text-ink-muted line-through">
+                {trimmedCompareAt}
+              </span>
+            ) : null}
+          </div>
         </div>
+        {(trimmedDiscount || summary.length > 0) ? (
+          <div className="mt-0.5 flex flex-wrap items-center gap-1">
+            {trimmedDiscount ? (
+              <span
+                className={cn(
+                  'inline-flex items-center rounded-full px-1.5 py-0.5',
+                  'font-editorial-mono text-[9px] font-bold uppercase tracking-[0.08em]',
+                  'bg-terracotta text-paper',
+                )}
+              >
+                {trimmedDiscount}
+              </span>
+            ) : null}
+            {summary.map((b, i) => (
+              <span
+                key={`${b.label}-${i}`}
+                className={cn(
+                  'inline-flex items-center rounded-full px-1.5 py-0.5',
+                  'font-editorial-mono text-[9px] font-medium uppercase tracking-[0.08em]',
+                  summaryToneClass[b.tone || 'default'],
+                )}
+              >
+                {b.label}
+              </span>
+            ))}
+          </div>
+        ) : null}
       </div>
     </div>
   );

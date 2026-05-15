@@ -23,6 +23,7 @@ import {
   type ProductResponse,
 } from '@/lib/api';
 import { mergeUniqueCatalogProducts, buildCatalogProductKey } from '@/lib/catalogProducts';
+import { deriveEditorialProductCardSignals } from '@/lib/editorialProductCard';
 import { normalizeDisplayImageUrl } from '@/lib/displayImage';
 import { buildProductHrefForProduct } from '@/lib/productHref';
 import { appendCurrentPathAsReturn } from '@/lib/returnUrl';
@@ -516,6 +517,7 @@ export default function ProductsPage() {
           >
             {products.map((product) => {
               const href = buildProductHrefForProduct(product);
+              const signals = deriveEditorialProductCardSignals(product);
               return (
                 <Link
                   key={buildCatalogProductKey(product)}
@@ -535,6 +537,9 @@ export default function ProductsPage() {
                     brand={product.merchant_name || product.brand || null}
                     title={product.title}
                     priceLabel={formatPriceLabel(product.price, product.currency)}
+                    badge={signals.badge}
+                    highlight={signals.highlight}
+                    summaryBadges={signals.summaryBadges}
                     aspect="4/5"
                   />
                 </Link>
