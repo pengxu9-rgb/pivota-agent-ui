@@ -211,17 +211,31 @@ function formatProductLineOptionTileLabel(option: ProductLineOption | null | und
   return label || secondary;
 }
 
-function getProductLineSwatch(option: ProductLineOption): { imageUrl?: string; color?: string } {
+function getProductLineSwatch(
+  option: ProductLineOption,
+  product?: PDPPayload['product'],
+): { imageUrl?: string; color?: string } {
+  const explicitSwatchImageUrl =
+    normalizePdpImageUrl(
+      option.swatch_image_url ||
+        option.swatch?.image_url ||
+        option.swatch?.imageUrl ||
+        option.swatch?.url,
+    ) || undefined;
+  const sourceImageUrl =
+    normalizePdpImageUrl(option.label_image_url || option.image_url) || undefined;
+  const derivedImageUrl = product
+    ? deriveKnownSourceShadeSwatchUrl(option.value || option.label, product)
+    : undefined;
+  const imageUrl =
+    explicitSwatchImageUrl && !isLikelyProductOnlyImageUrl(explicitSwatchImageUrl)
+      ? explicitSwatchImageUrl
+      : sourceImageUrl && isLikelyShadeSwatchImageUrl(sourceImageUrl) && !isLikelyProductOnlyImageUrl(sourceImageUrl)
+        ? sourceImageUrl
+        : derivedImageUrl;
+
   return {
-    imageUrl:
-      normalizePdpImageUrl(
-        option.swatch_image_url ||
-          option.label_image_url ||
-          option.image_url ||
-          option.swatch?.image_url ||
-          option.swatch?.imageUrl ||
-          option.swatch?.url,
-      ) || undefined,
+    imageUrl,
     color: normalizeHexColor(option.swatch_color || option.color_hex || option.swatch?.hex),
   };
 }
@@ -275,6 +289,84 @@ function productLineOptionsDuplicateVariantAxis(
     const optionTokens = getProductLineOptionAxisTokens(option);
     return optionTokens.length > 0 && optionTokens.some((token) => variantAxisTokens.has(token));
   });
+}
+
+function isLikelyPackShotImageUrl(url: unknown): boolean {
+  return /(?:^|[-_/\s])pack[-_\s]?shot(?:[-_/.\s]|$)/i.test(String(url || ''));
+}
+
+function imageUrlSearchText(url: unknown): string {
+  const text = String(url || '').trim().toLowerCase();
+  if (!text) return '';
+  try {
+    const decoded = decodeURIComponent(text);
+    return decoded && decoded !== text ? `${text} ${decoded}` : text;
+  } catch {
+    return text;
+  }
+}
+
+function isLikelyShadeSwatchImageUrl(url: unknown): boolean {
+  const text = imageUrlSearchText(url);
+  if (!text) return false;
+  if (/\b(swatch|shade|color[-_\s]?chip|colour[-_\s]?chip|color[-_\s]?tile|colour[-_\s]?tile)\b/i.test(text)) {
+    return true;
+  }
+  return false;
+}
+
+function isLikelyProductOnlyImageUrl(url: unknown): boolean {
+  const text = imageUrlSearchText(url);
+  if (!text) return false;
+  if (isLikelyPackShotImageUrl(text)) return true;
+  return /\b(product|primary|hero|main|model|silo|ecomm|ecommerce|flat[-_\s]?lay|packaging|package|box|bottle|tube|compact|closed|open[-_\s]?box|with[-_\s]?cap|concrete[-_\s]?shot)\b/i.test(text);
+}
+
+function deriveKnownSourceShadeSwatchUrl(
+  shadeValue: unknown,
+  product: PDPPayload['product'],
+): string | undefined {
+  const shadeKey = normalizeVariantAxisToken(shadeValue);
+  if (!shadeKey) return undefined;
+
+  const brandName = String(product?.brand?.name || '').trim().toLowerCase();
+  const productUrl = String(
+    product?.url ||
+      product?.canonical_url ||
+      product?.source_url ||
+      product?.destination_url ||
+      product?.external_url ||
+      product?.external_redirect_url ||
+      product?.redirect_url ||
+      '',
+  ).toLowerCase();
+  const isRmsBeauty = brandName === 'rms beauty' || productUrl.includes('rmsbeauty.com');
+  if (isRmsBeauty) {
+    return `https://www.rmsbeauty.com/cdn/shop/files/${shadeKey}_100x.png`;
+  }
+
+  return undefined;
+}
+
+function resolveBeautyShadeImageUrl(
+  option: GenericColorOption,
+  product: PDPPayload['product'],
+): string | undefined {
+  const explicitSwatchImageUrl = normalizePdpImageUrl(option.swatch_image_url) || undefined;
+  if (explicitSwatchImageUrl && !isLikelyProductOnlyImageUrl(explicitSwatchImageUrl)) {
+    return explicitSwatchImageUrl;
+  }
+
+  const sourceImageUrl = normalizePdpImageUrl(option.label_image_url || option.image_url) || undefined;
+  if (
+    sourceImageUrl &&
+    isLikelyShadeSwatchImageUrl(sourceImageUrl) &&
+    !isLikelyProductOnlyImageUrl(sourceImageUrl)
+  ) {
+    return sourceImageUrl;
+  }
+
+  return deriveKnownSourceShadeSwatchUrl(option.value, product);
 }
 
 function withSelectedProductLineOption(payload: PDPPayload, selected: ProductLineOption): PDPPayload {
@@ -1778,7 +1870,10 @@ export function PdpContainer({
 
     const byValue = new Map<string, GenericColorOption>();
     const score = (opt: GenericColorOption) =>
-      (opt.label_image_url ? 3 : 0) + (opt.image_url ? 2 : 0) + (opt.swatch_hex ? 1 : 0);
+      (opt.swatch_image_url ? 4 : 0) +
+      (opt.label_image_url ? 3 : 0) +
+      (opt.image_url ? 2 : 0) +
+      (opt.swatch_hex ? 1 : 0);
 
     variants.forEach((variant) => {
       const value = getOptionValue(variant, ['color', 'colour', 'shade', 'tone']);
@@ -1786,6 +1881,12 @@ export function PdpContainer({
 
       const candidate: GenericColorOption = {
         value,
+        swatch_image_url:
+          variant.swatch?.image_url ||
+          variant.swatch?.imageUrl ||
+          variant.swatch?.url ||
+          variant.beauty_meta?.shade_image_url ||
+          (variant as any).swatch_image_url,
         label_image_url: variant.label_image_url,
         image_url: variant.image_url,
         swatch_hex: variant.swatch?.hex || variant.beauty_meta?.shade_hex,
@@ -1799,6 +1900,19 @@ export function PdpContainer({
 
     return colorOptions.map((value) => byValue.get(value) || { value });
   }, [colorOptions, variants]);
+  const displayColorSheetOptions = useMemo<GenericColorOption[]>(
+    () =>
+      colorSheetOptions.map((option) => {
+        const swatchImageUrl = resolveBeautyShadeImageUrl(option, payload.product);
+        const swatchHex = normalizeHexColor(option.swatch_hex);
+        return {
+          value: option.value,
+          ...(swatchImageUrl ? { swatch_image_url: swatchImageUrl } : {}),
+          ...(swatchHex ? { swatch_hex: swatchHex } : {}),
+        };
+      }),
+    [colorSheetOptions, payload.product],
+  );
   const rawSizeOptions = useMemo(() => collectSizeOptions(variants), [variants]);
   const staticSizeOption = useMemo(() => getStaticSizeOption(variants), [variants]);
   const sizeOptions = useMemo(
@@ -3742,7 +3856,7 @@ export function PdpContainer({
                     option.merchant_id === payload.product.merchant_id));
               const isPending = pendingProductLineProductId === String(option.product_id || '').trim();
               const swatch = shouldUseProductLineColorSelector
-                ? getProductLineSwatch(option)
+                ? getProductLineSwatch(option, payload.product)
                 : {};
               const hasSwatch = Boolean(swatch.imageUrl || swatch.color);
               const useLargeSwatchCard = Boolean(shouldUseProductLineColorSelector && hasSwatch);
@@ -3886,11 +4000,11 @@ export function PdpContainer({
       : null;
 
     const beautyShades = shouldRenderColorOptions
-      ? colorSheetOptions.map((opt) => ({
+      ? displayColorSheetOptions.map((opt) => ({
           id: opt.value,
           name: opt.value,
-          hex: opt.swatch_hex || '#cccccc',
-          imageUrl: opt.label_image_url || opt.image_url,
+          hex: opt.swatch_hex,
+          imageUrl: opt.swatch_image_url,
         }))
       : null;
     const beautySizes = sizeOptions.length
@@ -4388,10 +4502,10 @@ export function PdpContainer({
                   </div>
                   <div className="mt-1.5 overflow-x-auto">
                     <div className="flex gap-1.5 pb-1">
-                      {colorSheetOptions.slice(0, 8).map((option) => {
+                      {displayColorSheetOptions.slice(0, 8).map((option) => {
                         const color = option.value;
                         const isSelected = selectedColor === color;
-                        const swatchImageUrl = option.label_image_url || option.image_url;
+                        const swatchImageUrl = option.swatch_image_url || option.label_image_url || option.image_url;
                         const hasSwatchPreview = Boolean(swatchImageUrl || option.swatch_hex);
                         return (
                           <button
@@ -5177,7 +5291,7 @@ export function PdpContainer({
       <GenericColorSheet
         open={showColorSheet}
         onClose={() => setShowColorSheet(false)}
-        options={colorSheetOptions}
+        options={displayColorSheetOptions}
         selectedValue={selectedColor}
         onSelect={(value) => {
           handleColorSelect(value);

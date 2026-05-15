@@ -677,7 +677,9 @@ describe('PdpContainer structured PDP modules', () => {
 
     // ...but shades stay selectable through the redesign's swatch selector,
     // and selecting one still drives the headline price.
-    expect(screen.getByRole('button', { name: 'Shade Grape Fizz' })).toBeInTheDocument();
+    const grape = screen.getByRole('button', { name: 'Shade Grape Fizz' });
+    expect(grape).toBeInTheDocument();
+    expect(grape.querySelector('span[style]')?.getAttribute('style')).toContain('swatch-grape.jpg');
     const citrus = screen.getByRole('button', { name: 'Shade Citrus Sunshine' });
     expect(citrus).toBeInTheDocument();
 
@@ -881,13 +883,15 @@ describe('PdpContainer structured PDP modules', () => {
     payload.product.product_id = 'ext_rms_official';
     payload.product.merchant_id = 'external_seed';
     payload.product.title = 'Revitalize Hydra Concealer';
+    payload.product.brand = { name: 'RMS Beauty' };
     payload.product.default_variant_id = '42127417966689';
     payload.product.variants = [
       {
         variant_id: '42127417966689',
         title: 'ON01',
         options: [{ name: 'Shade', value: 'ON01' }],
-        beauty_meta: { shade_hex: '#e6c8ad' },
+        label_image_url:
+          'https://cdn.shopify.com/s/files/1/0642/6399/files/816248028979-RHC3-ON01-PACK-SHOT-900X1084.jpg?v=1754416529',
         price: { current: { amount: 34, currency: 'USD' } },
         availability: { in_stock: true, available_quantity: 9 },
       },
@@ -895,7 +899,8 @@ describe('PdpContainer structured PDP modules', () => {
         variant_id: '45621462253793',
         title: 'W023',
         options: [{ name: 'Shade', value: 'W023' }],
-        beauty_meta: { shade_hex: '#d2a37a' },
+        label_image_url:
+          'https://cdn.shopify.com/s/files/1/0642/6399/files/816248029167-RHC22-W023-PACK-SHOT-900X1084.jpg?v=1754416529',
         price: { current: { amount: 34, currency: 'USD' } },
         availability: { in_stock: true, available_quantity: 9 },
       },
@@ -943,8 +948,91 @@ describe('PdpContainer structured PDP modules', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Shade W023' }));
 
+    expect(
+      screen.getByRole('button', { name: 'Shade W023' }).querySelector('span[style]')?.getAttribute('style'),
+    ).toContain('w023_100x.png');
     expect(routerPush).not.toHaveBeenCalled();
     expect(getPdpV2Mock).not.toHaveBeenCalled();
+  }, 10000);
+
+  it('uses explicit swatch assets instead of variant product photos for shade chips', () => {
+    const payload = buildBeautyPayload();
+    payload.product.product_id = 'ext_swatch_preferred';
+    payload.product.merchant_id = 'external_seed';
+    payload.product.title = 'Longwear Lip Color';
+    payload.product.brand = { name: 'Test Beauty' };
+    payload.product.default_variant_id = 'shade-crimson';
+    payload.product.variants = [
+      {
+        variant_id: 'shade-crimson',
+        title: 'Crimson',
+        options: [{ name: 'Shade', value: 'Crimson' }],
+        swatch_image_url: 'https://example.com/crimson-swatch.png',
+        label_image_url: 'https://example.com/crimson-product-ecomm-silo.jpg',
+        image_url: 'https://example.com/crimson-product-ecomm-silo.jpg',
+        price: { current: { amount: 22, currency: 'USD' } },
+        availability: { in_stock: true },
+      },
+      {
+        variant_id: 'shade-nude',
+        title: 'Nude',
+        options: [{ name: 'Shade', value: 'Nude' }],
+        swatch_image_url: 'https://example.com/nude-swatch.png',
+        label_image_url: 'https://example.com/nude-product-ecomm-silo.jpg',
+        image_url: 'https://example.com/nude-product-ecomm-silo.jpg',
+        price: { current: { amount: 22, currency: 'USD' } },
+        availability: { in_stock: true },
+      },
+    ];
+
+    render(
+      <PdpContainer payload={payload} mode="beauty" onAddToCart={() => {}} onBuyNow={() => {}} />,
+    );
+
+    const crimsonStyle = screen
+      .getByRole('button', { name: 'Shade Crimson' })
+      .querySelector('span[style]')
+      ?.getAttribute('style');
+    expect(crimsonStyle).toContain('crimson-swatch.png');
+    expect(crimsonStyle).not.toContain('product-ecomm-silo');
+  });
+
+  it('does not render product or packaging images as shade swatches when no trusted swatch exists', () => {
+    const payload = buildBeautyPayload();
+    payload.product.product_id = 'ext_product_photo_only';
+    payload.product.merchant_id = 'external_seed';
+    payload.product.title = 'Shade Fluid';
+    payload.product.brand = { name: 'Test Beauty' };
+    payload.product.default_variant_id = 'shade-guava';
+    payload.product.variants = [
+      {
+        variant_id: 'shade-guava',
+        title: 'Guava',
+        options: [{ name: 'Shade', value: 'Guava' }],
+        label_image_url: 'https://cdn.shopify.com/files/guava-product-ecomm-silo.jpg',
+        image_url: 'https://cdn.shopify.com/files/guava-product-ecomm-silo.jpg',
+        price: { current: { amount: 24, currency: 'USD' } },
+        availability: { in_stock: true },
+      },
+      {
+        variant_id: 'shade-apricot',
+        title: 'Apricot',
+        options: [{ name: 'Shade', value: 'Apricot' }],
+        label_image_url: 'https://cdn.shopify.com/files/apricot-PACK-SHOT.jpg',
+        image_url: 'https://cdn.shopify.com/files/apricot-PACK-SHOT.jpg',
+        price: { current: { amount: 24, currency: 'USD' } },
+        availability: { in_stock: true },
+      },
+    ];
+
+    render(
+      <PdpContainer payload={payload} mode="beauty" onAddToCart={() => {}} onBuyNow={() => {}} />,
+    );
+
+    const guavaButton = screen.getByRole('button', { name: 'Shade Guava' });
+    expect(guavaButton.querySelector('[style*="background-image"]')).toBeNull();
+    expect(guavaButton).not.toHaveTextContent('PACK-SHOT');
+    expect(guavaButton).toHaveTextContent('Guava');
   });
 
   it('renders concrete size explanations for mini and full-size product-line options', () => {
