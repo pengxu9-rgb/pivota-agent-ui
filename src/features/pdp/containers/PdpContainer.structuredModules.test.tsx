@@ -876,6 +876,77 @@ describe('PdpContainer structured PDP modules', () => {
     });
   });
 
+  it('uses the real shade variants when merged seller rows duplicate the variant axis', () => {
+    const payload = buildBeautyPayload();
+    payload.product.product_id = 'ext_rms_official';
+    payload.product.merchant_id = 'external_seed';
+    payload.product.title = 'Revitalize Hydra Concealer';
+    payload.product.default_variant_id = '42127417966689';
+    payload.product.variants = [
+      {
+        variant_id: '42127417966689',
+        title: 'ON01',
+        options: [{ name: 'Shade', value: 'ON01' }],
+        beauty_meta: { shade_hex: '#e6c8ad' },
+        price: { current: { amount: 34, currency: 'USD' } },
+        availability: { in_stock: true, available_quantity: 9 },
+      },
+      {
+        variant_id: '45621462253793',
+        title: 'W023',
+        options: [{ name: 'Shade', value: 'W023' }],
+        beauty_meta: { shade_hex: '#d2a37a' },
+        price: { current: { amount: 34, currency: 'USD' } },
+        availability: { in_stock: true, available_quantity: 9 },
+      },
+    ];
+    payload.product.product_line_option_name = 'Shade';
+    payload.product.product_line_options = [
+      {
+        option_id: 'external_seed:ext_rms_official',
+        option_name: 'Shade',
+        axis: 'shade',
+        value: 'on01',
+        label: 'ON01',
+        product_id: 'ext_rms_official',
+        merchant_id: 'external_seed',
+        selected: true,
+      },
+      {
+        option_id: 'external_seed:ext_rms_dermstore',
+        option_name: 'Shade',
+        axis: 'shade',
+        value: 'w023',
+        label: 'W023',
+        product_id: 'ext_rms_dermstore',
+        merchant_id: 'external_seed',
+        selected: true,
+      },
+    ];
+    payload.modules.push({
+      module_id: 'm_variant',
+      type: 'variant_selector',
+      priority: 95,
+      data: {
+        selected_variant_id: '42127417966689',
+        product_line_option_name: 'Shade',
+        product_line_options: payload.product.product_line_options,
+      },
+    } as any);
+
+    render(
+      <PdpContainer payload={payload} mode="beauty" onAddToCart={() => {}} onBuyNow={() => {}} />,
+    );
+
+    expect(screen.queryByText('Selected: ON01')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^W023$/ })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Shade W023' }));
+
+    expect(routerPush).not.toHaveBeenCalled();
+    expect(getPdpV2Mock).not.toHaveBeenCalled();
+  });
+
   it('renders concrete size explanations for mini and full-size product-line options', () => {
     const payload = buildBeautyPayload();
     payload.product.product_id = 'ext_rb_primer_mini';
