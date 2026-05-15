@@ -3714,10 +3714,11 @@ export function PdpContainer({
                     hasSwatch && !useLargeSwatchCard ? 'px-2 py-1.5' : '',
                     !hasSwatch ? 'px-3 py-1' : '',
                     'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)] disabled:cursor-wait disabled:opacity-100',
+                    // One neutral selected treatment for every variant-axis
+                    // option chip (large-swatch and plain alike) — no
+                    // per-category accent highlight.
                     isSelected
-                      ? useLargeSwatchCard
-                        ? 'border-muted-foreground/50 bg-card text-foreground font-semibold'
-                        : 'border-[color:var(--accent-600)] bg-[var(--accent-50)] text-[color:var(--accent-800)] font-semibold shadow-[inset_0_0_0_1px_var(--accent-600)]'
+                      ? 'border-muted-foreground/50 bg-card text-foreground font-semibold'
                       : 'border-border hover:bg-muted/30 hover:border-muted-foreground/40',
                     isPending ? 'opacity-75' : '',
                   )}
@@ -3731,7 +3732,7 @@ export function PdpContainer({
                         isSelected
                           ? useLargeSwatchCard
                             ? 'border-foreground/70 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.85)]'
-                            : 'border-[color:var(--accent-600)]'
+                            : 'border-muted-foreground/50'
                           : 'border-border',
                       )}
                       style={{

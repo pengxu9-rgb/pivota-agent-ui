@@ -41,8 +41,14 @@ export function BeautySizeSelector({
               onClick={() => onSelect(sz.id)}
               aria-pressed={isSel}
               className={cn(
-                'flex-1 rounded-[10px] border-[1.5px] px-3 py-2 text-left',
-                isSel ? 'border-foreground bg-white' : 'border-border bg-transparent',
+                // Selected treatment matches the product-line / variant
+                // selectors (neutral `border-muted-foreground/50` on
+                // `bg-card`) — same highlight for every variant-axis
+                // category.
+                'flex-1 rounded-[10px] border-[1.5px] bg-card px-3 py-2 text-left',
+                isSel
+                  ? 'border-muted-foreground/50 font-semibold text-foreground'
+                  : 'border-border hover:border-muted-foreground/40',
               )}
             >
               <div className="text-[13px] font-semibold text-foreground">{sz.label}</div>
