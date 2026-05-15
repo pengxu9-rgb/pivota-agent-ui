@@ -309,7 +309,7 @@ function imageUrlSearchText(url: unknown): string {
 function isLikelyShadeSwatchImageUrl(url: unknown): boolean {
   const text = imageUrlSearchText(url);
   if (!text) return false;
-  if (/\b(swatch|shade|color[-_\s]?chip|colour[-_\s]?chip|color[-_\s]?tile|colour[-_\s]?tile)\b/i.test(text)) {
+  if (/(?:^|[^a-z0-9])(swatch|shade|color[-_\s]?chip|colour[-_\s]?chip|color[-_\s]?tile|colour[-_\s]?tile)(?:[^a-z0-9]|$)/i.test(text)) {
     return true;
   }
   return false;
@@ -319,7 +319,7 @@ function isLikelyProductOnlyImageUrl(url: unknown): boolean {
   const text = imageUrlSearchText(url);
   if (!text) return false;
   if (isLikelyPackShotImageUrl(text)) return true;
-  return /\b(product|primary|hero|main|model|silo|ecomm|ecommerce|flat[-_\s]?lay|packaging|package|box|bottle|tube|compact|closed|open[-_\s]?box|with[-_\s]?cap|concrete[-_\s]?shot)\b/i.test(text);
+  return /(?:^|[^a-z0-9])(t\d+product|product|primary|hero|main|model|silo|ecomm|ecommerce|flat[-_\s]?lay|packaging|package|box|bottle|tube|compact|closed|open[-_\s]?box|with[-_\s]?cap|concrete[-_\s]?shot)(?:[^a-z0-9]|$)/i.test(text);
 }
 
 function deriveKnownSourceShadeSwatchUrl(

@@ -1023,6 +1023,15 @@ describe('PdpContainer structured PDP modules', () => {
         price: { current: { amount: 24, currency: 'USD' } },
         availability: { in_stock: true },
       },
+      {
+        variant_id: 'shade-carats',
+        title: 'How Many Carats?!',
+        options: [{ name: 'Shade', value: 'How Many Carats?!' }],
+        swatch_image_url:
+          'https://cdn.shopify.com/files/FB_FALL25_T2PRODUCT_ECOMM_BODY-LAVA_HMC_1200X1500_72DPI.jpg',
+        price: { current: { amount: 24, currency: 'USD' } },
+        availability: { in_stock: true },
+      },
     ];
 
     render(
@@ -1033,6 +1042,10 @@ describe('PdpContainer structured PDP modules', () => {
     expect(guavaButton.querySelector('[style*="background-image"]')).toBeNull();
     expect(guavaButton).not.toHaveTextContent('PACK-SHOT');
     expect(guavaButton).toHaveTextContent('Guava');
+
+    const caratsButton = screen.getByRole('button', { name: 'Shade How Many Carats?!' });
+    expect(caratsButton.querySelector('[style*="background-image"]')).toBeNull();
+    expect(caratsButton).toHaveTextContent('How');
   });
 
   it('renders concrete size explanations for mini and full-size product-line options', () => {
