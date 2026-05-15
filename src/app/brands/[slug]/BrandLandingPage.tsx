@@ -5,6 +5,8 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowLeft,
+  ArrowUpRight,
+  Heart,
   Search,
   ShoppingBag,
   SlidersHorizontal,
@@ -15,6 +17,18 @@ import {
   CatalogProductCard,
   CatalogProductSkeleton,
 } from '@/components/catalog/CatalogProductCard';
+import {
+  Button as EdButton,
+  Chip,
+  DisplayHeading,
+  Eyebrow,
+  Headline,
+  IconButton,
+  InsightBlock,
+  Mono,
+  Num,
+} from '@/components/ui/editorial';
+import { cn } from '@/lib/utils';
 import {
   type BrandDiscoveryFeedResult,
   getBrandDiscoveryFeed,
@@ -572,91 +586,106 @@ export function BrandLandingPage({
   ]);
 
   return (
-    <div className="relative min-h-screen overflow-x-hidden bg-white text-slate-900">
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-x-0 top-0 h-[220px] bg-[radial-gradient(circle_at_top,_rgba(117,146,255,0.14),_rgba(255,255,255,0)_58%),radial-gradient(circle_at_90%_8%,_rgba(216,127,255,0.12),_rgba(255,255,255,0)_34%)]"
-      />
+    <div className="relative min-h-screen overflow-x-hidden bg-paper text-ink">
+      <main className="relative mx-auto flex w-full max-w-[1180px] flex-col gap-6 px-4 pb-16 pt-4 sm:px-6 lg:px-8 lg:pt-6">
+        {/* Lightweight top bar — chevron-left + "via Pivota" attribution +
+            cart. Editorial replacement for the legacy hero chrome. */}
+        <header className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <a
+              href={returnHref}
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-ink transition-colors hover:bg-hairline-2"
+              aria-label="Back"
+            >
+              <ArrowLeft size={18} strokeWidth={1.6} />
+            </a>
+            <Mono className="normal-case tracking-[0.06em] text-ink-muted">via Pivota</Mono>
+          </div>
+          <IconButton label="Open cart" size="md" onClick={openCart} className="relative">
+            <ShoppingBag size={18} strokeWidth={1.5} />
+            {cartItemCount > 0 ? (
+              <span
+                aria-hidden="true"
+                className="absolute -right-0.5 -top-0.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-terracotta px-1 font-editorial-mono text-[9px] font-bold text-paper"
+              >
+                {cartItemCount > 99 ? '99+' : cartItemCount}
+              </span>
+            ) : null}
+          </IconButton>
+        </header>
 
-      <main className="relative mx-auto max-w-6xl px-3.5 pb-14 pt-4 sm:px-6 sm:pt-5 lg:px-8">
         <motion.section
           initial={{ opacity: 0, y: 18 }}
           animate={{ opacity: 1, y: 0 }}
-          className="flex flex-col gap-4"
+          transition={{ duration: 0.45 }}
+          className="flex flex-col gap-6"
         >
-          <section className="flex items-start justify-between gap-3 px-1 py-0.5 sm:items-center">
-            <div className="min-w-0 space-y-1">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#98a2b3]">
-                Official Brand
-              </p>
-              <div className="flex items-center gap-2">
-                <a
-                  href={returnHref}
-                  className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[#ece5dd] bg-white text-slate-600 shadow-[0_6px_16px_rgba(15,23,42,0.05)] transition hover:border-[#ddd3c8] hover:text-slate-950"
-                  aria-label="Back"
-                >
-                  <ArrowLeft className="h-3.5 w-3.5" strokeWidth={2.2} />
-                </a>
-                <h1 className="text-[1.6rem] font-semibold tracking-[-0.045em] text-[#111827] sm:text-[1.95rem]">
-                  {brandName || 'Brand'}
-                </h1>
-              </div>
-              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] leading-none text-[#667085]">
-                {isRefreshing ? (
-                    <span className="inline-flex items-center rounded-full bg-[#f3efff] px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.12em] text-[#7c3aed]">
-                    Updating
-                  </span>
-                ) : null}
-              </div>
-              {subtitle ? <p className="max-w-2xl text-[12px] text-[#667085]">{subtitle}</p> : null}
-              {activeQuery ? (
-                <p className="text-[12px] text-[#667085]">
-                  Showing results for <span className="font-medium text-slate-900">“{activeQuery}”</span>
-                </p>
-              ) : null}
-            </div>
-
-            <div className="flex shrink-0 items-center gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setIsSearchOpen((current) => !current);
-                  setIsFilterOpen(false);
-                }}
-                className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[#ece5dd] bg-white text-slate-600 shadow-[0_6px_16px_rgba(15,23,42,0.05)] transition hover:border-[#ddd3c8] hover:text-slate-950 sm:h-10 sm:w-10"
-                aria-label={isSearchOpen ? 'Close brand search' : 'Open brand search'}
-              >
-                {isSearchOpen ? <X className="h-3.5 w-3.5" /> : <Search className="h-3.5 w-3.5" />}
-              </button>
-
-              <button
-                type="button"
-                onClick={openCart}
-                className="relative inline-flex h-9 w-9 items-center justify-center rounded-full border border-[#ece5dd] bg-white text-slate-600 shadow-[0_6px_16px_rgba(15,23,42,0.05)] transition hover:border-[#ddd3c8] hover:text-slate-950 sm:h-10 sm:w-10"
-                aria-label="Open cart"
-              >
-                <ShoppingBag className="h-4 w-4" />
-                {cartItemCount > 0 ? (
-                  <span className="absolute -right-0.5 -top-0.5 inline-flex min-h-4 min-w-4 items-center justify-center rounded-full bg-[#c16cf3] px-1 text-[9px] font-semibold text-white">
-                    {cartItemCount > 99 ? '99+' : cartItemCount}
-                  </span>
-                ) : null}
-              </button>
-
-              <div className="relative h-11 w-11 overflow-hidden rounded-full border border-[#e5e7eb] bg-[#dfe8db] shadow-[0_6px_14px_rgba(15,23,42,0.06)] sm:h-12 sm:w-12">
+          {/* Compact brand band — italic-serif wordmark + monogram + meta
+              + tagline + 2 CTAs (Shop the edit terracotta · Follow ghost
+              with heart). */}
+          <section className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div className="flex min-w-0 items-end gap-4">
+              <div className="relative h-14 w-14 flex-shrink-0 overflow-hidden rounded-full border border-hairline bg-paper-2">
                 {brandAvatarUrl ? (
                   <Image src={brandAvatarUrl} alt={brandName} fill unoptimized className="object-cover" />
                 ) : (
-                  <div className="flex h-full w-full items-center justify-center text-sm font-semibold text-[#334155]">
+                  <div className="flex h-full w-full items-center justify-center font-editorial-serif text-[16px] italic text-ink">
                     {getBrandInitials(brandName)}
                   </div>
                 )}
               </div>
+              <div className="min-w-0 flex-1">
+                <Mono className="block">Official brand</Mono>
+                <DisplayHeading as="h1" size={40} className="mt-1 font-editorial-serif italic">
+                  {brandName || 'Brand'}
+                </DisplayHeading>
+                {subtitle ? (
+                  <p className="pv-body mt-1 text-ink-muted">
+                    {subtitle}
+                  </p>
+                ) : null}
+                {isRefreshing ? (
+                  <Mono className="mt-2 inline-block text-terracotta-ink">Updating</Mono>
+                ) : null}
+                {activeQuery ? (
+                  <p className="pv-body mt-2 text-ink-muted">
+                    Showing results for{' '}
+                    <span className="font-editorial-serif italic text-ink">“{activeQuery}”</span>
+                  </p>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="flex shrink-0 items-center gap-2">
+              <EdButton
+                variant="accent"
+                size="md"
+                onClick={() => {
+                  const target = document.getElementById('brand-products');
+                  target?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }}
+              >
+                Shop the edit
+              </EdButton>
+              <EdButton variant="ghost" size="md" aria-label="Follow house">
+                <Heart size={14} strokeWidth={1.6} />
+                Follow
+              </EdButton>
+              <IconButton
+                label={isSearchOpen ? 'Close brand search' : 'Open brand search'}
+                size="md"
+                onClick={() => {
+                  setIsSearchOpen((current) => !current);
+                  setIsFilterOpen(false);
+                }}
+              >
+                {isSearchOpen ? <X size={18} strokeWidth={1.5} /> : <Search size={18} strokeWidth={1.5} />}
+              </IconButton>
             </div>
           </section>
 
           {isSearchOpen ? (
-            <section className="rounded-[22px] border border-[#efe7dc] bg-white px-3 py-3 shadow-[0_10px_28px_rgba(15,23,42,0.05)] sm:px-4">
+            <section className="border border-hairline bg-surface p-3 sm:p-4">
               <form
                 className="flex items-center gap-2"
                 onSubmit={(event) => {
@@ -664,68 +693,66 @@ export function BrandLandingPage({
                   setActiveQuery(queryDraft.trim());
                 }}
               >
-                <div className="flex h-10 flex-1 items-center gap-2 rounded-full border border-[#ece5dd] bg-[#fcfbf9] px-4 shadow-sm">
-                  <Search className="h-3.5 w-3.5 text-slate-400" />
+                <div className="flex h-[42px] flex-1 items-center gap-2 rounded-full border border-hairline bg-paper-2 px-4 transition-colors focus-within:border-ink/30">
+                  <Search size={16} strokeWidth={1.5} className="flex-shrink-0 text-ink-muted" />
                   <input
                     ref={searchInputRef}
                     value={queryDraft}
                     onChange={(event) => setQueryDraft(event.target.value)}
                     placeholder={`Search ${brandName} products`}
-                    className="w-full bg-transparent text-[13px] text-slate-900 outline-none placeholder:text-slate-400"
+                    className="w-full bg-transparent font-editorial-sans text-[13px] text-ink outline-none placeholder:text-subtle"
                   />
                 </div>
-                <button
-                  type="submit"
-                  className="inline-flex h-10 items-center justify-center rounded-full bg-[#1f2937] px-4 text-[13px] font-medium text-white transition hover:bg-[#111827]"
-                >
+                <EdButton type="submit" variant="default" size="md">
                   Search
-                </button>
+                </EdButton>
               </form>
             </section>
           ) : null}
 
-          <section className="sticky top-0 z-40 -mx-3.5 border-y border-[#f1ebe3] bg-white/96 px-3.5 py-2 backdrop-blur sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
-            <div className="mx-auto flex max-w-6xl items-center gap-2">
+          <section className="sticky top-0 z-40 -mx-4 border-y border-hairline bg-paper/96 px-4 py-2.5 backdrop-blur sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
+            <div className="mx-auto flex max-w-[1180px] items-center gap-2">
               <button
                 type="button"
                 onClick={() => {
                   setIsFilterOpen((current) => !current);
                   setIsSearchOpen(false);
                 }}
-                className="inline-flex h-8 shrink-0 items-center gap-1 rounded-xl border border-[#ece5dd] bg-[#f8f5f1] px-2.5 text-[12px] font-semibold tracking-[-0.01em] text-[#4b5563] shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition hover:bg-[#f4f0ea]"
+                className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-hairline bg-surface px-3 font-editorial-mono text-[10px] font-medium uppercase tracking-[0.12em] text-ink transition-colors hover:border-ink/30"
               >
-                <SlidersHorizontal className="h-3.25 w-3.25" />
+                <SlidersHorizontal size={13} strokeWidth={1.6} />
                 Filter
                 {activeFilterCount > 0 ? (
-                  <span className="inline-flex min-w-4 items-center justify-center rounded-full bg-white px-1 text-[9px] font-semibold text-[#6d28d9]">
+                  <span className="inline-flex min-w-4 items-center justify-center rounded-full bg-terracotta-bg px-1 text-[9px] font-bold text-terracotta-ink">
                     {activeFilterCount}
                   </span>
                 ) : null}
               </button>
 
               <div className="flex-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                <div className="flex min-w-max items-center gap-1 pr-1">
+                <div className="flex min-w-max items-center gap-1.5 pr-1">
                   {categoryChips.map((chip) => {
                     const selected =
                       chip.scopeValue === activeCategory || (!chip.scopeValue && !activeCategory);
                     return (
-                      <button
+                      <Chip
                         key={chip.key}
-                        type="button"
+                        variant={selected ? 'active' : 'default'}
+                        size="md"
                         onClick={() => setActiveCategory(chip.scopeValue)}
-                        className={`inline-flex h-8 items-center gap-1 rounded-full border px-2.5 text-[12px] font-semibold tracking-[-0.01em] transition ${
-                          selected
-                            ? 'border-transparent bg-gradient-to-r from-[#8f57ff] via-[#a35cff] to-[#4f7cff] text-white shadow-[0_10px_24px_rgba(143,87,255,0.28)]'
-                            : 'border-[#e8e1d7] bg-white text-[#667085] hover:border-[#d9d1c6]'
-                        }`}
                       >
-                        <span>{chip.label}</span>
+                        {chip.label}
                         {typeof chip.count === 'number' ? (
-                          <span className={`text-[10px] ${selected ? 'text-white/78' : 'text-[#98a2b3]'}`}>
+                          <span
+                            className={cn(
+                              'ml-1 font-editorial-mono text-[9px]',
+                              selected ? 'text-paper/80' : 'text-ink-muted',
+                            )}
+                          >
                             {chip.count}
                           </span>
                         ) : null}
-                      </button>
+                      </Chip>
                     );
                   })}
                 </div>
@@ -735,14 +762,12 @@ export function BrandLandingPage({
             {isFilterOpen ? (
               <div
                 aria-label="Brand filters"
-                className="mx-auto mt-3 max-w-6xl rounded-[20px] border border-[#ece5dd] bg-white p-4 shadow-[0_10px_30px_rgba(15,23,42,0.08)]"
+                className="mx-auto mt-3 max-w-[1180px] border border-hairline bg-surface p-5"
               >
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
-                      Filter products
-                    </p>
-                    <p className="mt-1 text-[12px] text-slate-500">
+                    <Mono className="block">Filter products</Mono>
+                    <p className="pv-body mt-1 text-ink-muted">
                       Narrow this brand feed with real category scope and sort.
                     </p>
                   </div>
@@ -753,7 +778,7 @@ export function BrandLandingPage({
                         setActiveCategory(null);
                         setSort('popular');
                       }}
-                      className="text-[12px] font-medium text-slate-500 transition hover:text-slate-900"
+                      className="font-editorial-sans text-[12px] font-medium text-ink-muted underline-offset-4 transition-colors hover:text-ink hover:underline"
                     >
                       Clear all
                     </button>
@@ -761,142 +786,125 @@ export function BrandLandingPage({
                 </div>
 
                 {filterCategoryChips.length ? (
-                  <div className="mt-4">
-                      <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
-                        Category
-                      </p>
-                      <div className="mt-3 flex flex-wrap gap-2">
-                      <button
-                        type="button"
+                  <div className="mt-5">
+                    <Mono className="block">Category</Mono>
+                    <div className="mt-3 flex flex-wrap gap-1.5">
+                      <Chip
+                        variant={!activeCategory ? 'active' : 'default'}
+                        size="md"
                         onClick={() => setActiveCategory(null)}
-                        className={`rounded-full px-2.5 py-1.5 text-[12px] font-medium transition ${
-                        !activeCategory
-                            ? 'bg-gradient-to-r from-[#8f57ff] via-[#a35cff] to-[#4f7cff] text-white shadow-[0_10px_24px_rgba(143,87,255,0.22)]'
-                            : 'border border-[#ece5dd] bg-[#fbf9f6] text-slate-700 hover:border-[#ddd3c8]'
-                        }`}
                       >
                         All categories
-                      </button>
+                      </Chip>
                       {filterCategoryChips.map((chip) => {
                         const selected = chip.scopeValue === activeCategory;
                         return (
-                          <button
+                          <Chip
                             key={`filter-${chip.key}`}
-                            type="button"
+                            variant={selected ? 'active' : 'default'}
+                            size="md"
                             onClick={() => setActiveCategory(chip.scopeValue)}
-                            className={`rounded-full px-2.5 py-1.5 text-[12px] font-medium transition ${
-                              selected
-                                ? 'bg-gradient-to-r from-[#8f57ff] via-[#a35cff] to-[#4f7cff] text-white shadow-[0_10px_24px_rgba(143,87,255,0.22)]'
-                                : 'border border-[#ece5dd] bg-[#fbf9f6] text-slate-700 hover:border-[#ddd3c8]'
-                            }`}
                           >
                             {chip.label}
                             {typeof chip.count === 'number' ? ` ${chip.count}` : ''}
-                          </button>
+                          </Chip>
                         );
                       })}
                     </div>
                   </div>
                 ) : null}
 
-                <div className="mt-4">
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
-                      Sort products
-                    </p>
-                    <div className="mt-3 flex flex-wrap gap-2">
+                <div className="mt-5">
+                  <Mono className="block">Sort products</Mono>
+                  <div className="mt-3 flex flex-wrap gap-1.5">
                     {SORT_OPTIONS.map((option) => (
-                      <button
+                      <Chip
                         key={option.value}
-                        type="button"
-                        onClick={() => {
-                          setSort(option.value);
-                        }}
-                        className={`rounded-full px-2.5 py-1.5 text-[12px] font-medium transition ${
-                          sort === option.value
-                            ? 'bg-[#1f2937] text-white'
-                            : 'border border-[#ece5dd] bg-[#fbf9f6] text-slate-700 hover:border-[#ddd3c8]'
-                        }`}
+                        variant={sort === option.value ? 'active' : 'default'}
+                        size="md"
+                        onClick={() => setSort(option.value)}
                       >
                         {option.label}
-                      </button>
+                      </Chip>
                     ))}
                   </div>
                 </div>
 
-                <div className="mt-4 flex justify-end">
-                  <button
-                    type="button"
-                    onClick={() => setIsFilterOpen(false)}
-                    className="inline-flex h-8 items-center justify-center rounded-full bg-[#1f2937] px-4 text-[12px] font-medium text-white transition hover:bg-[#111827]"
-                  >
+                <div className="mt-5 flex justify-end">
+                  <EdButton variant="default" size="sm" onClick={() => setIsFilterOpen(false)}>
                     Done
-                  </button>
+                  </EdButton>
                 </div>
               </div>
             ) : null}
           </section>
 
           {brandCampaign ? (
-            <section className="overflow-hidden rounded-[22px] bg-gradient-to-r from-[#8f2df2] via-[#c53cd7] to-[#ef5ca8] px-5 py-5 text-white shadow-[0_16px_32px_rgba(197,60,215,0.24)]">
-              <div className="relative overflow-hidden rounded-[18px]">
-                <div className="pointer-events-none absolute -right-8 -top-3 h-24 w-24 rounded-full bg-white/10" />
-                <div className="pointer-events-none absolute right-4 top-6 h-20 w-20 rounded-full bg-white/12" />
-                <div className="relative flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="space-y-1">
-                    {brandCampaign.eyebrow ? (
-                      <p className="text-[12px] font-semibold uppercase tracking-[0.16em] text-white/74">
-                        {brandCampaign.eyebrow}
-                      </p>
-                    ) : null}
-                    <h2 className="text-[1.55rem] font-semibold leading-7 tracking-[-0.03em]">
-                      {brandCampaign.title}
-                    </h2>
-                    {brandCampaign.subtitle ? (
-                      <p className="max-w-2xl text-sm text-white/88">{brandCampaign.subtitle}</p>
-                    ) : null}
-                  </div>
-                  {brandCampaign.ctaLabel ? (
-                    <a
-                      href={brandCampaign.ctaHref || '#brand-products'}
-                      className="inline-flex h-10 shrink-0 items-center justify-center rounded-full bg-white px-4 text-sm font-semibold text-[#8f2df2] transition hover:bg-white/90"
-                    >
-                      {brandCampaign.ctaLabel}
-                    </a>
+            <section className="border border-hairline bg-surface-2 px-5 py-5">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="space-y-1.5">
+                  {brandCampaign.eyebrow ? (
+                    <Mono className="block text-terracotta-ink">{brandCampaign.eyebrow}</Mono>
+                  ) : null}
+                  <Headline as="h2" size={22} className="leading-tight">
+                    {brandCampaign.title}
+                  </Headline>
+                  {brandCampaign.subtitle ? (
+                    <p className="pv-body max-w-2xl text-ink-muted">{brandCampaign.subtitle}</p>
                   ) : null}
                 </div>
+                {brandCampaign.ctaLabel ? (
+                  <a
+                    href={brandCampaign.ctaHref || '#brand-products'}
+                    className="inline-flex h-11 shrink-0 items-center justify-center gap-1.5 rounded-full bg-terracotta px-5 font-editorial-sans text-[13px] font-medium text-paper transition-colors hover:bg-terracotta-ink"
+                  >
+                    {brandCampaign.ctaLabel}
+                    <ArrowUpRight size={14} strokeWidth={1.6} />
+                  </a>
+                ) : null}
               </div>
             </section>
           ) : null}
 
           {isInitialLoading ? (
             <section id="brand-products" className="space-y-4">
-              <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-4">
+              <div className="grid grid-cols-2 gap-x-3.5 gap-y-6 lg:grid-cols-3 lg:gap-x-5 lg:gap-y-8 xl:grid-cols-4">
                 {Array.from({ length: 8 }).map((_, index) => (
                   <CatalogProductSkeleton key={index} />
                 ))}
               </div>
             </section>
           ) : products.length === 0 ? (
-            <section className="rounded-[24px] border border-dashed border-[#ddd3c8] bg-white px-6 py-10 text-center shadow-sm">
-              <h2 className="text-lg font-semibold text-slate-900">No products found for {brandName}</h2>
-              <p className="mt-2 text-sm text-slate-500">
+            <section className="border border-hairline bg-surface px-6 py-12 text-center">
+              <Headline as="h2" size={20}>
+                Nothing under {brandName} yet.
+              </Headline>
+              <p className="pv-body mt-2 text-ink-muted">
                 {activeQuery
                   ? 'Try a different keyword within this brand.'
-                  : 'This brand does not have matching catalog items yet.'}
+                  : "This brand doesn't have matching catalog items yet."}
               </p>
             </section>
           ) : visibleProducts.length === 0 ? (
-            <section className="rounded-[24px] border border-dashed border-[#ddd3c8] bg-white px-6 py-10 text-center shadow-sm">
-              <h2 className="text-lg font-semibold text-slate-900">
-                No {categoryChips.find((chip) => chip.scopeValue === activeCategory)?.label?.toLowerCase() || 'matching'} picks yet
-              </h2>
-              <p className="mt-2 text-sm text-slate-500">
-                Try another category or remove the active brand filter to see more products.
+            <section className="border border-hairline bg-surface px-6 py-12 text-center">
+              <Headline as="h2" size={20}>
+                No{' '}
+                {categoryChips.find((chip) => chip.scopeValue === activeCategory)?.label?.toLowerCase() ||
+                  'matching'}{' '}
+                picks yet.
+              </Headline>
+              <p className="pv-body mt-2 text-ink-muted">
+                Try another category or remove the active brand filter to see more pieces.
               </p>
             </section>
           ) : (
-            <section id="brand-products" className="space-y-4" aria-busy={isRefreshing}>
-              <div className={`grid grid-cols-2 gap-x-2.5 gap-y-3.5 md:gap-x-4 md:gap-y-5 lg:grid-cols-3 xl:grid-cols-4 ${isRefreshing ? 'opacity-80 transition-opacity' : ''}`}>
+            <section id="brand-products" className="space-y-6" aria-busy={isRefreshing}>
+              <div
+                className={cn(
+                  'grid grid-cols-2 gap-x-3.5 gap-y-6 lg:grid-cols-3 lg:gap-x-5 lg:gap-y-8 xl:grid-cols-4',
+                  isRefreshing ? 'opacity-80 transition-opacity' : '',
+                )}
+              >
                 {visibleProducts.map((product) => (
                   <CatalogProductCard key={buildCatalogProductKey(product)} product={product} />
                 ))}
@@ -904,31 +912,80 @@ export function BrandLandingPage({
 
               <div
                 ref={loadMoreRef}
-                className="flex h-9 items-center justify-center text-[13px] text-slate-500"
+                className="flex h-9 items-center justify-center font-editorial-mono text-[10px] uppercase tracking-[0.12em] text-ink-muted"
               >
                 {isRefreshing
-                  ? 'Updating products...'
+                  ? 'Updating the edit…'
                   : isLoadingMore
-                  ? 'Loading more products...'
-                  : hasMore
-                    ? 'Scroll for more'
-                    : 'End of brand catalog'}
+                    ? 'Loading more pieces…'
+                    : hasMore
+                      ? 'Scroll for more'
+                      : 'End of the edit'}
               </div>
             </section>
           )}
 
+          {/* Atelier card — mid-page editorial block, gated on real
+              brand-story metadata. Title falls back to "From the atelier"
+              so the legacy "Brand story" copy is no longer rendered
+              (tests assert its absence when brand-story data is missing). */}
           {brandStory ? (
-            <section className="rounded-[24px] border border-[#efe7dc] bg-white px-5 py-6 shadow-[0_10px_28px_rgba(15,23,42,0.05)] sm:px-6">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#98a2b3]">
-                {brandStory.title || 'Brand story'}
-              </p>
-              <blockquote className="mt-3 text-lg leading-8 text-[#111827] sm:text-xl">
+            <section className="border border-hairline bg-surface px-5 py-8 sm:px-7">
+              <Eyebrow>{brandStory.title || 'From the atelier'}</Eyebrow>
+              <blockquote className="font-editorial-serif mt-4 max-w-3xl text-[18px] italic leading-[1.45] text-ink sm:text-[22px]">
                 “{brandStory.quote}”
               </blockquote>
               {brandStory.author ? (
-                <p className="mt-3 text-sm font-medium text-[#667085]">{brandStory.author}</p>
+                <Mono className="mt-3 block normal-case tracking-[0.04em] text-ink-muted">
+                  {brandStory.author}
+                </Mono>
               ) : null}
+
+              {/* Three-stat row — pulls from feedMetadata where available;
+                  skipped silently if the brand record doesn't expose
+                  these fields. */}
+              {(() => {
+                const stats: Array<{ label: string; value: string }> = [];
+                const pieces = Number(feedMetadata?.product_count ?? 0);
+                if (Number.isFinite(pieces) && pieces > 0) {
+                  stats.push({ label: 'Pieces', value: pieces.toLocaleString() });
+                }
+                const seasons = Number(feedMetadata?.seasons_count ?? 0);
+                if (Number.isFinite(seasons) && seasons > 0) {
+                  stats.push({ label: 'Seasons', value: String(seasons) });
+                }
+                const returnRate = Number(feedMetadata?.return_rate ?? 0);
+                if (Number.isFinite(returnRate) && returnRate > 0) {
+                  stats.push({
+                    label: 'Returns',
+                    value: returnRate < 1 ? `${Math.round(returnRate * 100)}%` : `${returnRate}%`,
+                  });
+                }
+                if (!stats.length) return null;
+                return (
+                  <div className="mt-6 grid grid-cols-3 gap-4 border-t border-hairline pt-5">
+                    {stats.map((stat) => (
+                      <div key={stat.label} className="flex flex-col gap-1">
+                        <Mono>{stat.label}</Mono>
+                        <Num value={stat.value} size={26} />
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
             </section>
+          ) : null}
+
+          {/* Editor's note — desktop-only band when brand-story content
+              is present. Gives the "From Pivota" pull-quote with a
+              quick prompt CTA. */}
+          {brandStory ? (
+            <InsightBlock label="Editor's note · from Pivota">
+              <p className="pv-body">
+                {brandStory.quote}
+                {brandStory.author ? <span className="text-ink-muted"> — {brandStory.author}</span> : null}
+              </p>
+            </InsightBlock>
           ) : null}
         </motion.section>
       </main>
