@@ -35,10 +35,11 @@ export function BeautyShadeSelector({
     <div className="pt-2.5">
       <div className="flex items-baseline justify-between px-[18px]">
         <div>
-          <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-            Shade ·{' '}
-          </span>
-          <span className="text-[13px] font-semibold text-foreground">{selected.name}</span>
+          {/* Label font matches the product-line / variant selectors
+              (text-xs font-semibold) so every variant-axis selector reads
+              consistently — owner flagged the shade/size eyebrow as off. */}
+          <span className="text-xs font-semibold text-foreground">Shade ·{' '}</span>
+          <span className="text-xs font-semibold text-foreground">{selected.name}</span>
         </div>
         {onFindShade ? (
           <button type="button" onClick={onFindShade} className="text-[12px] font-medium text-primary">

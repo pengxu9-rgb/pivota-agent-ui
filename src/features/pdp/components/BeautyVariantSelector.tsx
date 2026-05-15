@@ -11,8 +11,9 @@ import { cn } from '@/lib/utils';
  *
  * It renders in the same slot as the cross-SKU product-line selector and
  * **mirrors its markup exactly** (sentence-case `text-xs` label, scrollable
- * `bg-card` option chips, accent-600 selected state) so the two generic-axis
- * selectors are visually identical no matter which one a product gets. It
+ * `bg-card` option chips, neutral `border-muted-foreground/50` selected
+ * state) so every variant-axis selector uses the same highlight regardless
+ * of category — no per-category accent. It
  * carries no gutter padding of its own — the variant-selector wrapper in
  * BeautyPDP{Mobile,Desktop} already provides `px-[18px]`.
  */
@@ -68,8 +69,8 @@ export function BeautyVariantSelector({
                   hasSwatch ? 'px-2 py-1.5' : 'px-3 py-1',
                   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]',
                   isSel
-                    ? 'border-[color:var(--accent-600)] bg-[var(--accent-50)] text-[color:var(--accent-800)] font-semibold shadow-[inset_0_0_0_1px_var(--accent-600)]'
-                    : 'border-border hover:border-muted-foreground/40 hover:bg-muted/30',
+                    ? 'border-muted-foreground/50 text-foreground font-semibold'
+                    : 'border-border hover:bg-muted/30 hover:border-muted-foreground/40',
                 )}
               >
                 {hasSwatch ? (
@@ -77,7 +78,7 @@ export function BeautyVariantSelector({
                     aria-hidden="true"
                     className={cn(
                       'h-4 w-4 flex-shrink-0 overflow-hidden rounded-full border bg-muted',
-                      isSel ? 'border-[color:var(--accent-600)]' : 'border-border',
+                      isSel ? 'border-muted-foreground/50' : 'border-border',
                     )}
                     style={{
                       backgroundColor: swatchHex || undefined,

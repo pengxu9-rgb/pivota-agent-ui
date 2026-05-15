@@ -26,7 +26,9 @@ export function BeautySizeSelector({
 
   return (
     <div className="px-[18px] pt-2.5">
-      <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+      {/* Label font matches the product-line / variant selectors so every
+          variant-axis selector reads consistently (owner-flagged). */}
+      <div className="mb-1.5 text-xs font-semibold text-foreground">
         Size
       </div>
       <div className="flex gap-2">
@@ -39,8 +41,14 @@ export function BeautySizeSelector({
               onClick={() => onSelect(sz.id)}
               aria-pressed={isSel}
               className={cn(
-                'flex-1 rounded-[10px] border-[1.5px] px-3 py-2 text-left',
-                isSel ? 'border-foreground bg-white' : 'border-border bg-transparent',
+                // Selected treatment matches the product-line / variant
+                // selectors (neutral `border-muted-foreground/50` on
+                // `bg-card`) — same highlight for every variant-axis
+                // category.
+                'flex-1 rounded-[10px] border-[1.5px] bg-card px-3 py-2 text-left',
+                isSel
+                  ? 'border-muted-foreground/50 font-semibold text-foreground'
+                  : 'border-border hover:border-muted-foreground/40',
               )}
             >
               <div className="text-[13px] font-semibold text-foreground">{sz.label}</div>
