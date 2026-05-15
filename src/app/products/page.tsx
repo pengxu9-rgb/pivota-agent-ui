@@ -1,37 +1,101 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import Image from 'next/image';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Search, ShoppingBag } from 'lucide-react';
+import { ArrowLeft, ArrowUpDown, Search, ShoppingBag, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import {
-  CatalogProductCard,
-  CatalogProductSkeleton,
-} from '@/components/catalog/CatalogProductCard';
+  Chip,
+  DisplayHeading,
+  Eyebrow,
+  Headline,
+  IconButton,
+  Mono,
+  Num,
+  ProductCard,
+} from '@/components/ui/editorial';
 import {
   getMerchantProductsFeed,
   getShoppingDiscoveryFeed,
   type ProductResponse,
 } from '@/lib/api';
 import { mergeUniqueCatalogProducts, buildCatalogProductKey } from '@/lib/catalogProducts';
+import { normalizeDisplayImageUrl } from '@/lib/displayImage';
+import { buildProductHrefForProduct } from '@/lib/productHref';
+import { appendCurrentPathAsReturn } from '@/lib/returnUrl';
 import { useCartStore } from '@/store/cartStore';
+import { cn } from '@/lib/utils';
 
-const TRENDING_TAGS = [
-  'Vitamin C',
-  'Niacinamide',
-  'Sunscreen',
-  'Serum',
-  'Moisturizer',
-] as const;
+/** Editorial category chips that sit just under the title block. "All"
+ *  clears the query; the rest run an immediate keyword search. */
+const CATEGORY_CHIPS: string[] = ['All', 'Womenswear', 'Menswear', 'Home', 'Beauty', 'Objects'];
+
+/** Curated collections — surface as a focus dropdown when the search
+ *  pill is active. Replaces the previous trending-tags strip. */
+const CURATED_COLLECTIONS: string[] = [
+  'Travel edit · Lisbon',
+  'Quiet luxury basics',
+  'Hostess gifts < $80',
+  'Skincare for 30s',
+];
 
 // Keep the first browse payload below the live gateway timeout budget.
-// Once the page is interactive, infinite scroll can fetch a denser follow-up page.
+// Once the page is interactive, infinite scroll can fetch a denser
+// follow-up page.
 const GRID_INITIAL_PAGE_SIZE = 24;
 const GRID_APPEND_PAGE_SIZE = 36;
 const GRID_DISCOVERY_TIMEOUT_MS = 15000;
 const NO_GROWTH_STOP_THRESHOLD = 2;
 
+function formatPriceLabel(price: unknown, currency?: string): string {
+  const amount = typeof price === 'number' ? price : Number(price);
+  if (!Number.isFinite(amount)) return '';
+  try {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: (currency || 'USD').toUpperCase(),
+      maximumFractionDigits: Number.isInteger(amount) ? 0 : 2,
+    }).format(amount);
+  } catch {
+    return `$${amount % 1 === 0 ? amount.toFixed(0) : amount.toFixed(2)}`;
+  }
+}
+
+function getIsoWeek(date: Date): number {
+  // ISO 8601 week number — Monday-based, "Week 1" contains the first
+  // Thursday of the year.
+  const target = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const dayNum = target.getUTCDay() || 7;
+  target.setUTCDate(target.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(target.getUTCFullYear(), 0, 1));
+  return Math.ceil(((target.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
+}
+
+function formatLongDate(date: Date): string {
+  return date.toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' });
+}
+
+function chipActive(activeQuery: string, chip: string): boolean {
+  if (chip === 'All') return activeQuery.trim() === '';
+  return chip.toLowerCase() === activeQuery.trim().toLowerCase();
+}
+
+/** Small grid skeleton block while the first page is loading. */
+const GridSkeletonCard = memo(function GridSkeletonCard() {
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="aspect-[4/5] w-full animate-pulse bg-paper-2" />
+      <div className="h-3 w-12 animate-pulse bg-paper-2" />
+      <div className="h-4 w-full animate-pulse bg-paper-2" />
+    </div>
+  );
+});
+
 export default function ProductsPage() {
+  const router = useRouter();
   const [products, setProducts] = useState<ProductResponse[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeQuery, setActiveQuery] = useState('');
@@ -55,6 +119,9 @@ export default function ProductsPage() {
 
   const itemCount = items.reduce((acc, item) => acc + item.quantity, 0);
   const isInitialLoading = loading && !hasLoadedOnce;
+  const now = useMemo(() => new Date(), []);
+  const weekLabel = useMemo(() => `Week ${getIsoWeek(now)} · The catalog`, [now]);
+  const dateLabel = useMemo(() => `Week ${getIsoWeek(now)} · ${formatLongDate(now)}`, [now]);
 
   const executeSearchPage = useCallback(
     async (query: string, cursor: string | null, options?: { append?: boolean }) => {
@@ -104,8 +171,9 @@ export default function ProductsPage() {
               ...(trimmed ? { query: trimmed } : {}),
               signal: controller.signal,
               timeout_ms: GRID_DISCOVERY_TIMEOUT_MS,
-              // Browse is a full-catalog surface. Do not pass behavior history here:
-              // public browse/search should remain stable and cursor-safe.
+              // Browse is a full-catalog surface. Do not pass behavior
+              // history here — public browse/search should remain stable
+              // and cursor-safe.
               recentViews: [],
               recentQueries: [],
             });
@@ -254,9 +322,24 @@ export default function ProductsPage() {
     };
   }, []);
 
-  const handleTrendingClick = (trend: string) => {
-    handleSearch(trend, { immediate: true });
-  };
+  const handleChipClick = useCallback(
+    (chip: string) => {
+      if (chip === 'All') {
+        handleSearch('', { immediate: true });
+        return;
+      }
+      handleSearch(chip, { immediate: true });
+    },
+    [handleSearch],
+  );
+
+  const handleCuratedClick = useCallback(
+    (collection: string) => {
+      handleSearch(collection, { immediate: true });
+      setSearchFocused(false);
+    },
+    [handleSearch],
+  );
 
   const handleBack = () => {
     if (typeof window === 'undefined') return;
@@ -267,161 +350,216 @@ export default function ProductsPage() {
     window.location.assign('/');
   };
 
+  const titleHeading = merchantScope ? "The merchant's edit." : 'Browse the edit.';
+  const resultsLabel =
+    products.length > 0
+      ? `${products.length.toLocaleString()} ${products.length === 1 ? 'piece' : 'pieces'}${
+          hasMore ? '+' : ''
+        }`
+      : '';
+
   return (
-    <div className="relative min-h-screen overflow-x-hidden bg-white text-slate-900">
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-x-0 top-0 h-[220px] bg-[radial-gradient(circle_at_top,_rgba(117,146,255,0.14),_rgba(255,255,255,0)_58%),radial-gradient(circle_at_90%_8%,_rgba(216,127,255,0.12),_rgba(255,255,255,0)_34%)]"
-      />
-
-      <main className="relative mx-auto max-w-6xl px-3.5 pb-14 pt-4 sm:px-6 sm:pt-5 lg:px-8">
-        <motion.section initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col gap-4">
-          <section className="flex items-start justify-between gap-3 px-1 py-0.5 sm:items-center">
-            <div className="min-w-0 space-y-1">
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={handleBack}
-                  className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[#ece5dd] bg-white text-slate-600 shadow-[0_6px_16px_rgba(15,23,42,0.05)] transition hover:border-[#ddd3c8] hover:text-slate-950"
-                  aria-label="Go back"
-                >
-                  <ArrowLeft className="h-3.5 w-3.5" strokeWidth={2.2} />
-                </button>
-                <h1 className="text-[1.6rem] font-semibold tracking-[-0.045em] text-[#111827] sm:text-[1.95rem]">
-                  {merchantScope ? 'Merchant products' : 'Browse products'}
-                </h1>
-              </div>
-              {loading && hasLoadedOnce ? (
-                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] leading-none text-[#667085]">
-                  <span className="inline-flex items-center rounded-full bg-[#f3efff] px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.12em] text-[#7c3aed]">
-                    Updating
-                  </span>
-                </div>
-              ) : null}
-              {activeQuery ? (
-                <p className="text-[12px] text-[#667085]">
-                  Showing results for <span className="font-medium text-slate-900">“{activeQuery}”</span>
-                </p>
-              ) : merchantScope ? (
-                <p className="text-[12px] text-[#667085]">Showing this merchant&apos;s catalog</p>
-              ) : null}
-            </div>
-
-            <button
-              type="button"
-              onClick={open}
-              className="relative mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[#ece5dd] bg-white text-slate-600 shadow-[0_6px_16px_rgba(15,23,42,0.06)] transition hover:border-[#ddd3c8] hover:text-slate-950 sm:h-10 sm:w-10"
-              aria-label="Open cart"
-            >
-              <ShoppingBag className="h-4 w-4" />
-              {itemCount > 0 ? (
-                <span className="absolute -right-0.5 -top-0.5 inline-flex min-h-4 min-w-4 items-center justify-center rounded-full bg-[#c16cf3] px-1 text-[9px] font-semibold text-white">
-                  {itemCount > 99 ? '99+' : itemCount}
-                </span>
-              ) : null}
-            </button>
-          </section>
-
-          <section className="relative rounded-[22px] border border-[#efe7dc] bg-white px-3 py-3 shadow-[0_10px_28px_rgba(15,23,42,0.05)] sm:px-4">
-            <form
-              className="flex items-center gap-2"
-              onSubmit={(event) => {
-                event.preventDefault();
-                void executeSearch(searchQuery);
-              }}
-            >
-              <div className="flex h-10 flex-1 items-center gap-2 rounded-full border border-[#ece5dd] bg-[#fcfbf9] px-4 shadow-sm">
-                <Search className="h-3.5 w-3.5 text-slate-400" />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(event) => handleSearch(event.target.value)}
-                  onFocus={() => setSearchFocused(true)}
-                  onBlur={() => window.setTimeout(() => setSearchFocused(false), 120)}
-                  placeholder="Search products, brands, or categories"
-                  className="w-full bg-transparent text-[13px] text-slate-900 outline-none placeholder:text-slate-400"
-                />
-              </div>
-              <button
-                type="submit"
-                className="inline-flex h-10 items-center justify-center rounded-full bg-[#1f2937] px-4 text-[13px] font-medium text-white transition hover:bg-[#111827]"
+    <div className="min-h-screen bg-paper text-ink">
+      <main className="mx-auto flex w-full max-w-[1180px] flex-col gap-6 px-4 pb-16 pt-4 sm:px-6 lg:px-8 lg:pt-8">
+        {/* Header */}
+        <header className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <IconButton label="Go back" size="md" onClick={handleBack}>
+              <ArrowLeft size={18} strokeWidth={1.6} />
+            </IconButton>
+            <Headline as="span" size={18} className="font-editorial-serif italic text-ink">
+              Pivota
+            </Headline>
+          </div>
+          <IconButton label="Open bag" size="md" onClick={open} className="relative">
+            <ShoppingBag size={18} strokeWidth={1.5} />
+            {itemCount > 0 ? (
+              <span
+                aria-hidden="true"
+                className="absolute -right-0.5 -top-0.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-terracotta px-1 font-editorial-mono text-[9px] font-bold text-paper"
               >
-                Search
-              </button>
-            </form>
-
-            {searchFocused ? (
-              <div
-                className="absolute left-3 right-3 top-[calc(100%-0.25rem)] z-30 rounded-[18px] border border-[#ece5dd] bg-white p-2 shadow-[0_18px_42px_rgba(15,23,42,0.12)] sm:left-4 sm:right-4"
-                onMouseDown={(event) => event.preventDefault()}
-              >
-                <div className="flex flex-wrap gap-1.5">
-                  {TRENDING_TAGS.map((trend) => {
-                    const selected = activeQuery.toLowerCase() === trend.toLowerCase();
-                    return (
-                      <button
-                        key={trend}
-                        type="button"
-                        onClick={() => {
-                          handleTrendingClick(trend);
-                          setSearchFocused(false);
-                        }}
-                        className={`inline-flex h-7 items-center rounded-full border px-2.5 text-[11px] font-semibold tracking-[-0.01em] transition ${
-                          selected
-                            ? 'border-transparent bg-gradient-to-r from-[#8f57ff] via-[#a35cff] to-[#4f7cff] text-white shadow-[0_10px_24px_rgba(143,87,255,0.22)]'
-                            : 'border-[#e8e1d7] bg-[#fbf9f6] text-[#667085] hover:border-[#d9d1c6]'
-                        }`}
-                      >
-                        {trend}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
+                {itemCount > 99 ? '99+' : itemCount}
+              </span>
             ) : null}
-          </section>
+          </IconButton>
+        </header>
 
-          {isInitialLoading ? (
-            <section className="space-y-4">
-              <div className="grid grid-cols-2 gap-x-2.5 gap-y-3.5 md:gap-x-4 md:gap-y-5 lg:grid-cols-3 xl:grid-cols-4">
-                {Array.from({ length: 8 }).map((_, index) => (
-                  <CatalogProductSkeleton key={index} />
-                ))}
-              </div>
-            </section>
-          ) : products.length === 0 ? (
-            <section className="rounded-[24px] border border-dashed border-[#ddd3c8] bg-white px-6 py-10 text-center shadow-sm">
-              <h2 className="text-lg font-semibold text-slate-900">No products found</h2>
-              <p className="mt-2 text-sm text-slate-500">
-                {activeQuery
-                  ? 'Try a different keyword or brand name.'
-                  : 'The browse feed is empty right now. Please try again shortly.'}
-              </p>
-            </section>
-          ) : (
-            <section className="space-y-4" aria-busy={loading && hasLoadedOnce}>
-              <div className={`grid grid-cols-2 gap-x-2.5 gap-y-3.5 md:gap-x-4 md:gap-y-5 lg:grid-cols-3 xl:grid-cols-4 ${loading && hasLoadedOnce ? 'opacity-80 transition-opacity' : ''}`}>
-                {products.map((product) => (
-                  <CatalogProductCard key={buildCatalogProductKey(product)} product={product} />
-                ))}
-              </div>
+        {/* Title block */}
+        <motion.section
+          initial={{ opacity: 0, y: 18 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.45 }}
+          className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between"
+        >
+          <div>
+            <Eyebrow>{weekLabel}</Eyebrow>
+            <DisplayHeading size={36} className="mt-3 max-w-[640px] text-balance lg:hidden">
+              {titleHeading.split('edit')[0]}
+              <em className="font-editorial-serif italic text-ink-muted">edit.</em>
+            </DisplayHeading>
+            <DisplayHeading size={60} className="mt-4 hidden max-w-[760px] text-balance lg:block">
+              {merchantScope ? "The merchant's catalog, " : 'The full catalog, '}
+              <em className="font-editorial-serif italic text-ink-muted">edited.</em>
+            </DisplayHeading>
+            <p className="pv-body mt-3 max-w-prose text-ink-muted">
+              {activeQuery
+                ? <>Showing results for <span className="font-editorial-serif italic text-ink">“{activeQuery}”</span> — refine with the filter chips below, or search again.</>
+                : merchantScope
+                  ? "Showing this merchant's catalog. Use the filter chips below to narrow by category, or search by name."
+                  : 'A weekly edit of the live catalog — pieces curated for the brands and categories Pivota is watching.'}
+            </p>
+          </div>
 
-              <div
-                ref={loadMoreRef}
-                className="flex h-9 items-center justify-center text-[13px] text-slate-500"
-              >
-                {loading && hasLoadedOnce
-                  ? 'Updating products...'
-                  : isLoadingMore
-                    ? 'Loading more products...'
-                    : hasMore
-                      ? 'Scroll for more'
-                      : 'End of catalog'}
-              </div>
-            </section>
-          )}
+          {resultsLabel ? (
+            <div className="flex items-baseline gap-2 lg:flex-col lg:items-end lg:text-right">
+              <Mono className="normal-case tracking-[0.04em] text-ink-muted">Showing ·</Mono>
+              <Num value={resultsLabel} size={20} />
+            </div>
+          ) : null}
         </motion.section>
+
+        {/* Search row */}
+        <section className="relative">
+          <form
+            className="flex items-center gap-2"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void executeSearch(searchQuery);
+            }}
+          >
+            <div className="flex h-[42px] flex-1 items-center gap-2 rounded-full border border-hairline bg-surface px-4 transition-colors focus-within:border-ink/30">
+              <Search size={16} strokeWidth={1.5} className="flex-shrink-0 text-ink-muted" />
+              <input
+                type="search"
+                value={searchQuery}
+                onChange={(event) => handleSearch(event.target.value)}
+                onFocus={() => setSearchFocused(true)}
+                onBlur={() => window.setTimeout(() => setSearchFocused(false), 120)}
+                placeholder="Search products, brands, or categories"
+                className="w-full bg-transparent font-editorial-sans text-[13px] text-ink outline-none placeholder:text-subtle"
+                aria-label="Search"
+              />
+            </div>
+          </form>
+
+          {searchFocused ? (
+            <div
+              className="absolute left-0 right-0 top-[calc(100%+6px)] z-30 border border-hairline bg-surface p-3"
+              onMouseDown={(event) => event.preventDefault()}
+            >
+              <Mono className="block">Curated by Pivota</Mono>
+              <div className="mt-2 flex flex-col gap-1">
+                {CURATED_COLLECTIONS.map((collection) => (
+                  <button
+                    key={collection}
+                    type="button"
+                    onClick={() => handleCuratedClick(collection)}
+                    className="group flex items-center gap-2 rounded-full px-2 py-1.5 text-left text-[13px] text-ink transition-colors hover:bg-paper-2"
+                  >
+                    <Sparkles size={14} strokeWidth={1.5} className="flex-shrink-0 text-terracotta" />
+                    <span className="font-editorial-sans">{collection}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
+        </section>
+
+        {/* Filter chip row */}
+        <section className="-mx-4 overflow-x-auto px-4 lg:mx-0 lg:px-0">
+          <div className="flex min-w-max items-center gap-1.5">
+            {CATEGORY_CHIPS.map((chip) => {
+              const isActive = chipActive(activeQuery, chip);
+              return (
+                <Chip
+                  key={chip}
+                  variant={isActive ? 'active' : 'default'}
+                  onClick={() => handleChipClick(chip)}
+                >
+                  {chip}
+                </Chip>
+              );
+            })}
+            <div className="ml-auto flex items-center gap-2 pl-3">
+              <Mono className="hidden normal-case tracking-[0.04em] text-ink-muted sm:inline">
+                Sort
+              </Mono>
+              <IconButton label="Sort" size="md">
+                <ArrowUpDown size={16} strokeWidth={1.5} />
+              </IconButton>
+            </div>
+          </div>
+        </section>
+
+        {/* Results count + grid */}
+        {isInitialLoading ? (
+          <section className="grid grid-cols-2 gap-x-3.5 gap-y-6 lg:grid-cols-3 lg:gap-x-5 lg:gap-y-8 xl:grid-cols-4">
+            {Array.from({ length: 8 }).map((_, index) => (
+              <GridSkeletonCard key={index} />
+            ))}
+          </section>
+        ) : products.length === 0 ? (
+          <section className="border border-hairline bg-surface px-6 py-12 text-center">
+            <Headline as="h2" size={20}>
+              Nothing here yet.
+            </Headline>
+            <p className="pv-body mt-2 text-ink-muted">
+              {activeQuery
+                ? 'Try a different keyword, brand, or category — or clear the search to see the full edit.'
+                : 'The browse feed is empty right now. Please try again shortly.'}
+            </p>
+          </section>
+        ) : (
+          <section
+            className="grid grid-cols-2 gap-x-3.5 gap-y-6 lg:grid-cols-3 lg:gap-x-5 lg:gap-y-8 xl:grid-cols-4"
+            aria-busy={loading && hasLoadedOnce}
+          >
+            {products.map((product) => {
+              const href = buildProductHrefForProduct(product);
+              return (
+                <Link
+                  key={buildCatalogProductKey(product)}
+                  href={href}
+                  prefetch={false}
+                  onClick={(event) => {
+                    if (event.defaultPrevented) return;
+                    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+                    event.preventDefault();
+                    router.push(appendCurrentPathAsReturn(href));
+                  }}
+                  className="block"
+                >
+                  <ProductCard
+                    image={normalizeDisplayImageUrl(product.image_url, '/placeholder.svg')}
+                    imageAlt={product.title}
+                    brand={product.merchant_name || product.brand || null}
+                    title={product.title}
+                    priceLabel={formatPriceLabel(product.price, product.currency)}
+                    aspect="4/5"
+                  />
+                </Link>
+              );
+            })}
+          </section>
+        )}
+
+        {/* Infinite-scroll sentinel + footer label */}
+        <div
+          ref={loadMoreRef}
+          className={cn(
+            'flex items-center justify-center py-6 font-editorial-mono text-[10px] uppercase tracking-[0.12em] text-ink-muted',
+          )}
+        >
+          {loading && hasLoadedOnce
+            ? 'Updating the edit…'
+            : isLoadingMore
+              ? `Loading ${GRID_APPEND_PAGE_SIZE} more…`
+              : hasMore
+                ? 'Scroll for more'
+                : 'End of the edit'}
+        </div>
       </main>
     </div>
   );
 }
+
