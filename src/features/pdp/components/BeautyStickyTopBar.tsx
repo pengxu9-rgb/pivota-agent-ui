@@ -70,12 +70,16 @@ export function BeautyStickyTopBar({
         </svg>
       </IconBtn>
 
-      {onSearch ? (
+      {/* Search pill only appears once the user has scrolled past the
+          hero (same gate as the solid-background transition). On a fresh
+          page open just back + share sit over the gallery — no search,
+          no tracker — matching the spec the owner described. */}
+      {onSearch && scrolled ? (
         <button
           type="button"
           onClick={onSearch}
           aria-label={searchPlaceholder}
-          className="mx-2 flex h-9 flex-1 items-center gap-2 truncate rounded-full border border-white/50 bg-white/55 px-3.5 text-[13px] text-current backdrop-blur-md backdrop-saturate-150"
+          className="mx-2 flex h-9 flex-1 items-center gap-2 truncate rounded-full border border-border bg-white/85 px-3.5 text-[13px] text-foreground backdrop-blur-md backdrop-saturate-150"
         >
           <svg
             width="14"
