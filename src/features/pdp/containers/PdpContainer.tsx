@@ -4229,6 +4229,7 @@ export function PdpContainer({
         }}
         onBack={handleBack}
         onShare={handleShare}
+        onSearch={() => router.push('/')}
       />
       <PdpMediaViewer
         isOpen={mediaViewer.isOpen}

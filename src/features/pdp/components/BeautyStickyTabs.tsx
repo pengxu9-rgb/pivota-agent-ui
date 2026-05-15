@@ -30,9 +30,15 @@ export function BeautyStickyTabs({
 }) {
   return (
     <div
+      // Base position is `top-0` so the hidden state (translateY(-100%))
+      // fully clears the viewport. When visible we translate DOWN by the
+      // top-bar's height (h-9 + py-2 ≈ 52px) so the tracker stacks below
+      // the back · search · share row instead of overlapping it. Anchoring
+      // at top-[52px] and translating up by 100% left a sliver showing
+      // through on a fresh page open.
       className="absolute left-0 right-0 top-0 z-[9] flex items-center border-b border-border bg-white/95 px-2 backdrop-blur-md backdrop-saturate-150"
       style={{
-        transform: visible ? 'translateY(0)' : 'translateY(-100%)',
+        transform: visible ? 'translateY(52px)' : 'translateY(-100%)',
         transition: 'transform 220ms cubic-bezier(.2,.7,.3,1)',
         pointerEvents: visible ? 'auto' : 'none',
       }}

@@ -117,6 +117,7 @@ export type BeautyPDPMobileProps = {
   // chrome
   onBack?: () => void;
   onShare?: () => void;
+  onSearch?: () => void;
 };
 
 const SECTION_TABS: BeautyTab[] = [
@@ -148,8 +149,14 @@ export function BeautyPDPMobile(props: BeautyPDPMobileProps) {
     if (!el) return;
     const onScroll = () => {
       const top = el.scrollTop;
-      setScrolled(top > 280);
-      setTabsVisible(top > 480);
+      // Both the solid top bar (with search pill) and the section tracker
+      // appear together once the user crosses out of the first viewport —
+      // i.e. onto "page 2". Until then only the back + share glass pills
+      // float over the hero. The 80px buffer triggers right as the hero
+      // is sliding off so the chrome lands without a snap.
+      const pastFirstPage = top >= Math.max(320, el.clientHeight - 80);
+      setScrolled(pastFirstPage);
+      setTabsVisible(pastFirstPage);
       // active-tab scrollspy
       let current = 'overview';
       for (const id of ['overview', 'insights', 'reviews', 'similar']) {
@@ -183,10 +190,10 @@ export function BeautyPDPMobile(props: BeautyPDPMobileProps) {
   return (
     <div className="lovable-pdp relative min-h-screen bg-background text-foreground">
       <BeautyStickyTopBar
-        scrolled={scrolled && !tabsVisible}
-        scrolledTitle={props.brand ? `${props.brand}` : props.title}
+        scrolled={scrolled}
         onBack={props.onBack}
         onShare={props.onShare}
+        onSearch={props.onSearch}
       />
       <BeautyStickyTabs
         visible={tabsVisible}
