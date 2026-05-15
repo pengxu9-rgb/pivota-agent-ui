@@ -131,6 +131,8 @@ type VariantSelectorModuleData = {
   product_line_options?: ProductLineOption[];
 };
 
+const PRODUCT_LINE_COLOR_AXES = new Set(['shade', 'color', 'colour', 'tone', 'hue']);
+
 function normalizeHexColor(value: unknown): string | undefined {
   const text = String(value || '').trim().replace(/^#/, '');
   if (/^[0-9a-f]{3}$/i.test(text)) {
@@ -235,6 +237,44 @@ function isSameProductLineOption(
     optionProductId === productId &&
     (!optionMerchantId || !merchantId || optionMerchantId === merchantId)
   );
+}
+
+function normalizeVariantAxisToken(value: unknown): string {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '');
+}
+
+function getProductLineOptionAxisTokens(option: ProductLineOption): string[] {
+  const tokens = new Set<string>();
+  [option.value, option.label, option.secondary_label].forEach((candidate) => {
+    const normalized = normalizeVariantAxisToken(candidate);
+    if (normalized) tokens.add(normalized);
+  });
+  return [...tokens];
+}
+
+function productLineOptionsDuplicateVariantAxis(
+  productLineOptions: ProductLineOption[],
+  variants: Variant[],
+  axis: string,
+): boolean {
+  if (productLineOptions.length <= 1 || variants.length <= 1) return false;
+  if (!PRODUCT_LINE_COLOR_AXES.has(axis)) return false;
+
+  const variantAxisTokens = new Set<string>();
+  variants.forEach((variant) => {
+    const axisValue = getOptionValue(variant, ['color', 'colour', 'shade', 'tone']);
+    const normalized = normalizeVariantAxisToken(axisValue);
+    if (normalized) variantAxisTokens.add(normalized);
+  });
+  if (!variantAxisTokens.size) return false;
+
+  return productLineOptions.every((option) => {
+    const optionTokens = getProductLineOptionAxisTokens(option);
+    return optionTokens.length > 0 && optionTokens.some((token) => variantAxisTokens.has(token));
+  });
 }
 
 function withSelectedProductLineOption(payload: PDPPayload, selected: ProductLineOption): PDPPayload {
@@ -1375,12 +1415,25 @@ export function PdpContainer({
       ),
     [payload.product.product_line_options, variantSelectorData?.product_line_options],
   );
+  const rawProductLineOptionAxis = String(
+    productLineOptions.find((option) => option.selected)?.axis || productLineOptions[0]?.axis || '',
+  )
+    .trim()
+    .toLowerCase();
+  const productLineOptionsAreVariantAxisDuplicates = useMemo(
+    () => productLineOptionsDuplicateVariantAxis(productLineOptions, variants, rawProductLineOptionAxis),
+    [productLineOptions, rawProductLineOptionAxis, variants],
+  );
+  const visibleProductLineOptions = useMemo(
+    () => (productLineOptionsAreVariantAxisDuplicates ? [] : productLineOptions),
+    [productLineOptions, productLineOptionsAreVariantAxisDuplicates],
+  );
   const selectedProductLineOption = useMemo(() => {
     const currentProductId = String(payload.product.product_id || '').trim();
     const currentMerchantId = String(payload.product.merchant_id || '').trim();
     return (
-      productLineOptions.find((option) => option.selected) ||
-      productLineOptions.find((option) => {
+      visibleProductLineOptions.find((option) => option.selected) ||
+      visibleProductLineOptions.find((option) => {
         const optionProductId = String(option.product_id || '').trim();
         const optionMerchantId = String(option.merchant_id || '').trim();
         return (
@@ -1390,13 +1443,13 @@ export function PdpContainer({
       }) ||
       null
     );
-  }, [payload.product.merchant_id, payload.product.product_id, productLineOptions]);
+  }, [payload.product.merchant_id, payload.product.product_id, visibleProductLineOptions]);
   const pendingProductLineOption = useMemo(
     () =>
-      productLineOptions.find(
+      visibleProductLineOptions.find(
         (option) => String(option.product_id || '').trim() === pendingProductLineProductId,
       ) || null,
-    [pendingProductLineProductId, productLineOptions],
+    [pendingProductLineProductId, visibleProductLineOptions],
   );
   const productLineOptionName = useMemo(
     () =>
@@ -1404,17 +1457,17 @@ export function PdpContainer({
         payload.product.product_line_option_name ||
           variantSelectorData?.product_line_option_name ||
           selectedProductLineOption?.option_name ||
-          productLineOptions[0]?.option_name ||
+          visibleProductLineOptions[0]?.option_name ||
           'Option',
       ).trim(),
     [
       payload.product.product_line_option_name,
-      productLineOptions,
       selectedProductLineOption?.option_name,
+      visibleProductLineOptions,
       variantSelectorData?.product_line_option_name,
     ],
   );
-  const productLineOptionAxis = String(selectedProductLineOption?.axis || productLineOptions[0]?.axis || '')
+  const productLineOptionAxis = String(selectedProductLineOption?.axis || visibleProductLineOptions[0]?.axis || '')
     .trim()
     .toLowerCase();
 
@@ -1692,20 +1745,20 @@ export function PdpContainer({
 
   const colorOptions = useMemo(() => collectColorOptions(variants), [variants]);
   const shouldUseProductLineColorSelector =
-    productLineOptions.length > 1 && ['shade', 'color', 'colour', 'tone', 'hue'].includes(productLineOptionAxis);
+    visibleProductLineOptions.length > 1 && PRODUCT_LINE_COLOR_AXES.has(productLineOptionAxis);
   const isProductLineSwitching = shouldUseProductLineColorSelector && pendingProductLineProductId !== null;
   const shouldRenderColorOptions = colorOptions.length > 0 && !shouldUseProductLineColorSelector;
   const productLinePrefetchTargets = useMemo(() => {
-    if (!shouldUseProductLineColorSelector || productLineOptions.length <= 1) return [];
+    if (!shouldUseProductLineColorSelector || visibleProductLineOptions.length <= 1) return [];
 
     const currentProductId = String(payload.product.product_id || '').trim();
     const currentMerchantId = String(payload.product.merchant_id || '').trim();
     const selectedIndex = Math.max(
       0,
-      productLineOptions.findIndex((option) => isSameProductLineOption(option, currentProductId, currentMerchantId)),
+      visibleProductLineOptions.findIndex((option) => isSameProductLineOption(option, currentProductId, currentMerchantId)),
     );
 
-    return productLineOptions
+    return visibleProductLineOptions
       .map((option, index) => ({ option, index, distance: Math.abs(index - selectedIndex) }))
       .filter(({ option }) => !isSameProductLineOption(option, currentProductId, currentMerchantId))
       .sort((left, right) => {
@@ -1717,8 +1770,8 @@ export function PdpContainer({
   }, [
     payload.product.merchant_id,
     payload.product.product_id,
-    productLineOptions,
     shouldUseProductLineColorSelector,
+    visibleProductLineOptions,
   ]);
   const colorSheetOptions = useMemo<GenericColorOption[]>(() => {
     if (!colorOptions.length) return [];
@@ -2479,7 +2532,7 @@ export function PdpContainer({
   }
   const showTrustBadges = resolvedMode === 'beauty' && trustBadges.length > 0;
   const hasRightColumnSelectorSection =
-    productLineOptions.length > 1 ||
+    visibleProductLineOptions.length > 1 ||
     shouldRenderColorOptions ||
     sizeOptions.length > 0 ||
     (!sizeOptions.length && !shouldRenderColorOptions && selectorVariants.length > 1);
@@ -3663,7 +3716,7 @@ export function PdpContainer({
   // product URLs). Shared verbatim between the legacy tree and the
   // BeautyPDPMobile redesign so there is a single source of truth.
   const productLineSelector =
-    productLineOptions.length > 1 ? (
+    visibleProductLineOptions.length > 1 ? (
       <div className="mt-2">
         <div className="flex items-center justify-between gap-3">
           <div className="text-xs font-semibold">{productLineOptionName}</div>
@@ -3680,7 +3733,7 @@ export function PdpContainer({
         </div>
         <div className="mt-1.5 overflow-x-auto">
           <div className="flex flex-nowrap gap-1.5 pb-1">
-            {productLineOptions.map((option, index) => {
+            {visibleProductLineOptions.map((option, index) => {
               const isSelected =
                 option.selected ||
                 (option.product_id === payload.product.product_id &&
@@ -3867,7 +3920,7 @@ export function PdpContainer({
       !sizeOptions.length &&
       !shouldRenderColorOptions &&
       selectorVariants.length > 0 &&
-      !(productLineOptions.length > 1 && selectorVariants.length === 1) ? (
+      !(visibleProductLineOptions.length > 1 && selectorVariants.length === 1) ? (
         <BeautyVariantSelector
           variants={selectorVariants}
           selectedVariantId={selectedVariant.variant_id}
@@ -4455,7 +4508,7 @@ export function PdpContainer({
               {!sizeOptions.length &&
               !shouldRenderColorOptions &&
               selectorVariants.length > 0 &&
-              !(productLineOptions.length > 1 && selectorVariants.length === 1) ? (
+              !(visibleProductLineOptions.length > 1 && selectorVariants.length === 1) ? (
                 <div className="mt-2">
                   <VariantSelector
                     variants={selectorVariants}
