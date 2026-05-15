@@ -78,6 +78,37 @@ const config: Config = {
           'tip-bg':    '#FAEEDA',
           'tip-fg':    '#633806',
         },
+        // Editorial redesign palette (additive — see globals.css for the
+        // CSS variables). Namespaced names where they would clash with the
+        // existing tokens: `ink-muted` (vs `--muted` HSL), `terracotta`
+        // (vs `accent` HSL), so PDP/checkout keep their colors untouched.
+        paper: {
+          DEFAULT: 'var(--paper)',
+          2: 'var(--paper-2)',
+        },
+        surface: {
+          DEFAULT: 'var(--surface)',
+          2: 'var(--surface-2)',
+        },
+        ink: {
+          DEFAULT: 'var(--ink)',
+          2: 'var(--ink-2)',
+          muted: 'var(--ink-muted)',
+        },
+        subtle: 'var(--subtle)',
+        hairline: {
+          DEFAULT: 'var(--hairline)',
+          2: 'var(--hairline-2)',
+        },
+        terracotta: {
+          DEFAULT: 'var(--terracotta)',
+          ink: 'var(--terracotta-ink)',
+          bg: 'var(--terracotta-bg)',
+        },
+        sage: {
+          DEFAULT: 'var(--sage)',
+          bg: 'var(--sage-bg)',
+        },
       },
       backgroundImage: {
         'gradient-primary': 'var(--gradient-primary)',
@@ -89,8 +120,17 @@ const config: Config = {
         'glow': 'var(--shadow-glow)',
       },
       fontFamily: {
+        // Existing defaults — keep so PDP / checkout (frozen) compile
+        // unchanged; the Beauty redesign relies on `font-serif` =
+        // Cormorant for its title.
         serif: ['Cormorant Garamond', 'serif'],
         sans: ['Inter', 'sans-serif'],
+        // Editorial redesign font stack. Pages opt in via
+        // `font-editorial-{serif,sans,mono}` (or the `pv-*` utility
+        // classes in globals.css).
+        'editorial-serif': ['var(--f-serif)', 'Georgia', 'serif'],
+        'editorial-sans': ['var(--f-sans)', 'system-ui', 'sans-serif'],
+        'editorial-mono': ['var(--f-mono)', 'ui-monospace', 'monospace'],
       },
       borderRadius: {
         lg: "var(--radius)",
