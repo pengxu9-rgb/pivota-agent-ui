@@ -149,8 +149,14 @@ export function BeautyPDPMobile(props: BeautyPDPMobileProps) {
     if (!el) return;
     const onScroll = () => {
       const top = el.scrollTop;
-      setScrolled(top > 280);
-      setTabsVisible(top > 480);
+      // Both the solid top bar (with search pill) and the section tracker
+      // appear together once the user crosses out of the first viewport —
+      // i.e. onto "page 2". Until then only the back + share glass pills
+      // float over the hero. The 80px buffer triggers right as the hero
+      // is sliding off so the chrome lands without a snap.
+      const pastFirstPage = top >= Math.max(320, el.clientHeight - 80);
+      setScrolled(pastFirstPage);
+      setTabsVisible(pastFirstPage);
       // active-tab scrollspy
       let current = 'overview';
       for (const id of ['overview', 'insights', 'reviews', 'similar']) {
