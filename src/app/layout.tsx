@@ -15,8 +15,11 @@ import AuroraEmbedBridge from "@/components/aurora/AuroraEmbedBridge";
 const editorialSerif = Newsreader({
   subsets: ["latin"],
   style: ["normal", "italic"],
+  // `weight: 'variable'` keeps the variable font intact so the `opsz`
+  // axis is controllable via `font-variation-settings`. Pinning weights
+  // is mutually exclusive with `axes` per next/font.
+  weight: "variable",
   axes: ["opsz"],
-  weight: ["300", "400", "500", "600"],
   variable: "--f-serif",
   display: "swap",
 });
