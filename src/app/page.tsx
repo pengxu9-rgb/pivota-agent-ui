@@ -2,18 +2,32 @@
 
 import { memo, useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import type { ChangeEvent } from 'react';
-import { ImagePlus, Menu, ShoppingCart, Send, Package, User, Sparkles, Mic } from 'lucide-react';
+import {
+  Camera,
+  Heart,
+  Menu,
+  Mic,
+  Search,
+  Send,
+  ShoppingBag,
+  Sparkles,
+} from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
-import { Button } from '@/components/ui/button';
 import ChatSidebar from '@/components/chat/ChatSidebar';
-import { ChatRecommendationCard, CARD_COLOR_VARIANTS } from '@/components/product/ChatRecommendationCard';
-import { ChatWideProductCard } from '@/components/product/ChatWideProductCard';
-import { FilterChips, type FilterChip } from '@/components/chat/FilterChips';
-import { AiTipBlock } from '@/components/chat/AiTipBlock';
-import { QuickFollowUpButtons, type FollowUp } from '@/components/chat/QuickFollowUpButtons';
+import {
+  Button as EdButton,
+  Chip,
+  Eyebrow,
+  Headline,
+  IconButton,
+  InsightBlock,
+  Mono,
+  Num,
+  ProductCard,
+} from '@/components/ui/editorial';
 import { useCartStore } from '@/store/cartStore';
 import { useAuthStore } from '@/store/authStore';
 import { useChatStore } from '@/store/chatStore';
@@ -35,26 +49,37 @@ import {
   resolvePhotoAnalysisLanguage,
   SKIN_PHOTO_ACCEPTED_TYPES,
 } from '@/lib/photoAnalysis';
+import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
 const CHAT_RAIL_INITIAL_PAGE_SIZE = 12;
 const CHAT_RAIL_PAGE_STEP = 12;
 const NO_GROWTH_STOP_THRESHOLD = 2;
 
-const FOLLOWUP_DEFAULTS: FollowUp[] = [
-  { id: 'budget', label: 'Budget options',  icon: 'coins',   prompt: 'Show budget-friendly options under $50' },
-  { id: 'color',  label: 'Other colors',    icon: 'palette', prompt: 'Show me other color choices' },
-  { id: 'size',   label: 'Size guide',      icon: 'scale',   prompt: 'Help me pick the right size' },
-  { id: 'outfit', label: 'Outfit ideas',    icon: 'shirt',   prompt: 'Suggest outfits to pair with these' },
+/** Mono-uppercase prompts that sit just above the composer. Tapping a chip
+ *  primes the input (no auto-send) per the handoff. */
+const COMPOSER_CHIP_PROMPTS: string[] = [
+  'Refine fit',
+  'Show alternates',
+  'Budget under $200',
+  'Pair with sandals',
 ];
 
-const CHIP_TONES: Array<FilterChip['tone']> = ['purple', 'coral', 'teal'];
+/** Default follow-up prompts after an AI rec set. Plain strings — the
+ *  editorial chip language drops the legacy icons + tones. */
+const FOLLOWUP_PROMPTS: string[] = [
+  'Budget options',
+  'Other colors',
+  'Size guide',
+  'Outfit ideas',
+];
+
 const CHIP_STOPWORDS = new Set([
   'a','an','the','and','or','for','to','of','with','in','on','show','me','some','any','please',
   'find','i','want','need','like','can','you','give','get','my','this','that','these','those',
 ]);
 
-function deriveChipsFromQuery(query: string): FilterChip[] {
+function deriveChipsFromQuery(query: string): string[] {
   const tokens = query
     .toLowerCase()
     .replace(/[^\p{L}\p{N}\s]/gu, ' ')
@@ -69,48 +94,12 @@ function deriveChipsFromQuery(query: string): FilterChip[] {
     unique.push(t);
     if (unique.length >= 5) break;
   }
-  return unique.map((label, i) => ({
-    id: `chip-${Date.now()}-${i}`,
-    label: label.charAt(0).toUpperCase() + label.slice(1),
-    tone: CHIP_TONES[i % CHIP_TONES.length],
-  }));
+  return unique.map((label) => label.charAt(0).toUpperCase() + label.slice(1));
 }
 
 function buildProductKey(product: ProductResponse): string {
   return `${String(product?.merchant_id || '').trim()}::${String(product?.product_id || '').trim()}`;
 }
-
-const HotDealCard = memo(function HotDealCard({ product }: { product: ProductResponse }) {
-  const router = useRouter();
-  const cardHref = buildProductHref(product.product_id, product.merchant_id);
-  return (
-    <Link
-      href={cardHref}
-      prefetch={false}
-      className="flex-shrink-0 w-24 group"
-      onClick={(event) => {
-        if (event.defaultPrevented) return;
-        if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
-        event.preventDefault();
-        router.push(appendCurrentPathAsReturn(cardHref));
-      }}
-    >
-      <div className="relative aspect-square rounded-2xl overflow-hidden mb-2 ring-1 ring-border group-hover:ring-primary transition-all">
-        <Image
-          src={normalizeDisplayImageUrl(product.image_url, '/placeholder.svg')}
-          alt={product.title}
-          fill
-          className="object-cover group-hover:scale-110 transition-transform duration-300"
-          unoptimized
-        />
-      </div>
-      <p className="text-xs text-muted-foreground line-clamp-1 group-hover:text-foreground transition-colors">
-        {product.title}
-      </p>
-      <p className="text-xs font-semibold">${typeof product.price === 'number' ? product.price.toFixed(2) : product.price}</p>
-    </Link>
-  );
-});
 
 function mergeUniqueProducts(current: ProductResponse[], incoming: ProductResponse[]) {
   const map = new Map<string, ProductResponse>();
@@ -142,6 +131,75 @@ function buildStrictEmptyHint(metadata: Record<string, any>): string | null {
   return `No reliable matches (${reason}).`;
 }
 
+function friendlyName(user: { email?: string | null; name?: string | null } | null | undefined): string {
+  if (!user) return '';
+  const name = String(user.name || '').trim();
+  if (name) return name.split(/\s+/)[0];
+  const email = String(user.email || '').trim();
+  if (!email) return '';
+  const local = email.split('@')[0] || '';
+  return local.charAt(0).toUpperCase() + local.slice(1);
+}
+
+function formatDayStamp(date: Date): string {
+  const day = date.getDate();
+  const month = date.toLocaleString('en-US', { month: 'long' });
+  return `${day} ${month}`.toLowerCase();
+}
+
+function formatMessageTime(id: string): string {
+  // Message ids in this app are millisecond timestamps. Fall back to "now"
+  // if the id isn't parseable.
+  const numeric = Number(String(id).match(/^\d+/)?.[0] || '');
+  const date = Number.isFinite(numeric) && numeric > 0 ? new Date(numeric) : new Date();
+  return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: false });
+}
+
+function formatPriceLabel(price: unknown, currency?: string): string {
+  const amount = typeof price === 'number' ? price : Number(price);
+  if (!Number.isFinite(amount)) return '';
+  const symbol = currency && currency.toUpperCase() !== 'USD' ? currency.toUpperCase() + ' ' : '$';
+  return `${symbol}${amount % 1 === 0 ? amount.toFixed(0) : amount.toFixed(2)}`;
+}
+
+/** Editorial "Today's edit" thumbnail — 96px wide, 4/5 image, mono caption. */
+const TodaysEditCard = memo(function TodaysEditCard({ product }: { product: ProductResponse }) {
+  const router = useRouter();
+  const cardHref = buildProductHref(product.product_id, product.merchant_id);
+  return (
+    <Link
+      href={cardHref}
+      prefetch={false}
+      className="group flex w-24 flex-shrink-0 flex-col gap-1.5"
+      onClick={(event) => {
+        if (event.defaultPrevented) return;
+        if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
+        event.preventDefault();
+        router.push(appendCurrentPathAsReturn(cardHref));
+      }}
+    >
+      <div className="relative aspect-[4/5] w-full overflow-hidden bg-paper-2">
+        <Image
+          src={normalizeDisplayImageUrl(product.image_url, '/placeholder.svg')}
+          alt={product.title}
+          fill
+          className="object-cover transition-transform duration-300 lg:group-hover:scale-[1.04]"
+          sizes="96px"
+          unoptimized
+        />
+      </div>
+      <Mono className="line-clamp-1 normal-case tracking-[0.02em] text-ink-muted">
+        {product.title}
+      </Mono>
+      <Num
+        value={formatPriceLabel(product.price, product.currency).replace(/^\$/, '')}
+        prefix="$"
+        size={13}
+      />
+    </Link>
+  );
+});
+
 function AuroraEmbedCartHost() {
   const canPost = useMemo(() => Boolean(getAllowedParentOrigin()), []);
 
@@ -157,7 +215,6 @@ function AuroraEmbedCartHost() {
         onClick={() => {
           const posted = postRequestCloseToParent({ reason: 'embed_host_close' });
           if (!posted) {
-            // Fallback: closing will reveal the embed host, but users can still close the Aurora drawer.
             try {
               window.history.back();
             } catch {
@@ -187,26 +244,28 @@ export default function HomePage() {
 function HomePageApp() {
   const router = useRouter();
   const [input, setInput] = useState('');
-  const [sidebarOpen, setSidebarOpen] = useState(false); // Mobile: closed by default, Desktop: always visible
+  const [sidebarOpen, setSidebarOpen] = useState(false); // Mobile: closed by default
   const [loading, setLoading] = useState(false);
   const [photoUploading, setPhotoUploading] = useState(false);
   const [hotDeals, setHotDeals] = useState<ProductResponse[]>([]);
   const [hotDealsStatus, setHotDealsStatus] = useState<'loading' | 'ready' | 'empty' | 'error'>('loading');
   const [recentViews, setRecentViews] = useState<DiscoveryRecentView[]>([]);
   const [recentViewsReady, setRecentViewsReady] = useState(false);
-  const [filterChips, setFilterChips] = useState<FilterChip[]>([]);
+  const [queryChips, setQueryChips] = useState<string[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
-  
+
   const { messages, addMessage, updateMessage, conversations, resetForGuest } = useChatStore();
   const { items, addItem, open } = useCartStore();
   const { user } = useAuthStore();
   const { ownerEmail, setOwnerEmail } = useChatStore();
-  
+
   const itemCount = items.reduce((acc, item) => acc + item.quantity, 0);
-  const hasUserMessages = messages.some(msg => msg.role === 'user');
+  const hasUserMessages = messages.some((msg) => msg.role === 'user');
   const photoUploadEnabled = isShoppingSkinPhotoUploadBetaEnabled();
   const composerBusy = loading || photoUploading;
+  const greetingName = friendlyName(user);
+  const todayStamp = useMemo(() => formatDayStamp(new Date()), []);
 
   useEffect(() => {
     let cancelled = false;
@@ -247,7 +306,7 @@ function HomePageApp() {
     };
   }, [user?.id]);
 
-  // 加载Hot Deals商品
+  // Load "Today's edit" picks — previously labeled Hot Deals.
   useEffect(() => {
     if (!recentViewsReady) return;
     const loadHotDeals = async () => {
@@ -264,7 +323,7 @@ function HomePageApp() {
         setHotDeals(result.products);
         setHotDealsStatus(result.products.length > 0 ? 'ready' : 'empty');
       } catch (error) {
-        console.error('Failed to load hot deals:', error);
+        console.error("Failed to load today's edit:", error);
         setHotDeals([]);
         setHotDealsStatus('error');
       }
@@ -283,17 +342,14 @@ function HomePageApp() {
   // For guests, do not show previous user's conversations
   useEffect(() => {
     const userEmail = user?.email || null;
-    // If store belongs to a different user, reset
     if (ownerEmail && ownerEmail !== userEmail) {
       resetForGuest();
       setOwnerEmail(userEmail);
       return;
     }
-    // If store has no owner yet, claim it with current user (can be null => guest)
     if (!ownerEmail) {
       setOwnerEmail(userEmail);
     }
-    // If guest and no owner, do nothing (keeps fresh guest state)
   }, [user, ownerEmail, resetForGuest, setOwnerEmail, conversations.length]);
 
   const handleSend = async () => {
@@ -306,7 +362,7 @@ function HomePageApp() {
     };
 
     addMessage(userMessage);
-    setFilterChips(deriveChipsFromQuery(input.trim()));
+    setQueryChips(deriveChipsFromQuery(input.trim()));
     setInput('');
     setLoading(true);
 
@@ -373,26 +429,28 @@ function HomePageApp() {
           ? (searchResult.metadata as Record<string, any>)
           : {};
       const strictEmptyHint = searchResult?.strict_empty ? buildStrictEmptyHint(metadata) : null;
-      
+
       const assistantMessage = {
         id: (Date.now() + 1).toString(),
         role: 'assistant' as const,
-        content: products.length > 0 
-          ? `I found ${products.length} product(s) for you!`
-          : [fallbackReply || "I couldn't find any products matching your search.", strictEmptyHint]
-              .filter(Boolean)
-              .join('\n'),
+        content:
+          products.length > 0
+            ? `I edited ${products.length} ${products.length === 1 ? 'piece' : 'pieces'} for you.`
+            : [fallbackReply || "I couldn't find anything matching that just yet.", strictEmptyHint]
+                .filter(Boolean)
+                .join('\n'),
         products,
-        recommendation_paging: products.length > 0
-          ? {
-              query: userQuery,
-              page: searchResult.page_info?.page || 1,
-              limit: CHAT_RAIL_INITIAL_PAGE_SIZE,
-              hasMore: Boolean(searchResult.page_info?.has_more),
-              isLoadingMore: false,
-              noGrowthCount: 0,
-            }
-          : undefined,
+        recommendation_paging:
+          products.length > 0
+            ? {
+                query: userQuery,
+                page: searchResult.page_info?.page || 1,
+                limit: CHAT_RAIL_INITIAL_PAGE_SIZE,
+                hasMore: Boolean(searchResult.page_info?.has_more),
+                isLoadingMore: false,
+                noGrowthCount: 0,
+              }
+            : undefined,
       };
 
       addMessage(assistantMessage);
@@ -401,7 +459,7 @@ function HomePageApp() {
       addMessage({
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: 'Sorry, there was an error searching for products. Please try again.',
+        content: 'Sorry, there was an error reaching the catalog. Please try again.',
       });
     } finally {
       setLoading(false);
@@ -417,7 +475,7 @@ function HomePageApp() {
     const language = resolvePhotoAnalysisLanguage(latestUserText);
     const confirmed = window.confirm(
       language === 'CN'
-        ? '照片上传 Beta 目前只用于面部/皮肤照片分析，不支持商品瓶身或 PDP 截图识别。继续上传吗？'
+        ? '照片上传 Beta 目前只用于面部/皮肤照片分析,不支持商品瓶身或 PDP 截图识别。继续上传吗?'
         : 'Photo upload beta is for face/skin analysis only. Product bottles or PDP screenshots are not supported. Continue?',
     );
     if (!confirmed) return;
@@ -439,9 +497,7 @@ function HomePageApp() {
       id: `photo-u-${Date.now()}`,
       role: 'user' as const,
       content:
-        language === 'CN'
-          ? `已上传皮肤照片：${file.name}`
-          : `Uploaded skin photo: ${file.name}`,
+        language === 'CN' ? `已上传皮肤照片:${file.name}` : `Uploaded skin photo: ${file.name}`,
     };
     addMessage(userMessage);
     setPhotoUploading(true);
@@ -458,7 +514,11 @@ function HomePageApp() {
         content: result.assistantText,
       });
       if (result.status !== 'success') {
-        toast.message(language === 'CN' ? '照片分析未完成，请重试或改用文字描述。' : 'Photo analysis did not complete. Try again or describe your skin in text.');
+        toast.message(
+          language === 'CN'
+            ? '照片分析未完成,请重试或改用文字描述。'
+            : 'Photo analysis did not complete. Try again or describe your skin in text.',
+        );
       }
     } catch (error) {
       console.error('Skin photo analysis error:', error);
@@ -467,7 +527,7 @@ function HomePageApp() {
         role: 'assistant',
         content:
           language === 'CN'
-            ? '照片分析暂时不可用。请稍后重试，或直接用文字描述肤况。'
+            ? '照片分析暂时不可用。请稍后重试,或直接用文字描述肤况。'
             : 'Photo analysis is temporarily unavailable. Try again later or describe your skin in text.',
       });
     } finally {
@@ -477,16 +537,15 @@ function HomePageApp() {
 
   const handleLoadMoreMessageProducts = useCallback(
     async (messageId: string) => {
-      const target = messages.find((message) => message.id === messageId && message.role === 'assistant');
+      const target = messages.find(
+        (message) => message.id === messageId && message.role === 'assistant',
+      );
       if (!target) return;
       const paging = target.recommendation_paging;
       if (!paging || paging.isLoadingMore || !paging.hasMore || !paging.query) return;
 
       updateMessage(messageId, {
-        recommendation_paging: {
-          ...paging,
-          isLoadingMore: true,
-        },
+        recommendation_paging: { ...paging, isLoadingMore: true },
       });
 
       try {
@@ -506,7 +565,8 @@ function HomePageApp() {
         const currentProducts = Array.isArray(target.products) ? target.products : [];
         const { merged, added } = mergeUniqueProducts(currentProducts, incoming);
         const noGrowthCount = added === 0 ? Number(paging.noGrowthCount || 0) + 1 : 0;
-        const hasMore = Boolean(result?.page_info?.has_more) && noGrowthCount < NO_GROWTH_STOP_THRESHOLD;
+        const hasMore =
+          Boolean(result?.page_info?.has_more) && noGrowthCount < NO_GROWTH_STOP_THRESHOLD;
 
         updateMessage(messageId, {
           products: merged,
@@ -522,384 +582,468 @@ function HomePageApp() {
         console.error('Load more recommendations error:', error);
         toast.error('Failed to load more recommendations');
         updateMessage(messageId, {
-          recommendation_paging: {
-            ...paging,
-            isLoadingMore: false,
-          },
+          recommendation_paging: { ...paging, isLoadingMore: false },
         });
       }
     },
     [messages, updateMessage, user?.id],
   );
 
-  const handleAddToCart = useCallback((product: any) => {
-    const defaultVariant =
-      Array.isArray(product?.variants) && product.variants.length > 0
-        ? product.variants[0]
-        : null;
-    const variantId =
-      String(
-        product?.variant_id ||
-          defaultVariant?.variant_id ||
-          defaultVariant?.id ||
-          product?.product_ref?.variant_id ||
-          product?.product_ref?.sku_id ||
-          product?.sku_id ||
-          '',
-      ).trim() || String(product.product_id);
-    const sku =
-      String(defaultVariant?.sku || defaultVariant?.sku_id || product?.sku || product?.sku_id || '').trim() ||
-      undefined;
-    const cartItemId = product?.merchant_id
-      ? `${product.merchant_id}:${variantId}`
-      : variantId;
-    addItem({
-      id: cartItemId,
-      product_id: product.product_id,
-      variant_id: variantId,
-      sku,
-      title: product.title,
-      price: product.price,
-      currency: product.currency,
-      imageUrl: normalizeDisplayImageUrl(product.image_url, '/placeholder.svg'),
-      merchant_id: product.merchant_id,
-      quantity: 1,
-    });
-    toast.success(`✓ Added to cart! ${product.title}`);
-  }, [addItem]);
+  const handleAddToCart = useCallback(
+    (product: any) => {
+      const defaultVariant =
+        Array.isArray(product?.variants) && product.variants.length > 0
+          ? product.variants[0]
+          : null;
+      const variantId =
+        String(
+          product?.variant_id ||
+            defaultVariant?.variant_id ||
+            defaultVariant?.id ||
+            product?.product_ref?.variant_id ||
+            product?.product_ref?.sku_id ||
+            product?.sku_id ||
+            '',
+        ).trim() || String(product.product_id);
+      const sku =
+        String(
+          defaultVariant?.sku || defaultVariant?.sku_id || product?.sku || product?.sku_id || '',
+        ).trim() || undefined;
+      const cartItemId = product?.merchant_id
+        ? `${product.merchant_id}:${variantId}`
+        : variantId;
+      addItem({
+        id: cartItemId,
+        product_id: product.product_id,
+        variant_id: variantId,
+        sku,
+        title: product.title,
+        price: product.price,
+        currency: product.currency,
+        imageUrl: normalizeDisplayImageUrl(product.image_url, '/placeholder.svg'),
+        merchant_id: product.merchant_id,
+        quantity: 1,
+      });
+      toast.success(`Added to bag — ${product.title}`);
+    },
+    [addItem],
+  );
 
   return (
-    <div className="flex h-screen w-full bg-gradient-mesh overflow-x-hidden relative">
-      {/* Animated background gradients */}
-      <div className="absolute inset-0 -z-10 opacity-40" />
-      <div className="absolute top-1/4 left-1/4 w-72 h-72 sm:w-96 sm:h-96 blur-3xl -z-10 animate-pulse" style={{ background: 'radial-gradient(circle, #534AB730 0%, #1D9E7520 100%)' }} />
-      <div className="absolute bottom-1/4 right-1/4 w-72 h-72 sm:w-96 sm:h-96 blur-3xl -z-10 animate-pulse" style={{ background: 'radial-gradient(circle, #1D9E7520 0%, #534AB730 100%)' }} />
-
-      {/* Sidebar */}
+    <div className="flex h-screen w-full bg-paper text-ink overflow-x-hidden">
+      {/* Mobile drawer (existing ChatSidebar) — also fills the desktop
+          left rail for now; an editorial sidebar restyle is a follow-up. */}
       <ChatSidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
-      {/* Main Chat Area */}
-      <div className="flex-1 flex flex-col min-w-0">
-        {/* Header */}
-        <header
-          className="flex items-center justify-between bg-white px-3"
-          style={{
-            height: '54px',
-            borderBottomWidth: '0.5px',
-            borderColor: 'rgba(44,44,42,0.08)',
-          }}
-        >
-          <div className="flex items-center gap-2">
-            <button
+      <main className="flex flex-1 min-w-0 flex-col">
+        {/* Editorial header — 54px */}
+        <header className="flex h-[54px] flex-shrink-0 items-center justify-between border-b border-hairline bg-surface px-3">
+          <div className="flex min-w-0 items-center gap-2">
+            <IconButton
+              label="Open menu"
+              size="md"
               onClick={() => setSidebarOpen(true)}
-              className="h-9 w-9 rounded-full flex items-center justify-center transition-opacity active:opacity-60 lg:hidden"
-              aria-label="Open menu"
+              className="lg:hidden"
             >
-              <Menu className="h-5 w-5" style={{ color: '#2C2C2A' }} />
-            </button>
-            <div className="flex items-center gap-2">
+              <Menu size={20} strokeWidth={1.6} />
+            </IconButton>
+            <div className="flex min-w-0 items-center gap-2.5">
               <span
-                className="flex h-7 w-7 items-center justify-center rounded-full"
-                style={{ backgroundColor: '#534AB7' }}
+                aria-hidden="true"
+                className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-ink text-paper"
               >
-                <Sparkles className="h-3.5 w-3.5 text-white" strokeWidth={2.2} />
+                <Sparkles size={14} strokeWidth={2} />
               </span>
-              <div className="flex flex-col leading-tight">
-                <span className="text-[13px] font-semibold" style={{ color: '#2C2C2A' }}>Pivota</span>
-                <span className="flex items-center gap-1 text-[10px]" style={{ color: '#1D9E75' }}>
-                  <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: '#1D9E75' }} />
-                  AI online
-                </span>
+              <div className="flex min-w-0 flex-col leading-tight">
+                <Headline as="span" size={13} className="font-editorial-serif text-ink">
+                  Pivota
+                </Headline>
+                <Mono className="flex items-center gap-1 normal-case tracking-[0.06em] text-ink-muted">
+                  <span aria-hidden="true" className="h-1 w-1 rounded-full bg-sage" />
+                  Personal shopper · online
+                </Mono>
               </div>
             </div>
           </div>
           <div className="flex items-center gap-1">
             {!user ? (
               <Link href="/login" className="hidden sm:block">
-                <Button variant="outline" size="sm">Login</Button>
+                <EdButton variant="ghost" size="sm">
+                  Sign in
+                </EdButton>
               </Link>
             ) : null}
-            <button
-              onClick={open}
-              className="relative h-9 w-9 rounded-full flex items-center justify-center transition-opacity active:opacity-60"
-              aria-label="Cart"
-            >
-              <ShoppingCart className="h-5 w-5" style={{ color: '#2C2C2A' }} strokeWidth={1.7} />
-              {itemCount > 0 && (
+            <IconButton label="Search" size="md">
+              <Search size={18} strokeWidth={1.5} />
+            </IconButton>
+            <IconButton label="Open bag" size="md" onClick={open} className="relative">
+              <ShoppingBag size={18} strokeWidth={1.5} />
+              {itemCount > 0 ? (
                 <span
-                  className="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[9px] font-semibold text-white"
-                  style={{ backgroundColor: '#D85A30' }}
+                  aria-hidden="true"
+                  className="absolute -right-0.5 -top-0.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-terracotta px-1 font-editorial-mono text-[9px] font-bold text-paper"
                 >
                   {itemCount > 9 ? '9+' : itemCount}
                 </span>
-              )}
-            </button>
+              ) : null}
+            </IconButton>
           </div>
         </header>
 
-        {/* Filter chips — derived from latest user query */}
-        {filterChips.length > 0 ? (
-          <div
-            className="bg-white"
-            style={{
-              borderBottomWidth: '0.5px',
-              borderColor: 'rgba(44,44,42,0.08)',
-            }}
-          >
-            <FilterChips
-              chips={filterChips}
-              onRemove={(id) => setFilterChips((prev) => prev.filter((c) => c.id !== id))}
-            />
+        {/* Query chips — derived from the latest user input */}
+        {queryChips.length > 0 ? (
+          <div className="flex-shrink-0 border-b border-hairline bg-surface">
+            <div className="-mx-1 flex gap-1.5 overflow-x-auto px-3 py-2">
+              {queryChips.map((label, i) => (
+                <Chip
+                  key={`${label}-${i}`}
+                  variant="default"
+                  size="sm"
+                  onClick={() => setQueryChips((prev) => prev.filter((_, idx) => idx !== i))}
+                >
+                  {label} ×
+                </Chip>
+              ))}
+            </div>
           </div>
         ) : null}
 
-        {/* Messages */}
-        <div className="flex-1 overflow-y-auto p-3 space-y-3.5 flex flex-col">
-          <AnimatePresence>
-            {messages.map((message, idx) => (
-              <motion.div
-                key={message.id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.3 }}
-                className={`flex ${
-                  message.role === 'user'
-                    ? 'justify-end'
-                    : idx === 0
-                    ? 'justify-center items-center flex-1'
-                    : 'justify-start'
-                }`}
-              >
-                {idx === 0 && message.role === 'assistant' ? (
-                  <div className="text-center max-w-md space-y-3">
-                    <h1 className="text-3xl md:text-4xl font-semibold tracking-tight">
-                      <span className="gradient-text">Shop Anything</span>
-                      <br />
-                      <span className="text-foreground">Through Conversation</span>
-                    </h1>
-                  </div>
-                ) : (
-                  <div
-                    className={`flex w-full gap-2 ${
-                      message.role === 'user' ? 'flex-row-reverse' : 'flex-row'
-                    }`}
-                  >
-                    {/* Avatar */}
-                    <div
-                      className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full"
-                      style={{
-                        backgroundColor: message.role === 'user' ? '#FAECE7' : '#534AB7',
-                      }}
-                      aria-hidden
-                    >
-                      {message.role === 'user' ? (
-                        <span className="text-[10px] font-semibold" style={{ color: '#993C1D' }}>
-                          You
-                        </span>
-                      ) : (
-                        <Sparkles className="h-3.5 w-3.5 text-white" strokeWidth={2.2} />
-                      )}
-                    </div>
-
-                    <div
-                      className={`min-w-0 space-y-2 ${
-                        message.role === 'assistant' && Array.isArray(message.products) && message.products.length > 0
-                          ? 'flex-1'
-                          : 'max-w-[80%]'
-                      }`}
-                    >
-                      {message.content ? (
-                        <div
-                          className="rounded-2xl px-3 py-2 text-[13px] leading-[1.45]"
-                          style={
-                            message.role === 'user'
-                              ? { backgroundColor: '#F4F4F2', color: '#2C2C2A' }
-                              : {
-                                  backgroundColor: '#FFFFFF',
-                                  color: '#2C2C2A',
-                                  borderWidth: '0.5px',
-                                  borderColor: 'rgba(44,44,42,0.08)',
-                                }
-                          }
-                        >
-                          {message.content}
-                        </div>
-                      ) : null}
-
-                      {message.products && message.products.length > 0 && (
-                        <div className="space-y-2">
-                          {/* 2-col grid for first 2 products */}
-                          <div className="grid grid-cols-2 gap-2">
-                            {message.products.slice(0, 2).map((product, i) => (
-                              <ChatRecommendationCard
-                                key={buildProductKey(product)}
-                                product={product}
-                                onAddToCart={handleAddToCart}
-                                colorVariant={CARD_COLOR_VARIANTS[i % CARD_COLOR_VARIANTS.length]}
-                              />
-                            ))}
-                          </div>
-                          {/* Wide horizontal cards for 3rd+ */}
-                          {message.products.slice(2).map((product, i) => (
-                            <ChatWideProductCard
-                              key={buildProductKey(product)}
-                              product={product}
-                              onAddToCart={handleAddToCart}
-                              colorVariant={CARD_COLOR_VARIANTS[(i + 2) % CARD_COLOR_VARIANTS.length]}
-                            />
-                          ))}
-
-                          <AiTipBlock>
-                            Picked these because they match your search and have the strongest in-stock signal. Tap a card for full details.
-                          </AiTipBlock>
-
-                          <QuickFollowUpButtons
-                            items={FOLLOWUP_DEFAULTS}
-                            onSelect={(prompt) => setInput(prompt)}
-                          />
-
-                          {message.recommendation_paging?.hasMore ? (
-                            <button
-                              type="button"
-                              className="w-full rounded-xl bg-white py-2 text-[11px] text-[#2C2C2A]/60 transition-colors active:text-[#2C2C2A] disabled:opacity-60"
-                              style={{ borderColor: 'rgba(44,44,42,0.08)', borderWidth: '0.5px' }}
-                              disabled={Boolean(message.recommendation_paging?.isLoadingMore)}
-                              onClick={() => handleLoadMoreMessageProducts(message.id)}
-                            >
-                              {message.recommendation_paging?.isLoadingMore
-                                ? 'Loading...'
-                                : 'Load more recommendations'}
-                            </button>
-                          ) : null}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </motion.div>
-            ))}
-          </AnimatePresence>
-          
-          {composerBusy && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="flex gap-2 items-start"
-            >
-              <div
-                className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full"
-                style={{ backgroundColor: '#534AB7' }}
-                aria-hidden
-              >
-                <Sparkles className="h-3.5 w-3.5 text-white" strokeWidth={2.2} />
-              </div>
-              <div
-                className="rounded-2xl bg-white px-3 py-2"
-                style={{ borderWidth: '0.5px', borderColor: 'rgba(44,44,42,0.08)' }}
-              >
-                <div className="flex gap-1 text-[#534AB7]">
-                  <span className="animate-bounce">●</span>
-                  <span className="animate-bounce" style={{ animationDelay: '0.1s' }}>●</span>
-                  <span className="animate-bounce" style={{ animationDelay: '0.2s' }}>●</span>
-                </div>
-              </div>
-            </motion.div>
-          )}
-          
-          <div ref={messagesEndRef} />
-        </div>
-
-        {/* Input Area */}
-        <div
-          className="px-3 pt-2.5 pb-3 space-y-2.5 bg-white"
-          style={{ borderTopWidth: '0.5px', borderColor: 'rgba(44,44,42,0.08)' }}
-        >
-          {/* Hot Deals - Trending Products */}
-          {!hasUserMessages && (
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="space-y-3"
-            >
-              <h3 className="text-sm font-semibold text-foreground/80 px-2">Hot Deals</h3>
-              <div className="overflow-x-auto pb-2 -mx-2 px-2">
-                <div className="flex gap-3 min-w-max">
-                  {hotDeals.length > 0 ? (
-                    hotDeals.map((product) => (
-                      <HotDealCard key={buildProductKey(product)} product={product} />
-                    ))
-                  ) : hotDealsStatus === 'loading' ? (
-                    <p className="text-xs text-muted-foreground">Loading products...</p>
-                  ) : hotDealsStatus === 'error' ? (
-                    <p className="text-xs text-muted-foreground">Unable to load hot deals right now.</p>
-                  ) : (
-                    <p className="text-xs text-muted-foreground">No hot deals available right now.</p>
-                  )}
-                </div>
-              </div>
-            </motion.div>
-          )}
-
-          <div
-            className="flex items-center gap-2 rounded-full px-3 py-1.5"
-            style={{
-              backgroundColor: '#F4F4F2',
-              borderWidth: '0.5px',
-              borderColor: 'rgba(44,44,42,0.08)',
-            }}
-          >
-            {photoUploadEnabled ? (
-              <>
-                <input
-                  ref={photoInputRef}
-                  type="file"
-                  accept={SKIN_PHOTO_ACCEPTED_TYPES.join(',')}
-                  className="hidden"
-                  onChange={handleSkinPhotoSelected}
-                />
-                <button
-                  type="button"
-                  onClick={handleSkinPhotoUploadClick}
-                  disabled={composerBusy}
-                  className="h-7 w-7 flex-shrink-0 flex items-center justify-center rounded-full transition-opacity active:opacity-60 disabled:opacity-40"
-                  aria-label="Upload photo"
-                  title="Upload photo"
-                >
-                  <ImagePlus className="h-4 w-4" style={{ color: '#2C2C2A99' }} strokeWidth={1.7} />
-                </button>
-              </>
-            ) : null}
-            <input
-              type="text"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyPress={(e) => e.key === 'Enter' && handleSend()}
-              placeholder="Tell Pivota what you want…"
-              className="flex-1 bg-transparent outline-none text-[13px] py-1.5"
-              style={{ color: '#2C2C2A' }}
-              disabled={composerBusy}
-            />
-            <button
-              type="button"
-              className="h-7 w-7 flex-shrink-0 flex items-center justify-center rounded-full transition-opacity active:opacity-60"
-              aria-label="Voice input"
-              title="Voice input"
-            >
-              <Mic className="h-4 w-4" style={{ color: '#2C2C2A99' }} strokeWidth={1.7} />
-            </button>
-            <button
-              onClick={handleSend}
-              disabled={composerBusy || !input.trim()}
-              className="h-8 w-8 flex-shrink-0 rounded-full flex items-center justify-center text-white transition-opacity active:opacity-75 disabled:opacity-40"
-              style={{ backgroundColor: '#534AB7' }}
-              aria-label="Send"
-            >
-              <Send className="h-3.5 w-3.5" />
-            </button>
+        {/* Scrollable body — greeting + today's edit on empty state,
+            conversation thread once the user has spoken. */}
+        <div className="flex-1 overflow-y-auto">
+          <div className="mx-auto w-full max-w-[720px] px-4 py-6 lg:px-8 lg:py-10">
+            {!hasUserMessages ? (
+              <EditorialGreeting
+                greetingName={greetingName}
+                todayStamp={todayStamp}
+                hotDeals={hotDeals}
+                hotDealsStatus={hotDealsStatus}
+              />
+            ) : (
+              <ConversationThread
+                messages={messages}
+                onAddToCart={handleAddToCart}
+                onLoadMore={handleLoadMoreMessageProducts}
+                onFollowUp={(prompt) => setInput(prompt)}
+                composerBusy={composerBusy}
+              />
+            )}
+            <div ref={messagesEndRef} />
           </div>
         </div>
-      </div>
+
+        {/* Composer */}
+        <div className="flex-shrink-0 border-t border-hairline bg-paper">
+          <div className="mx-auto w-full max-w-[720px] px-4 pb-4 pt-2 lg:px-8">
+            {/* Chip rail above composer */}
+            <div className="-mx-2 mb-2 flex gap-1.5 overflow-x-auto px-2 pb-1">
+              {COMPOSER_CHIP_PROMPTS.map((prompt) => (
+                <Chip
+                  key={prompt}
+                  variant="default"
+                  size="sm"
+                  onClick={() => setInput(prompt)}
+                  disabled={composerBusy}
+                >
+                  {prompt}
+                </Chip>
+              ))}
+            </div>
+
+            <div className="flex items-center gap-2 rounded-full border border-hairline bg-surface px-3 py-1.5 transition-colors focus-within:border-ink/30">
+              {photoUploadEnabled ? (
+                <>
+                  <input
+                    ref={photoInputRef}
+                    type="file"
+                    accept={SKIN_PHOTO_ACCEPTED_TYPES.join(',')}
+                    className="hidden"
+                    onChange={handleSkinPhotoSelected}
+                  />
+                  <button
+                    type="button"
+                    onClick={handleSkinPhotoUploadClick}
+                    disabled={composerBusy}
+                    className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-ink-muted transition-colors hover:text-ink disabled:opacity-40"
+                    aria-label="Upload photo"
+                  >
+                    <Camera size={16} strokeWidth={1.6} />
+                  </button>
+                </>
+              ) : null}
+              <input
+                type="text"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    void handleSend();
+                  }
+                }}
+                placeholder="Tell Pivota what you're looking for…"
+                className="flex-1 bg-transparent py-1.5 font-editorial-sans text-[14px] text-ink outline-none placeholder:text-subtle"
+                disabled={composerBusy}
+              />
+              <button
+                type="button"
+                className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-ink-muted transition-colors hover:text-ink"
+                aria-label="Voice input"
+              >
+                <Mic size={16} strokeWidth={1.6} />
+              </button>
+              <button
+                type="button"
+                onClick={handleSend}
+                disabled={composerBusy || !input.trim()}
+                className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-ink text-paper transition-opacity hover:bg-ink-2 disabled:opacity-30"
+                aria-label="Send"
+              >
+                <Send size={14} strokeWidth={1.6} />
+              </button>
+            </div>
+          </div>
+        </div>
+      </main>
     </div>
   );
 }
+
+/* ── Empty-state greeting ─────────────────────────────────────────── */
+
+function EditorialGreeting({
+  greetingName,
+  todayStamp,
+  hotDeals,
+  hotDealsStatus,
+}: {
+  greetingName: string;
+  todayStamp: string;
+  hotDeals: ProductResponse[];
+  hotDealsStatus: 'loading' | 'ready' | 'empty' | 'error';
+}) {
+  return (
+    <motion.section
+      initial={{ opacity: 0, y: 18 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.45 }}
+      className="flex flex-col gap-8"
+    >
+      <div>
+        <Eyebrow>Pivota · Personal shopper</Eyebrow>
+        <Headline size={28} className="mt-3 text-balance">
+          {greetingName ? `Welcome back, ${greetingName}.` : 'Welcome back.'}{' '}
+          <em className="font-editorial-serif italic text-ink-muted">
+            What are we shopping today?
+          </em>
+        </Headline>
+        <p className="pv-body mt-3 max-w-prose text-ink-muted">
+          I keep track of what you&apos;ve been browsing and what&apos;s new in the houses you
+          follow. Ask anything — I&apos;ll edit the catalog for you.
+        </p>
+      </div>
+
+      <div>
+        <div className="flex items-baseline justify-between gap-3">
+          <Eyebrow>01 / Today&apos;s edit</Eyebrow>
+          <Mono className="normal-case tracking-[0.04em] text-ink-muted">{todayStamp}</Mono>
+        </div>
+        <div className="-mx-4 mt-3 overflow-x-auto px-4 pb-1 lg:mx-0 lg:px-0">
+          <div className="flex min-w-max gap-3">
+            {hotDeals.length > 0 ? (
+              hotDeals
+                .slice(0, 5)
+                .map((product) => <TodaysEditCard key={buildProductKey(product)} product={product} />)
+            ) : (
+              <p className="pv-body text-ink-muted">
+                {hotDealsStatus === 'loading'
+                  ? 'Pulling fresh picks…'
+                  : hotDealsStatus === 'error'
+                    ? "Couldn't reach the edit right now."
+                    : 'No picks yet — ask me anything to get started.'}
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
+    </motion.section>
+  );
+}
+
+/* ── Conversation thread ──────────────────────────────────────────── */
+
+function ConversationThread({
+  messages,
+  onAddToCart,
+  onLoadMore,
+  onFollowUp,
+  composerBusy,
+}: {
+  messages: ReturnType<typeof useChatStore.getState>['messages'];
+  onAddToCart: (product: any) => void;
+  onLoadMore: (messageId: string) => void;
+  onFollowUp: (prompt: string) => void;
+  composerBusy: boolean;
+}) {
+  return (
+    <section className="flex flex-col gap-7">
+      <AnimatePresence initial={false}>
+        {messages.map((message) =>
+          message.role === 'user' ? (
+            <UserMessageRow key={message.id} content={message.content || ''} />
+          ) : (
+            <AssistantMessageRow
+              key={message.id}
+              message={message}
+              onAddToCart={onAddToCart}
+              onLoadMore={onLoadMore}
+              onFollowUp={onFollowUp}
+            />
+          ),
+        )}
+      </AnimatePresence>
+      {composerBusy ? <TypingIndicator /> : null}
+    </section>
+  );
+}
+
+function UserMessageRow({ content }: { content: string }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.25 }}
+      className="flex justify-end"
+    >
+      <div className="max-w-[80%] rounded-[18px] border border-hairline bg-surface px-4 py-2.5">
+        <p className="pv-body text-ink">{content}</p>
+      </div>
+    </motion.div>
+  );
+}
+
+function AssistantMessageRow({
+  message,
+  onAddToCart,
+  onLoadMore,
+  onFollowUp,
+}: {
+  message: ReturnType<typeof useChatStore.getState>['messages'][number];
+  onAddToCart: (product: any) => void;
+  onLoadMore: (messageId: string) => void;
+  onFollowUp: (prompt: string) => void;
+}) {
+  const router = useRouter();
+  const products = Array.isArray(message.products) ? message.products : [];
+  const paging = message.recommendation_paging;
+  const time = formatMessageTime(message.id);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.25 }}
+      className="flex flex-col gap-3"
+    >
+      <Eyebrow>Pivota · {time}</Eyebrow>
+
+      {message.content ? (
+        <p className="pv-body whitespace-pre-line text-ink-2">{message.content}</p>
+      ) : null}
+
+      {products.length > 0 ? (
+        <>
+          <div className="grid grid-cols-2 gap-4 sm:gap-5">
+            {products.map((product) => {
+              const href = buildProductHref(product.product_id, product.merchant_id);
+              return (
+                <Link
+                  key={buildProductKey(product)}
+                  href={href}
+                  prefetch={false}
+                  onClick={(event) => {
+                    if (event.defaultPrevented) return;
+                    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+                    event.preventDefault();
+                    router.push(appendCurrentPathAsReturn(href));
+                  }}
+                  className="block"
+                >
+                  <ProductCard
+                    image={normalizeDisplayImageUrl(product.image_url, '/placeholder.svg')}
+                    imageAlt={product.title}
+                    brand={product.merchant_name || null}
+                    title={product.title}
+                    priceLabel={formatPriceLabel(product.price, product.currency)}
+                    onSave={() => onAddToCart(product)}
+                    aspect="4/5"
+                  />
+                </Link>
+              );
+            })}
+          </div>
+
+          <InsightBlock>
+            Picked these because they match your search and have the strongest in-stock signal.
+            Tap a card for full details, or use the prompts below to refine.
+          </InsightBlock>
+
+          <div className="-mx-2 flex gap-1.5 overflow-x-auto px-2 pb-1">
+            {FOLLOWUP_PROMPTS.map((prompt) => (
+              <Chip
+                key={prompt}
+                variant="default"
+                size="sm"
+                onClick={() => onFollowUp(prompt)}
+              >
+                {prompt}
+              </Chip>
+            ))}
+          </div>
+
+          {paging?.hasMore ? (
+            <button
+              type="button"
+              onClick={() => onLoadMore(message.id)}
+              disabled={Boolean(paging.isLoadingMore)}
+              className={cn(
+                'mt-1 flex w-full items-center justify-center rounded-full border border-hairline bg-surface py-2.5',
+                'font-editorial-mono text-[10px] uppercase tracking-[0.12em] text-ink-muted',
+                'transition-colors hover:text-ink hover:border-ink/30 disabled:opacity-50',
+              )}
+            >
+              {paging.isLoadingMore ? 'Loading more…' : 'Load more from the edit'}
+            </button>
+          ) : null}
+        </>
+      ) : null}
+    </motion.div>
+  );
+}
+
+function TypingIndicator() {
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      className="flex items-center gap-2"
+    >
+      <Eyebrow>Pivota · thinking</Eyebrow>
+      <span aria-hidden="true" className="inline-flex gap-1 text-ink-muted">
+        <span className="animate-bounce">●</span>
+        <span className="animate-bounce" style={{ animationDelay: '0.1s' }}>
+          ●
+        </span>
+        <span className="animate-bounce" style={{ animationDelay: '0.2s' }}>
+          ●
+        </span>
+      </span>
+    </motion.div>
+  );
+}
+
+// Silence unused warnings — these icons may come back when desktop right
+// rail (bag preview + saved this week) lands as a follow-up.
+void Heart;
