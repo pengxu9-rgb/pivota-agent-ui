@@ -323,3 +323,108 @@
 ::-webkit-scrollbar-thumb:hover {
   @apply bg-muted-foreground/50;
 }
+
+/* =====================================================================
+   Editorial redesign tokens — handoff in /dev/design_handoff_editorial_redesign
+   ---------------------------------------------------------------------
+   Additive: lives alongside the existing palette so PDP / checkout
+   (frozen) keep compiling. Names are namespaced where they would clash
+   with the existing tokens (`--muted` → `--ink-muted`, `--accent*` →
+   `--terracotta*`, `--gold` → `--gold-ed`). Pages opt in via the new
+   `pv-*` utility classes below, or the `bg-paper` / `text-ink` etc.
+   Tailwind utilities mapped in tailwind.config.ts.
+   ===================================================================== */
+
+@layer base {
+  :root {
+    /* Surfaces */
+    --paper:     #FBFAF6;
+    --paper-2:   #F1ECE0;
+    --surface:   #FFFFFF;
+    --surface-2: #F6F3EC;
+
+    /* Ink */
+    --ink:        #1A1814;
+    --ink-2:      #2B2620;
+    --ink-muted:  #76695A;
+    --subtle:     #A89C8B;
+
+    /* Hairlines (translucent so they sit on any surface) */
+    --hairline:   rgba(26, 24, 20, 0.10);
+    --hairline-2: rgba(26, 24, 20, 0.06);
+
+    /* Terracotta accent — used sparingly */
+    --terracotta:     #A8542C;
+    --terracotta-ink: #6E3416;
+    --terracotta-bg:  #F1E2D2;
+
+    /* Sage — secondary accent (in-stock / shipping ok) */
+    --sage:    #5B6B4D;
+    --sage-bg: #E4E6DA;
+
+    /* Functional */
+    --gold-ed:  #B89A5C;
+    --error-ed: #8B3A2C;
+  }
+}
+
+@layer components {
+  /* Type ramp. Pages may override size per usage; these are the defaults.
+     Newsreader uses the optical-size axis — set via font-variation-settings
+     when a larger display size is rendered (the components in editorial/
+     handle the size + opsz pairing). */
+
+  .pv-display {
+    font-family: var(--f-serif);
+    font-weight: 400;
+    font-size: clamp(2.5rem, 6vw, 5rem);          /* 40–80px */
+    line-height: 1;
+    letter-spacing: -0.02em;
+    color: var(--ink);
+  }
+
+  .pv-headline {
+    font-family: var(--f-serif);
+    font-weight: 400;
+    font-size: clamp(1.5rem, 3vw, 2.5rem);        /* 24–40px */
+    line-height: 1.1;
+    letter-spacing: -0.015em;
+    color: var(--ink);
+  }
+
+  .pv-title {
+    font-family: var(--f-serif);
+    font-weight: 400;
+    font-size: clamp(0.875rem, 1.4vw, 1.375rem);  /* 14–22px */
+    line-height: 1.2;
+    letter-spacing: -0.01em;
+    color: var(--ink);
+  }
+
+  .pv-body {
+    font-family: var(--f-sans);
+    font-weight: 400;
+    font-size: clamp(0.75rem, 1vw, 1.0625rem);    /* 12–17px */
+    line-height: 1.55;
+    letter-spacing: -0.005em;
+    color: var(--ink-2);
+  }
+
+  .pv-label {
+    font-family: var(--f-mono);
+    font-weight: 500;
+    font-size: clamp(0.5625rem, 0.7vw, 0.6875rem); /* 9–11px */
+    line-height: 1;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-muted);
+  }
+
+  .pv-num {
+    font-family: var(--f-serif);
+    font-weight: 400;
+    font-feature-settings: 'tnum' 1, 'lnum' 1;
+    letter-spacing: -0.02em;
+    color: var(--ink);
+  }
+}
