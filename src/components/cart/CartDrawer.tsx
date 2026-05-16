@@ -1,65 +1,137 @@
 'use client';
 
-import { X, Minus, Plus, Trash2 } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
-import Image from 'next/image';
+import { X } from 'lucide-react';
+import { AnimatePresence, motion } from 'framer-motion';
 import { useRouter } from 'next/navigation';
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
-import { Button } from '@/components/ui/button';
-import { normalizeDisplayImageUrl } from '@/lib/displayImage';
-import { useCartStore } from '@/store/cartStore';
+
+import { Button, IconButton } from '@/components/ui/editorial/Button';
+import { Eyebrow, Headline, Mono, Num, Title } from '@/components/ui/editorial/Type';
 import { isAuroraEmbedMode, postRequestCloseToParent } from '@/lib/auroraEmbed';
+import {
+  combinedCurrency,
+  combinedItemCount,
+  combinedSubtotal,
+  groupCartByMerchant,
+  type MerchantGroup,
+} from '@/lib/cartGrouping';
+import { normalizeDisplayImageUrl } from '@/lib/displayImage';
+import { useCartStore, type CartItem } from '@/store/cartStore';
 import { resolveHostedCheckoutUrl } from '@/lib/ucpCheckout';
+import { cn } from '@/lib/utils';
+
+import { MerchantCartCard } from './editorial/MerchantCartCard';
+
+/**
+ * Editorial Cart drawer — merchant-grouped, sequential checkout.
+ *
+ *  - The drawer wraps the existing global cart store so the rest of the
+ *    app (Add to Bag buttons, header pills, etc.) keeps working unchanged.
+ *  - Items are re-keyed by `merchant_id` into `MerchantGroup[]` for
+ *    rendering. The first merchant group's checkout CTA renders in
+ *    terracotta (`accent`); others stay ink-filled.
+ *  - Primary CTA at the bottom of the drawer triggers checkout for the
+ *    first merchant only, mirroring `Checkout with {merchant}` inside that
+ *    merchant's own card. Each merchant card's CTA also works independently.
+ *  - Checkout submission goes through the existing `resolveHostedCheckoutUrl`
+ *    (UCP first, legacy fallback) — never modifies checkout APIs. UCP
+ *    already rejects multi-merchant carts as `blocked`, so we filter the
+ *    cart to a single merchant's items before calling.
+ */
+
+function formatPrice(amount: number, currency: string | null): string {
+  const safeCurrency = (currency || 'USD').toUpperCase();
+  try {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: safeCurrency,
+    }).format(amount);
+  } catch {
+    return `${safeCurrency} ${amount.toFixed(2)}`;
+  }
+}
+
+function buildHostedCheckoutItems(items: CartItem[]) {
+  return items.map((item) => ({
+    product_id: item.product_id || item.id,
+    variant_id: item.variant_id || item.product_id || item.id,
+    sku: item.sku,
+    merchant_id: item.merchant_id,
+    offer_id: item.offer_id,
+    title: item.title,
+    quantity: item.quantity,
+    unit_price: item.price,
+    currency: item.currency,
+    image_url: normalizeDisplayImageUrl(item.imageUrl, '/placeholder.svg'),
+  }));
+}
 
 export default function CartDrawer() {
   const router = useRouter();
-  const { items, isOpen, close, removeItem, updateQuantity, getTotal, clearCart } = useCartStore();
+  const { items, isOpen, close, removeItem, updateQuantity } = useCartStore();
   const isEmbed = useMemo(() => isAuroraEmbedMode(), []);
+  const [checkingOutMerchantId, setCheckingOutMerchantId] = useState<string | null>(null);
 
-  const handleCheckout = async () => {
-    if (items.length === 0) return;
+  const groups = useMemo(() => groupCartByMerchant(items), [items]);
+  const totalItems = useMemo(() => combinedItemCount(groups), [groups]);
+  const subtotal = useMemo(() => combinedSubtotal(groups), [groups]);
+  const currency = useMemo(() => combinedCurrency(groups), [groups]);
 
-    const orderItems = items.map((item) => ({
-      product_id: item.product_id || item.id,
-      variant_id: item.variant_id || item.product_id || item.id,
-      sku: item.sku,
-      merchant_id: item.merchant_id,
-      offer_id: item.offer_id,
-      title: item.title,
-      quantity: item.quantity,
-      unit_price: item.price,
-      currency: item.currency,
-      image_url: normalizeDisplayImageUrl(item.imageUrl, '/placeholder.svg'),
-    }));
+  const firstGroup = groups[0] ?? null;
+  const followUpNames = groups
+    .slice(1)
+    .map((g) => g.merchantName)
+    .filter(Boolean);
 
-    const searchParams =
-      typeof window !== 'undefined'
-        ? new URLSearchParams(window.location.search)
-        : new URLSearchParams();
-    const checkoutUrl = await resolveHostedCheckoutUrl({
-      items: orderItems,
-      context: { searchParams },
-    });
-    if (checkoutUrl.status === 'blocked' || !checkoutUrl.url) {
-      toast.error(
-        checkoutUrl.message ||
-          'This cart cannot be checked out as a single order yet.',
-      );
+  // Reset in-flight state when the drawer closes so re-opening starts clean.
+  useEffect(() => {
+    if (!isOpen) setCheckingOutMerchantId(null);
+  }, [isOpen]);
+
+  const handleCheckoutMerchant = async (group: MerchantGroup) => {
+    if (!group.items.length) return;
+    setCheckingOutMerchantId(group.merchantId);
+    try {
+      const searchParams =
+        typeof window !== 'undefined'
+          ? new URLSearchParams(window.location.search)
+          : new URLSearchParams();
+      const result = await resolveHostedCheckoutUrl({
+        items: buildHostedCheckoutItems(group.items),
+        context: { searchParams },
+      });
+      if (result.status === 'blocked' || !result.url) {
+        toast.error(
+          result.message ||
+            `${group.merchantName} checkout can't be opened right now. Please try again.`,
+        );
+        return;
+      }
+
+      try {
+        const nextUrl = new URL(result.url, window.location.origin);
+        if (nextUrl.origin !== window.location.origin) {
+          window.location.assign(nextUrl.toString());
+        } else {
+          router.push(`${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`);
+        }
+      } catch {
+        router.push(result.url);
+      }
+      close();
+    } finally {
+      setCheckingOutMerchantId(null);
+    }
+  };
+
+  const handleEmptyAction = () => {
+    close();
+    if (isEmbed) {
+      postRequestCloseToParent({ reason: 'empty_cart_back' });
       return;
     }
-
-    try {
-      const nextUrl = new URL(checkoutUrl.url, window.location.origin);
-      if (nextUrl.origin !== window.location.origin) {
-        window.location.assign(nextUrl.toString());
-      } else {
-        router.push(`${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`);
-      }
-    } catch {
-      router.push(checkoutUrl.url);
-    }
-    close();
+    router.push('/products');
   };
 
   return (
@@ -72,7 +144,7 @@ export default function CartDrawer() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={close}
-            className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50"
+            className="fixed inset-0 z-50 bg-ink/40 backdrop-blur-sm"
           />
 
           {/* Drawer */}
@@ -81,123 +153,163 @@ export default function CartDrawer() {
             animate={{ x: 0 }}
             exit={{ x: '100%' }}
             transition={{ type: 'spring', damping: 30, stiffness: 300 }}
-            className="fixed right-0 top-0 h-full w-full sm:w-96 bg-card border-l border-border shadow-2xl z-50 flex flex-col"
+            className={cn(
+              'fixed right-0 top-0 z-50 flex h-full w-full flex-col',
+              'bg-paper text-ink border-l border-hairline shadow-2xl',
+              'sm:w-[440px] lg:w-[520px]',
+            )}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Shopping bag"
           >
             {/* Header */}
-            <div className="flex items-center justify-between p-4 border-b border-border">
-              <h2 className="text-lg font-semibold">Shopping Cart</h2>
-              <button
+            <header className="flex items-center justify-between border-b border-hairline px-4 py-3 sm:px-5">
+              <IconButton
+                label="Close cart"
+                size="sm"
+                className="-ml-2"
                 onClick={close}
-                className="h-8 w-8 rounded-full flex items-center justify-center hover:bg-secondary transition-colors"
               >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
+                <X size={17} strokeWidth={1.75} />
+              </IconButton>
+              <div className="flex items-baseline gap-1.5 text-ink">
+                <Headline as="h2" className="text-[16px] leading-none">
+                  Bag
+                </Headline>
+                <span aria-hidden="true" className="text-ink-muted">·</span>
+                <Num value={totalItems} className="text-[16px]" />
+                {groups.length > 1 ? (
+                  <Mono className="ml-1.5 text-[10px]">
+                    {groups.length} stores
+                  </Mono>
+                ) : null}
+              </div>
+              {/* Symmetry spacer to keep title centred */}
+              <span className="inline-block h-8 w-8" aria-hidden="true" />
+            </header>
 
-            {/* Items */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-3">
-              <AnimatePresence>
-                {items.length === 0 ? (
-                  <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    className="flex flex-col items-center justify-center h-full text-center"
-                  >
-                    <p className="text-muted-foreground">Your cart is empty</p>
-                    <Button
-                      variant="gradient"
-                      className="mt-4"
-                      onClick={() => {
-                        close();
-                        if (isEmbed) {
-                          postRequestCloseToParent({ reason: 'empty_cart_back' });
-                          return;
+            {/* Scrollable body */}
+            <div className="flex-1 overflow-y-auto bg-paper">
+              {groups.length === 0 ? (
+                <div className="flex h-full flex-col items-center justify-center gap-4 px-6 text-center">
+                  <p className="font-editorial-serif text-[20px] text-ink-2">
+                    Your bag is empty.
+                  </p>
+                  <Mono className="text-ink-muted">
+                    Saved pieces will appear here once you add them.
+                  </Mono>
+                  <Button variant="default" onClick={handleEmptyAction} className="mt-3">
+                    {isEmbed ? 'Back to Aurora' : 'Browse products'}
+                  </Button>
+                </div>
+              ) : (
+                <>
+                  {/* Pivota note — only shows when truly multi-merchant */}
+                  {groups.length > 1 ? (
+                    <div className="mx-4 mt-4 mb-4 border-l-[1.5px] border-terracotta bg-surface-2 px-3.5 py-3 sm:mx-5">
+                      <Mono className="text-[9.5px] text-terracotta-ink">
+                        Pivota · note
+                      </Mono>
+                      <p className="mt-1 font-editorial-sans text-[12.5px] leading-[1.5] text-ink-2">
+                        Your bag spans{' '}
+                        <Num value={groups.length} className="text-[12.5px]" /> houses —
+                        each ships separately, so checkout is per merchant. I&apos;ll guide
+                        you through them in order.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="h-4" />
+                  )}
+
+                  {/* Merchant cards */}
+                  <div className="space-y-4 px-4 pb-3 sm:px-5">
+                    {groups.map((group, idx) => (
+                      <MerchantCartCard
+                        key={group.merchantId}
+                        group={group}
+                        accent={idx === 0}
+                        compact
+                        onUpdateQuantity={(item, next) => updateQuantity(item.id, next)}
+                        onRemoveItem={(item) => removeItem(item.id)}
+                        onCheckoutMerchant={handleCheckoutMerchant}
+                        checkoutDisabled={
+                          checkingOutMerchantId !== null &&
+                          checkingOutMerchantId !== group.merchantId
                         }
-                        router.push('/products');
-                      }}
-                    >
-                      {isEmbed ? 'Back to Aurora' : 'Browse Products'}
-                    </Button>
-                  </motion.div>
-                ) : (
-                  items.map((item) => (
-                    <motion.div
-                      key={item.id}
-                      initial={{ opacity: 0, x: 20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      exit={{ opacity: 0, x: -20 }}
-                      className="flex gap-3 p-3 rounded-2xl bg-secondary/50 border border-border"
-                    >
-                      <div className="relative w-20 h-20 rounded-xl overflow-hidden flex-shrink-0">
-                        <Image
-                          src={normalizeDisplayImageUrl(item.imageUrl, '/placeholder.svg')}
-                          alt={item.title}
-                          fill
-                          className="object-cover"
-                          unoptimized
+                      />
+                    ))}
+                  </div>
+
+                  {/* Combined totals — only shows when multi-merchant */}
+                  {groups.length > 1 ? (
+                    <div className="mx-4 mb-4 border border-ink bg-surface px-4 py-4 sm:mx-5 sm:px-5">
+                      <Eyebrow className="mb-3">Across all merchants</Eyebrow>
+                      <div className="flex items-baseline justify-between py-1">
+                        <Mono className="text-[10px] text-ink-muted">
+                          Subtotal · {totalItems} item{totalItems === 1 ? '' : 's'}
+                        </Mono>
+                        <Num
+                          value={formatPrice(subtotal, currency)}
+                          className="text-[14px]"
                         />
                       </div>
-
-                      <div className="flex-1 min-w-0">
-                        <h4 className="font-medium text-sm truncate">{item.title}</h4>
-                        <p className="text-sm font-semibold text-primary">${item.price.toFixed(2)}</p>
-
-                        <div className="flex items-center gap-2 mt-2">
-                          <button
-                            onClick={() => updateQuantity(item.id, Math.max(1, item.quantity - 1))}
-                            className="h-6 w-6 rounded-lg flex items-center justify-center bg-background hover:bg-muted transition-colors"
-                          >
-                            <Minus className="h-3 w-3" />
-                          </button>
-                          <span className="text-sm font-medium w-8 text-center">{item.quantity}</span>
-                          <button
-                            onClick={() => updateQuantity(item.id, item.quantity + 1)}
-                            className="h-6 w-6 rounded-lg flex items-center justify-center bg-background hover:bg-muted transition-colors"
-                          >
-                            <Plus className="h-3 w-3" />
-                          </button>
-                          <button
-                            onClick={() => removeItem(item.id)}
-                            className="ml-auto h-6 w-6 rounded-lg flex items-center justify-center text-destructive hover:bg-destructive/10 transition-colors"
-                          >
-                            <Trash2 className="h-3 w-3" />
-                          </button>
-                        </div>
+                      <div className="flex items-baseline justify-between py-1">
+                        <Mono className="text-[10px] text-ink-muted">
+                          Shipping · {groups.length} merchants
+                        </Mono>
+                        <Mono className="text-[10px] text-ink-muted">at checkout</Mono>
                       </div>
-                    </motion.div>
-                  ))
-                )}
-              </AnimatePresence>
+                      <hr className="my-2 border-0 border-t border-hairline-2" />
+                      <div className="flex items-baseline justify-between pb-1 pt-1">
+                        <Title as="p" className="text-[15px]">
+                          Total to spend
+                        </Title>
+                        <Num
+                          value={formatPrice(subtotal, currency)}
+                          className="text-[22px]"
+                        />
+                      </div>
+                      <Mono className="text-[9px] text-ink-muted">
+                        Shipping added at each merchant&apos;s checkout
+                      </Mono>
+                    </div>
+                  ) : null}
+
+                  <div className="h-6" />
+                </>
+              )}
             </div>
 
-            {/* Footer */}
-            {items.length > 0 && (
-              <div className="border-t border-border p-4 space-y-3">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Subtotal</span>
-                  <span className="font-semibold">${getTotal().toFixed(2)}</span>
-                </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Shipping</span>
-                  <span className="font-semibold text-success">FREE</span>
-                </div>
-                <div className="h-px bg-border" />
-                <div className="flex items-center justify-between">
-                  <span className="text-lg font-bold">Total</span>
-                  <span className="text-lg font-bold text-primary">
-                    ${getTotal().toFixed(2)}
-                  </span>
-                </div>
-
+            {/* Sticky bottom CTA — sequential checkout helper */}
+            {firstGroup ? (
+              <div className="border-t border-hairline bg-paper px-4 py-3.5 sm:px-5">
                 <Button
-                  variant="gradient"
-                  className="w-full h-12 text-base"
-                  onClick={handleCheckout}
+                  variant="default"
+                  size="lg"
+                  className="w-full justify-between px-5"
+                  onClick={() => handleCheckoutMerchant(firstGroup)}
+                  disabled={checkingOutMerchantId !== null}
                 >
-                  Checkout
+                  <span>
+                    {groups.length > 1
+                      ? `Start with ${firstGroup.merchantName}`
+                      : `Checkout with ${firstGroup.merchantName}`}
+                  </span>
+                  <Num
+                    value={formatPrice(
+                      firstGroup.subtotal,
+                      firstGroup.currency || currency,
+                    )}
+                    className="text-[15px] text-paper"
+                  />
                 </Button>
+                {followUpNames.length > 0 ? (
+                  <Mono className="mt-2 block text-center text-[9px] text-ink-muted">
+                    Then {followUpNames.join(' · then ')}
+                  </Mono>
+                ) : null}
               </div>
-            )}
+            ) : null}
           </motion.div>
         </>
       )}

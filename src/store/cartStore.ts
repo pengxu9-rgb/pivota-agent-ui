@@ -14,6 +14,16 @@ export interface CartItem {
   quantity: number
   imageUrl: string
   merchant_id?: string
+  // Editorial cart fields — optional, populated when the add-to-cart caller
+  // has them at hand. Older persisted cart state predating these fields
+  // continues to read fine; the editorial UI falls back to `merchant_id`
+  // when `merchant_name` is missing and omits the chrome rows when
+  // location / shipping / policy are missing. No fabricated copy ever
+  // reaches merchant-facing surfaces.
+  merchant_name?: string
+  merchant_location?: string
+  merchant_ship_estimate?: string
+  merchant_return_policy_label?: string
 }
 
 interface CartStore {
