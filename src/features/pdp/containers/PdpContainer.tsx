@@ -75,6 +75,10 @@ import { WaysToSave } from '@/features/pdp/components/WaysToSave';
 import { ModuleShell } from '@/features/pdp/components/ModuleShell';
 import { BeautyPDPMobile } from '@/features/pdp/containers/BeautyPDPMobile';
 import { BeautyPDPDesktop } from '@/features/pdp/containers/BeautyPDPDesktop';
+import { FashionPDPMobile } from '@/features/pdp/containers/FashionPDPMobile';
+import { FashionPDPDesktop } from '@/features/pdp/containers/FashionPDPDesktop';
+import { ElectronicsPDPMobile } from '@/features/pdp/containers/ElectronicsPDPMobile';
+import { ElectronicsPDPDesktop } from '@/features/pdp/containers/ElectronicsPDPDesktop';
 import { BeautyVariantSelector } from '@/features/pdp/components/BeautyVariantSelector';
 import type { BeautyInsightsData } from '@/features/pdp/components/BeautyPivotaInsights';
 import { DEFAULT_UGC_SNAPSHOT, lockFirstUgcSource, mergeUgcItems } from '@/features/pdp/state/freezePolicy';
@@ -611,7 +615,7 @@ function buildReviewScopeLabel(scopeId: string | null, reviews: ReviewsPreviewDa
 
 export function isLikelyBeautyExternalSeedProduct(
   product: PDPPayload['product'],
-  resolvedMode: 'beauty' | 'generic',
+  resolvedMode: 'beauty' | 'fashion' | 'electronics' | 'generic',
 ): boolean {
   if (resolvedMode === 'beauty') return true;
   if (isBeautyProduct(product)) return true;
@@ -1437,7 +1441,7 @@ export function PdpContainer({
 }: {
   payload: PDPPayload;
   initialQuantity?: number;
-  mode?: 'beauty' | 'generic';
+  mode?: 'beauty' | 'fashion' | 'electronics' | 'generic';
   onAddToCart: (args: {
     variant: Variant;
     quantity: number;
@@ -1637,13 +1641,18 @@ export function PdpContainer({
     setQuantity((q) => Math.min(Math.max(1, q), maxQuantity));
   }, [maxQuantity, selectedVariantId]);
 
-  const resolvedMode: 'beauty' | 'generic' = mode || (isBeautyProduct(payload.product) ? 'beauty' : 'generic');
+  const resolvedMode: 'beauty' | 'fashion' | 'electronics' | 'generic' =
+    mode || (isBeautyProduct(payload.product) ? 'beauty' : 'generic');
   // Beauty PDP redesign gate. Beauty products render the dedicated redesign
   // tree (BeautyPDPMobile / BeautyPDPDesktop, early return below); the
   // generic path is untouched. `isDesktop` is false during SSR / first
   // client render, so beauty hydrates into the mobile tree first.
   const isBeautyMobile = resolvedMode === 'beauty' && !isDesktop;
   const isBeautyDesktop = resolvedMode === 'beauty' && isDesktop;
+  const isFashionMobile = resolvedMode === 'fashion' && !isDesktop;
+  const isFashionDesktop = resolvedMode === 'fashion' && isDesktop;
+  const isElectronicsMobile = resolvedMode === 'electronics' && !isDesktop;
+  const isElectronicsDesktop = resolvedMode === 'electronics' && isDesktop;
 
   const media = getModuleData<MediaGalleryData>(payload, 'media_gallery');
   const pricePromo = getModuleData<PricePromoData>(payload, 'price_promo');
@@ -4196,6 +4205,7 @@ export function PdpContainer({
             : null
         }
         onSeeAllReviews={onSeeAllReviews}
+        onWriteReview={handleWriteReview}
         questions={mergedQuestions}
         onAskQuestion={handleAskQuestion}
         canAskQuestion={canAskQuestion}
@@ -4334,6 +4344,335 @@ export function PdpContainer({
             setActiveMediaIndex(index);
           }
         }}
+      />
+      </>
+    );
+  }
+
+  // ── Fashion PDP redesign ────────────────────────────────────────────────
+  // Mirrors the beauty early-return. FashionPDPMobile/Desktop assemble the
+  // redesigned chrome; fashion-specific data (fitChart, model, pairings,
+  // material/care) is pulled from `payload.product.fashion_meta` which the
+  // adapter passes through verbatim. When a field is absent the leaf
+  // component renders nothing for that block — no fabrication.
+  if (isFashionMobile || isFashionDesktop) {
+    const fashionMeta = payload.product.fashion_meta || null;
+    const fashionColors = shouldRenderColorOptions
+      ? displayColorSheetOptions.map((opt) => ({
+          id: opt.value,
+          name: opt.value,
+          hex: opt.swatch_hex,
+          imageUrl: opt.swatch_image_url,
+        }))
+      : null;
+    const fashionSizes = sizeOptions.length ? sizeOptions.map((s) => ({ id: s, label: s })) : null;
+    const FashionShell = isFashionDesktop ? FashionPDPDesktop : FashionPDPMobile;
+
+    return (
+      <>
+      <FashionShell
+        brand={payload.product.brand?.name}
+        title={payload.product.title}
+        subtitle={payload.product.subtitle}
+        rating={reviews ? (reviews.rating / (reviews.scale || 5)) * 5 : null}
+        reviewCount={reviews?.review_count}
+        price={displayPriceAmount}
+        compareAt={compareAmount}
+        discountPct={discountPercent}
+        currency={displayCurrency}
+        galleryImages={galleryItems.map((m) => m.url).filter(Boolean)}
+        onOpenViewer={(index) =>
+          setMediaViewer({ isOpen: true, mode: 'official', source: 'media_gallery', initialIndex: index })
+        }
+        colors={fashionColors}
+        selectedColorId={selectedColor}
+        onSelectColor={handleColorSelect}
+        sizes={fashionSizes}
+        selectedSizeId={selectedSize}
+        onSelectSize={handleSizeSelect}
+        fitChart={fashionMeta?.size_fit_chart ?? null}
+        modelInfo={fashionMeta?.model?.info ?? null}
+        modelAvatar={fashionMeta?.model?.avatar_url ?? null}
+        benefits={null}
+        material={fashionMeta?.material ?? null}
+        origin={fashionMeta?.origin ?? null}
+        care={fashionMeta?.care ?? null}
+        offers={offers}
+        selectedVariant={selectedVariant}
+        selectedOfferId={selectedOffer?.offer_id || null}
+        bestPriceOfferId={variantAwareBestPriceOfferId || payload.best_price_offer_id || null}
+        primaryMerchantId={payload.product.merchant_id || null}
+        onSelectOffer={(offerId) => {
+          setSelectedOfferId(offerId);
+          pdpTracking.track('pdp_action_click', { action_type: 'select_offer', offer_id: offerId });
+        }}
+        etaRange={effectiveShippingEta as [number, number] | undefined}
+        shippingMethodLabel={selectedOffer?.shipping?.method_label || null}
+        freeShipping={
+          typeof selectedOffer?.shipping?.cost?.amount === 'number'
+            ? selectedOffer.shipping.cost.amount === 0
+            : null
+        }
+        returnWindowDays={effectiveReturns?.return_window_days || null}
+        freeReturns={effectiveReturns?.free_returns ?? null}
+        shippingSellerLabel={selectedOffer?.merchant_name || null}
+        product={payload.product as any}
+        recentPurchases={recentPurchases.map((rp) => ({
+          user: rp.user_label,
+          variant: rp.variant_label || '',
+          time: rp.time_label || '',
+        }))}
+        recentPurchasesTotal={recentPurchases.length || null}
+        customerPhotos={ugcItems.map((u) => u.url).filter(Boolean)}
+        customerPhotosTotal={ugcItems.length || null}
+        onUgcViewAll={() =>
+          openViewer({ mode: 'ugc', source: ugcSnapshot.source || 'unknown', index: 0 })
+        }
+        onUgcShare={canUploadMedia ? handleUploadMedia : undefined}
+        onUgcPhotoClick={(index) =>
+          openViewer({ mode: 'ugc', source: ugcSnapshot.source || 'unknown', index, trackThumbnail: true })
+        }
+        insights={null}
+        pairings={fashionMeta?.styling_pairings ?? null}
+        reviews={
+          reviews?.preview_items?.length
+            ? reviews.preview_items.map((pi) => ({
+                name: pi.author_label || 'Reviewer',
+                rating: pi.rating,
+                title: pi.title || null,
+                body: pi.text_snippet || null,
+              }))
+            : null
+        }
+        onWriteReview={handleWriteReview}
+        onSeeAllReviews={onSeeAllReviews}
+        questions={mergedQuestions}
+        onAskQuestion={handleAskQuestion}
+        canAskQuestion={canAskQuestion}
+        onSeeAllQuestions={() => {
+          pdpTracking.track('pdp_action_click', { action_type: 'open_embed', target: 'open_questions' });
+          openQuestionsHub();
+        }}
+        onOpenQuestion={(questionId) => {
+          pdpTracking.track('pdp_action_click', { action_type: 'open_embed', target: 'open_question_thread' });
+          openQuestionThread(questionId);
+        }}
+        brandName={payload.product.brand?.name}
+        brandHref={brandHref}
+        similar={
+          hasRecommendationItems
+            ? recommendations.items.slice(0, similarVisibleCount).map((it) => ({
+                id: it.product_id,
+                title: it.title,
+                image: it.image_url || '',
+                priceLabel: it.price
+                  ? formatPrice(it.price.amount ?? 0, it.price.currency || displayCurrency)
+                  : '',
+                rating: it.rating ?? null,
+                reviews: it.review_count ?? null,
+                highlight: it.description || null,
+              }))
+            : null
+        }
+        onSimilarClick={(item, index) => {
+          pdpTracking.track('similar_click', {
+            index,
+            product_id: item.id,
+            source: pdpViewModel.sourceLocks.similar ? 'locked' : 'live',
+          });
+          router.push(buildProductHref(item.id));
+        }}
+        buyNowLabel={actionsByType.buy_now || 'Buy now'}
+        inStock={effectiveIsInStock}
+        quantity={resolvedQuantity}
+        onQtyChange={(next) => setQuantity(next)}
+        onAddToCart={() => {
+          pdpTracking.track('pdp_action_click', { action_type: 'add_to_cart', variant_id: selectedVariant.variant_id });
+          dispatchPdpAction('add_to_cart', {
+            variant: selectedVariant,
+            quantity: resolvedQuantity,
+            merchant_id: effectiveMerchantId,
+            product_id: effectiveProductId || undefined,
+            offer_id: selectedOffer?.offer_id || undefined,
+            onAddToCart,
+          });
+        }}
+        onBuyNow={() => {
+          pdpTracking.track('pdp_action_click', { action_type: 'buy_now', variant_id: selectedVariant.variant_id });
+          dispatchPdpAction('buy_now', {
+            variant: selectedVariant,
+            quantity: resolvedQuantity,
+            merchant_id: effectiveMerchantId,
+            product_id: effectiveProductId || undefined,
+            offer_id: selectedOffer?.offer_id || undefined,
+            onBuyNow,
+          });
+        }}
+        onBack={handleBack}
+        onShare={handleShare}
+        onSearch={() => router.push('/')}
+      />
+      </>
+    );
+  }
+
+  // ── Electronics PDP redesign ───────────────────────────────────────────
+  // Mirrors the beauty/fashion early-returns. Electronics-specific data
+  // (configurator, protection plans, specs, pro reviews, in-box) comes from
+  // `payload.product.electronics_meta`. Configurator + protection-plan
+  // selection state lives inside ElectronicsPDPMobile/Desktop — the
+  // container only seeds the initial values.
+  if (isElectronicsMobile || isElectronicsDesktop) {
+    const electronicsMeta = payload.product.electronics_meta || null;
+    const electronicsColors = shouldRenderColorOptions
+      ? displayColorSheetOptions.map((opt) => ({
+          id: opt.value,
+          name: opt.value,
+          hex: opt.swatch_hex,
+          imageUrl: opt.swatch_image_url,
+        }))
+      : null;
+    const ElectronicsShell = isElectronicsDesktop ? ElectronicsPDPDesktop : ElectronicsPDPMobile;
+
+    return (
+      <>
+      <ElectronicsShell
+        brand={payload.product.brand?.name}
+        title={payload.product.title}
+        subtitle={payload.product.subtitle}
+        rating={reviews ? (reviews.rating / (reviews.scale || 5)) * 5 : null}
+        reviewCount={reviews?.review_count}
+        basePrice={displayPriceAmount}
+        compareAt={compareAmount}
+        discountPct={discountPercent}
+        currency={displayCurrency}
+        galleryImages={galleryItems.map((m) => m.url).filter(Boolean)}
+        onOpenViewer={(index) =>
+          setMediaViewer({ isOpen: true, mode: 'official', source: 'media_gallery', initialIndex: index })
+        }
+        colors={electronicsColors}
+        selectedColorId={selectedColor}
+        onSelectColor={handleColorSelect}
+        configuratorGroups={electronicsMeta?.configurator_groups ?? null}
+        initialConfigSelection={null}
+        protectionPlans={electronicsMeta?.protection_plans ?? null}
+        initialProtectionId={null}
+        offers={offers}
+        selectedVariant={selectedVariant}
+        selectedOfferId={selectedOffer?.offer_id || null}
+        bestPriceOfferId={variantAwareBestPriceOfferId || payload.best_price_offer_id || null}
+        primaryMerchantId={payload.product.merchant_id || null}
+        onSelectOffer={(offerId) => {
+          setSelectedOfferId(offerId);
+          pdpTracking.track('pdp_action_click', { action_type: 'select_offer', offer_id: offerId });
+        }}
+        etaRange={effectiveShippingEta as [number, number] | undefined}
+        shippingMethodLabel={selectedOffer?.shipping?.method_label || null}
+        freeShipping={
+          typeof selectedOffer?.shipping?.cost?.amount === 'number'
+            ? selectedOffer.shipping.cost.amount === 0
+            : null
+        }
+        returnWindowDays={effectiveReturns?.return_window_days || null}
+        freeReturns={effectiveReturns?.free_returns ?? null}
+        shippingSellerLabel={selectedOffer?.merchant_name || null}
+        product={payload.product as any}
+        insights={null}
+        specGroups={electronicsMeta?.spec_groups ?? null}
+        proReviews={electronicsMeta?.pro_reviews ?? null}
+        inBox={electronicsMeta?.in_box ?? null}
+        recentPurchases={recentPurchases.map((rp) => ({
+          user: rp.user_label,
+          variant: rp.variant_label || '',
+          time: rp.time_label || '',
+        }))}
+        recentPurchasesTotal={recentPurchases.length || null}
+        customerPhotos={ugcItems.map((u) => u.url).filter(Boolean)}
+        customerPhotosTotal={ugcItems.length || null}
+        onUgcViewAll={() =>
+          openViewer({ mode: 'ugc', source: ugcSnapshot.source || 'unknown', index: 0 })
+        }
+        onUgcShare={canUploadMedia ? handleUploadMedia : undefined}
+        onUgcPhotoClick={(index) =>
+          openViewer({ mode: 'ugc', source: ugcSnapshot.source || 'unknown', index, trackThumbnail: true })
+        }
+        reviews={
+          reviews?.preview_items?.length
+            ? reviews.preview_items.map((pi) => ({
+                name: pi.author_label || 'Reviewer',
+                rating: pi.rating,
+                title: pi.title || null,
+                body: pi.text_snippet || null,
+              }))
+            : null
+        }
+        onWriteReview={handleWriteReview}
+        onSeeAllReviews={onSeeAllReviews}
+        questions={mergedQuestions}
+        onAskQuestion={handleAskQuestion}
+        canAskQuestion={canAskQuestion}
+        onSeeAllQuestions={() => {
+          pdpTracking.track('pdp_action_click', { action_type: 'open_embed', target: 'open_questions' });
+          openQuestionsHub();
+        }}
+        onOpenQuestion={(questionId) => {
+          pdpTracking.track('pdp_action_click', { action_type: 'open_embed', target: 'open_question_thread' });
+          openQuestionThread(questionId);
+        }}
+        brandName={payload.product.brand?.name}
+        brandHref={brandHref}
+        similar={
+          hasRecommendationItems
+            ? recommendations.items.slice(0, similarVisibleCount).map((it) => ({
+                id: it.product_id,
+                title: it.title,
+                image: it.image_url || '',
+                priceLabel: it.price
+                  ? formatPrice(it.price.amount ?? 0, it.price.currency || displayCurrency)
+                  : '',
+                rating: it.rating ?? null,
+                reviews: it.review_count ?? null,
+                highlight: it.description || null,
+              }))
+            : null
+        }
+        onSimilarClick={(item, index) => {
+          pdpTracking.track('similar_click', {
+            index,
+            product_id: item.id,
+            source: pdpViewModel.sourceLocks.similar ? 'locked' : 'live',
+          });
+          router.push(buildProductHref(item.id));
+        }}
+        buyNowLabel={actionsByType.buy_now || 'Buy now'}
+        inStock={effectiveIsInStock}
+        quantity={resolvedQuantity}
+        onQtyChange={(next) => setQuantity(next)}
+        onAddToCart={() => {
+          pdpTracking.track('pdp_action_click', { action_type: 'add_to_cart', variant_id: selectedVariant.variant_id });
+          dispatchPdpAction('add_to_cart', {
+            variant: selectedVariant,
+            quantity: resolvedQuantity,
+            merchant_id: effectiveMerchantId,
+            product_id: effectiveProductId || undefined,
+            offer_id: selectedOffer?.offer_id || undefined,
+            onAddToCart,
+          });
+        }}
+        onBuyNow={() => {
+          pdpTracking.track('pdp_action_click', { action_type: 'buy_now', variant_id: selectedVariant.variant_id });
+          dispatchPdpAction('buy_now', {
+            variant: selectedVariant,
+            quantity: resolvedQuantity,
+            merchant_id: effectiveMerchantId,
+            product_id: effectiveProductId || undefined,
+            offer_id: selectedOffer?.offer_id || undefined,
+            onBuyNow,
+          });
+        }}
+        onBack={handleBack}
+        onShare={handleShare}
+        onSearch={() => router.push('/')}
       />
       </>
     );
@@ -4695,7 +5034,7 @@ export function PdpContainer({
                       handleVariantSelect(variantId);
                       pdpTracking.track('pdp_action_click', { action_type: 'select_variant', variant_id: variantId });
                     }}
-                    mode={resolvedMode}
+                    mode={resolvedMode === 'beauty' ? 'beauty' : 'generic'}
                   />
                 </div>
               ) : null}
@@ -4833,8 +5172,7 @@ export function PdpContainer({
                 <BeautyUgcGallery
                   items={ugcItems}
                   title={ugcSectionTitle}
-                  showEmpty
-                  ctaLabel="Share yours +"
+                  ctaLabel="Add your photo"
                   ctaEnabled={canUploadMedia}
                   onCtaClick={handleUploadMedia}
                   onOpenAll={() => {

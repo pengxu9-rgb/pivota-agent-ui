@@ -6,11 +6,9 @@ import { BeautyProductHeader } from '@/features/pdp/components/BeautyProductHead
 import { BeautyPriceRow } from '@/features/pdp/components/BeautyPriceRow';
 import { BeautyShadeSelector } from '@/features/pdp/components/BeautyShadeSelector';
 import { BeautySizeSelector } from '@/features/pdp/components/BeautySizeSelector';
-import { BeautyBenefitsStrip } from '@/features/pdp/components/BeautyBenefitsStrip';
 import { BeautyMobileSellerPicker } from '@/features/pdp/components/BeautyMobileSellerPicker';
 import { BeautyShippingStrip } from '@/features/pdp/components/BeautyShippingStrip';
 import { BeautyDesktopBuyBox } from '@/features/pdp/components/BeautyDesktopBuyBox';
-import { BeautyKeyClaims } from '@/features/pdp/components/BeautyKeyClaims';
 import { BeautyRecentPurchasesRows } from '@/features/pdp/components/BeautyRecentPurchasesRows';
 import { BeautyCustomerPhotos } from '@/features/pdp/components/BeautyCustomerPhotos';
 import { BeautyPivotaInsights } from '@/features/pdp/components/BeautyPivotaInsights';
@@ -19,35 +17,47 @@ import { BeautyReviewsPreview } from '@/features/pdp/components/BeautyReviewsPre
 import { BeautyYouMayAlsoLike } from '@/features/pdp/components/BeautyYouMayAlsoLike';
 import { BeautyQuestions } from '@/features/pdp/components/BeautyQuestions';
 import { BeautyBrandCard } from '@/features/pdp/components/BeautyBrandCard';
-import type { BeautyPDPMobileProps } from '@/features/pdp/containers/BeautyPDPMobile';
+import { WaysToSave } from '@/features/pdp/components/WaysToSave';
+import { FashionBenefitsStrip } from '@/features/pdp/components/FashionBenefitsStrip';
+import { FashionModelInfo } from '@/features/pdp/components/FashionModelInfo';
+import { FashionSizeFitGuide } from '@/features/pdp/components/FashionSizeFitGuide';
+import { FashionMaterialCare } from '@/features/pdp/components/FashionMaterialCare';
+import { FashionPivotaStyling } from '@/features/pdp/components/FashionPivotaStyling';
+import type { FashionPDPMobileProps } from '@/features/pdp/containers/FashionPDPMobile';
+import { useState } from 'react';
 
 /**
- * BeautyPDPDesktop — the desktop (≥1024px) layout for the Beauty PDP.
+ * FashionPDPDesktop — desktop (≥1024px) layout for the Fashion PDP.
+ * Derived from the mobile container; reuses every leaf component. Layout:
  *
- * The Claude Design handoff is mobile-only ("Desktop PDP is out of scope"),
- * so this layout is *derived*, not translated: it reuses every Beauty* leaf
- * component and the existing `.lovable-pdp` token scope, re-arranged into a
- * conventional two-column desktop PDP — a sticky gallery on the left, the
- * buy column on the right, and the long-form content (social proof,
- * Insights, accordions, Q&A, recommendations) in a centred column below.
+ *   ┌─── sticky breadcrumb top bar ─────────────────────────────────┐
+ *   │ gallery (sticky)        │  product header                     │
+ *   │  - 4-up image grid      │  price                              │
+ *   │                         │  color swatches                     │
+ *   │                         │  size + "size + fit guide" link     │
+ *   │                         │  model line                         │
+ *   │                         │  benefits strip                     │
+ *   │                         │  Add to bag · Buy now               │
+ *   │                         │  multi-seller compare               │
+ *   │                         │  ways to save                       │
+ *   │                         │  shipping + returns                 │
+ *   ├─────────────────────────┴─────────────────────────────────────┤
+ *   │ Pivota Insights · Pivota Styling · Reviews · UGC · Similar    │
+ *   └───────────────────────────────────────────────────────────────┘
  *
- * It accepts the exact same `BeautyPDPMobileProps` as `BeautyPDPMobile`, so
- * `PdpContainer` wires both trees from one prop object and simply swaps the
- * component on the `isDesktop` breakpoint.
- *
- * NOTE (empty-review fix): the Reviews accordion and the Customer Photos
- * grid now render unconditionally. See handoff-empty-review/README.md.
+ * Accepts the same `FashionPDPMobileProps` so the container can be swapped
+ * by breakpoint without re-deriving payload data.
  */
-export function BeautyPDPDesktop(props: BeautyPDPMobileProps) {
+export function FashionPDPDesktop(props: FashionPDPMobileProps) {
   const reviewsAnchorRef = useRef<HTMLDivElement | null>(null);
-
+  const [guideOpen, setGuideOpen] = useState(false);
   const scrollToReviews = () =>
     reviewsAnchorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
   return (
     <div className="lovable-pdp min-h-screen bg-background text-foreground">
       <div className="sticky top-0 z-20 border-b border-border bg-white/95 backdrop-blur-md backdrop-saturate-150">
-        <div className="mx-auto flex h-14 max-w-[1180px] items-center gap-3 px-6">
+        <div className="mx-auto flex h-14 max-w-[1280px] items-center gap-3 px-8">
           {props.onBack ? (
             <button
               type="button"
@@ -80,15 +90,11 @@ export function BeautyPDPDesktop(props: BeautyPDPMobileProps) {
         </div>
       </div>
 
-      <div className="mx-auto max-w-[1180px] px-6 pb-24">
-        <div className="grid grid-cols-1 gap-x-12 gap-y-8 pt-8 lg:grid-cols-[minmax(0,1fr)_440px]">
+      <div className="mx-auto max-w-[1280px] px-8 pb-24">
+        <div className="grid grid-cols-1 gap-x-10 gap-y-8 pt-6 lg:grid-cols-[minmax(0,1fr)_440px]">
           <div className="self-start lg:sticky lg:top-[76px]">
             <div className="overflow-hidden rounded-2xl border border-border">
-              <BeautyMobileGallery
-                images={props.galleryImages}
-                alt={props.title}
-                onOpenViewer={props.onOpenViewer}
-              />
+              <BeautyMobileGallery images={props.galleryImages} alt={props.title} onOpenViewer={props.onOpenViewer} />
             </div>
           </div>
 
@@ -107,42 +113,38 @@ export function BeautyPDPDesktop(props: BeautyPDPMobileProps) {
               discountPct={props.discountPct}
               currency={props.currency}
             />
-            {props.shades?.length ? (
+            {props.colors?.length ? (
               <BeautyShadeSelector
-                shades={props.shades}
-                selectedId={props.selectedShadeId}
-                onSelect={props.onSelectShade || (() => {})}
+                shades={props.colors}
+                selectedId={props.selectedColorId}
+                onSelect={props.onSelectColor || (() => {})}
+                axisLabel="Color"
               />
             ) : null}
             {props.sizes?.length ? (
-              <BeautySizeSelector
-                sizes={props.sizes}
-                selectedId={props.selectedSizeId}
-                onSelect={props.onSelectSize || (() => {})}
-              />
+              <>
+                <BeautySizeSelector
+                  sizes={props.sizes}
+                  selectedId={props.selectedSizeId}
+                  onSelect={props.onSelectSize || (() => {})}
+                />
+                {props.fitChart ? (
+                  <div className="-mt-1.5 px-[18px]">
+                    <button
+                      type="button"
+                      onClick={() => setGuideOpen(true)}
+                      className="inline-flex items-center gap-1 text-[12px] font-medium text-primary hover:underline"
+                    >
+                      Size + fit guide
+                    </button>
+                  </div>
+                ) : null}
+              </>
             ) : null}
-            {props.variantSelector ? (
-              <div className="px-[18px] pt-2.5">{props.variantSelector}</div>
+            {props.modelInfo ? (
+              <FashionModelInfo info={props.modelInfo} avatarUrl={props.modelAvatar} />
             ) : null}
-            {props.benefits?.length ? <BeautyBenefitsStrip benefits={props.benefits} /> : null}
-            {props.offers.length > 1 ? (
-              <BeautyMobileSellerPicker
-                offers={props.offers}
-                selectedVariant={props.selectedVariant}
-                selectedOfferId={props.selectedOfferId}
-                bestPriceOfferId={props.bestPriceOfferId}
-                primaryMerchantId={props.primaryMerchantId}
-                onSelect={props.onSelectOffer}
-              />
-            ) : null}
-            <BeautyShippingStrip
-              etaRange={props.etaRange}
-              methodLabel={props.shippingMethodLabel}
-              freeShipping={props.freeShipping}
-              returnWindowDays={props.returnWindowDays}
-              freeReturns={props.freeReturns}
-              sellerLabel={props.shippingSellerLabel}
-            />
+            {props.benefits?.length ? <FashionBenefitsStrip benefits={props.benefits} /> : null}
             <BeautyDesktopBuyBox
               unitPrice={props.price}
               currency={props.currency}
@@ -153,18 +155,45 @@ export function BeautyPDPDesktop(props: BeautyPDPMobileProps) {
               onAddToCart={props.onAddToCart}
               onBuyNow={props.onBuyNow}
             />
-            {props.claims?.length ? <BeautyKeyClaims claims={props.claims} /> : null}
+            {props.offers.length > 1 ? (
+              <BeautyMobileSellerPicker
+                offers={props.offers}
+                selectedVariant={props.selectedVariant}
+                selectedOfferId={props.selectedOfferId}
+                bestPriceOfferId={props.bestPriceOfferId}
+                primaryMerchantId={props.primaryMerchantId}
+                onSelect={props.onSelectOffer}
+              />
+            ) : null}
+            <WaysToSave
+              product={props.product}
+              selectedOffer={props.offers.find((o) => o.offer_id === props.selectedOfferId)}
+              selectedVariant={props.selectedVariant}
+              quantity={props.quantity}
+            />
+            <BeautyShippingStrip
+              etaRange={props.etaRange}
+              methodLabel={props.shippingMethodLabel}
+              freeShipping={props.freeShipping}
+              returnWindowDays={props.returnWindowDays}
+              freeReturns={props.freeReturns}
+              sellerLabel={props.shippingSellerLabel}
+            />
+            {(props.material || props.origin || props.care) ? (
+              <FashionMaterialCare material={props.material} origin={props.origin} care={props.care} />
+            ) : null}
           </div>
         </div>
 
-        <div className="mt-14 grid grid-cols-1 gap-x-12 gap-y-10 lg:grid-cols-[minmax(0,1fr)_340px]">
+        <div className="mt-14 grid grid-cols-1 gap-x-10 gap-y-10 lg:grid-cols-[minmax(0,1fr)_340px]">
           <div className="min-w-0">
-            {props.insights ? (
-              <BeautyPivotaInsights insights={props.insights} />
+            {props.insights ? <BeautyPivotaInsights insights={props.insights} /> : null}
+            {props.pairings?.length ? (
+              <div className="mt-8">
+                <FashionPivotaStyling pairings={props.pairings} onItemClick={props.onPairingClick} />
+              </div>
             ) : null}
-
             <div ref={reviewsAnchorRef} className="mt-8 scroll-mt-20">
-              {/* CHANGED: Reviews accordion renders unconditionally. */}
               <BeautyAccordion
                 title="Reviews"
                 count={props.reviewCount ?? props.reviews?.length ?? 0}
@@ -178,11 +207,8 @@ export function BeautyPDPDesktop(props: BeautyPDPMobileProps) {
                   onSeeAll={props.onSeeAllReviews}
                 />
               </BeautyAccordion>
-              {props.ingredients ? (
-                <BeautyAccordion title="Ingredients">{props.ingredients}</BeautyAccordion>
-              ) : null}
-              {props.howToUse ? (
-                <BeautyAccordion title="How to use">{props.howToUse}</BeautyAccordion>
+              {props.details ? (
+                <BeautyAccordion title="Details">{props.details}</BeautyAccordion>
               ) : null}
               {props.shippingReturnsText ? (
                 <BeautyAccordion title="Shipping &amp; returns">
@@ -206,8 +232,6 @@ export function BeautyPDPDesktop(props: BeautyPDPMobileProps) {
                 totalLabel={props.recentPurchasesTotal}
               />
             ) : null}
-            {/* CHANGED: customer-photos grid renders unconditionally so the
-                "+ Add your photo" tile is reachable on empty products too. */}
             <BeautyCustomerPhotos
               photos={props.customerPhotos ?? []}
               totalLabel={props.customerPhotosTotal}
@@ -229,6 +253,16 @@ export function BeautyPDPDesktop(props: BeautyPDPMobileProps) {
           </div>
         ) : null}
       </div>
+
+      {props.fitChart ? (
+        <FashionSizeFitGuide
+          open={guideOpen}
+          onClose={() => setGuideOpen(false)}
+          chart={props.fitChart}
+          modelInfo={props.modelInfo}
+          modelAvatar={props.modelAvatar}
+        />
+      ) : null}
     </div>
   );
 }

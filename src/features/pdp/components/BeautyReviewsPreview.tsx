@@ -2,10 +2,16 @@
 
 /**
  * Reviews accordion content for the Beauty mobile PDP.
- * Faithful to redesign/pivota-pdp.jsx → ReviewsPreview:
- *   a big serif rating number + gold stars + "N verified reviews" header,
- *   then review cards (name + per-review stars + title + body), then a
- *   bordered "See all N reviews" button.
+ *
+ * Always renders — the parent should mount this component regardless of
+ * `reviews.length`. When the list is empty we render the compact
+ * empty-state body (single tile with a copy + "Write a review" CTA) so the
+ * shopper has a clear, low-friction path to post the first review without
+ * the section disappearing from the page.
+ *
+ * Faithful to redesign/pivota-pdp.jsx → ReviewsPreview when reviews exist:
+ * big serif rating number + gold stars + "N verified reviews" header,
+ * then review cards, then a bordered "See all N reviews" button.
  */
 
 export type BeautyReviewItem = {
@@ -30,17 +36,55 @@ function Star({ filled = true }: { filled?: boolean }) {
   );
 }
 
+function Sparkle() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <path d="M12 2l1.8 5.4L19 9l-5.2 1.6L12 16l-1.8-5.4L5 9l5.2-1.6L12 2z" />
+    </svg>
+  );
+}
+
 export function BeautyReviewsPreview({
   rating,
   reviewCount,
   reviews,
+  emptyCopy = 'No reviews yet. Be the first to share your shade + skin notes — your review appears here once verified.',
+  onWriteReview,
   onSeeAll,
 }: {
   rating: number;
   reviewCount: number;
   reviews: BeautyReviewItem[];
+  /** Copy shown in the empty-state body when reviews list is empty. */
+  emptyCopy?: string;
+  /** Click handler for the "Write a review" CTA in both populated and empty states. */
+  onWriteReview?: () => void;
   onSeeAll?: () => void;
 }) {
+  // ── Empty state ──────────────────────────────────────────────────────────
+  // Section header is rendered by the parent (BeautyAccordion title="Reviews").
+  // We only render the body of the section.
+  if (!reviews?.length) {
+    return (
+      <div className="flex items-center gap-3 rounded-xl border border-border bg-background px-3.5 py-3">
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+          <Sparkle />
+        </div>
+        <p className="flex-1 text-[13px] leading-relaxed text-foreground">{emptyCopy}</p>
+        {onWriteReview ? (
+          <button
+            type="button"
+            onClick={onWriteReview}
+            className="shrink-0 whitespace-nowrap rounded-full border-[1.5px] border-foreground bg-white px-3.5 py-2 text-[12px] font-semibold text-foreground hover:bg-foreground hover:text-background"
+          >
+            Write a review
+          </button>
+        ) : null}
+      </div>
+    );
+  }
+
+  // ── Populated state — unchanged from original ───────────────────────────
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center gap-3 border-b border-border pb-3 pt-2">
@@ -57,6 +101,15 @@ export function BeautyReviewsPreview({
             {reviewCount.toLocaleString()} verified reviews
           </div>
         </div>
+        {onWriteReview ? (
+          <button
+            type="button"
+            onClick={onWriteReview}
+            className="ml-auto shrink-0 text-[12px] font-medium text-primary hover:underline"
+          >
+            Write a review
+          </button>
+        ) : null}
       </div>
 
       {reviews.map((rv, i) => (

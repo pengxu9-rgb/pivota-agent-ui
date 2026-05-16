@@ -2,11 +2,22 @@
 
 import Image from 'next/image';
 import Link from 'next/link';
-import { Star, ChevronRight } from 'lucide-react';
+import { Star, ChevronRight, Sparkles, Plus } from 'lucide-react';
 import type { ReviewsPreviewData } from '@/features/pdp/types';
 import { shouldBypassNextImageOptimizer } from '@/features/pdp/utils/pdpImageUrls';
 import { resolveQuestionDisplay } from '@/lib/questionDisplay';
 import { cn } from '@/lib/utils';
+
+/**
+ * BeautyReviewsSection — the structured-module reviews section used by
+ * PdpContainer for both the beauty path and the generic (fashion /
+ * electronics) path.
+ *
+ * Empty-state change: when review_count is 0, the section still renders
+ * (it already did), but the body is now a compact "+ Write a review" tile
+ * instead of a plain "No reviews yet" paragraph. Same visual language as
+ * the beauty PDP's BeautyReviewsPreview empty state.
+ */
 
 function StarRating({ value, sizeClass = 'h-3 w-3' }: { value: number; sizeClass?: string }) {
   const clamped = Number.isFinite(value) ? Math.max(0, Math.min(5, value)) : 0;
@@ -65,6 +76,7 @@ export function BeautyReviewsSection({
   askQuestionLabel = 'Ask a question',
   askQuestionEnabled = true,
   openQuestionsLabel = 'View all',
+  emptyCopy = 'No reviews yet. Be the first to share your thoughts — your review appears here once verified.',
 }: {
   data: ReviewsPreviewData;
   onSelectScope?: (scopeId: string) => void;
@@ -82,7 +94,10 @@ export function BeautyReviewsSection({
   askQuestionLabel?: string;
   askQuestionEnabled?: boolean;
   openQuestionsLabel?: string;
+  /** Copy used in the empty-state tile when review_count === 0. */
+  emptyCopy?: string;
 }) {
+  const isEmpty = !data.review_count || data.review_count === 0;
   const hasSummary = data.review_count > 0 && data.rating > 0;
   const ratingValue = data.scale ? (data.rating / data.scale) * 5 : 0;
   const distribution = data.star_distribution
@@ -105,7 +120,9 @@ export function BeautyReviewsSection({
       <div className="mx-2.5 rounded-2xl border border-border bg-card p-3 sm:mx-3">
         <div className="flex items-center justify-between mb-2">
           <h3 className="text-sm font-semibold">Reviews ({data.review_count})</h3>
-          {onWriteReview ? (
+          {/* CTA only shown in header when there are reviews — empty-state
+              tile below has its own prominent "Write a review" button. */}
+          {!isEmpty && onWriteReview ? (
             <button
               type="button"
               onClick={onWriteReview}
@@ -120,11 +137,11 @@ export function BeautyReviewsSection({
           ) : null}
         </div>
 
-        {data.scope_label ? (
+        {data.scope_label && !isEmpty ? (
           <p className="mb-2 text-[11px] text-muted-foreground">{data.scope_label}</p>
         ) : null}
 
-        {scopeTabs.length ? (
+        {scopeTabs.length && !isEmpty ? (
           <div className="mb-3 flex flex-wrap gap-2">
             {scopeTabs.map((tab) => (
               <button
@@ -147,7 +164,29 @@ export function BeautyReviewsSection({
           </div>
         ) : null}
 
-        {hasSummary ? (
+        {isEmpty ? (
+          <div className="flex items-center gap-3 rounded-xl border border-border bg-background px-3.5 py-3">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+              <Sparkles className="h-3.5 w-3.5" />
+            </div>
+            <p className="flex-1 text-[13px] leading-relaxed text-foreground">{emptyCopy}</p>
+            {onWriteReview ? (
+              <button
+                type="button"
+                onClick={onWriteReview}
+                aria-disabled={!writeReviewEnabled}
+                className={cn(
+                  'shrink-0 whitespace-nowrap rounded-full border-[1.5px] border-foreground bg-white px-3.5 py-2 text-[12px] font-semibold text-foreground transition-colors',
+                  writeReviewEnabled
+                    ? 'hover:bg-foreground hover:text-background'
+                    : 'opacity-50 cursor-not-allowed',
+                )}
+              >
+                {writeReviewLabel}
+              </button>
+            ) : null}
+          </div>
+        ) : hasSummary ? (
           <div className="flex gap-4">
             <div className="text-center">
               <div className="text-3xl font-bold">{ratingValue.toFixed(1)}</div>
@@ -177,10 +216,12 @@ export function BeautyReviewsSection({
             ) : null}
           </div>
         ) : (
-          <p className="text-sm text-muted-foreground">No reviews yet. Be the first to share your thoughts.</p>
+          <p className="text-sm text-muted-foreground">
+            No reviews yet. Be the first to share your thoughts.
+          </p>
         )}
 
-        {data.dimension_ratings?.length ? (
+        {data.dimension_ratings?.length && !isEmpty ? (
           <div className="flex justify-between mt-3 pt-3 border-t border-border">
             {data.dimension_ratings.slice(0, 3).map((dim) => (
               <div key={dim.label} className="text-center">
@@ -192,7 +233,8 @@ export function BeautyReviewsSection({
         ) : null}
       </div>
 
-      {data.filter_chips?.length ? (
+      {/* Filter chips, review tiles, "See all" — only when reviews exist. */}
+      {!isEmpty && data.filter_chips?.length ? (
         <div className="overflow-x-auto mt-3">
           <div className="flex gap-2 px-2.5 sm:px-3">
             {data.filter_chips?.map((chip) => (
@@ -210,7 +252,7 @@ export function BeautyReviewsSection({
         </div>
       ) : null}
 
-      {data.preview_items?.length ? (
+      {!isEmpty && data.preview_items?.length ? (
         <div className="mt-3 space-y-3 px-2.5 sm:px-3">
           {data.preview_items.slice(0, 3).map((review) => (
             <div key={review.review_id} className="flex gap-3 pb-3 border-b border-border last:border-0">
@@ -246,7 +288,7 @@ export function BeautyReviewsSection({
         </div>
       ) : null}
 
-      {onSeeAll ? (
+      {!isEmpty && onSeeAll ? (
         <button
           onClick={onSeeAll}
           className="w-full mt-2 py-2.5 text-sm text-muted-foreground flex items-center justify-center gap-1 hover:text-foreground"

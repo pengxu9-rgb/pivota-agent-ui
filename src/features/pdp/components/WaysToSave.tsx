@@ -3,6 +3,26 @@
 import type { Offer, Product, Variant } from '@/features/pdp/types';
 import { buildSavingsPresentation, type SavingsPresentationItem } from '@/lib/savingsPresentation';
 
+/** Test/staging promo identifiers (audit harnesses, fixture seeds) leak raw
+ *  onto the PDP today as the SavingsPresentationItem label/badge when the
+ *  upstream evidence lacks a human display string. Don't render those rows. */
+const ID_LIKE_LABEL_RE = /(audit|staging|test|internal|seed|fixture)/i;
+
+function isIdLikeLabel(value: string | null | undefined): boolean {
+  const v = String(value || '').trim();
+  if (!v) return false;
+  if (ID_LIKE_LABEL_RE.test(v)) return true;
+  if (!v.includes(' ') && v.length > 16 && /[0-9]/.test(v) && /_/.test(v)) return true;
+  return false;
+}
+
+function isPresentableItem(item: SavingsPresentationItem): boolean {
+  if (isIdLikeLabel(item.label)) return false;
+  if (isIdLikeLabel(item.badge)) return false;
+  if (isIdLikeLabel(item.id)) return false;
+  return true;
+}
+
 function formatProgress(item: SavingsPresentationItem): string | null {
   const progress = item.progress;
   if (!progress) return null;
@@ -141,14 +161,21 @@ export function WaysToSave({
     currency,
   });
 
-  const storeOffers = model.availableStoreOffers.filter((item) => item.kind !== 'free_shipping');
-  const shippingOffers = model.cartUnlocks.filter((item) => item.kind === 'free_shipping');
-  const cartOffers = model.cartUnlocks.filter((item) => item.kind !== 'free_shipping');
+  const storeOffers = model.availableStoreOffers.filter(
+    (item) => item.kind !== 'free_shipping' && isPresentableItem(item),
+  );
+  const shippingOffers = model.cartUnlocks.filter(
+    (item) => item.kind === 'free_shipping' && isPresentableItem(item),
+  );
+  const cartOffers = model.cartUnlocks.filter(
+    (item) => item.kind !== 'free_shipping' && isPresentableItem(item),
+  );
+  const paymentBenefits = model.paymentBenefits.filter(isPresentableItem);
   const hasContent =
     storeOffers.length ||
     cartOffers.length ||
     shippingOffers.length ||
-    model.paymentBenefits.length;
+    paymentBenefits.length;
   if (!hasContent) return null;
 
   return (
@@ -160,7 +187,7 @@ export function WaysToSave({
       <SavingsGroup title="Store offers" items={storeOffers} />
       <SavingsGroup title="Cart offers" items={cartOffers} />
       <SavingsGroup title="Shipping offers" items={shippingOffers} />
-      <SavingsGroup title="Pay with" items={model.paymentBenefits} />
+      <SavingsGroup title="Pay with" items={paymentBenefits} />
     </section>
   );
 }
