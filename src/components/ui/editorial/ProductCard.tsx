@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import Image from 'next/image';
-import { Heart } from 'lucide-react';
+import { Heart, ShoppingBag, Zap } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Mono, Num, Title } from './Type';
 import { Pill } from './Chip';
@@ -22,6 +22,12 @@ import { Pill } from './Chip';
  *    between brand and title (review-derived editorial copy etc.).
  *  - `compareAtLabel` renders as a strikethrough next to the price.
  *  - `discountLabel` renders as a terracotta accent tag near the price.
+ *  - Optional `onAddToCart` / `onBuyNow` render small quick-action icon
+ *    buttons on the bottom-right of the image. Always visible on mobile
+ *    (no hover state); fade in on hover at `lg:` so the card stays calm
+ *    until the cursor lands on it. Buy Now uses the terracotta accent;
+ *    Add to Cart is ink-on-paper. Both stopPropagation so they don't
+ *    trigger the outer card link.
  *
  * The card itself is anchorless — wrap in `<Link>` at the call site so
  * the entire card is clickable while preserving the inline save action.
@@ -55,6 +61,10 @@ export interface ProductCardProps {
   summaryBadges?: ProductSummaryBadge[] | null;
   saved?: boolean;
   onSave?: (next: boolean) => void;
+  /** When set, renders an ink Add-to-Bag icon button. */
+  onAddToCart?: () => void;
+  /** When set, renders a terracotta Buy Now icon button. */
+  onBuyNow?: () => void;
   aspect?: '4/5' | '1/1' | '3/4';
   className?: string;
 }
@@ -88,6 +98,8 @@ export function ProductCard({
   summaryBadges,
   saved = false,
   onSave,
+  onAddToCart,
+  onBuyNow,
   aspect = '4/5',
   className,
 }: ProductCardProps) {
@@ -95,6 +107,18 @@ export function ProductCard({
     event.preventDefault();
     event.stopPropagation();
     onSave?.(!saved);
+  };
+
+  const handleAddToCart = (event: React.MouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    onAddToCart?.();
+  };
+
+  const handleBuyNow = (event: React.MouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    onBuyNow?.();
   };
 
   const trimmedHighlight = String(highlight || '').trim();
@@ -135,6 +159,45 @@ export function ProductCard({
               className={cn(saved && 'fill-terracotta text-terracotta')}
             />
           </button>
+        ) : null}
+        {onAddToCart || onBuyNow ? (
+          <div
+            className={cn(
+              'absolute bottom-2 right-2 flex items-center gap-1.5',
+              // Always visible on touch; fade in on hover on desktop so the
+              // editorial card stays calm until intentionally focused.
+              'opacity-100 transition-opacity duration-150 lg:opacity-0 lg:group-hover:opacity-100 lg:focus-within:opacity-100',
+            )}
+          >
+            {onAddToCart ? (
+              <button
+                type="button"
+                onClick={handleAddToCart}
+                aria-label={`Add ${title} to bag`}
+                className={cn(
+                  'inline-flex h-8 w-8 items-center justify-center rounded-full',
+                  'border border-hairline bg-surface/90 backdrop-blur-sm text-ink transition-colors',
+                  'hover:bg-surface',
+                )}
+              >
+                <ShoppingBag size={14} strokeWidth={1.5} />
+              </button>
+            ) : null}
+            {onBuyNow ? (
+              <button
+                type="button"
+                onClick={handleBuyNow}
+                aria-label={`Buy ${title} now`}
+                className={cn(
+                  'inline-flex h-8 w-8 items-center justify-center rounded-full',
+                  'bg-terracotta text-paper transition-colors',
+                  'hover:bg-terracotta-ink',
+                )}
+              >
+                <Zap size={14} strokeWidth={1.75} />
+              </button>
+            ) : null}
+          </div>
         ) : null}
       </div>
 

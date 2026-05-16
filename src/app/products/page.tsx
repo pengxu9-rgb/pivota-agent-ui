@@ -116,7 +116,7 @@ export default function ProductsPage() {
   const nextCursorRef = useRef<string | null>(null);
   const loadMoreInFlightCursorRef = useRef<string | null>(null);
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
-  const { items, open } = useCartStore();
+  const { items, open, addItem } = useCartStore();
 
   const itemCount = items.reduce((acc, item) => acc + item.quantity, 0);
   const isInitialLoading = loading && !hasLoadedOnce;
@@ -517,7 +517,53 @@ export default function ProductsPage() {
           >
             {products.map((product) => {
               const href = buildProductHrefForProduct(product);
+              const hrefWithReturn = appendCurrentPathAsReturn(href);
               const signals = deriveEditorialProductCardSignals(product);
+
+              // Quick-action eligibility — the editorial card surfaces
+              // "Add to bag" + "Buy now" icons only when the product can
+              // actually transact. External_seed records redirect off-site
+              // and identity-grouped products need PDP for seller-pick.
+              const isExternalSeed = product.source === 'external_seed';
+              const isIdentityGrouped =
+                Boolean(product.sellable_item_group_id) ||
+                product.canonical_scope === 'synthetic' ||
+                (Array.isArray(product.group_members) && product.group_members.length > 1);
+              const canQuickTransact =
+                !isExternalSeed &&
+                !isIdentityGrouped &&
+                Boolean(product.merchant_id) &&
+                product.merchant_id !== 'external_seed' &&
+                !product.external_redirect_url;
+
+              const handleAddToCart = () => {
+                const variantId =
+                  String(product.variant_id || product.sku_id || '').trim() ||
+                  product.product_id;
+                const cartItemId = product.merchant_id
+                  ? `${product.merchant_id}:${variantId}`
+                  : variantId;
+                addItem({
+                  id: cartItemId,
+                  product_id: product.product_id,
+                  variant_id: variantId,
+                  sku: product.sku,
+                  title: product.title,
+                  price: product.price,
+                  currency: product.currency,
+                  imageUrl: normalizeDisplayImageUrl(product.image_url, '/placeholder.svg'),
+                  merchant_id: product.merchant_id,
+                  merchant_name: product.merchant_name,
+                  quantity: 1,
+                });
+                toast.success(`Added ${product.title} to bag`);
+              };
+
+              const handleBuyNow = () => {
+                handleAddToCart();
+                open();
+              };
+
               return (
                 <Link
                   key={buildCatalogProductKey(product)}
@@ -527,7 +573,7 @@ export default function ProductsPage() {
                     if (event.defaultPrevented) return;
                     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
                     event.preventDefault();
-                    router.push(appendCurrentPathAsReturn(href));
+                    router.push(hrefWithReturn);
                   }}
                   className="block"
                 >
@@ -541,6 +587,8 @@ export default function ProductsPage() {
                     badge={signals.badge}
                     highlight={signals.highlight}
                     summaryBadges={signals.summaryBadges}
+                    onAddToCart={canQuickTransact ? handleAddToCart : undefined}
+                    onBuyNow={canQuickTransact ? handleBuyNow : undefined}
                     aspect="4/5"
                   />
                 </Link>

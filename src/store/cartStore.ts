@@ -14,6 +14,9 @@ export interface CartItem {
   quantity: number
   imageUrl: string
   merchant_id?: string
+  /** Display name for the merchant. Optional — falls back to merchant_id
+   *  in the cart UI when missing (older persisted state stays valid). */
+  merchant_name?: string
 }
 
 interface CartStore {
