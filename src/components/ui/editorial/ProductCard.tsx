@@ -161,28 +161,19 @@ export function ProductCard({
           </button>
         ) : null}
         {onAddToCart || onBuyNow ? (
-          <div
-            className={cn(
-              'absolute bottom-2 right-2 flex items-center gap-1.5',
-              // Always visible — keeps the affordance reachable without a
-              // hover/focus discovery step. Editorial calm is preserved by
-              // the small footprint (32px), paper backdrop, and minimal icon
-              // weight rather than by hiding the controls.
-              'opacity-100',
-            )}
-          >
+          <div className="absolute bottom-2.5 right-2.5 flex items-center gap-2">
             {onAddToCart ? (
               <button
                 type="button"
                 onClick={handleAddToCart}
                 aria-label={`Add ${title} to bag`}
                 className={cn(
-                  'inline-flex h-8 w-8 items-center justify-center rounded-full',
-                  'border border-hairline bg-surface/90 backdrop-blur-sm text-ink transition-colors',
-                  'hover:bg-surface',
+                  'inline-flex h-9 w-9 items-center justify-center rounded-full',
+                  'bg-ink text-paper shadow-md ring-1 ring-paper/30 transition-colors',
+                  'hover:bg-ink-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-paper',
                 )}
               >
-                <ShoppingBag size={14} strokeWidth={1.5} />
+                <ShoppingBag size={16} strokeWidth={1.75} />
               </button>
             ) : null}
             {onBuyNow ? (
@@ -191,12 +182,12 @@ export function ProductCard({
                 onClick={handleBuyNow}
                 aria-label={`Buy ${title} now`}
                 className={cn(
-                  'inline-flex h-8 w-8 items-center justify-center rounded-full',
-                  'bg-terracotta text-paper transition-colors',
-                  'hover:bg-terracotta-ink',
+                  'inline-flex h-9 w-9 items-center justify-center rounded-full',
+                  'bg-terracotta text-paper shadow-md ring-1 ring-paper/30 transition-colors',
+                  'hover:bg-terracotta-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-paper',
                 )}
               >
-                <Zap size={14} strokeWidth={1.75} />
+                <Zap size={16} strokeWidth={2} />
               </button>
             ) : null}
           </div>

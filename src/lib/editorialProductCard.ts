@@ -69,6 +69,56 @@ function formatCategoryLabel(value: unknown): string | null {
 }
 
 /**
+ * Map a backend `deal.type` string to the editorial chip tone. The deal
+ * types come from the merchant-feed shape (`best_deal` / `all_deals`)
+ * which is parallel to the `store_discount_evidence` model but flatter.
+ * Unknown types fall back to the neutral "store" tone (terracotta-bg)
+ * which is the visual default for merchant-direct promo copy.
+ */
+function mapDealTypeToTone(rawType: unknown): ProductSummaryBadgeTone {
+  const type = String(rawType || '').trim().toUpperCase();
+  if (type === 'MULTI_BUY_DISCOUNT' || type === 'BUY_X_GET_Y' || type === 'BUNDLE_DISCOUNT')
+    return 'unlock';
+  if (type === 'FREE_SHIPPING' || type === 'SHIPPING_DISCOUNT') return 'shipping';
+  if (type === 'PAYMENT_METHOD' || type === 'CARD_DISCOUNT') return 'payment';
+  return 'store';
+}
+
+/**
+ * Convert merchant-feed deals (`all_deals[]`) into editorial summary
+ * chips. Used as a fallback when the richer `store_discount_evidence`
+ * model isn't on the response (the find_products / merchant feed
+ * returns the flatter `all_deals` / `best_deal` shape instead of the
+ * `_evidence` blocks the PDP carries). Real data only — no synthesis.
+ */
+function dealsToSummaryBadges(
+  product: ProductResponse,
+  limit: number,
+): ProductSummaryBadge[] {
+  if (limit <= 0) return [];
+  const deals = (product as any)?.all_deals;
+  const best = (product as any)?.best_deal;
+  const source = Array.isArray(deals) && deals.length
+    ? deals
+    : best
+      ? [best]
+      : [];
+  if (!source.length) return [];
+  const out: ProductSummaryBadge[] = [];
+  const seen = new Set<string>();
+  for (const deal of source) {
+    if (!deal || typeof deal !== 'object') continue;
+    const label = String((deal as any).label || '').trim();
+    if (!label) continue;
+    if (seen.has(label)) continue;
+    seen.add(label);
+    out.push({ label, tone: mapDealTypeToTone((deal as any).type) });
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
+/**
  * Derive the editorial card signal set from a product. Up to two
  * summary badges are surfaced (matching the legacy density). Optional
  * caps keep the card readable.
@@ -94,6 +144,15 @@ export function deriveEditorialProductCardSignals(
     currency: product.currency,
   });
   const savings = limit > 0 ? getSummaryBadgeItems(savingsModel, limit) : [];
+
+  // Merchant-feed promo fallback: when `store_discount_evidence` is
+  // absent (as it is on the find_products / merchant-scoped Browse path
+  // — that endpoint returns the flatter `all_deals` / `best_deal`
+  // shape), surface those deals as editorial chips instead of leaving
+  // the row blank. Internal merchants like Chydan have promo coverage
+  // here that wouldn't otherwise render.
+  const dealsBadges =
+    savings.length === 0 ? dealsToSummaryBadges(product, limit) : [];
 
   // Highlight: prefer the curated highlight, then subtitle, then the
   // first clause of the brand-supplied description.
@@ -122,10 +181,15 @@ export function deriveEditorialProductCardSignals(
       ? { label: 'Brand-direct', variant: 'default' }
       : null;
 
+  const summaryBadges =
+    savings.length > 0
+      ? savings.map((s) => ({ label: s.label, tone: mapSavingsTone(s.tone) }))
+      : dealsBadges;
+
   return {
     badge,
     highlight,
     category,
-    summaryBadges: savings.map((s) => ({ label: s.label, tone: mapSavingsTone(s.tone) })),
+    summaryBadges,
   };
 }
