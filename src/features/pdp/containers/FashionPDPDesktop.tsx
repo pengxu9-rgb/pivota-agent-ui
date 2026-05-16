@@ -118,6 +118,7 @@ export function FashionPDPDesktop(props: FashionPDPMobileProps) {
                 shades={props.colors}
                 selectedId={props.selectedColorId}
                 onSelect={props.onSelectColor || (() => {})}
+                axisLabel="Color"
               />
             ) : null}
             {props.sizes?.length ? (

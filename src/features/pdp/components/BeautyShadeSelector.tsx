@@ -43,11 +43,16 @@ export function BeautyShadeSelector({
   selectedId,
   onSelect,
   onFindShade,
+  axisLabel = 'Shade',
+  findActionLabel = 'Find my shade →',
 }: {
   shades: BeautyShade[];
   selectedId?: string | null;
   onSelect: (id: string) => void;
   onFindShade?: () => void;
+  /** Eyebrow label for the variant axis. Defaults to "Shade" (beauty); pass "Color" for fashion. */
+  axisLabel?: string;
+  findActionLabel?: string;
 }) {
   if (!shades?.length) return null;
   const selected = shades.find((s) => s.id === selectedId) || shades[0];
@@ -59,12 +64,12 @@ export function BeautyShadeSelector({
           {/* Label font matches the product-line / variant selectors
               (text-xs font-semibold) so every variant-axis selector reads
               consistently — owner flagged the shade/size eyebrow as off. */}
-          <span className="text-xs font-semibold text-foreground">Shade ·{' '}</span>
+          <span className="text-xs font-semibold text-foreground">{axisLabel} ·{' '}</span>
           <span className="text-xs font-semibold text-foreground">{selected.name}</span>
         </div>
         {onFindShade ? (
           <button type="button" onClick={onFindShade} className="text-[12px] font-medium text-primary">
-            Find my shade →
+            {findActionLabel}
           </button>
         ) : null}
       </div>
@@ -80,7 +85,7 @@ export function BeautyShadeSelector({
               type="button"
               onClick={() => onSelect(s.id)}
               aria-pressed={isSel}
-              aria-label={`Shade ${s.name}`}
+              aria-label={`${axisLabel} ${s.name}`}
               className="flex flex-shrink-0 flex-col items-center gap-1"
             >
               {hasVisual ? (

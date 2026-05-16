@@ -244,6 +244,7 @@ export function ElectronicsPDPMobile(props: ElectronicsPDPMobileProps) {
               shades={props.colors}
               selectedId={props.selectedColorId}
               onSelect={props.onSelectColor || (() => {})}
+              axisLabel="Color"
             />
           ) : null}
 

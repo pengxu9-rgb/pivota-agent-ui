@@ -60,6 +60,30 @@ function offerTag(
   return null;
 }
 
+/** Test/staging merchant identifiers (audit harnesses, internal seeds) leak
+ *  raw onto the PDP today when merchant_name is missing. Don't render those
+ *  strings — fall back to a generic "Seller" so users see clean labels. */
+const ID_LIKE_MERCHANT_NAME_RE = /(audit|staging|test|internal|seed|fixture)/i;
+
+function isIdLikeMerchantName(value: string): boolean {
+  if (!value) return false;
+  if (ID_LIKE_MERCHANT_NAME_RE.test(value)) return true;
+  // Heuristic: snake_case + digits + length > 16 with no spaces typically
+  // indicates a system identifier rather than a brand-facing display name.
+  if (!value.includes(' ') && value.length > 16 && /[0-9]/.test(value) && /_/.test(value)) {
+    return true;
+  }
+  return false;
+}
+
+function displayMerchantLabel(offer: Offer): string {
+  const name = String(offer.merchant_name || '').trim();
+  if (name && !isIdLikeMerchantName(name)) return name;
+  const id = String(offer.merchant_id || '').trim();
+  if (id && !isIdLikeMerchantName(id)) return id;
+  return 'Seller';
+}
+
 function rowPrice(offer: Offer, selectedVariant: Variant | null) {
   const pricing = resolveOfferPricing(offer, selectedVariant ?? null);
   const amount =
@@ -86,7 +110,7 @@ function SellerCard({
   inStock: boolean;
   onClick: () => void;
 }) {
-  const merchantLabel = offer.merchant_name || offer.merchant_id || 'Seller';
+  const merchantLabel = displayMerchantLabel(offer);
   return (
     <button
       type="button"
