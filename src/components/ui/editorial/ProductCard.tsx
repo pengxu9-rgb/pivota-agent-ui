@@ -44,6 +44,8 @@ export interface ProductCardProps {
   image: string;
   imageAlt?: string;
   brand?: string | null;
+  /** Category label that sits alongside the brand (e.g. "Clay Mask"). */
+  category?: string | null;
   title: string;
   priceLabel?: string;
   compareAtLabel?: string | null;
@@ -76,6 +78,7 @@ export function ProductCard({
   image,
   imageAlt = '',
   brand,
+  category,
   title,
   priceLabel,
   compareAtLabel,
@@ -136,7 +139,13 @@ export function ProductCard({
       </div>
 
       <div className="mt-3 flex flex-col gap-1.5">
-        {brand ? <Mono className="text-ink-muted">{brand}</Mono> : null}
+        {brand || category ? (
+          <Mono className="text-ink-muted">
+            {brand}
+            {brand && category ? <span className="mx-1 text-subtle">·</span> : null}
+            {category}
+          </Mono>
+        ) : null}
         {trimmedHighlight ? (
           <p className="font-editorial-serif italic text-[12.5px] leading-[1.35] text-ink-muted line-clamp-2">
             {trimmedHighlight}

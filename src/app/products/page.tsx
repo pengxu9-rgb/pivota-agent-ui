@@ -535,6 +535,7 @@ export default function ProductsPage() {
                     image={normalizeDisplayImageUrl(product.image_url, '/placeholder.svg')}
                     imageAlt={product.title}
                     brand={product.merchant_name || product.brand || null}
+                    category={signals.category}
                     title={product.title}
                     priceLabel={formatPriceLabel(product.price, product.currency)}
                     badge={signals.badge}
