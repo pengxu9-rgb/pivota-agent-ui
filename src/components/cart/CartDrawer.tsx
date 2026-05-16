@@ -17,6 +17,7 @@ import {
   type MerchantGroup,
 } from '@/lib/cartGrouping';
 import { normalizeDisplayImageUrl } from '@/lib/displayImage';
+import { lookupMerchantName } from '@/lib/merchantRegistry';
 import { useCartStore, type CartItem } from '@/store/cartStore';
 import { resolveHostedCheckoutUrl } from '@/lib/ucpCheckout';
 import { cn } from '@/lib/utils';
@@ -73,7 +74,27 @@ export default function CartDrawer() {
   const isEmbed = useMemo(() => isAuroraEmbedMode(), []);
   const [checkingOutMerchantId, setCheckingOutMerchantId] = useState<string | null>(null);
 
-  const groups = useMemo(() => groupCartByMerchant(items), [items]);
+  // Hydrate any cart line missing `merchant_name` from the runtime
+  // merchant registry. The registry is populated as products surface
+  // anywhere in the app (Browse, Chat, Catalog cards), so a PDP-frozen
+  // add-to-cart path that didn't write merchant_name still gets a real
+  // merchant label once the user has seen that merchant in any other
+  // surface. Falls through to the existing `merchant_id` fallback when
+  // the registry has no entry — never invents copy.
+  const hydratedItems = useMemo(() => {
+    if (!items.length) return items;
+    let changed = false;
+    const next = items.map((item) => {
+      if (item.merchant_name && item.merchant_name.trim()) return item;
+      const resolved = lookupMerchantName(item.merchant_id);
+      if (!resolved) return item;
+      changed = true;
+      return { ...item, merchant_name: resolved };
+    });
+    return changed ? next : items;
+  }, [items]);
+
+  const groups = useMemo(() => groupCartByMerchant(hydratedItems), [hydratedItems]);
   const totalItems = useMemo(() => combinedItemCount(groups), [groups]);
   const subtotal = useMemo(() => combinedSubtotal(groups), [groups]);
   const currency = useMemo(() => combinedCurrency(groups), [groups]);
@@ -280,8 +301,10 @@ export default function CartDrawer() {
               )}
             </div>
 
-            {/* Sticky bottom CTA — sequential checkout helper */}
-            {firstGroup ? (
+            {/* Sticky bottom CTA — sequential checkout helper. Single-merchant
+                bags rely on the in-card `Checkout with {merchant}` button only
+                so the drawer doesn't show two identical buttons. */}
+            {firstGroup && groups.length > 1 ? (
               <div className="border-t border-hairline bg-paper px-4 py-3.5 sm:px-5">
                 <Button
                   variant="default"
@@ -290,11 +313,7 @@ export default function CartDrawer() {
                   onClick={() => handleCheckoutMerchant(firstGroup)}
                   disabled={checkingOutMerchantId !== null}
                 >
-                  <span>
-                    {groups.length > 1
-                      ? `Start with ${firstGroup.merchantName}`
-                      : `Checkout with ${firstGroup.merchantName}`}
-                  </span>
+                  <span>Start with {firstGroup.merchantName}</span>
                   <Num
                     value={formatPrice(
                       firstGroup.subtotal,
