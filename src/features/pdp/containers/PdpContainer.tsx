@@ -554,6 +554,10 @@ function formatPrice(amount: number, currency: string) {
   }
 }
 
+function isPositivePriceAmount(amount: unknown): amount is number {
+  return typeof amount === 'number' && Number.isFinite(amount) && amount > 0;
+}
+
 const SIMILAR_PAGE_STEP = 12;
 const SIMILAR_NO_GROWTH_STOP_THRESHOLD = 2;
 const PRODUCT_LINE_PREFETCH_INCLUDE = ['offers', 'variant_selector'] as const;
@@ -730,7 +734,10 @@ function pickInternalFirstOfferId({
 }): string | null {
   if (!Array.isArray(offers) || offers.length === 0) return null;
   const merchant = String(merchantId || '').trim();
-  const merchantOffer = merchant ? offers.find((offer) => offer.merchant_id === merchant) || null : null;
+  const canUseMerchantFallback = Boolean(merchant && merchant !== 'external_seed');
+  const merchantOffer = canUseMerchantFallback
+    ? offers.find((offer) => offer.merchant_id === merchant) || null
+    : null;
   const merchantInternalOffer = merchant
     ? offers.find((offer) => offer.merchant_id === merchant && isInternalCheckoutOffer(offer)) || null
     : null;
@@ -2157,23 +2164,38 @@ export function PdpContainer({
   );
   const selectedOfferVariant = selectedOfferPricing.matchedVariant;
   const selectedVariantPriceAmount = selectedVariant.price?.current.amount;
+  const selectedVariantPositivePriceAmount = isPositivePriceAmount(selectedVariantPriceAmount)
+    ? selectedVariantPriceAmount
+    : null;
+  const productPriceAmount = payload.product.price?.current.amount;
+  const productPositivePriceAmount = isPositivePriceAmount(productPriceAmount)
+    ? productPriceAmount
+    : null;
   const baseCurrency =
     selectedVariant.price?.current.currency || payload.product.price?.current.currency || 'USD';
-  const basePriceAmount =
-    selectedVariant.price?.current.amount ?? payload.product.price?.current.amount ?? 0;
+  const basePriceAmount = selectedVariantPositivePriceAmount ?? productPositivePriceAmount ?? 0;
   const selectedOfferItemPrice = selectedOfferVariant?.price?.current.amount;
   const offerCurrency = selectedOfferPricing.currency || baseCurrency;
   const offerItemPrice = selectedOfferPricing.itemAmount;
   const offerTotalPrice = selectedOfferPricing.totalAmount;
+  const selectedOfferPositiveItemPrice = isPositivePriceAmount(selectedOfferItemPrice)
+    ? selectedOfferItemPrice
+    : null;
+  const selectedOfferPositiveTotalPrice = isPositivePriceAmount(offerTotalPrice)
+    ? offerTotalPrice
+    : null;
   const shouldUseOfferVariantPrice =
     selectedOffer != null &&
-    typeof selectedOfferItemPrice === 'number' &&
-    Number.isFinite(selectedOfferItemPrice);
+    selectedOfferPositiveItemPrice != null;
+  const shouldUseOfferTotalPrice =
+    selectedOffer != null &&
+    !shouldUseOfferVariantPrice &&
+    selectedOfferPositiveTotalPrice != null;
   const shouldUseBaseVariantPrice =
     !shouldUseOfferVariantPrice &&
-    typeof selectedVariantPriceAmount === 'number' &&
-    Number.isFinite(selectedVariantPriceAmount);
-  const displayCurrency = shouldUseOfferVariantPrice
+    !shouldUseOfferTotalPrice &&
+    selectedVariantPositivePriceAmount != null;
+  const displayCurrency = shouldUseOfferVariantPrice || shouldUseOfferTotalPrice
     ? offerCurrency
     : shouldUseBaseVariantPrice
       ? baseCurrency
@@ -2181,11 +2203,11 @@ export function PdpContainer({
         ? offerCurrency
         : baseCurrency;
   const displayPriceAmount = shouldUseOfferVariantPrice
-    ? offerTotalPrice ?? basePriceAmount
-    : shouldUseBaseVariantPrice
-      ? basePriceAmount
-      : selectedOffer && offerTotalPrice != null
-        ? offerTotalPrice
+    ? selectedOfferPositiveTotalPrice ?? basePriceAmount
+    : shouldUseOfferTotalPrice
+      ? selectedOfferPositiveTotalPrice ?? basePriceAmount
+      : shouldUseBaseVariantPrice
+        ? basePriceAmount
         : basePriceAmount;
 
   const effectiveMerchantId = selectedOffer?.merchant_id || payload.product.merchant_id;

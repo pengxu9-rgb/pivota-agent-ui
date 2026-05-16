@@ -390,6 +390,99 @@ function buildMultiOfferVariantPricingPayload(): PDPPayload {
   };
 }
 
+function buildZeroPricedExternalSeedSellerPayload(defaultOfferId = 'offer_tom_ford'): PDPPayload {
+  return {
+    schema_version: '1.0.0',
+    page_type: 'product_detail',
+    tracking: {
+      page_request_id: 'pr_zero_price_external_seed_offer',
+      entry_point: 'agent',
+    },
+    product: {
+      product_id: 'sig_tf_lost_cherry',
+      merchant_id: 'external_seed',
+      title: 'Lost Cherry Eau de Parfum',
+      brand: { name: 'Tom Ford Beauty' },
+      default_variant_id: 'TF_DEFAULT',
+      variants: [
+        {
+          variant_id: 'TF_DEFAULT',
+          title: 'Default option',
+          price: { current: { amount: 0, currency: 'USD' } },
+          availability: { in_stock: false },
+        },
+      ],
+      price: { current: { amount: 0, currency: 'USD' } },
+      availability: { in_stock: false },
+    },
+    offers: [
+      {
+        offer_id: 'offer_sephora',
+        product_id: 'tom-ford:lch-sephora',
+        merchant_id: 'external_seed',
+        merchant_name: 'Sephora',
+        price: { amount: 0, currency: 'USD' },
+        purchase_route: 'affiliate_outbound',
+        commerce_mode: 'links_out',
+        checkout_handoff: 'redirect',
+        inventory: { in_stock: false },
+        merchant_checkout_url: 'https://www.sephora.com/product/tom-ford-lost-cherry',
+      },
+      {
+        offer_id: 'offer_tom_ford',
+        product_id: 'ext_tf_lost_cherry_official',
+        merchant_id: 'external_seed',
+        merchant_name: 'Tom Ford Beauty',
+        price: { amount: 90, currency: 'USD' },
+        purchase_route: 'affiliate_outbound',
+        commerce_mode: 'links_out',
+        checkout_handoff: 'redirect',
+        inventory: { in_stock: true },
+        merchant_checkout_url: 'https://www.tomfordbeauty.com/product/lost-cherry',
+      },
+    ],
+    default_offer_id: defaultOfferId,
+    best_price_offer_id: 'offer_tom_ford',
+    modules: [
+      {
+        module_id: 'm_media',
+        type: 'media_gallery',
+        priority: 100,
+        data: {
+          items: [{ type: 'image', url: 'https://example.com/lost-cherry.jpg' }],
+        },
+      },
+      {
+        module_id: 'm_price',
+        type: 'price_promo',
+        priority: 90,
+        data: {
+          price: { amount: 0, currency: 'USD' },
+          promotions: [],
+        },
+      },
+      {
+        module_id: 'm_product_overview',
+        type: 'product_overview',
+        priority: 70,
+        data: {
+          sections: [
+            {
+              heading: 'Overview',
+              content_type: 'text',
+              content: 'Cherry fragrance.',
+            },
+          ],
+        },
+      },
+    ],
+    actions: [
+      { action_type: 'add_to_cart', label: 'Add to Cart', priority: 20, target: {} },
+      { action_type: 'buy_now', label: 'Buy Now', priority: 10, target: {} },
+    ],
+  };
+}
+
 describe('PdpContainer structured PDP modules', () => {
   // These tests exercise beauty-mode structured-module logic, which is
   // identical on the desktop beauty path. Pin matchMedia to desktop so
@@ -1381,6 +1474,37 @@ describe('PdpContainer structured PDP modules', () => {
 
     await waitFor(() => {
       expect(screen.getAllByText('€55.00').length).toBeGreaterThan(0);
+    });
+  });
+
+  it('uses the explicit external-seed default seller price when the canonical variant price is zero', () => {
+    render(
+      <PdpContainer
+        payload={buildZeroPricedExternalSeedSellerPayload('offer_tom_ford')}
+        mode="generic"
+        onAddToCart={() => {}}
+        onBuyNow={() => {}}
+      />,
+    );
+
+    expect(screen.getAllByText('$90.00').length).toBeGreaterThan(0);
+  });
+
+  it('uses the selected seller offer price over a zero canonical variant price', async () => {
+    render(
+      <PdpContainer
+        payload={buildZeroPricedExternalSeedSellerPayload('offer_sephora')}
+        mode="generic"
+        onAddToCart={() => {}}
+        onBuyNow={() => {}}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Other offers (1)' }));
+    fireEvent.click(screen.getByRole('button', { name: /Tom Ford Beauty/ }));
+
+    await waitFor(() => {
+      expect(screen.getAllByText('$90.00').length).toBeGreaterThan(0);
     });
   });
 
