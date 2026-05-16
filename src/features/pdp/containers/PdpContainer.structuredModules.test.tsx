@@ -1050,6 +1050,15 @@ describe('PdpContainer structured PDP modules', () => {
         price: { current: { amount: 24, currency: 'USD' } },
         availability: { in_stock: true },
       },
+      {
+        variant_id: 'shade-fenty-glow',
+        title: 'Fenty Glow',
+        options: [{ name: 'Shade', value: 'Fenty Glow' }],
+        swatch_image_url:
+          'https://cdn.shopify.com/files/FB816865GLOBAL_GLOSSBOMBOIL_INFOGRAPHICS_1200x1500_2Model_Smear_FENTYGLOW_2.jpg',
+        price: { current: { amount: 24, currency: 'USD' } },
+        availability: { in_stock: true },
+      },
     ];
 
     render(
@@ -1064,6 +1073,10 @@ describe('PdpContainer structured PDP modules', () => {
     const caratsButton = screen.getByRole('button', { name: 'Shade How Many Carats?!' });
     expect(caratsButton.querySelector('[style*="background-image"]')).toBeNull();
     expect(caratsButton).toHaveTextContent('How');
+
+    const fentyGlowButton = screen.getByRole('button', { name: 'Shade Fenty Glow' });
+    expect(fentyGlowButton.querySelector('[style*="background-image"]')).toBeNull();
+    expect(fentyGlowButton).toHaveTextContent('Fenty');
   });
 
   it('renders concrete size explanations for mini and full-size product-line options', () => {
