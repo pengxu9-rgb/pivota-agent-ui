@@ -164,9 +164,11 @@ export function ProductCard({
           <div
             className={cn(
               'absolute bottom-2 right-2 flex items-center gap-1.5',
-              // Always visible on touch; fade in on hover on desktop so the
-              // editorial card stays calm until intentionally focused.
-              'opacity-100 transition-opacity duration-150 lg:opacity-0 lg:group-hover:opacity-100 lg:focus-within:opacity-100',
+              // Always visible — keeps the affordance reachable without a
+              // hover/focus discovery step. Editorial calm is preserved by
+              // the small footprint (32px), paper backdrop, and minimal icon
+              // weight rather than by hiding the controls.
+              'opacity-100',
             )}
           >
             {onAddToCart ? (

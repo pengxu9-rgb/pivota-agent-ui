@@ -520,16 +520,17 @@ export default function ProductsPage() {
               const hrefWithReturn = appendCurrentPathAsReturn(href);
               const signals = deriveEditorialProductCardSignals(product);
 
-              // Quick-action eligibility — the editorial card surfaces
-              // "Add to bag" + "Buy now" icons only when the product can
-              // actually transact. External_seed records redirect off-site
-              // and identity-grouped products need PDP for seller-pick.
+              // Direct-cart eligibility — only true Pivota-internal merchants
+              // with a single seller can take a one-click cart-add. Everything
+              // else (external_seed, identity-grouped multi-seller, external
+              // redirect) routes the quick action to PDP so the user picks a
+              // seller or follows the brand-direct outbound link there.
               const isExternalSeed = product.source === 'external_seed';
               const isIdentityGrouped =
                 Boolean(product.sellable_item_group_id) ||
                 product.canonical_scope === 'synthetic' ||
                 (Array.isArray(product.group_members) && product.group_members.length > 1);
-              const canQuickTransact =
+              const canDirectCart =
                 !isExternalSeed &&
                 !isIdentityGrouped &&
                 Boolean(product.merchant_id) &&
@@ -537,6 +538,15 @@ export default function ProductsPage() {
                 !product.external_redirect_url;
 
               const handleAddToCart = () => {
+                if (!canDirectCart) {
+                  // No one-click path — open PDP so the user picks a seller
+                  // or follows the brand-direct outbound. Honors
+                  // [[feedback_no_execution_layer_fallbacks]]: no fake
+                  // one-click promise, but the icon still gives the user an
+                  // affordance toward a real path.
+                  router.push(hrefWithReturn);
+                  return;
+                }
                 const variantId =
                   String(product.variant_id || product.sku_id || '').trim() ||
                   product.product_id;
@@ -560,6 +570,10 @@ export default function ProductsPage() {
               };
 
               const handleBuyNow = () => {
+                if (!canDirectCart) {
+                  router.push(hrefWithReturn);
+                  return;
+                }
                 handleAddToCart();
                 open();
               };
@@ -587,8 +601,8 @@ export default function ProductsPage() {
                     badge={signals.badge}
                     highlight={signals.highlight}
                     summaryBadges={signals.summaryBadges}
-                    onAddToCart={canQuickTransact ? handleAddToCart : undefined}
-                    onBuyNow={canQuickTransact ? handleBuyNow : undefined}
+                    onAddToCart={handleAddToCart}
+                    onBuyNow={handleBuyNow}
                     aspect="4/5"
                   />
                 </Link>
