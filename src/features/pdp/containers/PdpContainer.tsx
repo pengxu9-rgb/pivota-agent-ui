@@ -4196,6 +4196,7 @@ export function PdpContainer({
             : null
         }
         onSeeAllReviews={onSeeAllReviews}
+        onWriteReview={handleWriteReview}
         questions={mergedQuestions}
         onAskQuestion={handleAskQuestion}
         canAskQuestion={canAskQuestion}
@@ -4833,8 +4834,7 @@ export function PdpContainer({
                 <BeautyUgcGallery
                   items={ugcItems}
                   title={ugcSectionTitle}
-                  showEmpty
-                  ctaLabel="Share yours +"
+                  ctaLabel="Add your photo"
                   ctaEnabled={canUploadMedia}
                   onCtaClick={handleUploadMedia}
                   onOpenAll={() => {

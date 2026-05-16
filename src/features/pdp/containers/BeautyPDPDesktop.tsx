@@ -34,6 +34,9 @@ import type { BeautyPDPMobileProps } from '@/features/pdp/containers/BeautyPDPMo
  * It accepts the exact same `BeautyPDPMobileProps` as `BeautyPDPMobile`, so
  * `PdpContainer` wires both trees from one prop object and simply swaps the
  * component on the `isDesktop` breakpoint.
+ *
+ * NOTE (empty-review fix): the Reviews accordion and the Customer Photos
+ * grid now render unconditionally. See handoff-empty-review/README.md.
  */
 export function BeautyPDPDesktop(props: BeautyPDPMobileProps) {
   const reviewsAnchorRef = useRef<HTMLDivElement | null>(null);
@@ -43,7 +46,6 @@ export function BeautyPDPDesktop(props: BeautyPDPMobileProps) {
 
   return (
     <div className="lovable-pdp min-h-screen bg-background text-foreground">
-      {/* Solid sticky top bar — desktop has no transparent-over-hero chrome */}
       <div className="sticky top-0 z-20 border-b border-border bg-white/95 backdrop-blur-md backdrop-saturate-150">
         <div className="mx-auto flex h-14 max-w-[1180px] items-center gap-3 px-6">
           {props.onBack ? (
@@ -79,9 +81,7 @@ export function BeautyPDPDesktop(props: BeautyPDPMobileProps) {
       </div>
 
       <div className="mx-auto max-w-[1180px] px-6 pb-24">
-        {/* ── Hero: sticky gallery + buy column ───────────────────────── */}
         <div className="grid grid-cols-1 gap-x-12 gap-y-8 pt-8 lg:grid-cols-[minmax(0,1fr)_440px]">
-          {/* Left — gallery, sticks through the buy column */}
           <div className="self-start lg:sticky lg:top-[76px]">
             <div className="overflow-hidden rounded-2xl border border-border">
               <BeautyMobileGallery
@@ -92,7 +92,6 @@ export function BeautyPDPDesktop(props: BeautyPDPMobileProps) {
             </div>
           </div>
 
-          {/* Right — header, price, options, buy box */}
           <div className="-mx-[18px]">
             <BeautyProductHeader
               brand={props.brand}
@@ -158,11 +157,6 @@ export function BeautyPDPDesktop(props: BeautyPDPMobileProps) {
           </div>
         </div>
 
-        {/* ── Long-form content — full-width two-column block below the
-            hero so it spans the screen instead of a narrow centred rail:
-            Insights + detail accordions in the main column, social proof
-            + brand in the side column, recommendations as a full-width
-            rail underneath. ─────────────────────────────────────────── */}
         <div className="mt-14 grid grid-cols-1 gap-x-12 gap-y-10 lg:grid-cols-[minmax(0,1fr)_340px]">
           <div className="min-w-0">
             {props.insights ? (
@@ -170,20 +164,20 @@ export function BeautyPDPDesktop(props: BeautyPDPMobileProps) {
             ) : null}
 
             <div ref={reviewsAnchorRef} className="mt-8 scroll-mt-20">
-              {props.reviews?.length ? (
-                <BeautyAccordion
-                  title="Reviews"
-                  count={props.reviewCount ?? props.reviews.length}
-                  defaultOpen
-                >
-                  <BeautyReviewsPreview
-                    rating={props.rating ?? 0}
-                    reviewCount={props.reviewCount ?? props.reviews.length}
-                    reviews={props.reviews}
-                    onSeeAll={props.onSeeAllReviews}
-                  />
-                </BeautyAccordion>
-              ) : null}
+              {/* CHANGED: Reviews accordion renders unconditionally. */}
+              <BeautyAccordion
+                title="Reviews"
+                count={props.reviewCount ?? props.reviews?.length ?? 0}
+                defaultOpen
+              >
+                <BeautyReviewsPreview
+                  rating={props.rating ?? 0}
+                  reviewCount={props.reviewCount ?? props.reviews?.length ?? 0}
+                  reviews={props.reviews ?? []}
+                  onWriteReview={props.onWriteReview}
+                  onSeeAll={props.onSeeAllReviews}
+                />
+              </BeautyAccordion>
               {props.ingredients ? (
                 <BeautyAccordion title="Ingredients">{props.ingredients}</BeautyAccordion>
               ) : null}
@@ -212,15 +206,15 @@ export function BeautyPDPDesktop(props: BeautyPDPMobileProps) {
                 totalLabel={props.recentPurchasesTotal}
               />
             ) : null}
-            {props.customerPhotos?.length ? (
-              <BeautyCustomerPhotos
-                photos={props.customerPhotos}
-                totalLabel={props.customerPhotosTotal}
-                onViewAll={props.onUgcViewAll}
-                onShare={props.onUgcShare}
-                onPhotoClick={props.onUgcPhotoClick}
-              />
-            ) : null}
+            {/* CHANGED: customer-photos grid renders unconditionally so the
+                "+ Add your photo" tile is reachable on empty products too. */}
+            <BeautyCustomerPhotos
+              photos={props.customerPhotos ?? []}
+              totalLabel={props.customerPhotosTotal}
+              onViewAll={props.onUgcViewAll}
+              onShare={props.onUgcShare}
+              onPhotoClick={props.onUgcPhotoClick}
+            />
             <BeautyBrandCard brandName={props.brandName} brandHref={props.brandHref} />
           </div>
         </div>

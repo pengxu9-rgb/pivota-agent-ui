@@ -1508,6 +1508,31 @@ describe('PdpContainer structured PDP modules', () => {
     });
   });
 
+  it('keeps the Reviews section + Write a review CTA visible when review_count is 0', () => {
+    const payload = buildGenericSingleVariantPayload();
+    payload.x_reviews_state = 'ready';
+    payload.modules.push({
+      module_id: 'm_reviews_empty',
+      type: 'reviews_preview',
+      priority: 50,
+      data: {
+        scale: 5,
+        rating: 0,
+        review_count: 0,
+      },
+    } as any);
+
+    render(
+      <PdpContainer payload={payload} mode="generic" onAddToCart={() => {}} onBuyNow={() => {}} />,
+    );
+
+    expect(screen.getByText(/Reviews \(0\)/)).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: /Write a review/i }).length).toBeGreaterThan(0);
+    expect(
+      screen.getByText(/No reviews yet\. Be the first to share your thoughts/i),
+    ).toBeInTheDocument();
+  });
+
   it('renders FAQ and review-derived source labels in the questions rail', () => {
     const payload = buildBeautyPayload();
     payload.modules.push({

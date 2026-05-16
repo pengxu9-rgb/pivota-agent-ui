@@ -36,6 +36,13 @@ import { BeautyBrandCard } from '@/features/pdp/components/BeautyBrandCard';
  * (variant beauty attributes / product `beauty_meta.important_info`); when a
  * product has no derivable source the prop is null and the section renders
  * nothing — never fabricated content.
+ *
+ * NOTE (empty-review fix): the Reviews accordion and the Customer Photos
+ * grid now render unconditionally. The original `?.length ? … : null` gates
+ * caused both sections to disappear on freshly-launched products with 0
+ * reviews / 0 customer photos, which removes the shopper's path to add the
+ * first review or photo. The two child components handle their own empty
+ * state (compact tile with a CTA). See handoff-empty-review/README.md.
  */
 
 export type BeautyPDPMobileProps = {
@@ -90,6 +97,8 @@ export type BeautyPDPMobileProps = {
   insights?: BeautyInsightsData | null;
   // accordions
   reviews?: BeautyReviewItem[] | null;
+  /** NEW: click handler for the "Write a review" CTA in the Reviews accordion. */
+  onWriteReview?: () => void;
   onSeeAllReviews?: () => void;
   ingredients?: React.ReactNode;
   howToUse?: React.ReactNode;
@@ -149,11 +158,6 @@ export function BeautyPDPMobile(props: BeautyPDPMobileProps) {
     if (!el) return;
     const onScroll = () => {
       const top = el.scrollTop;
-      // Both the solid top bar (with search pill) and the section tracker
-      // appear together once the user crosses out of the first viewport —
-      // i.e. onto "page 2". Until then only the back + share glass pills
-      // float over the hero. The 80px buffer triggers right as the hero
-      // is sliding off so the chrome lands without a snap.
       const pastFirstPage = top >= Math.max(320, el.clientHeight - 80);
       setScrolled(pastFirstPage);
       setTabsVisible(pastFirstPage);
@@ -180,9 +184,10 @@ export function BeautyPDPMobile(props: BeautyPDPMobileProps) {
     }
   };
 
+  // Reviews tab is ALWAYS available — the section always renders even with
+  // 0 reviews so the shopper can post the first one.
   const availableTabs = SECTION_TABS.filter((t) => {
     if (t.id === 'insights') return Boolean(props.insights);
-    if (t.id === 'reviews') return Boolean(props.reviews?.length);
     if (t.id === 'similar') return Boolean(props.similar?.length);
     return true;
   });
@@ -270,15 +275,16 @@ export function BeautyPDPMobile(props: BeautyPDPMobileProps) {
               totalLabel={props.recentPurchasesTotal}
             />
           ) : null}
-          {props.customerPhotos?.length ? (
-            <BeautyCustomerPhotos
-              photos={props.customerPhotos}
-              totalLabel={props.customerPhotosTotal}
-              onViewAll={props.onUgcViewAll}
-              onShare={props.onUgcShare}
-              onPhotoClick={props.onUgcPhotoClick}
-            />
-          ) : null}
+          {/* CHANGED: render unconditionally so empty UGC still surfaces the
+              "+ Add your photo" tile. BeautyCustomerPhotos handles the
+              empty case internally. */}
+          <BeautyCustomerPhotos
+            photos={props.customerPhotos ?? []}
+            totalLabel={props.customerPhotosTotal}
+            onViewAll={props.onUgcViewAll}
+            onShare={props.onUgcShare}
+            onPhotoClick={props.onUgcPhotoClick}
+          />
         </div>
 
         {props.insights ? (
@@ -288,16 +294,22 @@ export function BeautyPDPMobile(props: BeautyPDPMobileProps) {
         ) : null}
 
         <div ref={reviewsRef} className="mt-2.5">
-          {props.reviews?.length ? (
-            <BeautyAccordion title="Reviews" count={props.reviewCount ?? props.reviews.length} defaultOpen>
-              <BeautyReviewsPreview
-                rating={props.rating ?? 0}
-                reviewCount={props.reviewCount ?? props.reviews.length}
-                reviews={props.reviews}
-                onSeeAll={props.onSeeAllReviews}
-              />
-            </BeautyAccordion>
-          ) : null}
+          {/* CHANGED: Reviews accordion renders unconditionally. The accordion
+              header always shows "Reviews (N)"; BeautyReviewsPreview handles
+              the 0-reviews state (compact "Write a review" tile). */}
+          <BeautyAccordion
+            title="Reviews"
+            count={props.reviewCount ?? props.reviews?.length ?? 0}
+            defaultOpen
+          >
+            <BeautyReviewsPreview
+              rating={props.rating ?? 0}
+              reviewCount={props.reviewCount ?? props.reviews?.length ?? 0}
+              reviews={props.reviews ?? []}
+              onWriteReview={props.onWriteReview}
+              onSeeAll={props.onSeeAllReviews}
+            />
+          </BeautyAccordion>
           {props.ingredients ? (
             <BeautyAccordion title="Ingredients">{props.ingredients}</BeautyAccordion>
           ) : null}
@@ -316,9 +328,6 @@ export function BeautyPDPMobile(props: BeautyPDPMobileProps) {
           />
         </div>
 
-        {/* Brand "explore the full collection" card sits directly under
-            Questions — not at the page tail — so the You-May-Also-Like rail
-            stays the last thing before the buy bar as recommendations grow. */}
         <BeautyBrandCard brandName={props.brandName} brandHref={props.brandHref} />
 
         {props.similar?.length ? (
