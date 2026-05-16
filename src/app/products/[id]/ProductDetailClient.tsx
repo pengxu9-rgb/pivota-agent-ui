@@ -19,6 +19,8 @@ import { mapPdpV2ToPdpPayload } from '@/features/pdp/adapter/mapPdpV2ToPdpPayloa
 import { isBeautyProduct } from '@/features/pdp/utils/isBeautyProduct';
 import { BeautyPDPContainer } from '@/features/pdp/containers/BeautyPDPContainer';
 import { GenericPDPContainer } from '@/features/pdp/containers/GenericPDPContainer';
+import { FashionPDPContainer } from '@/features/pdp/containers/FashionPDPContainer';
+import { ElectronicsPDPContainer } from '@/features/pdp/containers/ElectronicsPDPContainer';
 import { ProductDetailLoading } from '@/features/pdp/components/ProductDetailLoading';
 import type { PDPPayload, Variant } from '@/features/pdp/types';
 import { pdpTracking } from '@/features/pdp/tracking';
@@ -834,11 +836,40 @@ export default function ProductDetailPage({ params, initialPayload }: Props) {
     });
   }, [id, sellerCandidates]);
 
-  const resolvedMode = useMemo(() => {
+  const resolvedMode = useMemo<'beauty' | 'fashion' | 'electronics' | 'generic'>(() => {
     if (pdpOverride === 'beauty') return 'beauty';
     if (pdpOverride === 'generic') return 'generic';
+    if (pdpOverride === 'fashion') return 'fashion';
+    if (pdpOverride === 'electronics') return 'electronics';
     if (!pdpPayload) return 'generic';
-    return isBeautyProduct(pdpPayload.product) ? 'beauty' : 'generic';
+    const explicitKind = pdpPayload.product.category_kind;
+    if (explicitKind === 'fashion' || explicitKind === 'electronics' || explicitKind === 'beauty' || explicitKind === 'generic') {
+      return explicitKind;
+    }
+    if (isBeautyProduct(pdpPayload.product)) return 'beauty';
+    const taxonomy = [
+      Array.isArray(pdpPayload.product.category_path) ? pdpPayload.product.category_path.join(' ') : '',
+      pdpPayload.product.title || '',
+      pdpPayload.product.subtitle || '',
+      Array.isArray(pdpPayload.product.tags) ? pdpPayload.product.tags.join(' ') : '',
+    ]
+      .join(' ')
+      .toLowerCase();
+    if (
+      /(electronic|phone|audio|computer|laptop|headphone|camera|gaming|smartwatch|console|tablet|tv\b|earbud|speaker|monitor|router)/.test(
+        taxonomy,
+      )
+    ) {
+      return 'electronics';
+    }
+    if (
+      /(fashion|apparel|clothing|shoe|sneaker|boot|accessor|jewel|bag|outerwear|denim|lingerie|underwear|swim|dress|skirt|coat|jacket|sweater|hoodie|jean|pant|trouser|bra\b|panty|sock|hat\b|scarf|glove|belt\b|wear\b|women|men\b|kids)/.test(
+        taxonomy,
+      )
+    ) {
+      return 'fashion';
+    }
+    return 'generic';
   }, [pdpOverride, pdpPayload]);
 
   const handleAddToCart = ({
@@ -1246,7 +1277,14 @@ export default function ProductDetailPage({ params, initialPayload }: Props) {
     );
   }
 
-  const Container = resolvedMode === 'beauty' ? BeautyPDPContainer : GenericPDPContainer;
+  const Container =
+    resolvedMode === 'beauty'
+      ? BeautyPDPContainer
+      : resolvedMode === 'fashion'
+        ? FashionPDPContainer
+        : resolvedMode === 'electronics'
+          ? ElectronicsPDPContainer
+          : GenericPDPContainer;
 
   return (
     <div className="min-h-screen bg-background">

@@ -47,10 +47,51 @@ export interface PageTracking {
   experiment?: string;
 }
 
+export type ProductCategoryKind = 'beauty' | 'fashion' | 'electronics' | 'generic';
+
+export interface FashionMeta {
+  size_fit_chart?: {
+    columns: string[];
+    rows: { label: string; values: string[]; stock?: 'in' | 'low' | 'out' }[];
+    note?: string | null;
+    tip?: string | null;
+  };
+  model?: { info: string; avatar_url?: string | null } | null;
+  material?: string | null;
+  origin?: string | null;
+  care?: string | null;
+  styling_pairings?: { name: string; brand: string; price: number; img: string; href?: string }[] | null;
+}
+
+export interface ElectronicsMeta {
+  configurator_groups?: {
+    id: string;
+    label: string;
+    options: { id: string; label: string; delta: number }[];
+    help_url?: string | null;
+  }[];
+  protection_plans?: {
+    id: string;
+    label: string;
+    price: number;
+    sub: string;
+    popular?: boolean;
+  }[];
+  pro_reviews?: { source: string; verdict: string; score: string; url: string }[];
+  in_box?: string[];
+  compare_with?: { product_ids: string[] } | null;
+  spec_groups?: {
+    group: string;
+    icon?: 'cpu' | 'display' | 'battery' | 'spec' | 'shield' | null;
+    rows: [string, string][];
+  }[];
+}
+
 export interface Product {
   product_id: string;
   title: string;
   pdp_schema_profile?: 'beauty_formula' | 'beauty_tool' | 'generic_merch' | 'generic_product' | string;
+  category_kind?: ProductCategoryKind;
   subtitle?: string;
   brand?: { name: string };
   brand_story?: string;
@@ -63,6 +104,8 @@ export interface Product {
     best_for?: string[];
     important_info?: string[];
   };
+  fashion_meta?: FashionMeta | null;
+  electronics_meta?: ElectronicsMeta | null;
   recent_purchases?: Array<{
     user_label: string;
     variant_label?: string;
