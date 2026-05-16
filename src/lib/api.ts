@@ -245,6 +245,14 @@ export interface ProductResponse {
   payment_offer_summary?: Record<string, any>;
   payment_offer_badges?: string[];
   payment_pricing?: Record<string, any>;
+  /**
+   * Merchant-feed promo shape from find_products / merchant-scoped feed.
+   * Parallel to (but flatter than) the `_evidence` blocks PDP returns —
+   * carries the same "Buy 3, get 20% off"-style merchant deals so the
+   * editorial card's `dealsToSummaryBadges` fallback can render them.
+   */
+  best_deal?: Record<string, any>;
+  all_deals?: Array<Record<string, any>>;
   external_highlight_signals?: Array<Record<string, any>>;
   market_signal_badges?: Array<{
     badge_type?: string;
@@ -815,6 +823,13 @@ export function normalizeProduct(
     ...(isRecord(anyP.payment_offer_summary) ? { payment_offer_summary: anyP.payment_offer_summary } : {}),
     ...(Array.isArray(anyP.payment_offer_badges) ? { payment_offer_badges: anyP.payment_offer_badges } : {}),
     ...(isRecord(anyP.payment_pricing) ? { payment_pricing: anyP.payment_pricing } : {}),
+    // Merchant-feed promo shape — passthrough so the editorial card
+    // helper's `dealsToSummaryBadges` fallback can surface
+    // "Buy 3, get 20% off"-style merchant deals on the Browse path.
+    // These are flatter than the `_evidence` blocks PDP uses but they're
+    // the only promo shape find_products / merchant feed returns.
+    ...(Array.isArray(anyP.all_deals) ? { all_deals: anyP.all_deals } : {}),
+    ...(isRecord(anyP.best_deal) ? { best_deal: anyP.best_deal } : {}),
     ...(externalHighlightSignals ? { external_highlight_signals: externalHighlightSignals } : {}),
     ...(marketSignalBadges ? { market_signal_badges: marketSignalBadges } : {}),
     ...(rawSearchCard
