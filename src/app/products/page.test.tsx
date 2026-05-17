@@ -10,22 +10,30 @@ const openCartMock = vi.fn();
 let cartItems: Array<{ quantity: number }> = [];
 let intersectionCallback: ((entries: Array<{ isIntersecting: boolean }>) => void) | null = null;
 
-vi.mock('framer-motion', () => ({
-  motion: {
-    section: ({ children, ...props }: React.HTMLAttributes<HTMLElement>) => (
-      <section {...props}>{children}</section>
-    ),
-  },
+vi.mock('framer-motion', () => {
+  const passthrough = ({ children, ...props }: React.HTMLAttributes<HTMLElement>) => (
+    <div {...props}>{children}</div>
+  );
+  return {
+    motion: new Proxy({}, { get: () => passthrough }),
+  };
+});
+
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: vi.fn(), back: vi.fn(), replace: vi.fn() }),
+  useSearchParams: () => new URLSearchParams(),
+}));
+
+vi.mock('next/image', () => ({
+  default: ({ alt, fill: _fill, ...rest }: React.ImgHTMLAttributes<HTMLImageElement> & { fill?: boolean }) => (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img {...rest} alt={alt || ''} />
+  ),
 }));
 
 vi.mock('@/lib/api', () => ({
   getShoppingDiscoveryFeed: (...args: unknown[]) => getShoppingDiscoveryFeedMock(...args),
   getMerchantProductsFeed: (...args: unknown[]) => getMerchantProductsFeedMock(...args),
-}));
-
-vi.mock('@/components/catalog/CatalogProductCard', () => ({
-  CatalogProductCard: ({ product }: { product: { title: string } }) => <div>{product.title}</div>,
-  CatalogProductSkeleton: () => <div data-testid="catalog-product-skeleton" />,
 }));
 
 vi.mock('@/store/cartStore', () => ({
@@ -290,7 +298,10 @@ describe('ProductsPage', () => {
     });
 
     expect(getShoppingDiscoveryFeedMock).not.toHaveBeenCalled();
-    expect(screen.getByText('Merchant products')).toBeInTheDocument();
+    // Editorial-redesign copy for the merchant-scoped headline. Mobile +
+    // desktop variants both render in jsdom (CSS hides one), so allow
+    // multiple matches.
+    expect(screen.getAllByText(/merchant's (catalog|edit)/i).length).toBeGreaterThan(0);
     expect(await screen.findByText('Shopify Serum')).toBeInTheDocument();
   });
 });

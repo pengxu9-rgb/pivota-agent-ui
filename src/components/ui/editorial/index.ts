@@ -13,6 +13,10 @@ export type { ButtonProps, IconButtonProps } from './Button';
 export { HairlineDivider } from './Divider';
 export { InsightBlock } from './InsightBlock';
 export { ProductCard } from './ProductCard';
-export type { ProductCardProps } from './ProductCard';
+export type {
+  ProductCardProps,
+  ProductSummaryBadge,
+  ProductSummaryBadgeTone,
+} from './ProductCard';
 export { MerchantHeader } from './MerchantHeader';
 export { TrackStepper, QtyStepper } from './Stepper';
