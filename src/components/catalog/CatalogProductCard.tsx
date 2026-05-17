@@ -31,6 +31,43 @@ function formatCatalogPrice(price: number, currency = 'USD'): string {
   }
 }
 
+// Map a backend deal type (FREE_SHIPPING / MULTI_BUY_DISCOUNT / FLASH_SALE / ...)
+// to one of savingsChipClass's tone keys so the chip styling stays consistent
+// with the rest of the card. Unknown types fall through to the default chip.
+function dealTypeToSavingsTone(rawType: unknown): SavingsSummaryBadgeTone {
+  const t = String(rawType || '').trim().toUpperCase();
+  if (t === 'FREE_SHIPPING') return 'shipping';
+  if (t === 'FLASH_SALE' || t === 'MULTI_BUY_DISCOUNT') return 'store';
+  return 'default' as SavingsSummaryBadgeTone;
+}
+
+// Fallback chip extraction for the merchant-feed browse path: get_discovery_feed
+// returns the flat `all_deals` / `best_deal` shape (no PDP `_evidence` blocks).
+// Surface up to `limit` distinct deal labels as chips. Real data only — no
+// synthesis. (Identical contract to lib/editorialProductCard's dealsToSummaryBadges
+// but inlined here so the brand page doesn't couple to that module.)
+function dealsToCardChips(
+  product: ProductResponse,
+  limit: number,
+): Array<{ label: string; tone: SavingsSummaryBadgeTone }> {
+  if (limit <= 0) return [];
+  const deals = (product as any)?.all_deals;
+  const best = (product as any)?.best_deal;
+  const source = Array.isArray(deals) && deals.length ? deals : best ? [best] : [];
+  if (!source.length) return [];
+  const out: Array<{ label: string; tone: SavingsSummaryBadgeTone }> = [];
+  const seen = new Set<string>();
+  for (const deal of source) {
+    if (!deal || typeof deal !== 'object') continue;
+    const label = String((deal as any).label || '').trim();
+    if (!label || seen.has(label)) continue;
+    seen.add(label);
+    out.push({ label, tone: dealTypeToSavingsTone((deal as any).type) });
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
 function savingsChipClass(tone: SavingsSummaryBadgeTone): string {
   if (tone === 'applied') return 'border-emerald-300 bg-emerald-50 text-emerald-800';
   if (tone === 'store') return 'border-teal-200 bg-teal-50 text-teal-800';
@@ -128,7 +165,15 @@ export function CatalogProductCard({ product }: { product: ProductResponse }) {
     pricing: { total: product.price, currency: product.currency },
     currency: product.currency,
   });
-  const savingsBadges = addMultiOfferCaution(getSummaryBadgeItems(savingsModel, 2), product);
+  // Primary path: rich savings evidence (PDP-style `store_discount_evidence` /
+  // `payment_offer_evidence`). Fallback for the merchant-feed browse path
+  // (e.g. /brands/<slug>), where get_discovery_feed returns the flatter
+  // `all_deals` / `best_deal` shape — derive chips from those instead.
+  const savingsBadgesFromEvidence = addMultiOfferCaution(getSummaryBadgeItems(savingsModel, 2), product);
+  const savingsBadges =
+    savingsBadgesFromEvidence.length > 0
+      ? savingsBadgesFromEvidence
+      : dealsToCardChips(product, 2);
   const compactCopy = card.highlight || card.subtitle;
   const isIdentityGrouped =
     multipleSellerOffers ||
