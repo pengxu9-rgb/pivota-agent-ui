@@ -45,21 +45,47 @@ function formatPriceLabel(price: unknown, currency?: string): string {
 // (top-left pill, terracotta variant). Reads the flat `best_deal` / `all_deals`
 // shape that get_discovery_feed returns. Temporary treatment — once the design
 // system grows a dedicated promo slot on the card, switch to that.
-function dealBadgeFor(product: ProductResponse): { label: string; variant: 'promo' } | null {
-  const best = (product as unknown as { best_deal?: { label?: string } }).best_deal;
-  const deals = (product as unknown as { all_deals?: Array<{ label?: string }> }).all_deals;
-  const candidate =
-    best && typeof best === 'object'
-      ? best
-      : Array.isArray(deals) && deals.length > 0 && typeof deals[0] === 'object'
-        ? deals[0]
-        : null;
-  if (!candidate) return null;
-  const label = String(candidate.label || '').trim();
-  if (!label) return null;
-  // High-contrast `promo` variant — solid terracotta on paper text. Soft
-  // `accent` blended into beige product photography during preview review.
-  return { label, variant: 'promo' };
+type DealLike = { label?: string; type?: string; config?: { kind?: string }; free_shipping?: boolean };
+
+function isFreeShippingDeal(deal: DealLike | null | undefined): boolean {
+  if (!deal) return false;
+  if (deal.free_shipping === true) return true;
+  const type = String(deal.type || '').toUpperCase();
+  if (type === 'FREE_SHIPPING') return true;
+  const kind = String(deal.config?.kind || '').toUpperCase();
+  return kind === 'FREE_SHIPPING';
+}
+
+// Pick up to two promo chips to surface on the editorial ProductCard:
+//   1. The best monetary discount (mirrors backend `best_deal`).
+//   2. A free-shipping perk, if one is present in `all_deals` and isn't
+//      already the best_deal.
+// Solid terracotta `promo` variant for monetary discount, soft `accent`
+// for shipping (different tone keeps the two visually distinct at a glance).
+function dealBadgesFor(
+  product: ProductResponse,
+): Array<{ label: string; variant: 'promo' | 'accent' }> {
+  const best = (product as unknown as { best_deal?: DealLike }).best_deal;
+  const deals = (product as unknown as { all_deals?: DealLike[] }).all_deals;
+  const out: Array<{ label: string; variant: 'promo' | 'accent' }> = [];
+  const seen = new Set<string>();
+
+  const primary = best && typeof best === 'object' ? best : null;
+  const primaryLabel = String(primary?.label || '').trim();
+  if (primaryLabel) {
+    out.push({ label: primaryLabel, variant: 'promo' });
+    seen.add(primaryLabel);
+  }
+
+  if (Array.isArray(deals)) {
+    const shipping = deals.find((d) => isFreeShippingDeal(d));
+    const shippingLabel = String(shipping?.label || '').trim();
+    if (shippingLabel && !seen.has(shippingLabel)) {
+      out.push({ label: shippingLabel, variant: 'accent' });
+    }
+  }
+
+  return out;
 }
 
 const PAGE_SIZE = 12;
@@ -836,7 +862,7 @@ export function BrandLandingPage({
                         brand={product.category || product.brand || product.merchant_name || null}
                         title={product.title}
                         priceLabel={formatPriceLabel(product.price, product.currency)}
-                        badge={dealBadgeFor(product)}
+                        badge={dealBadgesFor(product)}
                         onQuickAction={() => handleQuickAdd(product)}
                         quickActionLabel={`Quick add ${product.title}`}
                         aspect="4/5"
@@ -884,7 +910,7 @@ export function BrandLandingPage({
                           brand={product.category || product.brand || product.merchant_name || null}
                           title={product.title}
                           priceLabel={formatPriceLabel(product.price, product.currency)}
-                          badge={dealBadgeFor(product)}
+                          badge={dealBadgesFor(product)}
                           onQuickAction={() => handleQuickAdd(product)}
                           quickActionLabel={`Quick add ${product.title}`}
                           aspect="4/5"

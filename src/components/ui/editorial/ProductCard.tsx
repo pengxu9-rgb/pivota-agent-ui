@@ -24,7 +24,16 @@ export interface ProductCardProps {
   brand?: string | null;
   title: string;
   priceLabel?: string;
-  badge?: { label: string; variant?: 'default' | 'sage' | 'accent' | 'promo' } | null;
+  /**
+   * Top-left status pill(s). Pass a single `{label, variant}` for the
+   * common case, or an array (max ~2 rendered) to surface multiple
+   * promos (e.g. a discount + a shipping perk). Stacked vertically with
+   * 4px gap when more than one.
+   */
+  badge?:
+    | { label: string; variant?: 'default' | 'sage' | 'accent' | 'promo' }
+    | Array<{ label: string; variant?: 'default' | 'sage' | 'accent' | 'promo' }>
+    | null;
   saved?: boolean;
   onSave?: (next: boolean) => void;
   /**
@@ -82,9 +91,13 @@ export function ProductCard({
           sizes="(min-width: 1024px) 25vw, 50vw"
         />
         {badge ? (
-          <Pill variant={badge.variant ?? 'accent'} className="absolute left-2 top-2">
-            {badge.label}
-          </Pill>
+          <div className="absolute left-2 top-2 flex flex-col items-start gap-1">
+            {(Array.isArray(badge) ? badge : [badge]).slice(0, 3).map((b, i) => (
+              <Pill key={`${b.label}-${i}`} variant={b.variant ?? 'accent'}>
+                {b.label}
+              </Pill>
+            ))}
+          </div>
         ) : null}
         {onSave ? (
           <button
