@@ -63,7 +63,7 @@ const pill = cva(
          * the card. (Earlier solid-terracotta brick was visually too loud.)
          */
         promo:
-          'bg-white/92 text-ink border border-hairline backdrop-blur-sm',
+          'bg-white/95 text-ink border border-hairline backdrop-blur-sm',
       },
     },
     defaultVariants: { variant: 'default' },
