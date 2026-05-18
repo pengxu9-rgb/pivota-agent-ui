@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import Image from 'next/image';
-import { Heart } from 'lucide-react';
+import { Heart, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Mono, Num, Title } from './Type';
 import { Pill } from './Chip';
@@ -27,6 +27,14 @@ export interface ProductCardProps {
   badge?: { label: string; variant?: 'default' | 'sage' | 'accent' } | null;
   saved?: boolean;
   onSave?: (next: boolean) => void;
+  /**
+   * Optional quick-action affordance — renders a small Plus icon at the
+   * bottom-right of the image. Used for one-click add-to-cart on browse-style
+   * surfaces (brand page, products list). Mirrors the `onSave` API.
+   */
+  onQuickAction?: (event: React.MouseEvent) => void;
+  /** Custom aria-label for the quick-action button. */
+  quickActionLabel?: string;
   aspect?: '4/5' | '1/1' | '3/4';
   className?: string;
 }
@@ -46,6 +54,8 @@ export function ProductCard({
   badge,
   saved = false,
   onSave,
+  onQuickAction,
+  quickActionLabel,
   aspect = '4/5',
   className,
 }: ProductCardProps) {
@@ -53,6 +63,12 @@ export function ProductCard({
     event.preventDefault();
     event.stopPropagation();
     onSave?.(!saved);
+  };
+
+  const handleQuickAction = (event: React.MouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    onQuickAction?.(event);
   };
 
   return (
@@ -87,6 +103,20 @@ export function ProductCard({
               strokeWidth={1.5}
               className={cn(saved && 'fill-terracotta text-terracotta')}
             />
+          </button>
+        ) : null}
+        {onQuickAction ? (
+          <button
+            type="button"
+            onClick={handleQuickAction}
+            aria-label={quickActionLabel || `Quick add ${title}`}
+            className={cn(
+              'absolute right-2 bottom-2 inline-flex h-8 w-8 items-center justify-center rounded-full',
+              'border border-hairline bg-surface/95 backdrop-blur-sm text-ink shadow-[0_4px_12px_rgba(15,23,42,0.08)]',
+              'transition hover:bg-surface hover:scale-105',
+            )}
+          >
+            <Plus size={14} strokeWidth={1.75} />
           </button>
         ) : null}
       </div>

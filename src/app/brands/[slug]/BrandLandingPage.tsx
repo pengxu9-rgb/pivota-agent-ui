@@ -30,6 +30,7 @@ import { Chip } from '@/components/ui/editorial/Chip';
 import { Eyebrow, Mono, Headline } from '@/components/ui/editorial/Type';
 import { HairlineDivider } from '@/components/ui/editorial/Divider';
 import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
 
 // Same formatter the chat home uses (`src/app/page.tsx:158`). Inlined for now;
 // a follow-up can extract to `@/lib/format` and dedupe both call sites.
@@ -326,6 +327,7 @@ export function BrandLandingPage({
   const user = useAuthStore((state) => state.user);
   const cartItems = useCartStore((state) => state.items);
   const openCart = useCartStore((state) => state.open);
+  const addItem = useCartStore((state) => state.addItem);
 
   const hasInitialFeed = Boolean(initialFeed);
   const [products, setProducts] = useState<ProductResponse[]>(() =>
@@ -405,6 +407,57 @@ export function BrandLandingPage({
   }, [activeCategory, sort]);
 
   const visibleProducts = useMemo(() => products, [products]);
+
+  // Quick-add affordance on the product card (Plus icon over the image bottom-
+  // right). Mirrors the legacy CatalogProductCard eligibility: only true Pivota-
+  // internal merchants with a single seller can take a one-click cart-add.
+  // Everything else (external_seed, identity-grouped multi-seller, external
+  // redirect) routes to PDP so the user picks a seller or follows the
+  // brand-direct outbound. Honors the "no execution-layer fallbacks" rule —
+  // no fake one-click promise, but the icon always gives a real path.
+  const handleQuickAdd = (product: ProductResponse) => {
+    const href = buildProductHrefForProduct(product);
+    const hrefWithReturn = appendCurrentPathAsReturn(href);
+
+    const isIdentityGrouped =
+      Boolean((product as any).sellable_item_group_id) ||
+      (product as any).canonical_scope === 'synthetic' ||
+      (Array.isArray((product as any).group_members) &&
+        (product as any).group_members.length > 1) ||
+      Number((product as any).offers_count || 0) > 1;
+    const isDirectCartEligible =
+      !isIdentityGrouped &&
+      Boolean(product.merchant_id) &&
+      product.merchant_id !== 'external_seed' &&
+      !(product as any).external_redirect_url;
+
+    if (!isDirectCartEligible) {
+      router.push(hrefWithReturn);
+      return;
+    }
+
+    const variantId =
+      String((product as any).variant_id || (product as any).sku_id || '').trim() ||
+      product.product_id;
+    const cartItemId = product.merchant_id
+      ? `${product.merchant_id}:${variantId}`
+      : variantId;
+
+    addItem({
+      id: cartItemId,
+      product_id: product.product_id,
+      variant_id: variantId,
+      sku: (product as any).sku,
+      title: product.title,
+      price: product.price,
+      currency: product.currency,
+      imageUrl: normalizeDisplayImageUrl(product.image_url, '/placeholder.svg'),
+      merchant_id: product.merchant_id,
+      quantity: 1,
+    });
+    openCart();
+    toast.success(`Added ${product.title} to bag`);
+  };
   const isInitialLoading = loading && !hasLoadedOnce;
   const brandCampaign = useMemo(() => resolveBrandCampaign(feedMetadata), [feedMetadata]);
   const brandStory = useMemo(() => resolveBrandStory(feedMetadata), [feedMetadata]);
@@ -782,6 +835,8 @@ export function BrandLandingPage({
                         title={product.title}
                         priceLabel={formatPriceLabel(product.price, product.currency)}
                         badge={dealBadgeFor(product)}
+                        onQuickAction={() => handleQuickAdd(product)}
+                        quickActionLabel={`Quick add ${product.title}`}
                         aspect="4/5"
                       />
                     </Link>
@@ -828,6 +883,8 @@ export function BrandLandingPage({
                           title={product.title}
                           priceLabel={formatPriceLabel(product.price, product.currency)}
                           badge={dealBadgeFor(product)}
+                          onQuickAction={() => handleQuickAdd(product)}
+                          quickActionLabel={`Quick add ${product.title}`}
                           aspect="4/5"
                         />
                       </Link>
