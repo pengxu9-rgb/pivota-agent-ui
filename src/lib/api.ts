@@ -245,6 +245,14 @@ export interface ProductResponse {
   payment_offer_summary?: Record<string, any>;
   payment_offer_badges?: string[];
   payment_pricing?: Record<string, any>;
+  /**
+   * Flat merchant-feed deal shape returned by `get_discovery_feed` —
+   * runs alongside the richer `store_discount_evidence` / `payment_offer_*`
+   * shapes used on PDP. `best_deal` is the single highest-priority deal
+   * (server-scored). `all_deals` is the deduped active set.
+   */
+  best_deal?: Record<string, any> | null;
+  all_deals?: Array<Record<string, any>>;
   external_highlight_signals?: Array<Record<string, any>>;
   market_signal_badges?: Array<{
     badge_type?: string;
@@ -815,6 +823,12 @@ export function normalizeProduct(
     ...(isRecord(anyP.payment_offer_summary) ? { payment_offer_summary: anyP.payment_offer_summary } : {}),
     ...(Array.isArray(anyP.payment_offer_badges) ? { payment_offer_badges: anyP.payment_offer_badges } : {}),
     ...(isRecord(anyP.payment_pricing) ? { payment_pricing: anyP.payment_pricing } : {}),
+    // Flat merchant-feed deal shape from `get_discovery_feed`. Preserved
+    // alongside the richer `_evidence` shapes so browse-style surfaces
+    // (brand page, products list) can render promo chips without the full
+    // PDP evidence model. See ProductResponse declaration.
+    ...(isRecord(anyP.best_deal) ? { best_deal: anyP.best_deal } : {}),
+    ...(Array.isArray(anyP.all_deals) ? { all_deals: anyP.all_deals } : {}),
     ...(externalHighlightSignals ? { external_highlight_signals: externalHighlightSignals } : {}),
     ...(marketSignalBadges ? { market_signal_badges: marketSignalBadges } : {}),
     ...(rawSearchCard

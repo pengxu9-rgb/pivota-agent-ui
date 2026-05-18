@@ -65,8 +65,8 @@ function isFreeShippingDeal(deal: DealLike | null | undefined): boolean {
 function dealBadgesFor(
   product: ProductResponse,
 ): Array<{ label: string; variant: 'promo' | 'accent' }> {
-  const best = (product as unknown as { best_deal?: DealLike }).best_deal;
-  const deals = (product as unknown as { all_deals?: DealLike[] }).all_deals;
+  const best = product.best_deal as DealLike | null | undefined;
+  const deals = product.all_deals as DealLike[] | undefined;
   const out: Array<{ label: string; variant: 'promo' | 'accent' }> = [];
   const seen = new Set<string>();
 
