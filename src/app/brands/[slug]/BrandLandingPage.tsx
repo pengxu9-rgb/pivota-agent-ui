@@ -40,6 +40,25 @@ function formatPriceLabel(price: unknown, currency?: string): string {
   return `${symbol}${amount % 1 === 0 ? amount.toFixed(0) : amount.toFixed(2)}`;
 }
 
+// Surface the best promo on a product as the editorial ProductCard `badge` slot
+// (top-left pill, terracotta variant). Reads the flat `best_deal` / `all_deals`
+// shape that get_discovery_feed returns. Temporary treatment — once the design
+// system grows a dedicated promo slot on the card, switch to that.
+function dealBadgeFor(product: ProductResponse): { label: string; variant: 'accent' } | null {
+  const best = (product as unknown as { best_deal?: { label?: string } }).best_deal;
+  const deals = (product as unknown as { all_deals?: Array<{ label?: string }> }).all_deals;
+  const candidate =
+    best && typeof best === 'object'
+      ? best
+      : Array.isArray(deals) && deals.length > 0 && typeof deals[0] === 'object'
+        ? deals[0]
+        : null;
+  if (!candidate) return null;
+  const label = String(candidate.label || '').trim();
+  if (!label) return null;
+  return { label, variant: 'accent' };
+}
+
 const PAGE_SIZE = 12;
 const NO_GROWTH_STOP_THRESHOLD = 2;
 const LOCAL_HISTORY_KEY = 'browse_history';
@@ -756,6 +775,7 @@ export function BrandLandingPage({
                         brand={product.category || product.brand || product.merchant_name || null}
                         title={product.title}
                         priceLabel={formatPriceLabel(product.price, product.currency)}
+                        badge={dealBadgeFor(product)}
                         aspect="4/5"
                       />
                     </Link>
@@ -801,6 +821,7 @@ export function BrandLandingPage({
                           brand={product.category || product.brand || product.merchant_name || null}
                           title={product.title}
                           priceLabel={formatPriceLabel(product.price, product.currency)}
+                          badge={dealBadgeFor(product)}
                           aspect="4/5"
                         />
                       </Link>
