@@ -601,8 +601,14 @@ export function BrandLandingPage({
     sort,
   ]);
 
-  const visibleHeadProducts = visibleProducts.slice(0, 6);
-  const visibleTailProducts = visibleProducts.slice(6);
+  // When there's a `brandStory` we split the grid in two (mock: 6 products →
+  // atelier band → continue grid). Without that mid-content, splitting just
+  // leaves a visible gap with empty slots on the 4-col desktop layout, so we
+  // render one continuous grid. See PR #184 review.
+  const shouldSplitGridForAtelier = Boolean(brandStory);
+  const headSplit = shouldSplitGridForAtelier ? 6 : visibleProducts.length;
+  const visibleHeadProducts = visibleProducts.slice(0, headSplit);
+  const visibleTailProducts = visibleProducts.slice(headSplit);
   const totalCount = Number(feedMetadata?.total_count ?? feedMetadata?.total ?? products.length);
 
   return (
