@@ -625,3 +625,89 @@ describe('mapPdpV2ToPdpPayload image normalization', () => {
     );
   });
 });
+
+// Phase O-5b: regression-guard that the new pivota-backend-emitted fields
+// (category_kind / fashion_meta / electronics_meta) reach
+// PDPPayload.product unchanged. The adapter spreads {...base.product}
+// which preserves arbitrary fields today; this test pins the contract
+// so a future refactor that explicitly whitelists product fields
+// doesn't silently drop them.
+describe('mapPdpV2ToPdpPayload — fashion/electronics meta passthrough', () => {
+  function buildResponseWithMeta(productExtras: Record<string, unknown>) {
+    return {
+      modules: [
+        {
+          type: 'canonical',
+          data: {
+            sellable_item_group_id: 'sig_meta_test',
+            pdp_payload: {
+              product: {
+                product_id: 'p_test',
+                merchant_id: 'm_test',
+                title: 'Meta passthrough fixture',
+                ...productExtras,
+              },
+              modules: [],
+            },
+          },
+        },
+      ],
+    } as any;
+  }
+
+  it('passes category_kind through unchanged', () => {
+    const payload = mapPdpV2ToPdpPayload(buildResponseWithMeta({ category_kind: 'fashion' }));
+    expect(payload?.product.category_kind).toBe('fashion');
+  });
+
+  it('passes a populated fashion_meta block through unchanged', () => {
+    const fashion_meta = {
+      material: '100% organic cotton',
+      care: 'Machine wash cold',
+      size_fit_chart: { columns: ['Size', 'Bust'], rows: [{ label: 'M', values: ['90 cm'] }] },
+    };
+    const payload = mapPdpV2ToPdpPayload(buildResponseWithMeta({
+      category_kind: 'fashion', fashion_meta,
+    }));
+    expect(payload?.product.fashion_meta).toEqual(fashion_meta);
+  });
+
+  it('passes provenance-tagged fashion_meta shape through unchanged', () => {
+    // The gateway now emits material/care as {value, source, confidence}
+    // tuples (see services/catalogFashionFields.js). UI consumers handle
+    // both flat string and provenance-tagged shape — adapter must not
+    // collapse either.
+    const fashion_meta = {
+      material: { value: 'ice silk', source: 'llm_extraction_v1', confidence: 0.9 },
+      care: { value: 'Hand wash cold', source: 'merchant_payload', confidence: 1.0 },
+    };
+    const payload = mapPdpV2ToPdpPayload(buildResponseWithMeta({
+      category_kind: 'fashion', fashion_meta,
+    }));
+    expect(payload?.product.fashion_meta).toEqual(fashion_meta);
+  });
+
+  it('passes a populated electronics_meta block through unchanged', () => {
+    const electronics_meta = {
+      configurator_groups: [
+        { id: 'memory', label: 'Memory', options: [{ id: '16', label: '16GB', delta: 0 }] },
+      ],
+      pro_reviews: [
+        { source: 'Wirecutter', verdict: 'Top pick', score: '4.6', url: 'https://example.com' },
+      ],
+      in_box: ['Headphones', 'Cable'],
+      spec_groups: [{ group: 'Battery', rows: [['Playback', '30h']] }],
+    };
+    const payload = mapPdpV2ToPdpPayload(buildResponseWithMeta({
+      category_kind: 'electronics', electronics_meta,
+    }));
+    expect(payload?.product.electronics_meta).toEqual(electronics_meta);
+  });
+
+  it('keeps category_kind, fashion_meta, electronics_meta absent when upstream omits them', () => {
+    const payload = mapPdpV2ToPdpPayload(buildResponseWithMeta({}));
+    expect(payload?.product.category_kind).toBeUndefined();
+    expect(payload?.product.fashion_meta).toBeUndefined();
+    expect(payload?.product.electronics_meta).toBeUndefined();
+  });
+});
