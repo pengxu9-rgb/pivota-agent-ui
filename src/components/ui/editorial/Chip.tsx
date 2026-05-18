@@ -57,13 +57,14 @@ const pill = cva(
         sage: 'bg-sage-bg text-sage',
         accent: 'bg-terracotta-bg text-terracotta-ink',
         /**
-         * Promo / deal treatment — matches the editorial mock's badge
-         * intent: white-translucent surface with ink text and a hairline
-         * for definition. Reads on any product image without dominating
-         * the card. (Earlier solid-terracotta brick was visually too loud.)
+         * Promo / deal treatment — solid terracotta with white text, bumped
+         * size and weight for e-commerce promotional energy (vs the calm
+         * status-pill defaults). Overrides base font-size + padding via
+         * the same className so the chip reads with intent: this is a deal,
+         * not a quiet attribution.
          */
         promo:
-          'bg-white/95 text-ink border border-hairline backdrop-blur-sm',
+          'bg-terracotta text-white font-semibold text-[10.5px] tracking-[0.06em] px-2.5 py-1 shadow-[0_4px_10px_rgba(168,84,44,0.32)]',
       },
     },
     defaultVariants: { variant: 'default' },

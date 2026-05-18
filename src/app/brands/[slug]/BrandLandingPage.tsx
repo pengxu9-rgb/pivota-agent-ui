@@ -47,6 +47,29 @@ function formatPriceLabel(price: unknown, currency?: string): string {
 // system grows a dedicated promo slot on the card, switch to that.
 type DealLike = { label?: string; type?: string; config?: { kind?: string }; free_shipping?: boolean };
 
+// Extract a `{rating, count}` shape from product.review_summary using the same
+// fallback chain ChatRecommendationCard already uses (src/components/product/
+// ChatRecommendationCard.tsx:123). Returns null when neither value is present
+// so the card hides the review-stats slot entirely (real data only).
+function reviewStatsFor(
+  product: ProductResponse,
+): { rating?: number | null; count?: number | null } | null {
+  const rs = (product as unknown as { review_summary?: Record<string, unknown> }).review_summary;
+  const rating = Number(
+    (product as any).rating ?? rs?.rating ?? rs?.average_rating ?? NaN,
+  );
+  const count = Number(
+    (product as any).review_count ?? rs?.review_count ?? rs?.count ?? NaN,
+  );
+  const hasRating = Number.isFinite(rating);
+  const hasCount = Number.isFinite(count);
+  if (!hasRating && !hasCount) return null;
+  return {
+    rating: hasRating ? rating : null,
+    count: hasCount ? count : null,
+  };
+}
+
 function isFreeShippingDeal(deal: DealLike | null | undefined): boolean {
   if (!deal) return false;
   if (deal.free_shipping === true) return true;
@@ -864,7 +887,8 @@ export function BrandLandingPage({
                         priceLabel={formatPriceLabel(product.price, product.currency)}
                         badge={dealBadgesFor(product)}
                         onQuickAction={() => handleQuickAdd(product)}
-                        quickActionLabel={`Quick add ${product.title}`}
+                        quickActionLabel="Add to cart"
+                        reviewStats={reviewStatsFor(product)}
                         aspect="4/5"
                       />
                     </Link>
@@ -912,7 +936,8 @@ export function BrandLandingPage({
                           priceLabel={formatPriceLabel(product.price, product.currency)}
                           badge={dealBadgesFor(product)}
                           onQuickAction={() => handleQuickAdd(product)}
-                          quickActionLabel={`Quick add ${product.title}`}
+                          quickActionLabel="Add to cart"
+                          reviewStats={reviewStatsFor(product)}
                           aspect="4/5"
                         />
                       </Link>
