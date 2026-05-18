@@ -47,8 +47,8 @@ Chip.displayName = 'Chip';
  */
 const pill = cva(
   [
-    'inline-flex items-center justify-center rounded-full px-2.5 py-0.5',
-    'font-editorial-mono text-[10px] font-medium uppercase tracking-[0.1em]',
+    'inline-flex items-center justify-center rounded-full px-2 py-[3px]',
+    'font-editorial-mono text-[9px] font-medium uppercase tracking-[0.08em]',
   ].join(' '),
   {
     variants: {
@@ -57,12 +57,13 @@ const pill = cva(
         sage: 'bg-sage-bg text-sage',
         accent: 'bg-terracotta-bg text-terracotta-ink',
         /**
-         * High-contrast promo treatment — solid terracotta with paper text.
-         * Use for deal labels that must stand out on busy product imagery.
-         * The soft `accent` variant blends into warm photography, so deal
-         * chips need this stronger fill.
+         * Promo / deal treatment — matches the editorial mock's badge
+         * intent: white-translucent surface with ink text and a hairline
+         * for definition. Reads on any product image without dominating
+         * the card. (Earlier solid-terracotta brick was visually too loud.)
          */
-        promo: 'bg-terracotta text-paper shadow-[0_2px_8px_rgba(168,84,44,0.35)]',
+        promo:
+          'bg-white/92 text-ink border border-hairline backdrop-blur-sm',
       },
     },
     defaultVariants: { variant: 'default' },
