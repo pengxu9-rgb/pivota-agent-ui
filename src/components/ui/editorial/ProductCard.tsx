@@ -24,7 +24,7 @@ export interface ProductCardProps {
   brand?: string | null;
   title: string;
   priceLabel?: string;
-  badge?: { label: string; variant?: 'default' | 'sage' | 'accent' } | null;
+  badge?: { label: string; variant?: 'default' | 'sage' | 'accent' | 'promo' } | null;
   saved?: boolean;
   onSave?: (next: boolean) => void;
   /**
@@ -111,12 +111,12 @@ export function ProductCard({
             onClick={handleQuickAction}
             aria-label={quickActionLabel || `Quick add ${title}`}
             className={cn(
-              'absolute right-2 bottom-2 inline-flex h-8 w-8 items-center justify-center rounded-full',
-              'border border-hairline bg-surface/95 backdrop-blur-sm text-ink shadow-[0_4px_12px_rgba(15,23,42,0.08)]',
-              'transition hover:bg-surface hover:scale-105',
+              'absolute right-2 bottom-2 inline-flex h-9 w-9 items-center justify-center rounded-full',
+              'border border-ink/15 bg-ink text-paper shadow-[0_6px_16px_rgba(26,24,20,0.28)]',
+              'transition hover:bg-ink/90 hover:scale-105 active:scale-95',
             )}
           >
-            <Plus size={14} strokeWidth={1.75} />
+            <Plus size={16} strokeWidth={2} />
           </button>
         ) : null}
       </div>

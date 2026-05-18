@@ -56,6 +56,13 @@ const pill = cva(
         default: 'bg-paper-2 text-ink-2',
         sage: 'bg-sage-bg text-sage',
         accent: 'bg-terracotta-bg text-terracotta-ink',
+        /**
+         * High-contrast promo treatment — solid terracotta with paper text.
+         * Use for deal labels that must stand out on busy product imagery.
+         * The soft `accent` variant blends into warm photography, so deal
+         * chips need this stronger fill.
+         */
+        promo: 'bg-terracotta text-paper shadow-[0_2px_8px_rgba(168,84,44,0.35)]',
       },
     },
     defaultVariants: { variant: 'default' },

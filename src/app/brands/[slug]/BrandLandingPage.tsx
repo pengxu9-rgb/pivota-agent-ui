@@ -45,7 +45,7 @@ function formatPriceLabel(price: unknown, currency?: string): string {
 // (top-left pill, terracotta variant). Reads the flat `best_deal` / `all_deals`
 // shape that get_discovery_feed returns. Temporary treatment — once the design
 // system grows a dedicated promo slot on the card, switch to that.
-function dealBadgeFor(product: ProductResponse): { label: string; variant: 'accent' } | null {
+function dealBadgeFor(product: ProductResponse): { label: string; variant: 'promo' } | null {
   const best = (product as unknown as { best_deal?: { label?: string } }).best_deal;
   const deals = (product as unknown as { all_deals?: Array<{ label?: string }> }).all_deals;
   const candidate =
@@ -57,7 +57,9 @@ function dealBadgeFor(product: ProductResponse): { label: string; variant: 'acce
   if (!candidate) return null;
   const label = String(candidate.label || '').trim();
   if (!label) return null;
-  return { label, variant: 'accent' };
+  // High-contrast `promo` variant — solid terracotta on paper text. Soft
+  // `accent` blended into beige product photography during preview review.
+  return { label, variant: 'promo' };
 }
 
 const PAGE_SIZE = 12;
