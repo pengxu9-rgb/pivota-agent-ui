@@ -31,6 +31,7 @@ import { Eyebrow, Mono, Headline } from '@/components/ui/editorial/Type';
 import { HairlineDivider } from '@/components/ui/editorial/Divider';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { PivotaWordmark } from '@/pivota-font';
 
 // Same formatter the chat home uses (`src/app/page.tsx:158`). Inlined for now;
 // a follow-up can extract to `@/lib/format` and dedupe both call sites.
@@ -729,7 +730,7 @@ export function BrandLandingPage({
           </a>
           <div className="flex items-center gap-1.5 text-ink-muted">
             <span className="pv-label">via</span>
-            <span className="font-serif text-[14px] italic text-ink">Pivota</span>
+            <PivotaWordmark size={14} italic period={false} className="text-ink" aria-label="Pivota" />
           </div>
           <button
             type="button"
