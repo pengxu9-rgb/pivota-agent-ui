@@ -51,6 +51,7 @@ import {
 } from '@/lib/photoAnalysis';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { PivotaWordmark } from '@/pivota-font';
 
 const CHAT_RAIL_INITIAL_PAGE_SIZE = 12;
 const CHAT_RAIL_PAGE_STEP = 12;
@@ -655,9 +656,7 @@ function HomePageApp() {
                 <Sparkles size={14} strokeWidth={2} />
               </span>
               <div className="flex min-w-0 flex-col leading-tight">
-                <Headline as="span" size={13} className="font-editorial-serif text-ink">
-                  Pivota
-                </Headline>
+                <PivotaWordmark size={24} aria-label="Pivota" className="text-ink" />
                 <Mono className="flex items-center gap-1 normal-case tracking-[0.06em] text-ink-muted">
                   <span aria-hidden="true" className="h-1 w-1 rounded-full bg-sage" />
                   Personal shopper · online

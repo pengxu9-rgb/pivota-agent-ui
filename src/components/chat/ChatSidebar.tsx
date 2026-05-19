@@ -99,7 +99,7 @@ export default function ChatSidebar({ isOpen, onClose }: ChatSidebarProps) {
             >
               <Sparkles className="h-3.5 w-3.5 text-white" strokeWidth={2.2} />
             </span>
-            <PivotaWordmark size={22} aria-label="Pivota" style={{ color: '#2C2C2A' }} />
+            <PivotaWordmark size={28} aria-label="Pivota" style={{ color: '#2C2C2A' }} />
           </Link>
           <button
             onClick={onClose}
