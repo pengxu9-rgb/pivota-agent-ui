@@ -548,6 +548,25 @@ function buildInlineProductLineTargetPath(
   return `${pathname}${params.toString() ? `?${params.toString()}` : ''}`;
 }
 
+function buildSimilarTargetPath(
+  nextProductId: string,
+  nextMerchantId: string,
+  currentRelativePath: string | null,
+): string {
+  const targetHref = buildProductHref(nextProductId, nextMerchantId || undefined);
+  if (!currentRelativePath) return targetHref;
+  const [pathname, rawQuery = ''] = targetHref.split('?');
+  const params = new URLSearchParams(rawQuery);
+  if (
+    !params.get('return') &&
+    !params.get('return_url') &&
+    !params.get('returnUrl')
+  ) {
+    params.set('return', currentRelativePath);
+  }
+  return `${pathname}${params.toString() ? `?${params.toString()}` : ''}`;
+}
+
 function formatPrice(amount: number, currency: string) {
   const n = Number.isFinite(amount) ? amount : 0;
   const c = currency || 'USD';
@@ -556,6 +575,27 @@ function formatPrice(amount: number, currency: string) {
   } catch {
     return `$${n.toFixed(2)}`;
   }
+}
+
+function buildVisualSimilarItem(
+  item: RecommendationsData['items'][number],
+  displayCurrency: string,
+  currentRelativePath: string | null,
+) {
+  const merchantId = String(item.merchant_id || '').trim();
+  return {
+    id: item.product_id,
+    merchant_id: merchantId || null,
+    href: buildSimilarTargetPath(item.product_id, merchantId, currentRelativePath),
+    title: item.title,
+    image: item.image_url || '',
+    priceLabel: item.price
+      ? formatPrice(item.price.amount ?? 0, item.price.currency || displayCurrency)
+      : '',
+    rating: item.rating ?? null,
+    reviews: item.review_count ?? null,
+    highlight: item.description || null,
+  };
 }
 
 function isPositivePriceAmount(amount: unknown): amount is number {
@@ -2232,26 +2272,42 @@ export function PdpContainer({
   const navRowHeight = navVisible ? 36 : 0;
   const scrollMarginTop = headerHeight + navRowHeight + 14;
 
-  const ugcFromReviews =
-    reviews?.preview_items?.flatMap((item) => item.media || []) || [];
+  const normalizedReviewUgc = useMemo(
+    () =>
+      (reviews?.preview_items?.flatMap((item) => item.media || []) || []).filter(
+        (item) => item?.url,
+      ),
+    [reviews?.preview_items],
+  );
   // Keep gallery visible by falling back to product gallery media when UGC is sparse.
-  const ugcFromMedia = media?.items || [];
-  const normalizedReviewUgc = ugcFromReviews.filter((item) => item?.url);
-  const normalizedMediaUgc = ugcFromMedia.filter((item) => item?.url);
+  const normalizedMediaUgc = useMemo(
+    () => (media?.items || []).filter((item) => item?.url),
+    [media?.items],
+  );
 
   useEffect(() => {
     setUgcSnapshot(DEFAULT_UGC_SNAPSHOT);
   }, [payload.product.product_id]);
 
   useEffect(() => {
-    setUgcSnapshot((prev) =>
-      lockFirstUgcSource({
+    setUgcSnapshot((prev) => {
+      const next = lockFirstUgcSource({
         current: prev,
         reviewsItems: normalizedReviewUgc,
         mediaItems: normalizedMediaUgc,
-      }),
-    );
-  }, [normalizedMediaUgc, normalizedReviewUgc]);
+      });
+      if (next === prev) return prev;
+      if (
+        prev.locked === next.locked &&
+        prev.source === next.source &&
+        prev.items.length === next.items.length &&
+        prev.items.every((item, index) => item === next.items[index])
+      ) {
+        return prev;
+      }
+      return next;
+    });
+  }, [normalizedMediaUgc, normalizedReviewUgc, payload.product.product_id]);
 
   const ugcItems = useMemo(
     () =>
@@ -4252,26 +4308,23 @@ export function PdpContainer({
         }
         similar={
           hasRecommendationItems
-            ? recommendations.items.slice(0, similarVisibleCount).map((it) => ({
-                id: it.product_id,
-                title: it.title,
-                image: it.image_url || '',
-                priceLabel: it.price
-                  ? formatPrice(it.price.amount ?? 0, it.price.currency || displayCurrency)
-                  : '',
-                rating: it.rating ?? null,
-                reviews: it.review_count ?? null,
-                highlight: it.description || null,
-              }))
+            ? recommendations.items
+                .slice(0, similarVisibleCount)
+                .map((it) => buildVisualSimilarItem(it, displayCurrency, currentRelativePath))
             : null
         }
         onSimilarClick={(item, index) => {
           pdpTracking.track('similar_click', {
             index,
             product_id: item.id,
+            merchant_id: item.merchant_id || null,
             source: pdpViewModel.sourceLocks.similar ? 'locked' : 'live',
           });
-          router.push(buildProductHref(item.id));
+        }}
+        onSimilarBuy={(_, index) => {
+          const sourceItem = recommendations.items[index];
+          if (!sourceItem) return;
+          void handleSimilarQuickAction(sourceItem, index);
         }}
         buyNowLabel={actionsByType.buy_now || 'Buy now'}
         inStock={effectiveIsInStock}
@@ -4461,26 +4514,23 @@ export function PdpContainer({
         brandHref={brandHref}
         similar={
           hasRecommendationItems
-            ? recommendations.items.slice(0, similarVisibleCount).map((it) => ({
-                id: it.product_id,
-                title: it.title,
-                image: it.image_url || '',
-                priceLabel: it.price
-                  ? formatPrice(it.price.amount ?? 0, it.price.currency || displayCurrency)
-                  : '',
-                rating: it.rating ?? null,
-                reviews: it.review_count ?? null,
-                highlight: it.description || null,
-              }))
+            ? recommendations.items
+                .slice(0, similarVisibleCount)
+                .map((it) => buildVisualSimilarItem(it, displayCurrency, currentRelativePath))
             : null
         }
         onSimilarClick={(item, index) => {
           pdpTracking.track('similar_click', {
             index,
             product_id: item.id,
+            merchant_id: item.merchant_id || null,
             source: pdpViewModel.sourceLocks.similar ? 'locked' : 'live',
           });
-          router.push(buildProductHref(item.id));
+        }}
+        onSimilarBuy={(_, index) => {
+          const sourceItem = recommendations.items[index];
+          if (!sourceItem) return;
+          void handleSimilarQuickAction(sourceItem, index);
         }}
         buyNowLabel={actionsByType.buy_now || 'Buy now'}
         inStock={effectiveIsInStock}
@@ -4623,26 +4673,23 @@ export function PdpContainer({
         brandHref={brandHref}
         similar={
           hasRecommendationItems
-            ? recommendations.items.slice(0, similarVisibleCount).map((it) => ({
-                id: it.product_id,
-                title: it.title,
-                image: it.image_url || '',
-                priceLabel: it.price
-                  ? formatPrice(it.price.amount ?? 0, it.price.currency || displayCurrency)
-                  : '',
-                rating: it.rating ?? null,
-                reviews: it.review_count ?? null,
-                highlight: it.description || null,
-              }))
+            ? recommendations.items
+                .slice(0, similarVisibleCount)
+                .map((it) => buildVisualSimilarItem(it, displayCurrency, currentRelativePath))
             : null
         }
         onSimilarClick={(item, index) => {
           pdpTracking.track('similar_click', {
             index,
             product_id: item.id,
+            merchant_id: item.merchant_id || null,
             source: pdpViewModel.sourceLocks.similar ? 'locked' : 'live',
           });
-          router.push(buildProductHref(item.id));
+        }}
+        onSimilarBuy={(_, index) => {
+          const sourceItem = recommendations.items[index];
+          if (!sourceItem) return;
+          void handleSimilarQuickAction(sourceItem, index);
         }}
         buyNowLabel={actionsByType.buy_now || 'Buy now'}
         inStock={effectiveIsInStock}
