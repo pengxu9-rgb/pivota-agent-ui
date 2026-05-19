@@ -10,7 +10,6 @@ import {
   Search,
   Send,
   ShoppingBag,
-  Sparkles,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
@@ -647,23 +646,6 @@ function HomePageApp() {
             >
               <Menu size={20} strokeWidth={1.6} />
             </IconButton>
-            <div className="flex min-w-0 items-center gap-2.5">
-              <span
-                aria-hidden="true"
-                className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-ink text-paper"
-              >
-                <Sparkles size={14} strokeWidth={2} />
-              </span>
-              <div className="flex min-w-0 flex-col leading-tight">
-                <Headline as="span" size={13} className="font-editorial-serif text-ink">
-                  Pivota
-                </Headline>
-                <Mono className="flex items-center gap-1 normal-case tracking-[0.06em] text-ink-muted">
-                  <span aria-hidden="true" className="h-1 w-1 rounded-full bg-sage" />
-                  Personal shopper · online
-                </Mono>
-              </div>
-            </div>
           </div>
           <div className="flex items-center gap-1">
             {!user ? (
