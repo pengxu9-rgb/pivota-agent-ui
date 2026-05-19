@@ -18,6 +18,7 @@ import Link from 'next/link';
 import { useCartStore } from '@/store/cartStore';
 import { useChatStore } from '@/store/chatStore';
 import { useTheme } from '@/components/theme-provider';
+import { PivotaWordmark } from '@/pivota-font';
 
 interface ChatSidebarProps {
   isOpen: boolean;
@@ -99,7 +100,7 @@ export default function ChatSidebar({ isOpen, onClose }: ChatSidebarProps) {
               <Sparkles className="h-3.5 w-3.5 text-white" strokeWidth={2.2} />
             </span>
             <div className="flex flex-col leading-tight">
-              <span className="text-[13px] font-semibold" style={{ color: '#2C2C2A' }}>Pivota</span>
+              <PivotaWordmark size={14} aria-label="Pivota" style={{ color: '#2C2C2A' }} />
               <span className="flex items-center gap-1 text-[10px]" style={{ color: '#1D9E75' }}>
                 <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: '#1D9E75' }} />
                 AI online
