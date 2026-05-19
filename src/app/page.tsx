@@ -655,13 +655,7 @@ function HomePageApp() {
               >
                 <Sparkles size={14} strokeWidth={2} />
               </span>
-              <div className="flex min-w-0 flex-col leading-tight">
-                <PivotaWordmark size={24} aria-label="Pivota" className="text-ink" />
-                <Mono className="flex items-center gap-1 normal-case tracking-[0.06em] text-ink-muted">
-                  <span aria-hidden="true" className="h-1 w-1 rounded-full bg-sage" />
-                  Personal shopper · online
-                </Mono>
-              </div>
+              <PivotaWordmark size={24} aria-label="Pivota" className="text-ink" />
             </div>
           </div>
           <div className="flex items-center gap-1">

@@ -6,7 +6,6 @@ import {
   Package,
   ShoppingCart,
   History,
-  Sparkles,
   X,
   Sun,
   Moon,
@@ -18,7 +17,6 @@ import Link from 'next/link';
 import { useCartStore } from '@/store/cartStore';
 import { useChatStore } from '@/store/chatStore';
 import { useTheme } from '@/components/theme-provider';
-import { PivotaWordmark } from '@/pivota-font';
 
 interface ChatSidebarProps {
   isOpen: boolean;
@@ -83,24 +81,15 @@ export default function ChatSidebar({ isOpen, onClose }: ChatSidebarProps) {
         }`}
         style={{ borderRightWidth: '0.5px', borderColor: 'rgba(44,44,42,0.08)' }}
       >
-        {/* Header — matches TopBar */}
+        {/* Header — matches TopBar height; brand mark lives in the app-bar */}
         <div
-          className="flex items-center justify-between px-3 bg-white"
+          className="flex items-center justify-end px-3 bg-white"
           style={{
             height: '54px',
             borderBottomWidth: '0.5px',
             borderColor: 'rgba(44,44,42,0.08)',
           }}
         >
-          <Link href="/" onClick={onClose} className="flex items-center gap-2">
-            <span
-              className="flex h-7 w-7 items-center justify-center rounded-full"
-              style={{ backgroundColor: '#534AB7' }}
-            >
-              <Sparkles className="h-3.5 w-3.5 text-white" strokeWidth={2.2} />
-            </span>
-            <PivotaWordmark size={28} aria-label="Pivota" style={{ color: '#2C2C2A' }} />
-          </Link>
           <button
             onClick={onClose}
             className="lg:hidden h-9 w-9 rounded-full flex items-center justify-center transition-opacity active:opacity-60"
