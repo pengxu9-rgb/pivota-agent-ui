@@ -20,11 +20,9 @@ import {
   Button as EdButton,
   Chip,
   Eyebrow,
-  Headline,
   IconButton,
   InsightBlock,
   Mono,
-  Num,
   ProductCard,
 } from '@/components/ui/editorial';
 import { useCartStore } from '@/store/cartStore';
@@ -187,14 +185,12 @@ const TodaysEditCard = memo(function TodaysEditCard({ product }: { product: Prod
           unoptimized
         />
       </div>
-      <Mono className="line-clamp-1 normal-case tracking-[0.02em] text-ink-muted">
+      <p className="font-editorial-sans text-[12px] font-normal leading-[1.3] tracking-[-0.005em] text-ink-2">
         {product.title}
-      </Mono>
-      <Num
-        value={formatPriceLabel(product.price, product.currency).replace(/^\$/, '')}
-        prefix="$"
-        size={13}
-      />
+      </p>
+      <span className="font-editorial-sans text-[13px] font-medium tracking-[-0.01em] tabular-nums text-ink">
+        {formatPriceLabel(product.price, product.currency)}
+      </span>
     </Link>
   );
 });
@@ -813,12 +809,12 @@ function EditorialGreeting({
     >
       <div>
         <Eyebrow>Pivota · Personal shopper</Eyebrow>
-        <Headline size={28} className="mt-3 text-balance">
+        <h2 className="mt-3 text-balance font-editorial-sans text-[28px] font-medium leading-tight tracking-[-0.015em] text-ink">
           {greetingName ? `Welcome back, ${greetingName}.` : 'Welcome back.'}{' '}
-          <em className="font-editorial-serif italic text-ink-muted">
+          <span className="font-editorial-sans font-normal text-ink-muted">
             What are we shopping today?
-          </em>
-        </Headline>
+          </span>
+        </h2>
         <p className="pv-body mt-3 max-w-prose text-ink-muted">
           I keep track of what you&apos;ve been browsing and what&apos;s new in the houses you
           follow. Ask anything — I&apos;ll edit the catalog for you.
@@ -961,6 +957,7 @@ function AssistantMessageRow({
                     priceLabel={formatPriceLabel(product.price, product.currency)}
                     onSave={() => onAddToCart(product)}
                     aspect="4/5"
+                    font="sans"
                   />
                 </Link>
               );
