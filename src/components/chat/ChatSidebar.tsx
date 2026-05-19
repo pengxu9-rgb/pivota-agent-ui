@@ -14,9 +14,11 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { useCartStore } from '@/store/cartStore';
 import { useChatStore } from '@/store/chatStore';
 import { useTheme } from '@/components/theme-provider';
+import { PivotaWordmark } from '@/pivota-font';
 
 interface ChatSidebarProps {
   isOpen: boolean;
@@ -83,13 +85,37 @@ export default function ChatSidebar({ isOpen, onClose }: ChatSidebarProps) {
       >
         {/* Header — matches TopBar height; brand mark lives in the app-bar */}
         <div
-          className="flex items-center justify-end px-3 bg-white"
+          className="flex items-center justify-between px-3 bg-white"
           style={{
             height: '54px',
             borderBottomWidth: '0.5px',
             borderColor: 'rgba(44,44,42,0.08)',
           }}
         >
+          <Link
+            href="/"
+            onClick={onClose}
+            className="flex min-w-0 items-center gap-2.5"
+            aria-label="Pivota home"
+          >
+            <span
+              aria-hidden="true"
+              className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-[8px]"
+              style={{
+                background: 'linear-gradient(180deg, #FFB6D9 0%, #FFE4F1 100%)',
+                boxShadow: '0 3px 10px rgba(255, 105, 180, 0.18)',
+              }}
+            >
+              <Image
+                src="/pivota-logo-pink.png"
+                alt=""
+                width={32}
+                height={32}
+                className="h-8 w-8 rounded-[6px]"
+              />
+            </span>
+            <PivotaWordmark size={22} aria-label="Pivota" style={{ color: '#2C2C2A' }} />
+          </Link>
           <button
             onClick={onClose}
             className="lg:hidden h-9 w-9 rounded-full flex items-center justify-center transition-opacity active:opacity-60"

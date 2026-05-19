@@ -646,30 +646,6 @@ function HomePageApp() {
             >
               <Menu size={20} strokeWidth={1.6} />
             </IconButton>
-            <Link href="/" className="flex min-w-0 items-center gap-2.5" aria-label="Pivota home">
-              <span
-                aria-hidden="true"
-                className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-[8px]"
-                style={{
-                  background: 'linear-gradient(180deg, #FFB6D9 0%, #FFE4F1 100%)',
-                  boxShadow: '0 3px 10px rgba(255, 105, 180, 0.18)',
-                }}
-              >
-                <Image
-                  src="/pivota-logo-pink.png"
-                  alt=""
-                  width={32}
-                  height={32}
-                  className="h-8 w-8 rounded-[6px]"
-                />
-              </span>
-              <span
-                className="text-[18px] font-semibold text-ink"
-                style={{ fontFamily: "'Cormorant Garamond', Georgia, serif", letterSpacing: '-0.02em' }}
-              >
-                Pivota
-              </span>
-            </Link>
           </div>
           <div className="flex items-center gap-1">
             {!user ? (
