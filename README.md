@@ -82,3 +82,7 @@ NEXT_PUBLIC_AURORA_ORDERS_MERCHANT_ID=merchant_aurora_default
 - TypeScript
 - Tailwind CSS
 - Lucide Icons
+
+## Brand System
+
+This app uses Pivota Brand Kit v2.0 from `public/pivota-brand/`. Treat `public/pivota-brand/CLAUDE.md` as the local source of truth for logo, favicon, color, and brand-token usage.

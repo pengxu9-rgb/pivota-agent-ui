@@ -27,8 +27,8 @@
     --muted: 0 0% 96%;
     --muted-foreground: 0 0% 35%;
 
-    --accent: 189 100% 50%;
-    --accent-foreground: 222 47% 5%;
+    --accent: 161 69% 37%;
+    --accent-foreground: 0 0% 100%;
 
     --destructive: 0 84% 60%;
     --destructive-foreground: 210 40% 98%;
@@ -66,7 +66,7 @@
     --cd-border-tertiary: rgba(44, 44, 42, 0.08);
 
     /* Light mode gradients */
-    --gradient-primary: linear-gradient(135deg, hsl(245 43% 50%), hsl(265 60% 55%), hsl(189 100% 50%));
+    --gradient-primary: var(--pv-gradient-primary);
     --gradient-mesh: radial-gradient(at 0% 0%, hsl(0 0% 96%) 0px, transparent 50%);
 
     /* Light mode shadows */
@@ -95,8 +95,8 @@
     --muted: 0 0% 100% / 0.1;
     --muted-foreground: 215 16% 47%;
 
-    --accent: 189 100% 50%;
-    --accent-foreground: 222 47% 5%;
+    --accent: 161 69% 37%;
+    --accent-foreground: 0 0% 100%;
 
     --destructive: 0 84% 60%;
     --destructive-foreground: 210 40% 98%;
@@ -115,7 +115,7 @@
     --focus-ring: rgba(26, 142, 112, 0.25);
 
     /* Dark mode gradients */
-    --gradient-primary: linear-gradient(135deg, hsl(243 75% 59%), hsl(271 91% 65%), hsl(189 100% 50%));
+    --gradient-primary: var(--pv-gradient-primary);
     --gradient-mesh: radial-gradient(at 0% 0%, hsl(243 75% 59% / 0.3) 0px, transparent 50%),
                      radial-gradient(at 100% 0%, hsl(271 91% 65% / 0.3) 0px, transparent 50%),
                      radial-gradient(at 100% 100%, hsl(189 100% 50% / 0.2) 0px, transparent 50%);
