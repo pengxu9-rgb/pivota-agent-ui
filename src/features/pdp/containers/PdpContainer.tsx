@@ -4327,18 +4327,15 @@ export function PdpContainer({
           if (!sourceItem) return;
           void handleSimilarQuickAction(sourceItem, index);
         }}
-        onSimilarSeeMore={
-          // Handoff §3i: "See more recommendations" CTA below the grid.
-          // Only surface when there's actually more to reveal — either
-          // already-loaded items still hidden, or the upstream signals
-          // additional pages.
+        onSimilarLoadMore={
           similarVisibleCount < similarItems.length ||
           (similarHasMore && similarItems.length < SIMILAR_MAX)
             ? () => {
-                void loadMoreSimilarProducts('retry');
+                void loadMoreSimilarProducts('auto');
               }
             : undefined
         }
+        similarSentinelRef={isBeautyDesktop ? similarAutoLoadSentinelRef : undefined}
         buyNowLabel={actionsByType.buy_now || 'Buy now'}
         inStock={effectiveIsInStock}
         quantity={resolvedQuantity}

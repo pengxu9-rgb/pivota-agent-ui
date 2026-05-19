@@ -133,10 +133,13 @@ export function BeautyStickyTopBar({
               fontFamily: 'var(--pv-font-brand)',
               color: '#fff',
               letterSpacing: '-0.02em',
-              textShadow: '0 1px 6px rgba(0,0,0,0.25)',
+              textShadow: '0 1px 4px rgba(0,0,0,0.5)',
+              background: 'rgba(0,0,0,0.28)',
+              borderRadius: 8,
+              padding: '3px 9px 4px',
             }}
           >
-            Pivota<span style={{ opacity: 0.85 }}>.</span>
+            Pivota<span style={{ opacity: 0.9 }}>.</span>
           </span>
         )}
       </div>

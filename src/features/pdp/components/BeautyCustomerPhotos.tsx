@@ -57,7 +57,15 @@ export function BeautyCustomerPhotos({
             <span className="text-[11px] font-medium text-muted-foreground tabular-nums">· {total}</span>
           ) : null}
         </div>
-        <span className="text-[11px] font-medium text-muted-foreground">swipe →</span>
+        {onShare ? (
+          <button
+            type="button"
+            onClick={onShare}
+            className="text-[11px] font-semibold text-primary"
+          >
+            + Add your photo
+          </button>
+        ) : null}
       </div>
 
       <div

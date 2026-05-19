@@ -225,10 +225,14 @@ export function BeautyPDPDesktop(props: BeautyPDPMobileProps) {
               items={props.similar}
               onItemClick={props.onSimilarClick}
               onBuy={props.onSimilarBuy}
-              onSeeMore={props.onSimilarSeeMore}
             />
           </div>
         ) : null}
+        <div
+          ref={(node) => { if (props.similarSentinelRef) props.similarSentinelRef.current = node; }}
+          className="h-4"
+          aria-hidden="true"
+        />
       </div>
     </div>
   );

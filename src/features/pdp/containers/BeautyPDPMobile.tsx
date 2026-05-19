@@ -113,8 +113,10 @@ export type BeautyPDPMobileProps = {
   similar?: BeautySimilarItem[] | null;
   onSimilarClick?: (item: BeautySimilarItem, index: number) => void;
   onSimilarBuy?: (item: BeautySimilarItem, index: number) => void;
-  /** Click handler for the "See more recommendations" CTA below the grid. */
-  onSimilarSeeMore?: () => void;
+  /** Auto-load callback fired when the user scrolls near the bottom of the similar section. */
+  onSimilarLoadMore?: () => void;
+  /** Ref forwarded to the auto-load sentinel div (desktop native-scroll path). */
+  similarSentinelRef?: React.MutableRefObject<HTMLDivElement | null>;
   // brand
   brandName?: string | null;
   brandHref?: string | null;
@@ -144,6 +146,8 @@ export function BeautyPDPMobile(props: BeautyPDPMobileProps) {
   const insightsRef = useRef<HTMLDivElement | null>(null);
   const reviewsRef = useRef<HTMLDivElement | null>(null);
   const similarRef = useRef<HTMLDivElement | null>(null);
+  const similarSentinelRef = useRef<HTMLDivElement | null>(null);
+  const onSimilarLoadMoreRef = useRef(props.onSimilarLoadMore);
   const [scrolled, setScrolled] = useState(false);
   const [tabsVisible, setTabsVisible] = useState(false);
   const [activeTab, setActiveTab] = useState('overview');
@@ -187,6 +191,29 @@ export function BeautyPDPMobile(props: BeautyPDPMobileProps) {
     el.addEventListener('scroll', onScroll, { passive: true });
     onScroll();
     return () => el.removeEventListener('scroll', onScroll);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Keep the auto-load ref in sync on every render so the observer closure
+  // always calls the latest version without re-registering the observer.
+  onSimilarLoadMoreRef.current = props.onSimilarLoadMore;
+
+  useEffect(() => {
+    const sentinel = similarSentinelRef.current;
+    const scroller = scrollRef.current;
+    if (!sentinel || !scroller) return;
+    if (typeof IntersectionObserver === 'undefined') return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          onSimilarLoadMoreRef.current?.();
+        }
+      },
+      { root: scroller, rootMargin: '240px 0px' },
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -353,10 +380,10 @@ export function BeautyPDPMobile(props: BeautyPDPMobileProps) {
               items={props.similar}
               onItemClick={props.onSimilarClick}
               onBuy={props.onSimilarBuy}
-              onSeeMore={props.onSimilarSeeMore}
             />
           </div>
         ) : null}
+        <div ref={similarSentinelRef} className="h-4" aria-hidden="true" />
 
         <div className="h-3" />
       </div>

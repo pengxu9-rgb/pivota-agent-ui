@@ -29,13 +29,10 @@ export function BeautyYouMayAlsoLike({
   items,
   onItemClick,
   onBuy,
-  onSeeMore,
 }: {
   items: BeautySimilarItem[];
   onItemClick?: (item: BeautySimilarItem, index: number) => void;
   onBuy?: (item: BeautySimilarItem, index: number) => void;
-  /** Click handler for the "See more recommendations" CTA below the grid. */
-  onSeeMore?: () => void;
 }) {
   if (!items?.length) return null;
 
@@ -134,15 +131,6 @@ export function BeautyYouMayAlsoLike({
           );
         })}
       </div>
-      {onSeeMore ? (
-        <button
-          type="button"
-          onClick={onSeeMore}
-          className="mt-3.5 w-full rounded-lg border border-border bg-white px-3 py-2.5 text-[13px] font-semibold text-foreground"
-        >
-          See more recommendations
-        </button>
-      ) : null}
     </div>
   );
 }
