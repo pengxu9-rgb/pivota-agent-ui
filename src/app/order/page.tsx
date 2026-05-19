@@ -654,7 +654,7 @@ function OrderContent() {
 		            </button>
 	            <div className="flex items-center gap-2">
 	              <Image
-	                src="/pivota-logo-pink.png"
+	                src="/pivota-brand/icons/icon-gradient-256.png"
 	                alt="Pivota"
 	                width={32}
 	                height={32}
