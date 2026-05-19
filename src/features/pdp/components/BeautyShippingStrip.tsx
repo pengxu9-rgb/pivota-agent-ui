@@ -2,14 +2,15 @@
 
 /**
  * Shipping + returns strip for the Beauty mobile PDP.
- * Faithful to redesign/pivota-pdp.jsx → ShippingStrip:
- *   white card, 1px border, rounded-[10px], two icon rows (truck / return)
- *   split by a 1px hairline, teal icons, 13px semibold headline + 12px muted sub.
+ * Reference: reference/pdp.jsx → ShippingStrip.
  *
- * Copy is driven by real payload data, not the design's mock strings:
- * "Free" prefixes only render when the free-shipping / free-returns signal is
- * explicitly true; the returns line is scoped to the selected seller (not
- * "every seller") since `returns` is per-offer.
+ * Two rows separated by a hairline:
+ *  1. Truck icon + shipping headline + ETA sub-line
+ *  2. 32px gradient Pivota mark + "Backed by Pivota." + returns copy
+ *
+ * The brand trust row always renders (it's a brand commitment, not a data
+ * field). The returns copy is data-driven when returnWindowDays is supplied;
+ * otherwise falls back to the brand standard "60-day" window.
  */
 
 const TRUCK = (
@@ -18,13 +19,6 @@ const TRUCK = (
     <polygon points="16 8 20 8 23 11 23 16 16 16 16 8" />
     <circle cx="5.5" cy="18.5" r="2.5" />
     <circle cx="18.5" cy="18.5" r="2.5" />
-  </svg>
-);
-
-const RETURN = (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-    <polyline points="1 4 1 10 7 10" />
-    <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
   </svg>
 );
 
@@ -45,8 +39,9 @@ function shippingHeadline(
 }
 
 function returnsCopy(windowDays?: number | null, freeReturns?: boolean | null): string {
-  if (!windowDays) return 'Returns per seller policy';
-  return freeReturns ? `Free ${windowDays}-day returns` : `${windowDays}-day returns`;
+  const days = windowDays ?? 60;
+  const prefix = freeReturns !== false ? 'Free' : '';
+  return `${prefix} ${days}-day returns via every seller — even on opened beauty.`.replace(/^ /, '');
 }
 
 export function BeautyShippingStrip({
@@ -55,7 +50,6 @@ export function BeautyShippingStrip({
   freeShipping,
   returnWindowDays,
   freeReturns,
-  sellerLabel,
 }: {
   etaRange?: [number, number] | null;
   methodLabel?: string | null;
@@ -65,8 +59,6 @@ export function BeautyShippingStrip({
   sellerLabel?: string | null;
 }) {
   const hasShipping = Boolean(methodLabel || (etaRange && etaRange.length === 2));
-  const hasReturns = Boolean(returnWindowDays);
-  if (!hasShipping && !hasReturns) return null;
 
   return (
     <div className="mx-4 mt-2.5 flex flex-col gap-2.5 rounded-[10px] border border-border bg-white px-3.5 py-2.5">
@@ -80,7 +72,7 @@ export function BeautyShippingStrip({
               {shippingHeadline(etaRange, methodLabel, freeShipping)}
             </div>
             {etaRange && etaRange.length === 2 ? (
-              <div className="mt-px text-xs text-muted-foreground">
+              <div className="mt-px text-[12px] text-muted-foreground">
                 Delivery in {etaRange[0]}–{etaRange[1]} days
               </div>
             ) : null}
@@ -88,23 +80,36 @@ export function BeautyShippingStrip({
         </div>
       ) : null}
 
-      {hasShipping && hasReturns ? <div className="h-px bg-border" /> : null}
+      {hasShipping ? <div className="h-px bg-border" /> : null}
 
-      {hasReturns ? (
-        <div className="flex items-start gap-3">
-          <span aria-hidden="true" className="mt-px flex-shrink-0 text-primary">
-            {RETURN}
+      {/* Brand trust row — gradient Pivota mark + "Backed by Pivota." + returns guarantee */}
+      <div className="flex items-center gap-3">
+        <span
+          aria-hidden="true"
+          className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-[22%] text-white"
+          style={{
+            background: 'var(--pv-gradient-primary, linear-gradient(135deg, #534AB7 0%, #7B6FD4 50%, #1D9E75 100%))',
+          }}
+        >
+          <span
+            className="text-[13px] font-semibold leading-none"
+            style={{ fontFamily: 'var(--pv-font-brand, "Fredoka", system-ui, sans-serif)' }}
+          >
+            p<span style={{ marginLeft: 0.5 }}>.</span>
           </span>
-          <div className="flex-1">
-            <div className="text-[13px] font-semibold text-foreground">
-              {returnsCopy(returnWindowDays, freeReturns)}
-            </div>
-            <div className="mt-px text-xs text-muted-foreground">
-              {sellerLabel ? `Applies to your selected seller (${sellerLabel})` : 'Applies to your selected seller'}
-            </div>
+        </span>
+        <div className="flex-1">
+          <div className="text-[13px] font-semibold text-foreground">
+            Backed by{' '}
+            <span style={{ fontFamily: 'var(--pv-font-brand, "Fredoka", system-ui, sans-serif)', fontWeight: 600 }}>
+              Pivota<span style={{ color: 'var(--pv-primary, #1D9E75)' }}>.</span>
+            </span>
+          </div>
+          <div className="mt-px text-[12px] text-muted-foreground">
+            {returnsCopy(returnWindowDays, freeReturns)}
           </div>
         </div>
-      ) : null}
+      </div>
     </div>
   );
 }
