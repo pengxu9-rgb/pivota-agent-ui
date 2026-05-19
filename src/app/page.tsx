@@ -23,7 +23,6 @@ import {
   IconButton,
   InsightBlock,
   Mono,
-  Num,
   ProductCard,
 } from '@/components/ui/editorial';
 import { useCartStore } from '@/store/cartStore';
@@ -189,11 +188,9 @@ const TodaysEditCard = memo(function TodaysEditCard({ product }: { product: Prod
       <Mono className="line-clamp-1 normal-case tracking-[0.02em] text-ink-muted">
         {product.title}
       </Mono>
-      <Num
-        value={formatPriceLabel(product.price, product.currency).replace(/^\$/, '')}
-        prefix="$"
-        size={13}
-      />
+      <span className="font-editorial-sans text-[13px] font-medium tracking-[-0.01em] tabular-nums text-ink">
+        {formatPriceLabel(product.price, product.currency)}
+      </span>
     </Link>
   );
 });
@@ -960,6 +957,7 @@ function AssistantMessageRow({
                     priceLabel={formatPriceLabel(product.price, product.currency)}
                     onSave={() => onAddToCart(product)}
                     aspect="4/5"
+                    font="sans"
                   />
                 </Link>
               );

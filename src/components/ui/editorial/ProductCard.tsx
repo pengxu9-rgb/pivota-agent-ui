@@ -29,6 +29,9 @@ export interface ProductCardProps {
   onSave?: (next: boolean) => void;
   aspect?: '4/5' | '1/1' | '3/4';
   className?: string;
+  /** Typeface for title + price. Default `'serif'` (editorial). Chat-surface
+   *  callers pass `'sans'` so recommendation tiles match the Geist-only chat. */
+  font?: 'serif' | 'sans';
 }
 
 const aspectClass: Record<NonNullable<ProductCardProps['aspect']>, string> = {
@@ -48,6 +51,7 @@ export function ProductCard({
   onSave,
   aspect = '4/5',
   className,
+  font = 'serif',
 }: ProductCardProps) {
   const handleSave = (event: React.MouseEvent) => {
     event.preventDefault();
@@ -94,11 +98,23 @@ export function ProductCard({
       <div className="mt-3 flex flex-col gap-1.5">
         {brand ? <Mono className="text-ink-muted">{brand}</Mono> : null}
         <div className="flex items-start justify-between gap-3">
-          <Title as="p" className="line-clamp-2 text-[14px] leading-[1.25]">
-            {title}
-          </Title>
+          {font === 'sans' ? (
+            <p className="line-clamp-2 font-editorial-sans text-[14px] font-medium leading-[1.25] tracking-[-0.005em] text-ink">
+              {title}
+            </p>
+          ) : (
+            <Title as="p" className="line-clamp-2 text-[14px] leading-[1.25]">
+              {title}
+            </Title>
+          )}
           {priceLabel ? (
-            <Num value={priceLabel} className="flex-shrink-0 text-[15px]" />
+            font === 'sans' ? (
+              <span className="flex-shrink-0 font-editorial-sans text-[15px] font-medium tracking-[-0.01em] tabular-nums text-ink">
+                {priceLabel}
+              </span>
+            ) : (
+              <Num value={priceLabel} className="flex-shrink-0 text-[15px]" />
+            )
           ) : null}
         </div>
       </div>
