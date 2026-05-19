@@ -1,12 +1,15 @@
 'use client';
 
 /**
- * Pivota Insights — the signature cream "paper" card on the Beauty mobile PDP.
- * Faithful to redesign/pivota-pdp-extras.jsx → PivotaInsights:
- *   #FCFAF6 paper backdrop, white inset card (#E7DFD2 border, 24px radius),
- *   gradient sparkle header, then SectionLabel-led blocks — What it is,
- *   Why it stands out, How it fits in a routine, Watch-outs, and a
- *   Community signals row of #FAF7F1 sub-cards.
+ * Pivota Insights — the signature insights card on the Beauty mobile PDP.
+ *
+ * Brand Kit v2.0 (handoff §3h): the cream-paper slab + gradient sparkle
+ * header is retired. The card is now a single white surface with a hairline
+ * border. The identifier row leads with the gradient `p.` mark + a
+ * `PIVOTA INSIGHTS` eyebrow in brand purple + a freshness stamp on the
+ * right; an editorial Cormorant headline carries the lede; the existing
+ * data binding (What it is / Why it stands out / Routine / Watch-outs /
+ * Community) renders below — content unchanged, wrapper restyled.
  */
 
 export type BeautyInsightsData = {
@@ -49,7 +52,7 @@ function RoutineChip({ children, muted }: { children: React.ReactNode; muted?: b
     <span
       className={
         muted
-          ? 'rounded-full bg-[#F4F4F2] px-2.5 py-1 text-[11px] font-medium text-foreground'
+          ? 'rounded-full bg-[var(--paper-muted,#F4F4F2)] px-2.5 py-1 text-[11px] font-medium text-foreground'
           : 'rounded-full border border-border bg-white px-2.5 py-1 text-[11px] font-medium text-foreground'
       }
     >
@@ -61,7 +64,7 @@ function RoutineChip({ children, muted }: { children: React.ReactNode; muted?: b
 function CommunityCard({ label, items }: { label: string; items: string[] }) {
   if (!items?.length) return null;
   return (
-    <div className="rounded-2xl bg-[#FAF7F1] px-3 py-2.5">
+    <div className="rounded-2xl bg-[var(--paper-muted,#F4F4F2)] px-3 py-2.5">
       <SectionLabel>{label}</SectionLabel>
       <ul className="mt-2 flex list-none flex-col gap-1.5 p-0">
         {items.map((it, i) => (
@@ -99,50 +102,70 @@ export function BeautyPivotaInsights({ insights }: { insights: BeautyInsightsDat
   if (!hasBody) return null;
 
   return (
-    <div className="mt-2.5 bg-[#FCFAF6] px-3 py-3">
-      <div className="rounded-[24px] border border-[#E7DFD2] bg-white px-4 py-3.5 shadow-[0_1px_2px_rgba(20,10,40,0.04)]">
-        {/* Header */}
-        <div className="flex items-center gap-2">
+    <div className="mx-4 mt-3.5 overflow-hidden rounded-2xl border border-border bg-white">
+      <div className="px-4 pt-3.5">
+        {/* Identifier row: gradient mark + brand eyebrow + freshness stamp. */}
+        <div className="mb-2 flex items-center gap-2">
           <span
             aria-hidden="true"
-            className="flex h-[22px] w-[22px] items-center justify-center rounded-full text-white"
-            style={{ background: 'linear-gradient(135deg, #534AB7, #1D9E75)' }}
+            className="flex h-[18px] w-[18px] flex-shrink-0 items-center justify-center rounded-md text-white"
+            style={{ background: 'var(--pv-gradient-primary, linear-gradient(135deg, #534AB7 0%, #7B6FD4 50%, #1D9E75 100%))' }}
           >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M12 2l1.8 5.4L19 9l-5.2 1.6L12 16l-1.8-5.4L5 9l5.2-1.6L12 2z" />
-            </svg>
+            <span
+              className="text-[10px] font-semibold leading-none"
+              style={{ fontFamily: 'var(--pv-font-brand, "Fredoka", system-ui, sans-serif)' }}
+            >
+              p
+              <span style={{ marginLeft: 0.5 }}>.</span>
+            </span>
           </span>
-          <h2 className="text-[15px] font-semibold text-foreground">{displayName}</h2>
+          <span
+            className="text-[10px] font-bold uppercase tracking-[0.12em] text-primary"
+          >
+            {displayName || 'Pivota Insights'}
+          </span>
+          {evidenceLabel ? (
+            <span className="ml-auto inline-flex items-center gap-1 text-[10px] font-medium text-muted-foreground">
+              <span
+                aria-hidden="true"
+                className="h-[5px] w-[5px] rounded-full"
+                style={{ background: 'var(--pv-teal, #1D9E75)' }}
+              />
+              {evidenceLabel}
+            </span>
+          ) : null}
         </div>
-        {evidenceLabel ? (
-          <div className="mt-1 text-[11.5px] text-muted-foreground">{evidenceLabel}</div>
-        ) : null}
 
-        <div className="mt-3.5 flex flex-col gap-3.5 border-t border-border pt-3.5">
-          {/* What it is */}
-          {whatItIs?.headline || whatItIs?.body || bestFor?.length ? (
+        {/* Editorial headline + caption (Cormorant per the brand type protocol). */}
+        {whatItIs?.headline ? (
+          <div
+            className="text-[22px] font-medium leading-[1.2] tracking-[-0.015em] text-foreground"
+            style={{ fontFamily: 'var(--pv-font-serif, "Cormorant Garamond", Georgia, serif)' }}
+          >
+            {whatItIs.headline}
+          </div>
+        ) : null}
+        {whatItIs?.body ? (
+          <p className="mt-1 text-[12px] leading-[1.5] text-muted-foreground">{whatItIs.body}</p>
+        ) : null}
+      </div>
+
+      <div className="flex flex-col gap-3.5 px-4 pb-4 pt-3.5">
+          {/* Best for — the only piece of "what it is" not already captured
+              in the editorial headline + caption above. */}
+          {bestFor?.length ? (
             <div>
-              <SectionLabel>What it is</SectionLabel>
-              {whatItIs?.headline ? (
-                <div className="mt-1 text-[13.5px] font-semibold leading-[1.35] text-foreground">
-                  {whatItIs.headline}
-                </div>
-              ) : null}
-              {whatItIs?.body ? (
-                <p className="mt-1 text-[12.5px] leading-[1.45] text-muted-foreground">{whatItIs.body}</p>
-              ) : null}
-              {bestFor?.length ? (
-                <div className="mt-2.5 flex flex-wrap gap-1.5">
-                  {bestFor.map((b) => (
-                    <span
-                      key={b}
-                      className="rounded-full bg-[#F4F4F2] px-2.5 py-1 text-[11px] font-medium text-foreground"
-                    >
-                      {b}
-                    </span>
-                  ))}
-                </div>
-              ) : null}
+              <SectionLabel>Best for</SectionLabel>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {bestFor.map((b) => (
+                  <span
+                    key={b}
+                    className="rounded-full bg-[var(--paper-muted,#F4F4F2)] px-2.5 py-1 text-[11px] font-medium text-foreground"
+                  >
+                    {b}
+                  </span>
+                ))}
+              </div>
             </div>
           ) : null}
 
@@ -152,7 +175,7 @@ export function BeautyPivotaInsights({ insights }: { insights: BeautyInsightsDat
               <SectionLabel>Why it stands out</SectionLabel>
               <div className="mt-2.5 flex flex-col gap-2.5">
                 {highlights.map((h, i) => (
-                  <div key={i} className="flex gap-2.5 border-l border-[#E7DFD2] pl-3">
+                  <div key={i} className="flex gap-2.5 border-l border-border pl-3">
                     <Dot />
                     <div>
                       {h.headline ? (
@@ -203,7 +226,7 @@ export function BeautyPivotaInsights({ insights }: { insights: BeautyInsightsDat
               <SectionLabel>Watch-outs &amp; compatibility</SectionLabel>
               <div className="mt-2 flex flex-col gap-1.5">
                 {watchouts.map((w, i) => (
-                  <div key={i} className="flex gap-2 border-l border-[#E7DFD2] pl-3">
+                  <div key={i} className="flex gap-2 border-l border-border pl-3">
                     <Dot />
                     <div className="flex flex-1 justify-between gap-3">
                       <span className="text-[12.5px] leading-[1.45] text-foreground">{w.label}</span>
@@ -222,7 +245,7 @@ export function BeautyPivotaInsights({ insights }: { insights: BeautyInsightsDat
 
         {/* Community signals */}
         {community?.loves?.length || community?.complaints?.length ? (
-          <div className="mt-3.5 border-t border-border pt-3.5">
+          <div className="border-t border-border pt-3">
             <SectionLabel>Community signals</SectionLabel>
             <div className="mt-2 flex flex-col gap-2">
               <CommunityCard label="What people notice" items={community?.loves || []} />
@@ -231,6 +254,6 @@ export function BeautyPivotaInsights({ insights }: { insights: BeautyInsightsDat
           </div>
         ) : null}
       </div>
-    </div>
   );
 }
+

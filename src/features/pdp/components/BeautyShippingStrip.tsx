@@ -69,7 +69,7 @@ export function BeautyShippingStrip({
   if (!hasShipping && !hasReturns) return null;
 
   return (
-    <div className="mx-[18px] mt-2.5 flex flex-col gap-2.5 rounded-[10px] border border-border bg-white px-3.5 py-2.5">
+    <div className="mx-4 mt-2.5 flex flex-col gap-2.5 rounded-[10px] border border-border bg-white px-3.5 py-2.5">
       {hasShipping ? (
         <div className="flex items-start gap-3">
           <span aria-hidden="true" className="mt-px flex-shrink-0 text-primary">

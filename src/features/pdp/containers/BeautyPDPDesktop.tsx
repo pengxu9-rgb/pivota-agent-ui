@@ -92,7 +92,7 @@ export function BeautyPDPDesktop(props: BeautyPDPMobileProps) {
             </div>
           </div>
 
-          <div className="-mx-[18px]">
+          <div className="-mx-4">
             <BeautyProductHeader
               brand={props.brand}
               title={props.title}
@@ -122,7 +122,7 @@ export function BeautyPDPDesktop(props: BeautyPDPMobileProps) {
               />
             ) : null}
             {props.variantSelector ? (
-              <div className="px-[18px] pt-2.5">{props.variantSelector}</div>
+              <div className="px-4 pt-2.5">{props.variantSelector}</div>
             ) : null}
             {props.benefits?.length ? <BeautyBenefitsStrip benefits={props.benefits} /> : null}
             {props.offers.length > 1 ? (
@@ -225,6 +225,7 @@ export function BeautyPDPDesktop(props: BeautyPDPMobileProps) {
               items={props.similar}
               onItemClick={props.onSimilarClick}
               onBuy={props.onSimilarBuy}
+              onSeeMore={props.onSimilarSeeMore}
             />
           </div>
         ) : null}

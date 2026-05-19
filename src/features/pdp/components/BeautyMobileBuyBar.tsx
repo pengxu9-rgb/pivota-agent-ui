@@ -50,7 +50,7 @@ export function BeautyMobileBuyBar({
   return (
     <div
       className="flex items-center gap-1.5 border-t border-border bg-white/95 px-3 pt-2 backdrop-blur-xl backdrop-saturate-[1.8]"
-      style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 10px)' }}
+      style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 22px)' }}
     >
       {/* Qty stepper */}
       <div className="flex flex-shrink-0 items-center overflow-hidden rounded-full border-[1.5px] border-border bg-white">
@@ -59,7 +59,7 @@ export function BeautyMobileBuyBar({
           onClick={() => onQtyChange(Math.max(1, quantity - 1))}
           disabled={disabled || quantity <= 1}
           aria-label="Decrease quantity"
-          className="flex h-9 w-9 items-center justify-center text-foreground disabled:opacity-40"
+          className="flex h-[34px] w-[34px] items-center justify-center text-foreground disabled:opacity-40"
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
             <line x1="5" y1="12" x2="19" y2="12" />
@@ -73,7 +73,7 @@ export function BeautyMobileBuyBar({
           onClick={() => onQtyChange(quantity + 1)}
           disabled={disabled}
           aria-label="Increase quantity"
-          className="flex h-9 w-9 items-center justify-center text-foreground disabled:opacity-40"
+          className="flex h-[34px] w-[34px] items-center justify-center text-foreground disabled:opacity-40"
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <line x1="12" y1="5" x2="12" y2="19" />
@@ -97,7 +97,7 @@ export function BeautyMobileBuyBar({
         </svg>
         <span
           aria-hidden="true"
-          className="absolute bottom-1.5 right-1.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-foreground text-[11px] font-bold leading-none text-white"
+          className="absolute bottom-1.5 right-1.5 flex h-[13px] w-[13px] items-center justify-center rounded-full bg-foreground text-[10px] font-bold leading-none text-white"
         >
           +
         </span>

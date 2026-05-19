@@ -47,7 +47,7 @@ export function BeautyBrandCard({
   );
 
   const className =
-    'mx-[18px] mt-2.5 flex items-center gap-3 rounded-[20px] border border-border/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(248,246,242,0.98))] px-3.5 py-3';
+    'mx-4 mt-2.5 flex items-center gap-3 rounded-[20px] border border-border/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(248,246,242,0.98))] px-3.5 py-3';
 
   if (brandHref) {
     return (

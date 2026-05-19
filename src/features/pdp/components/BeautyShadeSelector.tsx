@@ -59,7 +59,7 @@ export function BeautyShadeSelector({
 
   return (
     <div className="pt-2.5">
-      <div className="flex items-baseline justify-between px-[18px]">
+      <div className="flex items-baseline justify-between px-4">
         <div>
           {/* Label font matches the product-line / variant selectors
               (text-xs font-semibold) so every variant-axis selector reads
@@ -74,7 +74,7 @@ export function BeautyShadeSelector({
         ) : null}
       </div>
 
-      <div className="flex gap-3 overflow-x-auto px-[18px] pb-1.5 pt-2.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <div className="flex gap-3 overflow-x-auto px-4 pb-1.5 pt-2.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {shades.map((s) => {
           const isSel = s.id === selected.id;
           const visualHex = normalizeHex(s.hex);

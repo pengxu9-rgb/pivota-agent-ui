@@ -113,6 +113,8 @@ export type BeautyPDPMobileProps = {
   similar?: BeautySimilarItem[] | null;
   onSimilarClick?: (item: BeautySimilarItem, index: number) => void;
   onSimilarBuy?: (item: BeautySimilarItem, index: number) => void;
+  /** Click handler for the "See more recommendations" CTA below the grid. */
+  onSimilarSeeMore?: () => void;
   // brand
   brandName?: string | null;
   brandHref?: string | null;
@@ -145,6 +147,19 @@ export function BeautyPDPMobile(props: BeautyPDPMobileProps) {
   const [scrolled, setScrolled] = useState(false);
   const [tabsVisible, setTabsVisible] = useState(false);
   const [activeTab, setActiveTab] = useState('overview');
+
+  // Post-scroll breadcrumb: "brand · $price · title". Format the price the
+  // same way BeautyPriceRow does so the two surfaces never disagree.
+  let priceLabel: string | null = null;
+  try {
+    priceLabel = new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: props.currency || 'USD',
+      maximumFractionDigits: Number.isInteger(props.price) ? 0 : 2,
+    }).format(props.price);
+  } catch {
+    priceLabel = `$${props.price}`;
+  }
 
   const sectionRefs: Record<string, React.RefObject<HTMLDivElement | null>> = {
     overview: overviewRef,
@@ -198,7 +213,9 @@ export function BeautyPDPMobile(props: BeautyPDPMobileProps) {
         scrolled={scrolled}
         onBack={props.onBack}
         onShare={props.onShare}
-        onSearch={props.onSearch}
+        brand={props.brand}
+        title={props.title}
+        priceLabel={priceLabel}
       />
       <BeautyStickyTabs
         visible={tabsVisible}
@@ -247,7 +264,7 @@ export function BeautyPDPMobile(props: BeautyPDPMobileProps) {
             />
           ) : null}
           {props.variantSelector ? (
-            <div className="px-[18px] pt-2.5">{props.variantSelector}</div>
+            <div className="px-4 pt-2.5">{props.variantSelector}</div>
           ) : null}
           {props.benefits?.length ? <BeautyBenefitsStrip benefits={props.benefits} /> : null}
           {props.offers.length > 1 ? (
@@ -336,6 +353,7 @@ export function BeautyPDPMobile(props: BeautyPDPMobileProps) {
               items={props.similar}
               onItemClick={props.onSimilarClick}
               onBuy={props.onSimilarBuy}
+              onSeeMore={props.onSimilarSeeMore}
             />
           </div>
         ) : null}

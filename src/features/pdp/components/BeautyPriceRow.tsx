@@ -36,7 +36,7 @@ export function BeautyPriceRow({
 }) {
   const hasCompare = typeof compareAt === 'number' && compareAt > price;
   return (
-    <div className="flex items-baseline gap-2.5 px-[18px] pt-2.5">
+    <div className="flex items-baseline gap-2.5 px-4 pt-2.5">
       <div className="text-[24px] font-bold tracking-[-0.02em] text-foreground">
         {fmt(price, currency)}
       </div>

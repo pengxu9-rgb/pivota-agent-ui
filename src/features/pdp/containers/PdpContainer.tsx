@@ -592,6 +592,7 @@ function buildVisualSimilarItem(
     priceLabel: item.price
       ? formatPrice(item.price.amount ?? 0, item.price.currency || displayCurrency)
       : '',
+    brand: (typeof item.brand === 'string' ? item.brand.trim() : '') || null,
     rating: item.rating ?? null,
     reviews: item.review_count ?? null,
     highlight: item.description || null,
@@ -4326,6 +4327,18 @@ export function PdpContainer({
           if (!sourceItem) return;
           void handleSimilarQuickAction(sourceItem, index);
         }}
+        onSimilarSeeMore={
+          // Handoff §3i: "See more recommendations" CTA below the grid.
+          // Only surface when there's actually more to reveal — either
+          // already-loaded items still hidden, or the upstream signals
+          // additional pages.
+          similarVisibleCount < similarItems.length ||
+          (similarHasMore && similarItems.length < SIMILAR_MAX)
+            ? () => {
+                void loadMoreSimilarProducts('retry');
+              }
+            : undefined
+        }
         buyNowLabel={actionsByType.buy_now || 'Buy now'}
         inStock={effectiveIsInStock}
         quantity={resolvedQuantity}
