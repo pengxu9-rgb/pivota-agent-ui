@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import type { Metadata } from "next";
 import { Newsreader, Geist, Geist_Mono } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 import { Toaster } from "sonner";
 import CartDrawer from "@/components/cart/CartDrawer";
@@ -35,6 +36,19 @@ const editorialMono = Geist_Mono({
   variable: "--f-mono",
   display: "swap",
 });
+// Pivota Sans — custom display face. Compiled from src/pivota-font/glyphs.ts
+// via handoff-pivota-sans/otf-build (FontForge pipeline). Exposed as
+// `var(--f-pivota)`; v0.1 ships upright Regular + Bold only. No italic
+// master yet — `font-style: italic` falls back to upright by design until
+// the v0.2 type-designer pass adds bespoke italic shapes.
+const pivotaSans = localFont({
+  src: [
+    { path: "../pivota-font/fonts/PivotaSans-Regular.woff2", weight: "400", style: "normal" },
+    { path: "../pivota-font/fonts/PivotaSans-Bold.woff2", weight: "700", style: "normal" },
+  ],
+  variable: "--f-pivota",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: "Pivota Shopping AI",
@@ -56,7 +70,7 @@ export default function RootLayout({
     <html
       lang="en"
       suppressHydrationWarning
-      className={`${editorialSerif.variable} ${editorialSans.variable} ${editorialMono.variable}`}
+      className={`${editorialSerif.variable} ${editorialSans.variable} ${editorialMono.variable} ${pivotaSans.variable}`}
     >
       <head>
         <link rel="manifest" href="/manifest.json" />
