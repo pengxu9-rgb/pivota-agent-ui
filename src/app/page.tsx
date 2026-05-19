@@ -20,7 +20,6 @@ import {
   Button as EdButton,
   Chip,
   Eyebrow,
-  Headline,
   IconButton,
   InsightBlock,
   Mono,
@@ -813,12 +812,12 @@ function EditorialGreeting({
     >
       <div>
         <Eyebrow>Pivota · Personal shopper</Eyebrow>
-        <Headline size={28} className="mt-3 text-balance">
+        <h2 className="mt-3 text-balance font-editorial-sans text-[28px] font-medium leading-tight tracking-[-0.015em] text-ink">
           {greetingName ? `Welcome back, ${greetingName}.` : 'Welcome back.'}{' '}
-          <em className="font-editorial-serif italic text-ink-muted">
+          <span className="font-editorial-sans font-normal text-ink-muted">
             What are we shopping today?
-          </em>
-        </Headline>
+          </span>
+        </h2>
         <p className="pv-body mt-3 max-w-prose text-ink-muted">
           I keep track of what you&apos;ve been browsing and what&apos;s new in the houses you
           follow. Ask anything — I&apos;ll edit the catalog for you.
