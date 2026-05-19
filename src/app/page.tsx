@@ -10,7 +10,6 @@ import {
   Search,
   Send,
   ShoppingBag,
-  Sparkles,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
@@ -51,7 +50,6 @@ import {
 } from '@/lib/photoAnalysis';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
-import { PivotaWordmark } from '@/pivota-font';
 
 const CHAT_RAIL_INITIAL_PAGE_SIZE = 12;
 const CHAT_RAIL_PAGE_STEP = 12;
@@ -648,15 +646,30 @@ function HomePageApp() {
             >
               <Menu size={20} strokeWidth={1.6} />
             </IconButton>
-            <div className="flex min-w-0 items-center gap-2.5">
+            <Link href="/" className="flex min-w-0 items-center gap-2.5" aria-label="Pivota home">
               <span
                 aria-hidden="true"
-                className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-ink text-paper"
+                className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-[8px]"
+                style={{
+                  background: 'linear-gradient(180deg, #FFB6D9 0%, #FFE4F1 100%)',
+                  boxShadow: '0 3px 10px rgba(255, 105, 180, 0.18)',
+                }}
               >
-                <Sparkles size={14} strokeWidth={2} />
+                <Image
+                  src="/pivota-logo-pink.png"
+                  alt=""
+                  width={32}
+                  height={32}
+                  className="h-8 w-8 rounded-[6px]"
+                />
               </span>
-              <PivotaWordmark size={24} aria-label="Pivota" className="text-ink" />
-            </div>
+              <span
+                className="text-[18px] font-semibold text-ink"
+                style={{ fontFamily: "'Cormorant Garamond', Georgia, serif", letterSpacing: '-0.02em' }}
+              >
+                Pivota
+              </span>
+            </Link>
           </div>
           <div className="flex items-center gap-1">
             {!user ? (
