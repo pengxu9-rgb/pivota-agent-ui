@@ -66,11 +66,10 @@ export function BeautyStickyTabs({
               type="button"
               onClick={() => onTabChange(t.id)}
               aria-current={isActive ? 'true' : undefined}
-              className="flex-shrink-0 rounded-full px-3 py-1.5 text-[12px] font-semibold transition-colors duration-150"
-              style={
+              className={
                 isActive
-                  ? { background: 'hsl(var(--foreground))', color: 'hsl(var(--background))' }
-                  : { background: 'transparent', color: 'hsl(var(--foreground))' }
+                  ? 'flex-shrink-0 rounded-full bg-foreground px-3 py-1.5 text-[12px] font-semibold text-background transition-colors duration-150'
+                  : 'flex-shrink-0 rounded-full px-3 py-1.5 text-[12px] font-semibold text-foreground transition-colors duration-150'
               }
             >
               {t.label}
