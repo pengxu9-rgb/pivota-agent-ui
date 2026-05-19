@@ -185,9 +185,9 @@ const TodaysEditCard = memo(function TodaysEditCard({ product }: { product: Prod
           unoptimized
         />
       </div>
-      <Mono className="line-clamp-1 normal-case tracking-[0.02em] text-ink-muted">
+      <p className="font-editorial-sans text-[12px] font-normal leading-[1.3] tracking-[-0.005em] text-ink-2">
         {product.title}
-      </Mono>
+      </p>
       <span className="font-editorial-sans text-[13px] font-medium tracking-[-0.01em] tabular-nums text-ink">
         {formatPriceLabel(product.price, product.currency)}
       </span>

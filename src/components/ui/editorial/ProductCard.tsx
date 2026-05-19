@@ -99,7 +99,7 @@ export function ProductCard({
         {brand ? <Mono className="text-ink-muted">{brand}</Mono> : null}
         <div className="flex items-start justify-between gap-3">
           {font === 'sans' ? (
-            <p className="line-clamp-2 font-editorial-sans text-[14px] font-medium leading-[1.25] tracking-[-0.005em] text-ink">
+            <p className="font-editorial-sans text-[14px] font-medium leading-[1.3] tracking-[-0.005em] text-ink">
               {title}
             </p>
           ) : (
