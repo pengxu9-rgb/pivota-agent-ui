@@ -76,15 +76,6 @@ export default function QuestionThreadClient() {
     };
   }, [questionId]);
 
-  const requireLogin = () => {
-    const redirect =
-      typeof window !== 'undefined'
-        ? `${window.location.pathname}${window.location.search}`
-        : backHref;
-    toast.message('Please log in to reply.');
-    router.push(`/login?redirect=${encodeURIComponent(redirect)}`);
-  };
-
   const onSubmitReply = async () => {
     const text = replyText.trim();
     if (!text) {
@@ -98,10 +89,10 @@ export default function QuestionThreadClient() {
     try {
       await postQuestionReply({ questionId, body: text });
       setReplyText('');
-      toast.success('Answer submitted for review.');
+      toast.success('Answer submitted for Pivota review.');
     } catch (e: any) {
       if (e?.status === 401 || e?.code === 'NOT_AUTHENTICATED') {
-        requireLogin();
+        toast.error('Answer could not be submitted right now. Please try again.');
         return;
       }
       toast.error(e?.message || 'Failed to submit reply');
@@ -170,7 +161,7 @@ export default function QuestionThreadClient() {
               )}
             </div>
             <div className="rounded-2xl border border-border bg-white/70 p-4 text-xs leading-relaxed text-muted-foreground">
-              Answers from logged-in users are reviewed before they appear publicly.
+              Answers are submitted to Pivota for review before they appear publicly.
             </div>
           </>
         )}
@@ -187,7 +178,7 @@ export default function QuestionThreadClient() {
               disabled={submitting || !question}
             />
             <p className="mt-1 text-[11px] text-muted-foreground">
-              Logged-in users can answer. Answers are reviewed before they appear.
+              Anyone can answer. Pivota reviews answers before they appear.
             </p>
           </div>
           <Button className="rounded-xl" onClick={onSubmitReply} disabled={submitting || !question}>

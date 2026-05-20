@@ -409,7 +409,7 @@ export function PdpMediaViewer({
       ))}
     </div>
   ) : (
-    <div className="flex h-full items-center justify-center text-sm text-white/80">No buyer media</div>
+    <div className="flex h-full items-center justify-center text-sm text-white/80">No customer media</div>
   );
 
   if (!isOpen || typeof document === 'undefined') return null;

@@ -219,15 +219,6 @@ export default function QuestionsListClient() {
     };
   }, [merchantId, productGroupId, productId]);
 
-  const requireLogin = (intent: 'question' | 'reply') => {
-    const redirect =
-      typeof window !== 'undefined'
-        ? `${window.location.pathname}${window.location.search}`
-        : '/community/questions';
-    toast.message(intent === 'reply' ? 'Please log in to reply.' : 'Please log in to ask a question.');
-    router.push(`/login?redirect=${encodeURIComponent(redirect)}`);
-  };
-
   const submitQuestion = async () => {
     const text = askText.trim();
     if (!text) {
@@ -238,29 +229,17 @@ export default function QuestionsListClient() {
 
     setSubmitting(true);
     try {
-      const res = await postQuestion({
+      await postQuestion({
         productId,
         ...(productGroupId ? { productGroupId } : {}),
         question: text,
       });
-      const qid = Number((res as any)?.question_id ?? (res as any)?.questionId ?? (res as any)?.id) || Date.now();
-      setItems((prev) => [
-        {
-          question_id: qid,
-          question: text,
-          created_at: new Date().toISOString(),
-          replies: 0,
-          source: 'community',
-          source_label: 'Community',
-        },
-        ...(prev || []),
-      ]);
       setAskText('');
       setAskOpen(false);
-      toast.success('Question submitted.');
+      toast.success('Question submitted for Pivota review.');
     } catch (e: any) {
       if (e?.status === 401 || e?.code === 'NOT_AUTHENTICATED') {
-        requireLogin('question');
+        toast.error('Question could not be submitted right now. Please try again.');
         return;
       }
       toast.error(e?.message || 'Failed to submit question.');
@@ -286,7 +265,9 @@ export default function QuestionsListClient() {
             </button>
             <div>
               <h1 className="text-xl font-semibold">Questions</h1>
-              <p className="text-xs text-muted-foreground">Questions and answers from the product page and community.</p>
+              <p className="text-xs text-muted-foreground">
+                Ask and answer product questions. Pivota reviews submissions before they appear.
+              </p>
             </div>
           </div>
 
@@ -402,7 +383,9 @@ export default function QuestionsListClient() {
                 ×
               </button>
             </div>
-            <p className="mt-1 text-xs text-muted-foreground">Ask about sizing, materials, shipping, or anything else.</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Ask about sizing, materials, shipping, or anything else. Pivota reviews questions before they appear.
+            </p>
             <textarea
               className="mt-3 w-full min-h-[120px] rounded-xl border border-border bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--focus-ring)]"
               placeholder="Type your question…"

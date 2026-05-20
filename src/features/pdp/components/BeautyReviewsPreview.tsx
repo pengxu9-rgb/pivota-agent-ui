@@ -48,7 +48,7 @@ export function BeautyReviewsPreview({
   rating,
   reviewCount,
   reviews,
-  emptyCopy = 'No reviews yet. Be the first to share your shade + skin notes — your review appears here once verified.',
+  emptyCopy = 'No reviews yet. Be the first to share your shade + skin notes - your review appears here after Pivota review.',
   onWriteReview,
   onSeeAll,
 }: {
@@ -102,7 +102,7 @@ export function BeautyReviewsPreview({
             ))}
           </div>
           <div className="text-[11px] text-muted-foreground">
-            {reviewCount.toLocaleString()} verified reviews
+            {reviewCount.toLocaleString()} customer reviews
           </div>
         </div>
       </div>

@@ -1720,6 +1720,7 @@ async function callAccountsBase(
     options as any;
   const timeoutValue = Number(timeout_ms ?? timeoutMs);
   const auroraRecoveryMode: 'auto' | 'off' = aurora_recovery === 'off' ? 'off' : 'auto';
+  const requestMethod = String(method || 'GET').toUpperCase();
 
   const requestOnce = async (): Promise<{ res: Response; data: any }> => {
     const hasTimeout = Number.isFinite(timeoutValue) && timeoutValue > 0;
@@ -1734,12 +1735,16 @@ async function callAccountsBase(
     if (!(body instanceof FormData) && !requestHeaders.has('Content-Type')) {
       requestHeaders.set('Content-Type', 'application/json');
     }
+    if (shouldAttachUgcGuestId(path, requestMethod) && !requestHeaders.has('X-Pivota-Ugc-Guest-Id')) {
+      const guestId = getOrCreateUgcGuestId();
+      if (guestId) requestHeaders.set('X-Pivota-Ugc-Guest-Id', guestId);
+    }
 
     let res: Response;
     try {
       res = await fetch(url, {
         ...rest,
-        method: method || 'GET',
+        method: requestMethod,
         credentials: 'include', // rely on HttpOnly cookies
         headers: requestHeaders,
         ...(controller ? { signal: controller.signal } : {}),
@@ -1803,6 +1808,34 @@ type AccountsCallOptions = RequestInit & {
   timeoutMs?: number;
   aurora_recovery?: 'auto' | 'off';
 };
+
+function shouldAttachUgcGuestId(path: string, method: string): boolean {
+  if (method === 'GET' || method === 'HEAD') return false;
+  const normalized = String(path || '').trim();
+  return (
+    normalized === '/questions' ||
+    /^\/questions\/\d+\/replies(?:\?|$)/.test(normalized) ||
+    normalized === '/buyer/reviews/v1/reviews/from_user' ||
+    /^\/buyer\/reviews\/v1\/reviews\/\d+\/media\/from_user(?:\?|$)/.test(normalized)
+  );
+}
+
+function getOrCreateUgcGuestId(): string | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const storageKey = 'pivota_ugc_guest_id';
+    const existing = window.localStorage.getItem(storageKey);
+    if (existing && existing.length >= 8) return existing;
+    const generated =
+      typeof window.crypto?.randomUUID === 'function'
+        ? window.crypto.randomUUID()
+        : `${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`;
+    window.localStorage.setItem(storageKey, generated);
+    return generated;
+  } catch {
+    return null;
+  }
+}
 
 async function callAccounts(path: string, options: AccountsCallOptions = {}) {
   return callAccountsBase(ACCOUNTS_API_BASE, path, options);
@@ -1925,7 +1958,7 @@ export async function postQuestion(args: {
   productId: string;
   productGroupId?: string | null;
   question: string;
-}): Promise<{ status?: string; question_id?: number } | null> {
+}): Promise<{ status?: string; question_id?: number; moderation_status?: string } | null> {
   const productId = String(args.productId || '').trim();
   if (!productId) return null;
 

@@ -90,7 +90,6 @@ import { buildProductHref } from '@/lib/productHref';
 import { buildProductVariants } from '@/features/pdp/utils/productVariants';
 import { getDisplayVariantLabel, isHiddenVariantForSelector } from '@/features/pdp/utils/variantLabels';
 import { cn } from '@/lib/utils';
-import { resolveReviewGate, reviewGateMessage, reviewGateResultToReason } from '@/lib/reviewGate';
 import { postRequestCloseToParent } from '@/lib/auroraEmbed';
 import { appendCurrentPathAsReturn, isExternalAgentEntry, resolveExternalAgentHomeUrl, safeReturnUrl } from '@/lib/returnUrl';
 import {
@@ -3766,9 +3765,9 @@ export function PdpContainer({
     } as ReviewsPreviewData;
   }, [defaultReviewScope, mergedQuestions, reviews, selectedReviewScope]);
 
-  const canUploadMedia = Boolean(ugcCapabilities?.canUploadMedia);
-  const canWriteReview = Boolean(ugcCapabilities?.canWriteReview);
-  const canAskQuestion = Boolean(ugcCapabilities?.canAskQuestion);
+  const canUploadMedia = true;
+  const canWriteReview = true;
+  const canAskQuestion = true;
   const uploadReason = ugcCapabilities?.reasons?.upload;
   const reviewReason = ugcCapabilities?.reasons?.review;
   const questionReason = ugcCapabilities?.reasons?.question;
@@ -3779,24 +3778,7 @@ export function PdpContainer({
       ? 'anonymous'
       : reviewReason === 'ALREADY_REVIEWED'
         ? 'already_reviewed'
-        : canUploadMedia || canWriteReview
-          ? 'purchaser'
-          : 'non_purchaser';
-
-  const requireLogin = (intent: 'upload' | 'review' | 'question') => {
-    const redirect =
-      typeof window !== 'undefined'
-        ? `${window.location.pathname}${window.location.search}`
-        : '/';
-    const label =
-      intent === 'upload'
-        ? 'share media'
-        : intent === 'review'
-          ? 'write a review'
-          : 'ask a question';
-    toast.message(`Please log in to ${label}.`);
-    router.push(`/login?redirect=${encodeURIComponent(redirect)}`);
-  };
+        : 'open_submission';
 
   const appendReviewWriteContext = (params: URLSearchParams) => {
     if (typeof window === 'undefined') return;
@@ -3831,29 +3813,15 @@ export function PdpContainer({
       user_state: ugcUserState,
       reason: uploadReason || null,
     });
-    if (canUploadMedia) {
-      const params = new URLSearchParams();
-      params.set('product_id', productId);
-      if (payload.product.merchant_id) params.set('merchant_id', payload.product.merchant_id);
-      params.set('entry', 'ugc_upload');
-      appendReviewWriteContext(params);
-      router.push(`/reviews/write?${params.toString()}`);
-      return;
-    }
-    if (uploadReason === 'NOT_AUTHENTICATED') {
-      requireLogin('upload');
-      return;
-    }
-    toast.message('Purchase required to share media.');
+    const params = new URLSearchParams();
+    params.set('product_id', productId);
+    if (payload.product.merchant_id) params.set('merchant_id', payload.product.merchant_id);
+    params.set('entry', 'ugc_upload');
+    appendReviewWriteContext(params);
+    router.push(`/reviews/write?${params.toString()}`);
   };
 
   const handleWriteReview = () => {
-    const reviewGate = resolveReviewGate({
-      isAuthenticated: reviewReason !== 'NOT_AUTHENTICATED',
-      canWriteReview,
-      reason: reviewReason || null,
-    });
-    const reviewGateReason = reviewGateResultToReason(reviewGate);
     pdpTracking.track('pdp_action_click', {
       action_type: 'open_embed',
       target: 'write_review',
@@ -3861,27 +3829,18 @@ export function PdpContainer({
       entry_surface: 'pdp',
       user_state: ugcUserState,
       reason: reviewReason || null,
-      review_gate_reason: reviewGateReason,
+      review_gate_reason: 'ELIGIBLE',
       metric: 'pdp_review_gate_total',
     });
-    if (reviewGate === 'ALLOW_WRITE') {
-      if (onWriteReview) {
-        onWriteReview();
-      } else {
-        const params = new URLSearchParams();
-        params.set('product_id', productId);
-        if (payload.product.merchant_id) params.set('merchant_id', payload.product.merchant_id);
-        appendReviewWriteContext(params);
-        router.push(`/reviews/write?${params.toString()}`);
-      }
+    if (onWriteReview) {
+      onWriteReview();
       return;
     }
-    if (reviewGate === 'REQUIRE_LOGIN') {
-      requireLogin('review');
-      return;
-    }
-    const message = reviewGateMessage(reviewGate);
-    if (message) toast.message(message);
+    const params = new URLSearchParams();
+    params.set('product_id', productId);
+    if (payload.product.merchant_id) params.set('merchant_id', payload.product.merchant_id);
+    appendReviewWriteContext(params);
+    router.push(`/reviews/write?${params.toString()}`);
   };
 
   const handleAskQuestion = () => {
@@ -3892,19 +3851,11 @@ export function PdpContainer({
       user_state: ugcUserState,
       reason: questionReason || null,
     });
-    if (canAskQuestion) {
-      setQuestionOpen(true);
-      return;
-    }
-    if (questionReason === 'NOT_AUTHENTICATED') {
-      requireLogin('question');
-      return;
-    }
     if (questionReason === 'RATE_LIMITED') {
       toast.message('Too many questions. Please try again in a minute.');
       return;
     }
-    requireLogin('question');
+    setQuestionOpen(true);
   };
 
   const submitQuestion = async () => {
@@ -3921,27 +3872,17 @@ export function PdpContainer({
 
     setQuestionSubmitting(true);
     try {
-      const res = await postQuestion({
+      await postQuestion({
         productId,
         ...(productGroupId ? { productGroupId } : {}),
         question,
       });
-      const qid = Number((res as any)?.question_id ?? (res as any)?.questionId ?? (res as any)?.id) || Date.now();
-      toast.success('Question submitted.');
-      setUgcQuestions((prev) => {
-        const next: QuestionListItem = {
-          question_id: qid,
-          question,
-          created_at: new Date().toISOString(),
-          replies: 0,
-        };
-        return [next, ...(prev || []).filter((it) => String(it?.question || '').trim() !== question)].slice(0, 10);
-      });
+      toast.success('Question submitted for Pivota review.');
       setQuestionText('');
       setQuestionOpen(false);
     } catch (err: any) {
       if (err?.code === 'NOT_AUTHENTICATED' || err?.status === 401) {
-        requireLogin('question');
+        toast.error('Question could not be submitted right now. Please try again.');
         return;
       }
       if (err?.code === 'RATE_LIMITED' || err?.status === 429) {

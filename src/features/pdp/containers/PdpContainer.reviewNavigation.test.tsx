@@ -190,6 +190,33 @@ describe('PdpContainer review navigation context', () => {
     expect(sp.get('return')).toBe('/products/P001?merchant_id=merch_test');
   });
 
+  it('opens write-review route even when personalization reports a logged-out non-purchaser', () => {
+    window.history.replaceState(null, '', '/products/P001?merchant_id=merch_test');
+
+    render(
+      <PdpContainer
+        payload={payload}
+        mode="generic"
+        onAddToCart={() => {}}
+        onBuyNow={() => {}}
+        ugcCapabilities={{
+          canUploadMedia: false,
+          canWriteReview: false,
+          canAskQuestion: false,
+          reasons: {
+            upload: 'NOT_AUTHENTICATED',
+            review: 'NOT_PURCHASER',
+            question: 'NOT_AUTHENTICATED',
+          },
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /write a review/i }));
+    expect(pushMock).toHaveBeenCalledTimes(1);
+    expect(String(pushMock.mock.calls[0]?.[0] || '')).toContain('/reviews/write?');
+  });
+
   it('back button prefers safe return query target', () => {
     window.history.replaceState(
       null,

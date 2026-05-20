@@ -67,7 +67,7 @@ export function ReviewsPreview({
               {data.preview_items.slice(0, 2).map((r) => (
                 <div key={r.review_id} className="text-sm text-muted-foreground">
                   <div className="text-xs text-foreground font-medium">
-                    {r.author_label || 'Verified buyer'}
+                    {r.author_label || 'Customer'}
                   </div>
                   {r.title ? <div className="mt-1 text-sm text-foreground font-medium line-clamp-1">{r.title}</div> : null}
                   <div className="mt-1 line-clamp-3">{r.text_snippet || 'No written details provided.'}</div>

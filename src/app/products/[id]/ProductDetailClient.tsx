@@ -62,6 +62,17 @@ const PDP_V2_UNSCOPED_TIMEOUT_MS = 9000;
 const PDP_V2_CORE_ONLY_RETRY_TIMEOUT_MS = 3500;
 const PDP_CORE_ONLY_INCLUDE: string[] = [];
 
+function buildPublicUgcCapabilities(caps?: UgcCapabilities | null): UgcCapabilities {
+  return {
+    canUploadMedia: true,
+    canWriteReview: true,
+    canRateReview: true,
+    canAskQuestion: true,
+    reasons: caps?.reasons?.rating ? { rating: caps.reasons.rating } : {},
+    review: caps?.review || null,
+  };
+}
+
 function extractMoneyAmount(value: any): number {
   return extractPositivePriceAmount(value);
 }
@@ -498,16 +509,7 @@ export default function ProductDetailPage({ params, initialPayload }: Props) {
   const localBrowseHistoryRecordedRef = useRef<string | null>(null);
   const remoteBrowseHistoryRecordedRef = useRef<string | null>(null);
   const moduleSourceLocksRef = useRef(initialLoadState?.sourceLocks ?? { ...DEFAULT_MODULE_SOURCE_LOCKS });
-  const [ugcCapabilities, setUgcCapabilities] = useState<UgcCapabilities | null>({
-    canUploadMedia: false,
-    canWriteReview: false,
-    canAskQuestion: false,
-    reasons: {
-      upload: 'NOT_AUTHENTICATED',
-      review: 'NOT_AUTHENTICATED',
-      question: 'NOT_AUTHENTICATED',
-    },
-  });
+  const [ugcCapabilities, setUgcCapabilities] = useState<UgcCapabilities | null>(() => buildPublicUgcCapabilities());
 
   const { addItem, open } = useCartStore();
   const inferredMerchantId = inferCanonicalPdpMerchantId(id, merchantIdParam);
@@ -519,6 +521,16 @@ export default function ProductDetailPage({ params, initialPayload }: Props) {
     // getPdpV2 -> callGateway -> getCheckoutContext when no SSR payload existed.
     getCheckoutContextFromBrowser();
   }, []);
+
+  useEffect(() => {
+    if (!initialPayload) return;
+    const nextLoadState = prepareLoadedPdpPayload(initialPayload);
+    moduleSourceLocksRef.current = nextLoadState.sourceLocks;
+    setPdpPayload(nextLoadState.payload);
+    setSellerCandidates(null);
+    setLoading(false);
+    setError(null);
+  }, [id, initialPayload, merchantIdParam]);
 
   useEffect(() => {
     if (loading && !error && !pdpPayload) return;
@@ -777,31 +789,10 @@ export default function ProductDetailPage({ params, initialPayload }: Props) {
     const productGroupId = String(pdpPayload?.product_group_id || '').trim() || null;
 
     if (!productId) return;
-
+    setUgcCapabilities(buildPublicUgcCapabilities());
     if (!userId) {
-      setUgcCapabilities({
-        canUploadMedia: false,
-        canWriteReview: false,
-        canAskQuestion: false,
-        reasons: {
-          upload: 'NOT_AUTHENTICATED',
-          review: 'NOT_AUTHENTICATED',
-          question: 'NOT_AUTHENTICATED',
-        },
-      });
       return;
     }
-
-    // Safe optimistic default while personalization is loading.
-    setUgcCapabilities({
-      canUploadMedia: false,
-      canWriteReview: false,
-      canAskQuestion: true,
-      reasons: {
-        upload: 'NOT_PURCHASER',
-        review: 'NOT_PURCHASER',
-      },
-    });
 
     (async () => {
       try {
@@ -812,14 +803,9 @@ export default function ProductDetailPage({ params, initialPayload }: Props) {
         if (cancelled) return;
         const caps = res?.ugcCapabilities;
         if (!caps || typeof caps !== 'object') return;
-        setUgcCapabilities({
-          canUploadMedia: Boolean(caps.canUploadMedia),
-          canWriteReview: Boolean(caps.canWriteReview),
-          canAskQuestion: Boolean(caps.canAskQuestion),
-          reasons: caps.reasons || {},
-        });
+        setUgcCapabilities(buildPublicUgcCapabilities(caps));
       } catch {
-        // Keep optimistic defaults.
+        // Keep the public contribution defaults.
       }
     })();
 

@@ -76,7 +76,7 @@ export function BeautyReviewsSection({
   askQuestionLabel = 'Ask a question',
   askQuestionEnabled = true,
   openQuestionsLabel = 'View all',
-  emptyCopy = 'No reviews yet. Be the first to share your thoughts — your review appears here once verified.',
+  emptyCopy = 'No reviews yet. Be the first to share your thoughts - your review appears here after Pivota review.',
 }: {
   data: ReviewsPreviewData;
   onSelectScope?: (scopeId: string) => void;
@@ -258,7 +258,7 @@ export function BeautyReviewsSection({
             <div key={review.review_id} className="flex gap-3 pb-3 border-b border-border last:border-0">
               <div className="flex-1">
                 <div className="flex items-center gap-2 text-xs">
-                  <span className="font-medium">{review.author_label || 'Verified buyer'}</span>
+                  <span className="font-medium">{review.author_label || 'Customer'}</span>
                 </div>
                 <div className="mt-1">
                   <StarRating value={(review.rating / data.scale) * 5} />
