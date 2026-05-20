@@ -179,7 +179,7 @@ export function CatalogProductCard({ product }: { product: ProductResponse }) {
   return (
     <div className="group relative">
       <Link href={hrefWithReturn} prefetch={false} className="block h-full">
-        <article className="h-full overflow-hidden rounded-lg border border-slate-200 bg-white shadow-[0_6px_18px_rgba(15,23,42,0.045)] transition duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_12px_22px_rgba(15,23,42,0.07)]">
+        <article className="h-full overflow-hidden rounded-2xl border border-[#f3ede5] bg-white shadow-[0_6px_18px_rgba(15,23,42,0.045)] transition duration-200 hover:-translate-y-0.5 hover:border-[#ddd3c8] hover:shadow-[0_12px_22px_rgba(15,23,42,0.07)]">
           <div className="relative aspect-[4/5] overflow-hidden bg-[#f7f3ee]">
             <Image
               src={imageSrc}
@@ -193,7 +193,7 @@ export function CatalogProductCard({ product }: { product: ProductResponse }) {
             />
 
             {card.badge ? (
-              <span className="absolute left-2 top-2 rounded-md bg-white/96 px-2 py-1 text-[10px] font-semibold tracking-normal text-slate-700 shadow-sm">
+              <span className="absolute left-2 top-2 rounded-full bg-white/96 px-2 py-1 text-[10px] font-semibold tracking-[-0.01em] text-slate-700 shadow-sm">
                 {card.badge}
               </span>
             ) : null}
@@ -201,7 +201,7 @@ export function CatalogProductCard({ product }: { product: ProductResponse }) {
 
           <div className="space-y-1 p-2.5 pr-10 sm:p-3 sm:pr-10">
             <h3 className="min-h-[2.7rem] line-clamp-3 text-[12px] font-medium leading-[0.92rem] tracking-[-0.01em] text-[#202531] sm:text-[12.5px] sm:leading-[0.98rem]">
-              {card.title}
+              {product.brand ? <span className="text-[#667085]">{product.brand} · </span> : null}{card.title}
             </h3>
 
             {compactCopy ? (
@@ -248,7 +248,7 @@ export function CatalogProductCard({ product }: { product: ProductResponse }) {
 
 export function CatalogProductSkeleton() {
   return (
-    <div className="overflow-hidden rounded-[24px] bg-white shadow-[0_8px_32px_rgba(15,23,42,0.08)] ring-1 ring-black/5">
+    <div className="overflow-hidden rounded-2xl border border-[#f3ede5] bg-white shadow-[0_6px_18px_rgba(15,23,42,0.045)]">
       <div className="aspect-[4/5] animate-pulse bg-slate-100" />
       <div className="space-y-3 p-4">
         <div className="h-4 w-4/5 animate-pulse rounded-full bg-slate-100" />
