@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef } from 'react';
-import { BeautyMobileGallery } from '@/features/pdp/components/BeautyMobileGallery';
+import { BeautyDesktopGallery } from '@/features/pdp/components/BeautyDesktopGallery';
 import { BeautyProductHeader } from '@/features/pdp/components/BeautyProductHeader';
 import { BeautyPriceRow } from '@/features/pdp/components/BeautyPriceRow';
 import { BeautyShadeSelector } from '@/features/pdp/components/BeautyShadeSelector';
@@ -61,7 +61,7 @@ export function BeautyPDPDesktop(props: BeautyPDPMobileProps) {
             </button>
           ) : null}
           <div className="min-w-0 flex-1 truncate text-[13px] font-semibold">
-            {props.brand ? <span className="text-primary">{props.brand}</span> : null}
+            {props.brand ? <span className="text-cd-primary">{props.brand}</span> : null}
             {props.brand ? <span className="mx-1.5 text-muted-foreground">·</span> : null}
             <span className="text-foreground">{props.title}</span>
           </div>
@@ -83,13 +83,11 @@ export function BeautyPDPDesktop(props: BeautyPDPMobileProps) {
       <div className="mx-auto max-w-[1180px] px-6 pb-24">
         <div className="grid grid-cols-1 gap-x-12 gap-y-8 pt-8 lg:grid-cols-[minmax(0,1fr)_440px]">
           <div className="self-start lg:sticky lg:top-[76px]">
-            <div className="overflow-hidden rounded-2xl border border-border">
-              <BeautyMobileGallery
-                images={props.galleryImages}
-                alt={props.title}
-                onOpenViewer={props.onOpenViewer}
-              />
-            </div>
+            <BeautyDesktopGallery
+              images={props.galleryImages}
+              alt={props.title}
+              onOpenViewer={props.onOpenViewer}
+            />
           </div>
 
           <div className="-mx-4">
