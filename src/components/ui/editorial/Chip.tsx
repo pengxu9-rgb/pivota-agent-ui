@@ -47,8 +47,8 @@ Chip.displayName = 'Chip';
  */
 const pill = cva(
   [
-    'inline-flex items-center justify-center rounded-full px-2.5 py-0.5',
-    'font-editorial-mono text-[10px] font-medium uppercase tracking-[0.1em]',
+    'inline-flex items-center justify-center rounded-full px-2 py-[3px]',
+    'font-editorial-mono text-[9px] font-medium uppercase tracking-[0.08em]',
   ].join(' '),
   {
     variants: {
@@ -56,6 +56,15 @@ const pill = cva(
         default: 'bg-paper-2 text-ink-2',
         sage: 'bg-sage-bg text-sage',
         accent: 'bg-terracotta-bg text-terracotta-ink',
+        /**
+         * Promo / deal treatment — solid terracotta with white text, bumped
+         * size and weight for e-commerce promotional energy (vs the calm
+         * status-pill defaults). Overrides base font-size + padding via
+         * the same className so the chip reads with intent: this is a deal,
+         * not a quiet attribution.
+         */
+        promo:
+          'bg-terracotta text-white font-semibold text-[10.5px] tracking-[0.06em] px-2.5 py-1 shadow-[0_4px_10px_rgba(168,84,44,0.32)]',
       },
     },
     defaultVariants: { variant: 'default' },
