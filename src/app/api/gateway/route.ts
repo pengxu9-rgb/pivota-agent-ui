@@ -112,6 +112,168 @@ function buildShopUpstreamInvokeUrl(base: string): string {
   return `${normalized}/agent/shop/v1/invoke`;
 }
 
+function normalizeIncludeValues(raw: unknown): string[] {
+  if (Array.isArray(raw)) {
+    return raw.map((item) => String(item || '').trim()).filter(Boolean);
+  }
+  if (typeof raw === 'string') {
+    return raw
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+  return [];
+}
+
+function isReviewsPreviewRequested(body: JsonRecord): boolean {
+  const payload = isPlainObject(body.payload) ? body.payload : {};
+  const include = normalizeIncludeValues(payload.include);
+  return include.length === 0 || include.includes('reviews_preview');
+}
+
+function findModule(payload: JsonRecord, type: string): JsonRecord | null {
+  const modules = Array.isArray(payload.modules) ? payload.modules : [];
+  for (const pdpModule of modules) {
+    if (isPlainObject(pdpModule) && String(pdpModule.type || '').trim() === type) {
+      return pdpModule;
+    }
+  }
+  return null;
+}
+
+function extractReviewSubjectFromPdp(payload: unknown): JsonRecord | null {
+  if (!isPlainObject(payload)) return null;
+
+  const canonicalModule = findModule(payload, 'canonical');
+  const canonicalData = isPlainObject(canonicalModule?.data) ? canonicalModule.data : {};
+  const candidates = [
+    isPlainObject(payload.subject) && isPlainObject(payload.subject.canonical_product_ref)
+      ? payload.subject.canonical_product_ref
+      : null,
+    isPlainObject(canonicalData.canonical_product_ref) ? canonicalData.canonical_product_ref : null,
+    isPlainObject(canonicalData.selected_commerce_ref) ? canonicalData.selected_commerce_ref : null,
+    isPlainObject(canonicalData.content_base_ref) ? canonicalData.content_base_ref : null,
+  ];
+
+  for (const candidate of candidates) {
+    if (!isPlainObject(candidate)) continue;
+    const merchantId = firstNonEmptyString(candidate.merchant_id, candidate.merchantId);
+    const platform = firstNonEmptyString(candidate.platform) || 'shopify';
+    const platformProductId = firstNonEmptyString(
+      candidate.platform_product_id,
+      candidate.platformProductId,
+      candidate.product_id,
+      candidate.productId,
+    );
+    if (!merchantId || !platformProductId) continue;
+    return {
+      merchant_id: merchantId,
+      platform,
+      platform_product_id: platformProductId,
+      variant_id: null,
+    };
+  }
+
+  return null;
+}
+
+function hasReviewSummaryContent(summary: unknown): summary is JsonRecord {
+  if (!isPlainObject(summary)) return false;
+  const count = Number(summary.review_count ?? summary.total_reviews ?? 0);
+  const previewItems = Array.isArray(summary.preview_items) ? summary.preview_items : [];
+  return (Number.isFinite(count) && count > 0) || previewItems.length > 0;
+}
+
+function buildReviewsPreviewFromSummary(existingData: unknown, summary: JsonRecord): JsonRecord {
+  const existing = isPlainObject(existingData) ? existingData : {};
+  const next: JsonRecord = {
+    ...existing,
+    ...summary,
+    status: 'available',
+  };
+  delete next.unavailable_reason;
+  return next;
+}
+
+function overlayReviewsPreview(payload: unknown, summary: JsonRecord): unknown {
+  if (!isPlainObject(payload)) return payload;
+  const modules = Array.isArray(payload.modules) ? payload.modules : [];
+  let replaced = false;
+  const nextModules = modules.map((pdpModule) => {
+    if (!isPlainObject(pdpModule) || String(pdpModule.type || '').trim() !== 'reviews_preview') {
+      return pdpModule;
+    }
+    replaced = true;
+    return {
+      ...pdpModule,
+      data: buildReviewsPreviewFromSummary(pdpModule.data, summary),
+    };
+  });
+
+  if (!replaced) {
+    nextModules.push({
+      module_id: 'reviews_preview',
+      type: 'reviews_preview',
+      priority: 50,
+      title: 'Reviews',
+      data: buildReviewsPreviewFromSummary({}, summary),
+    });
+  }
+
+  return {
+    ...payload,
+    modules: nextModules,
+  };
+}
+
+async function fetchReviewSummaryForPdp(subject: JsonRecord): Promise<JsonRecord | null> {
+  const upstreamUrl = buildShopUpstreamInvokeUrl(REVIEWS_UPSTREAM_BASE);
+  const upstreamRes = await fetch(upstreamUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(AGENT_API_KEY
+        ? {
+            'X-API-Key': AGENT_API_KEY,
+            Authorization: `Bearer ${AGENT_API_KEY}`,
+          }
+        : {}),
+    },
+    body: JSON.stringify({
+      operation: 'get_review_summary',
+      payload: {
+        sku: subject,
+      },
+    }),
+  });
+  if (!upstreamRes.ok) return null;
+  const data = await upstreamRes.json().catch(() => null);
+  return isPlainObject(data?.review_summary) ? data.review_summary : null;
+}
+
+async function maybeOverlayPdpReviews(args: {
+  operation: string;
+  body: JsonRecord;
+  status: number;
+  payload: unknown;
+}): Promise<unknown> {
+  if (args.operation !== 'get_pdp_v2' || args.status < 200 || args.status >= 300) {
+    return args.payload;
+  }
+  if (!isReviewsPreviewRequested(args.body)) return args.payload;
+
+  const subject = extractReviewSubjectFromPdp(args.payload);
+  if (!subject) return args.payload;
+
+  try {
+    const summary = await fetchReviewSummaryForPdp(subject);
+    if (!hasReviewSummaryContent(summary)) return args.payload;
+    return overlayReviewsPreview(args.payload, summary);
+  } catch {
+    return args.payload;
+  }
+}
+
 function normalizeGatewayPathname(pathname: string): string {
   const normalized = String(pathname || '').trim().replace(/\/+$/, '');
   return normalized || '/';
@@ -766,9 +928,16 @@ export async function POST(req: NextRequest) {
       json = text;
     }
 
-    const responsePayload = useCheckoutSafeProxy
+    let responsePayload = useCheckoutSafeProxy
       ? normalizeCheckoutSafeResponse(normalizedOperation, json)
       : json;
+
+    responsePayload = await maybeOverlayPdpReviews({
+      operation: normalizedOperation,
+      body: isPlainObject(body) ? body : {},
+      status: upstreamRes.status,
+      payload: responsePayload,
+    });
 
     if (typeof responsePayload === 'string') {
       return new Response(responsePayload, {
