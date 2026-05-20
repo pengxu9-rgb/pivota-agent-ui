@@ -615,10 +615,10 @@ export function BrandLandingPage({
                   </span>
                 ) : null}
               </div>
-              {subtitle ? <p className=”max-w-2xl text-[12px] text-ink-muted”>{subtitle}</p> : null}
+              {subtitle ? <p className="max-w-2xl text-[12px] text-ink-muted">{subtitle}</p> : null}
               {activeQuery ? (
-                <p className=”text-[12px] text-ink-muted”>
-                  Showing results for <span className=”font-medium text-ink”>”{activeQuery}”</span>
+                <p className="text-[12px] text-ink-muted">
+                  Showing results for <span className="font-medium text-ink">&ldquo;{activeQuery}&rdquo;</span>
                 </p>
               ) : null}
             </div>
@@ -909,7 +909,7 @@ export function BrandLandingPage({
                     key={buildCatalogProductKey(product)}
                     product={{
                       ...product,
-                      brand: null,
+                      brand: undefined,
                       title: stripBrandFromTitle(product.title, brandName),
                     }}
                   />
@@ -932,15 +932,15 @@ export function BrandLandingPage({
           )}
 
           {brandStory ? (
-            <section className=”rounded-[24px] border border-hairline bg-paper px-5 py-6 shadow-[0_10px_28px_rgba(15,23,42,0.05)] sm:px-6”>
-              <p className=”text-xs font-semibold uppercase tracking-[0.18em] text-ink-muted”>
+            <section className="rounded-[24px] border border-hairline bg-paper px-5 py-6 shadow-[0_10px_28px_rgba(15,23,42,0.05)] sm:px-6">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-ink-muted">
                 {brandStory.title || 'Brand story'}
               </p>
-              <blockquote className=”mt-3 text-lg leading-8 text-ink sm:text-xl”>
-                “{brandStory.quote}”
+              <blockquote className="mt-3 text-lg leading-8 text-ink sm:text-xl">
+                &ldquo;{brandStory.quote}&rdquo;
               </blockquote>
               {brandStory.author ? (
-                <p className=”mt-3 text-sm font-medium text-ink-muted”>{brandStory.author}</p>
+                <p className="mt-3 text-sm font-medium text-ink-muted">{brandStory.author}</p>
               ) : null}
             </section>
           ) : null}
