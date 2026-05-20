@@ -35,7 +35,6 @@ import {
   getPdpV2,
   getSimilarProductsMainline,
   listQuestions,
-  postQuestion,
   type QuestionListItem,
   type ProductResponse,
   type UgcCapabilities,
@@ -626,6 +625,40 @@ const LOW_CONFIDENCE_ACTIVE_INGREDIENT_BEAUTY_HINT_RE =
 function getCurrentRelativePath(): string | null {
   if (typeof window === 'undefined') return null;
   return `${window.location.pathname}${window.location.search}`;
+}
+
+function appendPdpChildRouteContext(params: URLSearchParams) {
+  if (typeof window === 'undefined') return;
+  const current = new URLSearchParams(window.location.search);
+  const explicitReturn =
+    current.get('return') ||
+    current.get('return_url') ||
+    current.get('returnUrl') ||
+    '';
+  const embedFromQuery = String(current.get('embed') || '').trim() === '1';
+  const entryFromQuery = String(current.get('entry') || '').trim().toLowerCase();
+  const isEmbed = embedFromQuery || isExternalAgentEntry(entryFromQuery);
+
+  if (explicitReturn.trim()) {
+    params.set('return', explicitReturn.trim());
+  } else if (!isEmbed) {
+    params.set('return', `${window.location.pathname}${window.location.search}`);
+  }
+
+  const passthroughKeys = [
+    'embed',
+    'entry',
+    'parent_origin',
+    'parentOrigin',
+    'aurora_uid',
+    'lang',
+    'source',
+  ];
+  for (const key of passthroughKeys) {
+    const value = String(current.get(key) || '').trim();
+    if (!value) continue;
+    if (!params.has(key)) params.set(key, value);
+  }
 }
 
 function resolveDefaultReviewScope(reviews: ReviewsPreviewData | null): string | null {
@@ -1532,9 +1565,6 @@ export function PdpContainer({
   const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const router = useRouter();
   const isDesktop = useIsDesktop();
-  const [questionOpen, setQuestionOpen] = useState(false);
-  const [questionText, setQuestionText] = useState('');
-  const [questionSubmitting, setQuestionSubmitting] = useState(false);
   const [ugcQuestions, setUgcQuestions] = useState<QuestionListItem[]>([]);
   const questionsFetchedProductIdRef = useRef<string>('');
   const latestProductGroupIdRef = useRef<string | null>(null);
@@ -3253,12 +3283,14 @@ export function PdpContainer({
     };
   }, [productId]);
 
-  const openQuestionsHub = () => {
+  const openQuestionsHub = ({ ask = false }: { ask?: boolean } = {}) => {
     if (!productId) return;
     const params = new URLSearchParams();
     params.set('product_id', productId);
     if (productGroupId) params.set('product_group_id', productGroupId);
     if (merchantId) params.set('merchant_id', merchantId);
+    if (ask) params.set('ask', '1');
+    appendPdpChildRouteContext(params);
     router.push(`/community/questions?${params.toString()}`);
   };
 
@@ -3780,32 +3812,6 @@ export function PdpContainer({
         ? 'already_reviewed'
         : 'open_submission';
 
-  const appendReviewWriteContext = (params: URLSearchParams) => {
-    if (typeof window === 'undefined') return;
-    const current = new URLSearchParams(window.location.search);
-    const explicitReturn =
-      current.get('return') ||
-      current.get('return_url') ||
-      current.get('returnUrl') ||
-      '';
-    const embedFromQuery = String(current.get('embed') || '').trim() === '1';
-    const entryFromQuery = String(current.get('entry') || '').trim().toLowerCase();
-    const isEmbed = embedFromQuery || isExternalAgentEntry(entryFromQuery);
-
-    if (explicitReturn.trim()) {
-      params.set('return', explicitReturn.trim());
-    } else if (!isEmbed) {
-      params.set('return', `${window.location.pathname}${window.location.search}`);
-    }
-
-    const passthroughKeys = ['embed', 'entry', 'parent_origin', 'parentOrigin'];
-    for (const key of passthroughKeys) {
-      const value = String(current.get(key) || '').trim();
-      if (!value) continue;
-      if (!params.has(key)) params.set(key, value);
-    }
-  };
-
   const handleUploadMedia = () => {
     pdpTracking.track('pdp_action_click', {
       action_type: 'ugc_upload',
@@ -3817,7 +3823,7 @@ export function PdpContainer({
     params.set('product_id', productId);
     if (payload.product.merchant_id) params.set('merchant_id', payload.product.merchant_id);
     params.set('entry', 'ugc_upload');
-    appendReviewWriteContext(params);
+    appendPdpChildRouteContext(params);
     router.push(`/reviews/write?${params.toString()}`);
   };
 
@@ -3839,7 +3845,7 @@ export function PdpContainer({
     const params = new URLSearchParams();
     params.set('product_id', productId);
     if (payload.product.merchant_id) params.set('merchant_id', payload.product.merchant_id);
-    appendReviewWriteContext(params);
+    appendPdpChildRouteContext(params);
     router.push(`/reviews/write?${params.toString()}`);
   };
 
@@ -3855,44 +3861,7 @@ export function PdpContainer({
       toast.message('Too many questions. Please try again in a minute.');
       return;
     }
-    setQuestionOpen(true);
-  };
-
-  const submitQuestion = async () => {
-    if (questionSubmitting) return;
-    const question = questionText.trim();
-    if (!question) {
-      toast.message('Please enter a question.');
-      return;
-    }
-    if (!productId) {
-      toast.error('Missing product id.');
-      return;
-    }
-
-    setQuestionSubmitting(true);
-    try {
-      await postQuestion({
-        productId,
-        ...(productGroupId ? { productGroupId } : {}),
-        question,
-      });
-      toast.success('Question submitted for Pivota review.');
-      setQuestionText('');
-      setQuestionOpen(false);
-    } catch (err: any) {
-      if (err?.code === 'NOT_AUTHENTICATED' || err?.status === 401) {
-        toast.error('Question could not be submitted right now. Please try again.');
-        return;
-      }
-      if (err?.code === 'RATE_LIMITED' || err?.status === 429) {
-        toast.error('Too many questions. Please try again in a minute.');
-        return;
-      }
-      toast.error(err?.message || 'Failed to submit question.');
-    } finally {
-      setQuestionSubmitting(false);
-    }
+    openQuestionsHub({ ask: true });
   };
 
   // Cross-SKU product-line selector ("Shade"/"Size" axis across separate
@@ -5656,52 +5625,6 @@ export function PdpContainer({
           }
         }}
       />
-      {questionOpen ? (
-        <div className="fixed inset-0 z-[2147483647] flex items-end lg:items-center justify-center bg-black/40 px-3 py-6">
-          <div className="w-full max-w-md lg:max-w-lg rounded-2xl bg-white p-4 shadow-xl">
-            <div className="flex items-center justify-between">
-              <h3 className="text-base font-semibold">Ask a question</h3>
-              <button
-                type="button"
-                className="h-8 w-8 rounded-full border border-border text-muted-foreground"
-                onClick={() => {
-                  if (!questionSubmitting) setQuestionOpen(false);
-                }}
-                aria-label="Close"
-              >
-                ×
-              </button>
-            </div>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Ask about sizing, materials, shipping, or anything else.
-            </p>
-            <textarea
-              className="mt-3 w-full min-h-[120px] rounded-xl border border-border bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--focus-ring)]"
-              placeholder="Type your question…"
-              value={questionText}
-              onChange={(e) => setQuestionText(e.target.value)}
-              disabled={questionSubmitting}
-            />
-            <div className="mt-3 flex gap-2">
-              <Button
-                variant="outline"
-                className="flex-1 rounded-xl"
-                disabled={questionSubmitting}
-                onClick={() => setQuestionOpen(false)}
-              >
-                Cancel
-              </Button>
-              <Button
-                className="flex-1 rounded-xl"
-                disabled={questionSubmitting}
-                onClick={submitQuestion}
-              >
-                {questionSubmitting ? 'Submitting…' : 'Submit'}
-              </Button>
-            </div>
-          </div>
-        </div>
-      ) : null}
       <GenericColorSheet
         open={showColorSheet}
         onClose={() => setShowColorSheet(false)}

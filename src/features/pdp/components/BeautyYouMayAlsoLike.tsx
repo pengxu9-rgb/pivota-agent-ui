@@ -17,7 +17,6 @@ export type BeautySimilarItem = {
   priceLabel: string;
   href?: string;
   merchant_id?: string | null;
-  /** Brand eyebrow for the card (handoff §3i). */
   brand?: string | null;
   badge?: string | null;
   rating?: number | null;
@@ -53,13 +52,8 @@ export function BeautyYouMayAlsoLike({
                 <img src={p.image} alt="" loading="lazy" className="h-full w-full object-cover" />
               </div>
               <div className="flex flex-1 flex-col pt-2 text-left">
-                {p.brand ? (
-                  <div className="text-[10px] font-semibold uppercase tracking-[0.06em] text-primary">
-                    {p.brand}
-                  </div>
-                ) : null}
                 <div className="line-clamp-2 min-h-[2.7em] text-[12px] font-medium leading-[1.3] text-foreground">
-                  {p.title}
+                  {p.brand ? <span className="text-muted-foreground">{p.brand} · </span> : null}{p.title}
                 </div>
                 <div className="mt-1 flex items-center gap-1.5">
                   <span className="text-[13px] font-bold text-foreground">{p.priceLabel}</span>

@@ -166,13 +166,19 @@ export default function QuestionsListClient() {
   const productId = (params.get('product_id') || params.get('productId') || '').trim();
   const productGroupId = (params.get('product_group_id') || params.get('productGroupId') || '').trim() || null;
   const merchantId = (params.get('merchant_id') || params.get('merchantId') || '').trim() || null;
+  const askParam = String(params.get('ask') || params.get('ask_question') || '').trim().toLowerCase();
+  const shouldOpenAskFromQuery = Boolean(productId) && ['1', 'true', 'yes'].includes(askParam);
 
   const [items, setItems] = useState<QuestionDisplayItem[]>([]);
   const [loading, setLoading] = useState(false);
-  const [askOpen, setAskOpen] = useState(false);
+  const [askOpen, setAskOpen] = useState(() => shouldOpenAskFromQuery);
   const [askText, setAskText] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (shouldOpenAskFromQuery) setAskOpen(true);
+  }, [shouldOpenAskFromQuery]);
 
   useEffect(() => {
     if (!productId) return;
