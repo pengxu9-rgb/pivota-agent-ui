@@ -610,7 +610,7 @@ export function BrandLandingPage({
               </div>
               <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] leading-none text-ink-muted">
                 {isRefreshing ? (
-                    <span className="inline-flex items-center rounded-full bg-[#f3efff] px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.12em] text-[#7c3aed]">
+                    <span className="inline-flex items-center rounded-full bg-terracotta-bg px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.12em] text-terracotta-ink">
                     Updating
                   </span>
                 ) : null}
@@ -644,7 +644,7 @@ export function BrandLandingPage({
               >
                 <ShoppingBag className="h-4 w-4" />
                 {cartItemCount > 0 ? (
-                  <span className="absolute -right-0.5 -top-0.5 inline-flex min-h-4 min-w-4 items-center justify-center rounded-full bg-[#c16cf3] px-1 text-[9px] font-semibold text-white">
+                  <span className="absolute -right-0.5 -top-0.5 inline-flex min-h-4 min-w-4 items-center justify-center rounded-full bg-terracotta px-1 text-[9px] font-semibold text-paper">
                     {cartItemCount > 99 ? '99+' : cartItemCount}
                   </span>
                 ) : null}
@@ -704,7 +704,7 @@ export function BrandLandingPage({
                 <SlidersHorizontal className="h-3.25 w-3.25" />
                 Filter
                 {activeFilterCount > 0 ? (
-                  <span className="inline-flex min-w-4 items-center justify-center rounded-full bg-white px-1 text-[9px] font-semibold text-[#6d28d9]">
+                  <span className="inline-flex min-w-4 items-center justify-center rounded-full bg-paper px-1 text-[9px] font-semibold text-terracotta-ink">
                     {activeFilterCount}
                   </span>
                 ) : null}
@@ -722,7 +722,7 @@ export function BrandLandingPage({
                         onClick={() => setActiveCategory(chip.scopeValue)}
                         className={`inline-flex h-8 items-center gap-1 rounded-full border px-2.5 text-[12px] font-semibold tracking-[-0.01em] transition ${
                           selected
-                            ? 'border-transparent bg-gradient-to-r from-[#8f57ff] via-[#a35cff] to-[#4f7cff] text-white shadow-[0_10px_24px_rgba(143,87,255,0.28)]'
+                            ? 'border-transparent bg-terracotta text-paper shadow-[0_10px_24px_rgba(168,84,44,0.28)]'
                             : 'border-hairline bg-paper text-ink-muted hover:border-[#cfc8be]'
                         }`}
                       >
@@ -778,7 +778,7 @@ export function BrandLandingPage({
                         onClick={() => setActiveCategory(null)}
                         className={`rounded-full px-2.5 py-1.5 text-[12px] font-medium transition ${
                         !activeCategory
-                            ? 'bg-gradient-to-r from-[#8f57ff] via-[#a35cff] to-[#4f7cff] text-white shadow-[0_10px_24px_rgba(143,87,255,0.22)]'
+                            ? 'bg-terracotta text-paper shadow-[0_10px_24px_rgba(168,84,44,0.22)]'
                             : 'border border-hairline bg-paper text-ink hover:border-[#cfc8be]'
                         }`}
                       >
@@ -793,7 +793,7 @@ export function BrandLandingPage({
                             onClick={() => setActiveCategory(chip.scopeValue)}
                             className={`rounded-full px-2.5 py-1.5 text-[12px] font-medium transition ${
                               selected
-                                ? 'bg-gradient-to-r from-[#8f57ff] via-[#a35cff] to-[#4f7cff] text-white shadow-[0_10px_24px_rgba(143,87,255,0.22)]'
+                                ? 'bg-terracotta text-paper shadow-[0_10px_24px_rgba(168,84,44,0.22)]'
                                 : 'border border-hairline bg-paper text-ink hover:border-[#cfc8be]'
                             }`}
                           >
@@ -844,14 +844,14 @@ export function BrandLandingPage({
           </section>
 
           {brandCampaign ? (
-            <section className="overflow-hidden rounded-[22px] bg-gradient-to-r from-[#8f2df2] via-[#c53cd7] to-[#ef5ca8] px-5 py-5 text-white shadow-[0_16px_32px_rgba(197,60,215,0.24)]">
+            <section className="overflow-hidden rounded-[22px] bg-terracotta px-5 py-5 text-paper shadow-[0_16px_32px_rgba(168,84,44,0.24)]">
               <div className="relative overflow-hidden rounded-[18px]">
-                <div className="pointer-events-none absolute -right-8 -top-3 h-24 w-24 rounded-full bg-white/10" />
-                <div className="pointer-events-none absolute right-4 top-6 h-20 w-20 rounded-full bg-white/12" />
+                <div className="pointer-events-none absolute -right-8 -top-3 h-24 w-24 rounded-full bg-paper/10" />
+                <div className="pointer-events-none absolute right-4 top-6 h-20 w-20 rounded-full bg-paper/12" />
                 <div className="relative flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div className="space-y-1">
                     {brandCampaign.eyebrow ? (
-                      <p className="text-[12px] font-semibold uppercase tracking-[0.16em] text-white/74">
+                      <p className="text-[12px] font-semibold uppercase tracking-[0.16em] text-paper/74">
                         {brandCampaign.eyebrow}
                       </p>
                     ) : null}
@@ -859,13 +859,13 @@ export function BrandLandingPage({
                       {brandCampaign.title}
                     </h2>
                     {brandCampaign.subtitle ? (
-                      <p className="max-w-2xl text-sm text-white/88">{brandCampaign.subtitle}</p>
+                      <p className="max-w-2xl text-sm text-paper/88">{brandCampaign.subtitle}</p>
                     ) : null}
                   </div>
                   {brandCampaign.ctaLabel ? (
                     <a
                       href={brandCampaign.ctaHref || '#brand-products'}
-                      className="inline-flex h-10 shrink-0 items-center justify-center rounded-full bg-white px-4 text-sm font-semibold text-[#8f2df2] transition hover:bg-white/90"
+                      className="inline-flex h-10 shrink-0 items-center justify-center rounded-full bg-paper px-4 text-sm font-semibold text-terracotta-ink transition hover:bg-paper/90"
                     >
                       {brandCampaign.ctaLabel}
                     </a>
