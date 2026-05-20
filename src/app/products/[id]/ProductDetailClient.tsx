@@ -493,7 +493,7 @@ export default function ProductDetailPage({ params, initialPayload }: Props) {
   const searchParams = useSearchParams();
   const searchParamsString = searchParams.toString();
   const rawMerchantIdParam = searchParams.get('merchant_id');
-  const merchantIdParam = normalizeProductRouteMerchantId(rawMerchantIdParam);
+  const merchantIdParam = normalizeProductRouteMerchantId(rawMerchantIdParam, id);
   const pdpOverride = (searchParams.get('pdp') || '').toLowerCase();
   const router = useRouter();
   const user = useAuthStore((s) => s.user);

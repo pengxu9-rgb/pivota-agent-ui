@@ -69,7 +69,13 @@ export function normalizeProductRouteMerchantId(
   if (isCanonicalProductRouteId(productId)) return undefined;
   const merchantId = String(value || '').trim();
   if (!merchantId) return undefined;
-  return merchantId === EXTERNAL_SEED_MERCHANT_ID ? undefined : merchantId;
+  if (merchantId === EXTERNAL_SEED_MERCHANT_ID) {
+    const normalizedProductId = String(productId || '').trim().toLowerCase();
+    if (normalizedProductId.startsWith('ext_') || normalizedProductId.startsWith('ext:')) {
+      return undefined;
+    }
+  }
+  return merchantId;
 }
 
 export function inferCanonicalPdpMerchantId(

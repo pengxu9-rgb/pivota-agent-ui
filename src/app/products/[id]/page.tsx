@@ -159,7 +159,7 @@ async function _fetchPdpForServerRenderUncached(
   if (!productId) return null;
 
   const headerList = await headers();
-  const normalizedMerchantId = normalizeProductRouteMerchantId(merchantIdInput);
+  const normalizedMerchantId = normalizeProductRouteMerchantId(merchantIdInput, productId);
   const explicitMerchantId = inferCanonicalPdpMerchantId(productId, normalizedMerchantId);
   const routeIsProductGroup = isProductGroupRouteId(productId);
 
