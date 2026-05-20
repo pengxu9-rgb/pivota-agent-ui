@@ -157,6 +157,13 @@ function buildCategoryKey(label: string): string {
   return label.trim().toLowerCase().replace(/\s+/g, '-');
 }
 
+function stripBrandFromTitle(title: string, brand: string | null | undefined): string {
+  if (!brand || !title) return title;
+  const escaped = brand.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const stripped = title.replace(new RegExp(`^${escaped}[\\s·\\-:,]*`, 'i'), '').trim();
+  return stripped || title;
+}
+
 function readCategoryFacets(metadata: Record<string, any> | null | undefined): CategoryChip[] {
   const rawFacets = metadata?.facets?.categories;
   if (!rawFacets) return [];
@@ -572,10 +579,10 @@ export function BrandLandingPage({
   ]);
 
   return (
-    <div className="relative min-h-screen overflow-x-hidden bg-white text-slate-900">
+    <div className="relative min-h-screen overflow-x-hidden bg-paper font-editorial-sans text-ink">
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-x-0 top-0 h-[220px] bg-[radial-gradient(circle_at_top,_rgba(117,146,255,0.14),_rgba(255,255,255,0)_58%),radial-gradient(circle_at_90%_8%,_rgba(216,127,255,0.12),_rgba(255,255,255,0)_34%)]"
+        className="pointer-events-none absolute inset-x-0 top-0 h-[220px] bg-[radial-gradient(circle_at_top,_rgba(117,146,255,0.10),_transparent_58%),radial-gradient(circle_at_90%_8%,_rgba(216,127,255,0.08),_transparent_34%)]"
       />
 
       <main className="relative mx-auto max-w-6xl px-3.5 pb-14 pt-4 sm:px-6 sm:pt-5 lg:px-8">
@@ -586,32 +593,32 @@ export function BrandLandingPage({
         >
           <section className="flex items-start justify-between gap-3 px-1 py-0.5 sm:items-center">
             <div className="min-w-0 space-y-1">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#98a2b3]">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-muted">
                 Official Brand
               </p>
               <div className="flex items-center gap-2">
                 <a
                   href={returnHref}
-                  className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[#ece5dd] bg-white text-slate-600 shadow-[0_6px_16px_rgba(15,23,42,0.05)] transition hover:border-[#ddd3c8] hover:text-slate-950"
+                  className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-hairline bg-paper text-ink-muted shadow-[0_6px_16px_rgba(15,23,42,0.05)] transition hover:border-[#cfc8be] hover:text-ink"
                   aria-label="Back"
                 >
                   <ArrowLeft className="h-3.5 w-3.5" strokeWidth={2.2} />
                 </a>
-                <h1 className="text-[1.6rem] font-semibold tracking-[-0.045em] text-[#111827] sm:text-[1.95rem]">
+                <h1 className="text-[1.6rem] font-semibold tracking-[-0.045em] text-ink sm:text-[1.95rem]">
                   {brandName || 'Brand'}
                 </h1>
               </div>
-              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] leading-none text-[#667085]">
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] leading-none text-ink-muted">
                 {isRefreshing ? (
                     <span className="inline-flex items-center rounded-full bg-[#f3efff] px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.12em] text-[#7c3aed]">
                     Updating
                   </span>
                 ) : null}
               </div>
-              {subtitle ? <p className="max-w-2xl text-[12px] text-[#667085]">{subtitle}</p> : null}
+              {subtitle ? <p className=”max-w-2xl text-[12px] text-ink-muted”>{subtitle}</p> : null}
               {activeQuery ? (
-                <p className="text-[12px] text-[#667085]">
-                  Showing results for <span className="font-medium text-slate-900">“{activeQuery}”</span>
+                <p className=”text-[12px] text-ink-muted”>
+                  Showing results for <span className=”font-medium text-ink”>”{activeQuery}”</span>
                 </p>
               ) : null}
             </div>
@@ -623,7 +630,7 @@ export function BrandLandingPage({
                   setIsSearchOpen((current) => !current);
                   setIsFilterOpen(false);
                 }}
-                className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[#ece5dd] bg-white text-slate-600 shadow-[0_6px_16px_rgba(15,23,42,0.05)] transition hover:border-[#ddd3c8] hover:text-slate-950 sm:h-10 sm:w-10"
+                className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-hairline bg-paper text-ink-muted shadow-[0_6px_16px_rgba(15,23,42,0.05)] transition hover:border-[#cfc8be] hover:text-ink sm:h-10 sm:w-10"
                 aria-label={isSearchOpen ? 'Close brand search' : 'Open brand search'}
               >
                 {isSearchOpen ? <X className="h-3.5 w-3.5" /> : <Search className="h-3.5 w-3.5" />}
@@ -632,7 +639,7 @@ export function BrandLandingPage({
               <button
                 type="button"
                 onClick={openCart}
-                className="relative inline-flex h-9 w-9 items-center justify-center rounded-full border border-[#ece5dd] bg-white text-slate-600 shadow-[0_6px_16px_rgba(15,23,42,0.05)] transition hover:border-[#ddd3c8] hover:text-slate-950 sm:h-10 sm:w-10"
+                className="relative inline-flex h-9 w-9 items-center justify-center rounded-full border border-hairline bg-paper text-ink-muted shadow-[0_6px_16px_rgba(15,23,42,0.05)] transition hover:border-[#cfc8be] hover:text-ink sm:h-10 sm:w-10"
                 aria-label="Open cart"
               >
                 <ShoppingBag className="h-4 w-4" />
@@ -643,11 +650,11 @@ export function BrandLandingPage({
                 ) : null}
               </button>
 
-              <div className="relative h-11 w-11 overflow-hidden rounded-full border border-[#e5e7eb] bg-[#dfe8db] shadow-[0_6px_14px_rgba(15,23,42,0.06)] sm:h-12 sm:w-12">
+              <div className="relative h-11 w-11 overflow-hidden rounded-full border border-hairline bg-paper-2 shadow-[0_6px_14px_rgba(15,23,42,0.06)] sm:h-12 sm:w-12">
                 {brandAvatarUrl ? (
                   <Image src={brandAvatarUrl} alt={brandName} fill unoptimized className="object-cover" />
                 ) : (
-                  <div className="flex h-full w-full items-center justify-center text-sm font-semibold text-[#334155]">
+                  <div className="flex h-full w-full items-center justify-center text-sm font-semibold text-ink-muted">
                     {getBrandInitials(brandName)}
                   </div>
                 )}
@@ -656,7 +663,7 @@ export function BrandLandingPage({
           </section>
 
           {isSearchOpen ? (
-            <section className="rounded-[22px] border border-[#efe7dc] bg-white px-3 py-3 shadow-[0_10px_28px_rgba(15,23,42,0.05)] sm:px-4">
+            <section className="rounded-[22px] border border-hairline bg-paper px-3 py-3 shadow-[0_10px_28px_rgba(15,23,42,0.05)] sm:px-4">
               <form
                 className="flex items-center gap-2"
                 onSubmit={(event) => {
@@ -664,19 +671,19 @@ export function BrandLandingPage({
                   setActiveQuery(queryDraft.trim());
                 }}
               >
-                <div className="flex h-10 flex-1 items-center gap-2 rounded-full border border-[#ece5dd] bg-[#fcfbf9] px-4 shadow-sm">
-                  <Search className="h-3.5 w-3.5 text-slate-400" />
+                <div className="flex h-10 flex-1 items-center gap-2 rounded-full border border-hairline bg-paper px-4 shadow-sm">
+                  <Search className="h-3.5 w-3.5 text-ink-muted" />
                   <input
                     ref={searchInputRef}
                     value={queryDraft}
                     onChange={(event) => setQueryDraft(event.target.value)}
                     placeholder={`Search ${brandName} products`}
-                    className="w-full bg-transparent text-[13px] text-slate-900 outline-none placeholder:text-slate-400"
+                    className="w-full bg-transparent text-[13px] text-ink outline-none placeholder:text-ink-muted"
                   />
                 </div>
                 <button
                   type="submit"
-                  className="inline-flex h-10 items-center justify-center rounded-full bg-[#1f2937] px-4 text-[13px] font-medium text-white transition hover:bg-[#111827]"
+                  className="inline-flex h-10 items-center justify-center rounded-full bg-ink px-4 text-[13px] font-medium text-paper transition hover:opacity-80"
                 >
                   Search
                 </button>
@@ -684,7 +691,7 @@ export function BrandLandingPage({
             </section>
           ) : null}
 
-          <section className="sticky top-0 z-40 -mx-3.5 border-y border-[#f1ebe3] bg-white/96 px-3.5 py-2 backdrop-blur sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
+          <section className="sticky top-0 z-40 -mx-3.5 border-y border-hairline bg-paper/96 px-3.5 py-2 backdrop-blur sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
             <div className="mx-auto flex max-w-6xl items-center gap-2">
               <button
                 type="button"
@@ -692,7 +699,7 @@ export function BrandLandingPage({
                   setIsFilterOpen((current) => !current);
                   setIsSearchOpen(false);
                 }}
-                className="inline-flex h-8 shrink-0 items-center gap-1 rounded-xl border border-[#ece5dd] bg-[#f8f5f1] px-2.5 text-[12px] font-semibold tracking-[-0.01em] text-[#4b5563] shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition hover:bg-[#f4f0ea]"
+                className="inline-flex h-8 shrink-0 items-center gap-1 rounded-xl border border-hairline bg-paper-2 px-2.5 text-[12px] font-semibold tracking-[-0.01em] text-ink-muted shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition hover:bg-paper-2/80"
               >
                 <SlidersHorizontal className="h-3.25 w-3.25" />
                 Filter
@@ -716,12 +723,12 @@ export function BrandLandingPage({
                         className={`inline-flex h-8 items-center gap-1 rounded-full border px-2.5 text-[12px] font-semibold tracking-[-0.01em] transition ${
                           selected
                             ? 'border-transparent bg-gradient-to-r from-[#8f57ff] via-[#a35cff] to-[#4f7cff] text-white shadow-[0_10px_24px_rgba(143,87,255,0.28)]'
-                            : 'border-[#e8e1d7] bg-white text-[#667085] hover:border-[#d9d1c6]'
+                            : 'border-hairline bg-paper text-ink-muted hover:border-[#cfc8be]'
                         }`}
                       >
                         <span>{chip.label}</span>
                         {typeof chip.count === 'number' ? (
-                          <span className={`text-[10px] ${selected ? 'text-white/78' : 'text-[#98a2b3]'}`}>
+                          <span className={`text-[10px] ${selected ? 'text-white/78' : 'text-ink-muted'}`}>
                             {chip.count}
                           </span>
                         ) : null}
@@ -735,14 +742,14 @@ export function BrandLandingPage({
             {isFilterOpen ? (
               <div
                 aria-label="Brand filters"
-                className="mx-auto mt-3 max-w-6xl rounded-[20px] border border-[#ece5dd] bg-white p-4 shadow-[0_10px_30px_rgba(15,23,42,0.08)]"
+                className="mx-auto mt-3 max-w-6xl rounded-[20px] border border-hairline bg-paper p-4 shadow-[0_10px_30px_rgba(15,23,42,0.08)]"
               >
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-ink-muted">
                       Filter products
                     </p>
-                    <p className="mt-1 text-[12px] text-slate-500">
+                    <p className="mt-1 text-[12px] text-ink-muted">
                       Narrow this brand feed with real category scope and sort.
                     </p>
                   </div>
@@ -753,7 +760,7 @@ export function BrandLandingPage({
                         setActiveCategory(null);
                         setSort('popular');
                       }}
-                      className="text-[12px] font-medium text-slate-500 transition hover:text-slate-900"
+                      className="text-[12px] font-medium text-ink-muted transition hover:text-ink"
                     >
                       Clear all
                     </button>
@@ -762,7 +769,7 @@ export function BrandLandingPage({
 
                 {filterCategoryChips.length ? (
                   <div className="mt-4">
-                      <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-ink-muted">
                         Category
                       </p>
                       <div className="mt-3 flex flex-wrap gap-2">
@@ -772,7 +779,7 @@ export function BrandLandingPage({
                         className={`rounded-full px-2.5 py-1.5 text-[12px] font-medium transition ${
                         !activeCategory
                             ? 'bg-gradient-to-r from-[#8f57ff] via-[#a35cff] to-[#4f7cff] text-white shadow-[0_10px_24px_rgba(143,87,255,0.22)]'
-                            : 'border border-[#ece5dd] bg-[#fbf9f6] text-slate-700 hover:border-[#ddd3c8]'
+                            : 'border border-hairline bg-paper text-ink hover:border-[#cfc8be]'
                         }`}
                       >
                         All categories
@@ -787,7 +794,7 @@ export function BrandLandingPage({
                             className={`rounded-full px-2.5 py-1.5 text-[12px] font-medium transition ${
                               selected
                                 ? 'bg-gradient-to-r from-[#8f57ff] via-[#a35cff] to-[#4f7cff] text-white shadow-[0_10px_24px_rgba(143,87,255,0.22)]'
-                                : 'border border-[#ece5dd] bg-[#fbf9f6] text-slate-700 hover:border-[#ddd3c8]'
+                                : 'border border-hairline bg-paper text-ink hover:border-[#cfc8be]'
                             }`}
                           >
                             {chip.label}
@@ -800,7 +807,7 @@ export function BrandLandingPage({
                 ) : null}
 
                 <div className="mt-4">
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-ink-muted">
                       Sort products
                     </p>
                     <div className="mt-3 flex flex-wrap gap-2">
@@ -813,8 +820,8 @@ export function BrandLandingPage({
                         }}
                         className={`rounded-full px-2.5 py-1.5 text-[12px] font-medium transition ${
                           sort === option.value
-                            ? 'bg-[#1f2937] text-white'
-                            : 'border border-[#ece5dd] bg-[#fbf9f6] text-slate-700 hover:border-[#ddd3c8]'
+                            ? 'bg-ink text-paper'
+                            : 'border border-hairline bg-paper text-ink hover:border-[#cfc8be]'
                         }`}
                       >
                         {option.label}
@@ -827,7 +834,7 @@ export function BrandLandingPage({
                   <button
                     type="button"
                     onClick={() => setIsFilterOpen(false)}
-                    className="inline-flex h-8 items-center justify-center rounded-full bg-[#1f2937] px-4 text-[12px] font-medium text-white transition hover:bg-[#111827]"
+                    className="inline-flex h-8 items-center justify-center rounded-full bg-ink px-4 text-[12px] font-medium text-paper transition hover:opacity-80"
                   >
                     Done
                   </button>
@@ -877,20 +884,20 @@ export function BrandLandingPage({
               </div>
             </section>
           ) : products.length === 0 ? (
-            <section className="rounded-[24px] border border-dashed border-[#ddd3c8] bg-white px-6 py-10 text-center shadow-sm">
-              <h2 className="text-lg font-semibold text-slate-900">No products found for {brandName}</h2>
-              <p className="mt-2 text-sm text-slate-500">
+            <section className="rounded-[24px] border border-dashed border-hairline bg-paper px-6 py-10 text-center shadow-sm">
+              <h2 className="text-lg font-semibold text-ink">No products found for {brandName}</h2>
+              <p className="mt-2 text-sm text-ink-muted">
                 {activeQuery
                   ? 'Try a different keyword within this brand.'
                   : 'This brand does not have matching catalog items yet.'}
               </p>
             </section>
           ) : visibleProducts.length === 0 ? (
-            <section className="rounded-[24px] border border-dashed border-[#ddd3c8] bg-white px-6 py-10 text-center shadow-sm">
-              <h2 className="text-lg font-semibold text-slate-900">
+            <section className="rounded-[24px] border border-dashed border-hairline bg-paper px-6 py-10 text-center shadow-sm">
+              <h2 className="text-lg font-semibold text-ink">
                 No {categoryChips.find((chip) => chip.scopeValue === activeCategory)?.label?.toLowerCase() || 'matching'} picks yet
               </h2>
-              <p className="mt-2 text-sm text-slate-500">
+              <p className="mt-2 text-sm text-ink-muted">
                 Try another category or remove the active brand filter to see more products.
               </p>
             </section>
@@ -898,13 +905,20 @@ export function BrandLandingPage({
             <section id="brand-products" className="space-y-4" aria-busy={isRefreshing}>
               <div className={`grid grid-cols-2 gap-x-2.5 gap-y-3.5 md:gap-x-4 md:gap-y-5 lg:grid-cols-3 xl:grid-cols-4 ${isRefreshing ? 'opacity-80 transition-opacity' : ''}`}>
                 {visibleProducts.map((product) => (
-                  <CatalogProductCard key={buildCatalogProductKey(product)} product={product} />
+                  <CatalogProductCard
+                    key={buildCatalogProductKey(product)}
+                    product={{
+                      ...product,
+                      brand: null,
+                      title: stripBrandFromTitle(product.title, brandName),
+                    }}
+                  />
                 ))}
               </div>
 
               <div
                 ref={loadMoreRef}
-                className="flex h-9 items-center justify-center text-[13px] text-slate-500"
+                className="flex h-9 items-center justify-center text-[13px] text-ink-muted"
               >
                 {isRefreshing
                   ? 'Updating products...'
@@ -918,15 +932,15 @@ export function BrandLandingPage({
           )}
 
           {brandStory ? (
-            <section className="rounded-[24px] border border-[#efe7dc] bg-white px-5 py-6 shadow-[0_10px_28px_rgba(15,23,42,0.05)] sm:px-6">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#98a2b3]">
+            <section className=”rounded-[24px] border border-hairline bg-paper px-5 py-6 shadow-[0_10px_28px_rgba(15,23,42,0.05)] sm:px-6”>
+              <p className=”text-xs font-semibold uppercase tracking-[0.18em] text-ink-muted”>
                 {brandStory.title || 'Brand story'}
               </p>
-              <blockquote className="mt-3 text-lg leading-8 text-[#111827] sm:text-xl">
+              <blockquote className=”mt-3 text-lg leading-8 text-ink sm:text-xl”>
                 “{brandStory.quote}”
               </blockquote>
               {brandStory.author ? (
-                <p className="mt-3 text-sm font-medium text-[#667085]">{brandStory.author}</p>
+                <p className=”mt-3 text-sm font-medium text-ink-muted”>{brandStory.author}</p>
               ) : null}
             </section>
           ) : null}
