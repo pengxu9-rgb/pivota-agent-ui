@@ -4,7 +4,7 @@ import * as React from 'react';
 import Image from 'next/image';
 import { Heart } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { Mono, Num, Title } from './Type';
+import { Num, Title } from './Type';
 import { Pill } from './Chip';
 
 /**
@@ -96,15 +96,14 @@ export function ProductCard({
       </div>
 
       <div className="mt-3 flex flex-col gap-1.5">
-        {brand ? <Mono className="text-ink-muted">{brand}</Mono> : null}
         <div className="flex items-start justify-between gap-3">
           {font === 'sans' ? (
             <p className="font-editorial-sans text-[14px] font-medium leading-[1.3] tracking-[-0.005em] text-ink">
-              {title}
+              {brand ? <span className="text-ink-muted">{brand} · </span> : null}{title}
             </p>
           ) : (
             <Title as="p" className="line-clamp-2 text-[14px] leading-[1.25]">
-              {title}
+              {brand ? <span className="text-ink-muted">{brand} · </span> : null}{title}
             </Title>
           )}
           {priceLabel ? (
