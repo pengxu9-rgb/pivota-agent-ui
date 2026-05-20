@@ -59,7 +59,7 @@ export function BeautyQuestions({
             onClick={onAsk}
             aria-disabled={!canAsk}
             className={cn(
-              'text-[12px] font-medium text-primary',
+              'text-[12px] font-medium text-cd-primary',
               canAsk ? '' : 'cursor-not-allowed opacity-50',
             )}
           >

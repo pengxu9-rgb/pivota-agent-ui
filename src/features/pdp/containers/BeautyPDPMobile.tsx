@@ -392,7 +392,7 @@ export function BeautyPDPMobile(props: BeautyPDPMobileProps) {
         <div className="h-3" />
       </div>
 
-      <div className="absolute bottom-0 left-0 right-0 z-10">
+      <div className="fixed bottom-0 left-0 right-0 z-10">
         <BeautyMobileBuyBar
           unitPrice={props.price}
           currency={props.currency}
