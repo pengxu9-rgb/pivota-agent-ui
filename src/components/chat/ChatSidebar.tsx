@@ -97,7 +97,6 @@ export default function ChatSidebar({ isOpen, onClose }: ChatSidebarProps) {
             aria-label="Pivota home"
           >
             <span className="pv-logo pv-logo--gradient pv-logo--md" aria-hidden="true" />
-            <span className="pv-wordmark pv-wordmark--sm">Pivota</span>
           </Link>
           <button
             onClick={onClose}
