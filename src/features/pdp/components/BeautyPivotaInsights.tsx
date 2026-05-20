@@ -120,7 +120,7 @@ export function BeautyPivotaInsights({ insights }: { insights: BeautyInsightsDat
             </span>
           </span>
           <span
-            className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#534AB7]"
+            className="text-[10px] font-bold uppercase tracking-[0.12em] text-cd-primary"
           >
             {displayName || 'Pivota Insights'}
           </span>
