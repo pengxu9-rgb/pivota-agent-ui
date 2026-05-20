@@ -70,6 +70,16 @@ function reviewStatsFor(
   };
 }
 
+// Junk category values injected by the external-seed pipeline that are not
+// useful to show as an eyebrow on the card.
+const JUNK_CATEGORIES = new Set(['external', 'external_seed', 'seed', 'unknown', 'other', 'general']);
+
+function resolveCardEyebrow(product: ProductResponse): string | null {
+  const cat = String(product.category || '').trim();
+  if (cat && !JUNK_CATEGORIES.has(cat.toLowerCase())) return cat;
+  return null;
+}
+
 function isFreeShippingDeal(deal: DealLike | null | undefined): boolean {
   if (!deal) return false;
   if (deal.free_shipping === true) return true;
@@ -882,7 +892,7 @@ export function BrandLandingPage({
                       <ProductCard
                         image={normalizeDisplayImageUrl(product.image_url, '/placeholder.svg')}
                         imageAlt={product.title}
-                        brand={product.category || product.brand || product.merchant_name || null}
+                        brand={resolveCardEyebrow(product)}
                         title={product.title}
                         priceLabel={formatPriceLabel(product.price, product.currency)}
                         badge={dealBadgesFor(product)}
@@ -931,7 +941,7 @@ export function BrandLandingPage({
                         <ProductCard
                           image={normalizeDisplayImageUrl(product.image_url, '/placeholder.svg')}
                           imageAlt={product.title}
-                          brand={product.category || product.brand || product.merchant_name || null}
+                          brand={resolveCardEyebrow(product)}
                           title={product.title}
                           priceLabel={formatPriceLabel(product.price, product.currency)}
                           badge={dealBadgesFor(product)}
