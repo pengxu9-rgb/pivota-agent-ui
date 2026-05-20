@@ -16,15 +16,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import ChatSidebar from '@/components/chat/ChatSidebar';
-import {
-  Button as EdButton,
-  Chip,
-  Eyebrow,
-  IconButton,
-  InsightBlock,
-  Mono,
-  ProductCard,
-} from '@/components/ui/editorial';
+import { ProductCard } from '@/components/ui/editorial';
 import { useCartStore } from '@/store/cartStore';
 import { useAuthStore } from '@/store/authStore';
 import { useChatStore } from '@/store/chatStore';
@@ -159,7 +151,7 @@ function formatPriceLabel(price: unknown, currency?: string): string {
   return `${symbol}${amount % 1 === 0 ? amount.toFixed(0) : amount.toFixed(2)}`;
 }
 
-/** Editorial "Today's edit" thumbnail — 96px wide, 4/5 image, mono caption. */
+/** Brand v2 "Today's picks" thumbnail — 96px wide, 4/5 image. */
 const TodaysEditCard = memo(function TodaysEditCard({ product }: { product: ProductResponse }) {
   const router = useRouter();
   const cardHref = buildProductHref(product.product_id, product.merchant_id);
@@ -175,7 +167,7 @@ const TodaysEditCard = memo(function TodaysEditCard({ product }: { product: Prod
         router.push(appendCurrentPathAsReturn(cardHref));
       }}
     >
-      <div className="relative aspect-[4/5] w-full overflow-hidden bg-paper-2">
+      <div className="relative aspect-[4/5] w-full overflow-hidden rounded-lg bg-[#F4F4F2]">
         <Image
           src={normalizeDisplayImageUrl(product.image_url, '/placeholder.svg')}
           alt={product.title}
@@ -185,10 +177,10 @@ const TodaysEditCard = memo(function TodaysEditCard({ product }: { product: Prod
           unoptimized
         />
       </div>
-      <p className="font-editorial-sans text-[12px] font-normal leading-[1.3] tracking-[-0.005em] text-ink-2">
+      <p className="text-[12px] font-normal leading-[1.3] text-foreground line-clamp-2">
         {product.title}
       </p>
-      <span className="font-editorial-sans text-[13px] font-medium tracking-[-0.01em] tabular-nums text-ink">
+      <span className="text-[13px] font-semibold tabular-nums text-foreground">
         {formatPriceLabel(product.price, product.currency)}
       </span>
     </Link>
@@ -625,62 +617,74 @@ function HomePageApp() {
   );
 
   return (
-    <div className="flex h-screen w-full bg-paper text-ink overflow-x-hidden">
+    <div className="flex h-screen w-full bg-white text-foreground overflow-x-hidden">
       {/* Mobile drawer (existing ChatSidebar) — also fills the desktop
           left rail for now; an editorial sidebar restyle is a follow-up. */}
       <ChatSidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
       <main className="flex flex-1 min-w-0 flex-col">
-        {/* Editorial header — 54px */}
-        <header className="flex h-[54px] flex-shrink-0 items-center justify-between border-b border-hairline bg-surface px-3">
+        {/* Brand header — 54px */}
+        <header className="relative flex h-[54px] flex-shrink-0 items-center justify-between border-b border-border bg-white px-3">
           <div className="flex min-w-0 items-center gap-2">
-            <IconButton
-              label="Open menu"
-              size="md"
+            <button
+              type="button"
+              aria-label="Open menu"
               onClick={() => setSidebarOpen(true)}
-              className="lg:hidden"
+              className="lg:hidden flex h-9 w-9 items-center justify-center rounded-full text-foreground transition-opacity active:opacity-60"
             >
               <Menu size={20} strokeWidth={1.6} />
-            </IconButton>
+            </button>
           </div>
+          {/* Brand mark — centered */}
+          <Link href="/" className="absolute left-1/2 -translate-x-1/2 flex items-center gap-2" aria-label="Pivota home">
+            <span className="pv-logo pv-logo--gradient pv-logo--md" aria-hidden="true" />
+            <span className="pv-wordmark pv-wordmark--sm">Pivota</span>
+          </Link>
           <div className="flex items-center gap-1">
             {!user ? (
-              <Link href="/login" className="hidden sm:block">
-                <EdButton variant="ghost" size="sm">
-                  Sign in
-                </EdButton>
+              <Link href="/login" className="hidden sm:block px-3 py-1.5 text-[13px] font-medium text-[#534AB7]">
+                Sign in
               </Link>
             ) : null}
-            <IconButton label="Search" size="md">
+            <button
+              type="button"
+              aria-label="Search"
+              className="flex h-9 w-9 items-center justify-center rounded-full text-foreground transition-opacity active:opacity-60"
+            >
               <Search size={18} strokeWidth={1.5} />
-            </IconButton>
-            <IconButton label="Open bag" size="md" onClick={open} className="relative">
+            </button>
+            <button
+              type="button"
+              aria-label="Open bag"
+              onClick={open}
+              className="relative flex h-9 w-9 items-center justify-center rounded-full text-foreground transition-opacity active:opacity-60"
+            >
               <ShoppingBag size={18} strokeWidth={1.5} />
               {itemCount > 0 ? (
                 <span
                   aria-hidden="true"
-                  className="absolute -right-0.5 -top-0.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-terracotta px-1 font-editorial-mono text-[9px] font-bold text-paper"
+                  className="absolute -right-0.5 -top-0.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-[#D85A30] px-1 text-[9px] font-bold text-white"
                 >
                   {itemCount > 9 ? '9+' : itemCount}
                 </span>
               ) : null}
-            </IconButton>
+            </button>
           </div>
         </header>
 
         {/* Query chips — derived from the latest user input */}
         {queryChips.length > 0 ? (
-          <div className="flex-shrink-0 border-b border-hairline bg-surface">
+          <div className="flex-shrink-0 border-b border-border bg-white">
             <div className="-mx-1 flex gap-1.5 overflow-x-auto px-3 py-2">
               {queryChips.map((label, i) => (
-                <Chip
+                <button
                   key={`${label}-${i}`}
-                  variant="default"
-                  size="sm"
+                  type="button"
                   onClick={() => setQueryChips((prev) => prev.filter((_, idx) => idx !== i))}
+                  className="flex-shrink-0 rounded-full border border-[#534AB7]/20 bg-[#EEEDFE] px-3 py-1 text-[11px] font-medium text-[#534AB7] transition-opacity active:opacity-70"
                 >
                   {label} ×
-                </Chip>
+                </button>
               ))}
             </div>
           </div>
@@ -711,24 +715,24 @@ function HomePageApp() {
         </div>
 
         {/* Composer */}
-        <div className="flex-shrink-0 border-t border-hairline bg-paper">
+        <div className="flex-shrink-0 border-t border-border bg-white">
           <div className="mx-auto w-full max-w-[720px] px-4 pb-4 pt-2 lg:px-8">
             {/* Chip rail above composer */}
             <div className="-mx-2 mb-2 flex gap-1.5 overflow-x-auto px-2 pb-1">
               {COMPOSER_CHIP_PROMPTS.map((prompt) => (
-                <Chip
+                <button
                   key={prompt}
-                  variant="default"
-                  size="sm"
+                  type="button"
                   onClick={() => setInput(prompt)}
                   disabled={composerBusy}
+                  className="flex-shrink-0 rounded-full border border-[#534AB7]/20 bg-[#EEEDFE] px-3 py-1.5 text-[11px] font-medium text-[#534AB7] transition-opacity active:opacity-70 disabled:opacity-40"
                 >
                   {prompt}
-                </Chip>
+                </button>
               ))}
             </div>
 
-            <div className="flex items-center gap-2 rounded-full border border-hairline bg-surface px-3 py-1.5 transition-colors focus-within:border-ink/30">
+            <div className="flex items-center gap-2 rounded-full border border-border bg-[#F4F4F2] px-3 py-1.5 transition-colors focus-within:border-[#534AB7]/40">
               {photoUploadEnabled ? (
                 <>
                   <input
@@ -742,7 +746,7 @@ function HomePageApp() {
                     type="button"
                     onClick={handleSkinPhotoUploadClick}
                     disabled={composerBusy}
-                    className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-ink-muted transition-colors hover:text-ink disabled:opacity-40"
+                    className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-foreground disabled:opacity-40"
                     aria-label="Upload photo"
                   >
                     <Camera size={16} strokeWidth={1.6} />
@@ -760,12 +764,12 @@ function HomePageApp() {
                   }
                 }}
                 placeholder="Tell Pivota what you're looking for…"
-                className="flex-1 bg-transparent py-1.5 font-editorial-sans text-[14px] text-ink outline-none placeholder:text-subtle"
+                className="flex-1 bg-transparent py-1.5 text-[14px] text-foreground outline-none placeholder:text-muted-foreground"
                 disabled={composerBusy}
               />
               <button
                 type="button"
-                className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-ink-muted transition-colors hover:text-ink"
+                className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-foreground"
                 aria-label="Voice input"
               >
                 <Mic size={16} strokeWidth={1.6} />
@@ -774,7 +778,8 @@ function HomePageApp() {
                 type="button"
                 onClick={handleSend}
                 disabled={composerBusy || !input.trim()}
-                className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-ink text-paper transition-opacity hover:bg-ink-2 disabled:opacity-30"
+                className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-white transition-opacity disabled:opacity-30"
+                style={{ background: 'linear-gradient(135deg, #534AB7 0%, #7B6FD4 50%, #1D9E75 100%)' }}
                 aria-label="Send"
               >
                 <Send size={14} strokeWidth={1.6} />
@@ -808,23 +813,41 @@ function EditorialGreeting({
       className="flex flex-col gap-8"
     >
       <div>
-        <Eyebrow>Pivota · Personal shopper</Eyebrow>
-        <h2 className="mt-3 text-balance font-editorial-sans text-[28px] font-medium leading-tight tracking-[-0.015em] text-ink">
+        <div className="flex items-center gap-1.5">
+          <span
+            aria-hidden="true"
+            className="h-1.5 w-1.5 flex-shrink-0 rounded-full"
+            style={{ background: 'linear-gradient(135deg, #534AB7, #1D9E75)' }}
+          />
+          <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-[#534AB7]">
+            Pivota · Personal shopper
+          </span>
+        </div>
+        <h2 className="mt-3 text-balance text-[26px] font-semibold leading-tight tracking-[-0.015em] text-foreground">
           {greetingName ? `Welcome back, ${greetingName}.` : 'Welcome back.'}{' '}
-          <span className="font-editorial-sans font-normal text-ink-muted">
+          <span className="font-normal text-muted-foreground">
             What are we shopping today?
           </span>
         </h2>
-        <p className="pv-body mt-3 max-w-prose text-ink-muted">
+        <p className="mt-3 max-w-prose text-[14px] leading-relaxed text-muted-foreground">
           I keep track of what you&apos;ve been browsing and what&apos;s new in the houses you
-          follow. Ask anything — I&apos;ll edit the catalog for you.
+          follow. Ask anything — I&apos;ll find it for you.
         </p>
       </div>
 
       <div>
-        <div className="flex items-baseline justify-between gap-3">
-          <Eyebrow>01 / Today&apos;s edit</Eyebrow>
-          <Mono className="normal-case tracking-[0.04em] text-ink-muted">{todayStamp}</Mono>
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-1.5">
+            <span
+              aria-hidden="true"
+              className="h-1.5 w-1.5 flex-shrink-0 rounded-full"
+              style={{ background: 'linear-gradient(135deg, #534AB7, #1D9E75)' }}
+            />
+            <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-[#534AB7]">
+              Today&apos;s picks
+            </span>
+          </div>
+          <span className="text-[11px] text-muted-foreground">{todayStamp}</span>
         </div>
         <div className="-mx-4 mt-3 overflow-x-auto px-4 pb-1 lg:mx-0 lg:px-0">
           <div className="flex min-w-max gap-3">
@@ -833,7 +856,7 @@ function EditorialGreeting({
                 .slice(0, 5)
                 .map((product) => <TodaysEditCard key={buildProductKey(product)} product={product} />)
             ) : (
-              <p className="pv-body text-ink-muted">
+              <p className="text-[14px] text-muted-foreground">
                 {hotDealsStatus === 'loading'
                   ? 'Pulling fresh picks…'
                   : hotDealsStatus === 'error'
@@ -894,8 +917,11 @@ function UserMessageRow({ content }: { content: string }) {
       transition={{ duration: 0.25 }}
       className="flex justify-end"
     >
-      <div className="max-w-[80%] rounded-[18px] border border-hairline bg-surface px-4 py-2.5">
-        <p className="pv-body text-ink">{content}</p>
+      <div
+        className="max-w-[80%] rounded-[18px] px-4 py-2.5"
+        style={{ background: 'linear-gradient(135deg, #534AB7 0%, #7B6FD4 100%)' }}
+      >
+        <p className="text-[14px] leading-relaxed text-white">{content}</p>
       </div>
     </motion.div>
   );
@@ -925,10 +951,20 @@ function AssistantMessageRow({
       transition={{ duration: 0.25 }}
       className="flex flex-col gap-3"
     >
-      <Eyebrow>Pivota · {time}</Eyebrow>
+      {/* Brand eyebrow */}
+      <div className="flex items-center gap-1.5">
+        <span
+          aria-hidden="true"
+          className="h-1.5 w-1.5 flex-shrink-0 rounded-full"
+          style={{ background: 'linear-gradient(135deg, #534AB7, #1D9E75)' }}
+        />
+        <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-[#534AB7]">
+          Pivota · {time}
+        </span>
+      </div>
 
       {message.content ? (
-        <p className="pv-body whitespace-pre-line text-ink-2">{message.content}</p>
+        <p className="text-[14px] leading-relaxed whitespace-pre-line text-foreground">{message.content}</p>
       ) : null}
 
       {products.length > 0 ? (
@@ -964,21 +1000,25 @@ function AssistantMessageRow({
             })}
           </div>
 
-          <InsightBlock>
-            Picked these because they match your search and have the strongest in-stock signal.
-            Tap a card for full details, or use the prompts below to refine.
-          </InsightBlock>
+          {/* Brand insight block */}
+          <div className="flex items-start gap-2.5 rounded-xl bg-[#E1F5EE] px-3.5 py-2.5">
+            <span aria-hidden="true" className="mt-[5px] h-1.5 w-1.5 flex-shrink-0 rounded-full bg-[#1D9E75]" />
+            <p className="text-[12px] leading-[1.5] text-[#0F6E56]">
+              Picked these because they match your search and have the strongest in-stock signal.
+              Tap a card for full details, or use the prompts below to refine.
+            </p>
+          </div>
 
           <div className="-mx-2 flex gap-1.5 overflow-x-auto px-2 pb-1">
             {FOLLOWUP_PROMPTS.map((prompt) => (
-              <Chip
+              <button
                 key={prompt}
-                variant="default"
-                size="sm"
+                type="button"
                 onClick={() => onFollowUp(prompt)}
+                className="flex-shrink-0 rounded-full border border-[#534AB7]/20 bg-[#EEEDFE] px-3 py-1.5 text-[11px] font-medium text-[#534AB7] transition-opacity active:opacity-70"
               >
                 {prompt}
-              </Chip>
+              </button>
             ))}
           </div>
 
@@ -988,9 +1028,9 @@ function AssistantMessageRow({
               onClick={() => onLoadMore(message.id)}
               disabled={Boolean(paging.isLoadingMore)}
               className={cn(
-                'mt-1 flex w-full items-center justify-center rounded-full border border-hairline bg-surface py-2.5',
-                'font-editorial-mono text-[10px] uppercase tracking-[0.12em] text-ink-muted',
-                'transition-colors hover:text-ink hover:border-ink/30 disabled:opacity-50',
+                'mt-1 flex w-full items-center justify-center rounded-full border border-border bg-white py-2.5',
+                'text-[11px] font-medium text-muted-foreground',
+                'transition-colors hover:border-[#534AB7]/30 hover:text-[#534AB7] disabled:opacity-50',
               )}
             >
               {paging.isLoadingMore ? 'Loading more…' : 'Load more from the edit'}
@@ -1009,15 +1049,18 @@ function TypingIndicator() {
       animate={{ opacity: 1 }}
       className="flex items-center gap-2"
     >
-      <Eyebrow>Pivota · thinking</Eyebrow>
-      <span aria-hidden="true" className="inline-flex gap-1 text-ink-muted">
+      <span
+        aria-hidden="true"
+        className="h-1.5 w-1.5 flex-shrink-0 rounded-full"
+        style={{ background: 'linear-gradient(135deg, #534AB7, #1D9E75)' }}
+      />
+      <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-[#534AB7]">
+        Pivota · thinking
+      </span>
+      <span aria-hidden="true" className="inline-flex gap-1 text-muted-foreground">
         <span className="animate-bounce">●</span>
-        <span className="animate-bounce" style={{ animationDelay: '0.1s' }}>
-          ●
-        </span>
-        <span className="animate-bounce" style={{ animationDelay: '0.2s' }}>
-          ●
-        </span>
+        <span className="animate-bounce" style={{ animationDelay: '0.1s' }}>●</span>
+        <span className="animate-bounce" style={{ animationDelay: '0.2s' }}>●</span>
       </span>
     </motion.div>
   );
