@@ -2,14 +2,10 @@
 
 /**
  * Shipping + returns strip for the Beauty mobile PDP.
- * Faithful to redesign/pivota-pdp.jsx → ShippingStrip:
- *   white card, 1px border, rounded-[10px], two icon rows (truck / return)
- *   split by a 1px hairline, teal icons, 13px semibold headline + 12px muted sub.
+ * Reference: reference/pdp.jsx → ShippingStrip.
  *
- * Copy is driven by real payload data, not the design's mock strings:
- * "Free" prefixes only render when the free-shipping / free-returns signal is
- * explicitly true; the returns line is scoped to the selected seller (not
- * "every seller") since `returns` is per-offer.
+ * Two rows separated by a hairline: shipping (truck) and returns (arrow).
+ * Both rows are data-driven from the selected offer — no fabricated guarantees.
  */
 
 const TRUCK = (
@@ -69,7 +65,7 @@ export function BeautyShippingStrip({
   if (!hasShipping && !hasReturns) return null;
 
   return (
-    <div className="mx-[18px] mt-2.5 flex flex-col gap-2.5 rounded-[10px] border border-border bg-white px-3.5 py-2.5">
+    <div className="mx-4 mt-2.5 flex flex-col gap-2.5 rounded-[10px] border border-border bg-white px-3.5 py-2.5">
       {hasShipping ? (
         <div className="flex items-start gap-3">
           <span aria-hidden="true" className="mt-px flex-shrink-0 text-primary">

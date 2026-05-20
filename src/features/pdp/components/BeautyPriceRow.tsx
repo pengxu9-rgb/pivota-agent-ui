@@ -2,14 +2,8 @@
 
 /**
  * Price row for the Beauty mobile PDP.
- * Faithful to redesign/pivota-pdp.jsx → PriceRow:
- *   bold price, strikethrough compare-at, and a "SAVE N%" badge.
- *   The design reference draws the badge in coral (#D85A30), but
- *   .lovable-pdp has no coral token and handoff §2 requires every color to
- *   map to an existing token — so the badge uses the repo's existing teal
- *   discount-badge convention (`bg-primary/10 text-primary`), per the
- *   owner's settled §6 flag. Price size and top padding are tightened from
- *   the design spec so more info sits above the fold (owner request).
+ * Reference: reference/pdp.jsx → PriceRow.
+ *   30px/700 price, strikethrough compare-at, "SAVE N%" badge in primary/10.
  */
 function fmt(amount: number, currency: string): string {
   try {
@@ -36,8 +30,8 @@ export function BeautyPriceRow({
 }) {
   const hasCompare = typeof compareAt === 'number' && compareAt > price;
   return (
-    <div className="flex items-baseline gap-2.5 px-[18px] pt-2.5">
-      <div className="text-[24px] font-bold tracking-[-0.02em] text-foreground">
+    <div className="flex items-baseline gap-2.5 px-4 pt-2.5">
+      <div className="text-[30px] font-bold tracking-[-0.02em] text-foreground">
         {fmt(price, currency)}
       </div>
       {hasCompare ? (

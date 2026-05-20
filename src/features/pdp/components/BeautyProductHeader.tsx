@@ -35,9 +35,9 @@ export function BeautyProductHeader({
   onSeeReviews?: () => void;
 }) {
   return (
-    <div className="px-[18px] pt-2.5">
+    <div className="px-4 pt-2.5">
       {brand ? (
-        <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-primary">
+        <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-cd-primary">
           {brand}
         </div>
       ) : null}
@@ -63,7 +63,7 @@ export function BeautyProductHeader({
             <button
               type="button"
               onClick={onSeeReviews}
-              className="ml-auto text-[13px] font-medium text-primary"
+              className="ml-auto text-[13px] font-medium text-cd-primary"
             >
               See reviews →
             </button>

@@ -25,7 +25,7 @@ export function BeautySizeSelector({
   const selected = sizes.find((s) => s.id === selectedId)?.id || sizes[0].id;
 
   return (
-    <div className="px-[18px] pt-2.5">
+    <div className="px-4 pt-2.5">
       {/* Label font matches the product-line / variant selectors so every
           variant-axis selector reads consistently (owner-flagged). */}
       <div className="mb-1.5 text-xs font-semibold text-foreground">
@@ -41,14 +41,13 @@ export function BeautySizeSelector({
               onClick={() => onSelect(sz.id)}
               aria-pressed={isSel}
               className={cn(
-                // Selected treatment matches the product-line / variant
-                // selectors (neutral `border-muted-foreground/50` on
-                // `bg-card`) — same highlight for every variant-axis
-                // category.
-                'flex-1 rounded-[10px] border-[1.5px] bg-card px-3 py-2 text-left',
+                // Industry-best selected state: hairline border + 1.5px
+                // inset ring (handoff §3e). The ring lifts the card without
+                // changing its bounding box — no layout shift on selection.
+                'flex-1 rounded-[10px] border border-border bg-card px-3 py-2 text-left transition-shadow duration-150',
                 isSel
-                  ? 'border-muted-foreground/50 font-semibold text-foreground'
-                  : 'border-border hover:border-muted-foreground/40',
+                  ? 'font-semibold text-foreground shadow-[inset_0_0_0_1.5px_hsl(var(--foreground))]'
+                  : 'hover:border-muted-foreground/40',
               )}
             >
               <div className="text-[13px] font-semibold text-foreground">{sz.label}</div>

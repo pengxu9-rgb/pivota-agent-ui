@@ -118,8 +118,12 @@ function SellerCard({
       disabled={!inStock}
       aria-pressed={selected}
       className={cn(
-        'flex w-full items-center gap-3 rounded-[10px] border-[1.5px] px-3.5 py-3 text-left',
-        selected ? 'border-primary bg-[var(--accent-50)]' : 'border-border bg-white',
+        // Handoff §3e: hairline border at rest, 1.5px primary inset ring +
+        // primary-50 surface when selected — no layout shift, lifts the card.
+        'flex w-full items-center gap-3 rounded-[10px] border border-border px-3.5 py-3 text-left transition-shadow duration-150',
+        selected
+          ? 'bg-[var(--accent-50)] shadow-[inset_0_0_0_1.5px_hsl(var(--primary))]'
+          : 'bg-white',
         !inStock && 'cursor-not-allowed opacity-50',
       )}
     >
@@ -207,7 +211,7 @@ export function BeautyMobileSellerPicker({
   const inStockCount = offers.reduce((acc, o) => acc + (offerInStock(o) ? 1 : 0), 0);
 
   return (
-    <section className="mx-[18px] mt-3.5">
+    <section className="mx-4 mt-3.5">
       <div className="mb-2.5 flex items-center gap-1.5">
         <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
           Buy from

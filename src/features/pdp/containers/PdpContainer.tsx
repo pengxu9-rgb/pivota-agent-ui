@@ -592,6 +592,7 @@ function buildVisualSimilarItem(
     priceLabel: item.price
       ? formatPrice(item.price.amount ?? 0, item.price.currency || displayCurrency)
       : '',
+    brand: (typeof item.brand === 'string' ? item.brand.trim() : '') || null,
     rating: item.rating ?? null,
     reviews: item.review_count ?? null,
     highlight: item.description || null,
@@ -4245,7 +4246,7 @@ export function PdpContainer({
         onUgcViewAll={() =>
           openViewer({ mode: 'ugc', source: ugcSnapshot.source || 'unknown', index: 0 })
         }
-        onUgcShare={canUploadMedia ? handleUploadMedia : undefined}
+        onUgcShare={handleUploadMedia}
         onUgcPhotoClick={(index) =>
           openViewer({ mode: 'ugc', source: ugcSnapshot.source || 'unknown', index, trackThumbnail: true })
         }
@@ -4306,6 +4307,22 @@ export function PdpContainer({
             />
           ) : null
         }
+        productDetails={
+          hasDetailsSection ? (
+            <BeautyDetailsSection
+              data={details}
+              product={payload.product}
+              media={media}
+              activeIngredients={null}
+              ingredientsInci={null}
+              howToUse={null}
+              hideLowConfidenceActiveIngredients={shouldHideLowConfidenceActiveIngredients}
+              suppressOverview={suppressOverviewInDetails}
+              showDetailMedia={!isExternalSeedProduct}
+              showProductInformation={!isExternalSeedProduct || hasDisplayableExternalSeedProductInformation}
+            />
+          ) : null
+        }
         similar={
           hasRecommendationItems
             ? recommendations.items
@@ -4326,6 +4343,15 @@ export function PdpContainer({
           if (!sourceItem) return;
           void handleSimilarQuickAction(sourceItem, index);
         }}
+        onSimilarLoadMore={
+          similarVisibleCount < similarItems.length ||
+          (similarHasMore && similarItems.length < SIMILAR_MAX)
+            ? () => {
+                void loadMoreSimilarProducts('auto');
+              }
+            : undefined
+        }
+        similarSentinelRef={isBeautyDesktop ? similarAutoLoadSentinelRef : undefined}
         buyNowLabel={actionsByType.buy_now || 'Buy now'}
         inStock={effectiveIsInStock}
         quantity={resolvedQuantity}
@@ -4481,7 +4507,7 @@ export function PdpContainer({
         onUgcViewAll={() =>
           openViewer({ mode: 'ugc', source: ugcSnapshot.source || 'unknown', index: 0 })
         }
-        onUgcShare={canUploadMedia ? handleUploadMedia : undefined}
+        onUgcShare={handleUploadMedia}
         onUgcPhotoClick={(index) =>
           openViewer({ mode: 'ugc', source: ugcSnapshot.source || 'unknown', index, trackThumbnail: true })
         }
@@ -4642,7 +4668,7 @@ export function PdpContainer({
         onUgcViewAll={() =>
           openViewer({ mode: 'ugc', source: ugcSnapshot.source || 'unknown', index: 0 })
         }
-        onUgcShare={canUploadMedia ? handleUploadMedia : undefined}
+        onUgcShare={handleUploadMedia}
         onUgcPhotoClick={(index) =>
           openViewer({ mode: 'ugc', source: ugcSnapshot.source || 'unknown', index, trackThumbnail: true })
         }

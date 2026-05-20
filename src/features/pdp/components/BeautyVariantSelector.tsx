@@ -15,7 +15,7 @@ import { cn } from '@/lib/utils';
  * state) so every variant-axis selector uses the same highlight regardless
  * of category — no per-category accent. It
  * carries no gutter padding of its own — the variant-selector wrapper in
- * BeautyPDP{Mobile,Desktop} already provides `px-[18px]`.
+ * BeautyPDP{Mobile,Desktop} already provides `px-4` (16 px gutter).
  */
 
 function deriveAxisLabel(variants: Variant[]): string {
