@@ -103,15 +103,16 @@ export function BeautyMobileBuyBar({
         </span>
       </button>
 
-      {/* Buy now — primary commit CTA, near-black per design (T.fg), not teal */}
+      {/* Buy now — brand gradient CTA per reference §06 */}
       <button
         type="button"
         onClick={onBuyNow}
         disabled={disabled}
         className={cn(
-          'flex h-11 flex-1 items-center justify-center gap-1.5 rounded-full bg-foreground text-[14px] font-semibold text-white shadow-md',
+          'flex h-11 flex-1 items-center justify-center gap-1.5 rounded-full text-[14px] font-semibold text-white shadow-md',
           'disabled:opacity-50',
         )}
+        style={{ background: 'var(--pv-gradient-primary, linear-gradient(135deg, #534AB7 0%, #7B6FD4 50%, #1D9E75 100%))' }}
       >
         {buyNowLabel} · {formattedTotal}
       </button>

@@ -4246,7 +4246,7 @@ export function PdpContainer({
         onUgcViewAll={() =>
           openViewer({ mode: 'ugc', source: ugcSnapshot.source || 'unknown', index: 0 })
         }
-        onUgcShare={canUploadMedia ? handleUploadMedia : undefined}
+        onUgcShare={handleUploadMedia}
         onUgcPhotoClick={(index) =>
           openViewer({ mode: 'ugc', source: ugcSnapshot.source || 'unknown', index, trackThumbnail: true })
         }
@@ -4304,6 +4304,22 @@ export function PdpContainer({
               suppressOverview
               showDetailMedia={false}
               showProductInformation={false}
+            />
+          ) : null
+        }
+        productDetails={
+          hasDetailsSection ? (
+            <BeautyDetailsSection
+              data={details}
+              product={payload.product}
+              media={media}
+              activeIngredients={null}
+              ingredientsInci={null}
+              howToUse={null}
+              hideLowConfidenceActiveIngredients={shouldHideLowConfidenceActiveIngredients}
+              suppressOverview={suppressOverviewInDetails}
+              showDetailMedia={!isExternalSeedProduct}
+              showProductInformation={!isExternalSeedProduct || hasDisplayableExternalSeedProductInformation}
             />
           ) : null
         }
@@ -4491,7 +4507,7 @@ export function PdpContainer({
         onUgcViewAll={() =>
           openViewer({ mode: 'ugc', source: ugcSnapshot.source || 'unknown', index: 0 })
         }
-        onUgcShare={canUploadMedia ? handleUploadMedia : undefined}
+        onUgcShare={handleUploadMedia}
         onUgcPhotoClick={(index) =>
           openViewer({ mode: 'ugc', source: ugcSnapshot.source || 'unknown', index, trackThumbnail: true })
         }
@@ -4652,7 +4668,7 @@ export function PdpContainer({
         onUgcViewAll={() =>
           openViewer({ mode: 'ugc', source: ugcSnapshot.source || 'unknown', index: 0 })
         }
-        onUgcShare={canUploadMedia ? handleUploadMedia : undefined}
+        onUgcShare={handleUploadMedia}
         onUgcPhotoClick={(index) =>
           openViewer({ mode: 'ugc', source: ugcSnapshot.source || 'unknown', index, trackThumbnail: true })
         }

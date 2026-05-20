@@ -164,6 +164,9 @@ export function BeautyPDPDesktop(props: BeautyPDPMobileProps) {
             ) : null}
 
             <div ref={reviewsAnchorRef} className="mt-8 scroll-mt-20">
+              {props.productDetails ? (
+                <BeautyAccordion title="Product details">{props.productDetails}</BeautyAccordion>
+              ) : null}
               {/* CHANGED: Reviews accordion renders unconditionally. */}
               <BeautyAccordion
                 title="Reviews"

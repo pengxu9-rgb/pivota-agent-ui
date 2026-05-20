@@ -100,6 +100,7 @@ export type BeautyPDPMobileProps = {
   /** NEW: click handler for the "Write a review" CTA in the Reviews accordion. */
   onWriteReview?: () => void;
   onSeeAllReviews?: () => void;
+  productDetails?: React.ReactNode;
   ingredients?: React.ReactNode;
   howToUse?: React.ReactNode;
   shippingReturnsText?: React.ReactNode;
@@ -338,6 +339,9 @@ export function BeautyPDPMobile(props: BeautyPDPMobileProps) {
         ) : null}
 
         <div ref={reviewsRef} className="mt-2.5">
+          {props.productDetails ? (
+            <BeautyAccordion title="Product details">{props.productDetails}</BeautyAccordion>
+          ) : null}
           {/* CHANGED: Reviews accordion renders unconditionally. The accordion
               header always shows "Reviews (N)"; BeautyReviewsPreview handles
               the 0-reviews state (compact "Write a review" tile). */}

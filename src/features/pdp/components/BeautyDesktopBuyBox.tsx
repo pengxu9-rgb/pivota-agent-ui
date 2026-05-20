@@ -106,9 +106,10 @@ export function BeautyDesktopBuyBox({
           onClick={onBuyNow}
           disabled={disabled}
           className={cn(
-            'flex h-[50px] flex-1 items-center justify-center gap-1.5 rounded-full bg-foreground text-[15px] font-semibold text-white shadow-md',
+            'flex h-[50px] flex-1 items-center justify-center gap-1.5 rounded-full text-[15px] font-semibold text-white shadow-md',
             'disabled:opacity-50',
           )}
+          style={{ background: 'var(--pv-gradient-primary, linear-gradient(135deg, #534AB7 0%, #7B6FD4 50%, #1D9E75 100%))' }}
         >
           {buyNowLabel} · {formattedTotal}
         </button>
