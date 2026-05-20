@@ -154,6 +154,24 @@ export function BeautyPDPDesktop(props: BeautyPDPMobileProps) {
               onBuyNow={props.onBuyNow}
             />
             {props.claims?.length ? <BeautyKeyClaims claims={props.claims} /> : null}
+            {(props.productDetails || props.ingredients || props.howToUse || props.shippingReturnsText) ? (
+              <div className="mt-4 border-t border-border px-4 pt-2">
+                {props.productDetails ? (
+                  <BeautyAccordion title="Product details">{props.productDetails}</BeautyAccordion>
+                ) : null}
+                {props.ingredients ? (
+                  <BeautyAccordion title="Ingredients">{props.ingredients}</BeautyAccordion>
+                ) : null}
+                {props.howToUse ? (
+                  <BeautyAccordion title="How to use">{props.howToUse}</BeautyAccordion>
+                ) : null}
+                {props.shippingReturnsText ? (
+                  <BeautyAccordion title="Shipping &amp; returns">
+                    {props.shippingReturnsText}
+                  </BeautyAccordion>
+                ) : null}
+              </div>
+            ) : null}
           </div>
         </div>
 
@@ -164,9 +182,6 @@ export function BeautyPDPDesktop(props: BeautyPDPMobileProps) {
             ) : null}
 
             <div ref={reviewsAnchorRef} className="mt-8 scroll-mt-20">
-              {props.productDetails ? (
-                <BeautyAccordion title="Product details">{props.productDetails}</BeautyAccordion>
-              ) : null}
               {/* CHANGED: Reviews accordion renders unconditionally. */}
               <BeautyAccordion
                 title="Reviews"
@@ -181,17 +196,6 @@ export function BeautyPDPDesktop(props: BeautyPDPMobileProps) {
                   onSeeAll={props.onSeeAllReviews}
                 />
               </BeautyAccordion>
-              {props.ingredients ? (
-                <BeautyAccordion title="Ingredients">{props.ingredients}</BeautyAccordion>
-              ) : null}
-              {props.howToUse ? (
-                <BeautyAccordion title="How to use">{props.howToUse}</BeautyAccordion>
-              ) : null}
-              {props.shippingReturnsText ? (
-                <BeautyAccordion title="Shipping &amp; returns">
-                  {props.shippingReturnsText}
-                </BeautyAccordion>
-              ) : null}
               <BeautyQuestions
                 questions={props.questions ?? []}
                 onAsk={props.onAskQuestion}
