@@ -3,18 +3,24 @@
   "short_name": "Pivota",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#ffffff",
-  "theme_color": "#111827",
+  "background_color": "#FAFAF8",
+  "theme_color": "#534AB7",
   "icons": [
     {
-      "src": "/icon-192.png",
+      "src": "/pivota-brand/icons/icon-gradient-192.png",
       "sizes": "192x192",
       "type": "image/png"
     },
     {
-      "src": "/icon-512.png",
+      "src": "/pivota-brand/icons/icon-gradient-512.png",
       "sizes": "512x512",
       "type": "image/png"
+    },
+    {
+      "src": "/pivota-brand/icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
     }
   ]
 }

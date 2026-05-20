@@ -99,6 +99,7 @@ const nextConfig = {
   },
   images: {
     remotePatterns: IMAGE_REMOTE_PATTERNS,
+    minimumCacheTTL: 2678400,
     formats: ['image/avif', 'image/webp'],
   },
   // Enable compression

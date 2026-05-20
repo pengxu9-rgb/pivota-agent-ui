@@ -239,14 +239,9 @@ function ChatRecommendationCardComponent({ product, onAddToCart, colorVariant = 
 
       {/* Content area */}
       <div className="flex flex-1 flex-col gap-0.5 p-2">
-        {/* Brand */}
-        {product.brand ? (
-          <p className="truncate text-[10px] text-[#2C2C2A]/40">{product.brand}</p>
-        ) : null}
-
-        {/* Title */}
+        {/* Title with inline brand prefix */}
         <p className="line-clamp-2 text-[12px] font-medium leading-[1.35] text-[#2C2C2A]">
-          {product.title}
+          {product.brand ? <span className="text-[#2C2C2A]/40">{product.brand} · </span> : null}{product.title}
         </p>
 
         {recommendationReason ? (

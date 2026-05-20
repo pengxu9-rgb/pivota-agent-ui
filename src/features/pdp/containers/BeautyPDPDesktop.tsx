@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef } from 'react';
-import { BeautyMobileGallery } from '@/features/pdp/components/BeautyMobileGallery';
+import { BeautyDesktopGallery } from '@/features/pdp/components/BeautyDesktopGallery';
 import { BeautyProductHeader } from '@/features/pdp/components/BeautyProductHeader';
 import { BeautyPriceRow } from '@/features/pdp/components/BeautyPriceRow';
 import { BeautyShadeSelector } from '@/features/pdp/components/BeautyShadeSelector';
@@ -61,7 +61,7 @@ export function BeautyPDPDesktop(props: BeautyPDPMobileProps) {
             </button>
           ) : null}
           <div className="min-w-0 flex-1 truncate text-[13px] font-semibold">
-            {props.brand ? <span className="text-primary">{props.brand}</span> : null}
+            {props.brand ? <span className="text-cd-primary">{props.brand}</span> : null}
             {props.brand ? <span className="mx-1.5 text-muted-foreground">·</span> : null}
             <span className="text-foreground">{props.title}</span>
           </div>
@@ -83,16 +83,14 @@ export function BeautyPDPDesktop(props: BeautyPDPMobileProps) {
       <div className="mx-auto max-w-[1180px] px-6 pb-24">
         <div className="grid grid-cols-1 gap-x-12 gap-y-8 pt-8 lg:grid-cols-[minmax(0,1fr)_440px]">
           <div className="self-start lg:sticky lg:top-[76px]">
-            <div className="overflow-hidden rounded-2xl border border-border">
-              <BeautyMobileGallery
-                images={props.galleryImages}
-                alt={props.title}
-                onOpenViewer={props.onOpenViewer}
-              />
-            </div>
+            <BeautyDesktopGallery
+              images={props.galleryImages}
+              alt={props.title}
+              onOpenViewer={props.onOpenViewer}
+            />
           </div>
 
-          <div className="-mx-[18px]">
+          <div className="-mx-4">
             <BeautyProductHeader
               brand={props.brand}
               title={props.title}
@@ -122,7 +120,7 @@ export function BeautyPDPDesktop(props: BeautyPDPMobileProps) {
               />
             ) : null}
             {props.variantSelector ? (
-              <div className="px-[18px] pt-2.5">{props.variantSelector}</div>
+              <div className="px-4 pt-2.5">{props.variantSelector}</div>
             ) : null}
             {props.benefits?.length ? <BeautyBenefitsStrip benefits={props.benefits} /> : null}
             {props.offers.length > 1 ? (
@@ -154,6 +152,24 @@ export function BeautyPDPDesktop(props: BeautyPDPMobileProps) {
               onBuyNow={props.onBuyNow}
             />
             {props.claims?.length ? <BeautyKeyClaims claims={props.claims} /> : null}
+            {(props.productDetails || props.ingredients || props.howToUse || props.shippingReturnsText) ? (
+              <div className="mt-4 border-t border-border px-4 pt-2">
+                {props.productDetails ? (
+                  <BeautyAccordion title="Product details">{props.productDetails}</BeautyAccordion>
+                ) : null}
+                {props.ingredients ? (
+                  <BeautyAccordion title="Ingredients">{props.ingredients}</BeautyAccordion>
+                ) : null}
+                {props.howToUse ? (
+                  <BeautyAccordion title="How to use">{props.howToUse}</BeautyAccordion>
+                ) : null}
+                {props.shippingReturnsText ? (
+                  <BeautyAccordion title="Shipping &amp; returns">
+                    {props.shippingReturnsText}
+                  </BeautyAccordion>
+                ) : null}
+              </div>
+            ) : null}
           </div>
         </div>
 
@@ -178,17 +194,6 @@ export function BeautyPDPDesktop(props: BeautyPDPMobileProps) {
                   onSeeAll={props.onSeeAllReviews}
                 />
               </BeautyAccordion>
-              {props.ingredients ? (
-                <BeautyAccordion title="Ingredients">{props.ingredients}</BeautyAccordion>
-              ) : null}
-              {props.howToUse ? (
-                <BeautyAccordion title="How to use">{props.howToUse}</BeautyAccordion>
-              ) : null}
-              {props.shippingReturnsText ? (
-                <BeautyAccordion title="Shipping &amp; returns">
-                  {props.shippingReturnsText}
-                </BeautyAccordion>
-              ) : null}
               <BeautyQuestions
                 questions={props.questions ?? []}
                 onAsk={props.onAskQuestion}
@@ -228,6 +233,11 @@ export function BeautyPDPDesktop(props: BeautyPDPMobileProps) {
             />
           </div>
         ) : null}
+        <div
+          ref={(node) => { if (props.similarSentinelRef) props.similarSentinelRef.current = node; }}
+          className="h-4"
+          aria-hidden="true"
+        />
       </div>
     </div>
   );

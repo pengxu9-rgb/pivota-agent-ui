@@ -410,6 +410,31 @@ describe('ProductDetailPage canonical PDP loading', () => {
     expect(getPdpV2Mock).not.toHaveBeenCalled();
   });
 
+  it('syncs the next initial server payload when same-route navigation preserves the client instance', async () => {
+    const nextPayload = {
+      ...canonicalPayload,
+      product: {
+        ...canonicalPayload.product,
+        product_id: 'prod_2',
+        title: 'Second PDP Product',
+      },
+    };
+
+    const { rerender } = render(
+      <ProductDetailPage params={{ id: 'prod_1' } as any} initialPayload={canonicalPayload} />,
+    );
+
+    expect(screen.getByTestId('generic-pdp')).toHaveTextContent('Canonical PDP Product');
+
+    rerender(<ProductDetailPage params={{ id: 'prod_2' } as any} initialPayload={nextPayload} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('generic-pdp')).toHaveTextContent('Second PDP Product');
+    });
+    expect(screen.queryByText('Canonical PDP Product')).not.toBeInTheDocument();
+    expect(getPdpV2Mock).not.toHaveBeenCalled();
+  });
+
   it('remounts with the next initial server payload on same-product seller navigation', async () => {
     const merchantAPayload = {
       ...canonicalPayload,

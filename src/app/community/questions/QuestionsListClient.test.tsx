@@ -120,6 +120,14 @@ describe('QuestionsListClient', () => {
     expect(screen.queryByText('0 replies')).not.toBeInTheDocument();
   });
 
+  it('opens the ask dialog from the PDP ask query flag', async () => {
+    searchParamsValue = 'product_id=ext_boj_dn350&merchant_id=external_seed&ask=1';
+
+    render(<QuestionsListClient />);
+
+    expect(await screen.findByPlaceholderText('Type your question…')).toBeInTheDocument();
+  });
+
   it('dedupes PDP FAQ against community questions while preserving the community thread link', async () => {
     listQuestionsMock.mockResolvedValue({
       count: 1,

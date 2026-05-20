@@ -48,7 +48,7 @@ export function BeautyReviewsPreview({
   rating,
   reviewCount,
   reviews,
-  emptyCopy = 'No reviews yet. Be the first to share your shade + skin notes — your review appears here once verified.',
+  emptyCopy = 'No reviews yet. Be the first to share your shade + skin notes - your review appears here after Pivota review.',
   onWriteReview,
   onSeeAll,
 }: {
@@ -63,7 +63,8 @@ export function BeautyReviewsPreview({
 }) {
   // ── Empty state ──────────────────────────────────────────────────────────
   // Section header is rendered by the parent (BeautyAccordion title="Reviews").
-  // We only render the body of the section.
+  // Brand-Kit v2 (handoff §3f): the empty-state CTA is the same filled-dark
+  // "Write a review" button as the populated-state primary action.
   if (!reviews?.length) {
     return (
       <div className="flex items-center gap-3 rounded-xl border border-border bg-background px-3.5 py-3">
@@ -75,7 +76,7 @@ export function BeautyReviewsPreview({
           <button
             type="button"
             onClick={onWriteReview}
-            className="shrink-0 whitespace-nowrap rounded-full border-[1.5px] border-foreground bg-white px-3.5 py-2 text-[12px] font-semibold text-foreground hover:bg-foreground hover:text-background"
+            className="shrink-0 whitespace-nowrap rounded-lg border border-foreground bg-foreground px-3.5 py-2 text-[12px] font-semibold text-background"
           >
             Write a review
           </button>
@@ -84,7 +85,10 @@ export function BeautyReviewsPreview({
     );
   }
 
-  // ── Populated state — unchanged from original ───────────────────────────
+  // ── Populated state — read first, act second (handoff §3f) ──────────────
+  // Action CTAs ("See all reviews" outline + "Write a review" filled dark)
+  // sit BELOW the reviews list, not in the section header. Users read the
+  // social proof first, then choose to contribute.
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center gap-3 border-b border-border pb-3 pt-2">
@@ -98,18 +102,9 @@ export function BeautyReviewsPreview({
             ))}
           </div>
           <div className="text-[11px] text-muted-foreground">
-            {reviewCount.toLocaleString()} verified reviews
+            {reviewCount.toLocaleString()} customer reviews
           </div>
         </div>
-        {onWriteReview ? (
-          <button
-            type="button"
-            onClick={onWriteReview}
-            className="ml-auto shrink-0 text-[12px] font-medium text-primary hover:underline"
-          >
-            Write a review
-          </button>
-        ) : null}
       </div>
 
       {reviews.map((rv, i) => (
@@ -131,14 +126,27 @@ export function BeautyReviewsPreview({
         </div>
       ))}
 
-      {onSeeAll ? (
-        <button
-          type="button"
-          onClick={onSeeAll}
-          className="mt-1 rounded-lg border-[1.5px] border-border bg-transparent px-3.5 py-2.5 text-[13px] font-semibold text-foreground"
-        >
-          See all {reviewCount.toLocaleString()} reviews
-        </button>
+      {onSeeAll || onWriteReview ? (
+        <div className="mt-1 flex gap-2">
+          {onSeeAll ? (
+            <button
+              type="button"
+              onClick={onSeeAll}
+              className="flex-1 rounded-lg border border-border bg-transparent px-3 py-2.5 text-[13px] font-semibold text-foreground"
+            >
+              See all {reviewCount.toLocaleString()} reviews
+            </button>
+          ) : null}
+          {onWriteReview ? (
+            <button
+              type="button"
+              onClick={onWriteReview}
+              className="flex-1 rounded-lg border border-foreground bg-foreground px-3 py-2.5 text-[13px] font-semibold text-background"
+            >
+              Write a review
+            </button>
+          ) : null}
+        </div>
       ) : null}
     </div>
   );

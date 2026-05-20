@@ -26,7 +26,6 @@ import type { PDPPayload } from '@/features/pdp/types';
 import { pdpTracking } from '@/features/pdp/tracking';
 import { normalizeDisplayImageUrl } from '@/lib/displayImage';
 import { cn } from '@/lib/utils';
-import { resolveReviewGate, reviewGateMessage, reviewGateResultToReason, type ReviewGateResult } from '@/lib/reviewGate';
 import { safeReturnUrl, withReturnParams } from '@/lib/returnUrl';
 import { isAuroraEmbedMode, postRequestCloseToParent } from '@/lib/auroraEmbed';
 
@@ -198,8 +197,7 @@ const trackReviewEvent = (event: string, payload: Record<string, unknown>) => {
 export default function WriteReviewPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const user = useAuthStore((s) => s.user);
-  const userId = user?.id;
+  const userId = useAuthStore((s) => s.user?.id);
   const productIdParam = (searchParams.get('product_id') || searchParams.get('productId') || '').trim() || null;
   const merchantIdParam = (searchParams.get('merchant_id') || searchParams.get('merchantId') || '').trim() || null;
   const entryParam = (searchParams.get('entry') || '').trim().toLowerCase();
@@ -247,23 +245,6 @@ export default function WriteReviewPage() {
     if (productIdParam) return 'in_app';
     return 'missing';
   }, [invitationToken, productIdParam]);
-
-  const requireLoginForReview = () => {
-    const redirect = `${window.location.pathname}${window.location.search}`;
-    toast.message('Please log in to write a review.');
-    router.push(`/login?redirect=${encodeURIComponent(redirect)}`);
-  };
-
-  const handleBlockedReviewGate = (gate: ReviewGateResult): boolean => {
-    if (gate === 'ALLOW_WRITE') return false;
-    if (gate === 'REQUIRE_LOGIN') {
-      requireLoginForReview();
-      return true;
-    }
-    const message = reviewGateMessage(gate);
-    if (message) toast.message(message);
-    return true;
-  };
 
   useEffect(() => {
     const fromHash = parseInvitationTokenFromHash(window.location.hash);
@@ -570,18 +551,11 @@ export default function WriteReviewPage() {
     if (mode === 'invitation') {
       if (!activeSubject) return;
 
-      const invitationGate = resolveReviewGate({
-        isAuthenticated: Boolean(user),
-        eligibility: invitationEligibility || null,
-      });
       trackReviewEvent('pdp_review_gate_total', {
         entry_surface: 'write_review_page',
         mode: 'invitation',
-        review_gate_reason: reviewGateResultToReason(invitationGate),
+        review_gate_reason: 'ELIGIBLE',
       });
-      if (handleBlockedReviewGate(invitationGate)) {
-        return;
-      }
       const invitationReason = String(invitationEligibility?.reason || '').toUpperCase();
       const canUseExistingReview =
         invitationReason === 'ALREADY_REVIEWED' && invitationExistingReviewId != null;
@@ -644,7 +618,11 @@ export default function WriteReviewPage() {
               failed_count: uploadSummary.failed,
               created_review: createdReview,
             });
-            toast.success(createdReview ? 'Review and photos submitted.' : 'Photos uploaded.');
+            toast.success(
+              createdReview
+                ? 'Review and photos submitted for Pivota review.'
+                : 'Photos submitted for Pivota review.',
+            );
           } else {
             trackUploadEvent('ugc_upload_partial_fail', {
               review_id: targetReviewId,
@@ -654,13 +632,19 @@ export default function WriteReviewPage() {
               created_review: createdReview,
             });
             if (uploadSummary.success > 0) {
-              toast.message(`Uploaded ${uploadSummary.success} photo(s); ${uploadSummary.failed} failed.`);
+              toast.message(
+                `Uploaded ${uploadSummary.success} photo(s) for Pivota review; ${uploadSummary.failed} failed.`,
+              );
             } else {
-              toast.error(createdReview ? 'Review submitted, but photo upload failed.' : 'Photo upload failed.');
+              toast.error(
+                createdReview
+                  ? 'Review submitted for Pivota review, but photo upload failed.'
+                  : 'Photo upload failed.',
+              );
             }
           }
         } else {
-          toast.success(createdReview ? 'Review submitted' : 'Review updated');
+          toast.success(createdReview ? 'Review submitted for Pivota review.' : 'Review updated for Pivota review.');
         }
         trackReviewEvent('review_submit_total', {
           entry_surface: 'write_review_page',
@@ -669,9 +653,9 @@ export default function WriteReviewPage() {
         });
       } catch (err: any) {
         if (err?.code === 'NOT_AUTHENTICATED' || err?.status === 401) {
-          requireLoginForReview();
+          toast.error('Review could not be submitted right now. Please try again.');
         } else if (err?.code === 'NOT_PURCHASER' || err?.status === 403) {
-          toast.error('Only purchasers can write a review.');
+          toast.error('Review could not be submitted right now. Please try again.');
         } else if (err?.code === 'ALREADY_REVIEWED' || err?.status === 409) {
           toast.error('You already reviewed this product.');
         } else {
@@ -692,18 +676,11 @@ export default function WriteReviewPage() {
 
     if (mode !== 'in_app' || !productIdParam || !inAppPdp?.payload) return;
 
-    const inAppGate = resolveReviewGate({
-      isAuthenticated: Boolean(user),
-      eligibility: inAppEligibility || null,
+    trackReviewEvent('pdp_review_gate_total', {
+      entry_surface: 'write_review_page',
+      mode: 'in_app',
+      review_gate_reason: 'ELIGIBLE',
     });
-      trackReviewEvent('pdp_review_gate_total', {
-        entry_surface: 'write_review_page',
-        mode: 'in_app',
-        review_gate_reason: reviewGateResultToReason(inAppGate),
-      });
-      if (handleBlockedReviewGate(inAppGate)) {
-      return;
-    }
     const inAppReason = String(inAppEligibility?.reason || '').toUpperCase();
     const canUseExistingReview = inAppReason === 'ALREADY_REVIEWED' && inAppExistingReviewId != null;
     if (canUseExistingReview && !hasMedia) {
@@ -811,7 +788,11 @@ export default function WriteReviewPage() {
             failed_count: uploadSummary.failed,
             created_review: createdReview,
           });
-          toast.success(createdReview ? 'Review and photos submitted.' : 'Photos uploaded.');
+          toast.success(
+            createdReview
+              ? 'Review and photos submitted for Pivota review.'
+              : 'Photos submitted for Pivota review.',
+          );
         } else {
           trackUploadEvent('ugc_upload_partial_fail', {
             review_id: targetReviewId,
@@ -821,14 +802,20 @@ export default function WriteReviewPage() {
             created_review: createdReview,
           });
           if (uploadSummary.success > 0) {
-            toast.message(`Uploaded ${uploadSummary.success} photo(s); ${uploadSummary.failed} failed.`);
+            toast.message(
+              `Uploaded ${uploadSummary.success} photo(s) for Pivota review; ${uploadSummary.failed} failed.`,
+            );
           } else {
-            toast.error(createdReview ? 'Review submitted, but photo upload failed.' : 'Photo upload failed.');
+            toast.error(
+              createdReview
+                ? 'Review submitted for Pivota review, but photo upload failed.'
+                : 'Photo upload failed.',
+            );
           }
         }
-        } else {
-          toast.success(createdReview ? 'Review submitted' : 'Review updated');
-        }
+      } else {
+        toast.success(createdReview ? 'Review submitted for Pivota review.' : 'Review updated for Pivota review.');
+      }
       trackReviewEvent('review_submit_total', {
         entry_surface: 'write_review_page',
         mode: 'in_app',
@@ -836,9 +823,9 @@ export default function WriteReviewPage() {
       });
     } catch (err: any) {
       if (err?.code === 'NOT_AUTHENTICATED' || err?.status === 401) {
-        requireLoginForReview();
+        toast.error('Review could not be submitted right now. Please try again.');
       } else if (err?.code === 'NOT_PURCHASER' || err?.status === 403) {
-        toast.error('Only purchasers can write a review.');
+        toast.error('Review could not be submitted right now. Please try again.');
       } else if (err?.code === 'ALREADY_REVIEWED' || err?.status === 409) {
         toast.error('You already reviewed this product.');
       } else {
@@ -855,16 +842,6 @@ export default function WriteReviewPage() {
       setSubmitting(false);
     }
   };
-
-  const invitationBlocked =
-    Boolean(invitationEligibility && !invitationEligibility.eligible) &&
-    !(
-      String(invitationEligibility?.reason || '').toUpperCase() === 'ALREADY_REVIEWED' &&
-      invitationExistingReviewId != null
-    );
-  const inAppBlocked =
-    Boolean(inAppEligibility && !inAppEligibility.eligible) &&
-    !(String(inAppEligibility?.reason || '').toUpperCase() === 'ALREADY_REVIEWED' && inAppExistingReviewId != null);
 
   const continueAfterSuccess = () => {
     if (returnUrl) {
@@ -915,7 +892,9 @@ export default function WriteReviewPage() {
       <div className="w-full max-w-2xl bg-white/80 backdrop-blur-md rounded-3xl shadow-lg p-6 md:p-8 space-y-6 border border-border">
         <div className="space-y-1">
           <h1 className="text-2xl md:text-3xl font-bold text-foreground">Write a review</h1>
-          <p className="text-sm text-muted-foreground">Your feedback helps other buyers and the merchant improve.</p>
+          <p className="text-sm text-muted-foreground">
+            Your review and photos go to Pivota for review before shoppers see them.
+          </p>
         </div>
 
         {loading && <div className="text-sm text-muted-foreground">Loading...</div>}
@@ -992,7 +971,7 @@ export default function WriteReviewPage() {
               <div className="rounded-2xl border border-border bg-white/50 p-4 text-sm">
                 <div className="font-semibold text-foreground">Thanks!</div>
                 <div className="text-muted-foreground mt-1">
-                  Review received (ID: {reviewId}). It may appear after moderation.
+                  Review received (ID: {reviewId}). Pivota is reviewing it before it appears to shoppers.
                 </div>
                 <div className="mt-3 flex flex-wrap items-center gap-2">
                   <Button
@@ -1013,31 +992,6 @@ export default function WriteReviewPage() {
                   >
                     Submit another (new link)
                   </Button>
-                </div>
-              </div>
-            ) : !user ? (
-              <div className="rounded-2xl border border-border bg-white/50 p-4 text-sm text-muted-foreground">
-                <div className="font-semibold text-foreground">Login required</div>
-                <div className="mt-1">Please log in to write a review.</div>
-                <div className="mt-3">
-                  <Button
-                    type="button"
-                    onClick={() => {
-                      const redirect = `${window.location.pathname}${window.location.search}`;
-                      router.push(`/login?redirect=${encodeURIComponent(redirect)}`);
-                    }}
-                  >
-                    Log in
-                  </Button>
-                </div>
-              </div>
-            ) : invitationBlocked ? (
-              <div className="rounded-2xl border border-border bg-white/50 p-4 text-sm text-muted-foreground">
-                <div className="font-semibold text-foreground">Not eligible</div>
-                <div className="mt-1">
-                  {String(invitationEligibility?.reason || '').toUpperCase() === 'ALREADY_REVIEWED'
-                    ? 'You already reviewed this product.'
-                    : 'Only purchasers can write a review.'}
                 </div>
               </div>
             ) : (
@@ -1081,7 +1035,7 @@ export default function WriteReviewPage() {
                   </div>
                   {entryParam === 'ugc_upload' ? (
                     <p className="text-xs text-muted-foreground">
-                      Add photos from your gallery. We keep successful uploads even if some files fail.
+                      Add photos from your gallery. Pivota reviews uploaded photos before they appear.
                     </p>
                   ) : null}
                   <input
@@ -1127,7 +1081,7 @@ export default function WriteReviewPage() {
 
                 <div className="flex items-center justify-between gap-3">
                   <div className="text-xs text-muted-foreground">
-                    We put your invitation token in the URL fragment to reduce leakage.
+                    Pivota reviews submissions before they appear publicly.
                   </div>
                   <Button type="submit" variant="gradient" disabled={submitting || !activeSubject}>
                     {submitting ? 'Submitting...' : 'Submit review'}
@@ -1139,32 +1093,7 @@ export default function WriteReviewPage() {
         )}
         {!loading && mode === 'in_app' && (
           <>
-            {!user ? (
-              <div className="rounded-2xl border border-border bg-white/50 p-4 text-sm text-muted-foreground">
-                <div className="font-semibold text-foreground">Login required</div>
-                <div className="mt-1">Please log in to write a review.</div>
-                <div className="mt-3">
-                  <Button
-                    type="button"
-                    onClick={() => {
-                      const redirect = `${window.location.pathname}${window.location.search}`;
-                      router.push(`/login?redirect=${encodeURIComponent(redirect)}`);
-                    }}
-                  >
-                    Log in
-                  </Button>
-                </div>
-              </div>
-            ) : inAppBlocked ? (
-              <div className="rounded-2xl border border-border bg-white/50 p-4 text-sm text-muted-foreground">
-                <div className="font-semibold text-foreground">Not eligible</div>
-                <div className="mt-1">
-                  {String(inAppEligibility?.reason || '').toUpperCase() === 'ALREADY_REVIEWED'
-                    ? 'You already reviewed this product.'
-                    : 'Only purchasers can write a review.'}
-                </div>
-              </div>
-            ) : inAppPdp?.payload ? (
+            {inAppPdp?.payload ? (
               <>
                 <div className="flex gap-4 items-center rounded-2xl border border-border bg-white/50 p-4">
                   <div className="relative h-16 w-16 rounded-xl overflow-hidden bg-black/5 shrink-0">
@@ -1191,7 +1120,7 @@ export default function WriteReviewPage() {
                   <div className="rounded-2xl border border-border bg-white/50 p-4 text-sm">
                     <div className="font-semibold text-foreground">Thanks!</div>
                     <div className="text-muted-foreground mt-1">
-                      Review received (ID: {reviewId}). It may appear after moderation.
+                      Review received (ID: {reviewId}). Pivota is reviewing it before it appears to shoppers.
                     </div>
                     <div className="mt-3">
                       <Button
@@ -1244,7 +1173,7 @@ export default function WriteReviewPage() {
                       </div>
                       {entryParam === 'ugc_upload' ? (
                         <p className="text-xs text-muted-foreground">
-                          Add photos from your gallery. We keep successful uploads even if some files fail.
+                          Add photos from your gallery. Pivota reviews uploaded photos before they appear.
                         </p>
                       ) : null}
                       <input

@@ -6,7 +6,6 @@ import {
   Package,
   ShoppingCart,
   History,
-  Sparkles,
   X,
   Sun,
   Moon,
@@ -82,7 +81,7 @@ export default function ChatSidebar({ isOpen, onClose }: ChatSidebarProps) {
         }`}
         style={{ borderRightWidth: '0.5px', borderColor: 'rgba(44,44,42,0.08)' }}
       >
-        {/* Header — matches TopBar */}
+        {/* Header — matches TopBar height; brand mark lives in the app-bar */}
         <div
           className="flex items-center justify-between px-3 bg-white"
           style={{
@@ -91,20 +90,13 @@ export default function ChatSidebar({ isOpen, onClose }: ChatSidebarProps) {
             borderColor: 'rgba(44,44,42,0.08)',
           }}
         >
-          <Link href="/" onClick={onClose} className="flex items-center gap-2">
-            <span
-              className="flex h-7 w-7 items-center justify-center rounded-full"
-              style={{ backgroundColor: '#534AB7' }}
-            >
-              <Sparkles className="h-3.5 w-3.5 text-white" strokeWidth={2.2} />
-            </span>
-            <div className="flex flex-col leading-tight">
-              <span className="text-[13px] font-semibold" style={{ color: '#2C2C2A' }}>Pivota</span>
-              <span className="flex items-center gap-1 text-[10px]" style={{ color: '#1D9E75' }}>
-                <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: '#1D9E75' }} />
-                AI online
-              </span>
-            </div>
+          <Link
+            href="/"
+            onClick={onClose}
+            className="flex min-w-0 items-center gap-2.5"
+            aria-label="Pivota home"
+          >
+            <span className="pv-logo pv-logo--gradient pv-logo--md" aria-hidden="true" />
           </Link>
           <button
             onClick={onClose}

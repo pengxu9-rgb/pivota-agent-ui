@@ -53,6 +53,9 @@ export interface ProductCardProps {
   reviewStats?: { rating?: number | null; count?: number | null } | null;
   aspect?: '4/5' | '1/1' | '3/4';
   className?: string;
+  /** Typeface for title + price. Default `'serif'` (editorial). Chat-surface
+   *  callers pass `'sans'` so recommendation tiles match the Geist-only chat. */
+  font?: 'serif' | 'sans';
 }
 
 const aspectClass: Record<NonNullable<ProductCardProps['aspect']>, string> = {
@@ -75,6 +78,7 @@ export function ProductCard({
   reviewStats,
   aspect = '4/5',
   className,
+  font = 'serif',
 }: ProductCardProps) {
   const handleSave = (event: React.MouseEvent) => {
     event.preventDefault();
@@ -142,11 +146,23 @@ export function ProductCard({
           </div>
         ) : null}
         <div className="flex items-start justify-between gap-3">
-          <Title as="p" className="line-clamp-2 text-[14px] leading-[1.25]">
-            {title}
-          </Title>
+          {font === 'sans' ? (
+            <p className="font-editorial-sans text-[14px] font-medium leading-[1.3] tracking-[-0.005em] text-ink">
+              {brand ? <span className="text-ink-muted">{brand} · </span> : null}{title}
+            </p>
+          ) : (
+            <Title as="p" className="line-clamp-2 text-[14px] leading-[1.25]">
+              {brand ? <span className="text-ink-muted">{brand} · </span> : null}{title}
+            </Title>
+          )}
           {priceLabel ? (
-            <Num value={priceLabel} className="flex-shrink-0 text-[15px]" />
+            font === 'sans' ? (
+              <span className="flex-shrink-0 font-editorial-sans text-[15px] font-medium tracking-[-0.01em] tabular-nums text-ink">
+                {priceLabel}
+              </span>
+            ) : (
+              <Num value={priceLabel} className="flex-shrink-0 text-[15px]" />
+            )
           ) : null}
         </div>
         {onQuickAction ? (

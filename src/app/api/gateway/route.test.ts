@@ -661,6 +661,111 @@ describe('/api/gateway checkout-safe proxy', () => {
     expect(res.headers.get('x-gateway-route')).not.toBe('pivota-canonical');
   });
 
+  it('overlays approved UGC review summaries onto get_pdp_v2 reviews_preview', async () => {
+    vi.stubEnv('SHOP_UPSTREAM_API_URL', 'https://invoke.example.com');
+    vi.stubEnv('REVIEWS_BACKEND_URL', 'https://reviews.example.com');
+
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(
+        jsonResponse({
+          status: 'success',
+          subject: {
+            type: 'product_group',
+            id: 'sig_abc123',
+            canonical_product_ref: {
+              merchant_id: 'external_seed',
+              platform: 'external_seed',
+              product_id: 'ext_123',
+            },
+          },
+          modules: [
+            {
+              type: 'reviews_preview',
+              data: {
+                scale: 5,
+                rating: 0,
+                review_count: 0,
+                status: 'unavailable',
+                unavailable_reason: 'no_approved_merchant_review_source_captured',
+                preview_items: [],
+                entry_points: {
+                  write_review: { label: 'Write a review' },
+                },
+              },
+            },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          review_summary: {
+            scale: 5,
+            rating: 5,
+            review_count: 1,
+            rating_count: 1,
+            preview_items: [
+              {
+                review_id: 9321,
+                rating: 5,
+                title: 'Pivota QA TEST',
+                text_snippet: 'Approved review snippet.',
+                media: [{ type: 'image', url: 'https://reviews.example.com/media/1' }],
+              },
+            ],
+          },
+        }),
+      );
+
+    const { POST } = await import('@/app/api/gateway/route');
+
+    const req = new Request('http://localhost/api/gateway', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        operation: 'get_pdp_v2',
+        payload: {
+          product_ref: { product_id: 'sig_abc123' },
+          include: ['reviews_preview'],
+        },
+      }),
+    });
+
+    const res = await POST(req as any);
+    const data = await res.json();
+    const reviews = data.modules.find((module: any) => module.type === 'reviews_preview');
+
+    expect(res.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[1]?.[0]).toBe('https://reviews.example.com/agent/shop/v1/invoke');
+    expect(JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body || '{}'))).toMatchObject({
+      operation: 'get_review_summary',
+      payload: {
+        sku: {
+          merchant_id: 'external_seed',
+          platform: 'external_seed',
+          platform_product_id: 'ext_123',
+          variant_id: null,
+        },
+      },
+    });
+    expect(reviews.data).toMatchObject({
+      status: 'available',
+      rating: 5,
+      review_count: 1,
+      entry_points: {
+        write_review: { label: 'Write a review' },
+      },
+      preview_items: [
+        {
+          review_id: 9321,
+          media: [{ type: 'image', url: 'https://reviews.example.com/media/1' }],
+        },
+      ],
+    });
+    expect(reviews.data.unavailable_reason).toBeUndefined();
+  });
+
   it('does NOT short-circuit get_pdp_v2 for non-sig_ product ids', async () => {
     vi.stubEnv('SHOP_UPSTREAM_API_URL', 'https://invoke.example.com');
     vi.stubEnv('PIVOTA_BACKEND_BASE_URL', 'https://canonical.example.com');

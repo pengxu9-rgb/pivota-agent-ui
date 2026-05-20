@@ -100,6 +100,7 @@ export type BeautyPDPMobileProps = {
   /** NEW: click handler for the "Write a review" CTA in the Reviews accordion. */
   onWriteReview?: () => void;
   onSeeAllReviews?: () => void;
+  productDetails?: React.ReactNode;
   ingredients?: React.ReactNode;
   howToUse?: React.ReactNode;
   shippingReturnsText?: React.ReactNode;
@@ -113,6 +114,10 @@ export type BeautyPDPMobileProps = {
   similar?: BeautySimilarItem[] | null;
   onSimilarClick?: (item: BeautySimilarItem, index: number) => void;
   onSimilarBuy?: (item: BeautySimilarItem, index: number) => void;
+  /** Auto-load callback fired when the user scrolls near the bottom of the similar section. */
+  onSimilarLoadMore?: () => void;
+  /** Ref forwarded to the auto-load sentinel div (desktop native-scroll path). */
+  similarSentinelRef?: React.MutableRefObject<HTMLDivElement | null>;
   // brand
   brandName?: string | null;
   brandHref?: string | null;
@@ -142,9 +147,24 @@ export function BeautyPDPMobile(props: BeautyPDPMobileProps) {
   const insightsRef = useRef<HTMLDivElement | null>(null);
   const reviewsRef = useRef<HTMLDivElement | null>(null);
   const similarRef = useRef<HTMLDivElement | null>(null);
+  const similarSentinelRef = useRef<HTMLDivElement | null>(null);
+  const onSimilarLoadMoreRef = useRef(props.onSimilarLoadMore);
   const [scrolled, setScrolled] = useState(false);
   const [tabsVisible, setTabsVisible] = useState(false);
   const [activeTab, setActiveTab] = useState('overview');
+
+  // Post-scroll breadcrumb: "brand · $price · title". Format the price the
+  // same way BeautyPriceRow does so the two surfaces never disagree.
+  let priceLabel: string | null = null;
+  try {
+    priceLabel = new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: props.currency || 'USD',
+      maximumFractionDigits: Number.isInteger(props.price) ? 0 : 2,
+    }).format(props.price);
+  } catch {
+    priceLabel = `$${props.price}`;
+  }
 
   const sectionRefs: Record<string, React.RefObject<HTMLDivElement | null>> = {
     overview: overviewRef,
@@ -175,6 +195,29 @@ export function BeautyPDPMobile(props: BeautyPDPMobileProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Keep the auto-load ref in sync on every render so the observer closure
+  // always calls the latest version without re-registering the observer.
+  onSimilarLoadMoreRef.current = props.onSimilarLoadMore;
+
+  useEffect(() => {
+    const sentinel = similarSentinelRef.current;
+    const scroller = scrollRef.current;
+    if (!sentinel || !scroller) return;
+    if (typeof IntersectionObserver === 'undefined') return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          onSimilarLoadMoreRef.current?.();
+        }
+      },
+      { root: scroller, rootMargin: '240px 0px' },
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const goToTab = (id: string) => {
     setActiveTab(id);
     const node = sectionRefs[id]?.current;
@@ -198,7 +241,9 @@ export function BeautyPDPMobile(props: BeautyPDPMobileProps) {
         scrolled={scrolled}
         onBack={props.onBack}
         onShare={props.onShare}
-        onSearch={props.onSearch}
+        brand={props.brand}
+        title={props.title}
+        priceLabel={priceLabel}
       />
       <BeautyStickyTabs
         visible={tabsVisible}
@@ -247,7 +292,7 @@ export function BeautyPDPMobile(props: BeautyPDPMobileProps) {
             />
           ) : null}
           {props.variantSelector ? (
-            <div className="px-[18px] pt-2.5">{props.variantSelector}</div>
+            <div className="px-4 pt-2.5">{props.variantSelector}</div>
           ) : null}
           {props.benefits?.length ? <BeautyBenefitsStrip benefits={props.benefits} /> : null}
           {props.offers.length > 1 ? (
@@ -294,6 +339,9 @@ export function BeautyPDPMobile(props: BeautyPDPMobileProps) {
         ) : null}
 
         <div ref={reviewsRef} className="mt-2.5">
+          {props.productDetails ? (
+            <BeautyAccordion title="Product details">{props.productDetails}</BeautyAccordion>
+          ) : null}
           {/* CHANGED: Reviews accordion renders unconditionally. The accordion
               header always shows "Reviews (N)"; BeautyReviewsPreview handles
               the 0-reviews state (compact "Write a review" tile). */}
@@ -339,11 +387,12 @@ export function BeautyPDPMobile(props: BeautyPDPMobileProps) {
             />
           </div>
         ) : null}
+        <div ref={similarSentinelRef} className="h-4" aria-hidden="true" />
 
         <div className="h-3" />
       </div>
 
-      <div className="absolute bottom-0 left-0 right-0 z-10">
+      <div className="fixed bottom-0 left-0 right-0 z-10">
         <BeautyMobileBuyBar
           unitPrice={props.price}
           currency={props.currency}

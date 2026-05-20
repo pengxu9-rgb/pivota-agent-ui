@@ -367,7 +367,7 @@ function TrackContent() {
 	          <div className="flex items-center gap-2">
 	            <Link href="/">
 	              <Image
-	                src="/pivota-logo-pink.png"
+	                src="/pivota-brand/icons/icon-gradient-256.png"
 	                alt="Pivota"
 	                width={40}
 	                height={40}

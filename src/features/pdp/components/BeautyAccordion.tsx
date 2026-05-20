@@ -27,7 +27,7 @@ export function BeautyAccordion({
         type="button"
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
-        className="flex w-full items-center justify-between px-[18px] py-4"
+        className="flex w-full items-center justify-between px-4 py-4"
       >
         <span className="flex items-center gap-2 text-[14px] font-semibold text-foreground">
           {title}
@@ -45,7 +45,7 @@ export function BeautyAccordion({
           </svg>
         </span>
       </button>
-      {open ? <div className="px-[18px] pb-4">{children}</div> : null}
+      {open ? <div className="px-4 pb-4">{children}</div> : null}
     </div>
   );
 }

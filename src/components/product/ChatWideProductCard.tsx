@@ -159,11 +159,8 @@ function ChatWideProductCardComponent({ product, onAddToCart, colorVariant = 'te
 
       {/* Text block */}
       <div className="min-w-0 flex-1">
-        {product.brand ? (
-          <p className="truncate text-[10px] text-[#2C2C2A]/40">{product.brand}</p>
-        ) : null}
         <p className="line-clamp-2 text-[12px] font-medium leading-[1.35] text-[#2C2C2A]">
-          {product.title}
+          {product.brand ? <span className="text-[#2C2C2A]/40">{product.brand} · </span> : null}{product.title}
         </p>
         {recommendationReason ? (
           <p className="mt-0.5 line-clamp-2 text-[10px] leading-[1.25] text-[#534AB7]">

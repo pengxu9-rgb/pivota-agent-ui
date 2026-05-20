@@ -35,7 +35,6 @@ import {
   getPdpV2,
   getSimilarProductsMainline,
   listQuestions,
-  postQuestion,
   type QuestionListItem,
   type ProductResponse,
   type UgcCapabilities,
@@ -90,7 +89,6 @@ import { buildProductHref } from '@/lib/productHref';
 import { buildProductVariants } from '@/features/pdp/utils/productVariants';
 import { getDisplayVariantLabel, isHiddenVariantForSelector } from '@/features/pdp/utils/variantLabels';
 import { cn } from '@/lib/utils';
-import { resolveReviewGate, reviewGateMessage, reviewGateResultToReason } from '@/lib/reviewGate';
 import { postRequestCloseToParent } from '@/lib/auroraEmbed';
 import { appendCurrentPathAsReturn, isExternalAgentEntry, resolveExternalAgentHomeUrl, safeReturnUrl } from '@/lib/returnUrl';
 import {
@@ -548,6 +546,25 @@ function buildInlineProductLineTargetPath(
   return `${pathname}${params.toString() ? `?${params.toString()}` : ''}`;
 }
 
+function buildSimilarTargetPath(
+  nextProductId: string,
+  nextMerchantId: string,
+  currentRelativePath: string | null,
+): string {
+  const targetHref = buildProductHref(nextProductId, nextMerchantId || undefined);
+  if (!currentRelativePath) return targetHref;
+  const [pathname, rawQuery = ''] = targetHref.split('?');
+  const params = new URLSearchParams(rawQuery);
+  if (
+    !params.get('return') &&
+    !params.get('return_url') &&
+    !params.get('returnUrl')
+  ) {
+    params.set('return', currentRelativePath);
+  }
+  return `${pathname}${params.toString() ? `?${params.toString()}` : ''}`;
+}
+
 function formatPrice(amount: number, currency: string) {
   const n = Number.isFinite(amount) ? amount : 0;
   const c = currency || 'USD';
@@ -556,6 +573,28 @@ function formatPrice(amount: number, currency: string) {
   } catch {
     return `$${n.toFixed(2)}`;
   }
+}
+
+function buildVisualSimilarItem(
+  item: RecommendationsData['items'][number],
+  displayCurrency: string,
+  currentRelativePath: string | null,
+) {
+  const merchantId = String(item.merchant_id || '').trim();
+  return {
+    id: item.product_id,
+    merchant_id: merchantId || null,
+    href: buildSimilarTargetPath(item.product_id, merchantId, currentRelativePath),
+    title: item.title,
+    image: item.image_url || '',
+    priceLabel: item.price
+      ? formatPrice(item.price.amount ?? 0, item.price.currency || displayCurrency)
+      : '',
+    brand: (typeof item.brand === 'string' ? item.brand.trim() : '') || null,
+    rating: item.rating ?? null,
+    reviews: item.review_count ?? null,
+    highlight: item.description || null,
+  };
 }
 
 function isPositivePriceAmount(amount: unknown): amount is number {
@@ -586,6 +625,40 @@ const LOW_CONFIDENCE_ACTIVE_INGREDIENT_BEAUTY_HINT_RE =
 function getCurrentRelativePath(): string | null {
   if (typeof window === 'undefined') return null;
   return `${window.location.pathname}${window.location.search}`;
+}
+
+function appendPdpChildRouteContext(params: URLSearchParams) {
+  if (typeof window === 'undefined') return;
+  const current = new URLSearchParams(window.location.search);
+  const explicitReturn =
+    current.get('return') ||
+    current.get('return_url') ||
+    current.get('returnUrl') ||
+    '';
+  const embedFromQuery = String(current.get('embed') || '').trim() === '1';
+  const entryFromQuery = String(current.get('entry') || '').trim().toLowerCase();
+  const isEmbed = embedFromQuery || isExternalAgentEntry(entryFromQuery);
+
+  if (explicitReturn.trim()) {
+    params.set('return', explicitReturn.trim());
+  } else if (!isEmbed) {
+    params.set('return', `${window.location.pathname}${window.location.search}`);
+  }
+
+  const passthroughKeys = [
+    'embed',
+    'entry',
+    'parent_origin',
+    'parentOrigin',
+    'aurora_uid',
+    'lang',
+    'source',
+  ];
+  for (const key of passthroughKeys) {
+    const value = String(current.get(key) || '').trim();
+    if (!value) continue;
+    if (!params.has(key)) params.set(key, value);
+  }
 }
 
 function resolveDefaultReviewScope(reviews: ReviewsPreviewData | null): string | null {
@@ -1492,9 +1565,6 @@ export function PdpContainer({
   const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const router = useRouter();
   const isDesktop = useIsDesktop();
-  const [questionOpen, setQuestionOpen] = useState(false);
-  const [questionText, setQuestionText] = useState('');
-  const [questionSubmitting, setQuestionSubmitting] = useState(false);
   const [ugcQuestions, setUgcQuestions] = useState<QuestionListItem[]>([]);
   const questionsFetchedProductIdRef = useRef<string>('');
   const latestProductGroupIdRef = useRef<string | null>(null);
@@ -2232,26 +2302,42 @@ export function PdpContainer({
   const navRowHeight = navVisible ? 36 : 0;
   const scrollMarginTop = headerHeight + navRowHeight + 14;
 
-  const ugcFromReviews =
-    reviews?.preview_items?.flatMap((item) => item.media || []) || [];
+  const normalizedReviewUgc = useMemo(
+    () =>
+      (reviews?.preview_items?.flatMap((item) => item.media || []) || []).filter(
+        (item) => item?.url,
+      ),
+    [reviews?.preview_items],
+  );
   // Keep gallery visible by falling back to product gallery media when UGC is sparse.
-  const ugcFromMedia = media?.items || [];
-  const normalizedReviewUgc = ugcFromReviews.filter((item) => item?.url);
-  const normalizedMediaUgc = ugcFromMedia.filter((item) => item?.url);
+  const normalizedMediaUgc = useMemo(
+    () => (media?.items || []).filter((item) => item?.url),
+    [media?.items],
+  );
 
   useEffect(() => {
     setUgcSnapshot(DEFAULT_UGC_SNAPSHOT);
   }, [payload.product.product_id]);
 
   useEffect(() => {
-    setUgcSnapshot((prev) =>
-      lockFirstUgcSource({
+    setUgcSnapshot((prev) => {
+      const next = lockFirstUgcSource({
         current: prev,
         reviewsItems: normalizedReviewUgc,
         mediaItems: normalizedMediaUgc,
-      }),
-    );
-  }, [normalizedMediaUgc, normalizedReviewUgc]);
+      });
+      if (next === prev) return prev;
+      if (
+        prev.locked === next.locked &&
+        prev.source === next.source &&
+        prev.items.length === next.items.length &&
+        prev.items.every((item, index) => item === next.items[index])
+      ) {
+        return prev;
+      }
+      return next;
+    });
+  }, [normalizedMediaUgc, normalizedReviewUgc, payload.product.product_id]);
 
   const ugcItems = useMemo(
     () =>
@@ -3197,12 +3283,14 @@ export function PdpContainer({
     };
   }, [productId]);
 
-  const openQuestionsHub = () => {
+  const openQuestionsHub = ({ ask = false }: { ask?: boolean } = {}) => {
     if (!productId) return;
     const params = new URLSearchParams();
     params.set('product_id', productId);
     if (productGroupId) params.set('product_group_id', productGroupId);
     if (merchantId) params.set('merchant_id', merchantId);
+    if (ask) params.set('ask', '1');
+    appendPdpChildRouteContext(params);
     router.push(`/community/questions?${params.toString()}`);
   };
 
@@ -3709,9 +3797,9 @@ export function PdpContainer({
     } as ReviewsPreviewData;
   }, [defaultReviewScope, mergedQuestions, reviews, selectedReviewScope]);
 
-  const canUploadMedia = Boolean(ugcCapabilities?.canUploadMedia);
-  const canWriteReview = Boolean(ugcCapabilities?.canWriteReview);
-  const canAskQuestion = Boolean(ugcCapabilities?.canAskQuestion);
+  const canUploadMedia = true;
+  const canWriteReview = true;
+  const canAskQuestion = true;
   const uploadReason = ugcCapabilities?.reasons?.upload;
   const reviewReason = ugcCapabilities?.reasons?.review;
   const questionReason = ugcCapabilities?.reasons?.question;
@@ -3722,50 +3810,7 @@ export function PdpContainer({
       ? 'anonymous'
       : reviewReason === 'ALREADY_REVIEWED'
         ? 'already_reviewed'
-        : canUploadMedia || canWriteReview
-          ? 'purchaser'
-          : 'non_purchaser';
-
-  const requireLogin = (intent: 'upload' | 'review' | 'question') => {
-    const redirect =
-      typeof window !== 'undefined'
-        ? `${window.location.pathname}${window.location.search}`
-        : '/';
-    const label =
-      intent === 'upload'
-        ? 'share media'
-        : intent === 'review'
-          ? 'write a review'
-          : 'ask a question';
-    toast.message(`Please log in to ${label}.`);
-    router.push(`/login?redirect=${encodeURIComponent(redirect)}`);
-  };
-
-  const appendReviewWriteContext = (params: URLSearchParams) => {
-    if (typeof window === 'undefined') return;
-    const current = new URLSearchParams(window.location.search);
-    const explicitReturn =
-      current.get('return') ||
-      current.get('return_url') ||
-      current.get('returnUrl') ||
-      '';
-    const embedFromQuery = String(current.get('embed') || '').trim() === '1';
-    const entryFromQuery = String(current.get('entry') || '').trim().toLowerCase();
-    const isEmbed = embedFromQuery || isExternalAgentEntry(entryFromQuery);
-
-    if (explicitReturn.trim()) {
-      params.set('return', explicitReturn.trim());
-    } else if (!isEmbed) {
-      params.set('return', `${window.location.pathname}${window.location.search}`);
-    }
-
-    const passthroughKeys = ['embed', 'entry', 'parent_origin', 'parentOrigin'];
-    for (const key of passthroughKeys) {
-      const value = String(current.get(key) || '').trim();
-      if (!value) continue;
-      if (!params.has(key)) params.set(key, value);
-    }
-  };
+        : 'open_submission';
 
   const handleUploadMedia = () => {
     pdpTracking.track('pdp_action_click', {
@@ -3774,29 +3819,15 @@ export function PdpContainer({
       user_state: ugcUserState,
       reason: uploadReason || null,
     });
-    if (canUploadMedia) {
-      const params = new URLSearchParams();
-      params.set('product_id', productId);
-      if (payload.product.merchant_id) params.set('merchant_id', payload.product.merchant_id);
-      params.set('entry', 'ugc_upload');
-      appendReviewWriteContext(params);
-      router.push(`/reviews/write?${params.toString()}`);
-      return;
-    }
-    if (uploadReason === 'NOT_AUTHENTICATED') {
-      requireLogin('upload');
-      return;
-    }
-    toast.message('Purchase required to share media.');
+    const params = new URLSearchParams();
+    params.set('product_id', productId);
+    if (payload.product.merchant_id) params.set('merchant_id', payload.product.merchant_id);
+    params.set('entry', 'ugc_upload');
+    appendPdpChildRouteContext(params);
+    router.push(`/reviews/write?${params.toString()}`);
   };
 
   const handleWriteReview = () => {
-    const reviewGate = resolveReviewGate({
-      isAuthenticated: reviewReason !== 'NOT_AUTHENTICATED',
-      canWriteReview,
-      reason: reviewReason || null,
-    });
-    const reviewGateReason = reviewGateResultToReason(reviewGate);
     pdpTracking.track('pdp_action_click', {
       action_type: 'open_embed',
       target: 'write_review',
@@ -3804,27 +3835,18 @@ export function PdpContainer({
       entry_surface: 'pdp',
       user_state: ugcUserState,
       reason: reviewReason || null,
-      review_gate_reason: reviewGateReason,
+      review_gate_reason: 'ELIGIBLE',
       metric: 'pdp_review_gate_total',
     });
-    if (reviewGate === 'ALLOW_WRITE') {
-      if (onWriteReview) {
-        onWriteReview();
-      } else {
-        const params = new URLSearchParams();
-        params.set('product_id', productId);
-        if (payload.product.merchant_id) params.set('merchant_id', payload.product.merchant_id);
-        appendReviewWriteContext(params);
-        router.push(`/reviews/write?${params.toString()}`);
-      }
+    if (onWriteReview) {
+      onWriteReview();
       return;
     }
-    if (reviewGate === 'REQUIRE_LOGIN') {
-      requireLogin('review');
-      return;
-    }
-    const message = reviewGateMessage(reviewGate);
-    if (message) toast.message(message);
+    const params = new URLSearchParams();
+    params.set('product_id', productId);
+    if (payload.product.merchant_id) params.set('merchant_id', payload.product.merchant_id);
+    appendPdpChildRouteContext(params);
+    router.push(`/reviews/write?${params.toString()}`);
   };
 
   const handleAskQuestion = () => {
@@ -3835,66 +3857,11 @@ export function PdpContainer({
       user_state: ugcUserState,
       reason: questionReason || null,
     });
-    if (canAskQuestion) {
-      setQuestionOpen(true);
-      return;
-    }
-    if (questionReason === 'NOT_AUTHENTICATED') {
-      requireLogin('question');
-      return;
-    }
     if (questionReason === 'RATE_LIMITED') {
       toast.message('Too many questions. Please try again in a minute.');
       return;
     }
-    requireLogin('question');
-  };
-
-  const submitQuestion = async () => {
-    if (questionSubmitting) return;
-    const question = questionText.trim();
-    if (!question) {
-      toast.message('Please enter a question.');
-      return;
-    }
-    if (!productId) {
-      toast.error('Missing product id.');
-      return;
-    }
-
-    setQuestionSubmitting(true);
-    try {
-      const res = await postQuestion({
-        productId,
-        ...(productGroupId ? { productGroupId } : {}),
-        question,
-      });
-      const qid = Number((res as any)?.question_id ?? (res as any)?.questionId ?? (res as any)?.id) || Date.now();
-      toast.success('Question submitted.');
-      setUgcQuestions((prev) => {
-        const next: QuestionListItem = {
-          question_id: qid,
-          question,
-          created_at: new Date().toISOString(),
-          replies: 0,
-        };
-        return [next, ...(prev || []).filter((it) => String(it?.question || '').trim() !== question)].slice(0, 10);
-      });
-      setQuestionText('');
-      setQuestionOpen(false);
-    } catch (err: any) {
-      if (err?.code === 'NOT_AUTHENTICATED' || err?.status === 401) {
-        requireLogin('question');
-        return;
-      }
-      if (err?.code === 'RATE_LIMITED' || err?.status === 429) {
-        toast.error('Too many questions. Please try again in a minute.');
-        return;
-      }
-      toast.error(err?.message || 'Failed to submit question.');
-    } finally {
-      setQuestionSubmitting(false);
-    }
+    openQuestionsHub({ ask: true });
   };
 
   // Cross-SKU product-line selector ("Shade"/"Size" axis across separate
@@ -4189,7 +4156,7 @@ export function PdpContainer({
         onUgcViewAll={() =>
           openViewer({ mode: 'ugc', source: ugcSnapshot.source || 'unknown', index: 0 })
         }
-        onUgcShare={canUploadMedia ? handleUploadMedia : undefined}
+        onUgcShare={handleUploadMedia}
         onUgcPhotoClick={(index) =>
           openViewer({ mode: 'ugc', source: ugcSnapshot.source || 'unknown', index, trackThumbnail: true })
         }
@@ -4250,29 +4217,51 @@ export function PdpContainer({
             />
           ) : null
         }
+        productDetails={
+          hasDetailsSection ? (
+            <BeautyDetailsSection
+              data={details}
+              product={payload.product}
+              media={media}
+              activeIngredients={null}
+              ingredientsInci={null}
+              howToUse={null}
+              hideLowConfidenceActiveIngredients={shouldHideLowConfidenceActiveIngredients}
+              suppressOverview={suppressOverviewInDetails}
+              showDetailMedia={!isExternalSeedProduct}
+              showProductInformation={!isExternalSeedProduct || hasDisplayableExternalSeedProductInformation}
+            />
+          ) : null
+        }
         similar={
           hasRecommendationItems
-            ? recommendations.items.slice(0, similarVisibleCount).map((it) => ({
-                id: it.product_id,
-                title: it.title,
-                image: it.image_url || '',
-                priceLabel: it.price
-                  ? formatPrice(it.price.amount ?? 0, it.price.currency || displayCurrency)
-                  : '',
-                rating: it.rating ?? null,
-                reviews: it.review_count ?? null,
-                highlight: it.description || null,
-              }))
+            ? recommendations.items
+                .slice(0, similarVisibleCount)
+                .map((it) => buildVisualSimilarItem(it, displayCurrency, currentRelativePath))
             : null
         }
         onSimilarClick={(item, index) => {
           pdpTracking.track('similar_click', {
             index,
             product_id: item.id,
+            merchant_id: item.merchant_id || null,
             source: pdpViewModel.sourceLocks.similar ? 'locked' : 'live',
           });
-          router.push(buildProductHref(item.id));
         }}
+        onSimilarBuy={(_, index) => {
+          const sourceItem = recommendations.items[index];
+          if (!sourceItem) return;
+          void handleSimilarQuickAction(sourceItem, index);
+        }}
+        onSimilarLoadMore={
+          similarVisibleCount < similarItems.length ||
+          (similarHasMore && similarItems.length < SIMILAR_MAX)
+            ? () => {
+                void loadMoreSimilarProducts('auto');
+              }
+            : undefined
+        }
+        similarSentinelRef={isBeautyDesktop ? similarAutoLoadSentinelRef : undefined}
         buyNowLabel={actionsByType.buy_now || 'Buy now'}
         inStock={effectiveIsInStock}
         quantity={resolvedQuantity}
@@ -4428,7 +4417,7 @@ export function PdpContainer({
         onUgcViewAll={() =>
           openViewer({ mode: 'ugc', source: ugcSnapshot.source || 'unknown', index: 0 })
         }
-        onUgcShare={canUploadMedia ? handleUploadMedia : undefined}
+        onUgcShare={handleUploadMedia}
         onUgcPhotoClick={(index) =>
           openViewer({ mode: 'ugc', source: ugcSnapshot.source || 'unknown', index, trackThumbnail: true })
         }
@@ -4461,26 +4450,23 @@ export function PdpContainer({
         brandHref={brandHref}
         similar={
           hasRecommendationItems
-            ? recommendations.items.slice(0, similarVisibleCount).map((it) => ({
-                id: it.product_id,
-                title: it.title,
-                image: it.image_url || '',
-                priceLabel: it.price
-                  ? formatPrice(it.price.amount ?? 0, it.price.currency || displayCurrency)
-                  : '',
-                rating: it.rating ?? null,
-                reviews: it.review_count ?? null,
-                highlight: it.description || null,
-              }))
+            ? recommendations.items
+                .slice(0, similarVisibleCount)
+                .map((it) => buildVisualSimilarItem(it, displayCurrency, currentRelativePath))
             : null
         }
         onSimilarClick={(item, index) => {
           pdpTracking.track('similar_click', {
             index,
             product_id: item.id,
+            merchant_id: item.merchant_id || null,
             source: pdpViewModel.sourceLocks.similar ? 'locked' : 'live',
           });
-          router.push(buildProductHref(item.id));
+        }}
+        onSimilarBuy={(_, index) => {
+          const sourceItem = recommendations.items[index];
+          if (!sourceItem) return;
+          void handleSimilarQuickAction(sourceItem, index);
         }}
         buyNowLabel={actionsByType.buy_now || 'Buy now'}
         inStock={effectiveIsInStock}
@@ -4592,7 +4578,7 @@ export function PdpContainer({
         onUgcViewAll={() =>
           openViewer({ mode: 'ugc', source: ugcSnapshot.source || 'unknown', index: 0 })
         }
-        onUgcShare={canUploadMedia ? handleUploadMedia : undefined}
+        onUgcShare={handleUploadMedia}
         onUgcPhotoClick={(index) =>
           openViewer({ mode: 'ugc', source: ugcSnapshot.source || 'unknown', index, trackThumbnail: true })
         }
@@ -4623,26 +4609,23 @@ export function PdpContainer({
         brandHref={brandHref}
         similar={
           hasRecommendationItems
-            ? recommendations.items.slice(0, similarVisibleCount).map((it) => ({
-                id: it.product_id,
-                title: it.title,
-                image: it.image_url || '',
-                priceLabel: it.price
-                  ? formatPrice(it.price.amount ?? 0, it.price.currency || displayCurrency)
-                  : '',
-                rating: it.rating ?? null,
-                reviews: it.review_count ?? null,
-                highlight: it.description || null,
-              }))
+            ? recommendations.items
+                .slice(0, similarVisibleCount)
+                .map((it) => buildVisualSimilarItem(it, displayCurrency, currentRelativePath))
             : null
         }
         onSimilarClick={(item, index) => {
           pdpTracking.track('similar_click', {
             index,
             product_id: item.id,
+            merchant_id: item.merchant_id || null,
             source: pdpViewModel.sourceLocks.similar ? 'locked' : 'live',
           });
-          router.push(buildProductHref(item.id));
+        }}
+        onSimilarBuy={(_, index) => {
+          const sourceItem = recommendations.items[index];
+          if (!sourceItem) return;
+          void handleSimilarQuickAction(sourceItem, index);
         }}
         buyNowLabel={actionsByType.buy_now || 'Buy now'}
         inStock={effectiveIsInStock}
@@ -5642,52 +5625,6 @@ export function PdpContainer({
           }
         }}
       />
-      {questionOpen ? (
-        <div className="fixed inset-0 z-[2147483647] flex items-end lg:items-center justify-center bg-black/40 px-3 py-6">
-          <div className="w-full max-w-md lg:max-w-lg rounded-2xl bg-white p-4 shadow-xl">
-            <div className="flex items-center justify-between">
-              <h3 className="text-base font-semibold">Ask a question</h3>
-              <button
-                type="button"
-                className="h-8 w-8 rounded-full border border-border text-muted-foreground"
-                onClick={() => {
-                  if (!questionSubmitting) setQuestionOpen(false);
-                }}
-                aria-label="Close"
-              >
-                ×
-              </button>
-            </div>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Ask about sizing, materials, shipping, or anything else.
-            </p>
-            <textarea
-              className="mt-3 w-full min-h-[120px] rounded-xl border border-border bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--focus-ring)]"
-              placeholder="Type your question…"
-              value={questionText}
-              onChange={(e) => setQuestionText(e.target.value)}
-              disabled={questionSubmitting}
-            />
-            <div className="mt-3 flex gap-2">
-              <Button
-                variant="outline"
-                className="flex-1 rounded-xl"
-                disabled={questionSubmitting}
-                onClick={() => setQuestionOpen(false)}
-              >
-                Cancel
-              </Button>
-              <Button
-                className="flex-1 rounded-xl"
-                disabled={questionSubmitting}
-                onClick={submitQuestion}
-              >
-                {questionSubmitting ? 'Submitting…' : 'Submit'}
-              </Button>
-            </div>
-          </div>
-        </div>
-      ) : null}
       <GenericColorSheet
         open={showColorSheet}
         onClose={() => setShowColorSheet(false)}
