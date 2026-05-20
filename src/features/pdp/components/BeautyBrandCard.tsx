@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { ChevronRight } from 'lucide-react';
+import { buildBrandHref } from '@/lib/brandRoute';
 
 /**
  * Brand "Explore the full collection" card — Brand Kit v2.0.
@@ -33,6 +34,7 @@ export function BeautyBrandCard({
   const name = String(brandName || '').trim();
   if (!name) return null;
   const monogram = getBrandMonogram(name);
+  const href = brandHref || buildBrandHref({ brandName: name });
 
   const inner = (
     <>
@@ -62,12 +64,9 @@ export function BeautyBrandCard({
   const className =
     'mx-4 mt-2.5 flex items-center gap-3 rounded-2xl border border-border bg-white px-3.5 py-3 transition-opacity duration-150 active:opacity-75';
 
-  if (brandHref) {
-    return (
-      <Link href={brandHref} prefetch={false} className={className}>
-        {inner}
-      </Link>
-    );
-  }
-  return <div className={className}>{inner}</div>;
+  return (
+    <Link href={href} prefetch={false} className={className}>
+      {inner}
+    </Link>
+  );
 }

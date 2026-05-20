@@ -113,6 +113,25 @@ describe('Reviews text rendering', () => {
     expect(screen.queryByText('Fragrance and makeup')).not.toBeInTheDocument();
   });
 
+  it('falls back to a brand landing link when brandHref is missing', () => {
+    render(
+      <BeautyReviewsSection
+        data={{
+          ...baseReviewsData,
+          brand_card: {
+            name: 'Tom Ford Beauty',
+            subtitle: 'Fragrance and makeup',
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByRole('link', { name: /Tom Ford Beauty/i })).toHaveAttribute(
+      'href',
+      '/brands/tom-ford-beauty?name=Tom+Ford+Beauty&subtitle=Fragrance+and+makeup',
+    );
+  });
+
   it('renders review scope label and tabs when product-line aggregation is present', () => {
     render(
       <BeautyReviewsSection

@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { Star, ChevronRight, Sparkles, Plus } from 'lucide-react';
 import type { ReviewsPreviewData } from '@/features/pdp/types';
 import { shouldBypassNextImageOptimizer } from '@/features/pdp/utils/pdpImageUrls';
+import { buildBrandHref } from '@/lib/brandRoute';
 import { resolveQuestionDisplay } from '@/lib/questionDisplay';
 import { cn } from '@/lib/utils';
 
@@ -114,6 +115,12 @@ export function BeautyReviewsSection({
   const scopeTabs = Array.isArray(data.tabs) ? data.tabs.filter((tab) => tab?.id && tab?.label) : [];
   const resolvedBrandName = String(data.brand_card?.name || brandName || '').trim();
   const brandMonogram = getBrandMonogram(resolvedBrandName);
+  const resolvedBrandHref = resolvedBrandName
+    ? brandHref || buildBrandHref({
+        brandName: resolvedBrandName,
+        subtitle: data.brand_card?.subtitle || null,
+      })
+    : '';
 
   return (
     <div className="py-4">
@@ -378,9 +385,9 @@ export function BeautyReviewsSection({
       ) : null}
 
       {resolvedBrandName ? (
-        brandHref ? (
+        resolvedBrandHref ? (
           <Link
-            href={brandHref}
+            href={resolvedBrandHref}
             prefetch={false}
             className="mt-4 mx-2.5 flex items-center gap-3 rounded-[20px] border border-border/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(248,246,242,0.98))] px-3.5 py-3 transition-colors hover:border-primary/40 hover:bg-[linear-gradient(180deg,rgba(255,255,255,1),rgba(250,248,244,1))] sm:mx-3"
           >
@@ -393,18 +400,7 @@ export function BeautyReviewsSection({
             </div>
             <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
           </Link>
-        ) : (
-          <div className="mt-4 mx-2.5 flex items-center gap-3 rounded-[20px] border border-border/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(248,246,242,0.98))] px-3.5 py-3 sm:mx-3">
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-border/80 bg-white/90 text-[11px] font-semibold tracking-[0.18em] text-foreground shadow-sm">
-              {brandMonogram}
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-semibold text-foreground">{resolvedBrandName}</p>
-              <p className="mt-1 text-[12px] text-muted-foreground">Explore the full collection</p>
-            </div>
-            <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
-          </div>
-        )
+        ) : null
       ) : null}
     </div>
   );
