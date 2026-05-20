@@ -987,7 +987,7 @@ function AssistantMessageRow({
                   <ProductCard
                     image={normalizeDisplayImageUrl(product.image_url, '/placeholder.svg')}
                     imageAlt={product.title}
-                    brand={product.merchant_name || null}
+                    brand={product.brand || null}
                     title={product.title}
                     priceLabel={formatPriceLabel(product.price, product.currency)}
                     onSave={() => onAddToCart(product)}
