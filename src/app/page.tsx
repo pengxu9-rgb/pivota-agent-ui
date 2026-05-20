@@ -635,8 +635,8 @@ function HomePageApp() {
               <Menu size={20} strokeWidth={1.6} />
             </button>
           </div>
-          {/* Brand mark — centered */}
-          <Link href="/" className="absolute left-1/2 -translate-x-1/2 flex items-center gap-2" aria-label="Pivota home">
+          {/* Brand mark — centered on mobile; hidden on desktop (sidebar shows it) */}
+          <Link href="/" className="lg:hidden absolute left-1/2 -translate-x-1/2 flex items-center gap-2" aria-label="Pivota home">
             <span className="pv-logo pv-logo--gradient pv-logo--md" aria-hidden="true" />
             <span className="pv-wordmark pv-wordmark--sm">Pivota</span>
           </Link>
