@@ -13,9 +13,22 @@ import {
 } from './productHref';
 
 describe('productHref helpers', () => {
-  it('drops external_seed merchant ids from canonical product URLs', () => {
-    expect(normalizeProductRouteMerchantId('external_seed')).toBeUndefined();
+  it('drops external_seed merchant ids only when the product_id lets PDP infer the source', () => {
+    // Canonical and ext_-prefixed ids let PDP infer external_seed without the query param.
+    expect(normalizeProductRouteMerchantId('external_seed', 'sig_abc')).toBeUndefined();
+    expect(normalizeProductRouteMerchantId('external_seed', 'ext_123')).toBeUndefined();
+    expect(normalizeProductRouteMerchantId('external_seed', 'ext:abc')).toBeUndefined();
     expect(buildProductHref('ext_123', 'external_seed')).toBe('/products/ext_123');
+
+    // Non-inferable ids (e.g. domain:hash external seeds) must keep the merchant_id
+    // so PDP can resolve identity.
+    expect(normalizeProductRouteMerchantId('external_seed', 'ulta:hash')).toBe('external_seed');
+    expect(buildProductHref('ulta:hash', 'external_seed')).toBe(
+      '/products/ulta%3Ahash?merchant_id=external_seed',
+    );
+
+    // No product_id context → preserve external_seed (route-level safety).
+    expect(normalizeProductRouteMerchantId('external_seed')).toBe('external_seed');
   });
 
   it('preserves scoped merchant ids for real merchants', () => {
