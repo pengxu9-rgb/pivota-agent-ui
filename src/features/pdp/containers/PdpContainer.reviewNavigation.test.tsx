@@ -217,6 +217,76 @@ describe('PdpContainer review navigation context', () => {
     expect(String(pushMock.mock.calls[0]?.[0] || '')).toContain('/reviews/write?');
   });
 
+  it('opens ask-question route with the ask modal flag and local return context', () => {
+    window.history.replaceState(null, '', '/products/P001?merchant_id=merch_test');
+
+    render(
+      <PdpContainer
+        payload={payload}
+        mode="generic"
+        onAddToCart={() => {}}
+        onBuyNow={() => {}}
+        ugcCapabilities={{
+          canUploadMedia: true,
+          canWriteReview: true,
+          canAskQuestion: true,
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /ask a question/i }));
+    expect(pushMock).toHaveBeenCalledTimes(1);
+
+    const href = String(pushMock.mock.calls[0]?.[0] || '');
+    expect(href.startsWith('/community/questions?')).toBe(true);
+    const query = href.split('?')[1] || '';
+    const sp = new URLSearchParams(query);
+    expect(sp.get('product_id')).toBe('P001');
+    expect(sp.get('merchant_id')).toBe('merch_test');
+    expect(sp.get('ask')).toBe('1');
+    expect(sp.get('return')).toBe('/products/P001?merchant_id=merch_test');
+  });
+
+  it('preserves embed context when opening ask-question route', () => {
+    window.history.replaceState(
+      null,
+      '',
+      '/products/P001?embed=1&entry=aurora_chatbox&parent_origin=https%3A%2F%2Faurora.pivota.cc&aurora_uid=uid_1&lang=zh-CN&source=aurora_orders',
+    );
+
+    render(
+      <PdpContainer
+        payload={payload}
+        mode="generic"
+        onAddToCart={() => {}}
+        onBuyNow={() => {}}
+        ugcCapabilities={{
+          canUploadMedia: true,
+          canWriteReview: true,
+          canAskQuestion: true,
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /ask a question/i }));
+    expect(pushMock).toHaveBeenCalledTimes(1);
+
+    const href = String(pushMock.mock.calls[0]?.[0] || '');
+    const query = href.split('?')[1] || '';
+    const sp = new URLSearchParams(query);
+    expect(href.startsWith('/community/questions?')).toBe(true);
+    expect(sp.get('product_id')).toBe('P001');
+    expect(sp.get('merchant_id')).toBe('merch_test');
+    expect(sp.get('ask')).toBe('1');
+    expect(sp.get('embed')).toBe('1');
+    expect(sp.get('entry')).toBe('aurora_chatbox');
+    expect(sp.get('parent_origin')).toBe('https://aurora.pivota.cc');
+    expect(sp.get('aurora_uid')).toBe('uid_1');
+    expect(sp.get('lang')).toBe('zh-CN');
+    expect(sp.get('source')).toBe('aurora_orders');
+    expect(sp.get('return')).toBeNull();
+  });
+
   it('back button prefers safe return query target', () => {
     window.history.replaceState(
       null,
