@@ -80,6 +80,8 @@ import { FashionPDPMobile } from '@/features/pdp/containers/FashionPDPMobile';
 import { FashionPDPDesktop } from '@/features/pdp/containers/FashionPDPDesktop';
 import { ElectronicsPDPMobile } from '@/features/pdp/containers/ElectronicsPDPMobile';
 import { ElectronicsPDPDesktop } from '@/features/pdp/containers/ElectronicsPDPDesktop';
+import { GenericPDPMobile } from '@/features/pdp/containers/GenericPDPMobile';
+import { GenericPDPDesktop } from '@/features/pdp/containers/GenericPDPDesktop';
 import { BeautyVariantSelector } from '@/features/pdp/components/BeautyVariantSelector';
 import type { BeautyInsightsData } from '@/features/pdp/components/BeautyPivotaInsights';
 import { DEFAULT_UGC_SNAPSHOT, lockFirstUgcSource, mergeUgcItems } from '@/features/pdp/state/freezePolicy';
@@ -1735,6 +1737,8 @@ export function PdpContainer({
   const isFashionDesktop = resolvedMode === 'fashion' && isDesktop;
   const isElectronicsMobile = resolvedMode === 'electronics' && !isDesktop;
   const isElectronicsDesktop = resolvedMode === 'electronics' && isDesktop;
+  const isGenericMobile = resolvedMode === 'generic' && !isDesktop;
+  const isGenericDesktop = resolvedMode === 'generic' && isDesktop;
 
   const media = getModuleData<MediaGalleryData>(payload, 'media_gallery');
   const pricePromo = getModuleData<PricePromoData>(payload, 'price_promo');
@@ -4659,6 +4663,150 @@ export function PdpContainer({
         buyNowLabel={actionsByType.buy_now || 'Buy now'}
         inStock={effectiveIsInStock}
         quantity={resolvedQuantity}
+        onQtyChange={(next) => setQuantity(next)}
+        onAddToCart={() => {
+          pdpTracking.track('pdp_action_click', { action_type: 'add_to_cart', variant_id: selectedVariant.variant_id });
+          dispatchPdpAction('add_to_cart', {
+            variant: selectedVariant,
+            quantity: resolvedQuantity,
+            merchant_id: effectiveMerchantId,
+            product_id: effectiveProductId || undefined,
+            offer_id: selectedOffer?.offer_id || undefined,
+            onAddToCart,
+          });
+        }}
+        onBuyNow={() => {
+          pdpTracking.track('pdp_action_click', { action_type: 'buy_now', variant_id: selectedVariant.variant_id });
+          dispatchPdpAction('buy_now', {
+            variant: selectedVariant,
+            quantity: resolvedQuantity,
+            merchant_id: effectiveMerchantId,
+            product_id: effectiveProductId || undefined,
+            offer_id: selectedOffer?.offer_id || undefined,
+            onBuyNow,
+          });
+        }}
+        onBack={handleBack}
+        onShare={handleShare}
+        onSearch={() => router.push('/')}
+      />
+      </>
+    );
+  }
+
+  const useStandardGenericShell =
+    process.env.NEXT_PUBLIC_GENERIC_PDP_USE_STANDARD_SHELL !== 'false';
+  if ((isGenericMobile || isGenericDesktop) && useStandardGenericShell) {
+    const GenericShell = isGenericDesktop ? GenericPDPDesktop : GenericPDPMobile;
+    return (
+      <>
+      <GenericShell
+        brand={payload.product.brand?.name}
+        title={payload.product.title}
+        subtitle={payload.product.subtitle}
+        rating={reviews ? (reviews.rating / (reviews.scale || 5)) * 5 : null}
+        reviewCount={reviews?.review_count}
+        price={displayPriceAmount}
+        compareAt={compareAmount}
+        discountPct={discountPercent}
+        currency={displayCurrency}
+        galleryImages={galleryItems.map((m) => m.url).filter(Boolean)}
+        onOpenViewer={(index) =>
+          setMediaViewer({ isOpen: true, mode: 'official', source: 'media_gallery', initialIndex: index })
+        }
+        variantSelector={productLineSelector || null}
+        offers={offers}
+        selectedVariant={selectedVariant}
+        selectedOfferId={selectedOffer?.offer_id || null}
+        bestPriceOfferId={variantAwareBestPriceOfferId || payload.best_price_offer_id || null}
+        primaryMerchantId={payload.product.merchant_id || null}
+        onSelectOffer={(offerId) => {
+          setSelectedOfferId(offerId);
+          pdpTracking.track('pdp_action_click', { action_type: 'select_offer', offer_id: offerId });
+        }}
+        etaRange={effectiveShippingEta as [number, number] | undefined}
+        shippingMethodLabel={selectedOffer?.shipping?.method_label || null}
+        freeShipping={
+          typeof selectedOffer?.shipping?.cost?.amount === 'number'
+            ? selectedOffer.shipping.cost.amount === 0
+            : null
+        }
+        returnWindowDays={effectiveReturns?.return_window_days || null}
+        freeReturns={effectiveReturns?.free_returns ?? null}
+        shippingSellerLabel={selectedOffer?.merchant_name || null}
+        product={payload.product as any}
+        quantity={resolvedQuantity}
+        recentPurchases={recentPurchases.map((rp) => ({
+          user: rp.user_label,
+          variant: rp.variant_label || '',
+          time: rp.time_label || '',
+        }))}
+        recentPurchasesTotal={recentPurchases.length || null}
+        customerPhotos={ugcItems.map((u) => u.url).filter(Boolean)}
+        customerPhotosTotal={ugcItems.length || null}
+        onUgcViewAll={() =>
+          openViewer({ mode: 'ugc', source: ugcSnapshot.source || 'unknown', index: 0 })
+        }
+        onUgcShare={handleUploadMedia}
+        onUgcPhotoClick={(index) =>
+          openViewer({ mode: 'ugc', source: ugcSnapshot.source || 'unknown', index, trackThumbnail: true })
+        }
+        bundleComposition={bundleComposition || null}
+        onBundleComponentClick={(item, index) => {
+          pdpTracking.track('bundle_component_click', {
+            index,
+            product_id: item.product_id,
+            merchant_id: item.merchant_id || null,
+          });
+        }}
+        reviews={
+          reviews?.preview_items?.length
+            ? reviews.preview_items.map((pi) => ({
+                name: pi.author_label || 'Reviewer',
+                rating: pi.rating,
+                title: pi.title || null,
+                body: pi.text_snippet || null,
+              }))
+            : null
+        }
+        onSeeAllReviews={onSeeAllReviews}
+        onWriteReview={handleWriteReview}
+        questions={mergedQuestions}
+        onAskQuestion={handleAskQuestion}
+        canAskQuestion={canAskQuestion}
+        onSeeAllQuestions={() => {
+          pdpTracking.track('pdp_action_click', { action_type: 'open_embed', target: 'open_questions' });
+          openQuestionsHub();
+        }}
+        onOpenQuestion={(questionId) => {
+          pdpTracking.track('pdp_action_click', { action_type: 'open_embed', target: 'open_question_thread' });
+          openQuestionThread(questionId);
+        }}
+        brandName={payload.product.brand?.name}
+        brandHref={brandHref}
+        similar={
+          hasRecommendationItems
+            ? recommendations.items
+                .slice(0, similarVisibleCount)
+                .map((it) => buildVisualSimilarItem(it, displayCurrency, currentRelativePath))
+            : null
+        }
+        onSimilarClick={(item, index) => {
+          pdpTracking.track('similar_click', {
+            index,
+            product_id: item.id,
+            merchant_id: item.merchant_id || null,
+            source: pdpViewModel.sourceLocks.similar ? 'locked' : 'live',
+          });
+        }}
+        onSimilarBuy={(_, index) => {
+          const sourceItem = recommendations.items[index];
+          if (!sourceItem) return;
+          void handleSimilarQuickAction(sourceItem, index);
+        }}
+        similarSentinelRef={isGenericDesktop ? similarAutoLoadSentinelRef : undefined}
+        buyNowLabel={actionsByType.buy_now || 'Buy now'}
+        inStock={effectiveIsInStock}
         onQtyChange={(next) => setQuantity(next)}
         onAddToCart={() => {
           pdpTracking.track('pdp_action_click', { action_type: 'add_to_cart', variant_id: selectedVariant.variant_id });

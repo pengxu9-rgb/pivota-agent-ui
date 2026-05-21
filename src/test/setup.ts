@@ -1,5 +1,10 @@
 import '@testing-library/jest-dom/vitest';
 
+// Default tests to the legacy generic PDP layout; the new GenericPDPMobile/Desktop
+// shell migration is gated on this env var. Individual tests for the new shell
+// override via vi.stubEnv.
+process.env.NEXT_PUBLIC_GENERIC_PDP_USE_STANDARD_SHELL = 'false';
+
 const toConsoleText = (args: unknown[]): string =>
   args
     .map((item) => {
