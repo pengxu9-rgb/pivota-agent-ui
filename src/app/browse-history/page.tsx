@@ -43,6 +43,7 @@ function readLocalHistory(): HistoryItem[] {
         merchant_id:
           item?.merchant_id == null ? undefined : String(item.merchant_id).trim() || undefined,
         title: String(item?.title || 'Untitled product').trim() || 'Untitled product',
+        brand: item?.brand == null ? undefined : String(item.brand).trim() || undefined,
         price: priceFromHistoryItem(item),
         image: String(item?.image || item?.image_url || '/placeholder.svg').trim() || '/placeholder.svg',
         description:
@@ -75,6 +76,7 @@ function mapRemoteHistory(items: any[]): HistoryItem[] {
       merchant_id:
         item?.merchant_id == null ? undefined : String(item.merchant_id).trim() || undefined,
       title: String(item?.title || 'Untitled product').trim() || 'Untitled product',
+      brand: item?.brand == null ? undefined : String(item.brand).trim() || undefined,
       price: priceFromHistoryItem(item),
       image: String(item?.image_url || '/placeholder.svg').trim() || '/placeholder.svg',
       description:
@@ -256,6 +258,7 @@ export default function BrowseHistoryPage() {
                   product_id={item.product_id}
                   merchant_id={item.merchant_id}
                   title={item.title}
+                  brand={item.brand}
                   price={item.price}
                   image={item.image}
                   description={item.description}

@@ -44,7 +44,7 @@ export function formatProductCardTitle(
 }
 
 // `product.brand` can be a string OR `{ name: string }` (PDP shape vs catalog).
-function readBrandName(brand: unknown): string {
+export function readBrandName(brand: unknown): string {
   if (!brand) return '';
   if (typeof brand === 'string') return brand.trim();
   if (typeof brand === 'object' && brand !== null) {

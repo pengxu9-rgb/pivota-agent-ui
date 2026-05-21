@@ -2,6 +2,7 @@ export interface HistoryItem {
   product_id: string;
   merchant_id?: string;
   title: string;
+  brand?: string;
   price: number;
   image: string;
   description?: string;

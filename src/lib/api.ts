@@ -3639,6 +3639,7 @@ export type BrowseHistoryEventInput = {
   product_id: string;
   merchant_id?: string | null;
   title?: string | null;
+  brand?: string | null;
   price?: number | null;
   currency?: string | null;
   image_url?: string | null;
@@ -3650,6 +3651,7 @@ export type BrowseHistoryItem = {
   product_id: string;
   merchant_id?: string | null;
   title: string;
+  brand?: string | null;
   price: number;
   currency: string;
   image_url: string;
@@ -3680,6 +3682,7 @@ export async function recordBrowseHistoryEvent(
         product_id: productId,
         merchant_id: payload.merchant_id == null ? null : String(payload.merchant_id).trim() || null,
         title: payload.title == null ? null : String(payload.title),
+        brand: payload.brand == null ? null : String(payload.brand).trim() || null,
         price:
           typeof payload.price === 'number' && Number.isFinite(payload.price) && payload.price > 0
             ? payload.price
