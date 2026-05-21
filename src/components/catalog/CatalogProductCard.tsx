@@ -8,6 +8,7 @@ import { Plus } from 'lucide-react';
 import type { ProductResponse } from '@/lib/api';
 import { normalizeDisplayImageUrl } from '@/lib/displayImage';
 import { resolveProductCardPresentation } from '@/lib/productCardPresentation';
+import { formatProductCardTitle } from '@/lib/productCardTitle';
 import { buildProductHrefForProduct } from '@/lib/productHref';
 import { appendCurrentPathAsReturn } from '@/lib/returnUrl';
 import {
@@ -97,7 +98,19 @@ function addMultiOfferCaution(
   return [badges[0], caution];
 }
 
-export function CatalogProductCard({ product }: { product: ProductResponse }) {
+export function CatalogProductCard({
+  product,
+  hideBrandPrefix = false,
+  extraStripBrands,
+}: {
+  product: ProductResponse;
+  hideBrandPrefix?: boolean;
+  /** Brand strings to also strip from the leading title — useful when the
+   *  surface already implies a brand (e.g. brand-landing page) and we want
+   *  to remove its leading occurrence even if it differs in casing from
+   *  product.brand. */
+  extraStripBrands?: Array<string | null | undefined>;
+}) {
   const router = useRouter();
   const addItem = useCartStore((state) => state.addItem);
   const openCart = useCartStore((state) => state.open);
@@ -200,9 +213,17 @@ export function CatalogProductCard({ product }: { product: ProductResponse }) {
           </div>
 
           <div className="space-y-1 p-2.5 pr-10 sm:p-3 sm:pr-10">
-            <h3 className="min-h-[2.7rem] line-clamp-3 text-[12px] font-medium leading-[0.92rem] tracking-[-0.01em] text-[#202531] sm:text-[12.5px] sm:leading-[0.98rem]">
-              {product.brand ? <span className="text-[#667085]">{product.brand} · </span> : null}{card.title}
-            </h3>
+            {(() => {
+              const formatted = formatProductCardTitle(product.brand, card.title, {
+                hideBrandPrefix,
+                extraStripBrands,
+              });
+              return (
+                <h3 className="min-h-[2.7rem] line-clamp-3 text-[12px] font-medium leading-[0.92rem] tracking-[-0.01em] text-[#202531] sm:text-[12.5px] sm:leading-[0.98rem]">
+                  {formatted.brandPrefix ? <span className="text-[#667085]">{formatted.brandPrefix} · </span> : null}{formatted.title}
+                </h3>
+              );
+            })()}
 
             {compactCopy ? (
               <p className="min-h-[2rem] line-clamp-2 text-[10.5px] leading-[0.98rem] text-[#667085] sm:text-[11px] sm:leading-[1rem]">

@@ -12,6 +12,7 @@ import {
 } from '@/features/pdp/utils/pdpImageUrls';
 import { buildProductHrefForProduct } from '@/lib/productHref';
 import { resolveProductCardPresentation } from '@/lib/productCardPresentation';
+import { formatProductCardTitle } from '@/lib/productCardTitle';
 import { appendCurrentPathAsReturn } from '@/lib/returnUrl';
 
 function formatPrice(amount: number, currency: string) {
@@ -117,7 +118,17 @@ export function RecommendationsGrid({
                   )}
                 </div>
                 <div className="p-3 pb-2">
-                  <div className="min-h-[2.5rem] text-sm font-medium line-clamp-2">{p.title}</div>
+                  {(() => {
+                    const formatted = formatProductCardTitle(p.brand, p.title);
+                    return (
+                      <div className="min-h-[2.5rem] text-sm font-medium line-clamp-2">
+                        {formatted.brandPrefix ? (
+                          <span className="text-muted-foreground">{formatted.brandPrefix} · </span>
+                        ) : null}
+                        {formatted.title}
+                      </div>
+                    );
+                  })()}
                   {badge ? (
                     <div className="mt-2">
                       <span className="inline-flex rounded-full bg-muted px-2 py-1 text-[10px] font-semibold tracking-[-0.01em] text-foreground/80">
