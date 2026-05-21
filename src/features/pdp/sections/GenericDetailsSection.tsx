@@ -13,6 +13,7 @@ import { DetailsAccordion } from '@/features/pdp/sections/DetailsAccordion';
 import { OverviewSection } from '@/features/pdp/sections/OverviewSection';
 import { StructuredDetailsBlocks } from '@/features/pdp/sections/StructuredDetailsBlocks';
 import { partitionDetailSections } from '@/features/pdp/utils/detailSections';
+import { getDistinctProductDetailMediaItems } from '@/features/pdp/utils/detailMedia';
 import { buildOverviewContent } from '@/features/pdp/utils/overviewContent';
 import { shouldBypassNextImageOptimizer } from '@/features/pdp/utils/pdpImageUrls';
 
@@ -32,6 +33,7 @@ export function GenericDetailsSection({
   activeIngredients,
   ingredientsInci,
   howToUse,
+  displayedMediaItems,
   suppressOverview = false,
 }: {
   data?: ProductDetailsData | null;
@@ -45,6 +47,7 @@ export function GenericDetailsSection({
   activeIngredients?: ActiveIngredientsData | null;
   ingredientsInci?: IngredientsInciData | null;
   howToUse?: HowToUseData | null;
+  displayedMediaItems?: MediaGalleryData['items'] | null;
   suppressOverview?: boolean;
 }) {
   const sections = Array.isArray(data?.sections) ? data.sections : [];
@@ -52,7 +55,13 @@ export function GenericDetailsSection({
     overviewSection: primarySection,
     supplementalSections: secondarySections,
   } = partitionDetailSections(sections);
-  const detailImages = (media?.items || []).slice(1, 3);
+  const detailImages = getDistinctProductDetailMediaItems({
+    sections,
+    howToUse,
+    displayedMediaItems: displayedMediaItems ?? media?.items ?? [],
+    productImageUrl: product.image_url,
+    maxItems: 2,
+  });
   const overviewContent = buildOverviewContent({
     description: product.description,
     section: primarySection,

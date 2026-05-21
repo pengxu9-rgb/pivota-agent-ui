@@ -2231,6 +2231,10 @@ export function PdpContainer({
     }),
     [galleryItems, galleryPreviewItems, media?.gallery_scope, media?.preview_scope],
   );
+  const displayedDetailMediaItems = useMemo(
+    () => [...galleryItems, ...galleryPreviewItems],
+    [galleryItems, galleryPreviewItems],
+  );
 
   const heroUrl = resolveHeroMediaUrl({
     activeMediaIndex,
@@ -4195,6 +4199,7 @@ export function PdpContainer({
               activeIngredients={activeIngredients}
               ingredientsInci={ingredientsInci}
               howToUse={null}
+              displayedMediaItems={displayedDetailMediaItems}
               hideLowConfidenceActiveIngredients={shouldHideLowConfidenceActiveIngredients}
               suppressOverview
               showDetailMedia={false}
@@ -4211,6 +4216,7 @@ export function PdpContainer({
               activeIngredients={null}
               ingredientsInci={null}
               howToUse={howToUse}
+              displayedMediaItems={displayedDetailMediaItems}
               suppressOverview
               showDetailMedia={false}
               showProductInformation={false}
@@ -4226,6 +4232,7 @@ export function PdpContainer({
               activeIngredients={null}
               ingredientsInci={null}
               howToUse={null}
+              displayedMediaItems={displayedDetailMediaItems}
               hideLowConfidenceActiveIngredients={shouldHideLowConfidenceActiveIngredients}
               suppressOverview={suppressOverviewInDetails}
               showDetailMedia={!isExternalSeedProduct}
@@ -5395,6 +5402,7 @@ export function PdpContainer({
                 activeIngredients={activeIngredients}
                 ingredientsInci={ingredientsInci}
                 howToUse={howToUse}
+                displayedMediaItems={displayedDetailMediaItems}
                 hideLowConfidenceActiveIngredients={shouldHideLowConfidenceActiveIngredients}
                 suppressOverview={suppressOverviewInDetails}
                 showDetailMedia={!isExternalSeedProduct}
@@ -5413,6 +5421,7 @@ export function PdpContainer({
                 activeIngredients={activeIngredients}
                 ingredientsInci={ingredientsInci}
                 howToUse={howToUse}
+                displayedMediaItems={displayedDetailMediaItems}
                 suppressOverview={suppressOverviewInDetails}
               />
             ) : (

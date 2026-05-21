@@ -501,6 +501,9 @@ export interface HowToUseData {
   title?: string;
   steps?: string[];
   raw_text?: string;
+  image_urls?: string[];
+  media_urls?: string[];
+  media?: MediaItem[];
   source_origin?: string;
 }
 
@@ -508,6 +511,9 @@ export interface DetailSection {
   heading: string;
   content_type: 'text';
   content: string;
+  media_urls?: string[];
+  image_urls?: string[];
+  media?: MediaItem[];
   collapsed_by_default?: boolean;
 }
 

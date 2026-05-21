@@ -18,6 +18,7 @@ import {
   splitParagraphs,
 } from '@/features/pdp/utils/formatDescriptionText';
 import { partitionDetailSections } from '@/features/pdp/utils/detailSections';
+import { getDistinctProductDetailMediaItems } from '@/features/pdp/utils/detailMedia';
 import { buildOverviewContent } from '@/features/pdp/utils/overviewContent';
 import { shouldBypassNextImageOptimizer } from '@/features/pdp/utils/pdpImageUrls';
 
@@ -28,6 +29,7 @@ export function BeautyDetailsSection({
   activeIngredients,
   ingredientsInci,
   howToUse,
+  displayedMediaItems,
   hideLowConfidenceActiveIngredients = false,
   suppressOverview = false,
   showDetailMedia = true,
@@ -39,17 +41,23 @@ export function BeautyDetailsSection({
   activeIngredients?: ActiveIngredientsData | null;
   ingredientsInci?: IngredientsInciData | null;
   howToUse?: HowToUseData | null;
+  displayedMediaItems?: MediaGalleryData['items'] | null;
   hideLowConfidenceActiveIngredients?: boolean;
   suppressOverview?: boolean;
   showDetailMedia?: boolean;
   showProductInformation?: boolean;
 }) {
-  const heroUrl = media?.items?.[0]?.url || product.image_url;
-  const accentImages = showDetailMedia ? media?.items?.slice(1, 3) || [] : [];
-  const overviewImage = !showDetailMedia
-    ? media?.items?.find((item) => item?.type !== 'video' && item?.url) || null
-    : null;
   const sections = Array.isArray(data?.sections) ? data.sections : [];
+  const detailImages = getDistinctProductDetailMediaItems({
+    sections,
+    howToUse,
+    displayedMediaItems: displayedMediaItems ?? media?.items ?? [],
+    productImageUrl: product.image_url,
+    maxItems: 3,
+  });
+  const heroImage = showDetailMedia ? detailImages[0] || null : null;
+  const accentImages = showDetailMedia ? detailImages.slice(1, 3) : [];
+  const overviewImage = !showDetailMedia ? detailImages[0] || null : null;
   const {
     overviewSection: overviewSourceSection,
     supplementalSections: factsSections,
@@ -65,16 +73,16 @@ export function BeautyDetailsSection({
 
   return (
     <div className="py-4">
-      {showDetailMedia && heroUrl ? (
+      {showDetailMedia && heroImage?.url ? (
         <div className="relative aspect-[4/5] overflow-hidden bg-gradient-to-b from-muted to-background">
           <Image
-            src={heroUrl}
-            alt={product.title}
+            src={heroImage.url}
+            alt={heroImage.alt_text || product.title}
             fill
             className="object-contain pointer-events-none"
             sizes="(max-width: 768px) 100vw, 640px"
             loading="lazy"
-            unoptimized={shouldBypassNextImageOptimizer(heroUrl)}
+            unoptimized={shouldBypassNextImageOptimizer(heroImage.url)}
           />
         </div>
       ) : null}
@@ -91,7 +99,7 @@ export function BeautyDetailsSection({
               <div key={`${item.url}-${idx}`} className="relative aspect-[3/4] bg-muted">
                 <Image
                   src={item.url}
-                  alt=""
+                  alt={item.alt_text || ''}
                   fill
                   className="object-cover pointer-events-none"
                   sizes="(max-width: 768px) 50vw, 320px"
@@ -108,7 +116,11 @@ export function BeautyDetailsSection({
         {!suppressOverview ? (
           <OverviewSection
             content={overviewContent}
-            image={overviewImage?.url ? { url: overviewImage.url, alt: `${product.title} overview` } : null}
+            image={
+              overviewImage?.url
+                ? { url: overviewImage.url, alt: overviewImage.alt_text || `${product.title} overview` }
+                : null
+            }
           />
         ) : null}
         <StructuredDetailsBlocks
