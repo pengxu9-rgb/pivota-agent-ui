@@ -129,7 +129,7 @@ export function FashionPDPDesktop(props: FashionPDPMobileProps) {
                   onSelect={props.onSelectSize || (() => {})}
                 />
                 {props.fitChart ? (
-                  <div className="-mt-1.5 px-[18px]">
+                  <div className="mt-3 px-[18px]">
                     <button
                       type="button"
                       onClick={() => setGuideOpen(true)}

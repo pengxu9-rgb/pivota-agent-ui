@@ -4412,7 +4412,14 @@ export function PdpContainer({
         sizes={fashionSizes}
         selectedSizeId={selectedSize}
         onSelectSize={handleSizeSelect}
-        fitChart={fashionMeta?.size_fit_chart ?? null}
+        fitChart={
+          fashionMeta?.size_fit_chart &&
+          Array.isArray((fashionMeta.size_fit_chart as any).columns) &&
+          Array.isArray((fashionMeta.size_fit_chart as any).rows) &&
+          (fashionMeta.size_fit_chart as any).rows.length > 0
+            ? fashionMeta.size_fit_chart
+            : null
+        }
         modelInfo={fashionMeta?.model?.info ?? null}
         modelAvatar={fashionMeta?.model?.avatar_url ?? null}
         benefits={null}
