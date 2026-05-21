@@ -58,7 +58,7 @@ export function readBrandName(brand: unknown): string {
 // across products that came from different sources (e.g. `"fenty beauty"` and
 // `"Fenty Beauty"`). Preserves any brand that already contains an uppercase
 // letter so stylized casings (`"REN"`, `"L'Oréal"`, `"MAC"`) aren't mangled.
-function normalizeBrandCase(brand: string): string {
+export function normalizeBrandCase(brand: string): string {
   if (!brand || /[A-Z]/.test(brand)) return brand;
   return brand.replace(/\b\p{L}/gu, (ch) => ch.toUpperCase());
 }
