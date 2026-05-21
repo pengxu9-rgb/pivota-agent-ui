@@ -24,6 +24,7 @@ import {
   type ProductResponse,
 } from '@/lib/api';
 import { normalizeBrandLabel } from '@/lib/brandRoute';
+import { normalizeBrandCase } from '@/lib/productCardTitle';
 import { buildCatalogProductKey, mergeUniqueCatalogProducts } from '@/lib/catalogProducts';
 import { safeReturnUrl } from '@/lib/returnUrl';
 import { useAuthStore } from '@/store/authStore';
@@ -291,7 +292,9 @@ export function BrandLandingPage({
 }) {
   const router = useRouter();
   const pathname = usePathname();
-  const brandName = normalizeBrandLabel(initialBrandName || decodeSlugToBrand(slug));
+  const brandName = normalizeBrandCase(
+    normalizeBrandLabel(initialBrandName || decodeSlugToBrand(slug)),
+  );
   const subtitle = String(initialSubtitle || '').trim();
   const returnHref = safeReturnUrl(initialReturnUrl || null) || '/';
   const user = useAuthStore((state) => state.user);
