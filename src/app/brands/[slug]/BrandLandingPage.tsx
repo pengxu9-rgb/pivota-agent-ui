@@ -157,12 +157,6 @@ function buildCategoryKey(label: string): string {
   return label.trim().toLowerCase().replace(/\s+/g, '-');
 }
 
-function stripBrandFromTitle(title: string, brand: string | null | undefined): string {
-  if (!brand || !title) return title;
-  const escaped = brand.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const stripped = title.replace(new RegExp(`^${escaped}[\\s·\\-:,]*`, 'i'), '').trim();
-  return stripped || title;
-}
 
 function readCategoryFacets(metadata: Record<string, any> | null | undefined): CategoryChip[] {
   const rawFacets = metadata?.facets?.categories;
@@ -907,11 +901,9 @@ export function BrandLandingPage({
                 {visibleProducts.map((product) => (
                   <CatalogProductCard
                     key={buildCatalogProductKey(product)}
-                    product={{
-                      ...product,
-                      brand: undefined,
-                      title: stripBrandFromTitle(product.title, brandName),
-                    }}
+                    product={product}
+                    hideBrandPrefix
+                    extraStripBrands={[brandName]}
                   />
                 ))}
               </div>
