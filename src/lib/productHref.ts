@@ -71,7 +71,12 @@ export function normalizeProductRouteMerchantId(
   if (!merchantId) return undefined;
   if (merchantId === EXTERNAL_SEED_MERCHANT_ID) {
     const normalizedProductId = String(productId || '').trim().toLowerCase();
-    if (normalizedProductId.startsWith('ext_') || normalizedProductId.startsWith('ext:')) {
+    if (
+      normalizedProductId.startsWith('ext_') ||
+      normalizedProductId.startsWith('ext:') ||
+      normalizedProductId.startsWith('prod_') ||
+      normalizedProductId.startsWith('prod:')
+    ) {
       return undefined;
     }
   }

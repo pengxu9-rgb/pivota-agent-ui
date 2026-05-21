@@ -276,7 +276,11 @@ export async function generateMetadata({
 
   return renderData
     ? buildMetadataFromProduct(renderData.product, renderData.canonicalRouteId)
-    : { title: DEFAULT_TITLE, description: 'Shop products with Pivota Shopping AI.' };
+    : {
+        title: DEFAULT_TITLE,
+        description: 'Shop products with Pivota Shopping AI.',
+        robots: { index: false, follow: false },
+      };
 }
 
 export default async function ProductDetailPage(props: Props) {

@@ -48,6 +48,14 @@ describe('direct Agent read routing', () => {
         'X-Agent-API-Key': agentKey,
       }),
     );
+    expect(JSON.parse(String(init.body || '{}'))).toMatchObject({
+      operation: 'get_pdp_v2',
+      payload: {
+        options: {
+          serving_eligible_only: true,
+        },
+      },
+    });
   });
 
   it('falls back to the same-origin proxy when direct Agent auth is rejected', async () => {

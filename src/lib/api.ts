@@ -3076,6 +3076,7 @@ export async function getPdpV2(args: {
   gatewayBaseUrl?: string | null;
   debug?: boolean;
   cache_bypass?: boolean;
+  serving_eligible_only?: boolean;
 }): Promise<GetPdpV2Response> {
   const productId = String(args.product_id || '').trim();
   if (!productId) {
@@ -3108,6 +3109,7 @@ export async function getPdpV2(args: {
             }),
         ...(include ? { include } : {}),
         options: {
+          serving_eligible_only: args.serving_eligible_only !== false,
           ...(args.debug ? { debug: true } : {}),
           ...(args.cache_bypass ? { cache_bypass: true } : {}),
         },

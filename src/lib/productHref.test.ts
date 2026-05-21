@@ -14,11 +14,14 @@ import {
 
 describe('productHref helpers', () => {
   it('drops external_seed merchant ids only when the product_id lets PDP infer the source', () => {
-    // Canonical and ext_-prefixed ids let PDP infer external_seed without the query param.
+    // Canonical, ext_-prefixed, and internal prod_* ids let PDP resolve without the pseudo merchant query param.
     expect(normalizeProductRouteMerchantId('external_seed', 'sig_abc')).toBeUndefined();
     expect(normalizeProductRouteMerchantId('external_seed', 'ext_123')).toBeUndefined();
     expect(normalizeProductRouteMerchantId('external_seed', 'ext:abc')).toBeUndefined();
+    expect(normalizeProductRouteMerchantId('external_seed', 'prod_123')).toBeUndefined();
+    expect(normalizeProductRouteMerchantId('external_seed', 'prod:abc')).toBeUndefined();
     expect(buildProductHref('ext_123', 'external_seed')).toBe('/products/ext_123');
+    expect(buildProductHref('prod_123', 'external_seed')).toBe('/products/prod_123');
 
     // Non-inferable ids (e.g. domain:hash external seeds) must keep the merchant_id
     // so PDP can resolve identity.
