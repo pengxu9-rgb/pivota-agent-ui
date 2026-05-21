@@ -38,7 +38,7 @@ export function formatProductCardTitle(
     return { brandPrefix: null, title: cleanedTitle };
   }
   return {
-    brandPrefix: options.hideBrandPrefix ? null : normalizedBrand,
+    brandPrefix: options.hideBrandPrefix ? null : normalizeBrandCase(normalizedBrand),
     title: cleanedTitle,
   };
 }
@@ -52,4 +52,13 @@ export function readBrandName(brand: unknown): string {
     if (typeof name === 'string') return name.trim();
   }
   return '';
+}
+
+// Normalize all-lowercase brand strings to title case so display is consistent
+// across products that came from different sources (e.g. `"fenty beauty"` and
+// `"Fenty Beauty"`). Preserves any brand that already contains an uppercase
+// letter so stylized casings (`"REN"`, `"L'Oréal"`, `"MAC"`) aren't mangled.
+function normalizeBrandCase(brand: string): string {
+  if (!brand || /[A-Z]/.test(brand)) return brand;
+  return brand.replace(/\b\p{L}/gu, (ch) => ch.toUpperCase());
 }
