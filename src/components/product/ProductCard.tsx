@@ -10,6 +10,7 @@ import { normalizeDisplayImageUrl } from '@/lib/displayImage';
 import { useCartStore } from '@/store/cartStore';
 import { hideProductRouteLoading, showProductRouteLoading } from '@/lib/productRouteLoading';
 import { buildProductHref } from '@/lib/productHref';
+import { formatProductCardTitle } from '@/lib/productCardTitle';
 import { appendCurrentPathAsReturn } from '@/lib/returnUrl';
 import { toast } from 'sonner';
 
@@ -21,6 +22,7 @@ interface ProductCardProps {
   sku?: string;
   external_redirect_url?: string;
   title: string;
+  brand?: string;
   subtitle?: string;
   badge?: string;
   price: number;
@@ -40,6 +42,7 @@ export default function ProductCard({
   sku,
   external_redirect_url,
   title,
+  brand,
   subtitle,
   badge,
   price,
@@ -189,13 +192,21 @@ export default function ProductCard({
         </div>
 
         <div className={compact ? 'space-y-1.5 p-2.5' : 'space-y-2 p-3'}>
-          <h3
-            className={`font-medium line-clamp-2 transition-colors group-hover:text-primary ${
-              compact ? 'text-xs leading-5' : 'text-sm'
-            }`}
-          >
-            {title}
-          </h3>
+          {(() => {
+            const formatted = formatProductCardTitle(brand, title);
+            return (
+              <h3
+                className={`font-medium line-clamp-2 transition-colors group-hover:text-primary ${
+                  compact ? 'text-xs leading-5' : 'text-sm'
+                }`}
+              >
+                {formatted.brandPrefix ? (
+                  <span className="text-muted-foreground">{formatted.brandPrefix} · </span>
+                ) : null}
+                {formatted.title}
+              </h3>
+            );
+          })()}
 
           {subtitle ? (
             <p className="text-xs text-muted-foreground line-clamp-1">{subtitle}</p>

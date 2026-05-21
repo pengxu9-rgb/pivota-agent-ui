@@ -38,6 +38,7 @@ import {
   isProductGroupRouteId,
   normalizeProductRouteMerchantId,
 } from '@/lib/productHref';
+import { readBrandName } from '@/lib/productCardTitle';
 import { DEFAULT_MODULE_SOURCE_LOCKS } from '@/features/pdp/state/freezePolicy';
 import {
   mapResolvedOffersToSellerCandidates,
@@ -573,6 +574,7 @@ export default function ProductDetailPage({ params, initialPayload }: Props) {
       const title = String(product?.title || 'Untitled product').trim() || 'Untitled product';
       const description = String(product?.description || '').trim() || undefined;
       const imageUrl = pickHistoryImage(product);
+      const brand = readBrandName(product?.brand) || undefined;
 
       if (normalizedPrice > 0) {
         localBrowseHistoryRecordedRef.current = recordKey;
@@ -580,6 +582,7 @@ export default function ProductDetailPage({ params, initialPayload }: Props) {
           product_id: productId,
           merchant_id: merchantId,
           title,
+          ...(brand ? { brand } : {}),
           price: normalizedPrice,
           image: imageUrl,
           description,
@@ -597,6 +600,7 @@ export default function ProductDetailPage({ params, initialPayload }: Props) {
     const title = String(product?.title || 'Untitled product').trim() || 'Untitled product';
     const description = String(product?.description || '').trim() || undefined;
     const imageUrl = pickHistoryImage(product);
+    const brand = readBrandName(product?.brand) || undefined;
     const remoteRecordKey = `${recordKey}::${userId}::${normalizedPrice > 0 ? normalizedPrice : 'missing'}`;
     if (remoteBrowseHistoryRecordedRef.current === remoteRecordKey) return;
     remoteBrowseHistoryRecordedRef.current = remoteRecordKey;
@@ -605,6 +609,7 @@ export default function ProductDetailPage({ params, initialPayload }: Props) {
       product_id: productId,
       merchant_id: merchantId,
       title,
+      ...(brand ? { brand } : {}),
       price: normalizedPrice > 0 ? normalizedPrice : undefined,
       currency,
       image_url: imageUrl,
