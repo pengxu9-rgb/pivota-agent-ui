@@ -298,6 +298,7 @@ export type ModuleType =
   | 'product_facts'
   | 'reviews_preview'
   | 'recommendations'
+  | 'bundle_composition'
   | 'variant_selector';
 
 export interface GlobalAction {
@@ -609,6 +610,26 @@ export interface ReviewsPreviewData {
     open_reviews?: { action_type: 'open_embed'; label: string; target: ActionTarget };
     write_review?: { action_type: 'open_embed'; label: string; target: ActionTarget };
   };
+}
+
+export interface BundleCompositionItem {
+  product_id: string;
+  merchant_id?: string;
+  title: string;
+  brand?: { name?: string };
+  image_url?: string;
+  canonical_url?: string;
+  price?: Price;
+  component_role?: string;
+  size_label?: string;
+  review_state?: string;
+  source_quality_status?: 'ready' | 'partial' | string;
+}
+
+export interface BundleCompositionData {
+  strategy?: string;
+  items: BundleCompositionItem[];
+  total_count?: number;
 }
 
 export interface RecommendationsData {

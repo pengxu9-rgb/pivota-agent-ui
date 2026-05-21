@@ -20,6 +20,7 @@ export type PdpTrackingEvent =
   | 'ugc_click_item'
   | 'similar_impression'
   | 'similar_click'
+  | 'bundle_component_click'
   | 'similar_quick_action_click'
   | 'similar_quick_action_resolve'
   | 'similar_auto_load'
