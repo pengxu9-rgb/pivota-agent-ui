@@ -489,7 +489,18 @@ function shouldRetryWithCoreOnlyPdp(err: unknown): boolean {
   return message.includes('timed out') || message.includes('timeout') || message.includes('temporarily unavailable');
 }
 export default function ProductDetailPage({ params, initialPayload }: Props) {
-  const { id } = use(params);
+  const { id: rawId } = use(params);
+  // Next.js dynamic params arrive URL-encoded (e.g. `ulta%3Ahash`); gateway
+  // lookups (external_product_id, source_product_id) want the decoded form.
+  const id = ((): string => {
+    const trimmed = String(rawId || '').trim();
+    if (!trimmed) return '';
+    try {
+      return decodeURIComponent(trimmed);
+    } catch {
+      return trimmed;
+    }
+  })();
   const searchParams = useSearchParams();
   const searchParamsString = searchParams.toString();
   const rawMerchantIdParam = searchParams.get('merchant_id');
