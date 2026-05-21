@@ -462,6 +462,7 @@ function isNonRetryablePdpError(err: unknown): boolean {
   if (!code) return false;
   return new Set([
     'PRODUCT_NOT_FOUND',
+    'PRODUCT_NOT_SERVABLE',
     'NOT_FOUND',
     'VALIDATION_ERROR',
     'INVALID_ARGUMENT',
@@ -775,6 +776,12 @@ export default function ProductDetailPage({ params, initialPayload }: Props) {
             if (cancelled) return;
             loadErr = coreRetryErr;
           }
+        }
+
+        if (readApiErrorCode(loadErr) === 'PRODUCT_NOT_SERVABLE') {
+          setError('Product not available');
+          setLoading(false);
+          return;
         }
 
         const candidateResolution = await resolveCandidatesOnFailure();

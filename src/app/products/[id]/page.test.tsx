@@ -567,6 +567,29 @@ describe('ProductDetailPage canonical PDP loading', () => {
     await screen.findByText('Failed to load product');
   });
 
+  it('does not fall back to seller disambiguation when the commerce index blocks the PDP', async () => {
+    const err = new Error('Product not found') as Error & { code?: string };
+    err.code = 'PRODUCT_NOT_SERVABLE';
+    getPdpV2Mock.mockRejectedValue(err);
+    resolveProductCandidatesMock.mockResolvedValue({
+      offers: [
+        {
+          offer_id: 'offer_1',
+          product_id: 'prod_1',
+          merchant_id: 'merchant_a',
+          merchant_name: 'Merchant A',
+          price: { amount: 19, currency: 'USD' },
+          inventory: { in_stock: true },
+        },
+      ],
+    });
+
+    renderPage();
+
+    await screen.findByText('Product not available');
+    expect(resolveProductCandidatesMock).not.toHaveBeenCalled();
+  });
+
   it('retries with a core-only get_pdp_v2 request after a timeout and renders the recovered PDP', async () => {
     getPdpV2Mock
       .mockRejectedValueOnce(Object.assign(new Error('The request timed out. Please retry.'), { code: 'UPSTREAM_TIMEOUT' }))
