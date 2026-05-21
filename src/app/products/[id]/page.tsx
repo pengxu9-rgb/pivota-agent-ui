@@ -49,6 +49,18 @@ function readSearchParam(value: string | string[] | undefined): string {
   return String(value || '').trim();
 }
 
+// Next.js dynamic-route params keep the URL-encoded form (`%3A` etc.) — the
+// gateway needs the decoded product_id to match `external_product_id`.
+function decodeProductIdParam(raw: unknown): string {
+  const trimmed = String(raw || '').trim();
+  if (!trimmed) return '';
+  try {
+    return decodeURIComponent(trimmed);
+  } catch {
+    return trimmed;
+  }
+}
+
 function resolveServerBaseUrl(headerList: Headers): string {
   const host =
     headerList.get('x-forwarded-host') ||
@@ -258,7 +270,7 @@ export async function generateMetadata({
 }: Props): Promise<Metadata> {
   const resolvedParams = await params;
   const resolvedSearchParams = searchParams ? await searchParams : {};
-  const productId = String(resolvedParams.id || '').trim();
+  const productId = decodeProductIdParam(resolvedParams.id);
   const merchantId = readSearchParam(resolvedSearchParams.merchant_id);
   const renderData = await fetchPdpForServerRender(productId, merchantId);
 
@@ -273,7 +285,7 @@ export default async function ProductDetailPage(props: Props) {
   // own data on hydration). Schema markup is purely additive.
   const resolvedParams = await props.params;
   const resolvedSearchParams = props.searchParams ? await props.searchParams : {};
-  const productId = String(resolvedParams.id || '').trim();
+  const productId = decodeProductIdParam(resolvedParams.id);
   const merchantId = readSearchParam(resolvedSearchParams.merchant_id);
 
   const renderData = productId
