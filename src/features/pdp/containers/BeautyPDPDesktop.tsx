@@ -17,6 +17,7 @@ import { BeautyPivotaInsights } from '@/features/pdp/components/BeautyPivotaInsi
 import { BeautyAccordion } from '@/features/pdp/components/BeautyAccordion';
 import { BeautyReviewsPreview } from '@/features/pdp/components/BeautyReviewsPreview';
 import { BeautyYouMayAlsoLike } from '@/features/pdp/components/BeautyYouMayAlsoLike';
+import { BundleCompositionGrid } from '@/features/pdp/sections/BundleCompositionGrid';
 import { BeautyQuestions } from '@/features/pdp/components/BeautyQuestions';
 import { BeautyBrandCard } from '@/features/pdp/components/BeautyBrandCard';
 import type { BeautyPDPMobileProps } from '@/features/pdp/containers/BeautyPDPMobile';
@@ -223,6 +224,15 @@ export function BeautyPDPDesktop(props: BeautyPDPMobileProps) {
             <BeautyBrandCard brandName={props.brandName} brandHref={props.brandHref} />
           </div>
         </div>
+
+        {props.bundleComposition?.items?.length ? (
+          <div className="mt-12">
+            <BundleCompositionGrid
+              data={props.bundleComposition}
+              onItemClick={props.onBundleComponentClick}
+            />
+          </div>
+        ) : null}
 
         {props.similar?.length ? (
           <div className="mt-12">

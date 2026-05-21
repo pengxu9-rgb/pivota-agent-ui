@@ -17,6 +17,8 @@ import { BeautyPivotaInsights, type BeautyInsightsData } from '@/features/pdp/co
 import { BeautyAccordion } from '@/features/pdp/components/BeautyAccordion';
 import { BeautyReviewsPreview, type BeautyReviewItem } from '@/features/pdp/components/BeautyReviewsPreview';
 import { BeautyYouMayAlsoLike, type BeautySimilarItem } from '@/features/pdp/components/BeautyYouMayAlsoLike';
+import { BundleCompositionGrid } from '@/features/pdp/sections/BundleCompositionGrid';
+import type { BundleCompositionData, BundleCompositionItem } from '@/features/pdp/types';
 import { BeautyStickyTabs, type BeautyTab } from '@/features/pdp/components/BeautyStickyTabs';
 import { BeautyStickyTopBar } from '@/features/pdp/components/BeautyStickyTopBar';
 import { BeautyMobileBuyBar } from '@/features/pdp/components/BeautyMobileBuyBar';
@@ -110,6 +112,9 @@ export type BeautyPDPMobileProps = {
   onSeeAllQuestions?: () => void;
   onOpenQuestion?: (questionId: number) => void;
   canAskQuestion?: boolean;
+  // bundle composition (rendered above similar when product is a bundle)
+  bundleComposition?: BundleCompositionData | null;
+  onBundleComponentClick?: (item: BundleCompositionItem, index: number) => void;
   // recommendations
   similar?: BeautySimilarItem[] | null;
   onSimilarClick?: (item: BeautySimilarItem, index: number) => void;
@@ -377,6 +382,15 @@ export function BeautyPDPMobile(props: BeautyPDPMobileProps) {
         </div>
 
         <BeautyBrandCard brandName={props.brandName} brandHref={props.brandHref} />
+
+        {props.bundleComposition?.items?.length ? (
+          <div className="border-t border-muted/60">
+            <BundleCompositionGrid
+              data={props.bundleComposition}
+              onItemClick={props.onBundleComponentClick}
+            />
+          </div>
+        ) : null}
 
         {props.similar?.length ? (
           <div ref={similarRef}>
