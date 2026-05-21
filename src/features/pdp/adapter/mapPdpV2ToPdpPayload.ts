@@ -265,6 +265,7 @@ const RESPONSE_OWNED_MODULE_TYPES = new Set<string>([
   'recommendations',
   'reviews_preview',
   'similar',
+  'bundle_composition',
 ]);
 
 function sanitizeCanonicalModules(modules: unknown): Module[] {
@@ -618,6 +619,17 @@ export function mapPdpV2ToPdpPayload(response: GetPdpV2Response): PDPPayload | n
   } else if (similarModule) {
     // The caller explicitly requested Similar; render an empty section instead of hiding it.
     next.x_recommendations_state = 'ready';
+  }
+
+  const bundleCompositionModule = getModule(response, 'bundle_composition');
+  const bundleCompositionData = isRecord(bundleCompositionModule?.data) ? bundleCompositionModule.data : null;
+  if (bundleCompositionData && Array.isArray((bundleCompositionData as any).items) && (bundleCompositionData as any).items.length > 0) {
+    next = upsertPayloadModule(next, {
+      module_id: 'bundle_composition',
+      type: 'bundle_composition',
+      priority: 60,
+      data: bundleCompositionData as any,
+    } as Module);
   }
 
   return next;

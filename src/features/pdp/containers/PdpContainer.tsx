@@ -504,13 +504,23 @@ function mergeProductLineSimilarPayload(current: PDPPayload, incoming: PDPPayloa
       const type = String(module?.type || '').trim();
       return type === 'recommendations' || type === 'similar';
     }) || null;
+  const incomingBundleModule =
+    incoming?.modules.find((module) => String(module?.type || '').trim() === 'bundle_composition') || null;
+  const existingBundleModule =
+    current.modules.find((module) => String(module?.type || '').trim() === 'bundle_composition') || null;
   const baseModules = current.modules.filter((module) => {
     const type = String(module?.type || '').trim();
-    return type !== 'recommendations' && type !== 'similar';
+    return type !== 'recommendations' && type !== 'similar' && type !== 'bundle_composition';
   });
+  const nextBundleModule = incomingBundleModule || existingBundleModule;
+  const nextModules = [
+    ...baseModules,
+    ...(nextBundleModule ? [nextBundleModule] : []),
+    ...(nextSimilarModule ? [nextSimilarModule] : []),
+  ];
   return {
     ...current,
-    modules: nextSimilarModule ? [...baseModules, nextSimilarModule] : baseModules,
+    modules: nextModules,
     x_recommendations_state: incoming?.x_recommendations_state || 'ready',
     x_source_locks: {
       ...(current.x_source_locks || {}),
