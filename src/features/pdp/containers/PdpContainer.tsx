@@ -28,6 +28,7 @@ import type {
   ProductFactsData,
   ProductLineOption,
   RecommendationsData,
+  BundleCompositionData,
   ReviewsPreviewData,
   Variant,
 } from '@/features/pdp/types';
@@ -57,6 +58,7 @@ import { PdpMediaViewer } from '@/features/pdp/components/PdpMediaViewer';
 import { VariantSelector } from '@/features/pdp/sections/VariantSelector';
 import { DetailsAccordion } from '@/features/pdp/sections/DetailsAccordion';
 import { RecommendationsGrid, RecommendationsSkeleton } from '@/features/pdp/sections/RecommendationsGrid';
+import { BundleCompositionGrid } from '@/features/pdp/sections/BundleCompositionGrid';
 import { SimilarQuickActionSheet } from '@/features/pdp/sections/SimilarQuickActionSheet';
 import { BeautyReviewsSection } from '@/features/pdp/sections/BeautyReviewsSection';
 import { BeautyUgcGallery } from '@/features/pdp/sections/BeautyUgcGallery';
@@ -1746,6 +1748,8 @@ export function PdpContainer({
   const sizeFitDetails = getModuleData<ProductDetailsData>(payload, 'size_fit');
   const careInstructions = getModuleData<ProductDetailsData>(payload, 'care_instructions');
   const usageSafety = getModuleData<ProductDetailsData>(payload, 'usage_safety');
+  const bundleComposition = getModuleData<BundleCompositionData>(payload, 'bundle_composition');
+  const hasBundleCompositionItems = Boolean(bundleComposition?.items?.length);
   const hasGenericStructuredBlocks = Boolean(
     materials?.sections?.length ||
       productSpecs?.sections?.length ||
@@ -5430,6 +5434,21 @@ export function PdpContainer({
                 <DetailsAccordion data={details || { sections: [] }} />
               </div>
             )}
+          </div>
+        ) : null}
+
+        {hasBundleCompositionItems && bundleComposition ? (
+          <div className="border-t border-muted/60">
+            <BundleCompositionGrid
+              data={bundleComposition}
+              onItemClick={(item, index) => {
+                pdpTracking.track('bundle_component_click', {
+                  index,
+                  product_id: item.product_id,
+                  merchant_id: item.merchant_id || null,
+                });
+              }}
+            />
           </div>
         ) : null}
 
