@@ -4254,6 +4254,14 @@ export function PdpContainer({
             />
           ) : null
         }
+        bundleComposition={bundleComposition || null}
+        onBundleComponentClick={(item, index) => {
+          pdpTracking.track('bundle_component_click', {
+            index,
+            product_id: item.product_id,
+            merchant_id: item.merchant_id || null,
+          });
+        }}
         similar={
           hasRecommendationItems
             ? recommendations.items
