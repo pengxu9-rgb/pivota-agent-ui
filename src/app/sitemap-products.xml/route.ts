@@ -1,35 +1,30 @@
 import { NextResponse } from 'next/server'
-import { getAllProducts } from '@/lib/api'
-import {
-  SITEMAP_BASE_URL,
-  SITEMAP_SEED_PRODUCT_IDS,
-  isMerchantIndexable,
-  isProductIdSitemapEligible,
-} from '../sitemap-seeds'
-
-/**
- * Products-only sitemap at `/sitemap-products.xml`.
- *
- * This is the URL submitted to Google Search Console for product PDPs.
- * Distinct from the main `/sitemap.xml` so the products feed can be
- * regenerated and inspected independently — and so a transient products
- * API outage doesn't take down the static-page sitemap.
- *
- * Per the pivota-pdp-indexing-discoverability runbook:
- *   - Includes only `sig_*` canonical PDP URLs (excludes `ext_*` aliases)
- *   - Includes the seed list (high-priority PDPs we want guaranteed indexed)
- *   - Includes dynamic registry products when available
- *   - De-dupes on URL
- *   - Returns Content-Type: application/xml
- *
- * This route runs at request time (revalidates every hour). If the
- * dynamic feed is unavailable, the seed list still ships — Google
- * will at least find the canonical baselines.
- */
+import { SITEMAP_BASE_URL } from '../sitemap-seeds'
 
 export const revalidate = 3600
+export const dynamic = 'force-dynamic'
 
-const DAY_MS = 24 * 60 * 60 * 1000
+const PIVOTA_CANONICAL_PAGE_SIZE = 1000
+// TODO(VIS-5): add sitemap index shards before the canonical catalog exceeds 50k URLs.
+const SITEMAP_MAX_URLS = 50000
+const DEFAULT_CANONICAL_PRODUCTS_BASE_URL = 'https://web-production-fedb.up.railway.app'
+
+type SitemapSource =
+  | 'serving_eligible'
+  | 'serving_eligible_partial'
+  | 'serving_eligible_truncated'
+  | 'serving_eligible_unavailable'
+
+type SitemapProduct = {
+  id: string
+  lastmod: Date
+}
+
+type CanonicalProductsPage = {
+  items: unknown[]
+  total: number | null
+  limit: number
+}
 
 function escapeXml(s: string): string {
   return s
@@ -44,7 +39,6 @@ function buildSitemapXml(urls: ReadonlyArray<{
   loc: string
   lastmod: Date
   changefreq: string
-  priority: number
 }>): string {
   const entries = urls
     .map(
@@ -53,7 +47,6 @@ function buildSitemapXml(urls: ReadonlyArray<{
         `    <loc>${escapeXml(e.loc)}</loc>\n` +
         `    <lastmod>${e.lastmod.toISOString()}</lastmod>\n` +
         `    <changefreq>${e.changefreq}</changefreq>\n` +
-        `    <priority>${e.priority.toFixed(1)}</priority>\n` +
         `  </url>`,
     )
     .join('\n')
@@ -65,124 +58,143 @@ function buildSitemapXml(urls: ReadonlyArray<{
   )
 }
 
-const PIVOTA_CANONICAL_PAGE_SIZE = 1000
-
-/**
- * Pull every sig_* the pivota-backend canonical resolver knows about.
- * One page (1000) is enough for current scale; if we cross that bar
- * we'll add cursor-style pagination — for now any merchant ramp will
- * surface in monitoring before we hit 1000 onboarded SKUs.
- */
-async function fetchCanonicalSigIds(): Promise<string[]> {
-  const base = (
+function getCanonicalProductsBaseUrl(): string {
+  const configured = (
     process.env.PIVOTA_BACKEND_BASE_URL ||
     process.env.NEXT_PUBLIC_PIVOTA_BACKEND_BASE_URL ||
     ''
   )
     .trim()
     .replace(/\/+$/, '')
-  if (!/^https?:\/\//.test(base)) return []
 
-  try {
-    const res = await fetch(
-      `${base}/api/canonical/products?limit=${PIVOTA_CANONICAL_PAGE_SIZE}&offset=0`,
-      {
-        method: 'GET',
-        headers: { Accept: 'application/json' },
-        cache: 'no-store',
-      },
-    )
-    if (!res.ok) return []
-    const data: unknown = await res.json().catch(() => null)
-    const items = Array.isArray((data as any)?.items) ? (data as any).items : []
-    return items
-      .map((item: any) => (typeof item?.sig_id === 'string' ? item.sig_id.trim() : ''))
-      .filter((id: string) => Boolean(id))
-      .filter(isProductIdSitemapEligible)
-  } catch (error) {
-    console.error(
-      'sitemap-products.xml: canonical resolver fetch failed, continuing without it:',
-      error,
-    )
-    return []
+  if (/^https?:\/\//.test(configured)) return configured
+  return DEFAULT_CANONICAL_PRODUCTS_BASE_URL
+}
+
+function readInteger(value: unknown, min: number): number | null {
+  const n = Number(value)
+  if (!Number.isFinite(n) || n < min) return null
+  return Math.floor(n)
+}
+
+function parseLastmod(value: unknown): Date {
+  const raw = String(value || '').trim()
+  if (!raw) return new Date()
+  const withTimezone = /(?:Z|[+-]\d{2}:?\d{2})$/.test(raw) ? raw : `${raw}Z`
+  const parsed = new Date(withTimezone)
+  return Number.isNaN(parsed.getTime()) ? new Date() : parsed
+}
+
+function isServingEligibleProduct(item: Record<string, unknown>): boolean {
+  const flags = [
+    item.serving_eligible,
+    item.is_serving_eligible,
+    item.indexable,
+    item.is_indexable,
+  ]
+  return !flags.some((value) => value === false || value === 0 || value === 'false')
+}
+
+function readCanonicalProduct(item: unknown): SitemapProduct | null {
+  if (!item || typeof item !== 'object') return null
+  const row = item as Record<string, unknown>
+  if (!isServingEligibleProduct(row)) return null
+
+  const id = String(row.sig_id || '').trim()
+  if (!id.startsWith('sig_')) return null
+
+  return {
+    id,
+    lastmod: parseLastmod(row.updated_at || row.last_modified),
   }
 }
 
-async function collectProductIds(): Promise<{
-  ids: string[]
-  source: 'seeds' | 'seeds+dynamic' | 'seeds+canonical' | 'seeds+dynamic+canonical'
-}> {
-  const seeds = SITEMAP_SEED_PRODUCT_IDS.filter(isProductIdSitemapEligible)
+async function fetchCanonicalProductsPage(
+  baseUrl: string,
+  offset: number,
+): Promise<CanonicalProductsPage> {
+  const url = new URL('/api/canonical/products', baseUrl)
+  url.searchParams.set('limit', String(PIVOTA_CANONICAL_PAGE_SIZE))
+  url.searchParams.set('offset', String(offset))
 
-  const apiBase = (process.env.NEXT_PUBLIC_API_URL || '').trim()
-  const canFetchProducts = /^https?:\/\//.test(apiBase)
-
-  const [dynamicIds, canonicalSigIds] = await Promise.all([
-    canFetchProducts
-      ? getAllProducts(200)
-          .then((products) => {
-            // Apply the same filters as src/app/sitemap.ts so this
-            // route — the one GSC actually submits PDPs from — doesn't
-            // leak test-merchant PDPs or product_group duplicates into
-            // the index. Caught by codex review 2026-05-12; the main
-            // sitemap.ts was filtered in #154 but this companion
-            // file (which the runbook calls the GSC-submitted product
-            // sitemap, see top of file) was missed.
-            const seenGroupIds = new Set<string>()
-            const out: string[] = []
-            for (const product of products) {
-              if (typeof product.product_id !== 'string') continue
-              if (!isProductIdSitemapEligible(product.product_id)) continue
-              if (!isMerchantIndexable(product.merchant_id)) continue
-              const groupId = product.product_group_id
-              if (groupId && seenGroupIds.has(groupId)) continue
-              if (groupId) seenGroupIds.add(groupId)
-              out.push(product.product_id)
-            }
-            return out
-          })
-          .catch((error) => {
-            console.error(
-              'sitemap-products.xml: dynamic registry fetch failed, continuing without it:',
-              error,
-            )
-            return [] as string[]
-          })
-      : Promise.resolve([] as string[]),
-    fetchCanonicalSigIds(),
-  ])
-
-  // De-dupe; seeds first (highest priority), then registry, then canonical.
-  const seen = new Set<string>()
-  const out: string[] = []
-  for (const id of [...seeds, ...dynamicIds, ...canonicalSigIds]) {
-    if (seen.has(id)) continue
-    seen.add(id)
-    out.push(id)
+  const res = await fetch(url.toString(), {
+    method: 'GET',
+    headers: { Accept: 'application/json' },
+    cache: 'no-store',
+  })
+  if (!res.ok) {
+    throw new Error(`canonical products fetch failed with status ${res.status}`)
   }
 
-  const usedDynamic = canFetchProducts && dynamicIds.length > 0
-  const usedCanonical = canonicalSigIds.length > 0
-  const source: 'seeds' | 'seeds+dynamic' | 'seeds+canonical' | 'seeds+dynamic+canonical' =
-    usedDynamic && usedCanonical
-      ? 'seeds+dynamic+canonical'
-      : usedDynamic
-        ? 'seeds+dynamic'
-        : usedCanonical
-          ? 'seeds+canonical'
-          : 'seeds'
-  return { ids: out, source }
+  const data: unknown = await res.json()
+  if (!data || typeof data !== 'object') {
+    throw new Error('canonical products fetch returned invalid JSON')
+  }
+
+  const page = data as Record<string, unknown>
+  return {
+    items: Array.isArray(page.items) ? page.items : [],
+    total: readInteger(page.total, 0),
+    limit: readInteger(page.limit, 1) || PIVOTA_CANONICAL_PAGE_SIZE,
+  }
+}
+
+async function collectServingEligibleProducts(): Promise<{
+  products: SitemapProduct[]
+  source: SitemapSource
+}> {
+  const baseUrl = getCanonicalProductsBaseUrl()
+  const products: SitemapProduct[] = []
+  const seenIds = new Set<string>()
+  let offset = 0
+  let stoppedForCap = false
+
+  try {
+    while (products.length < SITEMAP_MAX_URLS) {
+      const page = await fetchCanonicalProductsPage(baseUrl, offset)
+      if (page.items.length === 0) break
+
+      for (const item of page.items) {
+        const product = readCanonicalProduct(item)
+        if (!product || seenIds.has(product.id)) continue
+        seenIds.add(product.id)
+        products.push(product)
+        if (products.length >= SITEMAP_MAX_URLS) break
+      }
+
+      const nextOffset = offset + page.limit
+      const hasMore =
+        page.total !== null ? nextOffset < page.total : page.items.length >= page.limit
+
+      if (products.length >= SITEMAP_MAX_URLS && hasMore) {
+        stoppedForCap = true
+        break
+      }
+      if (!hasMore) break
+
+      offset = nextOffset
+    }
+  } catch (error) {
+    console.error('sitemap-products.xml: canonical products fetch failed:', error)
+    return {
+      products,
+      source: products.length ? 'serving_eligible_partial' : 'serving_eligible_unavailable',
+    }
+  }
+
+  return {
+    products,
+    source: stoppedForCap ? 'serving_eligible_truncated' : 'serving_eligible',
+  }
 }
 
 export async function GET() {
-  const { ids, source } = await collectProductIds()
+  const { products, source } = await collectServingEligibleProducts()
 
-  const lastmod = new Date()
-  const urls = ids.map((id) => ({
-    loc: `${SITEMAP_BASE_URL}/products/${id}`,
-    lastmod,
+  const urls = products.map((product) => ({
+    loc: `${SITEMAP_BASE_URL}/products/${encodeURIComponent(product.id)}`,
+    lastmod: product.lastmod,
     changefreq: 'weekly',
-    priority: 0.8,
   }))
 
   const xml = buildSitemapXml(urls)
@@ -194,8 +206,6 @@ export async function GET() {
       // Allow browser/CDN caches to hold the response for an hour;
       // crawlers normally re-fetch on a longer cadence anyway.
       'Cache-Control': `public, max-age=${revalidate}, stale-while-revalidate=60`,
-      // Helpful for ops: shows whether the dynamic feed contributed or
-      // we shipped seeds only on this request.
       'X-Pivota-Sitemap-Source': source,
       'X-Pivota-Sitemap-Url-Count': String(urls.length),
     },
