@@ -30,6 +30,7 @@ interface Props {
 }
 
 const DEFAULT_TITLE = 'Pivota Shopping AI';
+export const revalidate = 3600;
 const PDP_SERVER_FETCH_TIMEOUT_MS = 9000;
 const PDP_SERVER_INCLUDE = [
   'offers',

@@ -111,6 +111,19 @@ const nextConfig = {
   // Optimize production builds
   // Enable React strict mode
   productionBrowserSourceMaps: false,
+  async headers() {
+    return [
+      {
+        source: '/products/:id(sig_[^/]+)',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'public, s-maxage=3600, stale-while-revalidate=86400',
+          },
+        ],
+      },
+    ]
+  },
   async rewrites() {
     return [
       {
