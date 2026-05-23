@@ -1,5 +1,4 @@
 import { cache as _reactCache } from 'react';
-import { headers } from 'next/headers';
 
 // React's cache() needs a server-component runtime. Vitest doesn't
 // provide one — the named export becomes undefined and calling it
@@ -18,6 +17,7 @@ import { mapPdpV2ToPdpPayload } from '@/features/pdp/adapter/mapPdpV2ToPdpPayloa
 import type { PDPPayload } from '@/features/pdp/types';
 import {
   inferCanonicalPdpMerchantId,
+  isPivotaSignatureRouteId,
   isProductGroupRouteId,
   isPublicProductGroupRouteId,
   normalizeProductRouteMerchantId,
@@ -62,23 +62,16 @@ function decodeProductIdParam(raw: unknown): string {
   }
 }
 
-function resolveServerBaseUrl(headerList: Headers): string {
-  const host =
-    headerList.get('x-forwarded-host') ||
-    headerList.get('host') ||
-    '';
-  const proto =
-    headerList.get('x-forwarded-proto') ||
-    (host.includes('localhost') ? 'http' : 'https');
-
-  if (process.env.NEXT_PUBLIC_APP_URL) return process.env.NEXT_PUBLIC_APP_URL;
-  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
-  if (host) return `${proto}://${host}`;
+function resolveServerBaseUrl(): string {
+  const explicit = (process.env.NEXT_PUBLIC_APP_URL || '').trim().replace(/\/+$/, '');
+  if (/^https?:\/\//.test(explicit)) return explicit;
+  const vercel = (process.env.VERCEL_URL || '').trim().replace(/\/+$/, '');
+  if (vercel) return `https://${vercel}`;
   return 'https://agent.pivota.cc';
 }
 
-function resolveServerGatewayBaseUrl(headerList: Headers): string {
-  return `${resolveServerBaseUrl(headerList).replace(/\/+$/, '')}/api/gateway`;
+function resolveServerGatewayBaseUrl(): string {
+  return `${resolveServerBaseUrl()}/api/gateway`;
 }
 
 function firstString(...values: unknown[]): string {
@@ -171,7 +164,6 @@ async function _fetchPdpForServerRenderUncached(
   const productId = String(productIdInput || '').trim();
   if (!productId) return null;
 
-  const headerList = await headers();
   const normalizedMerchantId = normalizeProductRouteMerchantId(merchantIdInput, productId);
   const explicitMerchantId = inferCanonicalPdpMerchantId(productId, normalizedMerchantId);
   const routeIsProductGroup = isProductGroupRouteId(productId);
@@ -186,7 +178,7 @@ async function _fetchPdpForServerRenderUncached(
           : {}),
       include: [...PDP_SERVER_INCLUDE],
       timeout_ms: PDP_SERVER_FETCH_TIMEOUT_MS,
-      gatewayBaseUrl: resolveServerGatewayBaseUrl(headerList),
+      gatewayBaseUrl: resolveServerGatewayBaseUrl(),
     });
     const initialPayload = mapPdpV2ToPdpPayload(v2);
     if (!initialPayload?.product) return null;
@@ -270,9 +262,10 @@ export async function generateMetadata({
   searchParams,
 }: Props): Promise<Metadata> {
   const resolvedParams = await params;
-  const resolvedSearchParams = searchParams ? await searchParams : {};
   const productId = decodeProductIdParam(resolvedParams.id);
-  const merchantId = readSearchParam(resolvedSearchParams.merchant_id);
+  const isCanonicalSig = isPivotaSignatureRouteId(productId);
+  const resolvedSearchParams = !isCanonicalSig && searchParams ? await searchParams : {};
+  const merchantId = isCanonicalSig ? '' : readSearchParam(resolvedSearchParams.merchant_id);
   const renderData = await fetchPdpForServerRender(productId, merchantId);
 
   return renderData
@@ -289,9 +282,10 @@ export default async function ProductDetailPage(props: Props) {
   // call fails we still ship the client component (which fetches its
   // own data on hydration). Schema markup is purely additive.
   const resolvedParams = await props.params;
-  const resolvedSearchParams = props.searchParams ? await props.searchParams : {};
   const productId = decodeProductIdParam(resolvedParams.id);
-  const merchantId = readSearchParam(resolvedSearchParams.merchant_id);
+  const isCanonicalSig = isPivotaSignatureRouteId(productId);
+  const resolvedSearchParams = !isCanonicalSig && props.searchParams ? await props.searchParams : {};
+  const merchantId = isCanonicalSig ? '' : readSearchParam(resolvedSearchParams.merchant_id);
 
   const renderData = productId
     ? await fetchPdpForServerRender(productId, merchantId)

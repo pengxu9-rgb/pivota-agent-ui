@@ -4,12 +4,13 @@ import ProductDetailPage, { generateMetadata } from './page';
 
 const getPdpV2Mock = vi.hoisted(() => vi.fn());
 const mapPdpV2ToPdpPayloadMock = vi.hoisted(() => vi.fn());
+const headersMock = vi.hoisted(() => vi.fn(async () => new Headers({
+  'x-forwarded-host': 'agent.pivota.cc',
+  'x-forwarded-proto': 'https',
+})));
 
 vi.mock('next/headers', () => ({
-  headers: vi.fn(async () => new Headers({
-    'x-forwarded-host': 'agent.pivota.cc',
-    'x-forwarded-proto': 'https',
-  })),
+  headers: headersMock,
 }));
 
 vi.mock('@/lib/api', () => ({
@@ -58,14 +59,28 @@ function buildPayload(product: Record<string, unknown>, overrides: Record<string
   };
 }
 
+function buildSearchParamsAwaitTrap() {
+  const then = vi.fn(() => {
+    throw new Error('searchParams should not be awaited for canonical sig PDPs');
+  });
+  return {
+    searchParams: { then } as unknown as Promise<Record<string, string | string[] | undefined>>,
+    then,
+  };
+}
+
 describe('product page metadata', () => {
   beforeEach(() => {
     getPdpV2Mock.mockReset();
     mapPdpV2ToPdpPayloadMock.mockReset();
+    headersMock.mockClear();
+    vi.stubEnv('NEXT_PUBLIC_APP_URL', '');
+    vi.stubEnv('VERCEL_URL', '');
   });
 
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
     vi.restoreAllMocks();
   });
 
@@ -87,10 +102,11 @@ describe('product page metadata', () => {
       brand: { name: 'the ordinary' },
       image_url: 'https://example.com/lash-serum.png',
     }));
+    const searchParamsAwaitTrap = buildSearchParamsAwaitTrap();
 
     const metadata = await generateMetadata({
       params: Promise.resolve({ id: 'sig_7ad40676c42fb9c96e2a8136' }),
-      searchParams: Promise.resolve({}),
+      searchParams: searchParamsAwaitTrap.searchParams,
     });
 
     expect(metadata.title).toBe('the ordinary Multi-Peptide Lash and Brow Serum | Pivota');
@@ -109,6 +125,8 @@ describe('product page metadata', () => {
       }),
     );
     expect(getPdpV2Mock.mock.calls[0]?.[0]).not.toHaveProperty('merchant_id');
+    expect(searchParamsAwaitTrap.then).not.toHaveBeenCalled();
+    expect(headersMock).not.toHaveBeenCalled();
     expect(mapPdpV2ToPdpPayloadMock).toHaveBeenCalledWith(v2Response);
     // Phase 1a fixes: canonical link, robots index/follow, supported og:type, og:url.
     // Product-specific search/LLM indexing is covered by server-rendered JSON-LD.
@@ -121,6 +139,28 @@ describe('product page metadata', () => {
     expect((metadata.openGraph as any)?.url).toBe(
       'https://agent.pivota.cc/products/sig_7ad40676c42fb9c96e2a8136',
     );
+  });
+
+  it('uses an env-based gateway URL for server PDP fetches', async () => {
+    vi.stubEnv('NEXT_PUBLIC_APP_URL', 'https://preview.example.com///');
+    const v2Response = { modules: [] };
+    getPdpV2Mock.mockResolvedValue(v2Response);
+    mapPdpV2ToPdpPayloadMock.mockReturnValue(buildPayload({
+      title: 'Preview Product',
+    }));
+
+    await generateMetadata({
+      params: Promise.resolve({ id: 'sig_env_gateway' }),
+      searchParams: Promise.resolve({}),
+    });
+
+    expect(getPdpV2Mock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        product_id: 'sig_env_gateway',
+        gatewayBaseUrl: 'https://preview.example.com/api/gateway',
+      }),
+    );
+    expect(headersMock).not.toHaveBeenCalled();
   });
 
   it('falls back to the site title when PDP metadata cannot be resolved', async () => {
@@ -215,6 +255,52 @@ describe('product page metadata', () => {
 
     expect((metadata.alternates as any)?.canonical).toBe(
       'https://agent.pivota.cc/products/sig_singleton123',
+    );
+  });
+
+  it('server-renders signature PDPs without awaiting searchParams', async () => {
+    const v2Response = { modules: [] };
+    getPdpV2Mock.mockResolvedValue(v2Response);
+    mapPdpV2ToPdpPayloadMock.mockReturnValue(buildPayload({
+      product_id: 'sig_jsonld_static',
+      title: 'Static JSON-LD Product',
+    }));
+    const searchParamsAwaitTrap = buildSearchParamsAwaitTrap();
+
+    await ProductDetailPage({
+      params: Promise.resolve({ id: 'sig_jsonld_static' }),
+      searchParams: searchParamsAwaitTrap.searchParams,
+    });
+
+    expect(getPdpV2Mock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        product_id: 'sig_jsonld_static',
+      }),
+    );
+    expect(getPdpV2Mock.mock.calls[0]?.[0]).not.toHaveProperty('merchant_id');
+    expect(searchParamsAwaitTrap.then).not.toHaveBeenCalled();
+    expect(headersMock).not.toHaveBeenCalled();
+  });
+
+  it('keeps merchant-scoped SSR fetches for non-signature product routes', async () => {
+    const v2Response = { modules: [] };
+    getPdpV2Mock.mockResolvedValue(v2Response);
+    mapPdpV2ToPdpPayloadMock.mockReturnValue(buildPayload({
+      product_id: 'prod_1',
+      title: 'Merchant Scoped Product',
+    }));
+
+    await ProductDetailPage({
+      params: Promise.resolve({ id: 'prod_1' }),
+      searchParams: Promise.resolve({ merchant_id: 'merchant_a' }),
+    });
+
+    expect(getPdpV2Mock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        product_id: 'prod_1',
+        merchant_id: 'merchant_a',
+        include: fullPdpInclude,
+      }),
     );
   });
 
