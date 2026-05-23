@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import Image from 'next/image';
 import { ChevronLeft, ChevronRight, Grid3X3, Play } from 'lucide-react';
 import type { MediaGalleryData } from '@/features/pdp/types';
@@ -63,6 +63,27 @@ export function MediaGallery({
 
   const canGoPrev = clampedIndex > 0;
   const canGoNext = clampedIndex < items.length - 1;
+
+  useEffect(() => {
+    if (items.length <= 1 || !onSelect) return;
+    const handleKey = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target) {
+        const tag = target.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable) {
+          return;
+        }
+      }
+      if (event.key === 'ArrowLeft') {
+        if (clampedIndex > 0) applyHeroSwipe('prev');
+      } else if (event.key === 'ArrowRight') {
+        if (clampedIndex < items.length - 1) applyHeroSwipe('next');
+      }
+    };
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clampedIndex, items.length, onSelect]);
 
   return (
     <div className="lg:flex lg:flex-row lg:gap-3">
@@ -148,24 +169,28 @@ export function MediaGallery({
                 onClick={() => applyHeroSwipe('prev')}
                 disabled={!canGoPrev}
                 className={cn(
-                  'hidden lg:flex absolute left-2 top-1/2 -translate-y-1/2 h-10 w-10 items-center justify-center rounded-full bg-white/90 border border-border shadow-sm transition-opacity',
-                  canGoPrev ? 'opacity-100 hover:bg-white' : 'opacity-0 pointer-events-none',
+                  'hidden lg:flex absolute left-3 top-1/2 -translate-y-1/2 h-11 w-11 items-center justify-center rounded-full bg-white border border-black/10 shadow-lg backdrop-blur-sm transition-all duration-150',
+                  canGoPrev
+                    ? 'opacity-100 hover:scale-105 hover:shadow-xl'
+                    : 'opacity-0 pointer-events-none',
                 )}
                 aria-label="Previous image"
               >
-                <ChevronLeft className="h-5 w-5 text-foreground" />
+                <ChevronLeft className="h-5 w-5 text-foreground" strokeWidth={2.5} />
               </button>
               <button
                 type="button"
                 onClick={() => applyHeroSwipe('next')}
                 disabled={!canGoNext}
                 className={cn(
-                  'hidden lg:flex absolute right-2 top-1/2 -translate-y-1/2 h-10 w-10 items-center justify-center rounded-full bg-white/90 border border-border shadow-sm transition-opacity',
-                  canGoNext ? 'opacity-100 hover:bg-white' : 'opacity-0 pointer-events-none',
+                  'hidden lg:flex absolute right-3 top-1/2 -translate-y-1/2 h-11 w-11 items-center justify-center rounded-full bg-white border border-black/10 shadow-lg backdrop-blur-sm transition-all duration-150',
+                  canGoNext
+                    ? 'opacity-100 hover:scale-105 hover:shadow-xl'
+                    : 'opacity-0 pointer-events-none',
                 )}
                 aria-label="Next image"
               >
-                <ChevronRight className="h-5 w-5 text-foreground" />
+                <ChevronRight className="h-5 w-5 text-foreground" strokeWidth={2.5} />
               </button>
             </>
           ) : null}
