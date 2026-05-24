@@ -37,7 +37,7 @@ describe('buildSimilarMainlineStatus', () => {
     });
   });
 
-  it('uses the same neutral copy for empty or unavailable post-core recommendations', () => {
+  it('uses settled empty copy for empty or unavailable post-core recommendations', () => {
     expect(
       buildSimilarMainlineStatus({
         similar_status: 'unavailable',
@@ -45,8 +45,21 @@ describe('buildSimilarMainlineStatus', () => {
         underfill: 36,
       }),
     ).toEqual({
-      title: 'Recommendations are updating',
-      body: 'Related products are still being prepared for this item.',
+      title: 'No related products yet',
+      body: 'Related products are not available for this item right now.',
     });
+  });
+
+  it('does not show empty copy when an underfilled response still has products', () => {
+    expect(
+      buildSimilarMainlineStatus(
+        {
+          similar_status: 'underfilled',
+          low_confidence_reason_codes: ['UNDERFILL_MAINLINE_RECALL'],
+          underfill: 4,
+        },
+        { itemCount: 2 },
+      ),
+    ).toBeNull();
   });
 });

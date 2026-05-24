@@ -2194,8 +2194,11 @@ export function PdpContainer({
     [payloadRecommendations?.strategy, similarItems, similarMetadata, similarStrategy],
   );
   const similarStatus = useMemo(
-    () => buildSimilarMainlineStatus(recommendations.metadata),
-    [recommendations.metadata],
+    () =>
+      buildSimilarMainlineStatus(recommendations.metadata, {
+        itemCount: recommendations.items.length,
+      }),
+    [recommendations.items.length, recommendations.metadata],
   );
 
   useEffect(() => {
