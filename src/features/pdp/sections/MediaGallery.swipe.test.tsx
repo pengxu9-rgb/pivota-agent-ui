@@ -107,7 +107,7 @@ describe('MediaGallery swipe behavior', () => {
     expect(heroFrame).not.toHaveClass('lg:aspect-square');
   });
 
-  it('bounds product-line preview images inside the hero stage on desktop', () => {
+  it('keeps product-line preview images as bounded artboard chrome on desktop', () => {
     render(
       <MediaGallery
         title="Product D"
@@ -128,15 +128,27 @@ describe('MediaGallery swipe behavior', () => {
     );
 
     const heroImage = screen.getAllByAltText('Hero 1')[0] as HTMLElement;
+    const frame = screen.getByTestId('media-gallery-frame');
+    const heroStage = screen.getByTestId('media-gallery-hero-stage');
+    const safeFrame = screen.getByTestId('media-gallery-hero-safe-frame');
+    const sideRail = screen.getByTestId('media-gallery-side-rail');
     const previewRail = screen.getByTestId('product-line-preview-rail');
 
-    expect(previewRail.parentElement).toContainElement(heroImage);
-    expect(previewRail).toHaveClass('lg:absolute', 'lg:max-h-full', 'lg:overflow-hidden');
+    expect(frame).toHaveClass('relative', 'isolate');
+    expect(heroStage).toContainElement(heroImage);
+    expect(heroStage).toContainElement(safeFrame);
+    expect(safeFrame).toHaveClass('left-0', 'right-0', 'lg:left-[96px]', 'lg:right-6', 'overflow-hidden');
+    expect(sideRail).toHaveClass('lg:absolute', 'lg:inset-y-3', 'lg:left-3', 'lg:w-[68px]', 'lg:overflow-hidden');
+    expect(sideRail.firstElementChild).toHaveClass('lg:h-full', 'lg:overflow-y-auto');
+    expect(sideRail).toContainElement(previewRail);
+    expect(sideRail).not.toContainElement(heroImage);
+    expect(heroStage).not.toContainElement(sideRail);
+    expect(screen.getByRole('button', { name: 'View product-line item 1' })).toHaveClass('lg:h-14', 'lg:w-14');
     expect(previewRail.querySelector('.overflow-x-auto')).toBeTruthy();
     expect(screen.getAllByRole('button', { name: /^View product-line item/ })).toHaveLength(12);
   });
 
-  it('bounds the desktop media thumbnail rail to the hero stage height', () => {
+  it('keeps the desktop media thumbnail rail as bounded chrome outside the hero safe frame', () => {
     render(
       <MediaGallery
         title="Product E"
@@ -152,19 +164,32 @@ describe('MediaGallery swipe behavior', () => {
     );
 
     const heroImage = screen.getAllByAltText('Hero 1')[0] as HTMLElement;
+    const frame = screen.getByTestId('media-gallery-frame');
+    const heroStage = screen.getByTestId('media-gallery-hero-stage');
+    const safeFrame = screen.getByTestId('media-gallery-hero-safe-frame');
+    const sideRail = screen.getByTestId('media-gallery-side-rail');
     const thumbnailRail = screen.getByTestId('media-gallery-thumbnail-rail');
     const previousArrow = screen.getByRole('button', { name: 'Previous image' });
     const nextArrow = screen.getByRole('button', { name: 'Next image' });
 
-    expect(thumbnailRail.parentElement).toContainElement(heroImage);
-    expect(thumbnailRail).toHaveClass('lg:absolute', 'lg:inset-y-3', 'lg:left-3', 'lg:overflow-y-auto');
-    expect(thumbnailRail.nextElementSibling).not.toHaveClass('lg:ml-[76px]');
-    expect(previousArrow).toHaveClass('left-[92px]', 'top-1/2');
+    expect(frame).toHaveClass('relative', 'isolate');
+    expect(heroStage).toContainElement(heroImage);
+    expect(heroStage).toContainElement(safeFrame);
+    expect(safeFrame).toHaveClass('left-0', 'right-0', 'lg:left-[96px]', 'lg:right-6', 'overflow-hidden');
+    expect(sideRail).toHaveClass('lg:absolute', 'lg:inset-y-3', 'lg:left-3', 'lg:w-[68px]', 'lg:overflow-hidden');
+    expect(sideRail.firstElementChild).toHaveClass('lg:h-full', 'lg:overflow-y-auto');
+    expect(sideRail).toContainElement(thumbnailRail);
+    expect(heroStage).not.toContainElement(sideRail);
+    expect(sideRail).not.toContainElement(heroImage);
+    expect(previousArrow.parentElement).toBe(heroStage);
+    expect(nextArrow.parentElement).toBe(heroStage);
+    expect(previousArrow).toHaveClass('left-[96px]', 'top-1/2');
     expect(nextArrow).toHaveClass('right-4', 'top-1/2');
+    expect(screen.getByRole('button', { name: 'Select media 1' })).toHaveClass('h-14', 'w-14');
     expect(screen.getAllByRole('button', { name: /^Select media/ })).toHaveLength(12);
   });
 
-  it('offsets primary contained media away from the desktop thumbnail rail', () => {
+  it('uses a rail-aware safe frame for primary contained media without translate hacks', () => {
     render(
       <MediaGallery
         title="Product G"
@@ -180,12 +205,15 @@ describe('MediaGallery swipe behavior', () => {
     );
 
     const heroImage = screen.getAllByAltText('Hero 1')[0] as HTMLElement;
+    const safeFrame = screen.getByTestId('media-gallery-hero-safe-frame');
 
-    expect(heroImage).toHaveClass('object-contain', 'lg:translate-x-[8%]', 'lg:scale-[1.06]');
-    expect(heroImage.parentElement).not.toHaveClass('lg:left-[76px]');
+    expect(heroImage).toHaveClass('object-contain', 'lg:scale-[1.06]');
+    expect(heroImage).not.toHaveClass('lg:translate-x-[8%]');
+    expect(safeFrame).toHaveClass('lg:left-[96px]', 'lg:right-6');
+    expect(heroImage.parentElement).toBe(safeFrame);
   });
 
-  it('reserves thumbnail gutter for secondary desktop media without shrinking the hero stage', () => {
+  it('keeps secondary contained media centered inside the same rail-aware safe frame', () => {
     render(
       <MediaGallery
         title="Product F"
@@ -202,10 +230,12 @@ describe('MediaGallery swipe behavior', () => {
     );
 
     const heroImage = screen.getAllByAltText('Hero 2')[0] as HTMLElement;
-    const heroFrame = heroImage.parentElement?.parentElement;
+    const safeFrame = screen.getByTestId('media-gallery-hero-safe-frame');
+    const heroFrame = safeFrame.parentElement;
 
-    expect(heroImage.parentElement).toHaveClass('lg:left-[76px]');
     expect(heroImage).toHaveClass('object-contain', 'lg:scale-100');
+    expect(heroImage).not.toHaveClass('lg:translate-x-[8%]');
+    expect(safeFrame).toHaveClass('left-0', 'right-0', 'lg:left-[96px]', 'lg:right-6');
     expect(heroFrame).toHaveClass('aspect-square');
     expect(heroFrame).not.toHaveClass('lg:ml-[76px]');
   });

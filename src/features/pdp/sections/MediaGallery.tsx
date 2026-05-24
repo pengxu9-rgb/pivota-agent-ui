@@ -63,54 +63,100 @@ export function MediaGallery({
 
   const canGoPrev = clampedIndex > 0;
   const canGoNext = clampedIndex < items.length - 1;
-  const shouldReserveThumbnailGutter = items.length > 1 && clampedIndex > 0;
-  const shouldOffsetPrimaryForThumbnailRail = items.length > 1 && clampedIndex === 0;
+  const hasDesktopSideRail = items.length > 1 || previewItems.length > 0;
 
-  const previewRail = previewItems.length ? (
+  const sideRail = hasDesktopSideRail ? (
     <div
-      data-testid="product-line-preview-rail"
-      className="mt-3 px-3 lg:pointer-events-none lg:absolute lg:inset-x-0 lg:bottom-0 lg:z-[3] lg:mt-0 lg:max-h-full lg:overflow-hidden lg:rounded-b-xl lg:bg-gradient-to-t lg:from-background/95 lg:via-background/85 lg:to-transparent lg:px-3 lg:pb-3 lg:pt-8 lg:backdrop-blur-sm"
+      data-testid="media-gallery-side-rail"
+      className={cn(
+        'mt-3 px-3 lg:absolute lg:inset-y-3 lg:left-3 lg:z-[4] lg:mt-0 lg:block lg:w-[68px] lg:min-h-0 lg:overflow-hidden lg:rounded-xl lg:bg-background/70 lg:p-1.5 lg:shadow-sm lg:backdrop-blur-md',
+        previewItems.length ? '' : 'hidden lg:block',
+      )}
     >
-      <div className="lg:pointer-events-auto">
-        <div className="mb-2 flex items-center justify-between gap-3">
-          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-            Product Line
-          </p>
-          {typeof data?.preview_scope === 'string' && data.preview_scope.trim() ? (
-            <span className="min-w-0 truncate text-[11px] text-muted-foreground">
-              {data.preview_scope.replace(/_/g, ' ')}
-            </span>
-          ) : null}
-        </div>
-        <div className="flex max-w-full gap-2 overflow-x-auto pb-1 [scrollbar-width:thin]">
-          {previewItems.map((item, idx) => (
-            <button
-              key={`preview-${item.url}-${idx}`}
-              type="button"
-              onClick={() => onSelectPreviewItem?.(item, idx)}
-              disabled={!onSelectPreviewItem || !item.product_id}
-              className={cn(
-                'group min-w-[92px] max-w-[92px] text-left',
-                !onSelectPreviewItem || !item.product_id ? 'cursor-default' : 'cursor-pointer',
-              )}
-              aria-label={`View product-line item ${idx + 1}`}
-            >
-              <div className="relative h-20 w-[92px] overflow-hidden rounded-lg border border-border bg-muted/20 lg:h-16">
+      <div className="lg:flex lg:h-full lg:min-h-0 lg:flex-col lg:gap-3 lg:overflow-y-auto lg:scrollbar-thin">
+        {items.length > 1 ? (
+          <div data-testid="media-gallery-thumbnail-rail" className="hidden lg:flex lg:flex-col lg:gap-2">
+            {items.map((item, idx) => (
+              <button
+                key={`dt-${item.url}-${idx}`}
+                type="button"
+                onClick={() => onSelect?.(idx)}
+                className={cn(
+                  'relative h-14 w-14 flex-shrink-0 overflow-hidden rounded-lg border-2 transition',
+                  idx === clampedIndex
+                    ? 'border-primary ring-2 ring-primary/30'
+                    : 'border-border hover:border-muted-foreground/50',
+                )}
+                aria-label={`Select media ${idx + 1}`}
+              >
                 <Image
                   src={item.url}
-                  alt={item.alt_text || `Product line item ${idx + 1}`}
+                  alt=""
                   fill
-                  className="object-cover transition-transform group-hover:scale-[1.02]"
-                  sizes="92px"
+                  className="object-cover"
+                  sizes="56px"
                   unoptimized={shouldBypassNextImageOptimizer(item.url)}
                 />
-              </div>
-              <p className="mt-1.5 line-clamp-2 text-[11px] leading-4 text-muted-foreground lg:line-clamp-1">
-                {item.alt_text || 'Related option'}
+                {item.type === 'video' ? (
+                  <div className="absolute inset-0 flex items-center justify-center bg-foreground/20">
+                    <Play className="h-3.5 w-3.5 text-white" fill="white" />
+                  </div>
+                ) : null}
+              </button>
+            ))}
+          </div>
+        ) : null}
+
+        {previewItems.length ? (
+          <div
+            data-testid="product-line-preview-rail"
+            className="lg:flex lg:flex-col lg:gap-2 lg:border-t lg:border-border/70 lg:pt-3"
+          >
+            <div className="mb-2 flex items-center justify-between gap-3 lg:hidden">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                Product Line
               </p>
-            </button>
-          ))}
-        </div>
+              {typeof data?.preview_scope === 'string' && data.preview_scope.trim() ? (
+                <span className="min-w-0 truncate text-[11px] text-muted-foreground">
+                  {data.preview_scope.replace(/_/g, ' ')}
+                </span>
+              ) : null}
+            </div>
+            <span className="hidden px-0.5 text-[9px] font-semibold uppercase leading-3 tracking-[0.12em] text-muted-foreground lg:block">
+              Line
+            </span>
+            <div className="flex max-w-full gap-2 overflow-x-auto pb-1 [scrollbar-width:thin] lg:flex-col lg:overflow-visible lg:pb-0">
+              {previewItems.map((item, idx) => (
+                <button
+                  key={`preview-${item.url}-${idx}`}
+                  type="button"
+                  onClick={() => onSelectPreviewItem?.(item, idx)}
+                  disabled={!onSelectPreviewItem || !item.product_id}
+                  className={cn(
+                    'group min-w-[92px] max-w-[92px] text-left lg:h-14 lg:w-14 lg:min-w-0 lg:max-w-none lg:flex-shrink-0',
+                    !onSelectPreviewItem || !item.product_id ? 'cursor-default' : 'cursor-pointer',
+                  )}
+                  aria-label={`View product-line item ${idx + 1}`}
+                  title={item.alt_text || `Product line item ${idx + 1}`}
+                >
+                  <div className="relative h-20 w-[92px] overflow-hidden rounded-lg border border-border bg-muted/20 lg:h-full lg:w-full">
+                    <Image
+                      src={item.url}
+                      alt={item.alt_text || `Product line item ${idx + 1}`}
+                      fill
+                      className="object-cover transition-transform group-hover:scale-[1.02]"
+                      sizes="(max-width: 1023px) 92px, 56px"
+                      unoptimized={shouldBypassNextImageOptimizer(item.url)}
+                    />
+                  </div>
+                  <p className="mt-1.5 line-clamp-2 text-[11px] leading-4 text-muted-foreground lg:sr-only">
+                    {item.alt_text || 'Related option'}
+                  </p>
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
       </div>
     </div>
   ) : null;
@@ -137,96 +183,65 @@ export function MediaGallery({
   }, [clampedIndex, items.length, onSelect]);
 
   return (
-    <div className="lg:relative lg:isolate">
-      {items.length > 1 ? (
+    <div
+      data-testid="media-gallery-frame"
+      className="relative isolate"
+    >
+      <div
+        data-testid="media-gallery-stage-column"
+        className="min-w-0"
+      >
         <div
-          data-testid="media-gallery-thumbnail-rail"
-          className="hidden lg:absolute lg:inset-y-3 lg:left-3 lg:z-[4] lg:flex lg:w-16 lg:flex-col lg:gap-2 lg:overflow-y-auto lg:rounded-xl lg:bg-background/70 lg:p-1.5 lg:shadow-sm lg:backdrop-blur-md lg:scrollbar-thin"
+          data-testid="media-gallery-hero-stage"
+          className={cn(
+            'relative touch-pan-y lg:overflow-hidden lg:rounded-xl',
+            aspectClass,
+            isContain ? 'bg-muted/30' : 'bg-black/5',
+          )}
+          onTouchStart={(event) => {
+            const touch = event.touches[0];
+            if (!touch) return;
+            touchStartRef.current = { x: touch.clientX, y: touch.clientY };
+          }}
+          onTouchEnd={(event) => {
+            const start = touchStartRef.current;
+            const touch = event.changedTouches[0];
+            touchStartRef.current = null;
+            if (!start || !touch || items.length <= 1) return;
+            const deltaX = touch.clientX - start.x;
+            const deltaY = touch.clientY - start.y;
+            if (Math.abs(deltaX) < 36 || Math.abs(deltaX) <= Math.abs(deltaY)) return;
+            applyHeroSwipe(deltaX < 0 ? 'next' : 'prev');
+          }}
         >
-          {items.map((item, idx) => (
-            <button
-              key={`dt-${item.url}-${idx}`}
-              type="button"
-              onClick={() => onSelect?.(idx)}
+          {heroUrl ? (
+            <div
+              data-testid="media-gallery-hero-safe-frame"
               className={cn(
-                'relative h-16 w-16 rounded-lg overflow-hidden border-2 transition flex-shrink-0',
-                idx === clampedIndex
-                  ? 'border-primary ring-2 ring-primary/30'
-                  : 'border-border hover:border-muted-foreground/50',
+                'absolute inset-y-0 left-0 right-0 overflow-hidden',
+                hasDesktopSideRail ? 'lg:left-[96px] lg:right-6' : '',
               )}
-              aria-label={`Select media ${idx + 1}`}
             >
               <Image
-                src={item.url}
-                alt=""
+                src={heroUrl}
+                alt={hero?.alt_text || title}
                 fill
-                className="object-cover"
-                sizes="64px"
-                unoptimized={shouldBypassNextImageOptimizer(item.url)}
+                className={cn(
+                  fit,
+                  'object-center transition-transform duration-200',
+                  isContain ? (clampedIndex === 0 ? 'lg:scale-[1.06]' : 'lg:scale-100') : '',
+                )}
+                sizes="(max-width: 768px) 100vw, (max-width: 1280px) 58vw, 720px"
+                priority
+                fetchPriority="high"
+                unoptimized={shouldBypassNextImageOptimizer(heroUrl)}
               />
-              {item.type === 'video' ? (
-                <div className="absolute inset-0 flex items-center justify-center bg-foreground/20">
-                  <Play className="h-3.5 w-3.5 text-white" fill="white" />
-                </div>
-              ) : null}
-            </button>
-          ))}
-        </div>
-      ) : null}
-
-      <div className="lg:min-w-0">
-        <div className="relative">
-          <div
-            className={cn(
-              'relative touch-pan-y lg:rounded-xl lg:overflow-hidden',
-              aspectClass,
-              isContain ? 'bg-muted/30' : 'bg-black/5',
-            )}
-            onTouchStart={(event) => {
-              const touch = event.touches[0];
-              if (!touch) return;
-              touchStartRef.current = { x: touch.clientX, y: touch.clientY };
-            }}
-            onTouchEnd={(event) => {
-              const start = touchStartRef.current;
-              const touch = event.changedTouches[0];
-              touchStartRef.current = null;
-              if (!start || !touch || items.length <= 1) return;
-              const deltaX = touch.clientX - start.x;
-              const deltaY = touch.clientY - start.y;
-              if (Math.abs(deltaX) < 36 || Math.abs(deltaX) <= Math.abs(deltaY)) return;
-              applyHeroSwipe(deltaX < 0 ? 'next' : 'prev');
-            }}
-          >
-            {heroUrl ? (
-              <div className={cn('absolute inset-0', shouldReserveThumbnailGutter ? 'lg:left-[76px]' : '')}>
-                <Image
-                  src={heroUrl}
-                  alt={hero?.alt_text || title}
-                  fill
-                  className={cn(
-                    fit,
-                    'object-center transition-transform duration-200',
-                    isContain
-                      ? shouldOffsetPrimaryForThumbnailRail
-                        ? 'lg:translate-x-[8%] lg:scale-[1.06]'
-                        : clampedIndex === 0
-                          ? 'lg:scale-[1.06]'
-                          : 'lg:scale-100'
-                      : '',
-                  )}
-                  sizes="(max-width: 768px) 100vw, (max-width: 1280px) 58vw, 720px"
-                  priority
-                  fetchPriority="high"
-                  unoptimized={shouldBypassNextImageOptimizer(heroUrl)}
-                />
-              </div>
-            ) : (
-              <div className="absolute inset-0 flex items-center justify-center text-sm text-muted-foreground">
-                No media
-              </div>
-            )}
-          </div>
+            </div>
+          ) : (
+            <div className="absolute inset-0 flex items-center justify-center text-sm text-muted-foreground">
+              No media
+            </div>
+          )}
 
           {items.length > 1 ? (
             <>
@@ -235,10 +250,10 @@ export function MediaGallery({
                 onClick={() => applyHeroSwipe('prev')}
                 disabled={!canGoPrev}
                 className={cn(
-                  'hidden lg:flex absolute left-[92px] top-1/2 z-[5] -translate-y-1/2 h-11 w-11 items-center justify-center rounded-full bg-white/90 border border-black/10 shadow-lg backdrop-blur-md transition-all duration-150',
+                  'absolute left-[96px] top-1/2 z-[5] hidden h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-black/10 bg-white/90 shadow-lg backdrop-blur-md transition-all duration-150 lg:flex',
                   canGoPrev
                     ? 'opacity-100 hover:scale-105 hover:shadow-xl'
-                    : 'opacity-0 pointer-events-none',
+                    : 'pointer-events-none opacity-0',
                 )}
                 aria-label="Previous image"
               >
@@ -249,10 +264,10 @@ export function MediaGallery({
                 onClick={() => applyHeroSwipe('next')}
                 disabled={!canGoNext}
                 className={cn(
-                  'hidden lg:flex absolute right-4 top-1/2 z-[5] -translate-y-1/2 h-11 w-11 items-center justify-center rounded-full bg-white/90 border border-black/10 shadow-lg backdrop-blur-md transition-all duration-150',
+                  'absolute right-4 top-1/2 z-[5] hidden h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-black/10 bg-white/90 shadow-lg backdrop-blur-md transition-all duration-150 lg:flex',
                   canGoNext
                     ? 'opacity-100 hover:scale-105 hover:shadow-xl'
-                    : 'opacity-0 pointer-events-none',
+                    : 'pointer-events-none opacity-0',
                 )}
                 aria-label="Next image"
               >
@@ -262,60 +277,60 @@ export function MediaGallery({
           ) : null}
 
           {items.length ? (
-            <div className="absolute top-3 right-3 rounded-full bg-foreground/60 px-2 py-0.5 text-[10px] text-white lg:hidden">
+            <div className="absolute right-3 top-3 rounded-full bg-foreground/60 px-2 py-0.5 text-[10px] text-white lg:hidden">
               {Math.min(clampedIndex + 1, items.length)}/{items.length}
             </div>
           ) : null}
-
-          {previewRail}
         </div>
-
-        {items.length ? (
-          <div className="mt-2 px-3 overflow-x-auto lg:hidden">
-            <div className="flex gap-2 pb-1">
-              {items.slice(0, 5).map((item, idx) => (
-                <button
-                  key={`${item.url}-${idx}`}
-                  type="button"
-                  onClick={() => onSelect?.(idx)}
-                  className={cn(
-                    'relative h-12 w-12 rounded-md overflow-hidden border transition flex-shrink-0',
-                    idx === clampedIndex ? 'border-primary ring-2 ring-primary/40' : 'border-border',
-                  )}
-                  aria-label={`View media ${idx + 1}`}
-                >
-                  <Image
-                    src={item.url}
-                    alt={item.alt_text || `Media ${idx + 1}`}
-                    fill
-                    className="object-cover"
-                    sizes="48px"
-                    unoptimized={shouldBypassNextImageOptimizer(item.url)}
-                  />
-                  {item.type === 'video' ? (
-                    <div className="absolute inset-0 flex items-center justify-center bg-foreground/20">
-                      <Play className="h-3 w-3 text-white" fill="white" />
-                    </div>
-                  ) : null}
-                </button>
-              ))}
-              {onOpenAll ? (
-                <button
-                  type="button"
-                  onClick={() => onOpenAll()}
-                  className="flex h-12 w-12 flex-shrink-0 flex-col items-center justify-center gap-0.5 rounded-md border border-border bg-muted/40 text-muted-foreground transition hover:bg-muted/60"
-                  aria-label="View all media"
-                >
-                  <Grid3X3 className="h-4 w-4" />
-                  <span className="text-[9px] leading-none">
-                    {items.length > 5 ? `+${items.length - 5}` : 'All'}
-                  </span>
-                </button>
-              ) : null}
-            </div>
-          </div>
-        ) : null}
       </div>
+
+      {sideRail}
+
+      {items.length ? (
+        <div className="mt-2 overflow-x-auto px-3 lg:hidden">
+          <div className="flex gap-2 pb-1">
+            {items.slice(0, 5).map((item, idx) => (
+              <button
+                key={`${item.url}-${idx}`}
+                type="button"
+                onClick={() => onSelect?.(idx)}
+                className={cn(
+                  'relative h-12 w-12 flex-shrink-0 overflow-hidden rounded-md border transition',
+                  idx === clampedIndex ? 'border-primary ring-2 ring-primary/40' : 'border-border',
+                )}
+                aria-label={`View media ${idx + 1}`}
+              >
+                <Image
+                  src={item.url}
+                  alt={item.alt_text || `Media ${idx + 1}`}
+                  fill
+                  className="object-cover"
+                  sizes="48px"
+                  unoptimized={shouldBypassNextImageOptimizer(item.url)}
+                />
+                {item.type === 'video' ? (
+                  <div className="absolute inset-0 flex items-center justify-center bg-foreground/20">
+                    <Play className="h-3 w-3 text-white" fill="white" />
+                  </div>
+                ) : null}
+              </button>
+            ))}
+            {onOpenAll ? (
+              <button
+                type="button"
+                onClick={() => onOpenAll()}
+                className="flex h-12 w-12 flex-shrink-0 flex-col items-center justify-center gap-0.5 rounded-md border border-border bg-muted/40 text-muted-foreground transition hover:bg-muted/60"
+                aria-label="View all media"
+              >
+                <Grid3X3 className="h-4 w-4" />
+                <span className="text-[9px] leading-none">
+                  {items.length > 5 ? `+${items.length - 5}` : 'All'}
+                </span>
+              </button>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
