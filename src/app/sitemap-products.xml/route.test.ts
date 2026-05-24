@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { GET, HEAD } from './route';
+import { SITEMAP_SEED_PRODUCT_IDS } from '../sitemap-seeds';
 
 async function readBody(res: Response): Promise<string> {
   return await res.text();
@@ -120,6 +121,28 @@ describe('/sitemap-products.xml — serving-eligible product sitemap', () => {
     expect(xml).not.toContain('<url>');
     expect(res.headers.get('x-pivota-sitemap-source')).toBe('serving_eligible');
     expect(res.headers.get('x-pivota-sitemap-url-count')).toBe('0');
+  });
+
+  it('returns seed URLs with short cache when the canonical endpoint is unavailable', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(new Error('backend unavailable'));
+
+    const res = await GET();
+    const xml = await readBody(res);
+    const locs = sitemapLocs(xml);
+
+    expect(res.status).toBe(200);
+    expect(locs).toHaveLength(SITEMAP_SEED_PRODUCT_IDS.length);
+    expect(locs).toContain(
+      `https://agent.pivota.cc/products/${SITEMAP_SEED_PRODUCT_IDS[0]}`,
+    );
+    expect(res.headers.get('cache-control')).toBe(
+      'public, max-age=60, s-maxage=60, stale-while-revalidate=300',
+    );
+    expect(res.headers.get('x-pivota-sitemap-source')).toBe('serving_eligible_unavailable');
+    expect(res.headers.get('x-pivota-sitemap-url-count')).toBe(
+      String(SITEMAP_SEED_PRODUCT_IDS.length),
+    );
   });
 
   it('filters non-sig rows, explicit non-serving rows, and duplicate sigs', async () => {
