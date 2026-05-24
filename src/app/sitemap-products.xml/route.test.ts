@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { GET } from './route';
+import { GET, HEAD } from './route';
 
 async function readBody(res: Response): Promise<string> {
   return await res.text();
@@ -51,7 +51,9 @@ describe('/sitemap-products.xml — serving-eligible product sitemap', () => {
     expect(locs).toContain('https://agent.pivota.cc/products/sig_mock_product_0024');
     expect(xml).toContain('<lastmod>2026-05-01T12:00:00.000Z</lastmod>');
     expect(xml).toContain('<changefreq>weekly</changefreq>');
-    expect(res.headers.get('cache-control')).toBe('public, max-age=3600, stale-while-revalidate=60');
+    expect(res.headers.get('cache-control')).toBe(
+      'public, max-age=3600, s-maxage=3600, stale-while-revalidate=86400',
+    );
     expect(res.headers.get('x-pivota-sitemap-source')).toBe('serving_eligible');
     expect(res.headers.get('x-pivota-sitemap-url-count')).toBe('25');
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -60,6 +62,20 @@ describe('/sitemap-products.xml — serving-eligible product sitemap', () => {
     expect(fetchedUrl.pathname).toBe('/api/canonical/products');
     expect(fetchedUrl.searchParams.get('limit')).toBe('1000');
     expect(fetchedUrl.searchParams.get('offset')).toBe('0');
+  });
+
+  it('answers HEAD probes without fetching the backend', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch');
+
+    const res = await HEAD();
+
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe('');
+    expect(res.headers.get('content-type')).toMatch(/application\/xml/);
+    expect(res.headers.get('cache-control')).toBe(
+      'public, max-age=3600, s-maxage=3600, stale-while-revalidate=86400',
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('paginates canonical products until the endpoint is exhausted', async () => {
