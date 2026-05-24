@@ -21,7 +21,7 @@ describe('BeautyDesktopGallery', () => {
     const heroImage = screen.getByAltText('Adaptive product');
     const heroStage = heroImage.closest('button')?.parentElement;
 
-    expect(heroImage).toHaveClass('object-contain', 'object-center', 'scale-[1.08]');
+    expect(heroImage).toHaveClass('object-contain', 'object-center', 'translate-x-[10%]', 'scale-[1.08]');
     expect(heroStage).toHaveStyle({ aspectRatio: '1 / 1' });
     expect(heroStage).toHaveClass('min-h-[480px]');
   });
@@ -38,7 +38,7 @@ describe('BeautyDesktopGallery', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Previous image' }));
     expect(screen.getByText('1 / 3')).toBeInTheDocument();
-    expect(screen.getByAltText('Adaptive product')).toHaveClass('scale-[1.08]');
+    expect(screen.getByAltText('Adaptive product')).toHaveClass('translate-x-[10%]', 'scale-[1.08]');
   });
 
   it('bounds the desktop thumbnail rail to the main image stage', () => {

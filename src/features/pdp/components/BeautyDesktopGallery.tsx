@@ -32,6 +32,7 @@ export function BeautyDesktopGallery({
   };
   const canGoPrev = idx > 0;
   const canGoNext = idx < images.length - 1;
+  const hasThumbnailRail = images.length > 1;
 
   return (
     <div
@@ -39,7 +40,7 @@ export function BeautyDesktopGallery({
       style={{ background: 'linear-gradient(180deg, #F5EFE7 0%, #ECE2D3 100%)' }}
     >
       {/* Left thumbnail strip — only shown when there are multiple images */}
-      {images.length > 1 ? (
+      {hasThumbnailRail ? (
         <div
           data-testid="beauty-desktop-thumbnail-rail"
           className="absolute inset-y-3 left-3 z-20 flex w-16 flex-col gap-1.5 overflow-y-auto rounded-xl bg-white/65 p-1.5 shadow-sm backdrop-blur-md [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
@@ -75,7 +76,7 @@ export function BeautyDesktopGallery({
         <button
           type="button"
           onClick={() => onOpenViewer?.(idx)}
-          className={cn('absolute inset-0 block', images.length > 1 && idx > 0 ? 'left-[76px]' : '')}
+          className={cn('absolute inset-0 block', hasThumbnailRail && idx > 0 ? 'left-[76px]' : '')}
           aria-label={`View image ${idx + 1} of ${images.length}`}
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -85,7 +86,11 @@ export function BeautyDesktopGallery({
             loading="eager"
             className={cn(
               'h-full w-full object-contain object-center transition-transform duration-200',
-              idx === 0 ? 'scale-[1.08]' : 'scale-100',
+              idx === 0
+                ? hasThumbnailRail
+                  ? 'translate-x-[10%] scale-[1.08]'
+                  : 'scale-[1.08]'
+                : 'scale-100',
             )}
           />
         </button>

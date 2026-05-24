@@ -64,6 +64,7 @@ export function MediaGallery({
   const canGoPrev = clampedIndex > 0;
   const canGoNext = clampedIndex < items.length - 1;
   const shouldReserveThumbnailGutter = items.length > 1 && clampedIndex > 0;
+  const shouldOffsetPrimaryForThumbnailRail = items.length > 1 && clampedIndex === 0;
 
   const previewRail = previewItems.length ? (
     <div
@@ -206,7 +207,13 @@ export function MediaGallery({
                   className={cn(
                     fit,
                     'object-center transition-transform duration-200',
-                    isContain ? (clampedIndex === 0 ? 'lg:scale-[1.06]' : 'lg:scale-100') : '',
+                    isContain
+                      ? shouldOffsetPrimaryForThumbnailRail
+                        ? 'lg:translate-x-[8%] lg:scale-[1.06]'
+                        : clampedIndex === 0
+                          ? 'lg:scale-[1.06]'
+                          : 'lg:scale-100'
+                      : '',
                   )}
                   sizes="(max-width: 768px) 100vw, (max-width: 1280px) 58vw, 720px"
                   priority

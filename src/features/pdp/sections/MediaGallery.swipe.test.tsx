@@ -164,6 +164,27 @@ describe('MediaGallery swipe behavior', () => {
     expect(screen.getAllByRole('button', { name: /^Select media/ })).toHaveLength(12);
   });
 
+  it('offsets primary contained media away from the desktop thumbnail rail', () => {
+    render(
+      <MediaGallery
+        title="Product G"
+        aspectClass="aspect-square"
+        fit="object-contain"
+        data={{
+          items: [
+            { type: 'image', url: 'https://example.com/media-1.jpg', alt_text: 'Hero 1' },
+            { type: 'image', url: 'https://example.com/media-2.jpg', alt_text: 'Hero 2' },
+          ],
+        }}
+      />,
+    );
+
+    const heroImage = screen.getAllByAltText('Hero 1')[0] as HTMLElement;
+
+    expect(heroImage).toHaveClass('object-contain', 'lg:translate-x-[8%]', 'lg:scale-[1.06]');
+    expect(heroImage.parentElement).not.toHaveClass('lg:left-[76px]');
+  });
+
   it('reserves thumbnail gutter for secondary desktop media without shrinking the hero stage', () => {
     render(
       <MediaGallery
