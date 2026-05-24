@@ -86,6 +86,7 @@ vi.mock('@/features/pdp/containers/GenericPDPContainer', () => ({
     payload,
     onAddToCart,
     onBuyNow,
+    onRetrySimilar,
   }: {
     payload: {
       product: { title: string; merchant_id?: string; product_id?: string; variants?: any[] };
@@ -98,6 +99,7 @@ vi.mock('@/features/pdp/containers/GenericPDPContainer', () => ({
     };
     onAddToCart: (args: any) => void;
     onBuyNow: (args: any) => void;
+    onRetrySimilar?: () => void;
   }) => (
     <div data-testid="generic-pdp">
       <div>{payload.product.title}</div>
@@ -132,7 +134,7 @@ vi.mock('@/features/pdp/containers/GenericPDPContainer', () => ({
         Buy Now
       </button>
       <div data-testid="recommendations-count">
-        {payload.modules?.find((module) => module.type === 'recommendations')?.data?.items?.length ?? 0}
+        {payload.modules?.find((module) => module.type === 'recommendations' || module.type === 'similar')?.data?.items?.length ?? 0}
       </div>
       <div data-testid="offers-count">{payload.offers?.length ?? 0}</div>
       <div data-testid="offers-state">{payload.x_offers_state ?? ''}</div>
@@ -141,6 +143,11 @@ vi.mock('@/features/pdp/containers/GenericPDPContainer', () => ({
       </div>
       <div data-testid="reviews-state">{payload.x_reviews_state ?? ''}</div>
       <div data-testid="recommendations-state">{payload.x_recommendations_state ?? ''}</div>
+      {payload.x_recommendations_state === 'error' && onRetrySimilar ? (
+        <button type="button" onClick={onRetrySimilar}>
+          Retry similar
+        </button>
+      ) : null}
     </div>
   ),
 }));
@@ -316,7 +323,7 @@ describe('ProductDetailPage canonical PDP loading', () => {
 
     getPdpV2PersonalizationMock.mockResolvedValue({});
     recordBrowseHistoryEventMock.mockResolvedValue(null);
-    mapPdpV2ToPdpPayloadMock.mockReturnValue(canonicalPayload);
+    mapPdpV2ToPdpPayloadMock.mockReturnValue(canonicalLoadingPayload);
     mapToPdpPayloadMock.mockReturnValue(canonicalPayload);
   });
 
@@ -334,31 +341,34 @@ describe('ProductDetailPage canonical PDP loading', () => {
     expect(screen.getByRole('status')).toHaveTextContent('Loading products');
   });
 
-  it('requests canonical PDP modules on the first get_pdp_v2 call', async () => {
+  it('requests only core PDP modules on the first get_pdp_v2 call and loads similar separately', async () => {
     getPdpV2Mock.mockResolvedValue({ status: 'success', modules: [] });
 
     renderPage();
 
     await screen.findByTestId('generic-pdp');
-    expect(getPdpV2Mock).toHaveBeenCalledWith(
+    expect(getPdpV2Mock).toHaveBeenNthCalledWith(
+      1,
       expect.objectContaining({
         product_id: 'prod_1',
         include: [
           'offers',
           'variant_selector',
-          'product_intel',
-          'active_ingredients',
-          'ingredients_inci',
-          'how_to_use',
           'product_overview',
-          'supplemental_details',
-          'reviews_preview',
-          'similar',
         ],
         timeout_ms: 9000,
       }),
     );
-    expect(getPdpV2Mock).toHaveBeenCalledTimes(1);
+    await waitFor(() => {
+      expect(getPdpV2Mock).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({
+          product_id: 'prod_1',
+          include: ['similar'],
+          timeout_ms: 9000,
+        }),
+      );
+    });
     expect(resolveProductCandidatesMock).not.toHaveBeenCalled();
   });
 
@@ -416,14 +426,7 @@ describe('ProductDetailPage canonical PDP loading', () => {
         include: [
           'offers',
           'variant_selector',
-          'product_intel',
-          'active_ingredients',
-          'ingredients_inci',
-          'how_to_use',
           'product_overview',
-          'supplemental_details',
-          'reviews_preview',
-          'similar',
         ],
         timeout_ms: 9000,
       }),
@@ -432,10 +435,20 @@ describe('ProductDetailPage canonical PDP loading', () => {
       2,
       expect.objectContaining({
         product_id: 'prod_1',
-        include: [],
+        include: ['offers', 'variant_selector', 'product_overview'],
         timeout_ms: 3500,
       }),
     );
+    await waitFor(() => {
+      expect(getPdpV2Mock).toHaveBeenNthCalledWith(
+        3,
+        expect.objectContaining({
+          product_id: 'prod_1',
+          include: ['similar'],
+          timeout_ms: 9000,
+        }),
+      );
+    });
     expect(screen.queryByText('Failed to load product')).not.toBeInTheDocument();
   });
 
@@ -623,18 +636,85 @@ describe('ProductDetailPage canonical PDP loading', () => {
     });
   });
 
-  it('keeps reviews and similar on the main PDP request instead of client backfills', async () => {
-    getPdpV2Mock.mockResolvedValue({ kind: 'initial' });
-    mapPdpV2ToPdpPayloadMock.mockReturnValue(canonicalWithSimilarPayload);
+  it('loads similar after the core PDP without clearing the rendered product', async () => {
+    let resolveSimilar: (value: unknown) => void = () => {};
+    getPdpV2Mock
+      .mockResolvedValueOnce({ kind: 'core' })
+      .mockReturnValueOnce(new Promise((resolve) => {
+        resolveSimilar = resolve;
+      }));
+    mapPdpV2ToPdpPayloadMock.mockImplementation((response: any) =>
+      response?.kind === 'similar' ? canonicalWithSimilarPayload : canonicalLoadingPayload,
+    );
 
     renderPage();
 
     await screen.findByTestId('generic-pdp');
-    expect(screen.getByTestId('reviews-state')).toHaveTextContent('ready');
-    expect(screen.getByTestId('reviews-count')).toHaveTextContent('12');
+    expect(screen.getByText('Canonical PDP Product')).toBeInTheDocument();
+    expect(screen.getByTestId('recommendations-state')).toHaveTextContent('loading');
+    resolveSimilar({ kind: 'similar' });
+    await waitFor(() => {
+      expect(screen.getByTestId('recommendations-state')).toHaveTextContent('ready');
+      expect(screen.getByTestId('recommendations-count')).toHaveTextContent('2');
+    });
+    expect(getPdpV2Mock).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ include: ['offers', 'variant_selector', 'product_overview'] }),
+    );
+    expect(getPdpV2Mock).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ include: ['similar'] }),
+    );
+  });
+
+  it('keeps the PDP body visible when the similar request fails and retries only similar', async () => {
+    getPdpV2Mock
+      .mockResolvedValueOnce({ kind: 'core' })
+      .mockRejectedValueOnce(Object.assign(new Error('similar timed out'), { code: 'UPSTREAM_TIMEOUT' }))
+      .mockResolvedValueOnce({ kind: 'similar_retry' });
+    mapPdpV2ToPdpPayloadMock.mockImplementation((response: any) =>
+      response?.kind === 'similar_retry' ? canonicalWithSimilarPayload : canonicalLoadingPayload,
+    );
+
+    renderPage();
+
+    await screen.findByTestId('generic-pdp');
+    await waitFor(() => {
+      expect(screen.getByTestId('recommendations-state')).toHaveTextContent('error');
+    });
+    expect(screen.getByText('Canonical PDP Product')).toBeInTheDocument();
+    expect(screen.queryByText('Failed to load product')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Retry similar' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('recommendations-state')).toHaveTextContent('ready');
+      expect(screen.getByTestId('recommendations-count')).toHaveTextContent('2');
+    });
+    expect(getPdpV2Mock).toHaveBeenNthCalledWith(
+      3,
+      expect.objectContaining({ include: ['similar'] }),
+    );
+  });
+
+  it('keeps server-returned similar ready without additional visible fallback retries', async () => {
+    getPdpV2Mock
+      .mockResolvedValueOnce({ kind: 'core' })
+      .mockResolvedValueOnce({ kind: 'similar' });
+    mapPdpV2ToPdpPayloadMock.mockImplementation((response: any) =>
+      response?.kind === 'similar' ? canonicalWithSimilarPayload : canonicalLoadingPayload,
+    );
+
+    renderPage();
+
+    await screen.findByTestId('generic-pdp');
+    await waitFor(() => {
+      expect(screen.getByTestId('recommendations-state')).toHaveTextContent('ready');
+      expect(screen.getByTestId('recommendations-count')).toHaveTextContent('2');
+    });
     expect(screen.getByTestId('recommendations-state')).toHaveTextContent('ready');
     expect(screen.getByTestId('recommendations-count')).toHaveTextContent('2');
-    expect(getPdpV2Mock).toHaveBeenCalledTimes(1);
+    expect(getPdpV2Mock).toHaveBeenCalledTimes(2);
   });
 
   it('keeps partial offers ready instead of running a slow client offer backfill', async () => {
@@ -663,12 +743,19 @@ describe('ProductDetailPage canonical PDP loading', () => {
     await screen.findByTestId('generic-pdp');
     expect(screen.getByTestId('offers-count')).toHaveTextContent('1');
     expect(screen.getByTestId('offers-state')).toHaveTextContent('ready');
-    expect(getPdpV2Mock).toHaveBeenCalledTimes(1);
+    expect(getPdpV2Mock).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ include: ['offers', 'variant_selector', 'product_overview'] }),
+    );
   });
 
   it('keeps stale empty similar results ready without a cache-bypass retry', async () => {
-    getPdpV2Mock.mockResolvedValue({ kind: 'initial' });
-    mapPdpV2ToPdpPayloadMock.mockReturnValue(staleEmptySimilarPayload);
+    getPdpV2Mock
+      .mockResolvedValueOnce({ kind: 'core' })
+      .mockResolvedValueOnce({ kind: 'similar' });
+    mapPdpV2ToPdpPayloadMock.mockImplementation((response: any) =>
+      response?.kind === 'similar' ? staleEmptySimilarPayload : canonicalLoadingPayload,
+    );
 
     renderPage();
 
@@ -678,6 +765,6 @@ describe('ProductDetailPage canonical PDP loading', () => {
       expect(screen.getByTestId('recommendations-state')).toHaveTextContent('ready');
     });
 
-    expect(getPdpV2Mock).toHaveBeenCalledTimes(1);
+    expect(getPdpV2Mock).toHaveBeenCalledTimes(2);
   });
 });

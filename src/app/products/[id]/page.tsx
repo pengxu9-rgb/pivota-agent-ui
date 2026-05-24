@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState, useRef, use } from 'react';
+import { useCallback, useEffect, useMemo, useState, useRef, use } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 import { useCartStore } from '@/store/cartStore';
@@ -48,7 +48,7 @@ interface Props {
 const PDP_V2_SCOPED_TIMEOUT_MS = 9000;
 const PDP_V2_UNSCOPED_TIMEOUT_MS = 9000;
 const PDP_V2_CORE_ONLY_RETRY_TIMEOUT_MS = 3500;
-const PDP_CORE_ONLY_INCLUDE: string[] = [];
+const PDP_V2_SIMILAR_TIMEOUT_MS = 9000;
 
 function normalizeHttpUrl(value: unknown): string | null {
   if (typeof value !== 'string') return null;
@@ -319,18 +319,50 @@ function hasRecommendationsItems(response: PDPPayload | null): boolean {
   });
 }
 
-const PDP_INITIAL_INCLUDE = [
+const PDP_CORE_INCLUDE = [
   'offers',
   'variant_selector',
-  'product_intel',
-  'active_ingredients',
-  'ingredients_inci',
-  'how_to_use',
   'product_overview',
-  'supplemental_details',
-  'reviews_preview',
-  'similar',
 ] as const;
+const PDP_INITIAL_INCLUDE = PDP_CORE_INCLUDE;
+const PDP_CORE_ONLY_INCLUDE = PDP_CORE_INCLUDE;
+const PDP_SIMILAR_INCLUDE = ['similar'] as const;
+
+function getRecommendationModule(payload: PDPPayload | null | undefined) {
+  if (!payload || !Array.isArray(payload.modules)) return null;
+  return payload.modules.find((module) => isRecommendationModuleType(module?.type)) || null;
+}
+
+function setSimilarLoadState(
+  payload: PDPPayload,
+  state: NonNullable<PDPPayload['x_recommendations_state']>,
+): PDPPayload {
+  const hasSimilarModule = Boolean(getRecommendationModule(payload));
+  return {
+    ...payload,
+    x_recommendations_state: state,
+    x_source_locks: {
+      ...(payload.x_source_locks || {}),
+      similar: state === 'ready' && hasSimilarModule,
+    },
+  };
+}
+
+function mergeSimilarPdpPayload(current: PDPPayload, incoming: PDPPayload | null): PDPPayload {
+  const incomingModule = getRecommendationModule(incoming);
+  const baseModules = Array.isArray(current.modules)
+    ? current.modules.filter((module) => !isRecommendationModuleType(module?.type))
+    : [];
+  return {
+    ...current,
+    modules: incomingModule ? [...baseModules, incomingModule] : baseModules,
+    x_recommendations_state: incoming?.x_recommendations_state || 'ready',
+    x_source_locks: {
+      ...(current.x_source_locks || {}),
+      similar: Boolean(incomingModule),
+    },
+  };
+}
 
 function mapSellerCandidatesFromResolveCandidates(
   resolved: Awaited<ReturnType<typeof resolveProductCandidates>>,
@@ -429,6 +461,7 @@ export default function ProductDetailPage({ params }: Props) {
   const localBrowseHistoryRecordedRef = useRef<string | null>(null);
   const remoteBrowseHistoryRecordedRef = useRef<string | null>(null);
   const moduleSourceLocksRef = useRef({ ...DEFAULT_MODULE_SOURCE_LOCKS });
+  const similarLoadSeqRef = useRef(0);
   const [ugcCapabilities, setUgcCapabilities] = useState<UgcCapabilities | null>({
     canUploadMedia: false,
     canWriteReview: false,
@@ -442,6 +475,60 @@ export default function ProductDetailPage({ params }: Props) {
 
   const { addItem, open } = useCartStore();
   const inferredMerchantId = inferCanonicalPdpMerchantId(id, merchantIdParam);
+  const loadSimilarModule = useCallback(
+    async (trigger: 'auto' | 'retry' = 'auto') => {
+      const explicitMerchantId = inferredMerchantId ? String(inferredMerchantId).trim() : null;
+      const requestSeq = similarLoadSeqRef.current + 1;
+      similarLoadSeqRef.current = requestSeq;
+
+      setPdpPayload((current) => (current ? setSimilarLoadState(current, 'loading') : current));
+
+      const startedAt = Date.now();
+      try {
+        const v2 = await getPdpV2({
+          product_id: id,
+          ...(explicitMerchantId ? { merchant_id: explicitMerchantId } : {}),
+          include: [...PDP_SIMILAR_INCLUDE],
+          timeout_ms: PDP_V2_SIMILAR_TIMEOUT_MS,
+        });
+        if (similarLoadSeqRef.current !== requestSeq) return;
+        const assembled = mapPdpV2ToPdpPayload(v2);
+        setPdpPayload((current) => {
+          if (!current) return current;
+          const nextPayload = mergeSimilarPdpPayload(current, assembled);
+          moduleSourceLocksRef.current = {
+            ...moduleSourceLocksRef.current,
+            similar: Boolean(getRecommendationModule(nextPayload)),
+          };
+          return nextPayload;
+        });
+        pdpTracking.track('pdp_module_ready', {
+          module: 'similar',
+          source: trigger === 'retry' ? 'get_pdp_v2_similar_retry' : 'get_pdp_v2_similar',
+          latency_ms: Date.now() - startedAt,
+          has_items: hasRecommendationsItems(assembled),
+        });
+      } catch (similarErr) {
+        if (similarLoadSeqRef.current !== requestSeq) return;
+        moduleSourceLocksRef.current = {
+          ...moduleSourceLocksRef.current,
+          similar: false,
+        };
+        setPdpPayload((current) => (current ? setSimilarLoadState(current, 'error') : current));
+        pdpTracking.track('pdp_module_error', {
+          module: 'similar',
+          source: trigger === 'retry' ? 'get_pdp_v2_similar_retry' : 'get_pdp_v2_similar',
+          latency_ms: Date.now() - startedAt,
+          error_code: readApiErrorCode(similarErr) || null,
+          error_message: (similarErr as Error)?.message || null,
+        });
+      }
+    },
+    [id, inferredMerchantId],
+  );
+  const handleRetrySimilar = useCallback(() => {
+    void loadSimilarModule('retry');
+  }, [loadSimilarModule]);
   useEffect(() => {
     if (loading && !error && !pdpPayload) return;
     hideProductRouteLoading();
@@ -558,6 +645,7 @@ export default function ProductDetailPage({ params }: Props) {
       setError(null);
       setSellerCandidates(null);
       setPdpPayload(null);
+      similarLoadSeqRef.current += 1;
       moduleSourceLocksRef.current = { ...DEFAULT_MODULE_SOURCE_LOCKS };
 
       const commitLoadedPdp = (
@@ -597,7 +685,7 @@ export default function ProductDetailPage({ params }: Props) {
             ? { x_offers_state: 'ready' as const }
             : {}),
           ...(hasReviewsModule ? { x_reviews_state: 'ready' as const } : {}),
-          ...(hasSimilarModule ? { x_recommendations_state: 'ready' as const } : {}),
+          x_recommendations_state: hasSimilarModule ? 'ready' as const : 'loading' as const,
           x_source_locks: {
             reviews: hasReviewsModule,
             similar: hasSimilarModule,
@@ -653,6 +741,8 @@ export default function ProductDetailPage({ params }: Props) {
           timeoutMs: v2TimeoutMs,
           source: 'get_pdp_v2',
         });
+        if (cancelled) return;
+        void loadSimilarModule('auto');
         return;
       } catch (v2Err) {
         if (cancelled) return;
@@ -665,6 +755,8 @@ export default function ProductDetailPage({ params }: Props) {
               timeoutMs: PDP_V2_CORE_ONLY_RETRY_TIMEOUT_MS,
               source: 'get_pdp_v2_core_retry',
             });
+            if (cancelled) return;
+            void loadSimilarModule('auto');
             pdpTracking.track('pdp_core_retry_recovered', {
               initial_error_code: readApiErrorCode(v2Err) || null,
               initial_error_message: (v2Err as Error)?.message || null,
@@ -695,8 +787,9 @@ export default function ProductDetailPage({ params }: Props) {
     void loadProduct();
     return () => {
       cancelled = true;
+      similarLoadSeqRef.current += 1;
     };
-  }, [id, inferredMerchantId, merchantIdParam, reloadKey]);
+  }, [id, inferredMerchantId, loadSimilarModule, merchantIdParam, reloadKey]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1193,6 +1286,7 @@ export default function ProductDetailPage({ params }: Props) {
           onAddToCart={handleAddToCart}
           onBuyNow={handleBuyNow}
           onWriteReview={handleWriteReview}
+          onRetrySimilar={handleRetrySimilar}
           ugcCapabilities={ugcCapabilities}
         />
       </main>

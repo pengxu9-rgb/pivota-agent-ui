@@ -10,6 +10,7 @@ export function GenericPDPContainer({
   onBuyNow,
   onWriteReview,
   onSeeAllReviews,
+  onRetrySimilar,
   ugcCapabilities,
 }: {
   payload: PDPPayload;
@@ -17,6 +18,7 @@ export function GenericPDPContainer({
   onBuyNow: (args: { variant: Variant; quantity: number }) => void;
   onWriteReview?: () => void;
   onSeeAllReviews?: () => void;
+  onRetrySimilar?: () => void;
   ugcCapabilities?: UgcCapabilities | null;
 }) {
   return (
@@ -27,6 +29,7 @@ export function GenericPDPContainer({
       onBuyNow={onBuyNow}
       onWriteReview={onWriteReview}
       onSeeAllReviews={onSeeAllReviews}
+      onRetrySimilar={onRetrySimilar}
       ugcCapabilities={ugcCapabilities}
     />
   );
