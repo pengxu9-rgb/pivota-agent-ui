@@ -203,9 +203,9 @@ export async function GET() {
     status: 200,
     headers: {
       'Content-Type': 'application/xml; charset=utf-8',
-      // Allow browser/CDN caches to hold the response for an hour;
-      // crawlers normally re-fetch on a longer cadence anyway.
-      'Cache-Control': `public, max-age=${revalidate}, stale-while-revalidate=60`,
+      // s-maxage caches at the Vercel edge so crawler fetches don't pay the
+      // backend cold-start (>30s on Railway idle, which trips GSC "Couldn't fetch").
+      'Cache-Control': `public, max-age=${revalidate}, s-maxage=${revalidate}, stale-while-revalidate=86400`,
       'X-Pivota-Sitemap-Source': source,
       'X-Pivota-Sitemap-Url-Count': String(urls.length),
     },
