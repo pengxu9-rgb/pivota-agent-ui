@@ -117,8 +117,11 @@ export type BeautyPDPMobileProps = {
   onBundleComponentClick?: (item: BundleCompositionItem, index: number) => void;
   // recommendations
   similar?: BeautySimilarItem[] | null;
+  similarState?: 'ABSENT' | 'LOADING' | 'READY' | 'EMPTY' | 'ERROR';
+  similarStatus?: { title: string; body: string } | null;
   onSimilarClick?: (item: BeautySimilarItem, index: number) => void;
   onSimilarBuy?: (item: BeautySimilarItem, index: number) => void;
+  onRetrySimilar?: () => void;
   /** Auto-load callback fired when the user scrolls near the bottom of the similar section. */
   onSimilarLoadMore?: () => void;
   /** Ref forwarded to the auto-load sentinel div (desktop native-scroll path). */
@@ -145,6 +148,45 @@ const SECTION_TABS: BeautyTab[] = [
   { id: 'reviews', label: 'Reviews' },
   { id: 'similar', label: 'Similar' },
 ];
+
+export function BeautySimilarStatusCard({
+  state,
+  status,
+  onRetry,
+}: {
+  state: 'LOADING' | 'EMPTY' | 'ERROR';
+  status?: { title: string; body: string } | null;
+  onRetry?: () => void;
+}) {
+  const title =
+    status?.title ||
+    (state === 'ERROR' ? 'Recommendations are temporarily unavailable' : 'Recommendations are updating');
+  const body =
+    status?.body ||
+    (state === 'LOADING'
+      ? 'Related products are being matched for this item.'
+      : 'Related products are still being prepared for this item.');
+
+  return (
+    <div className="rounded-xl border border-border bg-white px-4 py-4 text-sm shadow-sm">
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <div className="font-semibold text-foreground">{title}</div>
+          <div className="mt-1 text-muted-foreground">{body}</div>
+        </div>
+        {state === 'ERROR' && onRetry ? (
+          <button
+            type="button"
+            className="shrink-0 text-xs font-semibold text-primary"
+            onClick={onRetry}
+          >
+            Retry
+          </button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
 
 export function BeautyPDPMobile(props: BeautyPDPMobileProps) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -398,6 +440,16 @@ export function BeautyPDPMobile(props: BeautyPDPMobileProps) {
               items={props.similar}
               onItemClick={props.onSimilarClick}
               onBuy={props.onSimilarBuy}
+            />
+          </div>
+        ) : props.similarState === 'LOADING' ||
+          props.similarState === 'EMPTY' ||
+          props.similarState === 'ERROR' ? (
+          <div ref={similarRef} className="px-4 py-4">
+            <BeautySimilarStatusCard
+              state={props.similarState}
+              status={props.similarStatus}
+              onRetry={props.onRetrySimilar}
             />
           </div>
         ) : null}

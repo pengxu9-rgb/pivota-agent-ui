@@ -6,7 +6,15 @@ export function buildSimilarMainlineStatus(metadata: SimilarMetadata): {
   title: string;
   body: string;
 } | null {
-  if (String(metadata?.similar_status || '').trim().toLowerCase() === 'deferred') {
+  const similarStatus = String(metadata?.similar_status || '').trim().toLowerCase();
+  if (similarStatus === 'deferred') {
+    return {
+      title: 'Recommendations are updating',
+      body: 'Related products are still being prepared for this item.',
+    };
+  }
+
+  if (similarStatus === 'empty' || similarStatus === 'unavailable' || similarStatus === 'underfilled') {
     return {
       title: 'Recommendations are updating',
       body: 'Related products are still being prepared for this item.',

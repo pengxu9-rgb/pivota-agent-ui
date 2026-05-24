@@ -20,7 +20,10 @@ import { BeautyYouMayAlsoLike } from '@/features/pdp/components/BeautyYouMayAlso
 import { BundleCompositionGrid } from '@/features/pdp/sections/BundleCompositionGrid';
 import { BeautyQuestions } from '@/features/pdp/components/BeautyQuestions';
 import { BeautyBrandCard } from '@/features/pdp/components/BeautyBrandCard';
-import type { BeautyPDPMobileProps } from '@/features/pdp/containers/BeautyPDPMobile';
+import {
+  BeautySimilarStatusCard,
+  type BeautyPDPMobileProps,
+} from '@/features/pdp/containers/BeautyPDPMobile';
 
 /**
  * BeautyPDPDesktop — the desktop (≥1024px) layout for the Beauty PDP.
@@ -240,6 +243,16 @@ export function BeautyPDPDesktop(props: BeautyPDPMobileProps) {
               items={props.similar}
               onItemClick={props.onSimilarClick}
               onBuy={props.onSimilarBuy}
+            />
+          </div>
+        ) : props.similarState === 'LOADING' ||
+          props.similarState === 'EMPTY' ||
+          props.similarState === 'ERROR' ? (
+          <div className="mt-12">
+            <BeautySimilarStatusCard
+              state={props.similarState}
+              status={props.similarStatus}
+              onRetry={props.onRetrySimilar}
             />
           </div>
         ) : null}

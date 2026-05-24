@@ -1155,16 +1155,70 @@ describe('ProductDetailPage canonical PDP loading', () => {
     expect(getPdpV2Mock).toHaveBeenCalledTimes(1);
   });
 
-  it('keeps stale empty similar results ready without a cache-bypass retry', async () => {
-    getPdpV2Mock.mockResolvedValue({ kind: 'initial' });
-    mapPdpV2ToPdpPayloadMock.mockReturnValue(staleEmptySimilarPayload);
+  it('auto-retries stale empty similar results with cache bypass', async () => {
+    getPdpV2Mock
+      .mockResolvedValueOnce({ kind: 'core' })
+      .mockResolvedValueOnce({ kind: 'similar_empty' })
+      .mockResolvedValueOnce({ kind: 'similar_ready' });
+    mapPdpV2ToPdpPayloadMock
+      .mockReturnValueOnce(canonicalLoadingPayload)
+      .mockReturnValueOnce(staleEmptySimilarPayload)
+      .mockReturnValueOnce(canonicalWithSimilarPayload);
 
     renderPage();
 
     await screen.findByTestId('generic-pdp');
     await waitFor(() => {
-      expect(screen.getByTestId('recommendations-count')).toHaveTextContent('0');
+      expect(screen.getByTestId('recommendations-state')).toHaveTextContent('loading');
+      expect(getPdpV2Mock).toHaveBeenCalledTimes(2);
+    });
+
+    await waitFor(
+      () => {
+        expect(screen.getByTestId('recommendations-state')).toHaveTextContent('ready');
+        expect(screen.getByTestId('recommendations-count')).toHaveTextContent('2');
+      },
+      { timeout: 2000 },
+    );
+
+    expect(getPdpV2Mock).toHaveBeenNthCalledWith(
+      3,
+      expect.objectContaining({
+        product_id: 'prod_1',
+        include: similarPdpInclude,
+        similar_mode: 'post_core',
+        cache_bypass: true,
+      }),
+    );
+  });
+
+  it('settles cache-bypassed empty similar results without another retry', async () => {
+    const cacheBypassedEmptyPayload = {
+      ...staleEmptySimilarPayload,
+      modules: staleEmptySimilarPayload.modules.map((module) =>
+        module.type === 'recommendations'
+          ? {
+              ...module,
+              data: {
+                ...module.data,
+                metadata: {
+                  ...module.data.metadata,
+                  similar_cache_bypass: true,
+                },
+              },
+            }
+          : module,
+      ),
+    };
+    getPdpV2Mock.mockResolvedValue({ kind: 'initial' });
+    mapPdpV2ToPdpPayloadMock.mockReturnValue(cacheBypassedEmptyPayload);
+
+    renderPage();
+
+    await screen.findByTestId('generic-pdp');
+    await waitFor(() => {
       expect(screen.getByTestId('recommendations-state')).toHaveTextContent('ready');
+      expect(screen.getByTestId('recommendations-count')).toHaveTextContent('0');
     });
 
     expect(getPdpV2Mock).toHaveBeenCalledTimes(1);

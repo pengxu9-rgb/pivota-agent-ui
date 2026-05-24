@@ -4275,6 +4275,8 @@ export function PdpContainer({
                 .map((it) => buildVisualSimilarItem(it, displayCurrency, currentRelativePath))
             : null
         }
+        similarState={moduleStates.similar}
+        similarStatus={similarStatus}
         onSimilarClick={(item, index) => {
           pdpTracking.track('similar_click', {
             index,
@@ -4288,6 +4290,7 @@ export function PdpContainer({
           if (!sourceItem) return;
           void handleSimilarQuickAction(sourceItem, index);
         }}
+        onRetrySimilar={onRetrySimilar}
         onSimilarLoadMore={
           similarVisibleCount < similarItems.length ||
           (similarHasMore && similarItems.length < SIMILAR_MAX)

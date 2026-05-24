@@ -387,6 +387,20 @@ function isDeferredSimilarPayload(response: PDPPayload | null): boolean {
   );
 }
 
+function isRetryableEmptySimilarPayload(response: PDPPayload | null): boolean {
+  const recommendationModule = getRecommendationModule(response);
+  const data = (recommendationModule as any)?.data || null;
+  const metadata = data && typeof data === 'object' ? (data as any).metadata || {} : {};
+  const status = String((data as any)?.status || metadata?.similar_status || '').trim().toLowerCase();
+  const items = Array.isArray((data as any)?.items) ? (data as any).items : [];
+  const cacheBypassed = (metadata as any)?.similar_cache_bypass === true;
+  return (
+    items.length === 0 &&
+    !cacheBypassed &&
+    (status === 'empty' || status === 'unavailable' || status === 'underfilled')
+  );
+}
+
 function prepareLoadedPdpPayload(assembled: PDPPayload) {
   const offerRows = Array.isArray((assembled as any).offers) ? (assembled as any).offers : [];
   const expectedOffersCount = Number((assembled as any).offers_count);
@@ -447,7 +461,7 @@ function setSimilarLoadState(payload: PDPPayload, state: 'loading' | 'error'): P
 function mergeSimilarPdpPayload(
   current: PDPPayload,
   incoming: PDPPayload | null,
-  options: { deferredAsLoading?: boolean } = {},
+  options: { deferredAsLoading?: boolean; keepSimilarLoading?: boolean } = {},
 ): PDPPayload {
   const nextSimilarModule =
     incoming?.modules.find((pdpModule) => isRecommendationModuleType(pdpModule?.type)) || null;
@@ -468,12 +482,17 @@ function mergeSimilarPdpPayload(
       ...(nextSimilarModule ? [nextSimilarModule] : []),
     ],
     x_recommendations_state:
-      options.deferredAsLoading && isDeferredSimilarPayload(incoming)
+      options.keepSimilarLoading ||
+      (options.deferredAsLoading && isDeferredSimilarPayload(incoming))
         ? 'loading'
         : 'ready',
     x_source_locks: {
       ...(current.x_source_locks || {}),
-      similar: Boolean(nextSimilarModule && !(options.deferredAsLoading && isDeferredSimilarPayload(incoming))),
+      similar: Boolean(
+        nextSimilarModule &&
+          !options.keepSimilarLoading &&
+          !(options.deferredAsLoading && isDeferredSimilarPayload(incoming)),
+      ),
     },
   };
 }
@@ -628,14 +647,16 @@ export default function ProductDetailPage({ params, initialPayload }: Props) {
         if (similarLoadSeqRef.current !== requestSeq) return;
         const assembled = mapPdpV2ToPdpPayload(v2);
         const deferred = isDeferredSimilarPayload(assembled);
-        const shouldAutoRetryDeferred =
-          deferred &&
+        const retryableEmpty = isRetryableEmptySimilarPayload(assembled);
+        const shouldAutoRetrySimilar =
+          (deferred || retryableEmpty) &&
           trigger !== 'retry' &&
           similarDeferredRetryCountRef.current < PDP_SIMILAR_DEFERRED_AUTO_RETRY_MAX;
         setPdpPayload((current) => {
           if (!current) return current;
           const nextPayload = mergeSimilarPdpPayload(current, assembled, {
-            deferredAsLoading: shouldAutoRetryDeferred,
+            deferredAsLoading: shouldAutoRetrySimilar,
+            keepSimilarLoading: shouldAutoRetrySimilar,
           });
           moduleSourceLocksRef.current = {
             ...moduleSourceLocksRef.current,
@@ -646,10 +667,10 @@ export default function ProductDetailPage({ params, initialPayload }: Props) {
           };
           return nextPayload;
         });
-        if (!deferred) {
+        if (!deferred && !retryableEmpty) {
           similarDeferredRetryCountRef.current = 0;
         }
-        if (shouldAutoRetryDeferred) {
+        if (shouldAutoRetrySimilar) {
           const retryAttempt = similarDeferredRetryCountRef.current + 1;
           similarDeferredRetryCountRef.current = retryAttempt;
           similarDeferredRetryTimerRef.current = setTimeout(() => {
@@ -668,6 +689,7 @@ export default function ProductDetailPage({ params, initialPayload }: Props) {
           latency_ms: Date.now() - startedAt,
           has_items: hasRecommendationsItems(assembled),
           deferred,
+          retryable_empty: retryableEmpty,
         });
       } catch (similarErr) {
         if (similarLoadSeqRef.current !== requestSeq) return;

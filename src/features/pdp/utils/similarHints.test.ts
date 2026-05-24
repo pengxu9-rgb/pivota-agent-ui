@@ -36,4 +36,17 @@ describe('buildSimilarMainlineStatus', () => {
       body: 'Related products are still being prepared for this item.',
     });
   });
+
+  it('uses the same neutral copy for empty or unavailable post-core recommendations', () => {
+    expect(
+      buildSimilarMainlineStatus({
+        similar_status: 'unavailable',
+        low_confidence_reason_codes: ['UNDERFILL_FOR_QUALITY'],
+        underfill: 36,
+      }),
+    ).toEqual({
+      title: 'Recommendations are updating',
+      body: 'Related products are still being prepared for this item.',
+    });
+  });
 });
