@@ -101,7 +101,7 @@ describe('MediaGallery swipe behavior', () => {
     );
 
     const heroImage = screen.getAllByAltText('Hero 1')[0] as HTMLElement;
-    const heroFrame = heroImage.parentElement;
+    const heroFrame = heroImage.parentElement?.parentElement;
 
     expect(heroFrame).toHaveClass('aspect-[6/5]');
     expect(heroFrame).not.toHaveClass('lg:aspect-square');
@@ -153,10 +153,39 @@ describe('MediaGallery swipe behavior', () => {
 
     const heroImage = screen.getAllByAltText('Hero 1')[0] as HTMLElement;
     const thumbnailRail = screen.getByTestId('media-gallery-thumbnail-rail');
+    const previousArrow = screen.getByRole('button', { name: 'Previous image' });
+    const nextArrow = screen.getByRole('button', { name: 'Next image' });
 
     expect(thumbnailRail.parentElement).toContainElement(heroImage);
-    expect(thumbnailRail).toHaveClass('lg:absolute', 'lg:inset-y-0', 'lg:overflow-y-auto');
-    expect(thumbnailRail.nextElementSibling).toHaveClass('lg:ml-[76px]');
+    expect(thumbnailRail).toHaveClass('lg:absolute', 'lg:inset-y-3', 'lg:left-3', 'lg:overflow-y-auto');
+    expect(thumbnailRail.nextElementSibling).not.toHaveClass('lg:ml-[76px]');
+    expect(previousArrow).toHaveClass('left-[92px]', 'top-1/2');
+    expect(nextArrow).toHaveClass('right-4', 'top-1/2');
     expect(screen.getAllByRole('button', { name: /^Select media/ })).toHaveLength(12);
+  });
+
+  it('reserves thumbnail gutter for secondary desktop media without shrinking the hero stage', () => {
+    render(
+      <MediaGallery
+        title="Product F"
+        aspectClass="aspect-square"
+        fit="object-contain"
+        activeIndex={1}
+        data={{
+          items: [
+            { type: 'image', url: 'https://example.com/media-1.jpg', alt_text: 'Hero 1' },
+            { type: 'image', url: 'https://example.com/media-2.jpg', alt_text: 'Hero 2' },
+          ],
+        }}
+      />,
+    );
+
+    const heroImage = screen.getAllByAltText('Hero 2')[0] as HTMLElement;
+    const heroFrame = heroImage.parentElement?.parentElement;
+
+    expect(heroImage.parentElement).toHaveClass('lg:left-[76px]');
+    expect(heroImage).toHaveClass('object-contain', 'lg:scale-100');
+    expect(heroFrame).toHaveClass('aspect-square');
+    expect(heroFrame).not.toHaveClass('lg:ml-[76px]');
   });
 });

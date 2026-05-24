@@ -63,6 +63,7 @@ export function MediaGallery({
 
   const canGoPrev = clampedIndex > 0;
   const canGoNext = clampedIndex < items.length - 1;
+  const shouldReserveThumbnailGutter = items.length > 1 && clampedIndex > 0;
 
   const previewRail = previewItems.length ? (
     <div
@@ -135,11 +136,11 @@ export function MediaGallery({
   }, [clampedIndex, items.length, onSelect]);
 
   return (
-    <div className="lg:relative">
+    <div className="lg:relative lg:isolate">
       {items.length > 1 ? (
         <div
           data-testid="media-gallery-thumbnail-rail"
-          className="hidden lg:absolute lg:inset-y-0 lg:left-0 lg:z-[4] lg:flex lg:w-16 lg:flex-col lg:gap-2 lg:overflow-y-auto lg:py-1 lg:scrollbar-thin"
+          className="hidden lg:absolute lg:inset-y-3 lg:left-3 lg:z-[4] lg:flex lg:w-16 lg:flex-col lg:gap-2 lg:overflow-y-auto lg:rounded-xl lg:bg-background/70 lg:p-1.5 lg:shadow-sm lg:backdrop-blur-md lg:scrollbar-thin"
         >
           {items.map((item, idx) => (
             <button
@@ -172,7 +173,7 @@ export function MediaGallery({
         </div>
       ) : null}
 
-      <div className={cn('lg:min-w-0', items.length > 1 ? 'lg:ml-[76px]' : '')}>
+      <div className="lg:min-w-0">
         <div className="relative">
           <div
             className={cn(
@@ -197,16 +198,22 @@ export function MediaGallery({
             }}
           >
             {heroUrl ? (
-              <Image
-                src={heroUrl}
-                alt={hero?.alt_text || title}
-                fill
-                className={fit}
-                sizes="(max-width: 768px) 100vw, (max-width: 1024px) 100vw, 600px"
-                priority
-                fetchPriority="high"
-                unoptimized={shouldBypassNextImageOptimizer(heroUrl)}
-              />
+              <div className={cn('absolute inset-0', shouldReserveThumbnailGutter ? 'lg:left-[76px]' : '')}>
+                <Image
+                  src={heroUrl}
+                  alt={hero?.alt_text || title}
+                  fill
+                  className={cn(
+                    fit,
+                    'object-center transition-transform duration-200',
+                    isContain ? (clampedIndex === 0 ? 'lg:scale-[1.06]' : 'lg:scale-100') : '',
+                  )}
+                  sizes="(max-width: 768px) 100vw, (max-width: 1280px) 58vw, 720px"
+                  priority
+                  fetchPriority="high"
+                  unoptimized={shouldBypassNextImageOptimizer(heroUrl)}
+                />
+              </div>
             ) : (
               <div className="absolute inset-0 flex items-center justify-center text-sm text-muted-foreground">
                 No media
@@ -221,7 +228,7 @@ export function MediaGallery({
                 onClick={() => applyHeroSwipe('prev')}
                 disabled={!canGoPrev}
                 className={cn(
-                  'hidden lg:flex absolute left-3 top-1/2 -translate-y-1/2 h-11 w-11 items-center justify-center rounded-full bg-white border border-black/10 shadow-lg backdrop-blur-sm transition-all duration-150',
+                  'hidden lg:flex absolute left-[92px] top-1/2 z-[5] -translate-y-1/2 h-11 w-11 items-center justify-center rounded-full bg-white/90 border border-black/10 shadow-lg backdrop-blur-md transition-all duration-150',
                   canGoPrev
                     ? 'opacity-100 hover:scale-105 hover:shadow-xl'
                     : 'opacity-0 pointer-events-none',
@@ -235,7 +242,7 @@ export function MediaGallery({
                 onClick={() => applyHeroSwipe('next')}
                 disabled={!canGoNext}
                 className={cn(
-                  'hidden lg:flex absolute right-3 top-1/2 -translate-y-1/2 h-11 w-11 items-center justify-center rounded-full bg-white border border-black/10 shadow-lg backdrop-blur-sm transition-all duration-150',
+                  'hidden lg:flex absolute right-4 top-1/2 z-[5] -translate-y-1/2 h-11 w-11 items-center justify-center rounded-full bg-white/90 border border-black/10 shadow-lg backdrop-blur-md transition-all duration-150',
                   canGoNext
                     ? 'opacity-100 hover:scale-105 hover:shadow-xl'
                     : 'opacity-0 pointer-events-none',

@@ -16,9 +16,9 @@ function clampImageIndex(index: number, length: number): number {
  *   bottom-right "{i} / {n}" blurred counter chip, and a centered dot
  *   indicator (the active dot is an elongated pill).
  *
- * Aspect ratio is 4/5 (portrait) — Brand Kit v2 + Sephora/modern-beauty
- * standard: the merchant + Pivota digital asset is the headline of the
- * page and earns the room.
+ * Mobile keeps the portrait swipe stage. Desktop shells reuse this component
+ * as a primary PDP image module, so the stage becomes square to keep square
+ * and tall merchant assets visually comparable without shrinking the product.
  */
 export function BeautyMobileGallery({
   images,
@@ -61,7 +61,7 @@ export function BeautyMobileGallery({
           const w = e.currentTarget.clientWidth || 1;
           setIdx(clampImageIndex(Math.round(e.currentTarget.scrollLeft / w), images.length));
         }}
-        className="flex w-full snap-x snap-mandatory overflow-x-auto aspect-[4/5] lg:max-h-[calc(100vh-132px)] [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+        className="flex w-full snap-x snap-mandatory overflow-x-auto aspect-[4/5] lg:aspect-square lg:min-h-[480px] lg:max-h-[calc(100vh-132px)] [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
       >
         {images.map((src, i) => (
           <button
@@ -72,7 +72,15 @@ export function BeautyMobileGallery({
             aria-label={`View image ${i + 1} of ${images.length}`}
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={src} alt={i === 0 ? alt : ''} loading={i === 0 ? 'eager' : 'lazy'} className="block h-full w-full object-contain" />
+            <img
+              src={src}
+              alt={i === 0 ? alt : ''}
+              loading={i === 0 ? 'eager' : 'lazy'}
+              className={cn(
+                'block h-full w-full object-contain object-center transition-transform duration-200',
+                i === 0 ? 'lg:scale-[1.08]' : 'lg:scale-100',
+              )}
+            />
           </button>
         ))}
       </div>

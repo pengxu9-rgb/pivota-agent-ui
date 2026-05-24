@@ -18,7 +18,11 @@ describe('BeautyMobileGallery', () => {
   it('renders the gallery image as contained media', () => {
     render(<BeautyMobileGallery images={images} alt="Adaptive product" />);
 
-    expect(screen.getByAltText('Adaptive product')).toHaveClass('object-contain');
+    const heroImage = screen.getByAltText('Adaptive product');
+    const swipeStage = heroImage.closest('button')?.parentElement;
+
+    expect(heroImage).toHaveClass('object-contain', 'object-center', 'lg:scale-[1.08]');
+    expect(swipeStage).toHaveClass('aspect-[4/5]', 'lg:aspect-square');
   });
 
   it('switches images with desktop arrows when reused by desktop shells', () => {
@@ -31,5 +35,12 @@ describe('BeautyMobileGallery', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Previous image' }));
     expect(screen.getByText('1 / 3')).toBeInTheDocument();
+  });
+
+  it('keeps desktop shell arrows aligned to the gallery edges', () => {
+    render(<BeautyMobileGallery images={images} alt="Adaptive product" />);
+
+    expect(screen.getByRole('button', { name: 'Previous image' })).toHaveClass('left-3');
+    expect(screen.getByRole('button', { name: 'Next image' })).toHaveClass('right-3');
   });
 });
