@@ -20,6 +20,7 @@ export function ElectronicsPDPContainer({
   onBuyNow,
   onWriteReview,
   onSeeAllReviews,
+  onRetrySimilar,
   ugcCapabilities,
 }: {
   payload: PDPPayload;
@@ -39,6 +40,7 @@ export function ElectronicsPDPContainer({
   }) => void;
   onWriteReview?: () => void;
   onSeeAllReviews?: () => void;
+  onRetrySimilar?: () => void;
   ugcCapabilities?: UgcCapabilities | null;
 }) {
   return (
@@ -49,6 +51,7 @@ export function ElectronicsPDPContainer({
       onBuyNow={onBuyNow}
       onWriteReview={onWriteReview}
       onSeeAllReviews={onSeeAllReviews}
+      onRetrySimilar={onRetrySimilar}
       ugcCapabilities={ugcCapabilities}
     />
   );

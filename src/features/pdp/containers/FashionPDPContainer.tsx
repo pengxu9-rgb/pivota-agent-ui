@@ -22,6 +22,7 @@ export function FashionPDPContainer({
   onBuyNow,
   onWriteReview,
   onSeeAllReviews,
+  onRetrySimilar,
   ugcCapabilities,
 }: {
   payload: PDPPayload;
@@ -41,6 +42,7 @@ export function FashionPDPContainer({
   }) => void;
   onWriteReview?: () => void;
   onSeeAllReviews?: () => void;
+  onRetrySimilar?: () => void;
   ugcCapabilities?: UgcCapabilities | null;
 }) {
   return (
@@ -51,6 +53,7 @@ export function FashionPDPContainer({
       onBuyNow={onBuyNow}
       onWriteReview={onWriteReview}
       onSeeAllReviews={onSeeAllReviews}
+      onRetrySimilar={onRetrySimilar}
       ugcCapabilities={ugcCapabilities}
     />
   );

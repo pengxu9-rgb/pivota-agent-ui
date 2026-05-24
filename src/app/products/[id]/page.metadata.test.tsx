@@ -25,17 +25,10 @@ vi.mock('./ProductDetailClient', () => ({
   default: () => null,
 }));
 
-const fullPdpInclude = [
+const corePdpInclude = [
   'offers',
   'variant_selector',
-  'product_intel',
-  'active_ingredients',
-  'ingredients_inci',
-  'how_to_use',
   'product_overview',
-  'supplemental_details',
-  'reviews_preview',
-  'similar',
 ] as const;
 
 function buildPayload(product: Record<string, unknown>, overrides: Record<string, unknown> = {}) {
@@ -119,7 +112,7 @@ describe('product page metadata', () => {
     expect(getPdpV2Mock).toHaveBeenCalledWith(
       expect.objectContaining({
         product_id: 'sig_7ad40676c42fb9c96e2a8136',
-        include: fullPdpInclude,
+        include: corePdpInclude,
         timeout_ms: 9000,
         gatewayBaseUrl: 'https://agent.pivota.cc/api/gateway',
       }),
@@ -213,7 +206,7 @@ describe('product page metadata', () => {
       expect.objectContaining({
         product_id: '10064558129449',
         merchant_id: 'merch_1',
-        include: fullPdpInclude,
+        include: corePdpInclude,
       }),
     );
     expect((metadata.alternates as any)?.canonical).toBe(
@@ -299,7 +292,7 @@ describe('product page metadata', () => {
       expect.objectContaining({
         product_id: 'prod_1',
         merchant_id: 'merchant_a',
-        include: fullPdpInclude,
+        include: corePdpInclude,
       }),
     );
   });

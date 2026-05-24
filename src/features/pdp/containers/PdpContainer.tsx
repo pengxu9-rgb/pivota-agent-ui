@@ -1524,6 +1524,7 @@ export function PdpContainer({
   onBuyNow,
   onWriteReview,
   onSeeAllReviews,
+  onRetrySimilar,
   ugcCapabilities,
 }: {
   payload: PDPPayload;
@@ -1545,6 +1546,7 @@ export function PdpContainer({
   }) => void;
   onWriteReview?: () => void;
   onSeeAllReviews?: () => void;
+  onRetrySimilar?: () => void;
   ugcCapabilities?: UgcCapabilities | null;
 }) {
   const [payload, setPayload] = useState(initialPayload);
@@ -5684,8 +5686,17 @@ export function PdpContainer({
                   />
                 </>
               ) : moduleStates.similar === 'ERROR' ? (
-                <div className="rounded-xl border border-border bg-white/90 px-3.5 py-4 text-sm text-muted-foreground sm:px-4">
-                  Similar products are temporarily unavailable.
+                <div className="flex items-center justify-between gap-3 rounded-xl border border-border bg-white/90 px-3.5 py-4 text-sm text-muted-foreground sm:px-4">
+                  <span>Similar products are temporarily unavailable.</span>
+                  {onRetrySimilar ? (
+                    <button
+                      type="button"
+                      className="shrink-0 text-xs font-semibold text-primary"
+                      onClick={onRetrySimilar}
+                    >
+                      Retry
+                    </button>
+                  ) : null}
                 </div>
               ) : moduleStates.similar === 'EMPTY' ? (
                 <div className="rounded-xl border border-border bg-white/90 px-3.5 py-4 text-sm text-muted-foreground sm:px-4">

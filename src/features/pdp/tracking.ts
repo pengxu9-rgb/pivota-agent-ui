@@ -4,6 +4,7 @@ export type PdpTrackingEvent =
   | 'pdp_core_retry_recovered'
   | 'pdp_module_impression'
   | 'pdp_module_ready'
+  | 'pdp_module_error'
   | 'pdp_fallback_used'
   | 'pdp_action_click'
   | 'pdp_gallery_open_viewer'
