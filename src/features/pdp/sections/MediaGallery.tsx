@@ -64,6 +64,55 @@ export function MediaGallery({
   const canGoPrev = clampedIndex > 0;
   const canGoNext = clampedIndex < items.length - 1;
 
+  const previewRail = previewItems.length ? (
+    <div
+      data-testid="product-line-preview-rail"
+      className="mt-3 px-3 lg:pointer-events-none lg:absolute lg:inset-x-0 lg:bottom-0 lg:z-[3] lg:mt-0 lg:max-h-full lg:overflow-hidden lg:rounded-b-xl lg:bg-gradient-to-t lg:from-background/95 lg:via-background/85 lg:to-transparent lg:px-3 lg:pb-3 lg:pt-8 lg:backdrop-blur-sm"
+    >
+      <div className="lg:pointer-events-auto">
+        <div className="mb-2 flex items-center justify-between gap-3">
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+            Product Line
+          </p>
+          {typeof data?.preview_scope === 'string' && data.preview_scope.trim() ? (
+            <span className="min-w-0 truncate text-[11px] text-muted-foreground">
+              {data.preview_scope.replace(/_/g, ' ')}
+            </span>
+          ) : null}
+        </div>
+        <div className="flex max-w-full gap-2 overflow-x-auto pb-1 [scrollbar-width:thin]">
+          {previewItems.map((item, idx) => (
+            <button
+              key={`preview-${item.url}-${idx}`}
+              type="button"
+              onClick={() => onSelectPreviewItem?.(item, idx)}
+              disabled={!onSelectPreviewItem || !item.product_id}
+              className={cn(
+                'group min-w-[92px] max-w-[92px] text-left',
+                !onSelectPreviewItem || !item.product_id ? 'cursor-default' : 'cursor-pointer',
+              )}
+              aria-label={`View product-line item ${idx + 1}`}
+            >
+              <div className="relative h-20 w-[92px] overflow-hidden rounded-lg border border-border bg-muted/20 lg:h-16">
+                <Image
+                  src={item.url}
+                  alt={item.alt_text || `Product line item ${idx + 1}`}
+                  fill
+                  className="object-cover transition-transform group-hover:scale-[1.02]"
+                  sizes="92px"
+                  unoptimized={shouldBypassNextImageOptimizer(item.url)}
+                />
+              </div>
+              <p className="mt-1.5 line-clamp-2 text-[11px] leading-4 text-muted-foreground lg:line-clamp-1">
+                {item.alt_text || 'Related option'}
+              </p>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  ) : null;
+
   useEffect(() => {
     if (items.length <= 1 || !onSelect) return;
     const handleKey = (event: KeyboardEvent) => {
@@ -200,6 +249,8 @@ export function MediaGallery({
               {Math.min(clampedIndex + 1, items.length)}/{items.length}
             </div>
           ) : null}
+
+          {previewRail}
         </div>
 
         {items.length ? (
@@ -244,50 +295,6 @@ export function MediaGallery({
                   </span>
                 </button>
               ) : null}
-            </div>
-          </div>
-        ) : null}
-
-        {previewItems.length ? (
-          <div className="mt-3 px-3 lg:px-0">
-            <div className="mb-2 flex items-center justify-between">
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                Product Line
-              </p>
-              {typeof data?.preview_scope === 'string' && data.preview_scope.trim() ? (
-                <span className="text-[11px] text-muted-foreground">
-                  {data.preview_scope.replace(/_/g, ' ')}
-                </span>
-              ) : null}
-            </div>
-            <div className="flex gap-2 overflow-x-auto pb-1">
-              {previewItems.map((item, idx) => (
-                <button
-                  key={`preview-${item.url}-${idx}`}
-                  type="button"
-                  onClick={() => onSelectPreviewItem?.(item, idx)}
-                  disabled={!onSelectPreviewItem || !item.product_id}
-                  className={cn(
-                    'group min-w-[92px] max-w-[92px] text-left',
-                    !onSelectPreviewItem || !item.product_id ? 'cursor-default' : 'cursor-pointer',
-                  )}
-                  aria-label={`View product-line item ${idx + 1}`}
-                >
-                  <div className="relative h-20 w-[92px] overflow-hidden rounded-lg border border-border bg-muted/20">
-                    <Image
-                      src={item.url}
-                      alt={item.alt_text || `Product line item ${idx + 1}`}
-                      fill
-                      className="object-cover transition-transform group-hover:scale-[1.02]"
-                      sizes="92px"
-                      unoptimized={shouldBypassNextImageOptimizer(item.url)}
-                    />
-                  </div>
-                  <p className="mt-1.5 line-clamp-2 text-[11px] leading-4 text-muted-foreground">
-                    {item.alt_text || 'Related option'}
-                  </p>
-                </button>
-              ))}
             </div>
           </div>
         ) : null}

@@ -106,4 +106,33 @@ describe('MediaGallery swipe behavior', () => {
     expect(heroFrame).toHaveClass('aspect-[6/5]');
     expect(heroFrame).not.toHaveClass('lg:aspect-square');
   });
+
+  it('bounds product-line preview images inside the hero stage on desktop', () => {
+    render(
+      <MediaGallery
+        title="Product D"
+        aspectClass="aspect-square"
+        data={{
+          items: [
+            { type: 'image', url: 'https://example.com/1.jpg', alt_text: 'Hero 1' },
+          ],
+          preview_scope: 'product_line',
+          preview_items: Array.from({ length: 12 }, (_, idx) => ({
+            type: 'image',
+            url: `https://example.com/preview-${idx + 1}.jpg`,
+            alt_text: `Preview ${idx + 1}`,
+            product_id: `preview_${idx + 1}`,
+          })),
+        }}
+      />,
+    );
+
+    const heroImage = screen.getAllByAltText('Hero 1')[0] as HTMLElement;
+    const previewRail = screen.getByTestId('product-line-preview-rail');
+
+    expect(previewRail.parentElement).toContainElement(heroImage);
+    expect(previewRail).toHaveClass('lg:absolute', 'lg:max-h-full', 'lg:overflow-hidden');
+    expect(previewRail.querySelector('.overflow-x-auto')).toBeTruthy();
+    expect(screen.getAllByRole('button', { name: /^View product-line item/ })).toHaveLength(12);
+  });
 });
