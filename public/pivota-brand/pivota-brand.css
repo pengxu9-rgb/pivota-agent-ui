@@ -101,7 +101,7 @@
 
 .pv-logo {
   --pv-logo-size: 32px;
-  --pv-logo-src: url("icons/icon-gradient-256.png");
+  --pv-logo-src: url("/pivota-brand/icons/icon-gradient-256.png");
   display: inline-block;
   width: var(--pv-logo-size);
   height: var(--pv-logo-size);
@@ -114,12 +114,12 @@
 }
 
 /* Variants — swap the icon source. */
-.pv-logo--gradient    { --pv-logo-src: url("icons/icon-gradient-256.png"); }
-.pv-logo--purple      { --pv-logo-src: url("icons/icon-purple-256.png"); }
-.pv-logo--ink         { --pv-logo-src: url("icons/icon-ink-256.png"); }
-.pv-logo--paper       { --pv-logo-src: url("icons/icon-paper-256.png"); }
-.pv-logo--mark-ink    { --pv-logo-src: url("icons/mark-ink-1024.png"); }
-.pv-logo--mark-white  { --pv-logo-src: url("icons/mark-white-1024.png"); }
+.pv-logo--gradient    { --pv-logo-src: url("/pivota-brand/icons/icon-gradient-256.png"); }
+.pv-logo--purple      { --pv-logo-src: url("/pivota-brand/icons/icon-purple-256.png"); }
+.pv-logo--ink         { --pv-logo-src: url("/pivota-brand/icons/icon-ink-256.png"); }
+.pv-logo--paper       { --pv-logo-src: url("/pivota-brand/icons/icon-paper-256.png"); }
+.pv-logo--mark-ink    { --pv-logo-src: url("/pivota-brand/icons/mark-ink-1024.png"); }
+.pv-logo--mark-white  { --pv-logo-src: url("/pivota-brand/icons/mark-white-1024.png"); }
 
 /* Sizes */
 .pv-logo--xs { --pv-logo-size: 16px; }

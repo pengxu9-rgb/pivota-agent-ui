@@ -5,12 +5,11 @@ import { renderText } from '@/pivota-font';
 // Per handoff-pivota-sans/INTEGRATION.md §5. Returns a 1200x630 PNG
 // suitable for Open Graph / Twitter card metadata.
 //
-// Edge runtime keeps cold-start under 100ms. We render the wordmark to
-// a URL-encoded data: SVG and place it in an <img> — Satori (the renderer
+// We render the wordmark to a URL-encoded data: SVG and place it in an <img>
+// so the route can stay on the default Node runtime without build warnings.
+// Satori (the renderer
 // behind ImageResponse) rasterizes SVG <img> sources via resvg, but does
 // not reliably honor dangerouslySetInnerHTML for inline SVG markup.
-
-export const runtime = 'edge';
 
 export async function GET() {
   const wordmark = renderText('pivota.', {

@@ -21,11 +21,16 @@
 
 const _warned = new Set<string>();
 
+function isBuildTime(): boolean {
+  return process.env.NEXT_PHASE === 'phase-production-build' || process.env.npm_lifecycle_event === 'build';
+}
+
 export function warnIfHardcodedFallbackUsed(opts: {
   routeLabel: string;
   envVarsTried: string[];
   fallback: string;
 }): void {
+  if (isBuildTime()) return;
   if (_warned.has(opts.routeLabel)) return;
   _warned.add(opts.routeLabel);
   // eslint-disable-next-line no-console
