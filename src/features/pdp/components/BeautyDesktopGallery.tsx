@@ -1,6 +1,13 @@
 'use client';
 
 import { useState } from 'react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { cn } from '@/lib/utils';
+
+function clampImageIndex(index: number, length: number): number {
+  if (length <= 0) return 0;
+  return Math.min(Math.max(index, 0), length - 1);
+}
 
 /**
  * Desktop gallery for the Beauty PDP.
@@ -20,6 +27,12 @@ export function BeautyDesktopGallery({
   const [idx, setIdx] = useState(0);
   if (!images.length) return null;
 
+  const selectIndex = (nextIndex: number) => {
+    setIdx(clampImageIndex(nextIndex, images.length));
+  };
+  const canGoPrev = idx > 0;
+  const canGoNext = idx < images.length - 1;
+
   return (
     <div
       className="flex gap-0 overflow-hidden rounded-2xl border border-border"
@@ -35,7 +48,7 @@ export function BeautyDesktopGallery({
             <button
               key={`${src}-${i}`}
               type="button"
-              onClick={() => setIdx(i)}
+              onClick={() => selectIndex(i)}
               aria-label={`Select image ${i + 1}`}
               aria-current={i === idx ? 'true' : undefined}
               className="flex-shrink-0 overflow-hidden rounded-lg transition-all duration-150"
@@ -54,26 +67,64 @@ export function BeautyDesktopGallery({
         </div>
       ) : null}
 
-      {/* Main image — fills remaining space, portrait 4/5 ratio */}
-      <button
-        type="button"
-        onClick={() => onOpenViewer?.(idx)}
-        className="relative flex-1 overflow-hidden"
+      {/* Main image — fixed stage, intrinsic image preserved inside it. */}
+      <div
+        className="relative min-h-[420px] flex-1 overflow-hidden lg:max-h-[calc(100vh-132px)]"
         style={{ aspectRatio: '4 / 5' }}
-        aria-label={`View image ${idx + 1} of ${images.length}`}
       >
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={images[idx]}
-          alt={alt}
-          loading="eager"
-          className="h-full w-full object-cover transition-opacity duration-200"
-        />
+        <button
+          type="button"
+          onClick={() => onOpenViewer?.(idx)}
+          className="absolute inset-0 block"
+          aria-label={`View image ${idx + 1} of ${images.length}`}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={images[idx]}
+            alt={alt}
+            loading="eager"
+            className="h-full w-full object-contain transition-opacity duration-200"
+          />
+        </button>
+
+        {images.length > 1 ? (
+          <>
+            <button
+              type="button"
+              onClick={() => selectIndex(idx - 1)}
+              disabled={!canGoPrev}
+              aria-label="Previous image"
+              className={cn(
+                'absolute left-3 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-black/10 bg-white/90 text-foreground shadow-lg backdrop-blur-sm transition-all duration-150',
+                canGoPrev
+                  ? 'opacity-100 hover:scale-105 hover:bg-white'
+                  : 'pointer-events-none opacity-0',
+              )}
+            >
+              <ChevronLeft className="h-5 w-5" strokeWidth={2.5} />
+            </button>
+            <button
+              type="button"
+              onClick={() => selectIndex(idx + 1)}
+              disabled={!canGoNext}
+              aria-label="Next image"
+              className={cn(
+                'absolute right-3 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-black/10 bg-white/90 text-foreground shadow-lg backdrop-blur-sm transition-all duration-150',
+                canGoNext
+                  ? 'opacity-100 hover:scale-105 hover:bg-white'
+                  : 'pointer-events-none opacity-0',
+              )}
+            >
+              <ChevronRight className="h-5 w-5" strokeWidth={2.5} />
+            </button>
+          </>
+        ) : null}
+
         {/* Counter chip */}
         <div className="absolute bottom-3 right-3 rounded-full bg-[rgba(20,20,20,0.55)] px-[9px] py-1 text-[11px] font-semibold text-white tabular-nums backdrop-blur-sm">
           {idx + 1} / {images.length}
         </div>
-      </button>
+      </div>
     </div>
   );
 }
