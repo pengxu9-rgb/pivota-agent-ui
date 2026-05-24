@@ -35,14 +35,14 @@ export function BeautyDesktopGallery({
 
   return (
     <div
-      className="flex gap-0 overflow-hidden rounded-2xl border border-border"
+      className="relative overflow-hidden rounded-2xl border border-border"
       style={{ background: 'linear-gradient(180deg, #F5EFE7 0%, #ECE2D3 100%)' }}
     >
       {/* Left thumbnail strip — only shown when there are multiple images */}
       {images.length > 1 ? (
         <div
-          className="flex flex-col gap-1.5 overflow-y-auto p-2.5 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
-          style={{ width: 76 }}
+          data-testid="beauty-desktop-thumbnail-rail"
+          className="absolute inset-y-0 left-0 z-10 flex w-[76px] flex-col gap-1.5 overflow-y-auto p-2.5 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
         >
           {images.map((src, i) => (
             <button
@@ -69,7 +69,10 @@ export function BeautyDesktopGallery({
 
       {/* Main image — fixed stage, intrinsic image preserved inside it. */}
       <div
-        className="relative min-h-[420px] flex-1 overflow-hidden lg:max-h-[calc(100vh-132px)]"
+        className={cn(
+          'relative min-h-[420px] overflow-hidden lg:max-h-[calc(100vh-132px)]',
+          images.length > 1 ? 'ml-[76px]' : '',
+        )}
         style={{ aspectRatio: '4 / 5' }}
       >
         <button

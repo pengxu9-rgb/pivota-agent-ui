@@ -135,9 +135,12 @@ export function MediaGallery({
   }, [clampedIndex, items.length, onSelect]);
 
   return (
-    <div className="lg:flex lg:flex-row lg:gap-3">
+    <div className="lg:relative">
       {items.length > 1 ? (
-        <div className="hidden lg:flex lg:flex-col lg:gap-2 lg:w-16 lg:shrink-0 lg:max-h-[500px] lg:overflow-y-auto lg:py-1 lg:scrollbar-thin">
+        <div
+          data-testid="media-gallery-thumbnail-rail"
+          className="hidden lg:absolute lg:inset-y-0 lg:left-0 lg:z-[4] lg:flex lg:w-16 lg:flex-col lg:gap-2 lg:overflow-y-auto lg:py-1 lg:scrollbar-thin"
+        >
           {items.map((item, idx) => (
             <button
               key={`dt-${item.url}-${idx}`}
@@ -169,7 +172,7 @@ export function MediaGallery({
         </div>
       ) : null}
 
-      <div className="lg:flex-1 lg:min-w-0">
+      <div className={cn('lg:min-w-0', items.length > 1 ? 'lg:ml-[76px]' : '')}>
         <div className="relative">
           <div
             className={cn(

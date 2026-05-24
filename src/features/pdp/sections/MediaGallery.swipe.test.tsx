@@ -135,4 +135,28 @@ describe('MediaGallery swipe behavior', () => {
     expect(previewRail.querySelector('.overflow-x-auto')).toBeTruthy();
     expect(screen.getAllByRole('button', { name: /^View product-line item/ })).toHaveLength(12);
   });
+
+  it('bounds the desktop media thumbnail rail to the hero stage height', () => {
+    render(
+      <MediaGallery
+        title="Product E"
+        aspectClass="aspect-square"
+        data={{
+          items: Array.from({ length: 12 }, (_, idx) => ({
+            type: 'image',
+            url: `https://example.com/media-${idx + 1}.jpg`,
+            alt_text: `Hero ${idx + 1}`,
+          })),
+        }}
+      />,
+    );
+
+    const heroImage = screen.getAllByAltText('Hero 1')[0] as HTMLElement;
+    const thumbnailRail = screen.getByTestId('media-gallery-thumbnail-rail');
+
+    expect(thumbnailRail.parentElement).toContainElement(heroImage);
+    expect(thumbnailRail).toHaveClass('lg:absolute', 'lg:inset-y-0', 'lg:overflow-y-auto');
+    expect(thumbnailRail.nextElementSibling).toHaveClass('lg:ml-[76px]');
+    expect(screen.getAllByRole('button', { name: /^Select media/ })).toHaveLength(12);
+  });
 });

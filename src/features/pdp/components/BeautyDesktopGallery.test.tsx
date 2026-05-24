@@ -32,4 +32,22 @@ describe('BeautyDesktopGallery', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Previous image' }));
     expect(screen.getByText('1 / 3')).toBeInTheDocument();
   });
+
+  it('bounds the desktop thumbnail rail to the main image stage', () => {
+    render(
+      <BeautyDesktopGallery
+        images={Array.from({ length: 12 }, (_, idx) => `https://example.com/${idx + 1}.jpg`)}
+        alt="Adaptive product"
+      />,
+    );
+
+    const rail = screen.getByTestId('beauty-desktop-thumbnail-rail');
+    const heroImage = screen.getByAltText('Adaptive product') as HTMLElement;
+    const heroStage = heroImage.closest('button')?.parentElement;
+
+    expect(rail).toHaveClass('absolute', 'inset-y-0', 'overflow-y-auto');
+    expect(heroStage).toHaveClass('ml-[76px]', 'overflow-hidden');
+    expect(heroStage?.parentElement).toContainElement(rail);
+    expect(screen.getAllByRole('button', { name: /^Select image/ })).toHaveLength(12);
+  });
 });
