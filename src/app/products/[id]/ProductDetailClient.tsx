@@ -373,8 +373,8 @@ function getRecommendationModule(response: PDPPayload | null) {
 }
 
 function isDeferredSimilarPayload(response: PDPPayload | null): boolean {
-  const module = getRecommendationModule(response);
-  const data = (module as any)?.data || null;
+  const recommendationModule = getRecommendationModule(response);
+  const data = (recommendationModule as any)?.data || null;
   const metadata = data && typeof data === 'object' ? (data as any).metadata || {} : {};
   const status = String((data as any)?.status || metadata?.similar_status || '').trim().toLowerCase();
   const reasonCode = String((data as any)?.reason_code || metadata?.reason_code || '').trim().toUpperCase();
