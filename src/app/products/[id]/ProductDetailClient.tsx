@@ -450,13 +450,13 @@ function mergeSimilarPdpPayload(
   options: { deferredAsLoading?: boolean } = {},
 ): PDPPayload {
   const nextSimilarModule =
-    incoming?.modules.find((module) => isRecommendationModuleType(module?.type)) || null;
+    incoming?.modules.find((pdpModule) => isRecommendationModuleType(pdpModule?.type)) || null;
   const incomingBundleModule =
-    incoming?.modules.find((module) => String(module?.type || '').trim() === 'bundle_composition') || null;
+    incoming?.modules.find((pdpModule) => String(pdpModule?.type || '').trim() === 'bundle_composition') || null;
   const existingBundleModule =
-    current.modules.find((module) => String(module?.type || '').trim() === 'bundle_composition') || null;
-  const baseModules = current.modules.filter((module) => {
-    const type = String(module?.type || '').trim();
+    current.modules.find((pdpModule) => String(pdpModule?.type || '').trim() === 'bundle_composition') || null;
+  const baseModules = current.modules.filter((pdpModule) => {
+    const type = String(pdpModule?.type || '').trim();
     return type !== 'recommendations' && type !== 'similar' && type !== 'bundle_composition';
   });
   const nextBundleModule = incomingBundleModule || existingBundleModule;
