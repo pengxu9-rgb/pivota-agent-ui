@@ -70,7 +70,7 @@ const PDP_INITIAL_INCLUDE = [...PDP_CORE_ONLY_INCLUDE] as const;
 const PDP_SIMILAR_INCLUDE = ['similar'] as const;
 const PDP_V2_SIMILAR_TIMEOUT_MS = 9000;
 const PDP_SIMILAR_DEFERRED_RETRY_DELAY_MS = 900;
-const PDP_SIMILAR_DEFERRED_AUTO_RETRY_MAX = 2;
+const PDP_SIMILAR_DEFERRED_AUTO_RETRY_MAX = 1;
 
 function buildPublicUgcCapabilities(caps?: UgcCapabilities | null): UgcCapabilities {
   return {
