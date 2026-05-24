@@ -3077,6 +3077,7 @@ export async function getPdpV2(args: {
   debug?: boolean;
   cache_bypass?: boolean;
   serving_eligible_only?: boolean;
+  similar_mode?: 'first_paint' | 'post_core' | 'background' | 'retry';
 }): Promise<GetPdpV2Response> {
   const productId = String(args.product_id || '').trim();
   if (!productId) {
@@ -3112,6 +3113,7 @@ export async function getPdpV2(args: {
           serving_eligible_only: args.serving_eligible_only !== false,
           ...(args.debug ? { debug: true } : {}),
           ...(args.cache_bypass ? { cache_bypass: true } : {}),
+          ...(args.similar_mode ? { similar_mode: args.similar_mode } : {}),
         },
         capabilities: {
           client: 'shopping',

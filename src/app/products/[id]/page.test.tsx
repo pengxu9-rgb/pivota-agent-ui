@@ -310,6 +310,29 @@ const canonicalWithSimilarPayload = {
   x_recommendations_state: 'ready',
 } as const;
 
+const canonicalDeferredSimilarPayload = {
+  ...canonicalLoadingPayload,
+  modules: [
+    ...canonicalLoadingPayload.modules,
+    {
+      module_id: 'recommendations',
+      type: 'recommendations',
+      priority: 90,
+      data: {
+        status: 'deferred',
+        strategy: 'related_products',
+        reason_code: 'SIMILAR_DEFERRED_BACKGROUND_LOAD',
+        items: [],
+        metadata: {
+          similar_status: 'deferred',
+          reason_code: 'SIMILAR_DEFERRED_BACKGROUND_LOAD',
+        },
+      },
+    },
+  ],
+  x_recommendations_state: 'ready',
+} as const;
+
 const staleEmptySimilarPayload = {
   ...canonicalLoadingPayload,
   modules: [
@@ -1003,6 +1026,7 @@ describe('ProductDetailPage canonical PDP loading', () => {
       expect.objectContaining({
         product_id: 'prod_1',
         include: similarPdpInclude,
+        similar_mode: 'post_core',
       }),
     );
   });
@@ -1035,6 +1059,8 @@ describe('ProductDetailPage canonical PDP loading', () => {
       expect.objectContaining({
         product_id: 'prod_1',
         include: similarPdpInclude,
+        similar_mode: 'retry',
+        cache_bypass: true,
       }),
     );
   });
@@ -1058,6 +1084,44 @@ describe('ProductDetailPage canonical PDP loading', () => {
       expect.objectContaining({
         product_id: 'prod_1',
         include: similarPdpInclude,
+        similar_mode: 'post_core',
+      }),
+    );
+  });
+
+  it('auto-retries deferred post-core similar without clearing the core PDP', async () => {
+    getPdpV2Mock
+      .mockResolvedValueOnce({ kind: 'core' })
+      .mockResolvedValueOnce({ kind: 'similar_deferred' })
+      .mockResolvedValueOnce({ kind: 'similar_ready' });
+    mapPdpV2ToPdpPayloadMock
+      .mockReturnValueOnce(canonicalLoadingPayload)
+      .mockReturnValueOnce(canonicalDeferredSimilarPayload)
+      .mockReturnValueOnce(canonicalWithSimilarPayload);
+
+    renderPage();
+
+    await screen.findByTestId('generic-pdp');
+    await waitFor(() => {
+      expect(screen.getByTestId('recommendations-state')).toHaveTextContent('loading');
+      expect(getPdpV2Mock).toHaveBeenCalledTimes(2);
+    });
+    expect(screen.getByText('Canonical PDP Product')).toBeInTheDocument();
+
+    await waitFor(
+      () => {
+        expect(screen.getByTestId('recommendations-state')).toHaveTextContent('ready');
+        expect(screen.getByTestId('recommendations-count')).toHaveTextContent('2');
+      },
+      { timeout: 2000 },
+    );
+    expect(getPdpV2Mock).toHaveBeenNthCalledWith(
+      3,
+      expect.objectContaining({
+        product_id: 'prod_1',
+        include: similarPdpInclude,
+        similar_mode: 'post_core',
+        cache_bypass: true,
       }),
     );
   });

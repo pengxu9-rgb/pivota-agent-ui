@@ -69,6 +69,8 @@ const PDP_CORE_ONLY_INCLUDE = [
 const PDP_INITIAL_INCLUDE = [...PDP_CORE_ONLY_INCLUDE] as const;
 const PDP_SIMILAR_INCLUDE = ['similar'] as const;
 const PDP_V2_SIMILAR_TIMEOUT_MS = 9000;
+const PDP_SIMILAR_DEFERRED_RETRY_DELAY_MS = 900;
+const PDP_SIMILAR_DEFERRED_AUTO_RETRY_MAX = 2;
 
 function buildPublicUgcCapabilities(caps?: UgcCapabilities | null): UgcCapabilities {
   return {
@@ -365,6 +367,26 @@ function hasRecommendationsItems(response: PDPPayload | null): boolean {
   });
 }
 
+function getRecommendationModule(response: PDPPayload | null) {
+  if (!response || !Array.isArray(response.modules)) return null;
+  return response.modules.find((m) => isRecommendationModuleType(m?.type)) || null;
+}
+
+function isDeferredSimilarPayload(response: PDPPayload | null): boolean {
+  const module = getRecommendationModule(response);
+  const data = (module as any)?.data || null;
+  const metadata = data && typeof data === 'object' ? (data as any).metadata || {} : {};
+  const status = String((data as any)?.status || metadata?.similar_status || '').trim().toLowerCase();
+  const reasonCode = String((data as any)?.reason_code || metadata?.reason_code || '').trim().toUpperCase();
+  const items = Array.isArray((data as any)?.items) ? (data as any).items : [];
+  return (
+    items.length === 0 &&
+    (status === 'deferred' ||
+      reasonCode === 'SIMILAR_DEFERRED_FIRST_PAINT' ||
+      reasonCode === 'SIMILAR_DEFERRED_BACKGROUND_LOAD')
+  );
+}
+
 function prepareLoadedPdpPayload(assembled: PDPPayload) {
   const offerRows = Array.isArray((assembled as any).offers) ? (assembled as any).offers : [];
   const expectedOffersCount = Number((assembled as any).offers_count);
@@ -422,7 +444,11 @@ function setSimilarLoadState(payload: PDPPayload, state: 'loading' | 'error'): P
   };
 }
 
-function mergeSimilarPdpPayload(current: PDPPayload, incoming: PDPPayload | null): PDPPayload {
+function mergeSimilarPdpPayload(
+  current: PDPPayload,
+  incoming: PDPPayload | null,
+  options: { deferredAsLoading?: boolean } = {},
+): PDPPayload {
   const nextSimilarModule =
     incoming?.modules.find((module) => isRecommendationModuleType(module?.type)) || null;
   const incomingBundleModule =
@@ -441,10 +467,13 @@ function mergeSimilarPdpPayload(current: PDPPayload, incoming: PDPPayload | null
       ...(nextBundleModule ? [nextBundleModule] : []),
       ...(nextSimilarModule ? [nextSimilarModule] : []),
     ],
-    x_recommendations_state: 'ready',
+    x_recommendations_state:
+      options.deferredAsLoading && isDeferredSimilarPayload(incoming)
+        ? 'loading'
+        : 'ready',
     x_source_locks: {
       ...(current.x_source_locks || {}),
-      similar: Boolean(nextSimilarModule),
+      similar: Boolean(nextSimilarModule && !(options.deferredAsLoading && isDeferredSimilarPayload(incoming))),
     },
   };
 }
@@ -556,17 +585,29 @@ export default function ProductDetailPage({ params, initialPayload }: Props) {
   const moduleSourceLocksRef = useRef(initialLoadState?.sourceLocks ?? { ...DEFAULT_MODULE_SOURCE_LOCKS });
   const similarLoadSeqRef = useRef(0);
   const similarAutoLoadKeyRef = useRef<string | null>(null);
+  const similarDeferredRetryCountRef = useRef(0);
+  const similarDeferredRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [ugcCapabilities, setUgcCapabilities] = useState<UgcCapabilities | null>(() => buildPublicUgcCapabilities());
 
   const { addItem, open } = useCartStore();
   const inferredMerchantId = inferCanonicalPdpMerchantId(id, merchantIdParam);
   const routeIsProductGroup = isProductGroupRouteId(id);
   const routeIsPivotaSignature = isPivotaSignatureRouteId(id);
+  const clearSimilarDeferredRetryTimer = useCallback(() => {
+    if (similarDeferredRetryTimerRef.current) {
+      clearTimeout(similarDeferredRetryTimerRef.current);
+      similarDeferredRetryTimerRef.current = null;
+    }
+  }, []);
   const loadSimilarModule = useCallback(
-    async (trigger: 'auto' | 'retry' = 'auto') => {
+    async (trigger: 'auto' | 'auto_retry' | 'retry' = 'auto') => {
       const explicitMerchantId = inferredMerchantId ? String(inferredMerchantId).trim() : null;
       const requestSeq = similarLoadSeqRef.current + 1;
       similarLoadSeqRef.current = requestSeq;
+      clearSimilarDeferredRetryTimer();
+      if (trigger === 'retry') {
+        similarDeferredRetryCountRef.current = 0;
+      }
 
       setPdpPayload((current) => (current ? setSimilarLoadState(current, 'loading') : current));
 
@@ -581,23 +622,52 @@ export default function ProductDetailPage({ params, initialPayload }: Props) {
               : {}),
           include: [...PDP_SIMILAR_INCLUDE],
           timeout_ms: PDP_V2_SIMILAR_TIMEOUT_MS,
+          similar_mode: trigger === 'retry' ? 'retry' : 'post_core',
+          cache_bypass: trigger === 'auto_retry' || trigger === 'retry',
         });
         if (similarLoadSeqRef.current !== requestSeq) return;
         const assembled = mapPdpV2ToPdpPayload(v2);
+        const deferred = isDeferredSimilarPayload(assembled);
+        const shouldAutoRetryDeferred =
+          deferred &&
+          trigger !== 'retry' &&
+          similarDeferredRetryCountRef.current < PDP_SIMILAR_DEFERRED_AUTO_RETRY_MAX;
         setPdpPayload((current) => {
           if (!current) return current;
-          const nextPayload = mergeSimilarPdpPayload(current, assembled);
+          const nextPayload = mergeSimilarPdpPayload(current, assembled, {
+            deferredAsLoading: shouldAutoRetryDeferred,
+          });
           moduleSourceLocksRef.current = {
             ...moduleSourceLocksRef.current,
-            similar: Boolean(hasModule(nextPayload, 'recommendations')),
+            similar: Boolean(
+              hasModule(nextPayload, 'recommendations') &&
+                nextPayload.x_recommendations_state === 'ready',
+            ),
           };
           return nextPayload;
         });
+        if (!deferred) {
+          similarDeferredRetryCountRef.current = 0;
+        }
+        if (shouldAutoRetryDeferred) {
+          const retryAttempt = similarDeferredRetryCountRef.current + 1;
+          similarDeferredRetryCountRef.current = retryAttempt;
+          similarDeferredRetryTimerRef.current = setTimeout(() => {
+            similarDeferredRetryTimerRef.current = null;
+            void loadSimilarModule('auto_retry');
+          }, PDP_SIMILAR_DEFERRED_RETRY_DELAY_MS * retryAttempt);
+        }
         pdpTracking.track('pdp_module_ready', {
           module: 'similar',
-          source: trigger === 'retry' ? 'get_pdp_v2_similar_retry' : 'get_pdp_v2_similar',
+          source:
+            trigger === 'retry'
+              ? 'get_pdp_v2_similar_retry'
+              : trigger === 'auto_retry'
+                ? 'get_pdp_v2_similar_auto_retry'
+                : 'get_pdp_v2_similar',
           latency_ms: Date.now() - startedAt,
           has_items: hasRecommendationsItems(assembled),
+          deferred,
         });
       } catch (similarErr) {
         if (similarLoadSeqRef.current !== requestSeq) return;
@@ -615,7 +685,7 @@ export default function ProductDetailPage({ params, initialPayload }: Props) {
         });
       }
     },
-    [id, inferredMerchantId, routeIsProductGroup],
+    [clearSimilarDeferredRetryTimer, id, inferredMerchantId, routeIsProductGroup],
   );
   const handleRetrySimilar = useCallback(() => {
     void loadSimilarModule('retry');
@@ -629,15 +699,23 @@ export default function ProductDetailPage({ params, initialPayload }: Props) {
 
   useEffect(() => {
     if (!initialPayload) return;
+    clearSimilarDeferredRetryTimer();
     similarLoadSeqRef.current += 1;
     similarAutoLoadKeyRef.current = null;
+    similarDeferredRetryCountRef.current = 0;
     const nextLoadState = prepareLoadedPdpPayload(initialPayload);
     moduleSourceLocksRef.current = nextLoadState.sourceLocks;
     setPdpPayload(nextLoadState.payload);
     setSellerCandidates(null);
     setLoading(false);
     setError(null);
-  }, [id, initialPayload, merchantIdParam]);
+  }, [clearSimilarDeferredRetryTimer, id, initialPayload, merchantIdParam]);
+
+  useEffect(() => {
+    return () => {
+      clearSimilarDeferredRetryTimer();
+    };
+  }, [clearSimilarDeferredRetryTimer]);
 
   useEffect(() => {
     const currentPayload = pdpPayload;
@@ -808,8 +886,10 @@ export default function ProductDetailPage({ params, initialPayload }: Props) {
       setError(null);
       setSellerCandidates(null);
       setPdpPayload(null);
+      clearSimilarDeferredRetryTimer();
       similarLoadSeqRef.current += 1;
       similarAutoLoadKeyRef.current = null;
+      similarDeferredRetryCountRef.current = 0;
       moduleSourceLocksRef.current = { ...DEFAULT_MODULE_SOURCE_LOCKS };
 
       const commitLoadedPdp = (
@@ -922,7 +1002,7 @@ export default function ProductDetailPage({ params, initialPayload }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [hasInitialPayload, id, inferredMerchantId, merchantIdParam, reloadKey, routeIsProductGroup]);
+  }, [clearSimilarDeferredRetryTimer, hasInitialPayload, id, inferredMerchantId, merchantIdParam, reloadKey, routeIsProductGroup]);
 
   useEffect(() => {
     let cancelled = false;
