@@ -5,7 +5,7 @@ import {
   SITEMAP_SEED_PRODUCT_IDS,
 } from '../sitemap-seeds'
 
-export const revalidate = 3600
+export const revalidate = 900
 export const dynamic = 'force-dynamic'
 
 const PIVOTA_CANONICAL_PAGE_SIZE = 1000
@@ -13,11 +13,13 @@ const PIVOTA_CANONICAL_PAGE_SIZE = 1000
 const SITEMAP_MAX_URLS = 50000
 const DEFAULT_CANONICAL_PRODUCTS_BASE_URL = 'https://web-production-fedb.up.railway.app'
 const SITEMAP_CACHE_CONTROL =
-  `public, max-age=${revalidate}, s-maxage=${revalidate}, stale-while-revalidate=86400`
+  `public, max-age=${revalidate}, s-maxage=${revalidate}, stale-while-revalidate=900`
 const SITEMAP_FALLBACK_CACHE_CONTROL =
-  'public, max-age=60, s-maxage=60, stale-while-revalidate=300'
+  'public, max-age=60, s-maxage=60, stale-while-revalidate=60'
 const CANONICAL_PRODUCTS_FETCH_PAGE_TIMEOUT_MS = 8000
 const CANONICAL_PRODUCTS_FETCH_TOTAL_BUDGET_MS = 12000
+const SEED_PRODUCT_AUDIT_PAGE_TIMEOUT_MS = 5000
+const SEED_PRODUCT_AUDIT_TOTAL_BUDGET_MS = 10000
 const SEED_PRODUCT_LASTMOD = new Date('2026-05-12T00:00:00.000Z')
 
 type SitemapSource =
@@ -82,6 +84,22 @@ function getCanonicalProductsBaseUrl(): string {
   return DEFAULT_CANONICAL_PRODUCTS_BASE_URL
 }
 
+function getGatewayBaseUrl(): string {
+  const configured = (
+    process.env.PIVOTA_SITEMAP_GATEWAY_URL ||
+    process.env.NEXT_PUBLIC_AGENT_DIRECT_API_URL ||
+    process.env.NEXT_PUBLIC_AGENT_API_URL ||
+    ''
+  )
+    .trim()
+    .replace(/\/+$/, '')
+
+  if (/^https?:\/\//.test(configured)) {
+    return /\/api\/gateway$/i.test(configured) ? configured : `${configured}/api/gateway`
+  }
+  return `${SITEMAP_BASE_URL}/api/gateway`
+}
+
 function readInteger(value: unknown, min: number): number | null {
   const n = Number(value)
   if (!Number.isFinite(n) || n < min) return null
@@ -96,14 +114,15 @@ function parseLastmod(value: unknown): Date {
   return Number.isNaN(parsed.getTime()) ? new Date() : parsed
 }
 
+function isTruthyEligibility(value: unknown): boolean {
+  return value === true || value === 1 || value === 'true'
+}
+
 function isServingEligibleProduct(item: Record<string, unknown>): boolean {
-  const flags = [
-    item.serving_eligible,
-    item.is_serving_eligible,
-    item.indexable,
-    item.is_indexable,
-  ]
-  return !flags.some((value) => value === false || value === 0 || value === 'false')
+  return (
+    isTruthyEligibility(item.serving_eligible) ||
+    isTruthyEligibility(item.is_serving_eligible)
+  )
 }
 
 function readCanonicalProduct(item: unknown): SitemapProduct | null {
@@ -113,6 +132,8 @@ function readCanonicalProduct(item: unknown): SitemapProduct | null {
 
   const id = String(row.sig_id || '').trim()
   if (!id.startsWith('sig_')) return null
+  const contentKey = String(row.content_key || '').trim()
+  if (!contentKey.startsWith('ck_')) return null
 
   return {
     id,
@@ -120,16 +141,69 @@ function readCanonicalProduct(item: unknown): SitemapProduct | null {
   }
 }
 
-function seedSitemapProducts(): SitemapProduct[] {
-  return SITEMAP_SEED_PRODUCT_IDS
-    .filter(isProductIdSitemapEligible)
-    .map((id) => ({ id, lastmod: new Date(SEED_PRODUCT_LASTMOD) }))
+async function isStrictServingEligibleSeedProduct(
+  productId: string,
+  timeoutMs: number,
+): Promise<boolean> {
+  if (timeoutMs <= 0) return false
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    const res = await fetch(getGatewayBaseUrl(), {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      },
+      cache: 'no-store',
+      signal: controller.signal,
+      body: JSON.stringify({
+        operation: 'get_pdp_v2',
+        payload: {
+          product_ref: { product_id: productId },
+          include: ['offers'],
+          options: {
+            debug: true,
+            no_cache: true,
+            cache_bypass: true,
+            serving_eligible_only: true,
+          },
+        },
+      }),
+    })
+    if (!res.ok) return false
+    const data: unknown = await res.json()
+    if (!data || typeof data !== 'object') return false
+    const body = data as Record<string, unknown>
+    return body.error == null && body.pdp_version === '2.0'
+  } catch {
+    return false
+  } finally {
+    clearTimeout(timeout)
+  }
 }
 
-function productsWithFallbackSeeds(
+async function seedSitemapProducts(): Promise<SitemapProduct[]> {
+  const startedAt = Date.now()
+  const products: SitemapProduct[] = []
+  for (const id of SITEMAP_SEED_PRODUCT_IDS) {
+    if (!isProductIdSitemapEligible(id)) continue
+    const remainingBudget = SEED_PRODUCT_AUDIT_TOTAL_BUDGET_MS - (Date.now() - startedAt)
+    const eligible = await isStrictServingEligibleSeedProduct(
+      id,
+      Math.min(SEED_PRODUCT_AUDIT_PAGE_TIMEOUT_MS, remainingBudget),
+    )
+    if (eligible) {
+      products.push({ id, lastmod: new Date(SEED_PRODUCT_LASTMOD) })
+    }
+  }
+  return products
+}
+
+async function productsWithFallbackSeeds(
   products: SitemapProduct[],
   source: SitemapSource,
-): SitemapProduct[] {
+): Promise<SitemapProduct[]> {
   if (products.length || source !== 'serving_eligible_unavailable') return products
   return seedSitemapProducts()
 }
@@ -189,6 +263,7 @@ async function collectServingEligibleProducts(): Promise<{
   const seenIds = new Set<string>()
   let offset = 0
   let stoppedForCap = false
+  let sawInvalidCanonicalItem = false
 
   try {
     while (products.length < SITEMAP_MAX_URLS) {
@@ -203,7 +278,11 @@ async function collectServingEligibleProducts(): Promise<{
 
       for (const item of page.items) {
         const product = readCanonicalProduct(item)
-        if (!product || seenIds.has(product.id)) continue
+        if (!product) {
+          sawInvalidCanonicalItem = true
+          continue
+        }
+        if (seenIds.has(product.id)) continue
         seenIds.add(product.id)
         products.push(product)
         if (products.length >= SITEMAP_MAX_URLS) break
@@ -231,13 +310,17 @@ async function collectServingEligibleProducts(): Promise<{
 
   return {
     products,
-    source: stoppedForCap ? 'serving_eligible_truncated' : 'serving_eligible',
+    source: sawInvalidCanonicalItem
+      ? 'serving_eligible_partial'
+      : stoppedForCap
+        ? 'serving_eligible_truncated'
+        : 'serving_eligible',
   }
 }
 
 export async function GET() {
   const { products, source } = await collectServingEligibleProducts()
-  const sitemapProducts = productsWithFallbackSeeds(products, source)
+  const sitemapProducts = await productsWithFallbackSeeds(products, source)
 
   const urls = sitemapProducts.map((product) => ({
     loc: `${SITEMAP_BASE_URL}/products/${encodeURIComponent(product.id)}`,
