@@ -364,6 +364,34 @@ describe('ProductDetailPage canonical PDP loading', () => {
     expect(getPdpV2Mock).not.toHaveBeenCalled();
   });
 
+  it('uses the Beauty PDP when beauty_formula conflicts with generic category kind', () => {
+    renderPage('prod_1', {
+      ...canonicalPayload,
+      product: {
+        ...canonicalPayload.product,
+        category_kind: 'generic',
+        pdp_schema_profile: 'beauty_formula',
+      },
+    });
+
+    expect(screen.getByTestId('beauty-pdp')).toHaveTextContent('Canonical PDP Product');
+    expect(screen.queryByTestId('generic-pdp')).not.toBeInTheDocument();
+  });
+
+  it('keeps beauty_tool profiles on the Generic PDP when category kind is generic', () => {
+    renderPage('prod_1', {
+      ...canonicalPayload,
+      product: {
+        ...canonicalPayload.product,
+        category_kind: 'generic',
+        pdp_schema_profile: 'beauty_tool',
+      },
+    });
+
+    expect(screen.getByTestId('generic-pdp')).toHaveTextContent('Canonical PDP Product');
+    expect(screen.queryByTestId('beauty-pdp')).not.toBeInTheDocument();
+  });
+
   it('refetches from the client when an initial server payload has checkout context in the URL', async () => {
     window.history.pushState(
       {},

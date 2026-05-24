@@ -7,7 +7,12 @@ async function readBody(res: Response): Promise<string> {
 }
 
 function canonicalProduct(id: string, updatedAt = '2026-05-01T12:00:00.000Z') {
-  return { sig_id: id, updated_at: updatedAt };
+  return {
+    sig_id: id,
+    content_key: `ck_${id.replace(/^sig_/, '')}`,
+    serving_eligible: true,
+    updated_at: updatedAt,
+  };
 }
 
 function products(count: number, prefix = 'sig_mock_product') {
@@ -53,7 +58,7 @@ describe('/sitemap-products.xml — serving-eligible product sitemap', () => {
     expect(xml).toContain('<lastmod>2026-05-01T12:00:00.000Z</lastmod>');
     expect(xml).toContain('<changefreq>weekly</changefreq>');
     expect(res.headers.get('cache-control')).toBe(
-      'public, max-age=3600, s-maxage=3600, stale-while-revalidate=86400',
+      'public, max-age=900, s-maxage=900, stale-while-revalidate=900',
     );
     expect(res.headers.get('x-pivota-sitemap-source')).toBe('serving_eligible');
     expect(res.headers.get('x-pivota-sitemap-url-count')).toBe('25');
@@ -74,7 +79,7 @@ describe('/sitemap-products.xml — serving-eligible product sitemap', () => {
     expect(await res.text()).toBe('');
     expect(res.headers.get('content-type')).toMatch(/application\/xml/);
     expect(res.headers.get('cache-control')).toBe(
-      'public, max-age=3600, s-maxage=3600, stale-while-revalidate=86400',
+      'public, max-age=900, s-maxage=900, stale-while-revalidate=900',
     );
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -125,7 +130,16 @@ describe('/sitemap-products.xml — serving-eligible product sitemap', () => {
 
   it('returns seed URLs with short cache when the canonical endpoint is unavailable', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
-    vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(new Error('backend unavailable'));
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = new URL(String(input));
+      if (url.pathname === '/api/canonical/products') {
+        throw new Error('backend unavailable');
+      }
+      return new Response(JSON.stringify({ pdp_version: '2.0' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    });
 
     const res = await GET();
     const xml = await readBody(res);
@@ -137,7 +151,7 @@ describe('/sitemap-products.xml — serving-eligible product sitemap', () => {
       `https://agent.pivota.cc/products/${SITEMAP_SEED_PRODUCT_IDS[0]}`,
     );
     expect(res.headers.get('cache-control')).toBe(
-      'public, max-age=60, s-maxage=60, stale-while-revalidate=300',
+      'public, max-age=60, s-maxage=60, stale-while-revalidate=60',
     );
     expect(res.headers.get('x-pivota-sitemap-source')).toBe('serving_eligible_unavailable');
     expect(res.headers.get('x-pivota-sitemap-url-count')).toBe(
@@ -145,7 +159,7 @@ describe('/sitemap-products.xml — serving-eligible product sitemap', () => {
     );
   });
 
-  it('filters non-sig rows, explicit non-serving rows, and duplicate sigs', async () => {
+  it('filters non-sig rows, implicit/explicit non-serving rows, and duplicate sigs', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
       new Response(
         JSON.stringify({
@@ -153,6 +167,8 @@ describe('/sitemap-products.xml — serving-eligible product sitemap', () => {
             canonicalProduct('sig_keep_me'),
             canonicalProduct('sig_keep_me'),
             { sig_id: 'ext_alias' },
+            { sig_id: 'sig_missing_eligibility', content_key: 'ck_missing_eligibility' },
+            { sig_id: 'sig_missing_content_key', serving_eligible: true },
             { sig_id: 'sig_blocked', serving_eligible: false },
             { sig_id: 'sig_also_blocked', is_indexable: 'false' },
           ],
@@ -164,12 +180,50 @@ describe('/sitemap-products.xml — serving-eligible product sitemap', () => {
       ),
     );
 
-    const xml = await readBody(await GET());
+    const res = await GET();
+    const xml = await readBody(res);
     const locs = sitemapLocs(xml);
 
     expect(locs).toEqual(['https://agent.pivota.cc/products/sig_keep_me']);
     expect(xml).not.toContain('ext_alias');
+    expect(xml).not.toContain('sig_missing_eligibility');
+    expect(xml).not.toContain('sig_missing_content_key');
     expect(xml).not.toContain('sig_blocked');
     expect(xml).not.toContain('sig_also_blocked');
+    expect(res.headers.get('x-pivota-sitemap-source')).toBe('serving_eligible_partial');
+    expect(res.headers.get('cache-control')).toBe(
+      'public, max-age=60, s-maxage=60, stale-while-revalidate=60',
+    );
+  });
+
+  it('strictly audits fallback seed URLs and excludes failed probes', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const blockedSeed = SITEMAP_SEED_PRODUCT_IDS[0];
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = new URL(String(input));
+      if (url.pathname === '/api/canonical/products') {
+        throw new Error('backend unavailable');
+      }
+      const body = JSON.parse(String((init as RequestInit | undefined)?.body || '{}'));
+      const productId = body?.payload?.product_ref?.product_id;
+      if (productId === blockedSeed) {
+        return new Response(JSON.stringify({ error: 'PRODUCT_NOT_SERVABLE' }), {
+          status: 404,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify({ pdp_version: '2.0' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    });
+
+    const res = await GET();
+    const xml = await readBody(res);
+    const locs = sitemapLocs(xml);
+
+    expect(locs).toHaveLength(SITEMAP_SEED_PRODUCT_IDS.length - 1);
+    expect(locs).not.toContain(`https://agent.pivota.cc/products/${blockedSeed}`);
+    expect(res.headers.get('x-pivota-sitemap-source')).toBe('serving_eligible_unavailable');
   });
 });

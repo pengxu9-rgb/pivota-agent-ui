@@ -852,9 +852,11 @@ export default function ProductDetailPage({ params, initialPayload }: Props) {
     if (pdpOverride === 'electronics') return 'electronics';
     if (!pdpPayload) return 'generic';
     const explicitKind = pdpPayload.product.category_kind;
-    if (explicitKind === 'fashion' || explicitKind === 'electronics' || explicitKind === 'beauty' || explicitKind === 'generic') {
+    if (explicitKind === 'beauty') return 'beauty';
+    if (explicitKind === 'fashion' || explicitKind === 'electronics') {
       return explicitKind;
     }
+    if (explicitKind === 'generic' && !isBeautyProduct(pdpPayload.product)) return 'generic';
     if (isBeautyProduct(pdpPayload.product)) return 'beauty';
     const taxonomy = [
       Array.isArray(pdpPayload.product.category_path) ? pdpPayload.product.category_path.join(' ') : '',
