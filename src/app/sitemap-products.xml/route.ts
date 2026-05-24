@@ -1,5 +1,9 @@
 import { NextResponse } from 'next/server'
-import { SITEMAP_BASE_URL } from '../sitemap-seeds'
+import {
+  isProductIdSitemapEligible,
+  SITEMAP_BASE_URL,
+  SITEMAP_SEED_PRODUCT_IDS,
+} from '../sitemap-seeds'
 
 export const revalidate = 3600
 export const dynamic = 'force-dynamic'
@@ -10,6 +14,11 @@ const SITEMAP_MAX_URLS = 50000
 const DEFAULT_CANONICAL_PRODUCTS_BASE_URL = 'https://web-production-fedb.up.railway.app'
 const SITEMAP_CACHE_CONTROL =
   `public, max-age=${revalidate}, s-maxage=${revalidate}, stale-while-revalidate=86400`
+const SITEMAP_FALLBACK_CACHE_CONTROL =
+  'public, max-age=60, s-maxage=60, stale-while-revalidate=300'
+const CANONICAL_PRODUCTS_FETCH_PAGE_TIMEOUT_MS = 8000
+const CANONICAL_PRODUCTS_FETCH_TOTAL_BUDGET_MS = 12000
+const SEED_PRODUCT_LASTMOD = new Date('2026-05-12T00:00:00.000Z')
 
 type SitemapSource =
   | 'serving_eligible'
@@ -111,19 +120,48 @@ function readCanonicalProduct(item: unknown): SitemapProduct | null {
   }
 }
 
+function seedSitemapProducts(): SitemapProduct[] {
+  return SITEMAP_SEED_PRODUCT_IDS
+    .filter(isProductIdSitemapEligible)
+    .map((id) => ({ id, lastmod: new Date(SEED_PRODUCT_LASTMOD) }))
+}
+
+function productsWithFallbackSeeds(
+  products: SitemapProduct[],
+  source: SitemapSource,
+): SitemapProduct[] {
+  if (products.length || source !== 'serving_eligible_unavailable') return products
+  return seedSitemapProducts()
+}
+
+function cacheControlForSource(source: SitemapSource): string {
+  return source === 'serving_eligible' || source === 'serving_eligible_truncated'
+    ? SITEMAP_CACHE_CONTROL
+    : SITEMAP_FALLBACK_CACHE_CONTROL
+}
+
 async function fetchCanonicalProductsPage(
   baseUrl: string,
   offset: number,
+  timeoutMs: number,
 ): Promise<CanonicalProductsPage> {
+  if (timeoutMs <= 0) {
+    throw new Error('canonical products fetch budget exhausted')
+  }
+
   const url = new URL('/api/canonical/products', baseUrl)
   url.searchParams.set('limit', String(PIVOTA_CANONICAL_PAGE_SIZE))
   url.searchParams.set('offset', String(offset))
 
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), timeoutMs)
   const res = await fetch(url.toString(), {
     method: 'GET',
     headers: { Accept: 'application/json' },
     cache: 'no-store',
-  })
+    signal: controller.signal,
+  }).finally(() => clearTimeout(timeout))
+
   if (!res.ok) {
     throw new Error(`canonical products fetch failed with status ${res.status}`)
   }
@@ -146,6 +184,7 @@ async function collectServingEligibleProducts(): Promise<{
   source: SitemapSource
 }> {
   const baseUrl = getCanonicalProductsBaseUrl()
+  const startedAt = Date.now()
   const products: SitemapProduct[] = []
   const seenIds = new Set<string>()
   let offset = 0
@@ -153,7 +192,13 @@ async function collectServingEligibleProducts(): Promise<{
 
   try {
     while (products.length < SITEMAP_MAX_URLS) {
-      const page = await fetchCanonicalProductsPage(baseUrl, offset)
+      const remainingBudget =
+        CANONICAL_PRODUCTS_FETCH_TOTAL_BUDGET_MS - (Date.now() - startedAt)
+      const page = await fetchCanonicalProductsPage(
+        baseUrl,
+        offset,
+        Math.min(CANONICAL_PRODUCTS_FETCH_PAGE_TIMEOUT_MS, remainingBudget),
+      )
       if (page.items.length === 0) break
 
       for (const item of page.items) {
@@ -192,8 +237,9 @@ async function collectServingEligibleProducts(): Promise<{
 
 export async function GET() {
   const { products, source } = await collectServingEligibleProducts()
+  const sitemapProducts = productsWithFallbackSeeds(products, source)
 
-  const urls = products.map((product) => ({
+  const urls = sitemapProducts.map((product) => ({
     loc: `${SITEMAP_BASE_URL}/products/${encodeURIComponent(product.id)}`,
     lastmod: product.lastmod,
     changefreq: 'weekly',
@@ -207,7 +253,7 @@ export async function GET() {
       'Content-Type': 'application/xml; charset=utf-8',
       // s-maxage caches at the Vercel edge so crawler fetches don't pay the
       // backend cold-start (>30s on Railway idle, which trips GSC "Couldn't fetch").
-      'Cache-Control': SITEMAP_CACHE_CONTROL,
+      'Cache-Control': cacheControlForSource(source),
       'X-Pivota-Sitemap-Source': source,
       'X-Pivota-Sitemap-Url-Count': String(urls.length),
     },
