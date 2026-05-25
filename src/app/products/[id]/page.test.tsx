@@ -160,6 +160,9 @@ vi.mock('@/features/pdp/containers/GenericPDPContainer', () => ({
         {payload.modules?.find((module) => module.type === 'reviews_preview')?.data?.review_count ?? 0}
       </div>
       <div data-testid="reviews-state">{payload.x_reviews_state ?? ''}</div>
+      <div data-testid="insights-state">
+        {payload.modules?.some((module) => module.type === 'product_intel') ? 'ready' : ''}
+      </div>
       <div data-testid="recommendations-state">{payload.x_recommendations_state ?? ''}</div>
       {payload.x_recommendations_state === 'error' && onRetrySimilar ? (
         <button type="button" onClick={onRetrySimilar}>
@@ -637,9 +640,62 @@ describe('ProductDetailPage canonical PDP loading', () => {
       expect.objectContaining({
         product_id: 'prod_1',
         include: contentPdpInclude,
-        timeout_ms: 9000,
+        timeout_ms: 15000,
       }),
     );
+  });
+
+  it('keeps content hydration alive while similar enters loading state', async () => {
+    const initialPayload = {
+      ...canonicalPayload,
+      modules: [],
+      x_reviews_state: 'loading',
+      x_recommendations_state: 'ready',
+    };
+    let resolveContent!: (value: { kind: string }) => void;
+    let resolveSimilar!: (value: { kind: string }) => void;
+    const contentPromise = new Promise<{ kind: string }>((resolve) => {
+      resolveContent = resolve;
+    });
+    const similarPromise = new Promise<{ kind: string }>((resolve) => {
+      resolveSimilar = resolve;
+    });
+    getPdpV2Mock.mockImplementation((args: { include?: string[] }) => {
+      if (args.include?.includes('similar')) return similarPromise;
+      if (args.include?.includes('product_intel')) return contentPromise;
+      return Promise.resolve({ kind: 'unexpected' });
+    });
+    mapPdpV2ToPdpPayloadMock.mockImplementation((response: { kind?: string }) => {
+      if (response.kind === 'content') return canonicalPayload;
+      if (response.kind === 'similar') return canonicalWithSimilarPayload;
+      return canonicalLoadingPayload;
+    });
+
+    renderPage('prod_1', initialPayload);
+
+    await screen.findByTestId('generic-pdp');
+    await waitFor(() => {
+      expect(screen.getByTestId('recommendations-state')).toHaveTextContent('loading');
+      expect(getPdpV2Mock).toHaveBeenCalledWith(
+        expect.objectContaining({ include: similarPdpInclude }),
+      );
+      expect(getPdpV2Mock).toHaveBeenCalledWith(
+        expect.objectContaining({ include: contentPdpInclude }),
+      );
+    });
+
+    resolveContent({ kind: 'content' });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('insights-state')).toHaveTextContent('ready');
+      expect(screen.getByTestId('reviews-state')).toHaveTextContent('ready');
+      expect(screen.getByTestId('reviews-count')).toHaveTextContent('12');
+    });
+
+    resolveSimilar({ kind: 'similar' });
+    await waitFor(() => {
+      expect(screen.getByTestId('recommendations-state')).toHaveTextContent('ready');
+    });
   });
 
   it('shows seller chooser on canonical failure and does not revive legacy product detail', async () => {

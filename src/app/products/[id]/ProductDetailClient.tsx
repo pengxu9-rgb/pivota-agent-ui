@@ -79,7 +79,7 @@ const PDP_CONTENT_INCLUDE = [
 ] as const;
 const PDP_CONTENT_MODULE_TYPES = new Set<string>(PDP_CONTENT_INCLUDE);
 const PDP_SIMILAR_INCLUDE = ['similar'] as const;
-const PDP_V2_CONTENT_TIMEOUT_MS = 9000;
+const PDP_V2_CONTENT_TIMEOUT_MS = 15000;
 const PDP_V2_SIMILAR_TIMEOUT_MS = 9000;
 const PDP_SIMILAR_DEFERRED_RETRY_DELAY_MS = 900;
 const PDP_SIMILAR_DEFERRED_AUTO_RETRY_MAX = 1;
@@ -661,6 +661,9 @@ export default function ProductDetailPage({ params, initialPayload }: Props) {
   const inferredMerchantId = inferCanonicalPdpMerchantId(id, merchantIdParam);
   const routeIsProductGroup = isProductGroupRouteId(id);
   const routeIsPivotaSignature = isPivotaSignatureRouteId(id);
+  const currentPdpProductId = String(pdpPayload?.product?.product_id || '').trim();
+  const currentPdpProductGroupId = String(pdpPayload?.product_group_id || '').trim();
+  const hasHydratedProductIntel = hasModuleType(pdpPayload, 'product_intel');
   const clearSimilarDeferredRetryTimer = useCallback(() => {
     if (similarDeferredRetryTimerRef.current) {
       clearTimeout(similarDeferredRetryTimerRef.current);
@@ -812,12 +815,11 @@ export default function ProductDetailPage({ params, initialPayload }: Props) {
   ]);
 
   useEffect(() => {
-    const currentPayload = pdpPayload;
-    const productId = String(currentPayload?.product?.product_id || '').trim();
+    const productId = currentPdpProductId;
     if (!productId) return;
-    if (hasModuleType(currentPayload, 'product_intel')) return;
+    if (hasHydratedProductIntel) return;
     const explicitMerchantId = inferredMerchantId ? String(inferredMerchantId).trim() : null;
-    const productGroupId = String(currentPayload?.product_group_id || '').trim();
+    const productGroupId = currentPdpProductGroupId;
     const autoLoadKey = [id, productId, explicitMerchantId || '', productGroupId].join('::');
     if (contentAutoLoadKeyRef.current === autoLoadKey) return;
     contentAutoLoadKeyRef.current = autoLoadKey;
@@ -873,10 +875,10 @@ export default function ProductDetailPage({ params, initialPayload }: Props) {
     };
   }, [
     id,
+    currentPdpProductGroupId,
+    currentPdpProductId,
+    hasHydratedProductIntel,
     inferredMerchantId,
-    pdpPayload,
-    pdpPayload?.product?.product_id,
-    pdpPayload?.product_group_id,
     routeIsProductGroup,
   ]);
 
