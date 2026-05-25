@@ -36,7 +36,7 @@ export async function GET(): Promise<Response> {
     status: 200,
     headers: {
       'Content-Type': 'text/plain; charset=utf-8',
-      // Cache 1h at the CDN level — matches sitemap.ts. New seeds
+      // Cache 1h at the CDN level — matches the public sitemap routes. New seeds
       // added to sitemap-seeds.ts ship within an hour without a
       // fresh deploy.
       'Cache-Control': 'public, max-age=3600, s-maxage=3600',

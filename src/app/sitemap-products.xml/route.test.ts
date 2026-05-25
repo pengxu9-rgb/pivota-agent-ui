@@ -58,7 +58,7 @@ describe('/sitemap-products.xml — serving-eligible product sitemap', () => {
     expect(xml).toContain('<lastmod>2026-05-01T12:00:00.000Z</lastmod>');
     expect(xml).toContain('<changefreq>weekly</changefreq>');
     expect(res.headers.get('cache-control')).toBe(
-      'public, max-age=900, s-maxage=900, stale-while-revalidate=900',
+      'public, max-age=3600, s-maxage=3600, stale-while-revalidate=3600',
     );
     expect(res.headers.get('x-pivota-sitemap-source')).toBe('serving_eligible');
     expect(res.headers.get('x-pivota-sitemap-url-count')).toBe('25');
@@ -79,7 +79,7 @@ describe('/sitemap-products.xml — serving-eligible product sitemap', () => {
     expect(await res.text()).toBe('');
     expect(res.headers.get('content-type')).toMatch(/application\/xml/);
     expect(res.headers.get('cache-control')).toBe(
-      'public, max-age=900, s-maxage=900, stale-while-revalidate=900',
+      'public, max-age=3600, s-maxage=3600, stale-while-revalidate=3600',
     );
     expect(fetchMock).not.toHaveBeenCalled();
   });

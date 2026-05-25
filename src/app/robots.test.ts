@@ -5,9 +5,6 @@ describe('robots.ts', () => {
   it('advertises both public sitemap files', () => {
     const result = robots();
 
-    expect(result.sitemap).toEqual([
-      'https://agent.pivota.cc/sitemap.xml',
-      'https://agent.pivota.cc/sitemap-products.xml',
-    ]);
+    expect(result.sitemap).toBe('https://agent.pivota.cc/sitemap.xml');
   });
 });

@@ -175,7 +175,7 @@ describe('llms.txt — GET endpoint', () => {
 
   it('excludes test-merchant PDPs from the runtime enrichment list', async () => {
     // MOYU products would fail checkout if LLMs cited them. Filter
-    // matches sitemap.ts — TEST_MERCHANT_IDS exclusion.
+    // matches the public sitemap routes — TEST_MERCHANT_IDS exclusion.
     process.env.NEXT_PUBLIC_API_URL = 'https://api.example.com';
     getAllProductsMock.mockResolvedValueOnce([
       { product_id: 'sig_moyu_test', merchant_id: 'merch_efbc46b4619cfbdf', title: 'MOYU Test', brand: 'MOYU' },

@@ -110,7 +110,7 @@ export const TEST_MERCHANT_IDS: ReadonlySet<string> = Object.freeze(new Set([
 
 /**
  * True iff the merchant_id is safe to index publicly. Used by both
- * sitemap.ts and llms.txt/utils.ts as the second filter layer
+ * public sitemap routes and llms.txt/utils.ts as the second filter layer
  * (after isProductIdSitemapEligible).
  */
 export function isMerchantIndexable(merchantId: string | null | undefined): boolean {

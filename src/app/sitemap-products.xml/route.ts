@@ -4,8 +4,9 @@ import {
   SITEMAP_BASE_URL,
   SITEMAP_SEED_PRODUCT_IDS,
 } from '../sitemap-seeds'
+import { buildSitemapUrlsetXml } from '../sitemap-xml'
 
-export const revalidate = 900
+export const revalidate = 3600
 export const dynamic = 'force-dynamic'
 
 const PIVOTA_CANONICAL_PAGE_SIZE = 1000
@@ -13,7 +14,7 @@ const PIVOTA_CANONICAL_PAGE_SIZE = 1000
 const SITEMAP_MAX_URLS = 50000
 const DEFAULT_CANONICAL_PRODUCTS_BASE_URL = 'https://web-production-fedb.up.railway.app'
 const SITEMAP_CACHE_CONTROL =
-  `public, max-age=${revalidate}, s-maxage=${revalidate}, stale-while-revalidate=900`
+  `public, max-age=${revalidate}, s-maxage=${revalidate}, stale-while-revalidate=${revalidate}`
 const SITEMAP_FALLBACK_CACHE_CONTROL =
   'public, max-age=60, s-maxage=60, stale-while-revalidate=60'
 const CANONICAL_PRODUCTS_FETCH_PAGE_TIMEOUT_MS = 8000
@@ -37,38 +38,6 @@ type CanonicalProductsPage = {
   items: unknown[]
   total: number | null
   limit: number
-}
-
-function escapeXml(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&apos;')
-}
-
-function buildSitemapXml(urls: ReadonlyArray<{
-  loc: string
-  lastmod: Date
-  changefreq: string
-}>): string {
-  const entries = urls
-    .map(
-      (e) =>
-        `  <url>\n` +
-        `    <loc>${escapeXml(e.loc)}</loc>\n` +
-        `    <lastmod>${e.lastmod.toISOString()}</lastmod>\n` +
-        `    <changefreq>${e.changefreq}</changefreq>\n` +
-        `  </url>`,
-    )
-    .join('\n')
-  return (
-    `<?xml version="1.0" encoding="UTF-8"?>\n` +
-    `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n` +
-    `${entries}\n` +
-    `</urlset>\n`
-  )
 }
 
 function getCanonicalProductsBaseUrl(): string {
@@ -328,7 +297,7 @@ export async function GET() {
     changefreq: 'weekly',
   }))
 
-  const xml = buildSitemapXml(urls)
+  const xml = buildSitemapUrlsetXml(urls)
 
   return new NextResponse(xml, {
     status: 200,

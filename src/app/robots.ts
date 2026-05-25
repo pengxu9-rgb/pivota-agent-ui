@@ -30,9 +30,6 @@ export default function robots(): MetadataRoute.Robots {
         disallow: ['/order/'],
       },
     ],
-    sitemap: [
-      'https://agent.pivota.cc/sitemap.xml',
-      'https://agent.pivota.cc/sitemap-products.xml',
-    ],
+    sitemap: 'https://agent.pivota.cc/sitemap.xml',
   }
 }

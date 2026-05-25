@@ -77,7 +77,7 @@ export async function _enrichWithRuntimeProducts(
     const byId = new Map<string, IndexedProduct>();
     for (const p of products) {
       if (!isProductIdSitemapEligible(p.product_id)) continue;
-      // Same indexability filter as sitemap.ts — test merchants
+      // Same indexability filter as the public sitemap routes — test merchants
       // shouldn't appear in any LLM-facing surface.
       if (!isMerchantIndexable(p.merchant_id)) continue;
       const pAny = p as unknown as Record<string, unknown>;
