@@ -78,9 +78,6 @@ const PDP_CONTENT_INCLUDE = [
   'reviews_preview',
 ] as const;
 const PDP_CONTENT_MODULE_TYPES = new Set<string>(PDP_CONTENT_INCLUDE);
-const PDP_CONTENT_AUTOLOAD_SENTINEL_TYPES = new Set<string>(
-  PDP_CONTENT_INCLUDE.filter((type) => type !== 'product_overview'),
-);
 const PDP_SIMILAR_INCLUDE = ['similar'] as const;
 const PDP_V2_CONTENT_TIMEOUT_MS = 9000;
 const PDP_V2_SIMILAR_TIMEOUT_MS = 9000;
@@ -818,7 +815,7 @@ export default function ProductDetailPage({ params, initialPayload }: Props) {
     const currentPayload = pdpPayload;
     const productId = String(currentPayload?.product?.product_id || '').trim();
     if (!productId) return;
-    if (hasAnyModuleType(currentPayload, PDP_CONTENT_AUTOLOAD_SENTINEL_TYPES)) return;
+    if (hasModuleType(currentPayload, 'product_intel')) return;
     const explicitMerchantId = inferredMerchantId ? String(inferredMerchantId).trim() : null;
     const productGroupId = String(currentPayload?.product_group_id || '').trim();
     const autoLoadKey = [id, productId, explicitMerchantId || '', productGroupId].join('::');

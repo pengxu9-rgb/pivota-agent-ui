@@ -265,6 +265,12 @@ const canonicalPayload = {
   ],
   modules: [
     {
+      module_id: 'product_intel',
+      type: 'product_intel',
+      priority: 35,
+      data: { cards: [{ title: 'Why it stands out', body: 'Product-specific reviewed insight.' }] },
+    },
+    {
       module_id: 'reviews_preview',
       type: 'reviews_preview',
       priority: 50,
