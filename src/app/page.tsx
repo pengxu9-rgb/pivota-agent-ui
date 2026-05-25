@@ -33,6 +33,10 @@ import { mergeDiscoveryRecentViews, readLocalBrowseHistory } from '@/lib/browseH
 import { buildProductHref } from '@/lib/productHref';
 import { appendCurrentPathAsReturn } from '@/lib/returnUrl';
 import {
+  filterDisplayableRecommendationProducts,
+  formatRecommendationPriceLabel,
+} from '@/lib/recommendationPrice';
+import {
   analyzeSkinPhotoFile,
   isShoppingSkinPhotoUploadBetaEnabled,
   resolvePhotoAnalysisLanguage,
@@ -144,12 +148,7 @@ function formatMessageTime(id: string): string {
   return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: false });
 }
 
-function formatPriceLabel(price: unknown, currency?: string): string {
-  const amount = typeof price === 'number' ? price : Number(price);
-  if (!Number.isFinite(amount)) return '';
-  const symbol = currency && currency.toUpperCase() !== 'USD' ? currency.toUpperCase() + ' ' : '$';
-  return `${symbol}${amount % 1 === 0 ? amount.toFixed(0) : amount.toFixed(2)}`;
-}
+const formatPriceLabel = formatRecommendationPriceLabel;
 
 /** Brand v2 "Today's picks" thumbnail — 96px wide, 4/5 image. */
 const TodaysEditCard = memo(function TodaysEditCard({ product }: { product: ProductResponse }) {
@@ -307,8 +306,9 @@ function HomePageApp() {
           userId: user?.id || null,
           recentViews,
         });
-        setHotDeals(result.products);
-        setHotDealsStatus(result.products.length > 0 ? 'ready' : 'empty');
+        const displayableProducts = filterDisplayableRecommendationProducts(result.products || []);
+        setHotDeals(displayableProducts);
+        setHotDealsStatus(displayableProducts.length > 0 ? 'ready' : 'empty');
       } catch (error) {
         console.error("Failed to load today's edit:", error);
         setHotDeals([]);
@@ -409,7 +409,9 @@ function HomePageApp() {
           conversationMessages: conversationState.messages,
         },
       );
-      const products = Array.isArray(searchResult?.products) ? searchResult.products : [];
+      const products = filterDisplayableRecommendationProducts(
+        Array.isArray(searchResult?.products) ? searchResult.products : [],
+      );
       const fallbackReply = searchResult?.reply;
       const metadata =
         searchResult?.metadata && typeof searchResult.metadata === 'object'
@@ -548,8 +550,12 @@ function HomePageApp() {
           conversationMessages: conversationState.messages,
         });
 
-        const incoming = Array.isArray(result?.products) ? result.products : [];
-        const currentProducts = Array.isArray(target.products) ? target.products : [];
+        const incoming = filterDisplayableRecommendationProducts(
+          Array.isArray(result?.products) ? result.products : [],
+        );
+        const currentProducts = filterDisplayableRecommendationProducts(
+          Array.isArray(target.products) ? target.products : [],
+        );
         const { merged, added } = mergeUniqueProducts(currentProducts, incoming);
         const noGrowthCount = added === 0 ? Number(paging.noGrowthCount || 0) + 1 : 0;
         const hasMore =
@@ -938,7 +944,9 @@ function AssistantMessageRow({
   onFollowUp: (prompt: string) => void;
 }) {
   const router = useRouter();
-  const products = Array.isArray(message.products) ? message.products : [];
+  const products = filterDisplayableRecommendationProducts(
+    Array.isArray(message.products) ? message.products : [],
+  );
   const paging = message.recommendation_paging;
   const time = formatMessageTime(message.id);
 
