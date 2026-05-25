@@ -35,14 +35,7 @@ const PDP_SERVER_FETCH_TIMEOUT_MS = 9000;
 const PDP_SERVER_INCLUDE = [
   'offers',
   'variant_selector',
-  'product_intel',
-  'active_ingredients',
-  'ingredients_inci',
-  'how_to_use',
   'product_overview',
-  'product_facts',
-  'supplemental_details',
-  'reviews_preview',
 ] as const;
 
 function readSearchParam(value: string | string[] | undefined): string {

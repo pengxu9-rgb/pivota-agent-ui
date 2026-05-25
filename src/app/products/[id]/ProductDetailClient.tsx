@@ -66,9 +66,8 @@ const PDP_CORE_ONLY_INCLUDE = [
   'variant_selector',
   'product_overview',
 ] as const;
-const PDP_INITIAL_INCLUDE = [
-  'offers',
-  'variant_selector',
+const PDP_INITIAL_INCLUDE = [...PDP_CORE_ONLY_INCLUDE] as const;
+const PDP_CONTENT_INCLUDE = [
   'product_intel',
   'active_ingredients',
   'ingredients_inci',
@@ -78,7 +77,12 @@ const PDP_INITIAL_INCLUDE = [
   'supplemental_details',
   'reviews_preview',
 ] as const;
+const PDP_CONTENT_MODULE_TYPES = new Set<string>(PDP_CONTENT_INCLUDE);
+const PDP_CONTENT_AUTOLOAD_SENTINEL_TYPES = new Set<string>(
+  PDP_CONTENT_INCLUDE.filter((type) => type !== 'product_overview'),
+);
 const PDP_SIMILAR_INCLUDE = ['similar'] as const;
+const PDP_V2_CONTENT_TIMEOUT_MS = 9000;
 const PDP_V2_SIMILAR_TIMEOUT_MS = 9000;
 const PDP_SIMILAR_DEFERRED_RETRY_DELAY_MS = 900;
 const PDP_SIMILAR_DEFERRED_AUTO_RETRY_MAX = 1;
@@ -361,12 +365,22 @@ function isRecommendationModuleType(type: unknown): boolean {
   return type === 'recommendations' || type === 'similar';
 }
 
+function hasModuleType(response: PDPPayload | null, type: string): boolean {
+  if (!response || !Array.isArray(response.modules)) return false;
+  return response.modules.some((m) => String(m?.type || '').trim() === type);
+}
+
+function hasAnyModuleType(response: PDPPayload | null, types: Set<string>): boolean {
+  if (!response || !Array.isArray(response.modules)) return false;
+  return response.modules.some((m) => types.has(String(m?.type || '').trim()));
+}
+
 function hasModule(response: PDPPayload | null, type: 'reviews_preview' | 'recommendations'): boolean {
   if (!response || !Array.isArray(response.modules)) return false;
   if (type === 'recommendations') {
     return response.modules.some((m) => isRecommendationModuleType(m?.type));
   }
-  return response.modules.some((m) => m?.type === type);
+  return hasModuleType(response, type);
 }
 
 function hasRecommendationsItems(response: PDPPayload | null): boolean {
@@ -508,6 +522,32 @@ function mergeSimilarPdpPayload(
   };
 }
 
+function mergeContentPdpPayload(current: PDPPayload, incoming: PDPPayload | null): PDPPayload {
+  const incomingContentModules = Array.isArray(incoming?.modules)
+    ? incoming.modules.filter((pdpModule) => PDP_CONTENT_MODULE_TYPES.has(String(pdpModule?.type || '').trim()))
+    : [];
+  if (incomingContentModules.length === 0) return current;
+
+  const incomingTypes = new Set(
+    incomingContentModules.map((pdpModule) => String(pdpModule?.type || '').trim()),
+  );
+  const baseModules = current.modules.filter((pdpModule) => {
+    const type = String(pdpModule?.type || '').trim();
+    return !incomingTypes.has(type);
+  });
+  const hasReviewsModule = incomingTypes.has('reviews_preview');
+
+  return {
+    ...current,
+    modules: [...baseModules, ...incomingContentModules],
+    ...(hasReviewsModule ? { x_reviews_state: 'ready' as const } : {}),
+    x_source_locks: {
+      ...(current.x_source_locks || {}),
+      ...(hasReviewsModule ? { reviews: true } : {}),
+    },
+  };
+}
+
 function mapSellerCandidatesFromResolveCandidates(
   resolved: Awaited<ReturnType<typeof resolveProductCandidates>>,
 ): ProductResponse[] {
@@ -615,6 +655,7 @@ export default function ProductDetailPage({ params, initialPayload }: Props) {
   const moduleSourceLocksRef = useRef(initialLoadState?.sourceLocks ?? { ...DEFAULT_MODULE_SOURCE_LOCKS });
   const similarLoadSeqRef = useRef(0);
   const similarAutoLoadKeyRef = useRef<string | null>(null);
+  const contentAutoLoadKeyRef = useRef<string | null>(null);
   const similarDeferredRetryCountRef = useRef(0);
   const similarDeferredRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [ugcCapabilities, setUgcCapabilities] = useState<UgcCapabilities | null>(() => buildPublicUgcCapabilities());
@@ -735,6 +776,7 @@ export default function ProductDetailPage({ params, initialPayload }: Props) {
     clearSimilarDeferredRetryTimer();
     similarLoadSeqRef.current += 1;
     similarAutoLoadKeyRef.current = null;
+    contentAutoLoadKeyRef.current = null;
     similarDeferredRetryCountRef.current = 0;
     const nextLoadState = prepareLoadedPdpPayload(initialPayload);
     moduleSourceLocksRef.current = nextLoadState.sourceLocks;
@@ -770,6 +812,75 @@ export default function ProductDetailPage({ params, initialPayload }: Props) {
     pdpPayload?.product?.product_id,
     pdpPayload?.product_group_id,
     pdpPayload?.x_recommendations_state,
+  ]);
+
+  useEffect(() => {
+    const currentPayload = pdpPayload;
+    const productId = String(currentPayload?.product?.product_id || '').trim();
+    if (!productId) return;
+    if (hasAnyModuleType(currentPayload, PDP_CONTENT_AUTOLOAD_SENTINEL_TYPES)) return;
+    const explicitMerchantId = inferredMerchantId ? String(inferredMerchantId).trim() : null;
+    const productGroupId = String(currentPayload?.product_group_id || '').trim();
+    const autoLoadKey = [id, productId, explicitMerchantId || '', productGroupId].join('::');
+    if (contentAutoLoadKeyRef.current === autoLoadKey) return;
+    contentAutoLoadKeyRef.current = autoLoadKey;
+
+    let cancelled = false;
+    const startedAt = Date.now();
+
+    (async () => {
+      try {
+        const v2 = await getPdpV2({
+          product_id: id,
+          ...(routeIsProductGroup
+            ? { subject: { type: 'product_group' as const, id } }
+            : explicitMerchantId
+              ? { merchant_id: explicitMerchantId }
+              : {}),
+          include: [...PDP_CONTENT_INCLUDE],
+          timeout_ms: PDP_V2_CONTENT_TIMEOUT_MS,
+        });
+        if (cancelled) return;
+        const assembled = mapPdpV2ToPdpPayload(v2);
+        setPdpPayload((current) => {
+          if (!current) return current;
+          if (String(current.product?.product_id || '').trim() !== productId) return current;
+          const nextPayload = mergeContentPdpPayload(current, assembled);
+          moduleSourceLocksRef.current = {
+            ...moduleSourceLocksRef.current,
+            reviews: hasModule(nextPayload, 'reviews_preview'),
+          };
+          return nextPayload;
+        });
+        pdpTracking.track('pdp_module_ready', {
+          module: 'pdp_content',
+          source: 'get_pdp_v2_content',
+          latency_ms: Date.now() - startedAt,
+          has_content: hasAnyModuleType(assembled, PDP_CONTENT_MODULE_TYPES),
+          has_reviews_module: hasModule(assembled, 'reviews_preview'),
+        });
+      } catch (contentErr) {
+        if (cancelled) return;
+        pdpTracking.track('pdp_module_error', {
+          module: 'pdp_content',
+          source: 'get_pdp_v2_content',
+          latency_ms: Date.now() - startedAt,
+          error_code: readApiErrorCode(contentErr) || null,
+          error_message: (contentErr as Error)?.message || null,
+        });
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    id,
+    inferredMerchantId,
+    pdpPayload,
+    pdpPayload?.product?.product_id,
+    pdpPayload?.product_group_id,
+    routeIsProductGroup,
   ]);
 
   useEffect(() => {
@@ -922,6 +1033,7 @@ export default function ProductDetailPage({ params, initialPayload }: Props) {
       clearSimilarDeferredRetryTimer();
       similarLoadSeqRef.current += 1;
       similarAutoLoadKeyRef.current = null;
+      contentAutoLoadKeyRef.current = null;
       similarDeferredRetryCountRef.current = 0;
       moduleSourceLocksRef.current = { ...DEFAULT_MODULE_SOURCE_LOCKS };
 

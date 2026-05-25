@@ -20,6 +20,10 @@ let searchParamsValue = '';
 const initialPdpInclude = [
   'offers',
   'variant_selector',
+  'product_overview',
+];
+const corePdpInclude = ['offers', 'variant_selector', 'product_overview'];
+const contentPdpInclude = [
   'product_intel',
   'active_ingredients',
   'ingredients_inci',
@@ -29,7 +33,6 @@ const initialPdpInclude = [
   'supplemental_details',
   'reviews_preview',
 ];
-const corePdpInclude = ['offers', 'variant_selector', 'product_overview'];
 const similarPdpInclude = ['similar'];
 
 vi.mock('react', async () => {
@@ -281,6 +284,11 @@ const canonicalLoadingPayload = {
   ...canonicalPayload,
   modules: canonicalPayload.modules.filter((module) => module.type !== 'recommendations'),
   x_recommendations_state: 'loading',
+} as const;
+
+const canonicalCorePayload = {
+  ...canonicalPayload,
+  modules: canonicalPayload.modules.filter((module) => module.type === 'recommendations'),
 } as const;
 
 const canonicalReadyMissingSimilarPayload = {
@@ -578,7 +586,7 @@ describe('ProductDetailPage canonical PDP loading', () => {
     expect(getPdpV2Mock).toHaveBeenCalledTimes(1);
   });
 
-  it('requests full content PDP modules on the first get_pdp_v2 call', async () => {
+  it('requests only core PDP modules on the first get_pdp_v2 call', async () => {
     getPdpV2Mock.mockResolvedValue({ status: 'success', modules: [] });
 
     renderPage();
@@ -593,6 +601,39 @@ describe('ProductDetailPage canonical PDP loading', () => {
     );
     expect(getPdpV2Mock).toHaveBeenCalledTimes(1);
     expect(resolveProductCandidatesMock).not.toHaveBeenCalled();
+  });
+
+  it('hydrates content modules after the core PDP renders', async () => {
+    getPdpV2Mock
+      .mockResolvedValueOnce({ kind: 'core' })
+      .mockResolvedValueOnce({ kind: 'content' });
+    mapPdpV2ToPdpPayloadMock
+      .mockReturnValueOnce(canonicalCorePayload)
+      .mockReturnValueOnce(canonicalWithReviewsPayload);
+
+    renderPage();
+
+    await screen.findByTestId('generic-pdp');
+    expect(getPdpV2Mock).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        product_id: 'prod_1',
+        include: corePdpInclude,
+        timeout_ms: 9000,
+      }),
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId('reviews-count')).toHaveTextContent('12');
+      expect(screen.getByTestId('reviews-state')).toHaveTextContent('ready');
+    });
+    expect(getPdpV2Mock).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        product_id: 'prod_1',
+        include: contentPdpInclude,
+        timeout_ms: 9000,
+      }),
+    );
   });
 
   it('shows seller chooser on canonical failure and does not revive legacy product detail', async () => {
