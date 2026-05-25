@@ -28,7 +28,14 @@ vi.mock('./ProductDetailClient', () => ({
 const corePdpInclude = [
   'offers',
   'variant_selector',
+  'product_intel',
+  'active_ingredients',
+  'ingredients_inci',
+  'how_to_use',
   'product_overview',
+  'product_facts',
+  'supplemental_details',
+  'reviews_preview',
 ] as const;
 
 function buildPayload(product: Record<string, unknown>, overrides: Record<string, unknown> = {}) {

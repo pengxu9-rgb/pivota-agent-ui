@@ -17,6 +17,18 @@ const openCartMock = vi.fn();
 let authUser: { id: string } | null = null;
 
 let searchParamsValue = '';
+const initialPdpInclude = [
+  'offers',
+  'variant_selector',
+  'product_intel',
+  'active_ingredients',
+  'ingredients_inci',
+  'how_to_use',
+  'product_overview',
+  'product_facts',
+  'supplemental_details',
+  'reviews_preview',
+];
 const corePdpInclude = ['offers', 'variant_selector', 'product_overview'];
 const similarPdpInclude = ['similar'];
 
@@ -566,7 +578,7 @@ describe('ProductDetailPage canonical PDP loading', () => {
     expect(getPdpV2Mock).toHaveBeenCalledTimes(1);
   });
 
-  it('requests core PDP modules on the first get_pdp_v2 call', async () => {
+  it('requests full content PDP modules on the first get_pdp_v2 call', async () => {
     getPdpV2Mock.mockResolvedValue({ status: 'success', modules: [] });
 
     renderPage();
@@ -575,7 +587,7 @@ describe('ProductDetailPage canonical PDP loading', () => {
     expect(getPdpV2Mock).toHaveBeenCalledWith(
       expect.objectContaining({
         product_id: 'prod_1',
-        include: corePdpInclude,
+        include: initialPdpInclude,
         timeout_ms: 9000,
       }),
     );
@@ -657,7 +669,7 @@ describe('ProductDetailPage canonical PDP loading', () => {
       1,
       expect.objectContaining({
         product_id: 'prod_1',
-        include: corePdpInclude,
+        include: initialPdpInclude,
         timeout_ms: 9000,
       }),
     );
@@ -1046,7 +1058,7 @@ describe('ProductDetailPage canonical PDP loading', () => {
       1,
       expect.objectContaining({
         product_id: 'prod_1',
-        include: corePdpInclude,
+        include: initialPdpInclude,
       }),
     );
     expect(getPdpV2Mock).toHaveBeenNthCalledWith(
