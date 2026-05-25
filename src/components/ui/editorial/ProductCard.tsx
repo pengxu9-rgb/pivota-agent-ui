@@ -65,6 +65,14 @@ const aspectClass: Record<NonNullable<ProductCardProps['aspect']>, string> = {
   '3/4': 'aspect-[3/4]',
 };
 
+function getRenderablePriceLabel(priceLabel?: string | null): string | null {
+  const label = String(priceLabel || '').trim();
+  if (!label) return null;
+  const amount = Number(label.replace(/,/g, '').replace(/[^\d.-]/g, ''));
+  if (!Number.isFinite(amount) || amount <= 0) return null;
+  return label;
+}
+
 export function ProductCard({
   image,
   imageAlt = '',
@@ -81,6 +89,9 @@ export function ProductCard({
   className,
   font = 'serif',
 }: ProductCardProps) {
+  const displayPriceLabel = getRenderablePriceLabel(priceLabel);
+  if (!displayPriceLabel) return null;
+
   const handleSave = (event: React.MouseEvent) => {
     event.preventDefault();
     event.stopPropagation();
@@ -163,13 +174,13 @@ export function ProductCard({
                   {formatted.title}
                 </Title>
               )}
-              {priceLabel ? (
+              {displayPriceLabel ? (
                 font === 'sans' ? (
                   <span className="flex-shrink-0 font-editorial-sans text-[15px] font-medium tracking-[-0.01em] tabular-nums text-ink">
-                    {priceLabel}
+                    {displayPriceLabel}
                   </span>
                 ) : (
-                  <Num value={priceLabel} className="flex-shrink-0 text-[15px]" />
+                  <Num value={displayPriceLabel} className="flex-shrink-0 text-[15px]" />
                 )
               ) : null}
             </div>
