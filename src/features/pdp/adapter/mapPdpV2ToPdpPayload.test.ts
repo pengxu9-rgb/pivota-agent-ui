@@ -195,6 +195,38 @@ describe('mapPdpV2ToPdpPayload image normalization', () => {
     });
   });
 
+  it('synthesizes media gallery from canonical product images when media module is absent', () => {
+    const response = buildMinimalResponse();
+    const canonical = response.modules.find((module: any) => module.type === 'canonical') as any;
+    canonical.data.pdp_payload.modules = canonical.data.pdp_payload.modules.filter(
+      (module: any) => module.type !== 'media_gallery',
+    );
+    canonical.data.pdp_payload.product.image_urls = [
+      'https://cdn.example.com/fenty/hero.png',
+      'https://cdn.example.com/fenty/side.png',
+      'https://cdn.example.com/fenty/hero.png',
+    ];
+
+    const payload = mapPdpV2ToPdpPayload(response);
+    const mediaGallery = payload?.modules.find((m) => m.type === 'media_gallery') as any;
+
+    expect(mediaGallery).toEqual(
+      expect.objectContaining({
+        module_id: 'media_gallery',
+        type: 'media_gallery',
+        data: expect.objectContaining({
+          gallery_scope: 'exact_item',
+          source_origin: 'canonical_product_images',
+        }),
+      }),
+    );
+    expect(mediaGallery?.data?.items.map((item: any) => unwrapProxyTarget(item.url))).toEqual([
+      'https://sdcdn.io/tf/product-main.png',
+      'https://cdn.example.com/fenty/hero.png',
+      'https://cdn.example.com/fenty/side.png',
+    ]);
+  });
+
   it('does not promote stale response-owned modules from canonical payload', () => {
     const payload = mapPdpV2ToPdpPayload(buildMinimalResponse());
 

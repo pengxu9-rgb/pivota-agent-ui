@@ -206,6 +206,84 @@ function normalizePdpPayloadImages(payload: PDPPayload): PDPPayload {
   };
 }
 
+function collectCanonicalProductImageItems(product: unknown): Array<{ type: 'image'; url: string }> {
+  if (!isRecord(product)) return [];
+  const candidates: unknown[] = [
+    product.image_url,
+    product.imageUrl,
+    product.image,
+    product.hero_image_url,
+    product.primary_image_url,
+    product.images,
+    product.image_urls,
+    product.gallery,
+  ];
+  const urls: string[] = [];
+  const visit = (value: unknown) => {
+    if (!value) return;
+    if (typeof value === 'string') {
+      urls.push(value);
+      return;
+    }
+    if (Array.isArray(value)) {
+      value.forEach(visit);
+      return;
+    }
+    if (!isRecord(value)) return;
+    visit(value.url || value.src || value.image_url || value.imageUrl);
+  };
+  candidates.forEach(visit);
+
+  const seen = new Set<string>();
+  const items: Array<{ type: 'image'; url: string }> = [];
+  for (const rawUrl of urls) {
+    const normalizedUrl = normalizePdpImageUrl(rawUrl);
+    if (!normalizedUrl) continue;
+    const dedupeKey = buildPdpImageDedupeKey(normalizedUrl) || normalizedUrl;
+    if (seen.has(dedupeKey)) continue;
+    seen.add(dedupeKey);
+    items.push({ type: 'image', url: normalizedUrl });
+  }
+  return items;
+}
+
+function mediaGalleryHasItems(module: Module | undefined): boolean {
+  if (!module || module.type !== 'media_gallery' || !isRecord(module.data)) return false;
+  return Boolean(
+    (Array.isArray(module.data.items) && module.data.items.length > 0) ||
+      (Array.isArray(module.data.preview_items) && module.data.preview_items.length > 0),
+  );
+}
+
+function ensureMediaGalleryFromCanonicalProductImages(payload: PDPPayload): PDPPayload {
+  const modules = Array.isArray(payload.modules) ? payload.modules : [];
+  const existingMediaGallery = modules.find((module) => module?.type === 'media_gallery');
+  if (mediaGalleryHasItems(existingMediaGallery)) return payload;
+
+  const items = collectCanonicalProductImageItems(payload.product);
+  if (!items.length) return payload;
+
+  const mediaGalleryModule: Module = {
+    module_id: 'media_gallery',
+    type: 'media_gallery',
+    priority: 20,
+    title: 'Gallery',
+    data: {
+      items,
+      gallery_scope: 'exact_item',
+      source_origin: 'canonical_product_images',
+    },
+  };
+
+  return {
+    ...payload,
+    modules: [
+      mediaGalleryModule,
+      ...modules.filter((module) => module?.type !== 'media_gallery'),
+    ],
+  };
+}
+
 function normalizeVariantImageFields(variant: unknown): unknown {
   if (!isRecord(variant)) return variant;
   const normalizedVariantImage = normalizePdpImageUrl(variant.image_url);
@@ -315,12 +393,12 @@ export function mapPdpV2ToPdpPayload(response: GetPdpV2Response): PDPPayload | n
   if (!isRecord(pdpPayloadRaw)) return null;
 
   const base = pdpPayloadRaw as unknown as PDPPayload;
-  let next: PDPPayload = normalizePdpPayloadImages({
+  let next: PDPPayload = ensureMediaGalleryFromCanonicalProductImages(normalizePdpPayloadImages({
     ...base,
     product: { ...(base.product as any) },
     modules: sanitizeCanonicalModules(base.modules),
     actions: Array.isArray(base.actions) ? [...base.actions] : [],
-  });
+  }));
 
   const subject = isRecord(response.subject) ? response.subject : null;
   const subjectGroupId =
