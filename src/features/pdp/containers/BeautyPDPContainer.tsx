@@ -3,6 +3,7 @@
 import type { PDPPayload, Variant } from '@/features/pdp/types';
 import { PdpContainer } from '@/features/pdp/containers/PdpContainer';
 import type { UgcCapabilities } from '@/lib/api';
+import type { ServiceCardData } from '@/features/services/lib/types';
 
 export function BeautyPDPContainer({
   payload,
@@ -12,6 +13,7 @@ export function BeautyPDPContainer({
   onSeeAllReviews,
   onRetrySimilar,
   ugcCapabilities,
+  services,
 }: {
   payload: PDPPayload;
   onAddToCart: (args: {
@@ -32,6 +34,7 @@ export function BeautyPDPContainer({
   onSeeAllReviews?: () => void;
   onRetrySimilar?: () => void;
   ugcCapabilities?: UgcCapabilities | null;
+  services?: ServiceCardData[] | null;
 }) {
   return (
     <PdpContainer
@@ -43,6 +46,7 @@ export function BeautyPDPContainer({
       onSeeAllReviews={onSeeAllReviews}
       onRetrySimilar={onRetrySimilar}
       ugcCapabilities={ugcCapabilities}
+      services={services}
     />
   );
 }

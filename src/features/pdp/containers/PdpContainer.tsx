@@ -113,6 +113,7 @@ import {
   sanitizeHowToUseData,
   sanitizeIngredientsInciData,
 } from '@/features/pdp/utils/pdpDisplaySanitizers';
+import type { ServiceCardData } from '@/features/services/lib/types';
 
 function nonEmptyText(value: unknown, fallback: string): string {
   const text = String(value ?? '').trim();
@@ -1526,6 +1527,7 @@ export function PdpContainer({
   onSeeAllReviews,
   onRetrySimilar,
   ugcCapabilities,
+  services,
 }: {
   payload: PDPPayload;
   initialQuantity?: number;
@@ -1548,6 +1550,7 @@ export function PdpContainer({
   onSeeAllReviews?: () => void;
   onRetrySimilar?: () => void;
   ugcCapabilities?: UgcCapabilities | null;
+  services?: ServiceCardData[] | null;
 }) {
   const [payload, setPayload] = useState(initialPayload);
   const [selectedVariantId, setSelectedVariantId] = useState(
@@ -4278,6 +4281,7 @@ export function PdpContainer({
                 .map((it) => buildVisualSimilarItem(it, displayCurrency, currentRelativePath))
             : null
         }
+        services={services}
         similarState={moduleStates.similar}
         similarStatus={similarStatus}
         onSimilarClick={(item, index) => {

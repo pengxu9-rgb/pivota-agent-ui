@@ -52,10 +52,12 @@ import {
   extractPositivePriceAmount,
   extractPositivePriceFromProductLike,
 } from '@/lib/price';
+import type { ServiceCardData } from '@/features/services/lib/types';
 
 interface Props {
   params: Promise<{ id: string }>;
   initialPayload?: PDPPayload | null;
+  serviceRecommendations?: ServiceCardData[] | null;
 }
 
 const PDP_V2_SCOPED_TIMEOUT_MS = 9000;
@@ -618,7 +620,7 @@ function shouldRetryWithCoreOnlyPdp(err: unknown): boolean {
   const message = String((err as Error)?.message || '').toLowerCase();
   return message.includes('timed out') || message.includes('timeout') || message.includes('temporarily unavailable');
 }
-export default function ProductDetailPage({ params, initialPayload }: Props) {
+export default function ProductDetailPage({ params, initialPayload, serviceRecommendations = null }: Props) {
   const { id: rawId } = use(params);
   // Next.js dynamic params arrive URL-encoded (e.g. `ulta%3Ahash`); gateway
   // lookups (external_product_id, source_product_id) want the decoded form.
@@ -1649,6 +1651,7 @@ export default function ProductDetailPage({ params, initialPayload }: Props) {
           onWriteReview={handleWriteReview}
           onRetrySimilar={handleRetrySimilar}
           ugcCapabilities={ugcCapabilities}
+          services={resolvedMode === 'beauty' ? serviceRecommendations : null}
         />
       </main>
     </div>

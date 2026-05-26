@@ -9,6 +9,30 @@ import { ensureAuroraSession, shouldUseAuroraAutoExchange } from '@/lib/auroraOr
 import { formatDescriptionText } from '@/features/pdp/utils/formatDescriptionText'
 import type { Offer, RecommendationsData } from '@/features/pdp/types'
 import { normalizeDisplayImageUrl } from '@/lib/displayImage'
+import type {
+  BookingRequest,
+  BookingStatus,
+  Provider,
+  ServiceBooking,
+  ServicesBrowseQuery,
+  ServicesBrowseResponse,
+  ServiceType,
+} from '@/features/services/lib/types'
+
+export type {
+  BookingContact,
+  BookingRequest,
+  BookingStatus,
+  EnglishFriendlySignal,
+  Provider,
+  ServiceBooking,
+  ServiceCardData,
+  ServiceListing,
+  ServicesBrowseQuery,
+  ServicesBrowseResponse,
+  ServiceType,
+  SlotChoice,
+} from '@/features/services/lib/types'
 
 // Point to the public Agent Gateway by default; override via NEXT_PUBLIC_API_URL if needed.
 const API_BASE =
@@ -3746,4 +3770,84 @@ export async function clearBrowseHistory(): Promise<{ status?: string; deleted?:
     if (isUnauthenticatedAccountsError(err)) return { status: 'unauthenticated', deleted: 0 };
     throw err;
   }
+}
+
+const SERVICE_TYPES: ReadonlySet<ServiceType> = new Set([
+  'facial',
+  'dermatology-clinic',
+  'skin-care',
+  'body-care',
+  'massage',
+  'hair-cut',
+  'hair-color',
+  'hair-perm',
+  'hair-treatment',
+  'scalp-care',
+  'lashes',
+  'eyebrow-tattoo',
+  'makeup',
+  'bridal-makeup',
+  'waxing',
+  'nails',
+]);
+
+function assertNonEmptyString(value: unknown, field: string): string {
+  const text = String(value || '').trim();
+  if (!text) throw new Error(`${field} is required`);
+  return text;
+}
+
+function validateSlotChoice(value: unknown, field: string) {
+  const slot = value && typeof value === 'object' ? value as Record<string, unknown> : null;
+  if (!slot?.date || !slot?.time) throw new Error(`${field} date and time are required`);
+}
+
+function validateServicesBrowseQuery(query: ServicesBrowseQuery): ServicesBrowseQuery {
+  const serviceTypes = Array.isArray(query.service_type)
+    ? query.service_type.filter((type): type is ServiceType => SERVICE_TYPES.has(type))
+    : undefined;
+  if (query.service_type?.length && !serviceTypes?.length) {
+    throw new Error('service_type is invalid');
+  }
+  const maxPrice = Number(query.max_price_won);
+  if (query.max_price_won != null && (!Number.isFinite(maxPrice) || maxPrice <= 0)) {
+    throw new Error('max_price_won must be positive');
+  }
+  const offset = Number(query.offset);
+  if (query.offset != null && (!Number.isFinite(offset) || offset < 0)) {
+    throw new Error('offset must be non-negative');
+  }
+  return {
+    ...query,
+    ...(serviceTypes?.length ? { service_type: serviceTypes } : {}),
+  };
+}
+
+export async function getServicesBrowse(query: ServicesBrowseQuery): Promise<ServicesBrowseResponse> {
+  validateServicesBrowseQuery(query || {});
+  // TODO(pivota-backend): /api/services/* endpoints not yet implemented
+  throw new Error('PIVOTA_SERVICES_BACKEND_NOT_READY');
+}
+
+export async function getServiceProvider(provider_id: string): Promise<{ provider: Provider; usd_per_won_rate?: number }> {
+  assertNonEmptyString(provider_id, 'provider_id');
+  // TODO(pivota-backend): /api/services/* endpoints not yet implemented
+  throw new Error('PIVOTA_SERVICES_BACKEND_NOT_READY');
+}
+
+export async function submitServiceBooking(request: BookingRequest): Promise<{ booking_id: string; status: BookingStatus }> {
+  assertNonEmptyString(request?.provider_id, 'provider_id');
+  if (request?.listing_id != null) assertNonEmptyString(request.listing_id, 'listing_id');
+  validateSlotChoice(request?.preferred, 'preferred');
+  if (!request?.contact?.email && !request?.contact?.phone) {
+    throw new Error('email or phone is required');
+  }
+  // TODO(pivota-backend): /api/services/* endpoints not yet implemented
+  throw new Error('PIVOTA_SERVICES_BACKEND_NOT_READY');
+}
+
+export async function getServiceBooking(booking_id: string): Promise<ServiceBooking> {
+  assertNonEmptyString(booking_id, 'booking_id');
+  // TODO(pivota-backend): /api/services/* endpoints not yet implemented
+  throw new Error('PIVOTA_SERVICES_BACKEND_NOT_READY');
 }

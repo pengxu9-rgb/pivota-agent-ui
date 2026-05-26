@@ -241,6 +241,7 @@ export function BeautyPDPDesktop(props: BeautyPDPMobileProps) {
           <div className="mt-12">
             <BeautyYouMayAlsoLike
               items={props.similar}
+              services={props.services || undefined}
               onItemClick={props.onSimilarClick}
               onBuy={props.onSimilarBuy}
             />
