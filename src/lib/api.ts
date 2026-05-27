@@ -3826,6 +3826,15 @@ function validateServicesBrowseQuery(query: ServicesBrowseQuery): ServicesBrowse
   };
 }
 
+function resolveServicesUrl(path: string): string {
+  if (typeof window !== 'undefined') return path;
+  const explicit = (process.env.NEXT_PUBLIC_APP_URL || '').trim().replace(/\/+$/, '');
+  if (/^https?:\/\//.test(explicit)) return `${explicit}${path}`;
+  const vercel = (process.env.VERCEL_URL || '').trim().replace(/\/+$/, '');
+  if (vercel) return `https://${vercel}${path}`;
+  return `https://agent.pivota.cc${path}`;
+}
+
 export async function getServicesBrowse(query: ServicesBrowseQuery): Promise<ServicesBrowseResponse> {
   validateServicesBrowseQuery(query || {});
   const params = new URLSearchParams();
@@ -3838,7 +3847,7 @@ export async function getServicesBrowse(query: ServicesBrowseQuery): Promise<Ser
   if (query.offset != null) params.set('offset', String(query.offset));
   if (query.limit != null) params.set('limit', String(query.limit));
   const qs = params.toString();
-  const res = await fetch(`/api/services${qs ? `?${qs}` : ''}`, { cache: 'no-store' });
+  const res = await fetch(resolveServicesUrl(`/api/services${qs ? `?${qs}` : ''}`), { cache: 'no-store' });
   if (!res.ok) throw new Error(`services browse failed: ${res.status}`);
   const data = await res.json();
   return {
@@ -3851,7 +3860,7 @@ export async function getServicesBrowse(query: ServicesBrowseQuery): Promise<Ser
 
 export async function getServiceProvider(provider_id: string): Promise<{ provider: Provider; usd_per_won_rate?: number }> {
   assertNonEmptyString(provider_id, 'provider_id');
-  const res = await fetch(`/api/services/providers/${encodeURIComponent(provider_id)}`, { cache: 'no-store' });
+  const res = await fetch(resolveServicesUrl(`/api/services/providers/${encodeURIComponent(provider_id)}`), { cache: 'no-store' });
   if (!res.ok) throw new Error(`provider fetch failed: ${res.status}`);
   const data = await res.json();
   return { provider: data.provider, usd_per_won_rate: data.usd_per_won_rate };
@@ -3864,7 +3873,7 @@ export async function submitServiceBooking(request: BookingRequest): Promise<{ b
   if (!request?.contact?.email && !request?.contact?.phone) {
     throw new Error('email or phone is required');
   }
-  const res = await fetch('/api/services/bookings', {
+  const res = await fetch(resolveServicesUrl('/api/services/bookings'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(request),
@@ -3876,7 +3885,7 @@ export async function submitServiceBooking(request: BookingRequest): Promise<{ b
 
 export async function getServiceBooking(booking_id: string): Promise<ServiceBooking> {
   assertNonEmptyString(booking_id, 'booking_id');
-  const res = await fetch(`/api/services/bookings/${encodeURIComponent(booking_id)}`, { cache: 'no-store' });
+  const res = await fetch(resolveServicesUrl(`/api/services/bookings/${encodeURIComponent(booking_id)}`), { cache: 'no-store' });
   if (!res.ok) throw new Error(`booking fetch failed: ${res.status}`);
   return res.json();
 }
