@@ -12,9 +12,12 @@ import type { Metadata } from 'next';
 import ProductDetailClient from './ProductDetailClient';
 import { buildProductDescription } from './productDescription';
 import { buildProductJsonLd } from './productJsonLd';
-import { getPdpV2 } from '@/lib/api';
+import { getPdpV2, getServicesBrowse } from '@/lib/api';
 import { mapPdpV2ToPdpPayload } from '@/features/pdp/adapter/mapPdpV2ToPdpPayload';
 import type { PDPPayload } from '@/features/pdp/types';
+import { isBeautyProduct } from '@/features/pdp/utils/isBeautyProduct';
+import { getProviderListings, type ServiceCardData } from '@/features/services/lib/types';
+import { inferAnchorServiceTypesFromProduct, pickAnchorListing } from '@/features/services/lib/pick-anchor-listing';
 import {
   inferCanonicalPdpMerchantId,
   isPivotaSignatureRouteId,
@@ -142,6 +145,22 @@ function buildJsonLdProduct(payload: PDPPayload): Record<string, any> {
   return offers.length > 0
     ? { ...product, _pivota_offers: offers }
     : product;
+}
+
+async function fetchSeoulServicesForAnchor(product: PDPPayload['product']): Promise<ServiceCardData[]> {
+  const response = await getServicesBrowse({
+    service_type: inferAnchorServiceTypesFromProduct(product),
+    limit: 3,
+  });
+
+  return (response.results || [])
+    .filter((provider) => getProviderListings(provider).length > 0)
+    .slice(0, 3)
+    .map((provider) => ({
+      provider,
+      listing: pickAnchorListing(provider, product),
+      usdRate: response.usd_per_won_rate || provider.usd_per_won_rate,
+    }));
 }
 
 type ServerPdpRenderData = {
@@ -283,6 +302,11 @@ export default async function ProductDetailPage(props: Props) {
   const renderData = productId
     ? await fetchPdpForServerRender(productId, merchantId)
     : null;
+  const beautyServicesEnabled = process.env.NEXT_PUBLIC_BEAUTY_SERVICES_RECS_ENABLED === '1';
+  const serviceRecommendations =
+    renderData && beautyServicesEnabled && isBeautyProduct(renderData.initialPayload.product)
+      ? await fetchSeoulServicesForAnchor(renderData.initialPayload.product).catch(() => [])
+      : [];
 
   const reviewsModule = renderData
     ? readPdpModule(renderData.initialPayload, 'reviews_preview')?.data || null
@@ -318,6 +342,7 @@ export default async function ProductDetailPage(props: Props) {
         key={JSON.stringify([productId || null, merchantId || null])}
         params={props.params}
         initialPayload={renderData?.initialPayload ?? null}
+        serviceRecommendations={serviceRecommendations}
       />
     </>
   );

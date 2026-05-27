@@ -24,6 +24,7 @@ import { BeautyStickyTopBar } from '@/features/pdp/components/BeautyStickyTopBar
 import { BeautyMobileBuyBar } from '@/features/pdp/components/BeautyMobileBuyBar';
 import { BeautyQuestions, type BeautyQuestion } from '@/features/pdp/components/BeautyQuestions';
 import { BeautyBrandCard } from '@/features/pdp/components/BeautyBrandCard';
+import type { ServiceCardData } from '@/features/services/lib/types';
 
 /**
  * BeautyPDPMobile — the from-scratch redesigned Beauty mobile PDP.
@@ -117,6 +118,7 @@ export type BeautyPDPMobileProps = {
   onBundleComponentClick?: (item: BundleCompositionItem, index: number) => void;
   // recommendations
   similar?: BeautySimilarItem[] | null;
+  services?: ServiceCardData[] | null;
   similarState?: 'ABSENT' | 'LOADING' | 'READY' | 'EMPTY' | 'ERROR';
   similarStatus?: { title: string; body: string } | null;
   onSimilarClick?: (item: BeautySimilarItem, index: number) => void;
@@ -438,6 +440,7 @@ export function BeautyPDPMobile(props: BeautyPDPMobileProps) {
           <div ref={similarRef}>
             <BeautyYouMayAlsoLike
               items={props.similar}
+              services={props.services || undefined}
               onItemClick={props.onSimilarClick}
               onBuy={props.onSimilarBuy}
             />
