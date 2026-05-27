@@ -50,7 +50,7 @@ const baseData: BundleCompositionData = {
       title: 'Glycolic Acid 7% Exfoliating Toner',
       brand: { name: 'the ordinary' },
       image_url: 'https://example.com/glycolic.png',
-      canonical_url: 'https://theordinary.com/glycolic',
+      canonical_url: 'https://agent.pivota.cc/products/sig_glycolic',
       price: { amount: 13.5, currency: 'USD' },
       component_role: 'toner',
       size_label: '30ml',
@@ -123,7 +123,12 @@ describe('BundleCompositionGrid', () => {
     const links = screen.getAllByRole('link');
     fireEvent.click(links[0], { button: 0 });
     expect(onItemClick).toHaveBeenCalledWith(baseData.items[0], 0);
-    expect(routerPushMock).toHaveBeenCalledTimes(1);
+    expect(routerPushMock).toHaveBeenCalledWith('/products/sig_glycolic?return=%2F');
+  });
+
+  it('does not render alias-only ext bundle components as PDP links', () => {
+    render(<BundleCompositionGrid data={baseData} />);
+    expect(screen.getByText('Niacinamide 10% + Zinc 1%').closest('a')).toBeNull();
   });
 
   it('honors a custom heading', () => {

@@ -9,6 +9,7 @@ import { ensureAuroraSession, shouldUseAuroraAutoExchange } from '@/lib/auroraOr
 import { formatDescriptionText } from '@/features/pdp/utils/formatDescriptionText'
 import type { Offer, RecommendationsData } from '@/features/pdp/types'
 import { normalizeDisplayImageUrl } from '@/lib/displayImage'
+import { isExternalAliasOnlyProduct } from '@/lib/productHref'
 import type {
   BookingRequest,
   BookingStatus,
@@ -74,6 +75,16 @@ function clampSearchLimit(value: unknown, fallback: number): number {
   const n = Number(value);
   if (!Number.isFinite(n) || n <= 0) return Math.max(1, Math.min(fallback, SEARCH_LIMIT_MAX));
   return Math.max(1, Math.min(Math.floor(n), SEARCH_LIMIT_MAX));
+}
+
+function isUiLinkableProduct(product: ProductResponse | RecommendationsData['items'][number] | null | undefined): boolean {
+  return Boolean(product) && !isExternalAliasOnlyProduct(product as any);
+}
+
+function normalizeUiProductList(products: unknown): ProductResponse[] {
+  return (Array.isArray(products) ? products : [])
+    .map((p: RealAPIProduct | ProductResponse) => normalizeProduct(p))
+    .filter((product) => isUiLinkableProduct(product));
 }
 
 type ApiError = Error & { code?: string; status?: number; detail?: any };
@@ -2430,9 +2441,7 @@ export async function sendMessage(
     { signal: options?.signal },
   );
 
-  const products = ((data as any).products || []).map(
-    (p: RealAPIProduct | ProductResponse) => normalizeProduct(p),
-  );
+  const products = normalizeUiProductList((data as any).products);
   const metadata =
     data && typeof data === 'object' && data.metadata && typeof (data as any).metadata === 'object'
       ? ((data as any).metadata as Record<string, any>)
@@ -2577,9 +2586,7 @@ export async function getBrandDiscoveryFeed(args: {
     { signal: args.signal },
   );
 
-  const products = ((data as any).products || []).map(
-    (p: RealAPIProduct | ProductResponse) => normalizeProduct(p),
-  );
+  const products = normalizeUiProductList((data as any).products);
   const metadata =
     data && typeof data === 'object' && data.metadata && typeof (data as any).metadata === 'object'
       ? ((data as any).metadata as Record<string, any>)
@@ -2707,9 +2714,7 @@ export async function getShoppingDiscoveryFeed(args: {
     },
   );
 
-  const products = ((data as any).products || []).map(
-    (p: RealAPIProduct | ProductResponse) => normalizeProduct(p),
-  );
+  const products = normalizeUiProductList((data as any).products);
   const metadata =
     data && typeof data === 'object' && data.metadata && typeof (data as any).metadata === 'object'
       ? ((data as any).metadata as Record<string, any>)
@@ -2821,9 +2826,7 @@ export async function getMerchantProductsFeed(args: {
     },
   );
 
-  const products = ((data as any).products || []).map(
-    (p: RealAPIProduct | ProductResponse) => normalizeProduct(p),
-  );
+  const products = normalizeUiProductList((data as any).products);
   const metadata =
     data && typeof data === 'object' && data.metadata && typeof (data as any).metadata === 'object'
       ? ((data as any).metadata as Record<string, any>)
@@ -2943,10 +2946,7 @@ export async function getAllProducts(
     },
   });
 
-  const products = (data as any).products || [];
-  return products.map((p: RealAPIProduct | ProductResponse) =>
-    normalizeProduct(p),
-  ).slice(0, requestedLimit);
+  return normalizeUiProductList((data as any).products).slice(0, requestedLimit);
 }
 
 export async function getSimilarProductsMainline(args: {
@@ -3010,7 +3010,10 @@ export async function getSimilarProductsMainline(args: {
     strategy: String((data as any)?.strategy || 'related_products').trim() || 'related_products',
     items: rawProducts
       .map((item: any) => normalizeRecommendationItem(item))
-      .filter(Boolean) as RecommendationsData['items'],
+      .filter(
+        (item: RecommendationsData['items'][number] | null): item is RecommendationsData['items'][number] =>
+          isUiLinkableProduct(item),
+      ),
     metadata,
     page_info: {
       page: Number.isFinite(pageRaw) && pageRaw > 0 ? Math.floor(pageRaw) : 1,

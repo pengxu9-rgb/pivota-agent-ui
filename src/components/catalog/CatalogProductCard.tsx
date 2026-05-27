@@ -9,7 +9,7 @@ import type { ProductResponse } from '@/lib/api';
 import { normalizeDisplayImageUrl } from '@/lib/displayImage';
 import { resolveProductCardPresentation } from '@/lib/productCardPresentation';
 import { formatProductCardTitle } from '@/lib/productCardTitle';
-import { buildProductHrefForProduct } from '@/lib/productHref';
+import { buildProductHrefForProduct, isExternalAliasOnlyProduct } from '@/lib/productHref';
 import { appendCurrentPathAsReturn } from '@/lib/returnUrl';
 import {
   buildSavingsPresentation,
@@ -117,7 +117,7 @@ export function CatalogProductCard({
   const resolvedImage = normalizeDisplayImageUrl(product.image_url, '/placeholder.svg');
   const [imageSrc, setImageSrc] = useState(resolvedImage);
 
-  const href = buildProductHrefForProduct(product);
+  const href = isExternalAliasOnlyProduct(product) ? '/products' : buildProductHrefForProduct(product);
   const hrefWithReturn = appendCurrentPathAsReturn(href);
   const card = resolveProductCardPresentation(product);
   const offerSavingsSource = pickOfferSavingsSource(product);

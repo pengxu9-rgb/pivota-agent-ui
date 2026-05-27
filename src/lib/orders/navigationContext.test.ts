@@ -99,4 +99,17 @@ describe('order navigation href builders', () => {
     expect(pdpParsed.searchParams.get('source')).toBe('aurora_orders')
     expect(pdpParsed.searchParams.get('merchant_id')).toBe('merchant_item')
   })
+
+  it('does not build order item links to alias-only ext PDP URLs', () => {
+    const href = buildOrderItemPdpHref(
+      'ext_alias_only_order_item',
+      'external_seed',
+      new URLSearchParams('entry=shopping_agent'),
+      '/orders/ord_123',
+    )
+    const parsed = new URL(href, ORIGIN)
+
+    expect(parsed.pathname).toBe('/products')
+    expect(parsed.searchParams.get('merchant_id')).toBe('external_seed')
+  })
 })

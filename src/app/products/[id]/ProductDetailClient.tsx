@@ -32,7 +32,9 @@ import {
 } from '@/lib/returnUrl';
 import {
   buildProductHref,
+  buildProductHrefForProduct,
   inferCanonicalPdpMerchantId,
+  isExternalAliasOnlyProduct,
   isPivotaSignatureRouteId,
   isPublicProductGroupRouteId,
   isProductGroupRouteId,
@@ -1572,11 +1574,12 @@ export default function ProductDetailPage({ params, initialPayload, serviceRecom
                   className="w-full rounded-2xl border border-border bg-white/60 hover:bg-white/80 transition-colors px-4 py-3 text-left disabled:opacity-60"
                   onClick={() => {
                     if (!merchantId) return;
+                    if (isExternalAliasOnlyProduct(candidate as any)) return;
                     pdpTracking.track('pdp_choose_seller_select', {
                       product_id: id,
                       merchant_id: merchantId,
                     });
-                    router.push(buildProductHref(id, merchantId));
+                    router.push(buildProductHrefForProduct(candidate as any));
                   }}
                   disabled={!merchantId}
                 >

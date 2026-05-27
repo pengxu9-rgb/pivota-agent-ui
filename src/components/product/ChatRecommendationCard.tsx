@@ -6,7 +6,7 @@ import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { normalizeDisplayImageUrl } from '@/lib/displayImage';
 import { hideProductRouteLoading, showProductRouteLoading } from '@/lib/productRouteLoading';
-import { buildProductHrefForProduct } from '@/lib/productHref';
+import { buildProductHrefForProduct, isExternalAliasOnlyProduct } from '@/lib/productHref';
 import { appendCurrentPathAsReturn } from '@/lib/returnUrl';
 import { buildSavingsPresentation, getSummaryBadges } from '@/lib/savingsPresentation';
 import type { ProductResponse } from '@/lib/api';
@@ -95,7 +95,7 @@ function ChatRecommendationCardComponent({ product, onAddToCart, colorVariant = 
   const isNavigatingRef = useRef(false);
   const resetTimerRef = useRef<number | null>(null);
 
-  const href = buildProductHrefForProduct(product);
+  const href = isExternalAliasOnlyProduct(product) ? '/products' : buildProductHrefForProduct(product);
   const multipleSellerOffers = hasMultipleSellerOffers(product);
   const offerSavingsSource = pickOfferSavingsSource(product);
   const storeDiscountEvidence =

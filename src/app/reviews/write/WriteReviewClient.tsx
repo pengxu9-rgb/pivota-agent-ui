@@ -28,6 +28,7 @@ import { normalizeDisplayImageUrl } from '@/lib/displayImage';
 import { cn } from '@/lib/utils';
 import { safeReturnUrl, withReturnParams } from '@/lib/returnUrl';
 import { isAuroraEmbedMode, postRequestCloseToParent } from '@/lib/auroraEmbed';
+import { buildProductHrefForProduct, isExternalAliasOnlyProduct } from '@/lib/productHref';
 
 const MAX_MEDIA_FILES = 5;
 const MAX_MEDIA_BYTES = 10 * 1024 * 1024;
@@ -878,10 +879,12 @@ export default function WriteReviewPage() {
       invitationProductIdForEligibility ||
       String(inAppPdp?.payload?.product?.product_id || '').trim();
     if (fallbackProductId) {
-      const params = new URLSearchParams();
-      if (merchantIdParam) params.set('merchant_id', merchantIdParam);
-      const suffix = params.toString() ? `?${params.toString()}` : '';
-      router.push(`/products/${encodeURIComponent(fallbackProductId)}${suffix}`);
+      const routeSource = {
+        ...(inAppPdp?.payload?.product || {}),
+        product_id: fallbackProductId,
+        merchant_id: merchantIdParam || inAppPdp?.payload?.product?.merchant_id,
+      };
+      router.push(isExternalAliasOnlyProduct(routeSource) ? '/products' : buildProductHrefForProduct(routeSource));
       return;
     }
     router.push('/');

@@ -258,6 +258,7 @@ describe('PdpContainer gallery viewer wiring', () => {
                 alt_text: 'Jumbo - 100 mL',
                 merchant_id: 'external_seed',
                 product_id: 'ext_krave_gbr_100',
+                pivota_signature_id: 'sig_krave_gbr_100',
               },
             ],
           },
@@ -279,8 +280,45 @@ describe('PdpContainer gallery viewer wiring', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'View product-line item 1' }));
     expect(pushMock).toHaveBeenCalledWith(
-      '/products/ext_krave_gbr_100?merchant_id=external_seed&return=%2Fproducts%2FP001%3Fmerchant_id%3Dmerch_test',
+      '/products/sig_krave_gbr_100?return=%2Fproducts%2FP001%3Fmerchant_id%3Dmerch_test',
     );
+  });
+
+  it('does not navigate product-line previews to alias-only ext product URLs', () => {
+    const previewPayload = {
+      ...payload,
+      modules: [
+        {
+          ...payload.modules[0],
+          data: {
+            ...(payload.modules[0] as any).data,
+            preview_scope: 'product_line',
+            preview_items: [
+              {
+                type: 'image',
+                url: 'https://example.com/sibling.jpg',
+                alt_text: 'Alias-only sibling',
+                merchant_id: 'external_seed',
+                product_id: 'ext_alias_only_sibling',
+              },
+            ],
+          },
+        },
+        ...payload.modules.slice(1),
+      ],
+    };
+
+    render(
+      <PdpContainer
+        payload={previewPayload as any}
+        mode="generic"
+        onAddToCart={() => {}}
+        onBuyNow={() => {}}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'View product-line item 1' }));
+    expect(pushMock).not.toHaveBeenCalled();
   });
 
   it('switches review summary when selecting the exact-item review scope', () => {

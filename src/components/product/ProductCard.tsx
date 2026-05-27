@@ -9,13 +9,18 @@ import { Button } from '@/components/ui/button';
 import { normalizeDisplayImageUrl } from '@/lib/displayImage';
 import { useCartStore } from '@/store/cartStore';
 import { hideProductRouteLoading, showProductRouteLoading } from '@/lib/productRouteLoading';
-import { buildProductHref } from '@/lib/productHref';
+import { buildProductHrefForProduct, isExternalAliasOnlyProduct } from '@/lib/productHref';
 import { formatProductCardTitle } from '@/lib/productCardTitle';
 import { appendCurrentPathAsReturn } from '@/lib/returnUrl';
 import { toast } from 'sonner';
 
 interface ProductCardProps {
   product_id: string;
+  pivota_signature_id?: string;
+  product_group_id?: string;
+  sellable_item_group_id?: string;
+  pivota_canonical_url?: string;
+  canonical_url?: string;
   merchant_id?: string;
   merchant_name?: string;
   variant_id?: string;
@@ -36,6 +41,11 @@ interface ProductCardProps {
 
 export default function ProductCard({
   product_id,
+  pivota_signature_id,
+  product_group_id,
+  sellable_item_group_id,
+  pivota_canonical_url,
+  canonical_url,
   merchant_id,
   merchant_name,
   variant_id,
@@ -64,7 +74,18 @@ export default function ProductCard({
   const displayPrice = Number(price);
   const hasValidDisplayPrice = Number.isFinite(displayPrice) && displayPrice > 0;
 
-  const href = buildProductHref(product_id, merchant_id);
+  const routeSource = {
+    product_id,
+    pivota_signature_id,
+    product_group_id,
+    sellable_item_group_id,
+    pivota_canonical_url,
+    canonical_url,
+    merchant_id,
+  };
+  const href = isExternalAliasOnlyProduct(routeSource)
+    ? '/products'
+    : buildProductHrefForProduct(routeSource);
 
   const handleAddToCart = (e: React.MouseEvent) => {
     e.preventDefault();

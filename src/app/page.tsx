@@ -30,7 +30,10 @@ import {
   type ProductResponse,
 } from '@/lib/api';
 import { mergeDiscoveryRecentViews, readLocalBrowseHistory } from '@/lib/browseHistoryStorage';
-import { buildProductHref } from '@/lib/productHref';
+import {
+  buildProductHrefForProduct,
+  isExternalAliasOnlyProduct,
+} from '@/lib/productHref';
 import { appendCurrentPathAsReturn } from '@/lib/returnUrl';
 import {
   analyzeSkinPhotoFile,
@@ -44,6 +47,8 @@ import { toast } from 'sonner';
 const CHAT_RAIL_INITIAL_PAGE_SIZE = 12;
 const CHAT_RAIL_PAGE_STEP = 12;
 const NO_GROWTH_STOP_THRESHOLD = 2;
+const DAILY_PICKS_REQUEST_LIMIT = 10;
+const DAILY_PICKS_DISPLAY_LIMIT = 5;
 
 /** Mono-uppercase prompts that sit just above the composer. Tapping a chip
  *  primes the input (no auto-send) per the handoff. */
@@ -154,7 +159,7 @@ function formatPriceLabel(price: unknown, currency?: string): string {
 /** Brand v2 "Today's picks" thumbnail — 96px wide, 4/5 image. */
 const TodaysEditCard = memo(function TodaysEditCard({ product }: { product: ProductResponse }) {
   const router = useRouter();
-  const cardHref = buildProductHref(product.product_id, product.merchant_id);
+  const cardHref = buildProductHrefForProduct(product);
   return (
     <Link
       href={cardHref}
@@ -301,14 +306,17 @@ function HomePageApp() {
       try {
         const result = await getShoppingDiscoveryFeed({
           surface: 'home_hot_deals',
-          limit: 6,
+          limit: DAILY_PICKS_REQUEST_LIMIT,
           entry: 'plp',
           catalog: 'promo_pool',
           userId: user?.id || null,
           recentViews,
         });
-        setHotDeals(result.products);
-        setHotDealsStatus(result.products.length > 0 ? 'ready' : 'empty');
+        const linkablePicks = result.products
+          .filter((product) => !isExternalAliasOnlyProduct(product))
+          .slice(0, DAILY_PICKS_DISPLAY_LIMIT);
+        setHotDeals(linkablePicks);
+        setHotDealsStatus(linkablePicks.length > 0 ? 'ready' : 'empty');
       } catch (error) {
         console.error("Failed to load today's edit:", error);
         setHotDeals([]);
@@ -852,7 +860,7 @@ function EditorialGreeting({
           <div className="flex min-w-max gap-3">
             {hotDeals.length > 0 ? (
               hotDeals
-                .slice(0, 5)
+                .slice(0, DAILY_PICKS_DISPLAY_LIMIT)
                 .map((product) => <TodaysEditCard key={buildProductKey(product)} product={product} />)
             ) : (
               <p className="text-[14px] text-muted-foreground">
@@ -970,7 +978,7 @@ function AssistantMessageRow({
         <>
           <div className="grid grid-cols-2 gap-4 sm:gap-5">
             {products.map((product) => {
-              const href = buildProductHref(product.product_id, product.merchant_id);
+              const href = buildProductHrefForProduct(product);
               return (
                 <Link
                   key={buildProductKey(product)}

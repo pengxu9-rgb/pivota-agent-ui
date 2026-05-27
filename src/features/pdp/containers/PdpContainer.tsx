@@ -89,7 +89,11 @@ import { getStableGalleryItems, resolveHeroMediaUrl } from '@/features/pdp/state
 import { buildPdpViewModel } from '@/features/pdp/state/viewModel';
 import { resolveOfferPricing } from '@/features/pdp/utils/offerVariantMatching';
 import { buildBrandHref } from '@/lib/brandRoute';
-import { buildProductHref } from '@/lib/productHref';
+import {
+  buildProductHref,
+  buildProductHrefForProduct,
+  isExternalAliasOnlyProduct,
+} from '@/lib/productHref';
 import { buildProductVariants } from '@/features/pdp/utils/productVariants';
 import { getDisplayVariantLabel, isHiddenVariantForSelector } from '@/features/pdp/utils/variantLabels';
 import { cn } from '@/lib/utils';
@@ -542,11 +546,10 @@ function needsProductLineOptionalBackfill(payload: PDPPayload): boolean {
 }
 
 function buildInlineProductLineTargetPath(
-  nextProductId: string,
-  nextMerchantId: string,
+  target: ProductLineOption,
   currentRelativePath: string | null,
 ): string {
-  const targetHref = buildProductHref(nextProductId, nextMerchantId || undefined);
+  const targetHref = buildProductHrefForProduct(target as any);
   const [pathname, rawQuery = ''] = targetHref.split('?');
   const params = new URLSearchParams(rawQuery);
   const existingReturn =
@@ -562,11 +565,10 @@ function buildInlineProductLineTargetPath(
 }
 
 function buildSimilarTargetPath(
-  nextProductId: string,
-  nextMerchantId: string,
+  target: RecommendationsData['items'][number],
   currentRelativePath: string | null,
 ): string {
-  const targetHref = buildProductHref(nextProductId, nextMerchantId || undefined);
+  const targetHref = buildProductHrefForProduct(target as any);
   if (!currentRelativePath) return targetHref;
   const [pathname, rawQuery = ''] = targetHref.split('?');
   const params = new URLSearchParams(rawQuery);
@@ -599,7 +601,9 @@ function buildVisualSimilarItem(
   return {
     id: item.product_id,
     merchant_id: merchantId || null,
-    href: buildSimilarTargetPath(item.product_id, merchantId, currentRelativePath),
+    href: isExternalAliasOnlyProduct(item as any)
+      ? undefined
+      : buildSimilarTargetPath(item, currentRelativePath),
     title: item.title,
     image: item.image_url || '',
     priceLabel: item.price
@@ -1248,7 +1252,9 @@ function normalizeRecommendationItems(
         ...(reviewSummary && Object.keys(reviewSummary).length ? { review_summary: reviewSummary } : {}),
       } satisfies RecommendationsData['items'][number];
     })
-    .filter(Boolean) as RecommendationsData['items'];
+    .filter((item): item is RecommendationsData['items'][number] =>
+      Boolean(item) && !isExternalAliasOnlyProduct(item as any),
+    );
 }
 
 function mergeRecommendationItemData(
@@ -2001,7 +2007,11 @@ export function PdpContainer({
 
     return visibleProductLineOptions
       .map((option, index) => ({ option, index, distance: Math.abs(index - selectedIndex) }))
-      .filter(({ option }) => !isSameProductLineOption(option, currentProductId, currentMerchantId))
+      .filter(
+        ({ option }) =>
+          !isSameProductLineOption(option, currentProductId, currentMerchantId) &&
+          !isExternalAliasOnlyProduct(option as any),
+      )
       .sort((left, right) => {
         if (left.distance !== right.distance) return left.distance - right.distance;
         return left.index - right.index;
@@ -2851,7 +2861,8 @@ export function PdpContainer({
 
   const navigateToSimilarPdp = useCallback(
     (item: RecommendationsData['items'][number]) => {
-      router.push(appendCurrentPathAsReturn(buildProductHref(item.product_id, item.merchant_id)));
+      if (isExternalAliasOnlyProduct(item as any)) return;
+      router.push(appendCurrentPathAsReturn(buildProductHrefForProduct(item as any)));
     },
     [router],
   );
@@ -3340,6 +3351,7 @@ export function PdpContainer({
       const nextProductId = String(item.product_id || '').trim();
       if (!nextProductId) return;
       const nextMerchantId = String(item.merchant_id || '').trim();
+      if (isExternalAliasOnlyProduct(item as any)) return;
       const currentProductId = String(payload.product.product_id || '').trim();
       const currentMerchantId = String(payload.product.merchant_id || '').trim();
       if (
@@ -3348,8 +3360,9 @@ export function PdpContainer({
       ) {
         return;
       }
-      const params = new URLSearchParams();
-      if (nextMerchantId) params.set('merchant_id', nextMerchantId);
+      const targetHref = buildProductHrefForProduct(item as any);
+      const [targetPathname, targetQuery = ''] = targetHref.split('?');
+      const params = new URLSearchParams(targetQuery);
       if (currentRelativePath) params.set('return', currentRelativePath);
       pdpTracking.track('pdp_gallery_click_thumbnail', {
         source: 'product_line_preview',
@@ -3358,9 +3371,7 @@ export function PdpContainer({
         target_product_id: nextProductId,
         target_merchant_id: nextMerchantId || null,
       });
-      router.push(
-        `/products/${encodeURIComponent(nextProductId)}${params.toString() ? `?${params.toString()}` : ''}`,
-      );
+      router.push(`${targetPathname}${params.toString() ? `?${params.toString()}` : ''}`);
     },
     [currentRelativePath, payload.product.merchant_id, payload.product.product_id, router],
   );
@@ -3517,7 +3528,11 @@ export function PdpContainer({
       const merchantId = String(option.merchant_id || '').trim();
       const currentProductId = String(payload.product.product_id || '').trim();
       const currentMerchantId = String(payload.product.merchant_id || '').trim();
-      if (!productId || isSameProductLineOption(option, currentProductId, currentMerchantId)) {
+      if (
+        !productId ||
+        isSameProductLineOption(option, currentProductId, currentMerchantId) ||
+        isExternalAliasOnlyProduct(option as any)
+      ) {
         return;
       }
       const cacheKey = buildProductLinePayloadCacheKey(productId, merchantId);
@@ -3603,6 +3618,7 @@ export function PdpContainer({
       const nextProductId = String(option.product_id || '').trim();
       if (!nextProductId) return;
       const nextMerchantId = String(option.merchant_id || '').trim();
+      if (isExternalAliasOnlyProduct(option as any)) return;
       const currentProductId = String(payload.product.product_id || '').trim();
       const currentMerchantId = String(payload.product.merchant_id || '').trim();
       if (
@@ -3611,7 +3627,7 @@ export function PdpContainer({
       ) {
         return;
       }
-      const targetHref = buildProductHref(nextProductId, nextMerchantId);
+      const targetHref = buildProductHrefForProduct(option as any);
       const params = new URLSearchParams(targetHref.split('?')[1] || '');
       if (currentRelativePath) params.set('return', currentRelativePath);
       pdpTracking.track('pdp_action_click', {
@@ -3629,8 +3645,7 @@ export function PdpContainer({
         productLineSwitchRequestRef.current = requestId;
         const previousPayload = payload;
         const targetPath = buildInlineProductLineTargetPath(
-          nextProductId,
-          nextMerchantId,
+          option,
           currentRelativePath,
         );
         const cacheKey = buildProductLinePayloadCacheKey(nextProductId, nextMerchantId);

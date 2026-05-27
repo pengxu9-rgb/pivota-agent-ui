@@ -9,7 +9,7 @@ import {
   optimizePdpImageUrl,
   shouldBypassNextImageOptimizer,
 } from '@/features/pdp/utils/pdpImageUrls';
-import { buildProductHrefForProduct } from '@/lib/productHref';
+import { buildProductHrefForProduct, isExternalAliasOnlyProduct } from '@/lib/productHref';
 import { appendCurrentPathAsReturn } from '@/lib/returnUrl';
 
 function formatPrice(amount: number, currency: string) {
@@ -57,6 +57,7 @@ export function BundleCompositionGrid({
             merchant_id: item.merchant_id,
             canonical_url: item.canonical_url,
           };
+          const isLinkable = !isExternalAliasOnlyProduct(hrefSource as any);
           const baseHref = buildProductHrefForProduct(hrefSource as any);
           const handleClick = (event: MouseEvent<HTMLAnchorElement>) => {
             onItemClick?.(item, idx);
@@ -65,61 +66,70 @@ export function BundleCompositionGrid({
             event.preventDefault();
             router.push(appendCurrentPathAsReturn(baseHref));
           };
+          const cardBody = (
+            <>
+              <div className="relative aspect-square bg-muted">
+                {item.image_url ? (
+                  <Image
+                    src={optimizePdpImageUrl(item.image_url, 480)}
+                    alt={item.title}
+                    fill
+                    className="object-cover"
+                    sizes="(max-width: 640px) 45vw, (max-width: 1024px) 30vw, 250px"
+                    loading={idx < 2 ? 'eager' : 'lazy'}
+                    fetchPriority={idx < 2 ? 'high' : 'auto'}
+                    quality={idx < 2 ? 72 : 65}
+                    unoptimized={shouldBypassNextImageOptimizer(item.image_url)}
+                  />
+                ) : (
+                  <div className="absolute inset-0 flex items-center justify-center text-xs text-muted-foreground">
+                    No image
+                  </div>
+                )}
+              </div>
+              <div className="p-3 pb-2">
+                {brandLabel ? (
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground/85 line-clamp-1">
+                    {brandLabel}
+                  </div>
+                ) : null}
+                <div className="mt-1 min-h-[2.5rem] text-sm font-medium line-clamp-2">
+                  {item.title}
+                </div>
+                {sizeLabel || roleLabel ? (
+                  <div className="mt-1.5 flex flex-wrap gap-1">
+                    {sizeLabel ? (
+                      <span className="inline-flex rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold tracking-[-0.01em] text-foreground/80">
+                        {sizeLabel}
+                      </span>
+                    ) : null}
+                    {roleLabel ? (
+                      <span className="inline-flex rounded-full bg-muted/60 px-2 py-0.5 text-[10px] font-medium tracking-[-0.01em] text-muted-foreground">
+                        {roleLabel}
+                      </span>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
+            </>
+          );
           return (
             <div
               key={itemKey}
               className="overflow-hidden rounded-xl border border-border bg-card transition-shadow hover:shadow-md"
             >
-              <Link
-                href={baseHref}
-                prefetch={false}
-                className="block"
-                onClick={handleClick}
-              >
-                <div className="relative aspect-square bg-muted">
-                  {item.image_url ? (
-                    <Image
-                      src={optimizePdpImageUrl(item.image_url, 480)}
-                      alt={item.title}
-                      fill
-                      className="object-cover"
-                      sizes="(max-width: 640px) 45vw, (max-width: 1024px) 30vw, 250px"
-                      loading={idx < 2 ? 'eager' : 'lazy'}
-                      fetchPriority={idx < 2 ? 'high' : 'auto'}
-                      quality={idx < 2 ? 72 : 65}
-                      unoptimized={shouldBypassNextImageOptimizer(item.image_url)}
-                    />
-                  ) : (
-                    <div className="absolute inset-0 flex items-center justify-center text-xs text-muted-foreground">
-                      No image
-                    </div>
-                  )}
-                </div>
-                <div className="p-3 pb-2">
-                  {brandLabel ? (
-                    <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground/85 line-clamp-1">
-                      {brandLabel}
-                    </div>
-                  ) : null}
-                  <div className="mt-1 min-h-[2.5rem] text-sm font-medium line-clamp-2">
-                    {item.title}
-                  </div>
-                  {sizeLabel || roleLabel ? (
-                    <div className="mt-1.5 flex flex-wrap gap-1">
-                      {sizeLabel ? (
-                        <span className="inline-flex rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold tracking-[-0.01em] text-foreground/80">
-                          {sizeLabel}
-                        </span>
-                      ) : null}
-                      {roleLabel ? (
-                        <span className="inline-flex rounded-full bg-muted/60 px-2 py-0.5 text-[10px] font-medium tracking-[-0.01em] text-muted-foreground">
-                          {roleLabel}
-                        </span>
-                      ) : null}
-                    </div>
-                  ) : null}
-                </div>
-              </Link>
+              {isLinkable ? (
+                <Link
+                  href={baseHref}
+                  prefetch={false}
+                  className="block"
+                  onClick={handleClick}
+                >
+                  {cardBody}
+                </Link>
+              ) : (
+                <article className="block">{cardBody}</article>
+              )}
               {item.price ? (
                 <div className="px-3 pb-3 pt-1 text-sm font-bold">
                   {formatPrice(item.price.amount, item.price.currency)}

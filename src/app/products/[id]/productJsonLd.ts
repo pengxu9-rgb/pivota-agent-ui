@@ -19,7 +19,7 @@
  */
 
 import { buildProductDescription } from './productDescription';
-import { buildProductHrefForProduct } from '@/lib/productHref';
+import { buildProductHrefForProduct, isExternalAliasOnlyProduct } from '@/lib/productHref';
 
 const SCHEMA_CONTEXT = 'https://schema.org/';
 const SCHEMA_TYPE_PRODUCT = 'Product';
@@ -748,6 +748,7 @@ function _buildRecommendationsItemList(
     const productId = _firstString(record.product_id, record.productId);
     const name = _firstString(record.title, record.name, record.card_title);
     if (!productId || !name) continue;
+    if (isExternalAliasOnlyProduct(record)) continue;
     const href = buildProductHrefForProduct(record);
 
     itemListElement.push({

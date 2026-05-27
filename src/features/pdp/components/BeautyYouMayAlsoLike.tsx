@@ -6,6 +6,7 @@ import { ServiceFeedCard } from '@/features/services/components/ServiceFeedCard'
 import { interleaveServices } from '@/features/services/lib/sprinkled-pattern';
 import { getProviderId } from '@/features/services/lib/types';
 import type { ServiceCardData } from '@/features/services/lib/types';
+import { isExternalAliasRouteId } from '@/lib/productHref';
 
 /**
  * "You May Also Like" recommendation grid for the Beauty mobile PDP.
@@ -29,6 +30,20 @@ export type BeautySimilarItem = {
   highlight?: string | null;
 };
 
+function isExternalAliasProductHref(value: string | null | undefined): boolean {
+  const raw = String(value || '').trim();
+  if (!raw) return false;
+  try {
+    const url = new URL(raw, 'https://agent.pivota.cc');
+    const parts = url.pathname.split('/').filter(Boolean);
+    const productsIndex = parts.findIndex((part) => part === 'products');
+    return productsIndex >= 0 && isExternalAliasRouteId(decodeURIComponent(parts[productsIndex + 1] || ''));
+  } catch {
+    const match = raw.match(/\/products\/([^/?#]+)/);
+    return isExternalAliasRouteId(match?.[1] ? decodeURIComponent(match[1]) : '');
+  }
+}
+
 export function BeautyYouMayAlsoLike({
   items,
   services,
@@ -49,6 +64,7 @@ export function BeautyYouMayAlsoLike({
   const desktopItems = hasServices ? interleaveServices(productItems, serviceItems, 'desktop') : [];
 
   const renderProductCard = (p: BeautySimilarItem, idx: number) => {
+    const safeHref = isExternalAliasProductHref(p.href) ? '' : p.href;
     const cardBody = (
       <>
         <div className="relative aspect-square overflow-hidden rounded-md bg-[var(--paper-muted,#F4F4F2)]">
@@ -99,9 +115,9 @@ export function BeautyYouMayAlsoLike({
 
     return (
       <div key={`${p.merchant_id || ''}:${p.id}`} className="flex flex-col">
-        {p.href ? (
+        {safeHref ? (
           <Link
-            href={p.href}
+            href={safeHref}
             prefetch={false}
             onClick={() => onItemClick?.(p, idx)}
             className="flex flex-1 flex-col focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"

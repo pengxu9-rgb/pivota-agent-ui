@@ -46,6 +46,11 @@ export function isCanonicalProductRouteId(productId: unknown): boolean {
   return isPivotaSignatureRouteId(productId) || isProductGroupRouteId(productId);
 }
 
+export function isExternalAliasRouteId(productId: unknown): boolean {
+  const normalizedProductId = String(productId || '').trim().toLowerCase();
+  return normalizedProductId.startsWith('ext_') || normalizedProductId.startsWith('ext:');
+}
+
 function readProductRouteIdFromUrl(value: unknown): string {
   const raw = String(value || '').trim();
   if (!raw) return '';
@@ -131,6 +136,10 @@ export function resolveProductRouteId(product: ProductRouteLike): string {
   if (isPublicProductGroupRouteId(productGroupId)) return productGroupId;
 
   return firstNonEmptyString(product.product_id, product.productId);
+}
+
+export function isExternalAliasOnlyProduct(product: ProductRouteLike): boolean {
+  return isExternalAliasRouteId(resolveProductRouteId(product));
 }
 
 export function buildProductHrefForProduct(product: ProductRouteLike): string {

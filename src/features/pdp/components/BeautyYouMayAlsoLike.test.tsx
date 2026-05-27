@@ -1,5 +1,5 @@
-import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { BeautyYouMayAlsoLike, type BeautySimilarItem } from './BeautyYouMayAlsoLike';
 
 vi.mock('next/link', () => ({
@@ -10,14 +10,24 @@ vi.mock('next/link', () => ({
   ),
 }));
 
+afterEach(() => {
+  cleanup();
+});
+
 const item: BeautySimilarItem = {
-  id: 'ext_40c0347ee0c6d9f612f6ec6f',
+  id: 'sig_40c0347ee0c6d9f612f6ec6f',
   merchant_id: 'external_seed',
-  href: '/products/ext_40c0347ee0c6d9f612f6ec6f?return=%2F',
+  href: '/products/sig_40c0347ee0c6d9f612f6ec6f?return=%2F',
   title: 'Scalp Retreat Nourishing Scalp Serum',
   image: 'https://example.com/scalp.jpg',
   priceLabel: '$46.00',
   highlight: 'A face serum from Nourwish for skincare routines.',
+};
+
+const aliasOnlyItem: BeautySimilarItem = {
+  ...item,
+  id: 'ext_40c0347ee0c6d9f612f6ec6f',
+  href: '/products/ext_40c0347ee0c6d9f612f6ec6f?return=%2F',
 };
 
 describe('BeautyYouMayAlsoLike', () => {
@@ -51,5 +61,15 @@ describe('BeautyYouMayAlsoLike', () => {
     fireEvent.click(screen.getByRole('button', { name: /buy/i }));
     expect(onBuy).toHaveBeenCalledWith(item, 0);
     expect(onItemClick).not.toHaveBeenCalled();
+  });
+
+  it('does not render alias-only ext PDP hrefs as links', () => {
+    const onItemClick = vi.fn();
+
+    render(<BeautyYouMayAlsoLike items={[aliasOnlyItem]} onItemClick={onItemClick} />);
+
+    expect(screen.queryByRole('link', { name: aliasOnlyItem.title })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: aliasOnlyItem.title }));
+    expect(onItemClick).toHaveBeenCalledWith(aliasOnlyItem, 0);
   });
 });

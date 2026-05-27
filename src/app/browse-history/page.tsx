@@ -18,6 +18,7 @@ import {
 } from './historyItems';
 import { hydrateZeroPriceItems } from './priceHydration';
 import { extractPositivePriceAmount } from '@/lib/price';
+import { isExternalAliasOnlyProduct } from '@/lib/productHref';
 
 const LOCAL_HISTORY_KEY = 'browse_history';
 const LOCAL_HISTORY_VERSION_KEY = 'browse_history_version';
@@ -91,7 +92,7 @@ function mapRemoteHistory(items: any[]): HistoryItem[] {
 }
 
 function resolvedHistoryItems(items: HistoryItem[]): HistoryItem[] {
-  return items.filter(hasPositiveHistoryPrice);
+  return items.filter((item) => hasPositiveHistoryPrice(item) && !isExternalAliasOnlyProduct(item));
 }
 
 export default function BrowseHistoryPage() {

@@ -1,4 +1,8 @@
 import { safeReturnUrl } from '@/lib/returnUrl'
+import {
+  buildProductHrefForProduct,
+  isExternalAliasOnlyProduct,
+} from '@/lib/productHref'
 
 type SearchParamsLike = {
   get: (key: string) => string | null
@@ -134,6 +138,10 @@ export function buildOrderItemPdpHref(
   searchParams: SearchParamsLike | null | undefined,
   currentDetailUrl: string,
 ): string {
+  const productRef = {
+    product_id: String(productId || '').trim(),
+    merchant_id: String(merchantId || '').trim() || undefined,
+  }
   const params = collectEmbedPassthrough(searchParams)
   const itemMerchantId = String(merchantId || '').trim()
   if (itemMerchantId) {
@@ -142,5 +150,11 @@ export function buildOrderItemPdpHref(
     maybeAddScopeMerchant(params, searchParams)
   }
   maybeAddReturn(params, currentDetailUrl)
-  return toHref(`/products/${encodeURIComponent(productId)}`, params)
+  if (isExternalAliasOnlyProduct(productRef)) return toHref('/products', params)
+  const [pathname, rawQuery = ''] = buildProductHrefForProduct(productRef).split('?')
+  const hrefParams = new URLSearchParams(rawQuery)
+  for (const [key, value] of params.entries()) {
+    hrefParams.set(key, value)
+  }
+  return toHref(pathname, hrefParams)
 }

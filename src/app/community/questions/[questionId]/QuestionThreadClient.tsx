@@ -7,7 +7,7 @@ import { ChevronLeft } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { getQuestion, listQuestionReplies, postQuestionReply, type QuestionReplyListItem } from '@/lib/api';
-import { buildProductHref } from '@/lib/productHref';
+import { buildProductHref, isExternalAliasOnlyProduct } from '@/lib/productHref';
 
 function formatDate(value?: string | null) {
   const raw = String(value || '').trim();
@@ -37,6 +37,7 @@ export default function QuestionThreadClient() {
 
   const backToProductHref = useMemo(() => {
     if (!productId) return '';
+    if (isExternalAliasOnlyProduct({ product_id: productId, merchant_id: merchantId })) return '';
     return buildProductHref(productId, merchantId);
   }, [merchantId, productId]);
 

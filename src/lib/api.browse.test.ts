@@ -252,6 +252,47 @@ describe('getAllProducts browse routing', () => {
     });
   });
 
+  it('filters alias-only ext products from shopping discovery feeds', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      jsonResponse({
+        products: [
+          {
+            product_id: 'ext_unservable_alias',
+            merchant_id: 'external_seed',
+            title: 'Alias-only product',
+            price: 20,
+            currency: 'USD',
+          },
+          {
+            product_id: 'ext_sig_backed',
+            merchant_id: 'external_seed',
+            pivota_signature_id: 'sig_canonical_product',
+            title: 'Canonical product',
+            price: 24,
+            currency: 'USD',
+          },
+          {
+            product_id: 'prod_internal_1',
+            merchant_id: 'merch_1',
+            title: 'Internal product',
+            price: 30,
+            currency: 'USD',
+          },
+        ],
+      }),
+    );
+
+    const result = await getShoppingDiscoveryFeed({
+      surface: 'home_hot_deals',
+      limit: 6,
+    });
+
+    expect(result.products.map((product) => product.product_id)).toEqual([
+      'sig_canonical_product',
+      'prod_internal_1',
+    ]);
+  });
+
   it('times out shopping discovery feed requests instead of hanging indefinitely', async () => {
     vi.useFakeTimers();
     vi.spyOn(globalThis, 'fetch').mockImplementation((_input, init) => {
@@ -439,6 +480,37 @@ describe('getAllProducts browse routing', () => {
         ],
       },
     });
+  });
+
+  it('filters alias-only ext products from similar product cards', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      jsonResponse({
+        products: [
+          {
+            product_id: 'ext_unservable_similar',
+            merchant_id: 'external_seed',
+            title: 'Alias-only similar',
+            price: { amount: 22, currency: 'USD' },
+          },
+          {
+            product_id: 'ext_sig_backed_similar',
+            merchant_id: 'external_seed',
+            pivota_signature_id: 'sig_similar_canonical',
+            title: 'Canonical similar',
+            price: { amount: 28, currency: 'USD' },
+          },
+        ],
+        page: 1,
+        page_size: 2,
+      }),
+    );
+
+    const result = await getSimilarProductsMainline({
+      product_id: 'sig_base',
+      limit: 6,
+    });
+
+    expect(result.items.map((item) => item.product_id)).toEqual(['sig_similar_canonical']);
   });
 
   it('uses exact product detail without broad product-search fallback', async () => {

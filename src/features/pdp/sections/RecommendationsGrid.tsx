@@ -10,7 +10,7 @@ import {
   optimizePdpImageUrl,
   shouldBypassNextImageOptimizer,
 } from '@/features/pdp/utils/pdpImageUrls';
-import { buildProductHrefForProduct } from '@/lib/productHref';
+import { buildProductHrefForProduct, isExternalAliasOnlyProduct } from '@/lib/productHref';
 import { resolveProductCardPresentation } from '@/lib/productCardPresentation';
 import { formatProductCardTitle } from '@/lib/productCardTitle';
 import { appendCurrentPathAsReturn } from '@/lib/returnUrl';
@@ -58,11 +58,12 @@ export function RecommendationsGrid({
   quickActionState?: Record<string, { label: 'Buy' | 'Open'; loading?: boolean }>;
 }) {
   const router = useRouter();
-  if (!data.items.length) return null;
+  const linkableItems = data.items.filter((item) => !isExternalAliasOnlyProduct(item as any));
+  if (!linkableItems.length) return null;
   const resolvedVisibleCount = Number.isFinite(visibleCount as number)
     ? Math.max(0, Math.floor(visibleCount as number))
-    : data.items.length;
-  const visibleItems = data.items.slice(0, resolvedVisibleCount);
+    : linkableItems.length;
+  const visibleItems = linkableItems.slice(0, resolvedVisibleCount);
   return (
     <div className="py-6">
       <div className="mb-3 flex items-center justify-between px-3.5 sm:px-4">

@@ -4,6 +4,8 @@ import {
   buildProductHref,
   buildProductHrefForProduct,
   inferCanonicalPdpMerchantId,
+  isExternalAliasOnlyProduct,
+  isExternalAliasRouteId,
   isPivotaSignatureRouteId,
   isPublicProductGroupRouteId,
   isSelfFallbackProductGroupRouteId,
@@ -75,6 +77,35 @@ describe('productHref helpers', () => {
         pivota_signature_id: 'sig_from_product',
       }),
     ).toBe('/products/sig_from_product');
+  });
+
+  it('detects ext alias-only products after canonical route hints are considered', () => {
+    expect(isExternalAliasRouteId('ext_123')).toBe(true);
+    expect(isExternalAliasRouteId('ext:123')).toBe(true);
+    expect(isExternalAliasRouteId('sig_123')).toBe(false);
+
+    expect(
+      isExternalAliasOnlyProduct({
+        product_id: 'ext_123',
+        merchant_id: 'external_seed',
+      }),
+    ).toBe(true);
+
+    expect(
+      isExternalAliasOnlyProduct({
+        product_id: 'ext_123',
+        merchant_id: 'external_seed',
+        pivota_signature_id: 'sig_from_product',
+      }),
+    ).toBe(false);
+
+    expect(
+      isExternalAliasOnlyProduct({
+        product_id: 'ext_123',
+        merchant_id: 'external_seed',
+        pivota_canonical_url: 'https://agent.pivota.cc/products/sig_from_url',
+      }),
+    ).toBe(false);
   });
 
   it('falls back to merchant-scoped numeric URLs only when no canonical id exists', () => {

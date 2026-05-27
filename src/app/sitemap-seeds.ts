@@ -71,7 +71,7 @@ export function isProductIdSitemapEligible(productId: string | null | undefined)
   if (!productId || typeof productId !== 'string') return false;
   const trimmed = productId.trim();
   if (!trimmed) return false;
-  if (trimmed.startsWith('ext_')) return false;
+  if (trimmed.startsWith('ext_') || trimmed.startsWith('ext:')) return false;
   return true;
 }
 
