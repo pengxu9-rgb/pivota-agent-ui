@@ -3825,14 +3825,33 @@ function validateServicesBrowseQuery(query: ServicesBrowseQuery): ServicesBrowse
 
 export async function getServicesBrowse(query: ServicesBrowseQuery): Promise<ServicesBrowseResponse> {
   validateServicesBrowseQuery(query || {});
-  // TODO(pivota-backend): /api/services/* endpoints not yet implemented
-  throw new Error('PIVOTA_SERVICES_BACKEND_NOT_READY');
+  const params = new URLSearchParams();
+  if (query.q) params.set('q', query.q);
+  if (query.service_type?.length) query.service_type.forEach((t) => params.append('service_type', t));
+  if (query.english_friendly != null) params.set('english_friendly', String(query.english_friendly));
+  if (query.priced_only != null) params.set('priced_only', String(query.priced_only));
+  if (query.max_price_won != null) params.set('max_price_won', String(query.max_price_won));
+  if (query.walk_ins != null) params.set('walk_ins', String(query.walk_ins));
+  if (query.offset != null) params.set('offset', String(query.offset));
+  if (query.limit != null) params.set('limit', String(query.limit));
+  const qs = params.toString();
+  const res = await fetch(`/api/services${qs ? `?${qs}` : ''}`, { cache: 'no-store' });
+  if (!res.ok) throw new Error(`services browse failed: ${res.status}`);
+  const data = await res.json();
+  return {
+    scope: data.scope ? { city: data.scope.city, district: data.scope.region } : undefined,
+    results: data.results || [],
+    pagination: data.pagination,
+    usd_per_won_rate: data.usd_per_won_rate,
+  };
 }
 
 export async function getServiceProvider(provider_id: string): Promise<{ provider: Provider; usd_per_won_rate?: number }> {
   assertNonEmptyString(provider_id, 'provider_id');
-  // TODO(pivota-backend): /api/services/* endpoints not yet implemented
-  throw new Error('PIVOTA_SERVICES_BACKEND_NOT_READY');
+  const res = await fetch(`/api/services/providers/${encodeURIComponent(provider_id)}`, { cache: 'no-store' });
+  if (!res.ok) throw new Error(`provider fetch failed: ${res.status}`);
+  const data = await res.json();
+  return { provider: data.provider, usd_per_won_rate: data.usd_per_won_rate };
 }
 
 export async function submitServiceBooking(request: BookingRequest): Promise<{ booking_id: string; status: BookingStatus }> {
@@ -3842,12 +3861,19 @@ export async function submitServiceBooking(request: BookingRequest): Promise<{ b
   if (!request?.contact?.email && !request?.contact?.phone) {
     throw new Error('email or phone is required');
   }
-  // TODO(pivota-backend): /api/services/* endpoints not yet implemented
-  throw new Error('PIVOTA_SERVICES_BACKEND_NOT_READY');
+  const res = await fetch('/api/services/bookings', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(request),
+  });
+  if (!res.ok) throw new Error(`booking submit failed: ${res.status}`);
+  const data = await res.json();
+  return { booking_id: data.booking_id, status: data.status };
 }
 
 export async function getServiceBooking(booking_id: string): Promise<ServiceBooking> {
   assertNonEmptyString(booking_id, 'booking_id');
-  // TODO(pivota-backend): /api/services/* endpoints not yet implemented
-  throw new Error('PIVOTA_SERVICES_BACKEND_NOT_READY');
+  const res = await fetch(`/api/services/bookings/${encodeURIComponent(booking_id)}`, { cache: 'no-store' });
+  if (!res.ok) throw new Error(`booking fetch failed: ${res.status}`);
+  return res.json();
 }
