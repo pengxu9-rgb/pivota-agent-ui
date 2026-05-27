@@ -19,13 +19,20 @@ function locs(xml: string): string[] {
 }
 
 describe('/sitemap.xml — sitemap index', () => {
-  it('points crawlers to static and product sitemaps', async () => {
-    const entries = sitemapIndexEntries(new Date('2026-05-25T00:00:00.000Z'));
+  it('points crawlers to static and product sitemaps', () => {
+    const entries = sitemapIndexEntries();
 
     expect(entries.map((e) => e.loc)).toEqual([
       'https://agent.pivota.cc/sitemap-static.xml',
       'https://agent.pivota.cc/sitemap-products.xml',
     ]);
+  });
+
+  it('omits <lastmod> on index entries (children carry their own)', () => {
+    const entries = sitemapIndexEntries();
+    for (const entry of entries) {
+      expect(entry.lastmod).toBeUndefined();
+    }
   });
 
   it('returns valid sitemap index XML', async () => {
@@ -38,6 +45,7 @@ describe('/sitemap.xml — sitemap index', () => {
       'public, max-age=3600, s-maxage=3600, stale-while-revalidate=3600',
     );
     expect(xml).toContain('<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">');
+    expect(xml).not.toContain('<lastmod>');
     expect(locs(xml)).toEqual([
       'https://agent.pivota.cc/sitemap-static.xml',
       'https://agent.pivota.cc/sitemap-products.xml',
@@ -57,10 +65,10 @@ describe('/sitemap.xml — sitemap index', () => {
 
 describe('/sitemap-static.xml — static urlset', () => {
   it('emits only public static app URLs', () => {
-    const entries = staticSitemapEntries(new Date('2026-05-25T00:00:00.000Z'));
+    const entries = staticSitemapEntries();
     const urls = entries.map((e) => e.loc);
 
-    expect(urls).toEqual(STATIC_URLS);
+    expect(urls).toEqual([...STATIC_URLS]);
     expect(urls).not.toContain('https://agent.pivota.cc/order');
   });
 
@@ -71,11 +79,18 @@ describe('/sitemap-static.xml — static urlset', () => {
     expect(urls.some((url) => /\/products\/sig_/.test(url))).toBe(false);
   });
 
-  it('keeps crawler-friendly freshness hints for static routes', async () => {
+  it('keeps crawler-friendly freshness hints for static routes', () => {
     const entries = staticSitemapEntries();
 
     expect(entries.find((e) => e.loc === 'https://agent.pivota.cc')?.changefreq).toBe('daily');
     expect(entries.find((e) => e.loc === 'https://agent.pivota.cc/products')?.priority).toBe(0.9);
+  });
+
+  it('omits <lastmod> on static entries (no real change signal for / or /products)', () => {
+    const entries = staticSitemapEntries();
+    for (const entry of entries) {
+      expect(entry.lastmod).toBeUndefined();
+    }
   });
 
   it('returns valid static sitemap XML', async () => {
@@ -85,6 +100,7 @@ describe('/sitemap-static.xml — static urlset', () => {
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toMatch(/application\/xml/);
     expect(xml).toContain('<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">');
+    expect(xml).not.toContain('<lastmod>');
     expect(locs(xml)).toEqual([...STATIC_URLS]);
   });
 
