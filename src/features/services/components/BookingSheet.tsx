@@ -47,6 +47,20 @@ export function BookingSheet({ open, onOpenChange, provider, listing }: Props) {
     setError('');
   }, [open, listing.listing_id, listing.id]);
 
+  useEffect(() => {
+    if (!open) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onOpenChange(false);
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [open, onOpenChange]);
+
   const content = useMemo(() => {
     if (step === 0) return <BookingStepSlots draft={draft} dispatch={dispatch} />;
     if (step === 1) return <BookingStepContact draft={draft} dispatch={dispatch} />;
@@ -87,11 +101,17 @@ export function BookingSheet({ open, onOpenChange, provider, listing }: Props) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/38 px-0 md:items-center md:px-6">
-      <dialog
-        open
-        className="m-0 h-[90vh] w-full max-w-none overflow-hidden rounded-t-[18px] border-0 bg-white p-0 text-[var(--pv-ink)] shadow-[var(--pv-shadow-pop)] md:h-auto md:max-h-[88vh] md:max-w-[720px] md:rounded-[var(--pv-radius-lg)]"
+    <div
+      className="pv-pdp fixed inset-0 z-50 flex items-end justify-center bg-black/60 px-0 backdrop-blur-[2px] md:items-center md:px-6"
+      onClick={(event) => {
+        if (event.target === event.currentTarget) onOpenChange(false);
+      }}
+    >
+      <div
+        role="dialog"
         aria-modal="true"
+        aria-label={STEP_LABELS[step]}
+        className="relative flex h-[90vh] w-full max-w-none flex-col overflow-hidden rounded-t-[18px] bg-white text-[var(--pv-ink)] shadow-[var(--pv-shadow-pop)] md:h-auto md:max-h-[88vh] md:max-w-[720px] md:rounded-[var(--pv-radius-lg)]"
       >
         <div className="flex h-full flex-col">
           <div className="border-b border-[var(--pv-border)] px-4 pb-4 pt-3 md:px-6 md:pt-5">
@@ -156,7 +176,7 @@ export function BookingSheet({ open, onOpenChange, provider, listing }: Props) {
             </div>
           </div>
         </div>
-      </dialog>
+      </div>
     </div>
   );
 }
