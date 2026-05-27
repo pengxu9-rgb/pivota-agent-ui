@@ -6,14 +6,17 @@ import type { BookingDraftAction, BookingDraftState } from '@/features/services/
 type Props = {
   draft: BookingDraftState;
   dispatch: React.Dispatch<BookingDraftAction>;
-  airbnbEmail?: string | null;
+  /** Pre-verified email from the host app (Airbnb, Expedia, etc.) */
+  partnerEmail?: string | null;
+  /** Display name of the host app shown in the "Use my … verified contact" label */
+  partnerName?: string | null;
 };
 
 function isValidEmail(value: string): boolean {
   return !value || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 }
 
-export function BookingStepContact({ draft, dispatch, airbnbEmail }: Props) {
+export function BookingStepContact({ draft, dispatch, partnerEmail, partnerName }: Props) {
   const [emailTouched, setEmailTouched] = useState(false);
   const email = draft.contact.email || '';
   const phone = draft.contact.phone || '';
@@ -23,16 +26,18 @@ export function BookingStepContact({ draft, dispatch, airbnbEmail }: Props) {
     dispatch({ type: 'set_contact', contact: { ...draft.contact, ...patch } });
   };
 
+  const verifiedLabel = partnerName ? `Use my ${partnerName}-verified contact` : 'Use my verified contact';
+
   return (
     <div className="space-y-4">
-      {airbnbEmail ? (
+      {partnerEmail ? (
         <label className="flex items-center justify-between gap-3 rounded-[var(--pv-radius-lg)] bg-[var(--pv-tip-bg)] px-3 py-3 text-[12px] font-medium text-[var(--pv-tip-fg)]">
-          <span>Use my Airbnb-verified contact</span>
+          <span>{verifiedLabel}</span>
           <input
             type="checkbox"
             className="h-4 w-4 accent-[var(--pv-primary)]"
-            checked={email === airbnbEmail}
-            onChange={(event) => setContact({ email: event.target.checked ? airbnbEmail : '' })}
+            checked={email === partnerEmail}
+            onChange={(event) => setContact({ email: event.target.checked ? partnerEmail : '' })}
           />
         </label>
       ) : null}

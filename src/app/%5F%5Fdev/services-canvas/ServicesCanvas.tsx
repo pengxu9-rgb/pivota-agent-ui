@@ -170,7 +170,7 @@ export default function ServicesCanvas() {
         <CanvasSection title="Surface 2c · Booking steps">
           <div className="grid gap-4 lg:grid-cols-2">
             <div className="rounded-[var(--pv-radius-lg)] bg-[var(--pv-paper)] p-4"><BookingStepSlots draft={draft} dispatch={dispatch} /></div>
-            <div className="rounded-[var(--pv-radius-lg)] bg-[var(--pv-paper)] p-4"><BookingStepContact draft={draft} dispatch={dispatch} airbnbEmail="traveler@example.com" /></div>
+            <div className="rounded-[var(--pv-radius-lg)] bg-[var(--pv-paper)] p-4"><BookingStepContact draft={draft} dispatch={dispatch} partnerEmail="traveler@example.com" partnerName="Airbnb" /></div>
             <div className="rounded-[var(--pv-radius-lg)] bg-[var(--pv-paper)] p-4"><BookingStepNotes draft={draft} dispatch={dispatch} /></div>
             <div className="rounded-[var(--pv-radius-lg)] bg-[var(--pv-paper)] p-4"><BookingStepReview draft={draft} provider={provider} listing={consultListing || listing} /></div>
           </div>
