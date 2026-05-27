@@ -148,8 +148,10 @@ function buildJsonLdProduct(payload: PDPPayload): Record<string, any> {
 }
 
 async function fetchSeoulServicesForAnchor(product: PDPPayload['product']): Promise<ServiceCardData[]> {
+  const inferredTypes = inferAnchorServiceTypesFromProduct(product);
+  const primaryType = inferredTypes[0];
   const response = await getServicesBrowse({
-    service_type: inferAnchorServiceTypesFromProduct(product),
+    service_type: primaryType ? [primaryType] : undefined,
     limit: 3,
   });
 
@@ -303,26 +305,10 @@ export default async function ProductDetailPage(props: Props) {
     ? await fetchPdpForServerRender(productId, merchantId)
     : null;
   const beautyServicesEnabled = process.env.NEXT_PUBLIC_BEAUTY_SERVICES_RECS_ENABLED === '1';
-  const isBeauty = renderData ? isBeautyProduct(renderData.initialPayload.product) : false;
-  let serviceFetchError = '';
-  let serviceRecommendations: ServiceCardData[] = [];
-  if (renderData && beautyServicesEnabled && isBeauty) {
-    try {
-      serviceRecommendations = await fetchSeoulServicesForAnchor(renderData.initialPayload.product);
-    } catch (err) {
-      serviceFetchError = err instanceof Error ? `${err.name}:${err.message}` : String(err);
-    }
-  }
-  const debugServicesInfo = {
-    beautyServicesEnabled,
-    envRaw: process.env.NEXT_PUBLIC_BEAUTY_SERVICES_RECS_ENABLED || '(unset)',
-    isBeauty,
-    schemaProfile: renderData?.initialPayload.product?.pdp_schema_profile || '(none)',
-    serviceCount: serviceRecommendations.length,
-    serviceFetchError,
-    vercelUrl: process.env.VERCEL_URL || '(unset)',
-    nextPublicAppUrl: process.env.NEXT_PUBLIC_APP_URL || '(unset)',
-  };
+  const serviceRecommendations: ServiceCardData[] =
+    renderData && beautyServicesEnabled && isBeautyProduct(renderData.initialPayload.product)
+      ? await fetchSeoulServicesForAnchor(renderData.initialPayload.product).catch(() => [])
+      : [];
 
   const reviewsModule = renderData
     ? readPdpModule(renderData.initialPayload, 'reviews_preview')?.data || null
@@ -354,8 +340,6 @@ export default async function ProductDetailPage(props: Props) {
           dangerouslySetInnerHTML={{ __html: jsonLd }}
         />
       ) : null}
-      {/* TEMP-DEBUG: pivota-services-gate */}
-      <meta name="x-pivota-services-debug" content={JSON.stringify(debugServicesInfo)} />
       <ProductDetailClient
         key={JSON.stringify([productId || null, merchantId || null])}
         params={props.params}
