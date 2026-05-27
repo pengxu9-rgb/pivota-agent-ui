@@ -15,7 +15,7 @@ if (!process.env.SHOP_UPSTREAM_API_URL && !process.env.SERVICES_UPSTREAM_BASE) {
 }
 
 type RouteContext = {
-  params: Promise<{ path: string[] }>;
+  params: Promise<{ path?: string[] }>;
 };
 
 function getUpstreamBase(): string {
@@ -73,10 +73,10 @@ async function proxy(req: NextRequest, args: { upstreamBase: string; path: strin
 
 export async function GET(req: NextRequest, { params }: RouteContext) {
   const { path } = await params;
-  return proxy(req, { upstreamBase: getUpstreamBase(), path });
+  return proxy(req, { upstreamBase: getUpstreamBase(), path: path || [] });
 }
 
 export async function POST(req: NextRequest, { params }: RouteContext) {
   const { path } = await params;
-  return proxy(req, { upstreamBase: getUpstreamBase(), path });
+  return proxy(req, { upstreamBase: getUpstreamBase(), path: path || [] });
 }
