@@ -267,6 +267,7 @@ describe('getAllProducts browse routing', () => {
             product_id: 'ext_sig_backed',
             merchant_id: 'external_seed',
             pivota_signature_id: 'sig_canonical_product',
+            external_seed_id: 'eps_canonical_product',
             title: 'Canonical product',
             price: 24,
             currency: 'USD',
@@ -291,6 +292,52 @@ describe('getAllProducts browse routing', () => {
       'sig_canonical_product',
       'prod_internal_1',
     ]);
+  });
+
+  it('filters canonical external products that have no PDP source evidence', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      jsonResponse({
+        products: [
+          {
+            product_id: 'sig_no_seed_catalog_row',
+            merchant_id: 'external_seed',
+            platform: 'external',
+            external_seed_product_id: 'ext_no_seed_catalog_row',
+            title: 'Indexed but unservable product',
+            price: 24,
+            currency: 'USD',
+          },
+          {
+            product_id: 'sig_explicitly_blocked',
+            merchant_id: 'external_seed',
+            platform: 'external',
+            external_seed_product_id: 'ext_explicitly_blocked',
+            serving_eligible: false,
+            blocker_code: 'no_seed',
+            title: 'Explicitly blocked product',
+            price: 26,
+            currency: 'USD',
+          },
+          {
+            product_id: 'sig_seed_backed',
+            merchant_id: 'external_seed',
+            platform: 'external',
+            external_seed_product_id: 'ext_seed_backed',
+            external_seed_id: 'eps_seed_backed',
+            title: 'Seed-backed product',
+            price: 30,
+            currency: 'USD',
+          },
+        ],
+      }),
+    );
+
+    const result = await getShoppingDiscoveryFeed({
+      surface: 'home_hot_deals',
+      limit: 6,
+    });
+
+    expect(result.products.map((product) => product.product_id)).toEqual(['sig_seed_backed']);
   });
 
   it('times out shopping discovery feed requests instead of hanging indefinitely', async () => {
@@ -496,6 +543,7 @@ describe('getAllProducts browse routing', () => {
             product_id: 'ext_sig_backed_similar',
             merchant_id: 'external_seed',
             pivota_signature_id: 'sig_similar_canonical',
+            external_seed_id: 'eps_similar_canonical',
             title: 'Canonical similar',
             price: { amount: 28, currency: 'USD' },
           },
