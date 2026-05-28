@@ -102,6 +102,8 @@ export type GenericPDPMobileProps = {
   brandHref?: string | null;
   // buy bar
   buyNowLabel?: string;
+  isExternalPurchase: boolean;
+  externalRetailerLabel?: string | null;
   inStock: boolean;
   onQtyChange: (next: number) => void;
   onAddToCart: () => void;
@@ -323,6 +325,8 @@ export function GenericPDPMobile(props: GenericPDPMobileProps) {
           quantity={props.quantity}
           disabled={!props.inStock}
           buyNowLabel={props.buyNowLabel}
+          isExternalPurchase={props.isExternalPurchase}
+          externalRetailerLabel={props.externalRetailerLabel}
           onQtyChange={props.onQtyChange}
           onAddToCart={props.onAddToCart}
           onBuyNow={props.onBuyNow}

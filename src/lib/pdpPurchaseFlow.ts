@@ -119,7 +119,7 @@ export function buildExternalRedirectNotice(url: string): string {
   }
 }
 
-function isExternalOfferRoute(offer: unknown): boolean {
+export function isExternalOfferRoute(offer: unknown): boolean {
   if (!offer || typeof offer !== 'object') return false;
   const typed = offer as any;
   const purchaseRoute = String(typed.purchase_route || typed.purchaseRoute || '').trim().toLowerCase();

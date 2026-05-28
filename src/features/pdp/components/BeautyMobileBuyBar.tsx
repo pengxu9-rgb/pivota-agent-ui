@@ -1,5 +1,6 @@
 'use client';
 
+import { ExternalLink } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 /**
@@ -23,6 +24,8 @@ export function BeautyMobileBuyBar({
   onBuyNow,
   disabled = false,
   buyNowLabel = 'Buy now',
+  isExternalPurchase = false,
+  externalRetailerLabel,
 }: {
   unitPrice: number;
   shippingCost?: number;
@@ -33,6 +36,8 @@ export function BeautyMobileBuyBar({
   onBuyNow: () => void;
   disabled?: boolean;
   buyNowLabel?: string;
+  isExternalPurchase?: boolean;
+  externalRetailerLabel?: string | null;
 }) {
   const itemsSubtotal = Math.max(0, unitPrice) * Math.max(1, quantity);
   const total = itemsSubtotal + Math.max(0, shippingCost || 0);
@@ -46,6 +51,8 @@ export function BeautyMobileBuyBar({
   } catch {
     formattedTotal = `$${total.toFixed(0)}`;
   }
+  const retailerLabel = String(externalRetailerLabel || '').trim();
+  const externalCtaLabel = `View at ${retailerLabel || 'retailer'}`;
 
   return (
     <div
@@ -82,39 +89,52 @@ export function BeautyMobileBuyBar({
         </button>
       </div>
 
-      {/* Add-to-bag icon button — 44×44, white with foreground hairline + corner + */}
-      <button
-        type="button"
-        onClick={onAddToCart}
-        disabled={disabled}
-        aria-label="Add to bag"
-        className="relative flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full border-[1.5px] border-foreground bg-white text-foreground disabled:opacity-50"
-      >
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z" />
-          <line x1="3" y1="6" x2="21" y2="6" />
-          <path d="M16 10a4 4 0 0 1-8 0" />
-        </svg>
-        <span
-          aria-hidden="true"
-          className="absolute bottom-1.5 right-1.5 flex h-[13px] w-[13px] items-center justify-center rounded-full bg-foreground text-[10px] font-bold leading-none text-white"
+      {!isExternalPurchase ? (
+        <button
+          type="button"
+          onClick={onAddToCart}
+          disabled={disabled}
+          aria-label="Add to bag"
+          className="relative flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full border-[1.5px] border-foreground bg-white text-foreground disabled:opacity-50"
         >
-          +
-        </span>
-      </button>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z" />
+            <line x1="3" y1="6" x2="21" y2="6" />
+            <path d="M16 10a4 4 0 0 1-8 0" />
+          </svg>
+          <span
+            aria-hidden="true"
+            className="absolute bottom-1.5 right-1.5 flex h-[13px] w-[13px] items-center justify-center rounded-full bg-foreground text-[10px] font-bold leading-none text-white"
+          >
+            +
+          </span>
+        </button>
+      ) : null}
 
-      {/* Buy now — brand gradient CTA per reference §06 */}
+      {/* Primary commit CTA */}
       <button
         type="button"
         onClick={onBuyNow}
         disabled={disabled}
+        aria-label={isExternalPurchase ? `${externalCtaLabel} · ${formattedTotal}` : undefined}
         className={cn(
-          'flex h-11 flex-1 items-center justify-center gap-1.5 rounded-full text-[14px] font-semibold text-white shadow-md',
+          'flex h-11 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-full text-[14px] font-semibold text-white',
+          isExternalPurchase
+            ? 'border border-foreground bg-foreground shadow-sm hover:bg-foreground/90'
+            : 'shadow-md',
           'disabled:opacity-50',
         )}
-        style={{ background: 'var(--pv-gradient-primary, linear-gradient(135deg, #534AB7 0%, #7B6FD4 50%, #1D9E75 100%))' }}
+        style={isExternalPurchase ? undefined : { background: 'var(--pv-gradient-primary, linear-gradient(135deg, #534AB7 0%, #7B6FD4 50%, #1D9E75 100%))' }}
       >
-        {buyNowLabel} · {formattedTotal}
+        {isExternalPurchase ? (
+          <>
+            <span className="min-w-0 truncate">{externalCtaLabel}</span>
+            <span className="shrink-0">· {formattedTotal}</span>
+            <ExternalLink className="h-4 w-4 shrink-0" aria-hidden="true" />
+          </>
+        ) : (
+          `${buyNowLabel} · ${formattedTotal}`
+        )}
       </button>
     </div>
   );

@@ -76,7 +76,7 @@ function isIdLikeMerchantName(value: string): boolean {
   return false;
 }
 
-function displayMerchantLabel(offer: Offer): string {
+export function displayMerchantLabel(offer: Offer): string {
   const name = String(offer.merchant_name || '').trim();
   if (name && !isIdLikeMerchantName(name)) return name;
   const id = String(offer.merchant_id || '').trim();

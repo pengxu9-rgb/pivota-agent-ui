@@ -101,6 +101,8 @@ export function GenericPDPDesktop(props: GenericPDPMobileProps) {
               quantity={props.quantity}
               disabled={!props.inStock}
               buyNowLabel={props.buyNowLabel}
+              isExternalPurchase={props.isExternalPurchase}
+              externalRetailerLabel={props.externalRetailerLabel}
               onQtyChange={props.onQtyChange}
               onAddToCart={props.onAddToCart}
               onBuyNow={props.onBuyNow}
