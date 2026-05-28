@@ -78,14 +78,96 @@ function clampSearchLimit(value: unknown, fallback: number): number {
   return Math.max(1, Math.min(Math.floor(n), SEARCH_LIMIT_MAX));
 }
 
-function isUiLinkableProduct(product: ProductResponse | RecommendationsData['items'][number] | null | undefined): boolean {
-  return Boolean(product) && !isExternalAliasOnlyProduct(product as any);
+function readNestedBoolean(value: any, path: string[]): boolean | null {
+  let current = value;
+  for (const key of path) {
+    if (!current || typeof current !== 'object') return null;
+    current = current[key];
+  }
+  return typeof current === 'boolean' ? current : null;
+}
+
+function isTruthyServingEvidence(value: unknown): boolean {
+  if (value == null) return false;
+  if (typeof value === 'string') return value.trim().length > 0;
+  if (typeof value === 'object') {
+    if (Array.isArray(value)) return value.length > 0;
+    return Object.keys(value as Record<string, unknown>).length > 0;
+  }
+  return Boolean(value);
+}
+
+function isExternalSeedCatalogProduct(raw: any, product: ProductResponse | RecommendationsData['items'][number]): boolean {
+  const merchantId = String((raw?.merchant_id ?? (product as any)?.merchant_id) || '').trim().toLowerCase();
+  const source = String((raw?.source ?? (product as any)?.source) || '').trim().toLowerCase();
+  const platform = String((raw?.platform ?? (product as any)?.platform) || '').trim().toLowerCase();
+  const sourceProductId = String(
+    raw?.source_product_id ||
+      raw?.external_product_id ||
+      raw?.external_seed_product_id ||
+      raw?.platform_product_id ||
+      (product as any)?.source_product_id ||
+      '',
+  ).trim().toLowerCase();
+  return (
+    merchantId === 'external_seed' ||
+    source === 'external_seed' ||
+    platform === 'external' ||
+    platform === 'external_seed' ||
+    sourceProductId.startsWith('ext_') ||
+    sourceProductId.startsWith('ext:')
+  );
+}
+
+function hasExternalSeedPdpSourceEvidence(raw: any): boolean {
+  return [
+    raw?.external_seed_id,
+    raw?.seed_id,
+    raw?.external_redirect_url,
+    raw?.action?.redirect_url,
+    raw?.seed_data,
+    raw?.external_seed_recall,
+  ].some(isTruthyServingEvidence);
+}
+
+function isKnownUnservableProduct(raw: any, product: ProductResponse | RecommendationsData['items'][number]): boolean {
+  const servingSignals = [
+    typeof raw?.serving_eligible === 'boolean' ? raw.serving_eligible : null,
+    typeof raw?.is_serving_eligible === 'boolean' ? raw.is_serving_eligible : null,
+    readNestedBoolean(raw, ['index_pipeline_state', 'serving_eligible']),
+    readNestedBoolean(raw, ['pipeline_state', 'serving_eligible']),
+  ].filter((value): value is boolean => value !== null);
+  if (servingSignals.includes(false)) return true;
+
+  const blocker = String(raw?.blocker_code || raw?.reason || raw?.details?.reason || '').trim().toLowerCase();
+  if (blocker === 'no_seed' || blocker === 'serving_eligibility_missing') return true;
+
+  if (!isExternalSeedCatalogProduct(raw, product)) return false;
+  if (hasExternalSeedPdpSourceEvidence(raw)) return false;
+
+  const productId = String((product as any)?.product_id || raw?.product_id || raw?.pivota_signature_id || '').trim().toLowerCase();
+  const signatureId = String(raw?.pivota_signature_id || (product as any)?.pivota_signature_id || '').trim().toLowerCase();
+  const hasCanonicalSig = productId.startsWith('sig_') || signatureId.startsWith('sig_');
+  return hasCanonicalSig;
+}
+
+function isUiLinkableProduct(
+  product: ProductResponse | RecommendationsData['items'][number] | null | undefined,
+  rawProduct?: unknown,
+): boolean {
+  if (!product) return false;
+  if (isExternalAliasOnlyProduct(product as any)) return false;
+  return !isKnownUnservableProduct(rawProduct || product, product);
 }
 
 function normalizeUiProductList(products: unknown): ProductResponse[] {
   return (Array.isArray(products) ? products : [])
-    .map((p: RealAPIProduct | ProductResponse) => normalizeProduct(p))
-    .filter((product) => isUiLinkableProduct(product));
+    .map((p: RealAPIProduct | ProductResponse) => ({
+      raw: p,
+      product: normalizeProduct(p),
+    }))
+    .filter(({ raw, product }) => isUiLinkableProduct(product, raw))
+    .map(({ product }) => product);
 }
 
 type ApiError = Error & { code?: string; status?: number; detail?: any };
@@ -2995,7 +3077,7 @@ export async function getSimilarProductsMainline(args: {
     args.timeout_ms,
   );
 
-  const rawProducts = Array.isArray((data as any)?.products) ? (data as any).products : [];
+  const rawProducts: any[] = Array.isArray((data as any)?.products) ? (data as any).products : [];
   const metadata = normalizeRecommendationsMetadata((data as any)?.metadata);
   const pageRaw = Number((data as any)?.page);
   const pageSizeRaw = Number((data as any)?.page_size);
@@ -3010,11 +3092,14 @@ export async function getSimilarProductsMainline(args: {
   return {
     strategy: String((data as any)?.strategy || 'related_products').trim() || 'related_products',
     items: rawProducts
-      .map((item: any) => normalizeRecommendationItem(item))
+      .map((raw: any) => ({ raw, item: normalizeRecommendationItem(raw) }))
       .filter(
-        (item: RecommendationsData['items'][number] | null): item is RecommendationsData['items'][number] =>
-          isUiLinkableProduct(item),
-      ),
+        (entry: { raw: any; item: RecommendationsData['items'][number] | null }): entry is {
+          raw: any;
+          item: RecommendationsData['items'][number];
+        } => isUiLinkableProduct(entry.item, entry.raw),
+      )
+      .map((entry) => entry.item),
     metadata,
     page_info: {
       page: Number.isFinite(pageRaw) && pageRaw > 0 ? Math.floor(pageRaw) : 1,
