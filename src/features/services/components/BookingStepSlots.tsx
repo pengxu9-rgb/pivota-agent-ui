@@ -8,6 +8,10 @@ import type { SlotChoice } from '@/features/services/lib/types';
 
 const TIMES = ['11:00', '13:30', '15:00', '17:30', '19:00'];
 
+// Backend requires the requested slot to be at least 60 minutes out. Add a
+// small buffer so a slot can't go stale between selection and submit.
+const MIN_LEAD_MS = 75 * 60 * 1000;
+
 function addDays(date: Date, days: number): Date {
   const next = new Date(date);
   next.setDate(next.getDate() + days);
@@ -22,6 +26,12 @@ function nextDays(): Date[] {
   return Array.from({ length: 14 }, (_, index) => addDays(new Date(), index));
 }
 
+// Slots are KST wall-clock; pin to +09:00 to compare against now.
+function slotTimestamp(date: string, time: string): number {
+  const t = time.length === 5 ? `${time}:00` : time;
+  return new Date(`${date}T${t}+09:00`).getTime();
+}
+
 function slotLabel(slot: SlotChoice): string {
   return `${slot.date} · ${formatKST(slot.time)}`;
 }
@@ -33,7 +43,10 @@ type Props = {
 
 export function BookingStepSlots({ draft, dispatch }: Props) {
   const days = nextDays();
-  const selectedDate = draft.preferred.date || toIsoDay(days[0]);
+  const minTimestamp = Date.now() + MIN_LEAD_MS;
+  const dayHasValidTime = (value: string) => TIMES.some((time) => slotTimestamp(value, time) >= minTimestamp);
+  const firstBookableDay = days.find((day) => dayHasValidTime(toIsoDay(day))) || days[0];
+  const selectedDate = draft.preferred.date || toIsoDay(firstBookableDay);
 
   const setPreferred = (patch: Partial<SlotChoice>) => {
     dispatch({
@@ -67,16 +80,20 @@ export function BookingStepSlots({ draft, dispatch }: Props) {
           {days.map((day) => {
             const value = toIsoDay(day);
             const active = (draft.preferred.date || selectedDate) === value;
+            const dayDisabled = !dayHasValidTime(value);
             return (
               <button
                 key={value}
                 type="button"
+                disabled={dayDisabled}
                 onClick={() => setPreferred({ date: value })}
                 className={cn(
                   'shrink-0 rounded-full border px-3 py-2 text-[12px] font-semibold transition-colors',
-                  active
-                    ? 'border-[1.5px] border-[var(--pv-primary)] bg-[var(--pv-primary-50)] text-[var(--pv-primary)]'
-                    : 'border-[var(--pv-border)] bg-white text-[var(--pv-ink-60)]',
+                  dayDisabled
+                    ? 'cursor-not-allowed border-[var(--pv-border)] bg-[var(--pv-paper-muted)] text-[var(--pv-ink-45)] opacity-50'
+                    : active
+                      ? 'border-[1.5px] border-[var(--pv-primary)] bg-[var(--pv-primary-50)] text-[var(--pv-primary)]'
+                      : 'border-[var(--pv-border)] bg-white text-[var(--pv-ink-60)]',
                 )}
               >
                 {formatDateChip(day)}
@@ -91,14 +108,20 @@ export function BookingStepSlots({ draft, dispatch }: Props) {
         <div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-5">
           {TIMES.map((time) => {
             const active = draft.preferred.time === time;
+            const timeDisabled = slotTimestamp(selectedDate, time) < minTimestamp;
             return (
               <button
                 key={time}
                 type="button"
+                disabled={timeDisabled}
                 onClick={() => setPreferred({ date: draft.preferred.date || selectedDate, time })}
                 className={cn(
                   'h-10 rounded-full text-[12px] font-semibold transition-colors',
-                  active ? 'bg-[var(--pv-ink)] text-white' : 'border border-[var(--pv-border)] bg-white text-[var(--pv-ink)]',
+                  timeDisabled
+                    ? 'cursor-not-allowed border border-[var(--pv-border)] bg-[var(--pv-paper-muted)] text-[var(--pv-ink-45)] opacity-50'
+                    : active
+                      ? 'bg-[var(--pv-ink)] text-white'
+                      : 'border border-[var(--pv-border)] bg-white text-[var(--pv-ink)]',
                 )}
               >
                 {formatKST(time)}
