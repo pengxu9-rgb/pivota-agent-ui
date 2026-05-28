@@ -47,6 +47,34 @@ export function BookingSheet({ open, onOpenChange, provider, listing }: Props) {
     setError('');
   }, [open, listing.listing_id, listing.id]);
 
+  useEffect(() => {
+    if (!open) return;
+    const scrollY = window.scrollY;
+    const body = document.body;
+    const previous = {
+      position: body.style.position,
+      top: body.style.top,
+      width: body.style.width,
+      overflow: body.style.overflow,
+    };
+    body.style.position = 'fixed';
+    body.style.top = `-${scrollY}px`;
+    body.style.width = '100%';
+    body.style.overflow = 'hidden';
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onOpenChange(false);
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      body.style.position = previous.position;
+      body.style.top = previous.top;
+      body.style.width = previous.width;
+      body.style.overflow = previous.overflow;
+      window.scrollTo(0, scrollY);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [open, onOpenChange]);
+
   const content = useMemo(() => {
     if (step === 0) return <BookingStepSlots draft={draft} dispatch={dispatch} />;
     if (step === 1) return <BookingStepContact draft={draft} dispatch={dispatch} />;
@@ -87,13 +115,19 @@ export function BookingSheet({ open, onOpenChange, provider, listing }: Props) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/38 px-0 md:items-center md:px-6">
-      <dialog
-        open
-        className="m-0 h-[90vh] w-full max-w-none overflow-hidden rounded-t-[18px] border-0 bg-white p-0 text-[var(--pv-ink)] shadow-[var(--pv-shadow-pop)] md:h-auto md:max-h-[88vh] md:max-w-[720px] md:rounded-[var(--pv-radius-lg)]"
+    <div
+      className="pv-pdp fixed inset-0 z-50 flex items-end justify-center bg-black/60 px-0 backdrop-blur-[2px] md:items-center md:px-6"
+      onClick={(event) => {
+        if (event.target === event.currentTarget) onOpenChange(false);
+      }}
+    >
+      <div
+        role="dialog"
         aria-modal="true"
+        aria-label={STEP_LABELS[step]}
+        className="relative flex h-[90dvh] w-full max-w-none flex-col overflow-hidden rounded-t-[18px] bg-white text-[var(--pv-ink)] shadow-[var(--pv-shadow-pop)] md:h-auto md:max-h-[88dvh] md:max-w-[720px] md:rounded-[var(--pv-radius-lg)]"
       >
-        <div className="flex h-full flex-col">
+        <div className="flex min-h-0 flex-1 flex-col">
           <div className="border-b border-[var(--pv-border)] px-4 pb-4 pt-3 md:px-6 md:pt-5">
             <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-[var(--pv-border-strong)] md:hidden" />
             <div className="flex items-start gap-3">
@@ -128,7 +162,7 @@ export function BookingSheet({ open, onOpenChange, provider, listing }: Props) {
             </div>
           </div>
 
-          <div className="min-h-0 flex-1 overflow-y-auto bg-[var(--pv-paper)] px-4 py-5 md:px-6">
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain bg-[var(--pv-paper)] px-4 py-5 md:px-6">
             {content}
           </div>
 
@@ -156,7 +190,7 @@ export function BookingSheet({ open, onOpenChange, provider, listing }: Props) {
             </div>
           </div>
         </div>
-      </dialog>
+      </div>
     </div>
   );
 }

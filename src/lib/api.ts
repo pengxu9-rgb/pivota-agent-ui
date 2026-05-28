@@ -18,6 +18,7 @@ import type {
   ServicesBrowseQuery,
   ServicesBrowseResponse,
   ServiceType,
+  SlotChoice,
 } from '@/features/services/lib/types'
 
 export type {
@@ -3826,6 +3827,15 @@ function validateServicesBrowseQuery(query: ServicesBrowseQuery): ServicesBrowse
   };
 }
 
+function resolveServicesUrl(path: string): string {
+  if (typeof window !== 'undefined') return path;
+  const explicit = (process.env.NEXT_PUBLIC_APP_URL || '').trim().replace(/\/+$/, '');
+  if (/^https?:\/\//.test(explicit)) return `${explicit}${path}`;
+  const vercel = (process.env.VERCEL_URL || '').trim().replace(/\/+$/, '');
+  if (vercel) return `https://${vercel}${path}`;
+  return `https://agent.pivota.cc${path}`;
+}
+
 export async function getServicesBrowse(query: ServicesBrowseQuery): Promise<ServicesBrowseResponse> {
   validateServicesBrowseQuery(query || {});
   const params = new URLSearchParams();
@@ -3838,7 +3848,7 @@ export async function getServicesBrowse(query: ServicesBrowseQuery): Promise<Ser
   if (query.offset != null) params.set('offset', String(query.offset));
   if (query.limit != null) params.set('limit', String(query.limit));
   const qs = params.toString();
-  const res = await fetch(`/api/services${qs ? `?${qs}` : ''}`, { cache: 'no-store' });
+  const res = await fetch(resolveServicesUrl(`/api/services${qs ? `?${qs}` : ''}`), { cache: 'no-store' });
   if (!res.ok) throw new Error(`services browse failed: ${res.status}`);
   const data = await res.json();
   return {
@@ -3851,10 +3861,38 @@ export async function getServicesBrowse(query: ServicesBrowseQuery): Promise<Ser
 
 export async function getServiceProvider(provider_id: string): Promise<{ provider: Provider; usd_per_won_rate?: number }> {
   assertNonEmptyString(provider_id, 'provider_id');
-  const res = await fetch(`/api/services/providers/${encodeURIComponent(provider_id)}`, { cache: 'no-store' });
+  const res = await fetch(resolveServicesUrl(`/api/services/providers/${encodeURIComponent(provider_id)}`), { cache: 'no-store' });
   if (!res.ok) throw new Error(`provider fetch failed: ${res.status}`);
   const data = await res.json();
   return { provider: data.provider, usd_per_won_rate: data.usd_per_won_rate };
+}
+
+function randomId(prefix: string): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+  return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+// Persisted per-browser guest identity so anonymous travelers can submit and
+// later look up their own bookings without an account.
+function getGuestUserId(): string {
+  if (typeof window === 'undefined') return randomId('guest');
+  const KEY = 'pivota_services_guest_uid';
+  try {
+    const existing = window.localStorage.getItem(KEY);
+    if (existing) return existing;
+    const next = randomId('guest');
+    window.localStorage.setItem(KEY, next);
+    return next;
+  } catch {
+    return randomId('guest');
+  }
+}
+
+// Slots are Seoul wall-clock times; pin them to KST (+09:00) so the backend's
+// ISO-8601 parse is unambiguous regardless of where the request originates.
+function slotToKstIso(slot: SlotChoice): string {
+  const time = slot.time.length === 5 ? `${slot.time}:00` : slot.time;
+  return `${slot.date}T${time}+09:00`;
 }
 
 export async function submitServiceBooking(request: BookingRequest): Promise<{ booking_id: string; status: BookingStatus }> {
@@ -3864,19 +3902,34 @@ export async function submitServiceBooking(request: BookingRequest): Promise<{ b
   if (!request?.contact?.email && !request?.contact?.phone) {
     throw new Error('email or phone is required');
   }
-  const res = await fetch('/api/services/bookings', {
+  const body = {
+    listing_id: request.listing_id,
+    user_id: getGuestUserId(),
+    idempotency_key: randomId('idem'),
+    requested_slot: slotToKstIso(request.preferred),
+    alternate_slots: (request.alternates || []).map(slotToKstIso),
+    contact_email: request.contact.email || undefined,
+    contact_phone: request.contact.phone || undefined,
+    notes: request.notes || undefined,
+  };
+  const res = await fetch(resolveServicesUrl('/api/services/bookings'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(request),
+    body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(`booking submit failed: ${res.status}`);
+  if (!res.ok) {
+    const errData = await res.json().catch(() => null);
+    throw new Error(errData?.error ? `booking submit failed: ${errData.error}` : `booking submit failed: ${res.status}`);
+  }
   const data = await res.json();
   return { booking_id: data.booking_id, status: data.status };
 }
 
 export async function getServiceBooking(booking_id: string): Promise<ServiceBooking> {
   assertNonEmptyString(booking_id, 'booking_id');
-  const res = await fetch(`/api/services/bookings/${encodeURIComponent(booking_id)}`, { cache: 'no-store' });
+  const userId = typeof window !== 'undefined' ? getGuestUserId() : '';
+  const qs = userId ? `?user_id=${encodeURIComponent(userId)}` : '';
+  const res = await fetch(resolveServicesUrl(`/api/services/bookings/${encodeURIComponent(booking_id)}${qs}`), { cache: 'no-store' });
   if (!res.ok) throw new Error(`booking fetch failed: ${res.status}`);
   return res.json();
 }

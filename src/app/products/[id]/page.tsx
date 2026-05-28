@@ -148,8 +148,10 @@ function buildJsonLdProduct(payload: PDPPayload): Record<string, any> {
 }
 
 async function fetchSeoulServicesForAnchor(product: PDPPayload['product']): Promise<ServiceCardData[]> {
+  const inferredTypes = inferAnchorServiceTypesFromProduct(product);
+  const primaryType = inferredTypes[0];
   const response = await getServicesBrowse({
-    service_type: inferAnchorServiceTypesFromProduct(product),
+    service_type: primaryType ? [primaryType] : undefined,
     limit: 3,
   });
 
@@ -303,7 +305,7 @@ export default async function ProductDetailPage(props: Props) {
     ? await fetchPdpForServerRender(productId, merchantId)
     : null;
   const beautyServicesEnabled = process.env.NEXT_PUBLIC_BEAUTY_SERVICES_RECS_ENABLED === '1';
-  const serviceRecommendations =
+  const serviceRecommendations: ServiceCardData[] =
     renderData && beautyServicesEnabled && isBeautyProduct(renderData.initialPayload.product)
       ? await fetchSeoulServicesForAnchor(renderData.initialPayload.product).catch(() => [])
       : [];
