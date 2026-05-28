@@ -3943,19 +3943,20 @@ export async function getServiceBooking(booking_id: string): Promise<ServiceBook
   if (!res.ok) throw new Error(`booking fetch failed: ${res.status}`);
   const row = await res.json();
 
-  // The booking row is flat (provider_id/listing_id, requested_slot, contact_email).
-  // Enrich it into the nested ServiceBooking shape the confirmation UI renders.
-  let provider: Provider | undefined;
-  let listing: ServiceListing | undefined;
-  try {
-    const providerResp = await getServiceProvider(row.provider_id);
-    provider = providerResp.provider;
-    const listings = getProviderListings(provider);
-    listing = listings.find((l) => (l.listing_id || l.id) === row.listing_id) || listings[0];
-  } catch (err) {
-    throw new Error(`booking provider enrich failed (provider_id=${row.provider_id}): ${err instanceof Error ? err.message : String(err)}`);
+  // Backend now nests provider + listing in the booking response (single fetch).
+  // Fall back to a separate provider fetch only if an older backend omits them.
+  let provider: Provider | undefined = row.provider || undefined;
+  let listing: ServiceListing | undefined = row.listing || undefined;
+  if (!provider) {
+    try {
+      const providerResp = await getServiceProvider(row.provider_id);
+      provider = providerResp.provider;
+      const listings = getProviderListings(provider);
+      listing = listings.find((l) => (l.listing_id || l.id) === row.listing_id) || listings[0];
+    } catch {
+      // Provider lookup failed; render with whatever we have.
+    }
   }
-  if (!provider) throw new Error(`booking provider missing (provider_id=${row.provider_id})`);
 
   return {
     booking_id: row.booking_id,

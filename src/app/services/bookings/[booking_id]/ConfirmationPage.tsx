@@ -196,8 +196,6 @@ export default function ConfirmationPage({ bookingId }: { bookingId: string }) {
       <div className="pv-pdp flex min-h-screen items-center justify-center bg-[var(--pv-paper)] px-6 text-center">
         <div>
           <h1 className="text-[20px] font-semibold text-[var(--pv-ink)]">Booking unavailable.</h1>
-          {/* TEMP-DEBUG */}
-          <pre className="mx-auto mt-3 max-w-md overflow-auto rounded bg-black/5 p-2 text-left text-[10px]">{`error=${error || '(none)'}\nbookingId=${bookingId}`}</pre>
           <Link href="/services" className="mt-5 inline-flex rounded-full bg-[var(--pv-ink)] px-4 py-2 text-[12px] font-semibold text-white">
             Browse Seoul services
           </Link>
