@@ -125,9 +125,9 @@ export function BookingSheet({ open, onOpenChange, provider, listing }: Props) {
         role="dialog"
         aria-modal="true"
         aria-label={STEP_LABELS[step]}
-        className="relative flex h-[90vh] w-full max-w-none flex-col overflow-hidden rounded-t-[18px] bg-white text-[var(--pv-ink)] shadow-[var(--pv-shadow-pop)] md:h-auto md:max-h-[88vh] md:max-w-[720px] md:rounded-[var(--pv-radius-lg)]"
+        className="relative flex h-[90dvh] w-full max-w-none flex-col overflow-hidden rounded-t-[18px] bg-white text-[var(--pv-ink)] shadow-[var(--pv-shadow-pop)] md:h-auto md:max-h-[88dvh] md:max-w-[720px] md:rounded-[var(--pv-radius-lg)]"
       >
-        <div className="flex h-full flex-col">
+        <div className="flex min-h-0 flex-1 flex-col">
           <div className="border-b border-[var(--pv-border)] px-4 pb-4 pt-3 md:px-6 md:pt-5">
             <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-[var(--pv-border-strong)] md:hidden" />
             <div className="flex items-start gap-3">
