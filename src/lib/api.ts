@@ -15,11 +15,13 @@ import type {
   BookingStatus,
   Provider,
   ServiceBooking,
+  ServiceListing,
   ServicesBrowseQuery,
   ServicesBrowseResponse,
   ServiceType,
   SlotChoice,
 } from '@/features/services/lib/types'
+import { getProviderListings } from '@/features/services/lib/types'
 
 export type {
   BookingContact,
@@ -3925,11 +3927,46 @@ export async function submitServiceBooking(request: BookingRequest): Promise<{ b
   return { booking_id: data.booking_id, status: data.status };
 }
 
+// Backend returns ISO-8601 (KST-pinned); convert back to the {date,time}
+// wall-clock pair the UI renders.
+function kstIsoToSlot(iso: string): SlotChoice {
+  const shifted = new Date(new Date(iso).getTime() + 9 * 60 * 60 * 1000);
+  const out = shifted.toISOString();
+  return { date: out.slice(0, 10), time: out.slice(11, 16) };
+}
+
 export async function getServiceBooking(booking_id: string): Promise<ServiceBooking> {
   assertNonEmptyString(booking_id, 'booking_id');
   const userId = typeof window !== 'undefined' ? getGuestUserId() : '';
   const qs = userId ? `?user_id=${encodeURIComponent(userId)}` : '';
   const res = await fetch(resolveServicesUrl(`/api/services/bookings/${encodeURIComponent(booking_id)}${qs}`), { cache: 'no-store' });
   if (!res.ok) throw new Error(`booking fetch failed: ${res.status}`);
-  return res.json();
+  const row = await res.json();
+
+  // The booking row is flat (provider_id/listing_id, requested_slot, contact_email).
+  // Enrich it into the nested ServiceBooking shape the confirmation UI renders.
+  let provider: Provider | undefined;
+  let listing: ServiceListing | undefined;
+  try {
+    const providerResp = await getServiceProvider(row.provider_id);
+    provider = providerResp.provider;
+    const listings = getProviderListings(provider);
+    listing = listings.find((l) => (l.listing_id || l.id) === row.listing_id) || listings[0];
+  } catch {
+    // Provider lookup failed; render with whatever we have.
+  }
+
+  return {
+    booking_id: row.booking_id,
+    status: row.status,
+    provider: provider as Provider,
+    listing: listing as ServiceListing,
+    preferred: row.requested_slot ? kstIsoToSlot(row.requested_slot) : { date: '', time: '' },
+    alternates: Array.isArray(row.alternate_slots) ? row.alternate_slots.map(kstIsoToSlot) : [],
+    contact: { email: row.contact_email || undefined, phone: row.contact_phone || undefined },
+    notes: row.notes || undefined,
+    requested_at: row.created_at,
+    expires_at: row.expires_at,
+    usd_per_won_rate: provider?.usd_per_won_rate,
+  };
 }
