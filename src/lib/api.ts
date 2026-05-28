@@ -3952,9 +3952,10 @@ export async function getServiceBooking(booking_id: string): Promise<ServiceBook
     provider = providerResp.provider;
     const listings = getProviderListings(provider);
     listing = listings.find((l) => (l.listing_id || l.id) === row.listing_id) || listings[0];
-  } catch {
-    // Provider lookup failed; render with whatever we have.
+  } catch (err) {
+    throw new Error(`booking provider enrich failed (provider_id=${row.provider_id}): ${err instanceof Error ? err.message : String(err)}`);
   }
+  if (!provider) throw new Error(`booking provider missing (provider_id=${row.provider_id})`);
 
   return {
     booking_id: row.booking_id,
