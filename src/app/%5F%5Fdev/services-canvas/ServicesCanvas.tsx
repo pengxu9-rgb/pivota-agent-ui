@@ -132,7 +132,7 @@ export default function ServicesCanvas() {
 
         <CanvasSection title="Surface 2a · Browse results">
           <div className="mb-4 rounded-[var(--pv-radius-lg)] bg-[var(--pv-tip-bg)] px-3 py-3 text-[11.5px] font-medium text-[var(--pv-tip-fg)]">
-            Pilot · Seoul Gangnam-gu. Requests are routed via KakaoTalk; providers typically confirm within 24h. No deposit charged.
+            Pilot · Seoul Gangnam-gu. Pivota sends your request to the provider; they typically confirm within 24h on your preferred messenger. No deposit charged.
           </div>
           <div className="grid gap-4 md:grid-cols-3">
             {MOCK_PROVIDERS.map((item) => (

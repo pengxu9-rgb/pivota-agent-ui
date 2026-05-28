@@ -49,10 +49,10 @@ export function BookingStepReview({ draft, provider, listing, usdRate }: Props) 
       <div className="rounded-[var(--pv-radius-lg)] bg-[var(--pv-tip-bg)] px-4 py-3 text-[12px] leading-relaxed text-[var(--pv-tip-fg)]">
         <div className="font-semibold">What happens next</div>
         <ol className="mt-2 list-decimal space-y-1 pl-4">
-          <li>Pivota sends your request via KakaoTalk.</li>
+          <li>Pivota sends your request to the provider.</li>
           <li>The provider has a 24h reply window.</li>
           <li>Your request expires or confirms.</li>
-          <li>Pivota notifies you at the contact above.</li>
+          <li>You&apos;ll hear back on the messenger you provided above.</li>
         </ol>
       </div>
     </div>

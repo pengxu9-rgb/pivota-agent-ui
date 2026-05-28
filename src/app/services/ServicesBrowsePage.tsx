@@ -174,7 +174,7 @@ export default function ServicesBrowsePage() {
 
       <main className="mx-auto max-w-[1180px] px-4 pb-16 md:px-6">
         <div className="my-4 rounded-[var(--pv-radius-lg)] bg-[var(--pv-tip-bg)] px-3 py-3 text-[11.5px] font-medium leading-relaxed text-[var(--pv-tip-fg)]">
-          Pilot · Seoul Gangnam-gu. Requests are routed via KakaoTalk; providers typically confirm within 24h. No deposit charged.
+          Pilot · Seoul Gangnam-gu. Pivota sends your request to the provider; they typically confirm within 24h on your preferred messenger. No deposit charged.
         </div>
 
         {loading ? (

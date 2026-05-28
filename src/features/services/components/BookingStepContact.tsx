@@ -56,7 +56,7 @@ export function BookingStepContact({ draft, dispatch, partnerEmail, partnerName 
       </label>
 
       <label className="block">
-        <span className="text-[12px] font-semibold text-[var(--pv-ink)]">Phone or KakaoTalk</span>
+        <span className="text-[12px] font-semibold text-[var(--pv-ink)]">Phone or messenger</span>
         <input
           type="tel"
           value={phone}
@@ -67,7 +67,7 @@ export function BookingStepContact({ draft, dispatch, partnerEmail, partnerName 
       </label>
 
       <div className="text-[12px] leading-relaxed text-[var(--pv-ink-60)]">
-        Add at least one contact method. KakaoTalk is preferred for fast provider replies.
+        Add at least one contact method. WhatsApp, Telegram, Line, WeChat, KakaoTalk or SMS — whichever you use most.
       </div>
     </div>
   );
