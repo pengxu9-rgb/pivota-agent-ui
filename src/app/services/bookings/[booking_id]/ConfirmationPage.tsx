@@ -54,7 +54,7 @@ function SuggestedAlternatives({ booking }: { booking: ServiceBooking }) {
   );
 }
 
-function ConfirmationLayout({ booking }: { booking: ServiceBooking }) {
+function ConfirmationLayout({ booking, onRefresh, refreshing }: { booking: ServiceBooking; onRefresh: () => void; refreshing: boolean }) {
   const email = booking.contact.email || 'your contact email';
   const isConfirmed = booking.status === 'confirmed';
   const isDeclined = booking.status === 'declined';
@@ -107,12 +107,20 @@ function ConfirmationLayout({ booking }: { booking: ServiceBooking }) {
           </div>
         </section>
         <div className="grid gap-2 sm:grid-cols-2">
-          <button type="button" className="h-11 rounded-full bg-[var(--pv-ink)] px-4 text-[13px] font-semibold text-white">
-            Add to my Pivota trip
+          <button
+            type="button"
+            onClick={onRefresh}
+            disabled={refreshing}
+            className="h-11 rounded-full bg-[var(--pv-ink)] px-4 text-[13px] font-semibold text-white disabled:opacity-45"
+          >
+            {refreshing ? 'Refreshing…' : 'Refresh status'}
           </button>
-          <button type="button" className="h-11 rounded-full border border-[var(--pv-border)] bg-white px-4 text-[13px] font-semibold text-[var(--pv-ink)]">
-            View booking status
-          </button>
+          <Link
+            href="/services"
+            className="flex h-11 items-center justify-center rounded-full border border-[var(--pv-border)] bg-white px-4 text-[13px] font-semibold text-[var(--pv-ink)]"
+          >
+            Browse more Seoul services
+          </Link>
         </div>
       </div>
     </main>
@@ -162,6 +170,7 @@ function ExpiredLayout({ booking }: { booking: ServiceBooking }) {
 export default function ConfirmationPage({ bookingId }: { bookingId: string }) {
   const [booking, setBooking] = useState<ServiceBooking | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -182,6 +191,19 @@ export default function ConfirmationPage({ bookingId }: { bookingId: string }) {
       cancelled = true;
     };
   }, [bookingId]);
+
+  const refreshStatus = async () => {
+    setRefreshing(true);
+    try {
+      const data = await getServiceBooking(bookingId);
+      setBooking(data);
+      setError('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'SERVICE_BOOKING_FAILED');
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   if (loading) {
     return <div className="pv-pdp min-h-screen animate-pulse bg-[var(--pv-paper)]" />;
@@ -206,7 +228,7 @@ export default function ConfirmationPage({ bookingId }: { bookingId: string }) {
 
   return (
     <div className="pv-pdp min-h-screen bg-[var(--pv-paper)] text-[var(--pv-ink)]">
-      {booking.status === 'expired' ? <ExpiredLayout booking={booking} /> : <ConfirmationLayout booking={booking} />}
+      {booking.status === 'expired' ? <ExpiredLayout booking={booking} /> : <ConfirmationLayout booking={booking} onRefresh={refreshStatus} refreshing={refreshing} />}
     </div>
   );
 }

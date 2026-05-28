@@ -105,9 +105,12 @@ export function BookingSheet({ open, onOpenChange, provider, listing }: Props) {
       onOpenChange(false);
       router.push(`/services/bookings/${response.booking_id}`);
     } catch (err) {
-      const message = err instanceof Error && err.message === 'PIVOTA_SERVICES_BACKEND_NOT_READY'
+      const raw = err instanceof Error ? err.message : '';
+      const message = raw === 'PIVOTA_SERVICES_BACKEND_NOT_READY'
         ? 'Stage-1 backend not yet wired. Your request was not sent.'
-        : 'Could not send this request. Please try again.';
+        : raw.includes('SLOT_TOO_SOON')
+          ? 'Please choose a time at least an hour from now.'
+          : 'Could not send this request. Please try again.';
       setError(message);
     } finally {
       setSubmitting(false);
