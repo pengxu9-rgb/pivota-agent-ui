@@ -258,6 +258,23 @@ const ADYEN_CLIENT_KEY =
   'test_RMFUADZPQBBYJIWI56KVOQSNUUT657ML' // public test key; replace in env for prod
 const FORCE_PSP = process.env.NEXT_PUBLIC_FORCE_PSP
 const stripePromiseCache = new Map<string, Promise<Stripe | null>>()
+const EMAIL_VERIFICATION_REQUIRED_BEFORE_PURCHASE = false
+
+export function isValidCheckoutReceiptEmail(email: string): boolean {
+  const trimmed = String(email || '').trim()
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)
+}
+
+export function shouldRequireCheckoutEmailVerification(args: {
+  hasUser: boolean
+  skipEmailVerification?: boolean
+}): boolean {
+  return (
+    EMAIL_VERIFICATION_REQUIRED_BEFORE_PURCHASE &&
+    !args.hasUser &&
+    !args.skipEmailVerification
+  )
+}
 const UNSUPPORTED_PIVOTA_HOSTED_CHECKOUT_MESSAGE =
   'Merchant checkout must render the merchant PSP payment form. Pivota hosted checkout is disabled.'
 
@@ -1305,6 +1322,18 @@ function OrderFlowInner({
   const [checkoutTimingSnapshot, setCheckoutTimingSnapshot] = useState<CheckoutTimingSnapshot>(
     () => buildCheckoutTimingSnapshot({}),
   )
+  const hasAuthenticatedUser = Boolean(user)
+  const normalizedReceiptEmail = shipping.email.trim()
+  const requireEmailVerification = shouldRequireCheckoutEmailVerification({
+    hasUser: hasAuthenticatedUser,
+    skipEmailVerification,
+  })
+  const shouldValidateGuestReceiptEmail = !hasAuthenticatedUser && !skipEmailVerification
+  const showOptionalSignIn = !hasAuthenticatedUser && !skipEmailVerification
+  const receiptEmailError =
+    shouldValidateGuestReceiptEmail && !isValidCheckoutReceiptEmail(normalizedReceiptEmail)
+      ? 'Please enter a valid email for your receipt.'
+      : null
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2575,7 +2604,7 @@ function OrderFlowInner({
     step,
   ])
 
-  // If already logged in, prefill email and skip verification UI
+  // If already logged in, prefill email and hide the optional sign-in UI.
   useEffect(() => {
     if (user?.email) {
       setShipping((prev) => ({ ...prev, email: prev.email || user.email! }))
@@ -2642,14 +2671,14 @@ function OrderFlowInner({
         active_merchant_id: (data as any).active_merchant_id,
       })
       setVerifiedEmail(shipping.email.trim())
-      toast.success('Email verified and logged in')
+      toast.success('Signed in')
     } catch (err: any) {
       const code = err?.code
       if (code === 'INVALID_OTP') toast.error('Code invalid or expired')
       else if (code === 'RATE_LIMITED') {
         toast.error('Too many attempts, please retry later')
       } else {
-        toast.error(err?.message || 'Verification failed')
+        toast.error(err?.message || 'Sign in failed')
       }
     } finally {
       setOtpLoading(false)
@@ -2695,8 +2724,12 @@ function OrderFlowInner({
 
   const handleShippingSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!skipEmailVerification && !user && verifiedEmail !== shipping.email.trim()) {
-      toast.error('Please verify your email to continue.')
+    if (receiptEmailError) {
+      toast.error(receiptEmailError)
+      return
+    }
+    if (requireEmailVerification && verifiedEmail !== normalizedReceiptEmail) {
+      toast.error('Please complete email verification to continue.')
       return
     }
     try {
@@ -2764,8 +2797,12 @@ function OrderFlowInner({
     setCheckoutFailure(null)
     
     try {
-      if (!skipEmailVerification && !user && verifiedEmail !== shipping.email.trim()) {
-        throw new Error('Please verify your email before paying.')
+      if (receiptEmailError) {
+        toast.error(receiptEmailError)
+        return
+      }
+      if (requireEmailVerification && verifiedEmail !== normalizedReceiptEmail) {
+        throw new Error('Please complete email verification before paying.')
       }
       if (!quote?.quote_id) {
         throw new Error('Please enter your shipping address to calculate totals before paying.')
@@ -3120,17 +3157,17 @@ function OrderFlowInner({
                       className={fieldClassName}
                     />
                     <p className={`${helperTextClassName} hidden sm:block`}>
-                      We only use this for your receipt, shipping updates, and secure sign-in.
+                      We use this for your receipt, shipping updates, and post-purchase order access.
                     </p>
                   </div>
 
-                  {!user && !skipEmailVerification && (
+                  {showOptionalSignIn && (
                     <>
                       <div className="space-y-2 rounded-[18px] border border-slate-200 bg-slate-50/80 p-3 sm:hidden">
                         {authMethod === 'password' ? (
                           <>
                             <div className="flex items-center justify-between gap-2">
-                              <p className="text-xs font-medium text-slate-700">Sign in to continue</p>
+                              <p className="text-xs font-medium text-slate-700">Have an account? Sign in (optional)</p>
                               <button
                                 type="button"
                                 disabled={otpLoading}
@@ -3164,7 +3201,7 @@ function OrderFlowInner({
                           <>
                             <div className="flex items-center justify-between gap-2">
                               <p className="text-xs font-medium text-slate-700">
-                                {otpSent ? 'Enter the 6-digit code' : 'Verify email to continue'}
+                                {otpSent ? 'Enter the 6-digit sign-in code' : 'Sign in with email code (optional)'}
                               </p>
                               <button
                                 type="button"
@@ -3191,7 +3228,7 @@ function OrderFlowInner({
                                   className="shrink-0 rounded-[16px] bg-blue-600 px-3.5 py-2.5 text-sm font-medium text-white transition hover:bg-blue-700 disabled:opacity-60"
                                   disabled={otpLoading || !otp || !shipping.email}
                                 >
-                                  Verify
+                                  Sign in
                                 </button>
                               </div>
                             ) : (
@@ -3209,11 +3246,19 @@ function OrderFlowInner({
                           </>
                         )}
                         {verifiedEmail === shipping.email.trim() ? (
-                          <p className="text-xs text-green-600">Email verified.</p>
+                          <p className="text-xs text-green-600">Signed in for this email.</p>
                         ) : null}
                       </div>
 
                       <div className="hidden rounded-[20px] border border-slate-200 bg-slate-50/80 p-3.5 sm:block">
+                        <div className="mb-3 space-y-1">
+                          <p className="text-xs font-semibold text-slate-800">
+                            Have an account? Sign in (optional)
+                          </p>
+                          <p className="text-xs leading-5 text-slate-500">
+                            Returning customers can sign in for faster checkout. You can continue as a guest.
+                          </p>
+                        </div>
                         <div className="flex flex-wrap gap-1.5 text-[11px] sm:text-xs">
                           <button
                             type="button"
@@ -3277,7 +3322,7 @@ function OrderFlowInner({
                                 </button>
                                 {!otpSent ? (
                                   <p className="flex items-center text-xs text-slate-500">
-                                    Send a 6-digit code to verify this email.
+                                    Send a 6-digit sign-in code to this email.
                                   </p>
                                 ) : null}
                               </div>
@@ -3298,14 +3343,14 @@ function OrderFlowInner({
                                     className="rounded-[18px] bg-blue-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-blue-700 disabled:opacity-60"
                                     disabled={otpLoading || !otp || !shipping.email}
                                   >
-                                    Verify
+                                    Sign in
                                   </button>
                                 </div>
                               ) : null}
                             </div>
                           )}
                           {verifiedEmail === shipping.email.trim() ? (
-                            <p className="text-xs text-green-600">Email verified.</p>
+                            <p className="text-xs text-green-600">Signed in for this email.</p>
                           ) : null}
                         </div>
                       </div>
