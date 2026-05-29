@@ -52,6 +52,17 @@ export function BundleCompositionGrid({
           const brandLabel = item.brand?.name;
           const sizeLabel = item.size_label || null;
           const roleLabel = item.component_role || null;
+          const priceStatus = String(item.price_status || '').trim().toLowerCase();
+          const priceLabel =
+            item.price_label ||
+            (priceStatus === 'included_in_set' || priceStatus === 'not_sold_separately'
+              ? 'Included in set'
+              : null);
+          const priceNote =
+            item.price_note ||
+            (priceStatus === 'included_in_set' || priceStatus === 'not_sold_separately'
+              ? 'Not sold separately'
+              : null);
           const hrefSource = {
             product_id: item.product_id,
             merchant_id: item.merchant_id,
@@ -133,6 +144,15 @@ export function BundleCompositionGrid({
               {item.price ? (
                 <div className="px-3 pb-3 pt-1 text-sm font-bold">
                   {formatPrice(item.price.amount, item.price.currency)}
+                </div>
+              ) : priceLabel ? (
+                <div className="px-3 pb-3 pt-1">
+                  <div className="text-sm font-semibold text-foreground">{priceLabel}</div>
+                  {priceNote && priceNote !== priceLabel ? (
+                    <div className="mt-0.5 text-[11px] font-medium text-muted-foreground">
+                      {priceNote}
+                    </div>
+                  ) : null}
                 </div>
               ) : (
                 <div className="px-3 pb-3 pt-1 text-sm text-muted-foreground/60">&nbsp;</div>

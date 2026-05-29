@@ -627,6 +627,9 @@ export interface BundleCompositionItem {
   image_url?: string;
   canonical_url?: string;
   price?: Price;
+  price_status?: string;
+  price_label?: string;
+  price_note?: string;
   component_role?: string;
   size_label?: string;
   review_state?: string;

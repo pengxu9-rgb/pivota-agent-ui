@@ -70,6 +70,9 @@ const baseData: BundleCompositionData = {
       product_id: 'ext_c',
       merchant_id: 'external_seed',
       title: 'Hyaluronic Acid 2% + B5',
+      price_status: 'included_in_set',
+      price_label: 'Included in set',
+      price_note: 'Not sold separately',
       source_quality_status: 'partial',
     },
   ],
@@ -101,6 +104,12 @@ describe('BundleCompositionGrid', () => {
     render(<BundleCompositionGrid data={baseData} />);
     expect(screen.getByText('$13.50')).toBeInTheDocument();
     expect(screen.getByText('$6.00')).toBeInTheDocument();
+  });
+
+  it('renders included-in-set copy when standalone price is unavailable', () => {
+    render(<BundleCompositionGrid data={baseData} />);
+    expect(screen.getByText('Included in set')).toBeInTheDocument();
+    expect(screen.getByText('Not sold separately')).toBeInTheDocument();
   });
 
   it('renders size and role badges when present', () => {
