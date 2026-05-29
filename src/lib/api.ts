@@ -3754,6 +3754,11 @@ export async function publicOrderTrack(orderId: string, email: string) {
   return callAccounts(`/public/track?${params.toString()}`);
 }
 
+export async function publicOrderTrackByToken(token: string) {
+  const params = new URLSearchParams({ token });
+  return callAccounts(`/public/track-by-token?${params.toString()}`);
+}
+
 export type BrowseHistoryEventInput = {
   product_id: string;
   merchant_id?: string | null;
