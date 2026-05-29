@@ -83,6 +83,7 @@ import { ElectronicsPDPDesktop } from '@/features/pdp/containers/ElectronicsPDPD
 import { GenericPDPMobile } from '@/features/pdp/containers/GenericPDPMobile';
 import { GenericPDPDesktop } from '@/features/pdp/containers/GenericPDPDesktop';
 import { BeautyVariantSelector } from '@/features/pdp/components/BeautyVariantSelector';
+import { displayMerchantLabel } from '@/features/pdp/components/BeautyMobileSellerPicker';
 import type { BeautyInsightsData } from '@/features/pdp/components/BeautyPivotaInsights';
 import { DEFAULT_UGC_SNAPSHOT, lockFirstUgcSource, mergeUgcItems } from '@/features/pdp/state/freezePolicy';
 import { getStableGalleryItems, resolveHeroMediaUrl } from '@/features/pdp/state/heroMedia';
@@ -103,6 +104,7 @@ import {
   getExternalRedirectUrlFromOffer,
   getExternalRedirectUrlFromProduct,
   isExternalCtaTarget,
+  isExternalOfferRoute,
   resolveCheckoutTarget,
 } from '@/lib/pdpPurchaseFlow';
 import { resolveHostedCheckoutUrl } from '@/lib/ucpCheckout';
@@ -2375,6 +2377,38 @@ export function PdpContainer({
 
   const effectiveMerchantId = selectedOffer?.merchant_id || payload.product.merchant_id;
   const effectiveProductId = String(selectedOffer?.product_id || payload.product.product_id || '').trim();
+  const selectedOfferRedirectUrl = selectedOffer ? getExternalRedirectUrlFromOffer(selectedOffer) : null;
+  const selectedOfferRouteIsExternal = selectedOffer ? isExternalOfferRoute(selectedOffer) : false;
+  const selectedOfferIsExternal = selectedOffer
+    ? selectedOfferRouteIsExternal ||
+      isExternalCtaTarget({
+        offer: selectedOffer,
+        product: null,
+        merchantId: String(effectiveMerchantId || ''),
+        redirectUrl: selectedOfferRedirectUrl,
+      })
+    : false;
+  const selectedProductRedirectUrl =
+    !selectedOffer || selectedOfferIsExternal ? getExternalRedirectUrlFromProduct(payload.product) : null;
+  const selectedRedirectUrl = selectedOfferRedirectUrl || selectedProductRedirectUrl;
+  const isExternalPurchaseCta = selectedOffer
+    ? selectedOfferRouteIsExternal ||
+      isExternalCtaTarget({
+        offer: selectedOffer,
+        product: null,
+        merchantId: String(effectiveMerchantId || ''),
+        redirectUrl: selectedRedirectUrl,
+      })
+    : isExternalOfferRoute(payload.product) ||
+      isExternalCtaTarget({
+        offer: null,
+        product: payload.product,
+        merchantId: String(effectiveMerchantId || ''),
+        redirectUrl: selectedRedirectUrl,
+      });
+  const selectedMerchantLabel = selectedOffer ? displayMerchantLabel(selectedOffer) : null;
+  const externalRetailerLabel =
+    selectedMerchantLabel && selectedMerchantLabel !== 'Seller' ? selectedMerchantLabel : null;
   const effectiveShippingEta =
     selectedOffer?.shipping?.eta_days_range || payload.product.shipping?.eta_days_range;
   const effectiveReturns = selectedOffer?.returns || payload.product.returns;
@@ -4358,6 +4392,8 @@ export function PdpContainer({
         }
         similarSentinelRef={isBeautyDesktop ? similarAutoLoadSentinelRef : undefined}
         buyNowLabel={actionsByType.buy_now || 'Buy now'}
+        isExternalPurchase={isExternalPurchaseCta}
+        externalRetailerLabel={externalRetailerLabel}
         inStock={effectiveIsInStock}
         quantity={resolvedQuantity}
         onQtyChange={(next) => setQuantity(next)}
@@ -4562,6 +4598,8 @@ export function PdpContainer({
           void handleSimilarQuickAction(sourceItem, index);
         }}
         buyNowLabel={actionsByType.buy_now || 'Buy now'}
+        isExternalPurchase={isExternalPurchaseCta}
+        externalRetailerLabel={externalRetailerLabel}
         inStock={effectiveIsInStock}
         quantity={resolvedQuantity}
         onQtyChange={(next) => setQuantity(next)}
@@ -4712,6 +4750,8 @@ export function PdpContainer({
           void handleSimilarQuickAction(sourceItem, index);
         }}
         buyNowLabel={actionsByType.buy_now || 'Buy now'}
+        isExternalPurchase={isExternalPurchaseCta}
+        externalRetailerLabel={externalRetailerLabel}
         inStock={effectiveIsInStock}
         quantity={resolvedQuantity}
         onQtyChange={(next) => setQuantity(next)}
@@ -4848,6 +4888,8 @@ export function PdpContainer({
         }}
         similarSentinelRef={isGenericDesktop ? similarAutoLoadSentinelRef : undefined}
         buyNowLabel={actionsByType.buy_now || 'Buy now'}
+        isExternalPurchase={isExternalPurchaseCta}
+        externalRetailerLabel={externalRetailerLabel}
         inStock={effectiveIsInStock}
         onQtyChange={(next) => setQuantity(next)}
         onAddToCart={() => {
