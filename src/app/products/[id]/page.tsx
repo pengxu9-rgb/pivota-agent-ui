@@ -39,6 +39,7 @@ const PDP_SERVER_INCLUDE = [
   'offers',
   'variant_selector',
   'product_overview',
+  'reviews_preview',
 ] as const;
 
 function readSearchParam(value: string | string[] | undefined): string {

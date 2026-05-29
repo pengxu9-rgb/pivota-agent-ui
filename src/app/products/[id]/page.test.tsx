@@ -21,6 +21,7 @@ const initialPdpInclude = [
   'offers',
   'variant_selector',
   'product_overview',
+  'reviews_preview',
 ];
 const corePdpInclude = ['offers', 'variant_selector', 'product_overview'];
 const contentPdpInclude = [
@@ -627,7 +628,7 @@ describe('ProductDetailPage canonical PDP loading', () => {
       1,
       expect.objectContaining({
         product_id: 'prod_1',
-        include: corePdpInclude,
+        include: initialPdpInclude,
         timeout_ms: 9000,
       }),
     );

@@ -766,6 +766,77 @@ describe('/api/gateway checkout-safe proxy', () => {
     expect(reviews.data.unavailable_reason).toBeUndefined();
   });
 
+  it('does not overwrite source-backed merchant reviews with UGC review summaries', async () => {
+    vi.stubEnv('SHOP_UPSTREAM_API_URL', 'https://invoke.example.com');
+    vi.stubEnv('REVIEWS_BACKEND_URL', 'https://reviews.example.com');
+
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(
+        jsonResponse({
+          status: 'success',
+          subject: {
+            type: 'product_group',
+            id: 'sig_abc123',
+            canonical_product_ref: {
+              merchant_id: 'external_seed',
+              platform: 'external_seed',
+              product_id: 'ext_123',
+            },
+          },
+          modules: [
+            {
+              type: 'reviews_preview',
+              data: {
+                scale: 5,
+                rating: 4.397572,
+                review_count: 1318,
+                source: 'official_yotpo_reviews_api',
+                preview_items: [{ review_id: 'yotpo_1', text_snippet: 'Official review.' }],
+              },
+            },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          review_summary: {
+            scale: 5,
+            rating: 5,
+            review_count: 1,
+            preview_items: [{ review_id: 9321, text_snippet: 'Pivota UGC review.' }],
+          },
+        }),
+      );
+
+    const { POST } = await import('@/app/api/gateway/route');
+
+    const req = new Request('http://localhost/api/gateway', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        operation: 'get_pdp_v2',
+        payload: {
+          product_ref: { product_id: 'sig_abc123' },
+          include: ['reviews_preview'],
+        },
+      }),
+    });
+
+    const res = await POST(req as any);
+    const data = await res.json();
+    const reviews = data.modules.find((module: any) => module.type === 'reviews_preview');
+
+    expect(res.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(reviews.data).toMatchObject({
+      rating: 4.397572,
+      review_count: 1318,
+      source: 'official_yotpo_reviews_api',
+      preview_items: [{ review_id: 'yotpo_1' }],
+    });
+  });
+
   it('does NOT short-circuit get_pdp_v2 for non-sig_ product ids', async () => {
     vi.stubEnv('SHOP_UPSTREAM_API_URL', 'https://invoke.example.com');
     vi.stubEnv('PIVOTA_BACKEND_BASE_URL', 'https://canonical.example.com');

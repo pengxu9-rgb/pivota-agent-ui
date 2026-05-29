@@ -701,12 +701,33 @@ function _scaleRatingToFivePoint(rating: number, scale: number | null): number {
   return rating;
 }
 
+const SYNTHETIC_REVIEW_SOURCE_RE =
+  /(?:pivota_force_fill|force_filled|force_fill|synthetic|simulation|mock|browser_fallback|legacy_fallback|\bestimated\b)/i;
+
+function _isSyntheticReviewsModule(reviewsModule?: Record<string, any> | null): boolean {
+  if (!reviewsModule) return false;
+  if (reviewsModule.force_filled === true || reviewsModule.distribution_estimated === true) return true;
+  const sourceSignals = [
+    reviewsModule.status,
+    reviewsModule.source,
+    reviewsModule.source_origin,
+    reviewsModule.source_kind,
+    reviewsModule.content_review_state,
+    reviewsModule.aggregation_scope,
+  ]
+    .map((value) => _firstString(value))
+    .filter(Boolean)
+    .join(' ');
+  return SYNTHETIC_REVIEW_SOURCE_RE.test(sourceSignals);
+}
+
 function _resolveAggregateRating(
   product: Record<string, any>,
   reviewsModule?: Record<string, any> | null,
 ): { ratingValue: number | null; ratingCount: number | null } {
-  const moduleRatingRaw = _firstNumber(reviewsModule?.rating);
-  const moduleScale = _firstNumber(reviewsModule?.scale);
+  const publicReviewsModule = _isSyntheticReviewsModule(reviewsModule) ? null : reviewsModule;
+  const moduleRatingRaw = _firstNumber(publicReviewsModule?.rating);
+  const moduleScale = _firstNumber(publicReviewsModule?.scale);
   const moduleRating = moduleRatingRaw !== null
     ? _scaleRatingToFivePoint(moduleRatingRaw, moduleScale)
     : null;
@@ -718,7 +739,7 @@ function _resolveAggregateRating(
     { value: product.average_rating, count: product.rating_count },
     { value: product.average_rating, count: product.review_count },
     { value: product.avg_rating, count: product.review_count },
-    { value: moduleRating, count: reviewsModule?.review_count },
+    { value: moduleRating, count: publicReviewsModule?.review_count },
   ];
 
   for (const pair of pairs) {

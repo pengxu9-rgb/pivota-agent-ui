@@ -70,7 +70,7 @@ const PDP_CORE_ONLY_INCLUDE = [
   'variant_selector',
   'product_overview',
 ] as const;
-const PDP_INITIAL_INCLUDE = [...PDP_CORE_ONLY_INCLUDE] as const;
+const PDP_INITIAL_INCLUDE = [...PDP_CORE_ONLY_INCLUDE, 'reviews_preview'] as const;
 const PDP_CONTENT_INCLUDE = [
   'product_intel',
   'active_ingredients',

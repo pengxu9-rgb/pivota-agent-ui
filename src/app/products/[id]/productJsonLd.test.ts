@@ -178,6 +178,27 @@ describe('buildProductJsonLd — aggregateRating', () => {
     });
   });
 
+  it('does not emit aggregateRating from force-filled estimated reviews', () => {
+    const out = buildProductJsonLd(
+      {
+        product: { title: 'X' },
+        productId: PRODUCT_ID,
+      },
+      {
+        reviewsModule: {
+          scale: 5,
+          rating: 4.7,
+          review_count: 28,
+          status: 'estimated',
+          source: 'pivota_force_fill_v1',
+          force_filled: true,
+          distribution_estimated: true,
+        },
+      },
+    );
+    expect(JSON.parse(out!).aggregateRating).toBeUndefined();
+  });
+
   it('uses module rating and count when product has rating but no count', () => {
     const out = buildProductJsonLd(
       {

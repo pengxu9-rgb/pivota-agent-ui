@@ -66,12 +66,16 @@ export function BeautyReviewsPreview({
   // Brand-Kit v2 (handoff §3f): the empty-state CTA is the same filled-dark
   // "Write a review" button as the populated-state primary action.
   if (!reviews?.length) {
+    const resolvedEmptyCopy =
+      reviewCount > 0
+        ? 'A verified review summary is available, but written review snippets are not available yet.'
+        : emptyCopy;
     return (
       <div className="flex items-center gap-3 rounded-xl border border-border bg-background px-3.5 py-3">
         <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
           <Sparkle />
         </div>
-        <p className="flex-1 text-[13px] leading-relaxed text-foreground">{emptyCopy}</p>
+        <p className="flex-1 text-[13px] leading-relaxed text-foreground">{resolvedEmptyCopy}</p>
         {onWriteReview ? (
           <button
             type="button"

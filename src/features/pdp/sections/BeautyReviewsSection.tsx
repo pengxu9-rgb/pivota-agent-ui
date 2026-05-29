@@ -78,6 +78,7 @@ export function BeautyReviewsSection({
   askQuestionEnabled = true,
   openQuestionsLabel = 'View all',
   emptyCopy = 'No reviews yet. Be the first to share your thoughts - your review appears here after Pivota review.',
+  summaryOnlyCopy = 'A verified review summary is available, but written review snippets are not available yet.',
 }: {
   data: ReviewsPreviewData;
   onSelectScope?: (scopeId: string) => void;
@@ -97,6 +98,8 @@ export function BeautyReviewsSection({
   openQuestionsLabel?: string;
   /** Copy used in the empty-state tile when review_count === 0. */
   emptyCopy?: string;
+  /** Copy used when a source-backed aggregate exists but no review snippets are available. */
+  summaryOnlyCopy?: string;
 }) {
   const isEmpty = !data.review_count || data.review_count === 0;
   const hasSummary = data.review_count > 0 && data.rating > 0;
@@ -293,6 +296,10 @@ export function BeautyReviewsSection({
             </div>
           ))}
         </div>
+      ) : !isEmpty ? (
+        <p className="mx-2.5 mt-3 rounded-xl border border-border bg-background px-3.5 py-3 text-[13px] leading-relaxed text-muted-foreground sm:mx-3">
+          {summaryOnlyCopy}
+        </p>
       ) : null}
 
       {!isEmpty && onSeeAll ? (

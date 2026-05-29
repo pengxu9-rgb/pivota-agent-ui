@@ -534,6 +534,13 @@ export interface ReviewsPreviewData {
   scale: number;
   rating: number;
   review_count: number;
+  status?: string;
+  source?: string;
+  source_origin?: string;
+  source_kind?: string;
+  content_review_state?: string;
+  force_filled?: boolean;
+  distribution_estimated?: boolean;
   aggregation_scope?: 'product_line' | 'exact_item' | string;
   exact_item_review_count?: number;
   product_line_review_count?: number;

@@ -184,6 +184,33 @@ function hasReviewSummaryContent(summary: unknown): summary is JsonRecord {
   return (Number.isFinite(count) && count > 0) || previewItems.length > 0;
 }
 
+const SYNTHETIC_REVIEW_SOURCE_RE =
+  /(?:pivota_force_fill|force_filled|force_fill|synthetic|simulation|mock|browser_fallback|legacy_fallback|\bestimated\b)/i;
+
+function isSyntheticReviewSummary(data: unknown): boolean {
+  if (!isPlainObject(data)) return false;
+  if (data.force_filled === true || data.distribution_estimated === true) return true;
+  const signals = [
+    data.status,
+    data.source,
+    data.source_origin,
+    data.source_kind,
+    data.content_review_state,
+    data.aggregation_scope,
+  ]
+    .map((value) => firstNonEmptyString(value))
+    .filter(Boolean)
+    .join(' ');
+  return SYNTHETIC_REVIEW_SOURCE_RE.test(signals);
+}
+
+function hasSourceBackedReviewSummary(data: unknown): boolean {
+  if (!isPlainObject(data) || isSyntheticReviewSummary(data)) return false;
+  const rating = Number(data.rating ?? data.average_rating ?? 0);
+  const count = Number(data.review_count ?? data.total_reviews ?? 0);
+  return Number.isFinite(rating) && rating > 0 && Number.isFinite(count) && count > 0;
+}
+
 function buildReviewsPreviewFromSummary(existingData: unknown, summary: JsonRecord): JsonRecord {
   const existing = isPlainObject(existingData) ? existingData : {};
   const next: JsonRecord = {
@@ -201,6 +228,10 @@ function overlayReviewsPreview(payload: unknown, summary: JsonRecord): unknown {
   let replaced = false;
   const nextModules = modules.map((pdpModule) => {
     if (!isPlainObject(pdpModule) || String(pdpModule.type || '').trim() !== 'reviews_preview') {
+      return pdpModule;
+    }
+    if (hasSourceBackedReviewSummary(pdpModule.data)) {
+      replaced = true;
       return pdpModule;
     }
     replaced = true;

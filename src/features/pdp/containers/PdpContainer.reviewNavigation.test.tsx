@@ -217,6 +217,86 @@ describe('PdpContainer review navigation context', () => {
     expect(String(pushMock.mock.calls[0]?.[0] || '')).toContain('/reviews/write?');
   });
 
+  it('does not expose force-filled estimated review counts as public social proof', () => {
+    window.history.replaceState(null, '', '/products/P001?merchant_id=merch_test');
+    const estimatedPayload: PDPPayload = {
+      ...payload,
+      modules: payload.modules.map((module) =>
+        module.type === 'reviews_preview'
+          ? {
+              ...module,
+              data: {
+                scale: 5,
+                rating: 4.7,
+                review_count: 28,
+                status: 'estimated',
+                source: 'pivota_force_fill_v1',
+                force_filled: true,
+                distribution_estimated: true,
+                preview_items: [],
+              },
+            }
+          : module,
+      ),
+    };
+
+    render(
+      <PdpContainer
+        payload={estimatedPayload}
+        mode="generic"
+        onAddToCart={() => {}}
+        onBuyNow={() => {}}
+        ugcCapabilities={{
+          canUploadMedia: true,
+          canWriteReview: true,
+          canAskQuestion: true,
+        }}
+      />,
+    );
+
+    expect(screen.queryByText('(28)')).toBeNull();
+    expect(screen.queryByText(/28 customer reviews/i)).toBeNull();
+    expect(screen.queryByText('4.7')).toBeNull();
+  });
+
+  it('does not call source-backed aggregate summaries with no snippets "No reviews yet"', () => {
+    window.history.replaceState(null, '', '/products/P001?merchant_id=merch_test');
+    const aggregatePayload: PDPPayload = {
+      ...payload,
+      modules: payload.modules.map((module) =>
+        module.type === 'reviews_preview'
+          ? {
+              ...module,
+              data: {
+                scale: 5,
+                rating: 4.4,
+                review_count: 1318,
+                source: 'official_yotpo_reviews_api',
+                preview_items: [],
+              },
+            }
+          : module,
+      ),
+    };
+
+    render(
+      <PdpContainer
+        payload={aggregatePayload}
+        mode="generic"
+        onAddToCart={() => {}}
+        onBuyNow={() => {}}
+        ugcCapabilities={{
+          canUploadMedia: true,
+          canWriteReview: true,
+          canAskQuestion: true,
+        }}
+      />,
+    );
+
+    expect(screen.getByText(/verified review summary is available/i)).toBeTruthy();
+    expect(screen.queryByText(/No reviews yet/i)).toBeNull();
+  });
+
   it('opens ask-question route with the ask modal flag and local return context', () => {
     window.history.replaceState(null, '', '/products/P001?merchant_id=merch_test');
 
