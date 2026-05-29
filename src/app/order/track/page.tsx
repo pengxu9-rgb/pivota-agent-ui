@@ -5,7 +5,7 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Package, Truck, CheckCircle, Clock, Mail } from 'lucide-react'
-import { publicOrderResume, publicOrderTrack } from '@/lib/api'
+import { publicOrderResume, publicOrderTrack, publicOrderTrackByToken } from '@/lib/api'
 import {
   normalizeOrderDetail,
   type NormalizedOrderDetail,
@@ -39,6 +39,11 @@ type LookupResult = {
 
 type LookupPricing = NonNullable<LookupResult['pricing']>
 
+type TokenTrackResult = {
+  order_id: string
+  delivery_status: string
+}
+
 const formatMoney = (minor: number, currency: string): string =>
   new Intl.NumberFormat('en-US', {
     style: 'currency',
@@ -65,6 +70,19 @@ const formatDateTime = (value: string | null | undefined): string | null => {
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+
+const normalizeTimelineEntries = (raw: unknown): TimelineEntry[] => {
+  if (!Array.isArray(raw)) return []
+  return raw.map((event) => {
+    const entry = isRecord(event) ? event : {}
+    return {
+      status: String(entry.status || 'Status update'),
+      timestamp: typeof entry.timestamp === 'string' ? entry.timestamp : null,
+      description: typeof entry.description === 'string' ? entry.description : null,
+      completed: Boolean(entry.completed),
+    }
+  })
+}
 
 const asNumeric = (value: unknown): number | null => {
   if (typeof value === 'number' && Number.isFinite(value)) return value
@@ -179,27 +197,65 @@ function TrackContent() {
   const searchParams = useSearchParams()
   const initialOrderId = searchParams.get('orderId') || ''
   const initialEmail = searchParams.get('email') || ''
+  const initialToken = searchParams.get('token') || ''
 
   const [orderId, setOrderId] = useState(initialOrderId)
   const [email, setEmail] = useState(initialEmail)
+  const [token] = useState(initialToken)
   const [lookup, setLookup] = useState<LookupResult | null>(null)
+  const [tokenTrack, setTokenTrack] = useState<TokenTrackResult | null>(null)
   const [detail, setDetail] = useState<NormalizedOrderDetail | null>(null)
   const [maskedEmail, setMaskedEmail] = useState<string | null>(null)
   const [timeline, setTimeline] = useState<TimelineEntry[]>([])
   const [timelineError, setTimelineError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(Boolean(initialToken))
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
+    if (token) {
+      handleTokenFetch(token)
+      return
+    }
     // Auto-fetch if both query params present
     if (initialOrderId && initialEmail) {
-      handleSubmit(new Event('submit') as any, false)
+      handleSubmit(undefined, false)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const handleSubmit = async (e: React.FormEvent, pushQuery = true) => {
-    e.preventDefault()
+  const handleTokenFetch = async (tokenValue: string) => {
+    const tokenSafe = tokenValue.trim()
+    if (!tokenSafe) return
+    setLoading(true)
+    setError(null)
+    setTimelineError(null)
+    setLookup(null)
+    setTokenTrack(null)
+    setDetail(null)
+    setMaskedEmail(null)
+    try {
+      const tracking = await publicOrderTrackByToken(tokenSafe)
+      const trackingRaw = isRecord(tracking) ? tracking : {}
+      const orderIdValue = String(trackingRaw.order_id || '').trim()
+      const deliveryStatusValue = String(trackingRaw.delivery_status || '').trim()
+      setTokenTrack({
+        order_id: orderIdValue || 'Unknown order',
+        delivery_status: deliveryStatusValue || 'Status unavailable',
+      })
+      setTimeline(normalizeTimelineEntries(trackingRaw.timeline))
+    } catch {
+      setTokenTrack(null)
+      setTimeline([])
+      setError(
+        'This tracking link is invalid or has expired. Enter your order ID and email below to look up your order.',
+      )
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleSubmit = async (e?: React.FormEvent, pushQuery = true) => {
+    e?.preventDefault()
     const orderSafe = orderId.trim()
     const emailSafe = email.trim().toLowerCase()
     if (!orderSafe || !emailSafe) {
@@ -209,6 +265,7 @@ function TrackContent() {
     setLoading(true)
     setError(null)
     setTimelineError(null)
+    setTokenTrack(null)
     try {
       const summary = await publicOrderResume(orderSafe, emailSafe)
       const normalized = normalizeOrderDetail(summary)
@@ -241,13 +298,7 @@ function TrackContent() {
       setMaskedEmail((summary as any)?.customer?.masked_email || null)
       try {
         const t = await publicOrderTrack(orderSafe, emailSafe)
-        const events = ((t as any)?.timeline || []).map((ev: any) => ({
-          status: ev.status,
-          timestamp: ev.timestamp,
-          description: ev.description,
-          completed: Boolean(ev.completed),
-        }))
-        setTimeline(events)
+        setTimeline(normalizeTimelineEntries((t as any)?.timeline))
       } catch (trackErr: any) {
         setTimeline([])
         if (trackErr?.code === 'RATE_LIMITED') {
@@ -299,9 +350,15 @@ function TrackContent() {
   const latestRefundPsp = detail?.refund.psp?.latest || null
   const refundReferenceSummary = getRefundReferenceSummary(latestRefundPsp)
   const refundTelemetryNote = getRefundTelemetryNote(latestRefundPsp)
+  const isTokenLoading = Boolean(token) && loading && !lookup && !tokenTrack
+  const showManualForm = !tokenTrack && !isTokenLoading
+  const hasTrackingResult = Boolean(lookup || tokenTrack)
 
   const renderEvents = () => {
-    if (!lookup) return null
+    if (!hasTrackingResult) return null
+    if (!events.length) {
+      return <p className="text-sm text-muted-foreground">No timeline updates yet.</p>
+    }
     return (
       <div className="space-y-6">
         {events.map((event, index) => {
@@ -381,44 +438,57 @@ function TrackContent() {
 
       <div className="max-w-4xl mx-auto px-4 py-8 space-y-6">
         <div className="bg-white rounded-lg shadow-md p-6 space-y-4">
-          <form
-            className="grid grid-cols-1 md:grid-cols-3 gap-4"
-            onSubmit={handleSubmit}
-          >
-            <div className="md:col-span-1">
-              <label className="text-sm font-medium text-foreground">
-                Order ID
-              </label>
-              <input
-                className="mt-2 w-full rounded-xl border border-border bg-white/60 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                value={orderId}
-                onChange={(e) => setOrderId(e.target.value)}
-                placeholder="ORD_..."
-              />
-            </div>
-            <div className="md:col-span-1">
-              <label className="text-sm font-medium text-foreground flex items-center gap-1">
-                <Mail className="h-4 w-4" /> Email
-              </label>
-              <input
-                type="email"
-                className="mt-2 w-full rounded-xl border border-border bg-white/60 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@example.com"
-              />
-            </div>
-            <div className="md:col-span-1 flex items-end">
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full py-2 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-500 text-white font-semibold shadow hover:shadow-lg disabled:opacity-60"
-              >
-                {loading ? 'Loading...' : 'Track order'}
-              </button>
-            </div>
-          </form>
+          {showManualForm && (
+            <form
+              className="grid grid-cols-1 md:grid-cols-3 gap-4"
+              onSubmit={handleSubmit}
+            >
+              <div className="md:col-span-1">
+                <label className="text-sm font-medium text-foreground">
+                  Order ID
+                </label>
+                <input
+                  className="mt-2 w-full rounded-xl border border-border bg-white/60 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  value={orderId}
+                  onChange={(e) => setOrderId(e.target.value)}
+                  placeholder="ORD_..."
+                />
+              </div>
+              <div className="md:col-span-1">
+                <label className="text-sm font-medium text-foreground flex items-center gap-1">
+                  <Mail className="h-4 w-4" /> Email
+                </label>
+                <input
+                  type="email"
+                  className="mt-2 w-full rounded-xl border border-border bg-white/60 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="you@example.com"
+                />
+              </div>
+              <div className="md:col-span-1 flex items-end">
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full py-2 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-500 text-white font-semibold shadow hover:shadow-lg disabled:opacity-60"
+                >
+                  {loading ? 'Loading...' : 'Track order'}
+                </button>
+              </div>
+            </form>
+          )}
+          {isTokenLoading && (
+            <div className="text-sm text-muted-foreground">Loading tracking info...</div>
+          )}
           {error && <div className="text-red-600 text-sm">{error}</div>}
+          {tokenTrack && (
+            <div className="rounded-xl border border-border p-4 bg-muted/30">
+              <p className="text-sm text-muted-foreground">Order ID</p>
+              <p className="font-semibold break-all">{tokenTrack.order_id}</p>
+              <p className="text-sm text-muted-foreground mt-2">Delivery status</p>
+              <p className="font-semibold">{formatLabel(tokenTrack.delivery_status)}</p>
+            </div>
+          )}
           {lookup && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="rounded-xl border border-border p-4 bg-muted/30">
@@ -542,7 +612,7 @@ function TrackContent() {
           )}
         </div>
 
-        {lookup && (
+        {hasTrackingResult && (
           <div className="bg-white rounded-lg shadow-md p-6">
             <h2 className="text-lg font-semibold mb-4">Timeline</h2>
             {timelineError ? (
@@ -553,7 +623,7 @@ function TrackContent() {
           </div>
         )}
 
-        {!lookup && !loading && (
+        {!hasTrackingResult && !loading && !error && (
           <div className="bg-white rounded-lg shadow-md p-6 text-muted-foreground text-sm">
             Enter an order ID and email to view status.
           </div>

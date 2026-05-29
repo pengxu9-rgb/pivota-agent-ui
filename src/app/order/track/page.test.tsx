@@ -7,6 +7,7 @@ import TrackPage from './page'
 const replaceMock = vi.fn()
 const publicOrderResumeMock = vi.fn()
 const publicOrderTrackMock = vi.fn()
+const publicOrderTrackByTokenMock = vi.fn()
 const normalizeOrderDetailMock = vi.fn()
 
 let searchParamsValue = 'orderId=ORD_TRACK_1&email=buyer@example.com'
@@ -29,6 +30,7 @@ vi.mock('next/link', () => ({
 vi.mock('@/lib/api', () => ({
   publicOrderResume: (...args: unknown[]) => publicOrderResumeMock(...args),
   publicOrderTrack: (...args: unknown[]) => publicOrderTrackMock(...args),
+  publicOrderTrackByToken: (...args: unknown[]) => publicOrderTrackByTokenMock(...args),
 }))
 
 vi.mock('@/lib/orders/normalize', async () => {
@@ -47,6 +49,7 @@ describe('Public order tracking pricing', () => {
     replaceMock.mockReset()
     publicOrderResumeMock.mockReset()
     publicOrderTrackMock.mockReset()
+    publicOrderTrackByTokenMock.mockReset()
     normalizeOrderDetailMock.mockReset()
   })
 
@@ -183,5 +186,62 @@ describe('Public order tracking pricing', () => {
     expect(screen.getAllByText('$9.53').length).toBeGreaterThan(0)
     expect(screen.getByText('Processor status')).toBeInTheDocument()
     expect(screen.getByText('ARN pending')).toBeInTheDocument()
+  })
+
+  it('auto-loads tracking from a signed token without showing manual lookup fields', async () => {
+    searchParamsValue = 'token=signed-token-1'
+    publicOrderTrackByTokenMock.mockResolvedValue({
+      order_id: 'ORD_TOKEN_1',
+      delivery_status: 'shipped',
+      timeline: [
+        {
+          status: 'ordered',
+          timestamp: '2026-04-21T18:58:43Z',
+          description: 'Order placed',
+          completed: true,
+        },
+        {
+          status: 'shipped',
+          timestamp: '2026-04-22T18:58:43Z',
+          description: 'Left the warehouse',
+          completed: false,
+        },
+      ],
+    })
+
+    render(<TrackPage />)
+
+    await waitFor(() => {
+      expect(publicOrderTrackByTokenMock).toHaveBeenCalledWith('signed-token-1')
+    })
+
+    expect(publicOrderResumeMock).not.toHaveBeenCalled()
+    expect(publicOrderTrackMock).not.toHaveBeenCalled()
+    expect(screen.getByText('ORD_TOKEN_1')).toBeInTheDocument()
+    expect(screen.getByText('Delivery status')).toBeInTheDocument()
+    expect(screen.getByText('Shipped')).toBeInTheDocument()
+    expect(screen.getByText('Left the warehouse')).toBeInTheDocument()
+    expect(screen.queryByPlaceholderText('you@example.com')).not.toBeInTheDocument()
+    expect(screen.queryByText('Subtotal')).not.toBeInTheDocument()
+  })
+
+  it('falls back to the manual form when a signed token is invalid', async () => {
+    searchParamsValue = 'token=expired-token'
+    publicOrderTrackByTokenMock.mockRejectedValue({ code: 'NOT_FOUND' })
+
+    render(<TrackPage />)
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          'This tracking link is invalid or has expired. Enter your order ID and email below to look up your order.',
+        ),
+      ).toBeInTheDocument()
+    })
+
+    expect(publicOrderTrackByTokenMock).toHaveBeenCalledWith('expired-token')
+    expect(publicOrderResumeMock).not.toHaveBeenCalled()
+    expect(screen.getByPlaceholderText('ORD_...')).toBeInTheDocument()
+    expect(screen.getByPlaceholderText('you@example.com')).toBeInTheDocument()
   })
 })
