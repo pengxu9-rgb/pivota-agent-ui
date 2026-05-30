@@ -30,6 +30,8 @@ vi.mock('@/components/order/OrderFlow', () => ({
       {props.resumeOrder?.quote?.pricing?.subtotal ?? 'na'}:
       {props.resumeOrder?.quote?.pricing?.discount_total ?? 'na'}:
       {props.resumeOrder?.quote?.pricing?.shipping_fee ?? 'na'}
+      <span data-testid="entry-mode">{props.entryMode ?? 'null'}</span>
+      <span data-testid="fallback-reason">{props.fallbackReason ?? 'null'}</span>
     </div>
   ),
 }));
@@ -57,6 +59,30 @@ describe('Order page resume fallback', () => {
   afterEach(() => {
     cleanup();
     vi.restoreAllMocks();
+  });
+
+  it('treats direct item checkout as pdp_direct without synthesizing a fallback reason', async () => {
+    const items = [
+      {
+        product_id: 'prod_1',
+        merchant_id: 'merch_1',
+        title: 'Direct PDP Item',
+        quantity: 1,
+        unit_price: 28,
+        currency: 'USD',
+      },
+    ];
+    searchParamsValue = `items=${encodeURIComponent(JSON.stringify(items))}`;
+
+    render(<OrderPage />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('order-flow')).toHaveTextContent('1:na:na:na');
+    });
+
+    expect(screen.getByTestId('entry-mode')).toHaveTextContent('pdp_direct');
+    expect(screen.getByTestId('fallback-reason')).toHaveTextContent('null');
+    expect(setMerchantIdMock).toHaveBeenCalledWith('merch_1');
   });
 
   it('falls back to public order resume when the private account order fetch is unavailable', async () => {

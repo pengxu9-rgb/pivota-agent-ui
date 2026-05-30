@@ -451,6 +451,7 @@ export function resolveCheckoutTarget(args: {
 
   const params = new URLSearchParams();
   params.set('items', JSON.stringify(checkoutItems));
+  params.set('entry_mode', 'pdp_direct');
 
   const explicitReturnRaw =
     String(

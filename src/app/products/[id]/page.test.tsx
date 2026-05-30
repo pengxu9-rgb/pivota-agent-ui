@@ -1011,6 +1011,37 @@ describe('ProductDetailPage canonical PDP loading', () => {
     );
   });
 
+  it('sets pdp_direct entry mode for direct Buy Now order URLs', async () => {
+    renderPage('prod_1', {
+      ...canonicalPayload,
+      product: {
+        ...canonicalPayload.product,
+        merchant_id: 'merch_1',
+      },
+      offers: [
+        {
+          ...canonicalPayload.offers[0],
+          merchant_id: 'merch_1',
+          product_id: 'prod_1',
+        },
+      ],
+    });
+
+    await screen.findByTestId('generic-pdp');
+    fireEvent.click(screen.getByRole('button', { name: 'Buy Now' }));
+
+    await waitFor(() => {
+      expect(pushMock).toHaveBeenCalledWith(expect.stringMatching(/^\/order\?/));
+    });
+
+    const pushedUrl = String(
+      pushMock.mock.calls.find(([url]) => String(url).startsWith('/order?'))?.[0] || '',
+    );
+    const params = new URLSearchParams(pushedUrl.split('?')[1] || '');
+    expect(params.get('entry_mode')).toBe('pdp_direct');
+    expect(params.get('items')).toBeTruthy();
+  });
+
   it('checks out internal offers with seller-specific selected variants', async () => {
     mapPdpV2ToPdpPayloadMock.mockReturnValue({
       ...canonicalPayload,
