@@ -9,6 +9,7 @@ describe('buildCheckoutTimingSnapshot', () => {
       quote_ready_at_ms: 1600,
       payment_step_visible_at_ms: 2200,
       payment_init_started_at_ms: 1700,
+      payment_init_completed_at_ms: 2100,
       create_order_started_at_ms: 1750,
       create_order_completed_at_ms: 2050,
       submit_payment_started_at_ms: 2050,
@@ -22,6 +23,9 @@ describe('buildCheckoutTimingSnapshot', () => {
       shipping_to_payment_step_ms: 1200,
       shipping_to_payment_init_ms: 700,
       quote_to_payment_init_ms: 100,
+      payment_init_duration_ms: 400,
+      payment_init_to_step_visible_ms: 100,
+      payment_init_to_element_ready_ms: 850,
       payment_init_to_create_order_ms: 50,
       create_order_ms: 300,
       submit_payment_ms: 500,
@@ -40,6 +44,9 @@ describe('buildCheckoutTimingSnapshot', () => {
     expect(snapshot.durations_ms.shipping_to_payment_element_ready_ms).toBe(1200)
     expect(snapshot.durations_ms.create_order_ms).toBeNull()
     expect(snapshot.durations_ms.submit_payment_ms).toBeNull()
+    expect(snapshot.durations_ms.payment_init_duration_ms).toBeNull()
+    expect(snapshot.durations_ms.payment_init_to_step_visible_ms).toBeNull()
+    expect(snapshot.durations_ms.payment_init_to_element_ready_ms).toBeNull()
     expect(snapshot.durations_ms.payment_step_to_payment_element_ready_ms).toBeNull()
   })
 })

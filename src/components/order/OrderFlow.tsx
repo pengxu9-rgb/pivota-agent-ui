@@ -144,6 +144,7 @@ type CheckoutTimingMarks = Partial<{
   quote_ready_at_ms: number
   payment_step_visible_at_ms: number
   payment_init_started_at_ms: number
+  payment_init_completed_at_ms: number
   create_order_started_at_ms: number
   create_order_completed_at_ms: number
   submit_payment_started_at_ms: number
@@ -159,6 +160,9 @@ type CheckoutTimingSnapshot = {
     shipping_to_payment_step_ms: number | null
     shipping_to_payment_init_ms: number | null
     quote_to_payment_init_ms: number | null
+    payment_init_duration_ms: number | null
+    payment_init_to_step_visible_ms: number | null
+    payment_init_to_element_ready_ms: number | null
     payment_init_to_create_order_ms: number | null
     create_order_ms: number | null
     submit_payment_ms: number | null
@@ -198,6 +202,18 @@ export function buildCheckoutTimingSnapshot(
         marks.payment_init_started_at_ms,
         marks.quote_ready_at_ms,
       ),
+      payment_init_duration_ms: diffMs(
+        marks.payment_init_completed_at_ms,
+        marks.payment_init_started_at_ms,
+      ),
+      payment_init_to_step_visible_ms: diffMs(
+        marks.payment_step_visible_at_ms,
+        marks.payment_init_completed_at_ms,
+      ),
+      payment_init_to_element_ready_ms: diffMs(
+        marks.payment_element_ready_at_ms,
+        marks.payment_init_completed_at_ms,
+      ),
       payment_init_to_create_order_ms: diffMs(
         marks.create_order_started_at_ms,
         marks.payment_init_started_at_ms,
@@ -223,6 +239,31 @@ export function buildCheckoutTimingSnapshot(
         marks.shipping_submit_started_at_ms,
       ),
     },
+  }
+}
+
+function buildCheckoutPerfSummary(marks: CheckoutTimingMarks) {
+  return {
+    shipping_to_quote_ready_ms: diffMs(
+      marks.quote_ready_at_ms,
+      marks.shipping_submit_started_at_ms,
+    ),
+    quote_to_payment_init_started_ms: diffMs(
+      marks.payment_init_started_at_ms,
+      marks.quote_ready_at_ms,
+    ),
+    payment_init_duration_ms: diffMs(
+      marks.payment_init_completed_at_ms,
+      marks.payment_init_started_at_ms,
+    ),
+    payment_init_to_element_ready_ms: diffMs(
+      marks.payment_element_ready_at_ms,
+      marks.payment_init_completed_at_ms,
+    ),
+    total_shipping_to_element_ready_ms: diffMs(
+      marks.payment_element_ready_at_ms,
+      marks.shipping_submit_started_at_ms,
+    ),
   }
 }
 
@@ -1305,6 +1346,7 @@ function OrderFlowInner({
   const [debugEnabled, setDebugEnabled] = useState(false)
   const createdOrderPaymentRef = useRef<CreatedOrderPaymentSnapshot | null>(null)
   const checkoutTimingMarksRef = useRef<CheckoutTimingMarks>({})
+  const checkoutPerfSummaryLoggedRef = useRef(false)
   const resumeHydratingRef = useRef(false)
   const paymentInitPromiseRef = useRef<Promise<PrefetchedPaymentInit> | null>(null)
   const paymentInitKeyRef = useRef<string | null>(null)
@@ -1357,6 +1399,7 @@ function OrderFlowInner({
 
   const resetCheckoutTiming = useCallback(() => {
     checkoutTimingMarksRef.current = {}
+    checkoutPerfSummaryLoggedRef.current = false
     setCheckoutTimingSnapshot(buildCheckoutTimingSnapshot({}))
   }, [])
 
@@ -2423,7 +2466,13 @@ function OrderFlowInner({
     // Pre-warm Adyen SDK to reduce first-render jitter.
     void import('@adyen/adyen-web').catch(() => null)
 
-    const initPromise = primePaymentForStep(quoteForPayment)
+    const initPromise = (async () => {
+      const prefetched = await primePaymentForStep(quoteForPayment)
+      if (paymentInitRunIdRef.current === runId) {
+        markCheckoutTiming('payment_init_completed_at_ms', { onlyIfMissing: true })
+      }
+      return prefetched
+    })()
     paymentInitKeyRef.current = nextPaymentInitKey
     paymentInitPromiseRef.current = initPromise
 
@@ -2552,6 +2601,15 @@ function OrderFlowInner({
   useEffect(() => {
     if (step !== 'payment') return
     markCheckoutTiming('payment_step_visible_at_ms', { onlyIfMissing: true })
+    if (checkoutPerfSummaryLoggedRef.current) return
+    checkoutPerfSummaryLoggedRef.current = true
+    try {
+      const summary = buildCheckoutPerfSummary(checkoutTimingMarksRef.current)
+      // eslint-disable-next-line no-console
+      console.info('[CHECKOUT_PERF]', summary)
+    } catch {
+      // ignore debug logging errors
+    }
   }, [markCheckoutTiming, step])
 
   useEffect(() => {
