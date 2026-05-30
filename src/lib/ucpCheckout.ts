@@ -18,8 +18,7 @@ export type HostedCheckoutFallbackReason =
   | 'missing_offer_id'
   | 'multi_merchant'
   | 'creator_offer_mint_failed'
-  | 'ucp_unavailable'
-  | 'legacy_deeplink';
+  | 'ucp_unavailable';
 
 export type HostedCheckoutBlockedReason = 'multi_merchant';
 
@@ -68,7 +67,7 @@ export function buildLegacyOrderHref(args: {
 }): string {
   const params = new URLSearchParams();
   params.set('items', JSON.stringify(args.items));
-  params.set('entry_mode', 'legacy_items');
+  params.set('entry_mode', 'pdp_direct');
   if (args.fallbackReason) params.set('fallback_reason', args.fallbackReason);
 
   const searchParams = args.context?.searchParams;
@@ -173,7 +172,7 @@ export async function resolveHostedCheckoutUrl(args: {
 }): Promise<{
   status: 'ready' | 'blocked';
   url: string | null;
-  entryMode: 'ucp_session' | 'legacy_items' | null;
+  entryMode: 'ucp_session' | 'pdp_direct' | null;
   fallbackReason: HostedCheckoutFallbackReason | null;
   blockedReason: HostedCheckoutBlockedReason | null;
   message: string | null;
@@ -209,7 +208,7 @@ export async function resolveHostedCheckoutUrl(args: {
       context: args.context,
       fallbackReason: ucpResult.fallbackReason,
     }),
-    entryMode: 'legacy_items',
+    entryMode: 'pdp_direct',
     fallbackReason: ucpResult.fallbackReason,
     blockedReason: null,
     message: null,

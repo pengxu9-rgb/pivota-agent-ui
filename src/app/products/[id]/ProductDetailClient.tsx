@@ -1483,6 +1483,7 @@ export default function ProductDetailPage({ params, initialPayload, serviceRecom
       ];
       const params = new URLSearchParams();
       params.set('items', JSON.stringify(checkoutItems));
+      params.set('entry_mode', 'pdp_direct');
 
       const explicitReturnRaw =
         String(

@@ -22,8 +22,7 @@ type FallbackReason =
   | 'missing_offer_id'
   | 'multi_merchant'
   | 'creator_offer_mint_failed'
-  | 'ucp_unavailable'
-  | 'legacy_deeplink';
+  | 'ucp_unavailable';
 
 const OFFER_EXP_SECONDS = Math.max(
   60,

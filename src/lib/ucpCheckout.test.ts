@@ -26,7 +26,7 @@ describe('ucpCheckout helpers', () => {
     vi.restoreAllMocks();
   });
 
-  it('builds legacy order href with observability params and inferred external return', () => {
+  it('builds direct PDP order href with observability params and inferred external return', () => {
     const searchParams = new URLSearchParams('entry=creator_agent&source=creator_agent');
 
     const href = buildLegacyOrderHref({
@@ -37,7 +37,7 @@ describe('ucpCheckout helpers', () => {
 
     const url = new URL(href, 'https://agent.pivota.cc');
     expect(url.pathname).toBe('/order');
-    expect(url.searchParams.get('entry_mode')).toBe('legacy_items');
+    expect(url.searchParams.get('entry_mode')).toBe('pdp_direct');
     expect(url.searchParams.get('fallback_reason')).toBe('ucp_unavailable');
     expect(url.searchParams.get('return')).toBe('https://creator.pivota.cc/');
     expect(url.searchParams.get('entry')).toBe('creator_agent');
@@ -90,7 +90,7 @@ describe('ucpCheckout helpers', () => {
     });
   });
 
-  it('falls back to the legacy order link when UCP session creation fails', async () => {
+  it('falls back to the direct PDP order link when UCP session creation fails', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(
         JSON.stringify({
@@ -114,16 +114,16 @@ describe('ucpCheckout helpers', () => {
 
     const url = new URL(String(result.url), 'https://agent.pivota.cc');
     expect(result.status).toBe('ready');
-    expect(result.entryMode).toBe('legacy_items');
+    expect(result.entryMode).toBe('pdp_direct');
     expect(result.fallbackReason).toBe('ucp_unavailable');
     expect(result.blockedReason).toBeNull();
     expect(url.pathname).toBe('/order');
-    expect(url.searchParams.get('entry_mode')).toBe('legacy_items');
+    expect(url.searchParams.get('entry_mode')).toBe('pdp_direct');
     expect(url.searchParams.get('fallback_reason')).toBe('ucp_unavailable');
     expect(url.searchParams.get('return')).toBe('/products?q=kravebeauty');
   });
 
-  it('blocks multi-merchant shopping checkout instead of falling back to legacy order items', async () => {
+  it('blocks multi-merchant shopping checkout instead of falling back to direct PDP order items', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(
         JSON.stringify({

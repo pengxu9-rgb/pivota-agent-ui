@@ -308,10 +308,9 @@ function OrderContent() {
         : checkoutTokenFromQuery
           ? 'creator_token'
           : itemsParam
-            ? 'legacy_items'
+            ? 'pdp_direct'
             : null)
-  const fallbackReason =
-    fallbackReasonFromQuery || (itemsParam && !entryModeFromQuery ? 'legacy_deeplink' : null)
+  const fallbackReason = fallbackReasonFromQuery
 
   const markUcpCheckoutSessionFailure = async (
     checkoutId: string,
