@@ -1335,6 +1335,19 @@ function OrderFlowInner({
       ? 'Please enter a valid email for your receipt.'
       : null
 
+  useEffect(() => {
+    try {
+      void prewarmStripeRuntime(
+        stripePublishableKey || DEFAULT_STRIPE_PUBLISHABLE_KEY,
+        stripeAccount,
+      )
+    } catch {
+      // Best-effort only.
+    }
+    // intentional: prewarm exactly once on /order mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   // eslint-disable-next-line react-hooks/exhaustive-deps
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
