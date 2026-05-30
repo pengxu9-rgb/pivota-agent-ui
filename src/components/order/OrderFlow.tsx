@@ -827,11 +827,11 @@ const StripePaymentSectionInner = forwardRef<
   )
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-2">
       <div
         className={
           expressWalletsReady && expressWalletsAvailable
-            ? 'rounded-[20px] border border-slate-200 bg-white p-3 sm:p-4'
+            ? 'rounded-[20px] border border-slate-100 bg-white p-2.5 sm:p-3'
             : 'hidden'
         }
       >
@@ -910,7 +910,7 @@ const StripePaymentSectionInner = forwardRef<
         </p>
       </div>
 
-      <div className="rounded-[20px] border border-slate-200 bg-white p-3 sm:p-4">
+      <div className="rounded-[20px] border border-slate-100 bg-white p-2.5 sm:p-3">
         <label className="text-[13px] font-medium text-slate-700 sm:text-sm">Payment Details</label>
         <div className="mt-2 rounded-[16px] border border-slate-200 bg-slate-50 p-3">
         <PaymentElement
@@ -3649,8 +3649,8 @@ function OrderFlowInner({
                 </div>
               )}
 
-              <div className="space-y-3">
-                <div className="rounded-[20px] border border-slate-200 bg-white p-3 sm:p-4">
+              <div className="space-y-2">
+                <div className="rounded-[20px] border border-slate-100 bg-white p-2.5 sm:p-3">
                   <div className="mb-2.5 flex items-center gap-2">
                     <ShoppingCart className="h-4 w-4 sm:h-5 sm:w-5" />
                     <p className="text-sm font-medium sm:text-base">Items</p>
@@ -3692,7 +3692,7 @@ function OrderFlowInner({
                 </div>
 
                 {deliveryOptions.length > 1 ? (
-                  <div className="rounded-[20px] border border-slate-200 bg-white p-3 sm:p-4">
+                  <div className="rounded-[20px] border border-slate-100 bg-white p-2.5 sm:p-3">
                     <label className="mb-1.5 block text-[13px] font-medium text-slate-900 sm:text-sm">
                       Shipping method
                     </label>
@@ -3752,7 +3752,7 @@ function OrderFlowInner({
                 ) : null}
 
                 {paymentSubmitOwner === 'component' && paymentComponentKind === 'adyen_dropin' ? (
-                  <div className="rounded-[20px] border border-slate-200 bg-white p-3 sm:p-4">
+                  <div className="rounded-[20px] border border-slate-100 bg-white p-2.5 sm:p-3">
                     <p className="mb-2 text-sm font-medium sm:text-base">Adyen payment</p>
                     <div ref={adyenContainerRef} className="mt-2" />
                     {!adyenMounted && (
@@ -3772,7 +3772,7 @@ function OrderFlowInner({
                   </div>
                 ) : (
                   <>
-                    <div className="cursor-pointer rounded-[20px] border border-slate-200 bg-white p-3 transition-colors hover:border-blue-500 sm:p-4">
+                    <div className="cursor-pointer rounded-[20px] border border-slate-100 bg-white p-2.5 transition-colors hover:border-blue-500 sm:p-3">
                       <div className="flex items-center">
                         <input type="radio" name="payment" defaultChecked className="mr-3" />
                         <CreditCard className="mr-3 h-5 w-5 sm:h-6 sm:w-6" />
@@ -3786,7 +3786,7 @@ function OrderFlowInner({
                     </div>
 
                     {isExternalRedirectPayment ? (
-                      <div className="rounded-[20px] border border-slate-200 bg-white p-3 sm:p-4">
+                      <div className="rounded-[20px] border border-slate-100 bg-white p-2.5 sm:p-3">
                         <p className="text-sm font-medium text-slate-900">
                           Continue to the merchant payment page
                         </p>
