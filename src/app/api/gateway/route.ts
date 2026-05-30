@@ -40,7 +40,11 @@ const REVIEWS_UPSTREAM_BASE =
   process.env.NEXT_PUBLIC_REVIEWS_BACKEND_URL ||
   process.env.REVIEWS_BACKEND_URL ||
   REVIEWS_UPSTREAM_FALLBACK;
-const DEFAULT_PDP_REVIEWS_OVERLAY_TIMEOUT_MS = 800;
+// 400ms: the reviews overlay always misses today (get_review_summary is currently
+// >800ms — P2), so a tight cap just stops wasting wait. Raise this toward the
+// get_review_summary p95 once P2 makes the upstream fast, so reviews land in SSR
+// (matters for LLM/crawler visibility). Override live via PDP_REVIEWS_OVERLAY_TIMEOUT_MS.
+const DEFAULT_PDP_REVIEWS_OVERLAY_TIMEOUT_MS = 400;
 
 if (
   !process.env.NEXT_PUBLIC_REVIEWS_API_URL &&
