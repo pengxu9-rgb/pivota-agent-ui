@@ -6,14 +6,25 @@ const jsonResponse = (payload: unknown, status = 200) =>
     headers: { 'Content-Type': 'application/json' },
   });
 
+const readServerTimingDur = (header: string | null, name: string): number => {
+  const prefix = `${name};dur=`;
+  const part = String(header || '')
+    .split(',')
+    .map((value) => value.trim())
+    .find((value) => value.startsWith(prefix));
+  return part ? Number(part.slice(prefix.length).split(';')[0]) : NaN;
+};
+
 describe('/api/gateway checkout-safe proxy', () => {
   beforeEach(() => {
+    vi.useRealTimers();
     vi.resetModules();
     vi.restoreAllMocks();
     vi.unstubAllEnvs();
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.restoreAllMocks();
     vi.unstubAllEnvs();
   });
@@ -764,6 +775,180 @@ describe('/api/gateway checkout-safe proxy', () => {
       ],
     });
     expect(reviews.data.unavailable_reason).toBeUndefined();
+  });
+
+  it('returns unchanged PDP payload when review-summary overlay exceeds its timeout', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    vi.stubEnv('SHOP_UPSTREAM_API_URL', 'https://invoke.example.com');
+    vi.stubEnv('REVIEWS_BACKEND_URL', 'https://reviews.example.com');
+    vi.stubEnv('PDP_REVIEWS_OVERLAY_TIMEOUT_MS', '25');
+
+    const pdpPayload = {
+      status: 'success',
+      subject: {
+        type: 'product_group',
+        id: 'sig_slow123',
+        canonical_product_ref: {
+          merchant_id: 'external_seed',
+          platform: 'external_seed',
+          product_id: 'ext_slow123',
+        },
+      },
+      modules: [
+        {
+          type: 'reviews_preview',
+          data: {
+            scale: 5,
+            rating: 0,
+            review_count: 0,
+            status: 'unavailable',
+            unavailable_reason: 'no_approved_merchant_review_source_captured',
+            preview_items: [],
+          },
+        },
+      ],
+    };
+
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(jsonResponse(pdpPayload))
+      .mockImplementationOnce((_url, init) => {
+        const signal = (init as RequestInit | undefined)?.signal;
+        return new Promise<Response>((_resolve, reject) => {
+          if (signal?.aborted) {
+            reject(new Error('aborted'));
+            return;
+          }
+          signal?.addEventListener('abort', () => reject(new Error('aborted')), { once: true });
+        });
+      });
+
+    const { POST } = await import('@/app/api/gateway/route');
+
+    const req = new Request('http://localhost/api/gateway', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        operation: 'get_pdp_v2',
+        payload: {
+          product_ref: { product_id: 'sig_slow123' },
+          include: ['reviews_preview'],
+        },
+      }),
+    });
+
+    let settled = false;
+    const pending = POST(req as any).then((res) => {
+      settled = true;
+      return res;
+    });
+
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(settled).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(24);
+    expect(settled).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(1);
+    const res = await pending;
+    const data = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(data).toEqual(pdpPayload);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect((fetchMock.mock.calls[1]?.[1] as RequestInit | undefined)?.signal?.aborted).toBe(true);
+    expect(readServerTimingDur(res.headers.get('server-timing'), 'reviews')).toBe(25);
+  });
+
+  it('includes reviews timing and computes gateway timing after the overlay completes', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000);
+    vi.stubEnv('SHOP_UPSTREAM_API_URL', 'https://invoke.example.com');
+    vi.stubEnv('REVIEWS_BACKEND_URL', 'https://reviews.example.com');
+    vi.stubEnv('PDP_REVIEWS_OVERLAY_TIMEOUT_MS', '1000');
+
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(
+        jsonResponse({
+          status: 'success',
+          subject: {
+            type: 'product_group',
+            id: 'sig_timing123',
+            canonical_product_ref: {
+              merchant_id: 'external_seed',
+              platform: 'external_seed',
+              product_id: 'ext_timing123',
+            },
+          },
+          modules: [
+            {
+              type: 'reviews_preview',
+              data: {
+                scale: 5,
+                rating: 0,
+                review_count: 0,
+                status: 'unavailable',
+                unavailable_reason: 'no_approved_merchant_review_source_captured',
+                preview_items: [],
+              },
+            },
+          ],
+        }),
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise<Response>((resolve) => {
+            setTimeout(() => {
+              resolve(
+                jsonResponse({
+                  review_summary: {
+                    scale: 5,
+                    rating: 4.8,
+                    review_count: 2,
+                    preview_items: [{ review_id: 1, text_snippet: 'Fast enough.' }],
+                  },
+                }),
+              );
+            }, 40);
+          }),
+      );
+
+    const { POST } = await import('@/app/api/gateway/route');
+
+    const req = new Request('http://localhost/api/gateway', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        operation: 'get_pdp_v2',
+        payload: {
+          product_ref: { product_id: 'sig_timing123' },
+          include: ['reviews_preview'],
+        },
+      }),
+    });
+
+    const pending = POST(req as any);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    await vi.advanceTimersByTimeAsync(40);
+    const res = await pending;
+    const data = await res.json();
+    const timing = res.headers.get('server-timing');
+
+    expect(timing).toContain('reviews;dur=');
+    expect(readServerTimingDur(timing, 'reviews')).toBe(40);
+    expect(readServerTimingDur(timing, 'gateway')).toBe(40);
+    expect(readServerTimingDur(timing, 'proxy')).toBe(0);
+    expect(res.headers.get('x-gateway-server-timing')).toBe(timing);
+    expect(data.modules[0].data).toMatchObject({
+      status: 'available',
+      rating: 4.8,
+      review_count: 2,
+    });
   });
 
   it('does not overwrite source-backed merchant reviews with UGC review summaries', async () => {

@@ -40,6 +40,11 @@ const REVIEWS_UPSTREAM_BASE =
   process.env.NEXT_PUBLIC_REVIEWS_BACKEND_URL ||
   process.env.REVIEWS_BACKEND_URL ||
   REVIEWS_UPSTREAM_FALLBACK;
+// 400ms: the reviews overlay always misses today (get_review_summary is currently
+// >800ms — P2), so a tight cap just stops wasting wait. Raise this toward the
+// get_review_summary p95 once P2 makes the upstream fast, so reviews land in SSR
+// (matters for LLM/crawler visibility). Override live via PDP_REVIEWS_OVERLAY_TIMEOUT_MS.
+const DEFAULT_PDP_REVIEWS_OVERLAY_TIMEOUT_MS = 400;
 
 if (
   !process.env.NEXT_PUBLIC_REVIEWS_API_URL &&
@@ -110,6 +115,13 @@ function buildShopUpstreamInvokeUrl(base: string): string {
   if (!normalized) return '/agent/shop/v1/invoke';
   if (/\/api\/gateway$/i.test(normalized)) return normalized;
   return `${normalized}/agent/shop/v1/invoke`;
+}
+
+function getPdpReviewsOverlayTimeoutMs(): number {
+  const configured = Number(process.env.PDP_REVIEWS_OVERLAY_TIMEOUT_MS);
+  return Number.isFinite(configured) && configured > 0
+    ? configured
+    : DEFAULT_PDP_REVIEWS_OVERLAY_TIMEOUT_MS;
 }
 
 function normalizeIncludeValues(raw: unknown): string[] {
@@ -259,27 +271,55 @@ function overlayReviewsPreview(payload: unknown, summary: JsonRecord): unknown {
 
 async function fetchReviewSummaryForPdp(subject: JsonRecord): Promise<JsonRecord | null> {
   const upstreamUrl = buildShopUpstreamInvokeUrl(REVIEWS_UPSTREAM_BASE);
-  const upstreamRes = await fetch(upstreamUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(AGENT_API_KEY
-        ? {
-            'X-API-Key': AGENT_API_KEY,
-            Authorization: `Bearer ${AGENT_API_KEY}`,
-          }
-        : {}),
-    },
-    body: JSON.stringify({
-      operation: 'get_review_summary',
-      payload: {
-        sku: subject,
+  // PERF GUARD — do not remove. This overlay runs inline on every PDP server render.
+  // The get_review_summary upstream has been measured at 2.5s–19s; without this hard
+  // timeout it dominates PDP latency (TTFB). On timeout we abort and fall back to the
+  // un-overlaid PDP payload (reviews still render client-side). Tune via
+  // PDP_REVIEWS_OVERLAY_TIMEOUT_MS; watch `reviews;dur` in Server-Timing for the hit rate.
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), getPdpReviewsOverlayTimeoutMs());
+
+  try {
+    const upstreamRes = await fetch(upstreamUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(AGENT_API_KEY
+          ? {
+              'X-API-Key': AGENT_API_KEY,
+              Authorization: `Bearer ${AGENT_API_KEY}`,
+            }
+          : {}),
       },
-    }),
-  });
-  if (!upstreamRes.ok) return null;
-  const data = await upstreamRes.json().catch(() => null);
-  return isPlainObject(data?.review_summary) ? data.review_summary : null;
+      body: JSON.stringify({
+        operation: 'get_review_summary',
+        payload: {
+          sku: subject,
+        },
+      }),
+      signal: controller.signal,
+    });
+    if (!upstreamRes.ok) return null;
+    const data = await upstreamRes.json().catch(() => null);
+    return isPlainObject(data?.review_summary) ? data.review_summary : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+function extractPdpReviewsOverlaySubject(args: {
+  operation: string;
+  body: JsonRecord;
+  status: number;
+  payload: unknown;
+}): JsonRecord | null {
+  if (args.operation !== 'get_pdp_v2' || args.status < 200 || args.status >= 300) {
+    return null;
+  }
+  if (!isReviewsPreviewRequested(args.body)) return null;
+  return extractReviewSubjectFromPdp(args.payload);
 }
 
 async function maybeOverlayPdpReviews(args: {
@@ -287,13 +327,10 @@ async function maybeOverlayPdpReviews(args: {
   body: JsonRecord;
   status: number;
   payload: unknown;
+  subject?: JsonRecord | null;
 }): Promise<unknown> {
-  if (args.operation !== 'get_pdp_v2' || args.status < 200 || args.status >= 300) {
-    return args.payload;
-  }
-  if (!isReviewsPreviewRequested(args.body)) return args.payload;
-
-  const subject = extractReviewSubjectFromPdp(args.payload);
+  const subject =
+    args.subject === undefined ? extractPdpReviewsOverlaySubject(args) : args.subject;
   if (!subject) return args.payload;
 
   try {
@@ -940,15 +977,8 @@ export async function POST(req: NextRequest) {
       ...(upstreamMethod === 'GET' ? {} : { body: JSON.stringify(upstreamBody || {}) }),
     });
     const upstreamMs = Math.max(0, Date.now() - upstreamStartedAt);
-    const totalMs = Math.max(0, Date.now() - startedAt);
-    const proxyMs = Math.max(0, totalMs - upstreamMs);
     const upstreamTiming = String(upstreamRes.headers.get('server-timing') || '').trim();
     const upstreamRetries = String(upstreamRes.headers.get('x-gateway-retries') || '').trim();
-    const timingParts = [
-      ...(upstreamTiming ? [upstreamTiming] : [`upstream;dur=${upstreamMs}`]),
-      `proxy;dur=${proxyMs}`,
-      `gateway;dur=${totalMs}`,
-    ];
 
     const text = await upstreamRes.text();
     let json: any = null;
@@ -963,19 +993,41 @@ export async function POST(req: NextRequest) {
       ? normalizeCheckoutSafeResponse(normalizedOperation, json)
       : json;
 
-    responsePayload = await maybeOverlayPdpReviews({
+    const overlayArgs = {
       operation: normalizedOperation,
       body: isPlainObject(body) ? body : {},
       status: upstreamRes.status,
       payload: responsePayload,
-    });
+    };
+    const overlaySubject = extractPdpReviewsOverlaySubject(overlayArgs);
+    let reviewsMs = 0;
+    if (overlaySubject) {
+      const reviewsStartedAt = Date.now();
+      responsePayload = await maybeOverlayPdpReviews({
+        ...overlayArgs,
+        subject: overlaySubject,
+      });
+      reviewsMs = Math.max(0, Date.now() - reviewsStartedAt);
+    }
+
+    // Compute totalMs AFTER the body read and reviews overlay so `gateway;dur` reflects
+    // the real handler wall time. Computing it earlier (the prior bug) hid the slow
+    // reviews overlay from Server-Timing — keep this below the overlay.
+    const totalMs = Math.max(0, Date.now() - startedAt);
+    const proxyMs = Math.max(0, totalMs - upstreamMs - reviewsMs);
+    const serverTiming = [
+      ...(upstreamTiming ? [upstreamTiming] : [`upstream;dur=${upstreamMs}`]),
+      `reviews;dur=${reviewsMs}`,
+      `proxy;dur=${proxyMs}`,
+      `gateway;dur=${totalMs}`,
+    ].join(', ');
 
     if (typeof responsePayload === 'string') {
       return new Response(responsePayload, {
         status: upstreamRes.status,
         headers: buildGatewayResponseHeaders({
           contentType: upstreamRes.headers.get('content-type') || 'text/plain; charset=utf-8',
-          serverTiming: timingParts.join(', '),
+          serverTiming,
           gatewayRetries: upstreamRetries,
           upstreamHeaders: upstreamRes.headers,
         }),
@@ -984,7 +1036,7 @@ export async function POST(req: NextRequest) {
 
     return jsonProxyResponse(responsePayload, {
       status: upstreamRes.status,
-      serverTiming: timingParts.join(', '),
+      serverTiming,
       gatewayRetries: upstreamRetries,
       upstreamHeaders: upstreamRes.headers,
     });
