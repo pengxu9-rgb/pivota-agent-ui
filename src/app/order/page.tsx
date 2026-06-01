@@ -714,7 +714,7 @@ function OrderContent() {
                 {sellerDomain ? (
                   <>
                     {' '}
-                    (<span className="font-mono">{sellerDomain}</span>)
+                    (<span className="break-all font-mono text-[0.92em]">{sellerDomain}</span>)
                   </>
                 ) : null}
                 . Pivota provides the checkout experience but is not the seller of record.
@@ -722,7 +722,7 @@ function OrderContent() {
               {billingDescriptor ? (
                 <p className="mt-2">
                   Billing descriptor (expected):{' '}
-                  <span className="font-mono">{billingDescriptor}</span>
+                  <span className="break-all font-mono text-[0.92em]">{billingDescriptor}</span>
                 </p>
               ) : null}
             </div>

@@ -1,6 +1,15 @@
 'use client'
 
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
+import {
+  forwardRef,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import {
   ShoppingCart,
   CreditCard,
@@ -273,6 +282,52 @@ type StripePaymentSectionHandle = {
     returnUrl: string
     shipping?: Partial<ShippingInfo> | null
   }) => Promise<StripeConfirmationResult>
+}
+
+// PSP widgets own their field chrome, focus states, and iframe/drop-in borders.
+// This wrapper intentionally provides only checkout heading hierarchy and spacing.
+function PaymentProviderSurface({
+  title,
+  children,
+}: {
+  title: string
+  children: ReactNode
+}) {
+  return (
+    <section className="min-w-0 space-y-2">
+      <h3 className="text-[13px] font-medium text-slate-900 sm:text-sm">{title}</h3>
+      {children}
+    </section>
+  )
+}
+
+function OrderItemThumbnail({
+  src,
+  title,
+}: {
+  src?: string | null
+  title: string
+}) {
+  const normalizedSrc = normalizeDisplayImageUrl(src, '/placeholder.svg')
+  const [imageSrc, setImageSrc] = useState(normalizedSrc)
+
+  useEffect(() => {
+    setImageSrc(normalizedSrc)
+  }, [normalizedSrc])
+
+  return (
+    <Image
+      src={imageSrc}
+      alt={title}
+      width={40}
+      height={40}
+      className="mr-3 h-10 w-10 shrink-0 rounded object-cover"
+      onError={() => {
+        if (imageSrc !== '/placeholder.svg') setImageSrc('/placeholder.svg')
+      }}
+      unoptimized
+    />
+  )
 }
 
 function readStripeAccount(value: unknown): string | null {
@@ -810,16 +865,15 @@ const StripePaymentSectionInner = forwardRef<
   )
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       <div
         className={
           expressWalletsReady && expressWalletsAvailable
-            ? 'rounded-[20px] border border-slate-200 bg-white p-3 sm:p-4'
+            ? ''
             : 'hidden'
         }
       >
-        <label className="text-[13px] font-medium text-slate-700 sm:text-sm">Wallets</label>
-        <div className="mt-2 rounded-[16px] border border-slate-200 bg-slate-50 p-3">
+        <PaymentProviderSurface title="Wallets">
           <ExpressCheckoutElement
             options={buildStripeExpressCheckoutOptions(shipping)}
             onReady={(event) => {
@@ -886,16 +940,14 @@ const StripePaymentSectionInner = forwardRef<
               }
             }}
           />
-        </div>
-        <p className="mt-2 text-xs text-slate-500">
-          Apple Pay and Google Pay appear here when Stripe marks them available for this device,
-          browser, domain, and merchant account.
-        </p>
+          <p className="text-xs text-slate-500">
+            Apple Pay and Google Pay appear here when Stripe marks them available for this device,
+            browser, domain, and merchant account.
+          </p>
+        </PaymentProviderSurface>
       </div>
 
-      <div className="rounded-[20px] border border-slate-200 bg-white p-3 sm:p-4">
-        <label className="text-[13px] font-medium text-slate-700 sm:text-sm">Payment Details</label>
-        <div className="mt-2 rounded-[16px] border border-slate-200 bg-slate-50 p-3">
+      <PaymentProviderSurface title="Payment Details">
         <PaymentElement
           options={buildStripePaymentElementOptions(shipping)}
           onReady={() => {
@@ -917,9 +969,8 @@ const StripePaymentSectionInner = forwardRef<
             )
           }}
         />
-      </div>
-      {localPaymentError && <p className="mt-2 text-sm text-red-600">{localPaymentError}</p>}
-      </div>
+        {localPaymentError && <p className="text-sm text-red-600">{localPaymentError}</p>}
+      </PaymentProviderSurface>
     </div>
   )
 })
@@ -3340,8 +3391,8 @@ function OrderFlowInner({
                     </p>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div className="min-w-0">
                       <label className="mb-1.5 block text-[13px] font-semibold text-slate-900 sm:text-sm">Full name</label>
                       <input
                         type="text"
@@ -3354,7 +3405,7 @@ function OrderFlowInner({
                       />
                     </div>
 
-                    <div>
+                    <div className="min-w-0">
                       <label className="mb-1.5 block text-[13px] font-semibold text-slate-900 sm:text-sm">
                         <span className="sm:hidden">Country</span>
                         <span className="hidden sm:inline">Country / Region</span>
@@ -3383,7 +3434,7 @@ function OrderFlowInner({
                       </div>
                     </div>
 
-                    <div className="relative col-span-2">
+                    <div className="relative sm:col-span-2">
                       <label className="mb-1.5 block text-[13px] font-semibold text-slate-900 sm:text-sm">Street address</label>
                       <div>
                         <input
@@ -3405,7 +3456,7 @@ function OrderFlowInner({
                     </div>
 
                     {showAddressLine2Mobile || shipping.address_line2 ? (
-                      <div className="col-span-2">
+                      <div className="sm:col-span-2">
                         <label className="mb-1.5 block text-[13px] font-semibold text-slate-900 sm:text-sm">
                           Apt, suite, etc. <span className="font-normal text-slate-400">(optional)</span>
                         </label>
@@ -3425,7 +3476,7 @@ function OrderFlowInner({
                       </div>
                     ) : (
                       <>
-                        <div className="col-span-2 sm:hidden">
+                        <div className="sm:hidden">
                           <button
                             type="button"
                             onClick={() => setShowAddressLine2Mobile(true)}
@@ -3434,7 +3485,7 @@ function OrderFlowInner({
                             + Add apt, suite, etc. (optional)
                           </button>
                         </div>
-                        <div className="col-span-2 hidden sm:block">
+                        <div className="hidden sm:col-span-2 sm:block">
                           <label className="mb-1.5 block text-[13px] font-semibold text-slate-900 sm:text-sm">
                             Apt, suite, etc. <span className="font-normal text-slate-400">(optional)</span>
                           </label>
@@ -3455,8 +3506,8 @@ function OrderFlowInner({
                       </>
                     )}
 
-                    <div className="col-span-2 grid grid-cols-[minmax(0,1.15fr)_minmax(0,0.7fr)_minmax(0,0.9fr)] gap-3">
-                      <div>
+                    <div className="grid grid-cols-2 gap-3 sm:col-span-2 sm:grid-cols-[minmax(0,1.15fr)_minmax(0,0.7fr)_minmax(0,0.9fr)]">
+                      <div className="col-span-2 min-w-0 sm:col-span-1">
                         <label className="mb-1.5 block text-[13px] font-semibold text-slate-900 sm:text-sm">City</label>
                         <input
                           type="text"
@@ -3468,7 +3519,7 @@ function OrderFlowInner({
                           className={fieldClassName}
                         />
                       </div>
-                      <div>
+                      <div className="min-w-0">
                         <label className="mb-1.5 block text-[13px] font-semibold text-slate-900 sm:text-sm">State</label>
                         <input
                           type="text"
@@ -3484,7 +3535,7 @@ function OrderFlowInner({
                           className={fieldClassName}
                         />
                       </div>
-                      <div>
+                      <div className="min-w-0">
                         <label className="mb-1.5 block text-[13px] font-semibold text-slate-900 sm:text-sm">
                           <span className="sm:hidden">Postal</span>
                           <span className="hidden sm:inline">Postal code</span>
@@ -3546,9 +3597,9 @@ function OrderFlowInner({
                 <h2 className="text-[1.45rem] font-semibold tracking-tight text-slate-900 md:text-[1.6rem]">
                   Payment Method
                 </h2>
-                <div className="text-[13px] text-slate-500">
+                <div className="min-w-0 text-[13px] text-slate-500">
                   <span>Payment provider: </span>
-                  <span className="font-medium text-slate-900">
+                  <span className="break-words font-medium text-slate-900">
                     {paymentProviderLabel}
                   </span>
                 </div>
@@ -3614,16 +3665,7 @@ function OrderFlowInner({
                     {items.map((item, index) => (
                       <div key={index} className="flex items-center justify-between gap-3">
                         <div className="flex min-w-0 items-center">
-                          {item.image_url && (
-                            <Image
-                              src={normalizeDisplayImageUrl(item.image_url, '/placeholder.svg')}
-                              alt={item.title}
-                              width={40}
-                              height={40}
-                              className="mr-3 h-10 w-10 rounded object-cover"
-                              unoptimized
-                            />
-                          )}
+                          <OrderItemThumbnail src={item.image_url} title={item.title} />
                           <div className="min-w-0">
                             <p className="truncate text-sm font-medium">{item.title}</p>
                             <p className="text-xs text-slate-500">Qty: {item.quantity}</p>
@@ -3707,15 +3749,14 @@ function OrderFlowInner({
                 ) : null}
 
                 {paymentSubmitOwner === 'component' && paymentComponentKind === 'adyen_dropin' ? (
-                  <div className="rounded-[20px] border border-slate-200 bg-white p-3 sm:p-4">
-                    <p className="mb-2 text-sm font-medium sm:text-base">Adyen payment</p>
-                    <div ref={adyenContainerRef} className="mt-2" />
+                  <PaymentProviderSurface title="Payment Details">
+                    <div ref={adyenContainerRef} />
                     {!adyenMounted && (
                       <p className="text-xs text-slate-500">
                         The secure Adyen payment form is initializing…
                       </p>
                     )}
-                  </div>
+                  </PaymentProviderSurface>
                 ) : paymentSubmitOwner === 'unsupported' || !paymentSupportedInShoppingUi ? (
                   <div className="rounded-[20px] border border-amber-200 bg-amber-50 p-3 sm:p-4">
                     <p className="text-sm font-medium text-amber-900">
@@ -3729,11 +3770,11 @@ function OrderFlowInner({
                   <>
                     <div className="cursor-pointer rounded-[20px] border border-slate-200 bg-white p-3 transition-colors hover:border-blue-500 sm:p-4">
                       <div className="flex items-center">
-                        <input type="radio" name="payment" defaultChecked className="mr-3" />
-                        <CreditCard className="mr-3 h-5 w-5 sm:h-6 sm:w-6" />
-                        <div>
+                        <input type="radio" name="payment" defaultChecked className="mr-3 shrink-0" />
+                        <CreditCard className="mr-3 h-5 w-5 shrink-0 sm:h-6 sm:w-6" />
+                        <div className="min-w-0">
                           <p className="text-sm font-medium sm:text-base">Secure payment methods</p>
-                          <p className="text-xs text-slate-500 sm:text-sm">
+                          <p className="text-xs leading-5 text-slate-500 sm:text-sm">
                             Cards, wallets, and other supported merchant payment methods
                           </p>
                         </div>
