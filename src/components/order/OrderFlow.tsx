@@ -1339,6 +1339,15 @@ function OrderFlowInner({
   // Temporary on-screen diagnostic (only rendered when the page URL has ?debug=1). Captures the exact
   // confirm-time Stripe state so a stuck "confirming" can be diagnosed without DevTools.
   const [payDebug, setPayDebug] = useState<Record<string, unknown> | null>(null)
+  useEffect(() => {
+    if (payDebug) {
+      try {
+        sessionStorage.setItem('pivota_pay_debug', JSON.stringify(payDebug))
+      } catch {
+        /* ignore */
+      }
+    }
+  }, [payDebug])
   const [otp, setOtp] = useState('')
   const [otpSent, setOtpSent] = useState(false)
   const [showAddressLine2Mobile, setShowAddressLine2Mobile] = useState(false)
