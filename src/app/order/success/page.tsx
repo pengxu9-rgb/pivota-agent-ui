@@ -359,28 +359,8 @@ function SuccessContent() {
     router.push('/')
   }
 
-  const showPayDebug =
-    searchParams.get('debug') === '1' || searchParams.get('checkout_debug') === '1'
-  let persistedPayDebug: string | null = null
-  if (showPayDebug && typeof window !== 'undefined') {
-    try {
-      persistedPayDebug = sessionStorage.getItem('pivota_pay_debug')
-    } catch {
-      persistedPayDebug = null
-    }
-  }
-
   return (
     <main className="min-h-screen bg-gradient-to-br from-green-50 to-blue-100 flex items-center justify-center px-4 py-6">
-      {showPayDebug ? (
-        <pre
-          style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 99999, maxHeight: '50vh' }}
-          className="overflow-auto border-b-2 border-amber-400 bg-amber-50 p-3 text-[11px] leading-relaxed text-amber-900"
-        >
-          {'PAY DEBUG (from payment page, persisted)\n' +
-            (persistedPayDebug || '(no pay-debug captured — confirm path may not have run)')}
-        </pre>
-      ) : null}
       <div className="bg-white rounded-lg shadow-xl p-6 max-w-md w-full text-center">
         <div
           className={`w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4 ${

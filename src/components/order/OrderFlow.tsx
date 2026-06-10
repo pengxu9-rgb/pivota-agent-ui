@@ -1336,18 +1336,6 @@ function OrderFlowInner({
   const [createdOrderId, setCreatedOrderId] = useState<string>('')
   const [paymentId, setPaymentId] = useState<string>('')
   const [cardError, setCardError] = useState<string>('')
-  // Temporary on-screen diagnostic (only rendered when the page URL has ?debug=1). Captures the exact
-  // confirm-time Stripe state so a stuck "confirming" can be diagnosed without DevTools.
-  const [payDebug, setPayDebug] = useState<Record<string, unknown> | null>(null)
-  useEffect(() => {
-    if (payDebug) {
-      try {
-        sessionStorage.setItem('pivota_pay_debug', JSON.stringify(payDebug))
-      } catch {
-        /* ignore */
-      }
-    }
-  }, [payDebug])
   const [otp, setOtp] = useState('')
   const [otpSent, setOtpSent] = useState(false)
   const [showAddressLine2Mobile, setShowAddressLine2Mobile] = useState(false)
@@ -3022,21 +3010,7 @@ function OrderFlowInner({
           paymentResponse,
           action,
         })
-        const pickPiCrumb = (s?: string | null) => (s ? String(s).split('_secret_')[0] : null)
-        setPayDebug({
-          step: 'contract_resolved',
-          order_id: orderId,
-          requiresClientConfirmation: paymentContract.requiresClientConfirmation,
-          confirmationOwner: paymentContract.confirmationOwner,
-          paymentStatus: paymentContract.paymentStatus,
-          submitOwner: paymentContract.submitOwner,
-          action_type: action?.type || null,
-          paytime_pi: pickPiCrumb(clientSecret),
-          mounted_pi: pickPiCrumb(stripeClientSecretForRender),
-          pubkey_prefix: stripePublishableKey ? String(stripePublishableKey).slice(0, 8) : '(none)',
-        })
         if (!paymentContract.requiresClientConfirmation) {
-          setPayDebug((prev) => ({ ...(prev || {}), branch: 'POLL (no client confirm) — will spin if PI not settled' }))
           const paymentIdValue = String(
             (paymentResponse as any)?.payment_id ||
               (paymentResponse as any)?.payment?.payment_id ||
@@ -3049,7 +3023,6 @@ function OrderFlowInner({
           await continuePendingPaymentConfirmationForOrder(orderId, paymentIdValue)
           return
         }
-        setPayDebug((prev) => ({ ...(prev || {}), branch: 'CLIENT_CONFIRM (stripe.confirmPayment)' }))
 
         // Client-owned confirmation paths.
         if (!paymentContract.supportedInShoppingUi || paymentContract.submitOwner === 'unsupported') {
@@ -3107,27 +3080,11 @@ function OrderFlowInner({
               '[checkout] confirm clientSecret diverged from the mounted PaymentElement; confirming the mounted PaymentIntent (the one holding the card).',
             )
           }
-          const pickPi = (s?: string | null) => (s ? String(s).split('_secret_')[0] : null)
-          setPayDebug({
-            order_id: orderId,
-            mounted_pi: pickPi(stripeClientSecretForRender),
-            paytime_pi: pickPi(clientSecret),
-            confirmed_pi: pickPi(mountedClientSecret),
-            mounted_eq_confirmed: stripeClientSecretForRender === mountedClientSecret,
-            pubkey_prefix: stripePublishableKey ? String(stripePublishableKey).slice(0, 8) : '(none)',
-            stripe_account: stripeAccount || '(none)',
-          })
           const stripeResult = await stripePaymentSectionRef.current?.confirm({
             clientSecret: mountedClientSecret,
             returnUrl: stripeReturnUrl,
             shipping,
           })
-          setPayDebug((prev) => ({
-            ...(prev || {}),
-            confirm_status: (stripeResult as any)?.status ?? '(none)',
-            confirm_error: (stripeResult as any)?.error ?? '(none)',
-            confirm_pi_id: (stripeResult as any)?.paymentIntentId ?? '(none)',
-          }))
           await handleStripeConfirmationResult(
             stripeResult || { error: 'Payment form is not ready. Please refresh and try again.' },
           )
@@ -3191,14 +3148,6 @@ function OrderFlowInner({
 
   return (
     <div className="mx-auto max-w-4xl px-3 pb-3 sm:px-4 lg:max-w-6xl lg:px-5">
-      {searchParams?.get('debug') === '1' ? (
-        <pre
-          style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 99999, maxHeight: '45vh' }}
-          className="overflow-auto border-b-2 border-amber-400 bg-amber-50 p-3 text-[11px] leading-relaxed text-amber-900"
-        >
-          {'PAY DEBUG (?debug=1)\n' + JSON.stringify(payDebug || { step: 'no pay attempt yet' }, null, 2)}
-        </pre>
-      ) : null}
       <div className="mb-4 border-b border-slate-200/80">
         <div className="flex items-end gap-2 overflow-x-auto pb-0.5 lg:gap-4">
           {CHECKOUT_STEPS.map((item, index) => {
