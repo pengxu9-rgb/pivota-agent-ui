@@ -3013,7 +3013,21 @@ function OrderFlowInner({
           paymentResponse,
           action,
         })
+        const pickPiCrumb = (s?: string | null) => (s ? String(s).split('_secret_')[0] : null)
+        setPayDebug({
+          step: 'contract_resolved',
+          order_id: orderId,
+          requiresClientConfirmation: paymentContract.requiresClientConfirmation,
+          confirmationOwner: paymentContract.confirmationOwner,
+          paymentStatus: paymentContract.paymentStatus,
+          submitOwner: paymentContract.submitOwner,
+          action_type: action?.type || null,
+          paytime_pi: pickPiCrumb(clientSecret),
+          mounted_pi: pickPiCrumb(stripeClientSecretForRender),
+          pubkey_prefix: stripePublishableKey ? String(stripePublishableKey).slice(0, 8) : '(none)',
+        })
         if (!paymentContract.requiresClientConfirmation) {
+          setPayDebug((prev) => ({ ...(prev || {}), branch: 'POLL (no client confirm) — will spin if PI not settled' }))
           const paymentIdValue = String(
             (paymentResponse as any)?.payment_id ||
               (paymentResponse as any)?.payment?.payment_id ||
@@ -3026,6 +3040,7 @@ function OrderFlowInner({
           await continuePendingPaymentConfirmationForOrder(orderId, paymentIdValue)
           return
         }
+        setPayDebug((prev) => ({ ...(prev || {}), branch: 'CLIENT_CONFIRM (stripe.confirmPayment)' }))
 
         // Client-owned confirmation paths.
         if (!paymentContract.supportedInShoppingUi || paymentContract.submitOwner === 'unsupported') {
@@ -3167,6 +3182,14 @@ function OrderFlowInner({
 
   return (
     <div className="mx-auto max-w-4xl px-3 pb-3 sm:px-4 lg:max-w-6xl lg:px-5">
+      {searchParams?.get('debug') === '1' ? (
+        <pre
+          style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 99999, maxHeight: '45vh' }}
+          className="overflow-auto border-b-2 border-amber-400 bg-amber-50 p-3 text-[11px] leading-relaxed text-amber-900"
+        >
+          {'PAY DEBUG (?debug=1)\n' + JSON.stringify(payDebug || { step: 'no pay attempt yet' }, null, 2)}
+        </pre>
+      ) : null}
       <div className="mb-4 border-b border-slate-200/80">
         <div className="flex items-end gap-2 overflow-x-auto pb-0.5 lg:gap-4">
           {CHECKOUT_STEPS.map((item, index) => {
@@ -3913,11 +3936,6 @@ function OrderFlowInner({
                           Refresh the payment session or reconnect Stripe, then retry checkout.
                         </p>
                       </div>
-                    ) : null}
-                    {searchParams?.get('debug') === '1' && payDebug ? (
-                      <pre className="mt-3 overflow-auto rounded-[12px] border border-amber-300 bg-amber-50 p-3 text-[11px] leading-relaxed text-amber-900">
-                        {JSON.stringify(payDebug, null, 2)}
-                      </pre>
                     ) : null}
                   </>
                 )}
