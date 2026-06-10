@@ -258,10 +258,6 @@ type CreatedOrderPaymentSnapshot = {
 
 type CheckoutStep = 'shipping' | 'payment' | 'confirm'
 
-const DEFAULT_STRIPE_PUBLISHABLE_KEY =
-  process.env.NODE_ENV === 'production'
-    ? ''
-    : process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || ''
 const ADYEN_CLIENT_KEY =
   process.env.NEXT_PUBLIC_ADYEN_CLIENT_KEY ||
   'test_RMFUADZPQBBYJIWI56KVOQSNUUT657ML' // public test key; replace in env for prod
@@ -413,7 +409,12 @@ export function resolveStripePublishableKey(paymentResponse: any, fallbackAction
     if (resolved) return resolved
   }
 
-  return DEFAULT_STRIPE_PUBLISHABLE_KEY || null
+  // NO fallback/default publishable key. The Stripe Element MUST mount with the publishable key that
+  // belongs to the same Stripe account as this order's PaymentIntent (resolved from the backend payment
+  // response above). Falling back to a global/default key mounts the card form on a DIFFERENT account than
+  // the PI, so the card cannot attach → Stripe reports "customer has not entered their payment method".
+  // If no merchant key is present, return null and fail loudly rather than confirm on the wrong account.
+  return null
 }
 
 export function resolveStripeAccount(paymentResponse: any, fallbackAction: any = null): string | null {
@@ -1335,6 +1336,9 @@ function OrderFlowInner({
   const [createdOrderId, setCreatedOrderId] = useState<string>('')
   const [paymentId, setPaymentId] = useState<string>('')
   const [cardError, setCardError] = useState<string>('')
+  // Temporary on-screen diagnostic (only rendered when the page URL has ?debug=1). Captures the exact
+  // confirm-time Stripe state so a stuck "confirming" can be diagnosed without DevTools.
+  const [payDebug, setPayDebug] = useState<Record<string, unknown> | null>(null)
   const [otp, setOtp] = useState('')
   const [otpSent, setOtpSent] = useState(false)
   const [showAddressLine2Mobile, setShowAddressLine2Mobile] = useState(false)
@@ -1367,9 +1371,7 @@ function OrderFlowInner({
   const [prefetchedPaymentRes, setPrefetchedPaymentRes] = useState<PrefetchedPaymentInit | null>(null)
   const [paymentInitLoading, setPaymentInitLoading] = useState(false)
   const [paymentInitError, setPaymentInitError] = useState<string | null>(null)
-  const [stripePublishableKey, setStripePublishableKey] = useState<string>(
-    DEFAULT_STRIPE_PUBLISHABLE_KEY,
-  )
+  const [stripePublishableKey, setStripePublishableKey] = useState<string>('')
   const [stripeAccount, setStripeAccount] = useState<string | null>(null)
   const [stripeSelectedMethodType, setStripeSelectedMethodType] = useState<string | null>(null)
   const [paymentMethodEvidence, setPaymentMethodEvidence] = useState<Record<string, any> | null>(null)
@@ -1392,10 +1394,7 @@ function OrderFlowInner({
 
   useEffect(() => {
     try {
-      void prewarmStripeRuntime(
-        stripePublishableKey || DEFAULT_STRIPE_PUBLISHABLE_KEY,
-        stripeAccount,
-      )
+      void prewarmStripeRuntime(stripePublishableKey, stripeAccount)
     } catch {
       // Best-effort only.
     }
@@ -2594,7 +2593,7 @@ function OrderFlowInner({
     setPaymentInitError(null)
     clearCreatedOrderPaymentSnapshot()
     resetCheckoutTiming()
-    setStripePublishableKey(DEFAULT_STRIPE_PUBLISHABLE_KEY)
+    setStripePublishableKey('')
     setStripeAccount(null)
     setStripeSelectedMethodType(null)
   }, [resetCheckoutTiming, step])
@@ -2803,7 +2802,7 @@ function OrderFlowInner({
     try {
       resetCheckoutTiming()
       markCheckoutTiming('shipping_submit_started_at_ms')
-      void prewarmStripeRuntime(stripePublishableKey || DEFAULT_STRIPE_PUBLISHABLE_KEY, stripeAccount)
+      void prewarmStripeRuntime(stripePublishableKey, stripeAccount)
       setCheckoutFailure(null)
       setIsProcessing(true)
       // Reset any existing order if shipping changes.
@@ -3084,11 +3083,27 @@ function OrderFlowInner({
               '[checkout] confirm clientSecret diverged from the mounted PaymentElement; confirming the mounted PaymentIntent (the one holding the card).',
             )
           }
+          const pickPi = (s?: string | null) => (s ? String(s).split('_secret_')[0] : null)
+          setPayDebug({
+            order_id: orderId,
+            mounted_pi: pickPi(stripeClientSecretForRender),
+            paytime_pi: pickPi(clientSecret),
+            confirmed_pi: pickPi(mountedClientSecret),
+            mounted_eq_confirmed: stripeClientSecretForRender === mountedClientSecret,
+            pubkey_prefix: stripePublishableKey ? String(stripePublishableKey).slice(0, 8) : '(none)',
+            stripe_account: stripeAccount || '(none)',
+          })
           const stripeResult = await stripePaymentSectionRef.current?.confirm({
             clientSecret: mountedClientSecret,
             returnUrl: stripeReturnUrl,
             shipping,
           })
+          setPayDebug((prev) => ({
+            ...(prev || {}),
+            confirm_status: (stripeResult as any)?.status ?? '(none)',
+            confirm_error: (stripeResult as any)?.error ?? '(none)',
+            confirm_pi_id: (stripeResult as any)?.paymentIntentId ?? '(none)',
+          }))
           await handleStripeConfirmationResult(
             stripeResult || { error: 'Payment form is not ready. Please refresh and try again.' },
           )
@@ -3898,6 +3913,11 @@ function OrderFlowInner({
                           Refresh the payment session or reconnect Stripe, then retry checkout.
                         </p>
                       </div>
+                    ) : null}
+                    {searchParams?.get('debug') === '1' && payDebug ? (
+                      <pre className="mt-3 overflow-auto rounded-[12px] border border-amber-300 bg-amber-50 p-3 text-[11px] leading-relaxed text-amber-900">
+                        {JSON.stringify(payDebug, null, 2)}
+                      </pre>
                     ) : null}
                   </>
                 )}
