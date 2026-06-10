@@ -6,6 +6,29 @@ import {
 } from './checkoutPaymentContract'
 
 describe('resolveCheckoutPaymentContract', () => {
+  it('REGRESSION: create-order envelope status "success" + stripe_client_secret must require client confirmation (not paid)', () => {
+    // The create-order/gateway response carries the API ENVELOPE outcome as top-level `status: "success"`
+    // (request succeeded), with NO payment_status and a Stripe client_secret action that the buyer must
+    // confirm. Previously "success" normalized to "paid" → requiresClientConfirmation:false → the page
+    // skipped the card confirmation and polled forever. It must instead require client confirmation.
+    const contract = resolveCheckoutPaymentContract({
+      paymentResponse: {
+        status: 'success',
+        order_id: 'ORD_X',
+        payment: {
+          psp: 'stripe',
+          client_secret: 'pi_x_secret_y',
+          payment_intent_id: 'pi_x',
+          payment_action: { type: 'stripe_client_secret', client_secret: 'pi_x_secret_y' },
+        },
+      },
+      action: { type: 'stripe_client_secret', client_secret: 'pi_x_secret_y' },
+    })
+    expect(contract.requiresClientConfirmation).toBe(true)
+    expect(contract.confirmationOwner).toBe('client')
+    expect(contract.paymentStatus).not.toBe('paid')
+  })
+
   it('treats processing + stripe_client_secret as client-owned confirmation', () => {
     const contract = resolveCheckoutPaymentContract({
       paymentResponse: {

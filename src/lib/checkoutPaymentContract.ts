@@ -50,7 +50,9 @@ function normalizePaymentStatus(rawStatus: unknown): string {
   if (normalized === 'requires_payment_method' || normalized === 'requires_confirmation') {
     return 'requires_action'
   }
-  if (normalized === 'completed' || normalized === 'succeeded' || normalized === 'success' || normalized === 'settled') {
+  // NOTE: 'success' is intentionally NOT mapped to paid — it is the API ENVELOPE outcome word, not a
+  // payment status. Genuine paid signals are 'succeeded' (Stripe PI), 'completed', 'settled', 'paid'.
+  if (normalized === 'completed' || normalized === 'succeeded' || normalized === 'settled') {
     return 'paid'
   }
   if (normalized === 'failed') return 'payment_failed'
