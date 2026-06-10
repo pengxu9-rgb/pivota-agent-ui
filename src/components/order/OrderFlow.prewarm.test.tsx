@@ -89,7 +89,12 @@ describe('OrderFlow Stripe runtime prewarm', () => {
     vi.restoreAllMocks()
   })
 
-  it('prewarms Stripe.js once when the order page mounts', async () => {
+  it('does NOT prewarm Stripe.js on mount without a resolved merchant publishable key', async () => {
+    // Post-#240: there is no default/fallback publishable key (it could mount the card Element on the WRONG
+    // Stripe account). So Stripe.js is not warmed on bare mount — prewarmStripeRuntime fires later, once the
+    // merchant's pk_live is resolved from the payment response. (In production the default was already '' ,
+    // so prewarm-on-mount was a no-op there even before #240.) Connection warmth is covered by the
+    // <link rel="preconnect"> tags in the root layout.
     render(
       <OrderFlow
         items={[
@@ -107,9 +112,8 @@ describe('OrderFlow Stripe runtime prewarm', () => {
       />,
     )
 
-    await waitFor(() => {
-      expect(loadStripeMock).toHaveBeenCalledTimes(1)
-    })
-    expect(loadStripeMock).toHaveBeenCalledWith('pk_test_mount_prewarm', undefined)
+    // Give effects a tick to run; loadStripe must not be called without a key.
+    await new Promise((r) => setTimeout(r, 50))
+    expect(loadStripeMock).not.toHaveBeenCalled()
   })
 })
