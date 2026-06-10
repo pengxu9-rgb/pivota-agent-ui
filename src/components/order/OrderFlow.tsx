@@ -1029,8 +1029,12 @@ const StripePaymentSection = forwardRef<
     () => getStripePromiseForKey(publishableKey, stripeAccount),
     [publishableKey, stripeAccount],
   )
-  const billingKey = JSON.stringify(buildStripeBillingDetails(shipping))
-  const sectionKey = [publishableKey, stripeAccount || '', clientSecret, billingKey].join('::')
+  // The <Elements> provider must remount ONLY when the Stripe runtime identity changes
+  // (publishable key, connected account, or the PaymentIntent client_secret). It must NOT remount on
+  // shipping/billing edits: a remount tears down the PaymentElement and WIPES the card the buyer already
+  // entered, leaving the PaymentIntent `requires_payment_method` at confirm. Billing details are supplied
+  // at confirm time (confirmParams.payment_method_data.billing_details), so they must NOT be in the key.
+  const sectionKey = [publishableKey, stripeAccount || '', clientSecret].join('::')
 
   return (
     <Elements key={sectionKey} stripe={stripePromise} options={{ clientSecret }}>
@@ -3062,8 +3066,26 @@ function OrderFlowInner({
           if (!stripeReturnUrl) {
             throw new Error('Payment return URL is missing. Please refresh and try again.')
           }
+          // CRITICAL (money path): confirm the EXACT PaymentIntent the Stripe Element is mounted on.
+          // The Element is created with options.clientSecret = stripeClientSecretForRender (the order's
+          // create-order PaymentIntent); the buyer's card is collected into THAT PI. If we instead confirm
+          // the pay-time `clientSecret` (resolved from the submit_payment response, which can be a different,
+          // freshly-minted PI), the card never attaches to it and Stripe leaves it `requires_payment_method`
+          // ("customer has not entered their payment method") — the live confirmation-stuck bug. Always
+          // prefer the mounted secret; fall back to the pay-time one only if the Element had none.
+          const mountedClientSecret = stripeClientSecretForRender || clientSecret
+          if (
+            stripeClientSecretForRender &&
+            clientSecret &&
+            stripeClientSecretForRender !== clientSecret
+          ) {
+            // eslint-disable-next-line no-console
+            console.warn(
+              '[checkout] confirm clientSecret diverged from the mounted PaymentElement; confirming the mounted PaymentIntent (the one holding the card).',
+            )
+          }
           const stripeResult = await stripePaymentSectionRef.current?.confirm({
-            clientSecret,
+            clientSecret: mountedClientSecret,
             returnUrl: stripeReturnUrl,
             shipping,
           })
