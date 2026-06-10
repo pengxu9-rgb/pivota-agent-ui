@@ -1351,6 +1351,12 @@ function OrderFlowInner({
   const [quote, setQuote] = useState<QuotePreview | null>(null)
   const [selectedDeliveryOption, setSelectedDeliveryOption] = useState<any>(null)
   const [quotePending, setQuotePending] = useState(false)
+  // PERF: the live quote (Shopify storefront cart) takes ~7s. Prefetch it in the background as soon as the
+  // buyer has entered a complete shipping address, so it is already in-flight/ready when they submit —
+  // overlapping that latency with form entry instead of paying it all after submit. Best-effort; the
+  // submit path still fetches fresh on any miss/error. Keyed by the exact quote request so a stale prefetch
+  // is never reused for a changed address/cart.
+  const quotePrefetchRef = useRef<{ key: string; promise: Promise<any> } | null>(null)
   const [checkoutFailure, setCheckoutFailure] = useState<{ message: string } | null>(null)
   const [orderDebug, setOrderDebug] = useState<{
     order_id?: string | null
@@ -1832,6 +1838,23 @@ function OrderFlowInner({
     }
   }
 
+  // Stable signature of a quote request (address + items + delivery + offer/merchant). Used to match a
+  // background prefetch against the submit-time request so we never reuse a prefetch for a changed cart/address.
+  const quoteRequestKey = (req: any): string => {
+    try {
+      return JSON.stringify({
+        m: req?.merchant_id || null,
+        o: req?.offer_id || null,
+        e: req?.customer_email || null,
+        s: req?.shipping_address || null,
+        d: req?.selected_delivery_option || null,
+        i: (req?.items || []).map((it: any) => [it.product_id, it.variant_id, it.quantity, it.sku || '']),
+      })
+    } catch {
+      return ''
+    }
+  }
+
   const refreshQuote = async (deliveryOptionOverride?: any): Promise<QuotePreview> => {
     const quoteReq = buildQuoteRequest(deliveryOptionOverride ?? selectedDeliveryOption)
     if (!Array.isArray(quoteReq.items) || quoteReq.items.length !== items.length) {
@@ -1840,7 +1863,19 @@ function OrderFlowInner({
     if (!quoteReq.items.length) {
       throw new Error('No items to quote.')
     }
-    const quoteResp = await previewQuote(quoteReq)
+    // PERF: reuse a matching background prefetch (in-flight or completed) to skip the ~7s live quote.
+    const reqKey = quoteRequestKey(quoteReq)
+    const prefetched = quotePrefetchRef.current
+    let quoteResp: any
+    if (prefetched && prefetched.key === reqKey) {
+      try {
+        quoteResp = await prefetched.promise
+      } catch {
+        quoteResp = await previewQuote(quoteReq)
+      }
+    } else {
+      quoteResp = await previewQuote(quoteReq)
+    }
     const normalized = normalizeQuote(quoteResp)
     if (!normalized) throw new Error('Failed to calculate pricing. Please try again.')
     setQuote(normalized)
@@ -1909,6 +1944,57 @@ function OrderFlowInner({
       setQuotePending(false)
     }
   }
+
+  // PERF: prefetch the live quote in the background once the buyer has a complete shipping address, so the
+  // ~7s Shopify storefront-cart quote overlaps with form entry instead of blocking after submit. Debounced;
+  // fires at most once per unique (address + cart) request; best-effort (errors are swallowed — the submit
+  // path re-fetches on any miss). Only runs on the shipping step before submit.
+  useEffect(() => {
+    if (step !== 'shipping') return
+    const ship = shipping
+    const hasCompleteAddress =
+      !!normalizeCountryCode(ship.country) &&
+      !!String(ship.email || '').trim() &&
+      !!String(ship.name || '').trim() &&
+      !!String(ship.address_line1 || '').trim() &&
+      !!String(ship.city || '').trim() &&
+      !!String(ship.postal_code || '').trim()
+    if (!hasCompleteAddress) return
+
+    const timer = setTimeout(() => {
+      let req: any
+      try {
+        req = buildQuoteRequest(selectedDeliveryOption)
+      } catch {
+        return
+      }
+      if (!Array.isArray(req?.items) || req.items.length !== items.length || req.items.length === 0) return
+      const key = quoteRequestKey(req)
+      if (quotePrefetchRef.current?.key === key) return // already prefetched/in-flight for this exact request
+      const promise = previewQuote(req).catch((err) => {
+        // Best-effort: drop a failed prefetch so the submit path retries cleanly.
+        if (quotePrefetchRef.current?.key === key) quotePrefetchRef.current = null
+        throw err
+      })
+      quotePrefetchRef.current = { key, promise }
+      void promise.catch(() => {})
+    }, 700)
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    step,
+    shipping.country,
+    shipping.email,
+    shipping.name,
+    shipping.address_line1,
+    shipping.address_line2,
+    shipping.city,
+    shipping.state,
+    shipping.postal_code,
+    shipping.phone,
+    selectedDeliveryOption,
+    items,
+  ])
 
   // Helper to create order once and hydrate PSP/payment_action state
   const createOrderIfNeeded = async (
