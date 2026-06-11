@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { GET, HEAD } from './route';
+import { __resetSitemapCacheForTests } from './lastKnownGood';
 
 async function readBody(res: Response): Promise<string> {
   return await res.text();
@@ -28,6 +29,9 @@ function sitemapLocs(xml: string): string[] {
 describe('/sitemap-products.xml — serving-eligible product sitemap', () => {
   beforeEach(() => {
     vi.stubEnv('PIVOTA_BACKEND_BASE_URL', 'https://canonical.example.com');
+    // Start every case cold so module-scoped last-known-good from a prior test
+    // doesn't leak into the failure-path assertions.
+    __resetSitemapCacheForTests();
   });
 
   afterEach(() => {
@@ -128,7 +132,7 @@ describe('/sitemap-products.xml — serving-eligible product sitemap', () => {
     expect(res.headers.get('x-pivota-sitemap-url-count')).toBe('0');
   });
 
-  it('returns 503 with Retry-After when the canonical endpoint is unavailable', async () => {
+  it('returns 503 with Retry-After when the endpoint is unavailable and there is no prior build', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
     vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(new Error('backend unavailable'));
 
@@ -139,6 +143,37 @@ describe('/sitemap-products.xml — serving-eligible product sitemap', () => {
     expect(res.headers.get('cache-control')).toBe('no-store, must-revalidate');
     expect(res.headers.get('x-pivota-sitemap-source')).toBe('serving_eligible_unavailable');
     expect(res.headers.get('content-type')).toMatch(/text\/plain/);
+  });
+
+  it('serves the last-known-good snapshot (200) when the backend fails after a prior success', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    // First request succeeds and seeds the last-known-good snapshot.
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({ items: products(3), total: 3, limit: 1000, offset: 0 }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
+    const ok = await GET();
+    const okXml = await readBody(ok);
+    expect(ok.status).toBe(200);
+    expect(ok.headers.get('x-pivota-sitemap-source')).toBe('serving_eligible');
+
+    // Backend then goes down: we serve the prior real build, not a 503.
+    vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(new Error('backend unavailable'));
+    const stale = await GET();
+    const staleXml = await readBody(stale);
+
+    expect(stale.status).toBe(200);
+    expect(stale.headers.get('content-type')).toMatch(/application\/xml/);
+    expect(staleXml).toBe(okXml);
+    expect(stale.headers.get('x-pivota-sitemap-source')).toBe('serving_eligible_stale');
+    expect(stale.headers.get('x-pivota-sitemap-url-count')).toBe('3');
+    expect(stale.headers.get('cache-control')).toBe(
+      'public, max-age=300, s-maxage=300, stale-while-revalidate=3600',
+    );
+    expect(sitemapLocs(staleXml)).toHaveLength(3);
   });
 
   it('omits <lastmod> when canonical row has no updated_at (no fabricated timestamps)', async () => {

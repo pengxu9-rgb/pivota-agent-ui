@@ -1,9 +1,20 @@
 import { NextResponse } from 'next/server'
 import { SITEMAP_BASE_URL } from '../sitemap-seeds'
 import { buildSitemapUrlsetXml } from '../sitemap-xml'
+import {
+  getLastKnownGood,
+  setLastKnownGood,
+  type SitemapSource,
+} from './lastKnownGood'
 
 export const revalidate = 3600
 export const dynamic = 'force-dynamic'
+// Allow a slow cold-backend rebuild to run to completion. Vercel Pro defaults
+// serverless functions to a ~15s ceiling; without this, a cold Railway backend
+// (multi-second per page × 6 pages) gets the function killed mid-build and the
+// crawler sees a timeout — which GSC records as "Couldn't fetch". A 25s sitemap
+// response is perfectly acceptable to Googlebot; a timeout is not.
+export const maxDuration = 30
 
 const PIVOTA_CANONICAL_PAGE_SIZE = 1000
 // TODO(VIS-5): add sitemap index shards before the canonical catalog exceeds 50k URLs.
@@ -11,11 +22,22 @@ const SITEMAP_MAX_URLS = 50000
 const DEFAULT_CANONICAL_PRODUCTS_BASE_URL = 'https://web-production-fedb.up.railway.app'
 const SITEMAP_CACHE_CONTROL =
   `public, max-age=${revalidate}, s-maxage=${revalidate}, stale-while-revalidate=${revalidate}`
+// When we fall back to the last-known-good snapshot, cache it for a short
+// window so the edge keeps answering 200 while the backend recovers, but
+// revalidate sooner than a fresh build so we re-attempt promptly.
+const SITEMAP_STALE_CACHE_CONTROL =
+  'public, max-age=300, s-maxage=300, stale-while-revalidate=3600'
+// Total budget raised from 12s → 25s: a full rebuild is 6 pages (5.6k URLs),
+// and a cold backend can spend several seconds per page. The old 12s budget
+// could exhaust mid-pagination and throw, turning a slow-but-fine backend into
+// a hard 503. maxDuration (30s) sits above this so the budget trips first.
 const CANONICAL_PRODUCTS_FETCH_PAGE_TIMEOUT_MS = 8000
-const CANONICAL_PRODUCTS_FETCH_TOTAL_BUDGET_MS = 12000
+const CANONICAL_PRODUCTS_FETCH_TOTAL_BUDGET_MS = 25000
 const SITEMAP_BACKEND_FAILURE_RETRY_SECONDS = 300
 
-type SitemapSource = 'serving_eligible' | 'serving_eligible_partial' | 'serving_eligible_truncated'
+// SitemapSource and the last-known-good snapshot live in ./lastKnownGood — Next
+// route files may only export a fixed set of fields, so the snapshot state and
+// its test reset cannot live here.
 
 type SitemapProduct = {
   id: string
@@ -199,9 +221,28 @@ export async function GET() {
     products = result.products
     source = result.source
   } catch (error) {
-    // Honest failure beats a 5-URL stub: crawlers caching a tiny sitemap
-    // as the canonical answer is far worse than a transient 503.
     console.error('sitemap-products.xml: canonical products fetch failed:', error)
+
+    // Prefer the last successful build (real catalog, slightly stale) over a
+    // 503. A transient backend blip that returns 503 is recorded by GSC as
+    // "Couldn't fetch" and backs off re-crawling for days — far worse than
+    // serving URLs that are a few minutes old.
+    const snapshot = getLastKnownGood()
+    if (snapshot) {
+      return new NextResponse(snapshot.xml, {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/xml; charset=utf-8',
+          'Cache-Control': SITEMAP_STALE_CACHE_CONTROL,
+          'X-Pivota-Sitemap-Source': `${snapshot.source}_stale`,
+          'X-Pivota-Sitemap-Url-Count': String(snapshot.urlCount),
+        },
+      })
+    }
+
+    // No snapshot to fall back to (cold instance + backend down). Honest
+    // failure beats a 5-URL stub: crawlers caching a tiny sitemap as the
+    // canonical answer is far worse than a transient 503.
     return new NextResponse('canonical products feed unavailable\n', {
       status: 503,
       headers: {
@@ -220,6 +261,10 @@ export async function GET() {
   }))
 
   const xml = buildSitemapUrlsetXml(urls)
+
+  // Snapshot this successful build so a later failure on this warm instance can
+  // serve it instead of 503.
+  setLastKnownGood({ xml, source, urlCount: urls.length })
 
   return new NextResponse(xml, {
     status: 200,
