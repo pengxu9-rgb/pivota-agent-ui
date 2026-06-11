@@ -1743,54 +1743,68 @@ function OrderFlowInner({
     }
 
     ;(async () => {
-      try {
-        // Prefer Buyer Vault defaults first.
-        const meRes = await fetch('/api/buyer/me', { cache: 'no-store' })
-        if (meRes.ok) {
-          const meJson = await meRes.json().catch(() => null)
-          const addr = meJson?.default_address || null
-          const email = String(meJson?.buyer?.primary_email || '').trim() || null
+      // Fire both lookups CONCURRENTLY. The Buyer-Vault lookup (/api/buyer/me) must NOT gate the
+      // render-critical Stripe publishable key — which is carried by /api/checkout/prefill's
+      // stripe_config. Serializing the pk behind buyer/me delayed the deferred card-form mount
+      // (observed >20s in prod when /api/buyer/me was slow). The pk is applied as soon as prefill
+      // resolves; shipping precedence (buyer-vault wins over intent prefill) is preserved by
+      // applying buyer/me shipping before intent-prefill shipping (applyShippingPrefill only fills
+      // empty fields, so the first applied value wins).
+      const mePromise = fetch('/api/buyer/me', { cache: 'no-store' })
+        .then((r) => (r.ok ? r.json().catch(() => null) : null))
+        .catch(() => null)
+      const prefillPromise = token
+        ? fetch('/api/checkout/prefill', {
+            headers: { 'X-Checkout-Token': token },
+            cache: 'no-store',
+          })
+            .then((r) => r.json().catch(() => null))
+            .catch(() => null)
+        : Promise.resolve(null)
 
-          if (!cancelled && (addr || email)) {
-            applyShippingPrefill({
-              email,
-              name: addr?.recipient_name,
-              phone: addr?.phone,
-              addressLine1: addr?.line1,
-              addressLine2: addr?.line2,
-              city: addr?.city,
-              state: addr?.region,
-              postalCode: addr?.postal_code,
-              country: addr?.country,
-            })
-          }
-        }
-
-        // Then merge checkout intent prefill if token exists.
-        if (!token || cancelled) return
-
-        const res = await fetch('/api/checkout/prefill', {
-          headers: { 'X-Checkout-Token': token },
-          cache: 'no-store',
-        })
-        const json = await res.json().catch(() => null)
-
-        // Surface the merchant's Stripe publishable config EARLY (on page load) so the deferred card form can
-        // mount before the quote/order, instead of waiting for the order-create response to carry the key.
-        // Publishable key only (browser-safe). The order-create response remains the authoritative source and
-        // re-sets the same key later via syncStripeRuntime (no remount when it matches).
+      // Surface the merchant's Stripe publishable config EARLY (on page load) so the deferred card
+      // form can mount before the quote/order — and crucially WITHOUT waiting for /api/buyer/me.
+      // Publishable key only (browser-safe). The order-create response remains the authoritative
+      // source and re-sets the same key later via syncStripeRuntime (no remount when it matches).
+      void prefillPromise.then((json) => {
+        if (cancelled || !json) return
         const stripeCfg = json?.stripe_config || null
-        if (!cancelled && stripeCfg && typeof stripeCfg.publishable_key === 'string' && stripeCfg.publishable_key) {
+        if (stripeCfg && typeof stripeCfg.publishable_key === 'string' && stripeCfg.publishable_key) {
           setStripePublishableKey(String(stripeCfg.publishable_key))
           setStripeAccount(stripeCfg.stripe_account ? String(stripeCfg.stripe_account) : null)
         }
+      })
 
+      // Buyer-Vault shipping defaults first (they win — applyShippingPrefill only fills empty fields).
+      try {
+        const meJson = await mePromise
+        const addr = meJson?.default_address || null
+        const email = String(meJson?.buyer?.primary_email || '').trim() || null
+        if (!cancelled && (addr || email)) {
+          applyShippingPrefill({
+            email,
+            name: addr?.recipient_name,
+            phone: addr?.phone,
+            addressLine1: addr?.line1,
+            addressLine2: addr?.line2,
+            city: addr?.city,
+            state: addr?.region,
+            postalCode: addr?.postal_code,
+            country: addr?.country,
+          })
+        }
+      } catch {
+        // Best-effort: ignore buyer-vault errors.
+      }
+
+      // Then merge checkout-intent prefill shipping (fills any remaining empty fields).
+      if (!token || cancelled) return
+      try {
+        const json = await prefillPromise
         const prefill = json?.prefill || null
         const addr = prefill?.shipping_address || null
         const email = String(prefill?.customer_email || '').trim() || null
-
         if (cancelled || (!addr && !email)) return
-
         applyShippingPrefill({
           email,
           name: addr?.name,
@@ -1802,7 +1816,7 @@ function OrderFlowInner({
           postalCode: addr?.postal_code,
           country: addr?.country,
         })
-      } catch (err) {
+      } catch {
         // Best-effort: ignore prefill errors.
       }
     })()
