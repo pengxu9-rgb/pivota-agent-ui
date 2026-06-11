@@ -328,6 +328,56 @@ describe('/api/gateway checkout-safe proxy', () => {
     });
   });
 
+  it('does NOT treat envelope status:"success" as paid — keeps client confirmation (regression for #239)', async () => {
+    vi.stubEnv('SHOP_UPSTREAM_API_URL', 'https://invoke.example.com');
+    vi.stubEnv('PIVOTA_BACKEND_BASE_URL', 'https://checkout.example.com');
+
+    // Upstream returns the API ENVELOPE outcome word "success" with NO explicit
+    // payment_status, plus a Stripe client secret that still needs confirming.
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      jsonResponse({
+        status: 'success',
+        payment_id: 'pay_success_123',
+        payment_intent_id: 'pi_success_123',
+        client_secret: 'pi_success_123_secret_456',
+        psp_used: 'stripe',
+      }),
+    );
+
+    const { POST } = await import('@/app/api/gateway/route');
+
+    const req = new Request('http://localhost/api/gateway', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        operation: 'submit_payment',
+        payload: {
+          payment: {
+            order_id: 'ord_success_123',
+            return_url: 'https://agent.pivota.cc/order/success?orderId=ord_success_123',
+          },
+        },
+      }),
+    });
+
+    const res = await POST(req as any);
+    const data = await res.json();
+
+    expect(res.status).toBe(200);
+    // Must NOT be mapped to paid (that skips stripe.confirmPayment → "confirming forever").
+    expect(data.payment_status).not.toBe('paid');
+    expect(data).toMatchObject({
+      payment_status: 'unknown',
+      payment_status_raw: 'success',
+      confirmation_owner: 'client',
+      requires_client_confirmation: true,
+      payment: {
+        payment_status: 'unknown',
+        requires_client_confirmation: true,
+      },
+    });
+  });
+
   it('defaults submit_payment to dynamic payment methods when the client does not pin one', async () => {
     vi.stubEnv('SHOP_UPSTREAM_API_URL', 'https://invoke.example.com');
     vi.stubEnv('PIVOTA_BACKEND_BASE_URL', 'https://checkout.example.com');

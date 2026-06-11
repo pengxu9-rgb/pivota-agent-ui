@@ -40,3 +40,35 @@ export function warnIfHardcodedFallbackUsed(opts: {
       'Configure the env var in this deploy to avoid silently routing to production.',
   );
 }
+
+// Resolve an upstream base URL from env, FAILING LOUD in any deployed
+// (production-build) runtime when none of the env vars are set, instead of
+// silently routing to a hardcoded production backend. A preview/staging deploy
+// that forgets the env var is exactly the case where a silent fallback would
+// send real checkout/payment traffic to the prod backend — so we refuse.
+//
+// Behaviour:
+//   - env var present  -> use it (no change to correctly-configured deploys)
+//   - build time       -> return the fallback (never break `next build`)
+//   - NODE_ENV=production runtime, env missing -> THROW (covers prod AND preview)
+//   - local/dev runtime, env missing -> warn once, return the fallback
+export function requireUpstreamBase(opts: {
+  routeLabel: string;
+  envVarsTried: string[];
+  fallback: string;
+}): string {
+  for (const name of opts.envVarsTried) {
+    const value = (process.env[name] || '').trim();
+    if (value) return value;
+  }
+  if (isBuildTime()) return opts.fallback;
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error(
+      `[${opts.routeLabel}] Missing required upstream base env var (one of: ${opts.envVarsTried.join(', ')}). ` +
+        'Refusing to silently fall back to a hardcoded production backend in a deployed runtime. ' +
+        'Set the env var for this deploy.',
+    );
+  }
+  warnIfHardcodedFallbackUsed(opts);
+  return opts.fallback;
+}

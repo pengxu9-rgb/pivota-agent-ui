@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { warnIfHardcodedFallbackUsed } from './upstreamFallback';
+import { requireUpstreamBase, warnIfHardcodedFallbackUsed } from './upstreamFallback';
 
 describe('warnIfHardcodedFallbackUsed', () => {
   afterEach(() => {
@@ -35,5 +35,44 @@ describe('warnIfHardcodedFallbackUsed', () => {
 
     expect(errorSpy).toHaveBeenCalledTimes(1);
     expect(errorSpy.mock.calls[0]?.[0]).toContain('[api/test-runtime] No upstream env var set');
+  });
+});
+
+describe('requireUpstreamBase', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllEnvs();
+  });
+
+  const opts = {
+    routeLabel: 'api/test-require',
+    envVarsTried: ['PRIMARY_BASE', 'SECONDARY_BASE'],
+    fallback: 'https://hardcoded-prod.example.com',
+  };
+
+  it('returns the env value when set (first match wins)', () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('SECONDARY_BASE', 'https://configured.example.com');
+    expect(requireUpstreamBase(opts)).toBe('https://configured.example.com');
+  });
+
+  it('THROWS in a production runtime when no env var is set', () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('npm_lifecycle_event', 'start');
+    expect(() => requireUpstreamBase(opts)).toThrowError(/Missing required upstream base env var/);
+  });
+
+  it('returns the fallback during next build even in production', () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('npm_lifecycle_event', 'build');
+    expect(requireUpstreamBase(opts)).toBe(opts.fallback);
+  });
+
+  it('warns and returns the fallback in non-prod runtimes', () => {
+    vi.stubEnv('NODE_ENV', 'development');
+    vi.stubEnv('npm_lifecycle_event', 'dev');
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    expect(requireUpstreamBase({ ...opts, routeLabel: 'api/test-require-dev' })).toBe(opts.fallback);
+    expect(errorSpy).toHaveBeenCalledTimes(1);
   });
 });
