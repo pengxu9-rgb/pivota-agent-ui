@@ -4,6 +4,12 @@ import { buildSitemapUrlsetXml } from '../sitemap-xml'
 
 export const revalidate = 3600
 export const dynamic = 'force-dynamic'
+// Allow a slow cold-backend rebuild to run to completion. Vercel Pro defaults
+// serverless functions to a ~15s ceiling; without this, a cold Railway backend
+// (multi-second per page × 6 pages) gets the function killed mid-build and the
+// crawler sees a timeout — which GSC records as "Couldn't fetch". A 25s sitemap
+// response is perfectly acceptable to Googlebot; a timeout is not.
+export const maxDuration = 30
 
 const PIVOTA_CANONICAL_PAGE_SIZE = 1000
 // TODO(VIS-5): add sitemap index shards before the canonical catalog exceeds 50k URLs.
@@ -11,11 +17,39 @@ const SITEMAP_MAX_URLS = 50000
 const DEFAULT_CANONICAL_PRODUCTS_BASE_URL = 'https://web-production-fedb.up.railway.app'
 const SITEMAP_CACHE_CONTROL =
   `public, max-age=${revalidate}, s-maxage=${revalidate}, stale-while-revalidate=${revalidate}`
+// When we fall back to the last-known-good snapshot, cache it for a short
+// window so the edge keeps answering 200 while the backend recovers, but
+// revalidate sooner than a fresh build so we re-attempt promptly.
+const SITEMAP_STALE_CACHE_CONTROL =
+  'public, max-age=300, s-maxage=300, stale-while-revalidate=3600'
+// Total budget raised from 12s → 25s: a full rebuild is 6 pages (5.6k URLs),
+// and a cold backend can spend several seconds per page. The old 12s budget
+// could exhaust mid-pagination and throw, turning a slow-but-fine backend into
+// a hard 503. maxDuration (30s) sits above this so the budget trips first.
 const CANONICAL_PRODUCTS_FETCH_PAGE_TIMEOUT_MS = 8000
-const CANONICAL_PRODUCTS_FETCH_TOTAL_BUDGET_MS = 12000
+const CANONICAL_PRODUCTS_FETCH_TOTAL_BUDGET_MS = 25000
 const SITEMAP_BACKEND_FAILURE_RETRY_SECONDS = 300
 
 type SitemapSource = 'serving_eligible' | 'serving_eligible_partial' | 'serving_eligible_truncated'
+
+// Last successful build, held in module scope so a transient backend failure on
+// a *warm* instance can serve the previous real catalog (slightly stale, never
+// fabricated) instead of a 503. This is NOT the "5-URL stub" the failure path
+// below deliberately rejects: it is the genuine serving-eligible set from a
+// recent successful pull, which is exactly what a sitemap is allowed to be —
+// advisory and a little behind. It does not survive cold starts or span
+// regions; durable cross-instance caching (KV/blob) is a follow-up if needed.
+type SitemapSnapshot = {
+  xml: string
+  source: SitemapSource
+  urlCount: number
+}
+let lastKnownGood: SitemapSnapshot | null = null
+
+// Test-only: reset module-scoped last-known-good so each case starts cold.
+export function __resetSitemapCacheForTests(): void {
+  lastKnownGood = null
+}
 
 type SitemapProduct = {
   id: string
@@ -199,9 +233,27 @@ export async function GET() {
     products = result.products
     source = result.source
   } catch (error) {
-    // Honest failure beats a 5-URL stub: crawlers caching a tiny sitemap
-    // as the canonical answer is far worse than a transient 503.
     console.error('sitemap-products.xml: canonical products fetch failed:', error)
+
+    // Prefer the last successful build (real catalog, slightly stale) over a
+    // 503. A transient backend blip that returns 503 is recorded by GSC as
+    // "Couldn't fetch" and backs off re-crawling for days — far worse than
+    // serving URLs that are a few minutes old.
+    if (lastKnownGood) {
+      return new NextResponse(lastKnownGood.xml, {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/xml; charset=utf-8',
+          'Cache-Control': SITEMAP_STALE_CACHE_CONTROL,
+          'X-Pivota-Sitemap-Source': `${lastKnownGood.source}_stale`,
+          'X-Pivota-Sitemap-Url-Count': String(lastKnownGood.urlCount),
+        },
+      })
+    }
+
+    // No snapshot to fall back to (cold instance + backend down). Honest
+    // failure beats a 5-URL stub: crawlers caching a tiny sitemap as the
+    // canonical answer is far worse than a transient 503.
     return new NextResponse('canonical products feed unavailable\n', {
       status: 503,
       headers: {
@@ -220,6 +272,10 @@ export async function GET() {
   }))
 
   const xml = buildSitemapUrlsetXml(urls)
+
+  // Snapshot this successful build so a later failure on this warm instance can
+  // serve it instead of 503.
+  lastKnownGood = { xml, source, urlCount: urls.length }
 
   return new NextResponse(xml, {
     status: 200,
