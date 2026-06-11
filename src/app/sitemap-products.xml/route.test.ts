@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { GET, HEAD, __resetSitemapCacheForTests } from './route';
+import { GET, HEAD } from './route';
+import { __resetSitemapCacheForTests } from './lastKnownGood';
 
 async function readBody(res: Response): Promise<string> {
   return await res.text();

@@ -1,6 +1,11 @@
 import { NextResponse } from 'next/server'
 import { SITEMAP_BASE_URL } from '../sitemap-seeds'
 import { buildSitemapUrlsetXml } from '../sitemap-xml'
+import {
+  getLastKnownGood,
+  setLastKnownGood,
+  type SitemapSource,
+} from './lastKnownGood'
 
 export const revalidate = 3600
 export const dynamic = 'force-dynamic'
@@ -30,26 +35,9 @@ const CANONICAL_PRODUCTS_FETCH_PAGE_TIMEOUT_MS = 8000
 const CANONICAL_PRODUCTS_FETCH_TOTAL_BUDGET_MS = 25000
 const SITEMAP_BACKEND_FAILURE_RETRY_SECONDS = 300
 
-type SitemapSource = 'serving_eligible' | 'serving_eligible_partial' | 'serving_eligible_truncated'
-
-// Last successful build, held in module scope so a transient backend failure on
-// a *warm* instance can serve the previous real catalog (slightly stale, never
-// fabricated) instead of a 503. This is NOT the "5-URL stub" the failure path
-// below deliberately rejects: it is the genuine serving-eligible set from a
-// recent successful pull, which is exactly what a sitemap is allowed to be —
-// advisory and a little behind. It does not survive cold starts or span
-// regions; durable cross-instance caching (KV/blob) is a follow-up if needed.
-type SitemapSnapshot = {
-  xml: string
-  source: SitemapSource
-  urlCount: number
-}
-let lastKnownGood: SitemapSnapshot | null = null
-
-// Test-only: reset module-scoped last-known-good so each case starts cold.
-export function __resetSitemapCacheForTests(): void {
-  lastKnownGood = null
-}
+// SitemapSource and the last-known-good snapshot live in ./lastKnownGood — Next
+// route files may only export a fixed set of fields, so the snapshot state and
+// its test reset cannot live here.
 
 type SitemapProduct = {
   id: string
@@ -239,14 +227,15 @@ export async function GET() {
     // 503. A transient backend blip that returns 503 is recorded by GSC as
     // "Couldn't fetch" and backs off re-crawling for days — far worse than
     // serving URLs that are a few minutes old.
-    if (lastKnownGood) {
-      return new NextResponse(lastKnownGood.xml, {
+    const snapshot = getLastKnownGood()
+    if (snapshot) {
+      return new NextResponse(snapshot.xml, {
         status: 200,
         headers: {
           'Content-Type': 'application/xml; charset=utf-8',
           'Cache-Control': SITEMAP_STALE_CACHE_CONTROL,
-          'X-Pivota-Sitemap-Source': `${lastKnownGood.source}_stale`,
-          'X-Pivota-Sitemap-Url-Count': String(lastKnownGood.urlCount),
+          'X-Pivota-Sitemap-Source': `${snapshot.source}_stale`,
+          'X-Pivota-Sitemap-Url-Count': String(snapshot.urlCount),
         },
       })
     }
@@ -275,7 +264,7 @@ export async function GET() {
 
   // Snapshot this successful build so a later failure on this warm instance can
   // serve it instead of 503.
-  lastKnownGood = { xml, source, urlCount: urls.length }
+  setLastKnownGood({ xml, source, urlCount: urls.length })
 
   return new NextResponse(xml, {
     status: 200,
