@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { resolveCheckoutPaymentContract } from '@/lib/checkoutPaymentContract';
-import { warnIfHardcodedFallbackUsed } from '@/lib/upstreamFallback';
+import { requireUpstreamBase } from '@/lib/upstreamFallback';
 
 // This route is a backend-bound proxy, not a latency-sensitive edge personalization layer.
 // Keep it on the Node runtime in the project's home region so requests do not bounce from
@@ -20,47 +20,32 @@ const SHOP_UPSTREAM_BASE =
   process.env.SHOP_GATEWAY_AGENT_BASE_URL ||
   DEFAULT_SHOP_UPSTREAM_BASE;
 
+// Money path (preview_quote/create_order/submit_payment/confirm_payment/track)
+// proxies through CHECKOUT_UPSTREAM_BASE. Fail loud in any deployed runtime if
+// the env var is missing — never silently route real payment traffic to a
+// hardcoded prod backend from a misconfigured preview/staging deploy.
 const CHECKOUT_UPSTREAM_FALLBACK = 'https://web-production-fedb.up.railway.app';
-const CHECKOUT_UPSTREAM_BASE =
-  process.env.PIVOTA_BACKEND_BASE_URL ||
-  process.env.NEXT_PUBLIC_PIVOTA_BACKEND_BASE_URL ||
-  CHECKOUT_UPSTREAM_FALLBACK;
-
-if (!process.env.PIVOTA_BACKEND_BASE_URL && !process.env.NEXT_PUBLIC_PIVOTA_BACKEND_BASE_URL) {
-  warnIfHardcodedFallbackUsed({
-    routeLabel: 'api/gateway:checkout',
-    envVarsTried: ['PIVOTA_BACKEND_BASE_URL', 'NEXT_PUBLIC_PIVOTA_BACKEND_BASE_URL'],
-    fallback: CHECKOUT_UPSTREAM_FALLBACK,
-  });
-}
+const CHECKOUT_UPSTREAM_BASE = requireUpstreamBase({
+  routeLabel: 'api/gateway:checkout',
+  envVarsTried: ['PIVOTA_BACKEND_BASE_URL', 'NEXT_PUBLIC_PIVOTA_BACKEND_BASE_URL'],
+  fallback: CHECKOUT_UPSTREAM_FALLBACK,
+});
 
 const REVIEWS_UPSTREAM_FALLBACK = 'https://web-production-fedb.up.railway.app';
-const REVIEWS_UPSTREAM_BASE =
-  process.env.NEXT_PUBLIC_REVIEWS_API_URL ||
-  process.env.NEXT_PUBLIC_REVIEWS_BACKEND_URL ||
-  process.env.REVIEWS_BACKEND_URL ||
-  REVIEWS_UPSTREAM_FALLBACK;
+const REVIEWS_UPSTREAM_BASE = requireUpstreamBase({
+  routeLabel: 'api/gateway:reviews',
+  envVarsTried: [
+    'NEXT_PUBLIC_REVIEWS_API_URL',
+    'NEXT_PUBLIC_REVIEWS_BACKEND_URL',
+    'REVIEWS_BACKEND_URL',
+  ],
+  fallback: REVIEWS_UPSTREAM_FALLBACK,
+});
 // 400ms: the reviews overlay always misses today (get_review_summary is currently
 // >800ms — P2), so a tight cap just stops wasting wait. Raise this toward the
 // get_review_summary p95 once P2 makes the upstream fast, so reviews land in SSR
 // (matters for LLM/crawler visibility). Override live via PDP_REVIEWS_OVERLAY_TIMEOUT_MS.
 const DEFAULT_PDP_REVIEWS_OVERLAY_TIMEOUT_MS = 400;
-
-if (
-  !process.env.NEXT_PUBLIC_REVIEWS_API_URL &&
-  !process.env.NEXT_PUBLIC_REVIEWS_BACKEND_URL &&
-  !process.env.REVIEWS_BACKEND_URL
-) {
-  warnIfHardcodedFallbackUsed({
-    routeLabel: 'api/gateway:reviews',
-    envVarsTried: [
-      'NEXT_PUBLIC_REVIEWS_API_URL',
-      'NEXT_PUBLIC_REVIEWS_BACKEND_URL',
-      'REVIEWS_BACKEND_URL',
-    ],
-    fallback: REVIEWS_UPSTREAM_FALLBACK,
-  });
-}
 
 const REVIEWS_OPERATIONS = new Set([
   'get_review_summary',
@@ -554,6 +539,17 @@ function buildSubmitPaymentRequest(body: JsonRecord): CheckoutSafeRequest {
       payment.payment_method,
     ) || 'dynamic';
 
+  // Forward the client's expected_amount + currency so the backend can reject a
+  // stale-amount submit (QUOTE_MISMATCH) — e.g. when the delivery option changed
+  // the total after the PaymentIntent was created. Dropping these (the prior
+  // behaviour) made that drift undetectable server-side.
+  const expectedAmountRaw =
+    payment.expected_amount ?? payment.expectedAmount ?? payment.total_amount ?? payment.totalAmount;
+  const expectedAmount =
+    typeof expectedAmountRaw === 'number'
+      ? expectedAmountRaw
+      : firstNonEmptyString(expectedAmountRaw) || undefined;
+
   return {
     method: 'POST',
     url: `${CHECKOUT_UPSTREAM_BASE}/agent/v1/payments`,
@@ -562,6 +558,9 @@ function buildSubmitPaymentRequest(body: JsonRecord): CheckoutSafeRequest {
       payment_method: {
         type: paymentMethodType,
       },
+      expected_amount: expectedAmount,
+      currency: firstNonEmptyString(payment.currency),
+      quote_id: firstNonEmptyString(payment.quote_id, payment.quoteId),
       return_url: firstNonEmptyString(
         payment.return_url,
         payment.returnUrl,
@@ -702,12 +701,16 @@ function normalizeSubmitPaymentStatus(status: unknown): {
     };
   }
   const normalized = raw.toLowerCase();
+  // NOTE: "success" is the API ENVELOPE outcome word, NOT a payment status.
+  // Mapping it to "paid" here makes the SPA take the no-confirm/poll branch and
+  // skip stripe.confirmPayment → "confirming forever" + buyer never charged.
+  // This is the same class of bug fixed in checkoutPaymentContract.ts (PR #239);
+  // keep the two in sync. Genuine paid statuses only.
   const aliases: Record<string, string> = {
     requires_payment_method: 'requires_action',
     requires_confirmation: 'requires_action',
     completed: 'paid',
     succeeded: 'paid',
-    success: 'paid',
     settled: 'paid',
     failed: 'payment_failed',
     canceled: 'cancelled',
@@ -730,6 +733,10 @@ function normalizeSubmitPaymentResponse(payload: unknown): unknown {
 
   const paymentObject = isPlainObject(payload.payment) ? payload.payment : {};
   const nextAction = isPlainObject(payload.next_action) ? payload.next_action : null;
+  // Mirrors resolveCheckoutPaymentContract: the envelope `status` is read as a
+  // last-resort fallback, but the normalizer above intentionally does NOT map
+  // the envelope word "success" to "paid" (that was the #239 bug). Envelope
+  // "failed" still usefully surfaces as payment_failed.
   const paymentStatus = normalizeSubmitPaymentStatus(
     payload.payment_status ?? paymentObject.payment_status ?? payload.status ?? paymentObject.status,
   );

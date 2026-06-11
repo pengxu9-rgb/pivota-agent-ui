@@ -235,6 +235,26 @@ export function buildCheckoutTimingSnapshot(
   }
 }
 
+// Currency-aware smallest-unit conversion. Zero-decimal currencies (JPY, KRW, …)
+// are ×1 and three-decimal (BHD, KWD, …) are ×1000; hardcoding ×100 overcharges
+// JPY/KRW by 100×. Mirrors the backend tables (psp_adapter / webhook_routes).
+const ZERO_DECIMAL_CURRENCIES = new Set([
+  'bif', 'clp', 'djf', 'gnf', 'jpy', 'kmf', 'krw', 'mga',
+  'pyg', 'rwf', 'ugx', 'vnd', 'vuv', 'xaf', 'xof', 'xpf',
+])
+const THREE_DECIMAL_CURRENCIES = new Set(['bhd', 'jod', 'kwd', 'omr', 'tnd'])
+
+function currencyMinorUnitFactor(currency: string | null | undefined): number {
+  const c = String(currency || '').trim().toLowerCase()
+  if (ZERO_DECIMAL_CURRENCIES.has(c)) return 1
+  if (THREE_DECIMAL_CURRENCIES.has(c)) return 1000
+  return 100
+}
+
+function toMinorUnits(amount: number, currency: string | null | undefined): number {
+  return Math.round((Number(amount) || 0) * currencyMinorUnitFactor(currency))
+}
+
 function buildPaymentInitKeyForQuote(
   quote: QuotePreview | null | undefined,
   fallbackCurrency: string,
@@ -243,7 +263,7 @@ function buildPaymentInitKeyForQuote(
   if (!quoteId) return null
   const currency = String(quote?.currency || fallbackCurrency || 'USD').trim().toUpperCase()
   const amountMinor = Number.isFinite(Number(quote?.pricing?.total))
-    ? Math.round(Number(quote?.pricing?.total) * 100)
+    ? toMinorUnits(Number(quote?.pricing?.total), currency)
     : null
   if (!currency || amountMinor == null) return null
   return `${quoteId}:${currency}:${amountMinor}`
@@ -258,9 +278,11 @@ type CreatedOrderPaymentSnapshot = {
 
 type CheckoutStep = 'shipping' | 'payment' | 'confirm'
 
-const ADYEN_CLIENT_KEY =
-  process.env.NEXT_PUBLIC_ADYEN_CLIENT_KEY ||
-  'test_RMFUADZPQBBYJIWI56KVOQSNUUT657ML' // public test key; replace in env for prod
+// No hardcoded fallback: a baked-in TEST client key shipping to production would
+// silently break real Adyen payments. The key must come from the payment action
+// (per-merchant) or NEXT_PUBLIC_ADYEN_CLIENT_KEY; if neither is present we fail
+// loud at mount time rather than mounting a wrong-environment widget.
+const ADYEN_CLIENT_KEY = process.env.NEXT_PUBLIC_ADYEN_CLIENT_KEY || ''
 const FORCE_PSP = process.env.NEXT_PUBLIC_FORCE_PSP
 const stripePromiseCache = new Map<string, Promise<Stripe | null>>()
 const EMAIL_VERIFICATION_REQUIRED_BEFORE_PURCHASE = false
@@ -1539,9 +1561,16 @@ function OrderFlowInner({
     }
     const resolvedPublishableKey = resolveStripePublishableKey(paymentResponse, action) || ''
     const resolvedStripeAccount = resolveStripeAccount(paymentResponse, action)
-    setStripePublishableKey(resolvedPublishableKey)
-    setStripeAccount(resolvedStripeAccount)
-    void prewarmStripeRuntime(resolvedPublishableKey, resolvedStripeAccount)
+    // Never downgrade a known-good key/account to empty just because a later
+    // payment response didn't echo it. Doing so changes the <Elements> section
+    // key → remount → the buyer's entered card is wiped mid-flow (the deferred
+    // window this feature exists for). Only apply non-empty changes; fall back
+    // to the current value otherwise.
+    const nextPublishableKey = resolvedPublishableKey || stripePublishableKey || ''
+    const nextStripeAccount = resolvedStripeAccount || stripeAccount || null
+    setStripePublishableKey(nextPublishableKey)
+    setStripeAccount(nextStripeAccount)
+    void prewarmStripeRuntime(nextPublishableKey, nextStripeAccount)
   }
 
   const formatAmount = (amount: number) => {
@@ -2246,7 +2275,7 @@ function OrderFlowInner({
   // they never display a stale estimate.
   const deferredAmountMinor = Math.max(
     50,
-    Math.round((Number(quote?.pricing?.total ?? estimatedSubtotal) || 0) * 100),
+    toMinorUnits(Number(quote?.pricing?.total ?? estimatedSubtotal) || 0, currency),
   )
   const liveQuoteReady = !!quote?.quote_id
   const stripeReturnUrlForRender = createdOrderId
@@ -3934,7 +3963,28 @@ function OrderFlowInner({
                         const opt = deliveryOptions[idx]
                         if (!opt) return
                         try {
-                          await refreshQuoteWithRetry(opt)
+                          // Changing the delivery option changes the order total.
+                          // Drop the existing order + PaymentIntent snapshot so a
+                          // fresh PI is created at the NEW amount; otherwise confirm
+                          // would run against a stale-amount PI and Stripe rejects
+                          // (deferred amount must equal the PI amount). We keep the
+                          // Stripe key/account untouched so the already-mounted card
+                          // is NOT wiped — only the background order/PI is rebuilt.
+                          setCreatedOrderId('')
+                          setInitialPaymentAction(null)
+                          setPaymentActionType(null)
+                          setPspUsed(null)
+                          setStripeSelectedMethodType(null)
+                          clearCreatedOrderPaymentSnapshot()
+                          setAdyenMounted(false)
+                          paymentInitRunIdRef.current += 1
+                          paymentInitPromiseRef.current = null
+                          paymentInitKeyRef.current = null
+                          setPrefetchedPaymentRes(null)
+                          setPaymentInitLoading(false)
+                          setPaymentInitError(null)
+                          const nextQuote = await refreshQuoteWithRetry(opt)
+                          void startPaymentInitForQuote(nextQuote)
                         } catch (err: any) {
                           console.error('refreshQuote failed', err)
                           if (isInventoryUnavailable(err)) {
@@ -4023,7 +4073,12 @@ function OrderFlowInner({
                         clientSecret={stripeClientSecretForRender}
                         amountMinor={deferredAmountMinor}
                         currency={currency}
-                        showWallets={liveQuoteReady}
+                        // Wallets (Apple/Google Pay) confirm immediately after the
+                        // buyer authorizes in the sheet, so they must NOT show until
+                        // the PaymentIntent client secret exists — otherwise
+                        // confirmPayment runs with an empty secret and fails AFTER
+                        // the buyer authorized. Gate on PI-ready, not just quote-ready.
+                        showWallets={liveQuoteReady && !!stripeClientSecretForRender && !paymentInitLoading}
                         publishableKey={stripePublishableKey}
                         stripeAccount={stripeAccount}
                         returnUrl={stripeReturnUrlForRender}
