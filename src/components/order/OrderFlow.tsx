@@ -778,6 +778,7 @@ const StripePaymentSectionInner = forwardRef<
   StripePaymentSectionHandle,
   {
     clientSecret: string
+    showWallets?: boolean
     returnUrl?: string | null
     shipping?: Partial<ShippingInfo> | null
     onPaymentError: (message: string) => void
@@ -792,6 +793,7 @@ const StripePaymentSectionInner = forwardRef<
 >(function StripePaymentSectionInner(
   {
     clientSecret,
+    showWallets = true,
     returnUrl = null,
     shipping = null,
     onPaymentError,
@@ -886,7 +888,7 @@ const StripePaymentSectionInner = forwardRef<
     <div className="space-y-4">
       <div
         className={
-          expressWalletsReady && expressWalletsAvailable
+          showWallets && expressWalletsReady && expressWalletsAvailable
             ? ''
             : 'hidden'
         }
@@ -996,7 +998,10 @@ const StripePaymentSectionInner = forwardRef<
 const StripePaymentSection = forwardRef<
   StripePaymentSectionHandle,
   {
-    clientSecret: string
+    clientSecret?: string | null
+    amountMinor: number
+    currency: string
+    showWallets?: boolean
     publishableKey: string
     stripeAccount?: string | null
     returnUrl?: string | null
@@ -1012,7 +1017,10 @@ const StripePaymentSection = forwardRef<
   }
 >(function StripePaymentSection(
   {
-    clientSecret,
+    clientSecret = null,
+    amountMinor,
+    currency,
+    showWallets = true,
     publishableKey,
     stripeAccount = null,
     returnUrl = null,
@@ -1030,18 +1038,29 @@ const StripePaymentSection = forwardRef<
     () => getStripePromiseForKey(publishableKey, stripeAccount),
     [publishableKey, stripeAccount],
   )
-  // The <Elements> provider must remount ONLY when the Stripe runtime identity changes
-  // (publishable key, connected account, or the PaymentIntent client_secret). It must NOT remount on
-  // shipping/billing edits: a remount tears down the PaymentElement and WIPES the card the buyer already
-  // entered, leaving the PaymentIntent `requires_payment_method` at confirm. Billing details are supplied
-  // at confirm time (confirmParams.payment_method_data.billing_details), so they must NOT be in the key.
-  const sectionKey = [publishableKey, stripeAccount || '', clientSecret].join('::')
+  // DEFERRED Elements (Stripe `mode: 'payment'`): the card form mounts on the merchant publishable key + an
+  // amount, WITHOUT a PaymentIntent — so the buyer can enter their card immediately while the ~7s quote +
+  // order + PaymentIntent are created in the background. The PaymentIntent is confirmed at Pay time
+  // (elements.submit() then confirmPayment({elements, clientSecret})). The <Elements> provider must remount
+  // ONLY when the Stripe runtime identity changes (publishable key / connected account) — NOT on amount or
+  // shipping changes (a remount would wipe the entered card). The live amount is applied in place via
+  // options.amount → react-stripe runs elements.update({amount}) without remounting.
+  const sectionKey = [publishableKey, stripeAccount || ''].join('::')
+  const elementsOptions = useMemo(
+    () => ({
+      mode: 'payment' as const,
+      amount: Math.max(50, Math.round(amountMinor) || 50),
+      currency: String(currency || 'usd').toLowerCase(),
+    }),
+    [amountMinor, currency],
+  )
 
   return (
-    <Elements key={sectionKey} stripe={stripePromise} options={{ clientSecret }}>
+    <Elements key={sectionKey} stripe={stripePromise} options={elementsOptions}>
       <StripePaymentSectionInner
         ref={ref}
-        clientSecret={clientSecret}
+        clientSecret={clientSecret || ''}
+        showWallets={showWallets}
         returnUrl={returnUrl}
         shipping={shipping}
         onPaymentError={onPaymentError}
@@ -1726,6 +1745,17 @@ function OrderFlowInner({
           cache: 'no-store',
         })
         const json = await res.json().catch(() => null)
+
+        // Surface the merchant's Stripe publishable config EARLY (on page load) so the deferred card form can
+        // mount before the quote/order, instead of waiting for the order-create response to carry the key.
+        // Publishable key only (browser-safe). The order-create response remains the authoritative source and
+        // re-sets the same key later via syncStripeRuntime (no remount when it matches).
+        const stripeCfg = json?.stripe_config || null
+        if (!cancelled && stripeCfg && typeof stripeCfg.publishable_key === 'string' && stripeCfg.publishable_key) {
+          setStripePublishableKey(String(stripeCfg.publishable_key))
+          setStripeAccount(stripeCfg.stripe_account ? String(stripeCfg.stripe_account) : null)
+        }
+
         const prefill = json?.prefill || null
         const addr = prefill?.shipping_address || null
         const email = String(prefill?.customer_email || '').trim() || null
@@ -2209,6 +2239,16 @@ function OrderFlowInner({
     typeof initialPaymentAction?.client_secret === 'string'
       ? initialPaymentAction.client_secret
       : null
+  // DEFERRED card form: the Stripe PaymentElement mounts on the publishable key + this amount (no
+  // PaymentIntent needed), so it renders immediately while the live quote runs in the background. The amount
+  // tracks the live quote total once it lands (react-stripe applies it via elements.update, no remount); a
+  // cart estimate is used until then. Wallets (Apple/Google Pay) are gated on the LIVE total being known so
+  // they never display a stale estimate.
+  const deferredAmountMinor = Math.max(
+    50,
+    Math.round((Number(quote?.pricing?.total ?? estimatedSubtotal) || 0) * 100),
+  )
+  const liveQuoteReady = !!quote?.quote_id
   const stripeReturnUrlForRender = createdOrderId
     ? buildPostPayReturnUrl(createdOrderId) || null
     : null
@@ -2248,7 +2288,18 @@ function OrderFlowInner({
       : paymentSubmitOwner === 'redirect'
           ? 'Continue to merchant payment'
           : `Pay ${formatAmount(total)}`
-  const showExternalPayButton = shouldRenderExternalPayButton(paymentSubmitOwner)
+  // DEFERRED: the Stripe card form renders before any PaymentIntent/contract exists, so the contract-derived
+  // submitOwner is null early. When the deferred Stripe form is up (publishable key present and not another
+  // PSP/redirect path), show the external Pay button regardless — it renders disabled ("Calculating total…")
+  // until the background quote+PI are ready.
+  const stripeDeferredFormActive =
+    !!stripePublishableKey &&
+    paymentActionType !== 'redirect_url' &&
+    paymentActionType !== 'adyen_session' &&
+    paymentActionType !== 'checkout_session' &&
+    pspUsed !== 'adyen'
+  const showExternalPayButton =
+    shouldRenderExternalPayButton(paymentSubmitOwner) || stripeDeferredFormActive
 
   const finalizeOrderAfterPayment = async (
     orderId: string,
@@ -2904,18 +2955,32 @@ function OrderFlowInner({
       setPaymentInitLoading(false)
       setPaymentInitError(null)
 
-      try {
-        const nextQuote = await refreshQuoteWithRetry()
-        markCheckoutTiming('quote_ready_at_ms')
-        void startPaymentInitForQuote(nextQuote)
-      } catch (err: any) {
-        if (isInventoryUnavailable(err)) {
-          if (onFailure) onFailure({ reason: 'action_required', stage: 'shipping' })
-          return
-        }
-        throw err
-      }
+      // DEFERRED card form: go to the payment step IMMEDIATELY so the Stripe PaymentElement renders (the
+      // buyer can start entering their card) while the ~7s quote + order + PaymentIntent run in the
+      // BACKGROUND. The Pay action awaits the background quote/PI before confirming. Errors are surfaced via
+      // paymentInitError / checkoutFailure / onFailure rather than blocking the step transition.
       setStep('payment')
+      void (async () => {
+        try {
+          const nextQuote = await refreshQuoteWithRetry()
+          markCheckoutTiming('quote_ready_at_ms')
+          void startPaymentInitForQuote(nextQuote)
+        } catch (err: any) {
+          if (isInventoryUnavailable(err)) {
+            if (onFailure) onFailure({ reason: 'action_required', stage: 'shipping' })
+            return
+          }
+          if (isCheckoutRestartRequired(err)) {
+            setCheckoutFailure({
+              message:
+                String(err?.message || '').trim() ||
+                'This checkout link is invalid or expired. Please restart checkout to continue.',
+            })
+            return
+          }
+          setPaymentInitError(String(err?.message || '').trim() || 'Failed to prepare payment')
+        }
+      })()
     } catch (err: any) {
       console.error('Create order error:', err)
       if (isCheckoutRestartRequired(err)) {
@@ -3952,10 +4017,13 @@ function OrderFlowInner({
                           We will redirect you to finish payment on the merchant payment surface.
                         </p>
                       </div>
-                    ) : stripePublishableKey && stripeClientSecretForRender ? (
+                    ) : stripePublishableKey ? (
                       <StripePaymentSection
                         ref={stripePaymentSectionRef}
                         clientSecret={stripeClientSecretForRender}
+                        amountMinor={deferredAmountMinor}
+                        currency={currency}
+                        showWallets={liveQuoteReady}
                         publishableKey={stripePublishableKey}
                         stripeAccount={stripeAccount}
                         returnUrl={stripeReturnUrlForRender}
@@ -4057,10 +4125,12 @@ function OrderFlowInner({
                 {showExternalPayButton ? (
                   <button
                     onClick={handlePayment}
-                    disabled={isProcessing || paymentInitLoading}
+                    disabled={isProcessing || paymentInitLoading || quotePending || !quote?.quote_id}
                     className="rounded-[18px] bg-green-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:bg-slate-300 lg:w-full"
                   >
-                    {paymentButtonLabel}
+                    {/* DEFERRED: the card form is interactive immediately; Pay enables once the background
+                        quote + PaymentIntent are ready (so the confirm amount matches). */}
+                    {quotePending || !quote?.quote_id ? 'Calculating total…' : paymentButtonLabel}
                   </button>
                 ) : paymentSubmitOwner === 'component' ? (
                   <div className="rounded-[18px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs font-medium text-emerald-800 lg:w-full">
