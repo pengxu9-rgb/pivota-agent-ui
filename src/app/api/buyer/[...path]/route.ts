@@ -24,6 +24,19 @@ function getUpstreamBuyerBase(): string {
 
 const CHECKOUT_UI_KEY = process.env.CHECKOUT_UI_KEY || process.env.PIVOTA_CHECKOUT_UI_KEY || ''
 
+// The accounts session cookie the buyer backend authenticates against
+// (backend get_accounts_principal reads ONLY this cookie — there is no
+// Authorization-header path). Its absence guarantees the upstream returns 401.
+const ACCESS_COOKIE_NAME = 'acc_access_token'
+
+function unauthenticatedResponse(): NextResponse {
+  // Mirror the backend's structured 401 body (FastAPI wraps `detail`).
+  return NextResponse.json(
+    { detail: { error: { code: 'UNAUTHENTICATED', message: 'Not logged in' } } },
+    { status: 401 },
+  )
+}
+
 function base64url(input: Buffer | string): string {
   const b64 = Buffer.from(input).toString('base64')
   return b64.replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_')
@@ -130,6 +143,14 @@ async function proxy(req: NextRequest, args: { upstreamBase: string; path: strin
 
 export async function GET(req: NextRequest, { params }: RouteContext) {
   const { path } = await params
+  // Fast-path: GET /api/buyer/me requires the accounts session cookie. For a signed-out
+  // buyer (no acc_access_token cookie) the upstream always returns 401 — but the proxy
+  // round-trip to the buyer backend was measured at 2–6.6s in prod. Short-circuit locally
+  // so a guest (the common checkout case) gets an instant 401 with no upstream hop. Auth is
+  // cookie-only upstream, so cookie-absence ⟹ guaranteed 401: behavior-equivalent.
+  if (path.length === 1 && path[0] === 'me' && !req.cookies.get(ACCESS_COOKIE_NAME)) {
+    return unauthenticatedResponse()
+  }
   return proxy(req, { upstreamBase: getUpstreamBuyerBase(), path })
 }
 
