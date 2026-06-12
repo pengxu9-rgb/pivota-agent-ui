@@ -4,6 +4,11 @@ import { requireUpstreamBase } from '@/lib/upstreamFallback';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+// Co-locate with the checkout backend (Railway europe-west4). This route proxies ONLY to
+// the EU backend (web-production-fedb), so running it in the project's US 'home' region
+// added a transatlantic hop on every call — and this is the deferred card form's render-
+// critical publishable-key source. fra1 (Frankfurt) is the closest Vercel region.
+export const preferredRegion = 'fra1';
 
 const PIVOTA_BACKEND_FALLBACK = 'https://web-production-fedb.up.railway.app';
 // Fail loud in any deployed runtime rather than silently routing checkout

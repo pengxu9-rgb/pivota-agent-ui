@@ -3,6 +3,10 @@ import { warnIfHardcodedFallbackUsed } from '@/lib/upstreamFallback';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+// Co-locate with the accounts backend (Railway europe-west4). This route proxies ONLY to
+// the EU backend (web-production-fedb/accounts), so the project's US 'home' region added a
+// transatlantic hop on every call. fra1 (Frankfurt) is the closest Vercel region.
+export const preferredRegion = 'fra1';
 
 const DEFAULT_ACCOUNTS_BASE = 'https://web-production-fedb.up.railway.app/accounts';
 
