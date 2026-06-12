@@ -1436,15 +1436,20 @@ function OrderFlowInner({
       ? 'Please enter a valid email for your receipt.'
       : null
 
+  // Warm Stripe.js (loadStripe → js.stripe.com fetch, ~3.5s) as soon as the merchant publishable
+  // key is known — which is during the SHIPPING step, once /api/checkout/prefill resolves. Without
+  // this, the SDK only started loading when the payment step rendered (continue-click), so the
+  // ~3.5s fetch + PaymentElement iframe did NOT overlap with the buyer filling in their address.
+  // Re-runs when the pk/account changes; getStripePromiseForKey caches per pk, so repeated calls
+  // (mount → prefill → order-create) reuse the same in-flight promise (no duplicate loads).
   useEffect(() => {
+    if (!stripePublishableKey) return
     try {
       void prewarmStripeRuntime(stripePublishableKey, stripeAccount)
     } catch {
       // Best-effort only.
     }
-    // intentional: prewarm exactly once on /order mount
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [stripePublishableKey, stripeAccount])
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   // eslint-disable-next-line react-hooks/exhaustive-deps
