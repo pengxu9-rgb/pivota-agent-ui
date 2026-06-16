@@ -42,6 +42,13 @@ const PDP_SERVER_INCLUDE = [
   'reviews_preview',
 ] as const;
 
+// When on, also fetch product_intel server-side and emit its public-safe grounded claims
+// into the JSON-LD (rendering is additionally gated by the backend's public_ready, set by
+// the same flag on the gateway). Default off → SSR fetch + JSON-LD unchanged.
+const PDP_GROUNDED_CLAIMS_JSONLD_ENABLED = /^(1|true|yes|on)$/i.test(
+  (process.env.PDP_PUBLIC_GROUNDED_CLAIMS_ENABLED ?? '').trim(),
+);
+
 function readSearchParam(value: string | string[] | undefined): string {
   if (Array.isArray(value)) return String(value[0] || '').trim();
   return String(value || '').trim();
@@ -191,7 +198,10 @@ async function _fetchPdpForServerRenderUncached(
         : explicitMerchantId
           ? { merchant_id: explicitMerchantId }
           : {}),
-      include: [...PDP_SERVER_INCLUDE],
+      include: [
+        ...PDP_SERVER_INCLUDE,
+        ...(PDP_GROUNDED_CLAIMS_JSONLD_ENABLED ? ['product_intel'] : []),
+      ],
       timeout_ms: PDP_SERVER_FETCH_TIMEOUT_MS,
       gatewayBaseUrl: resolveServerGatewayBaseUrl(),
     });
@@ -317,6 +327,9 @@ export default async function ProductDetailPage(props: Props) {
   const recommendationsModule = renderData
     ? readPdpModule(renderData.initialPayload, 'recommendations')?.data || null
     : null;
+  const productIntelModule = renderData
+    ? readPdpModule(renderData.initialPayload, 'product_intel')?.data || null
+    : null;
   const jsonLd = renderData
     ? buildProductJsonLd(
         {
@@ -326,6 +339,7 @@ export default async function ProductDetailPage(props: Props) {
         {
           reviewsModule,
           recommendationsModule,
+          productIntelModule,
         },
       )
     : null;

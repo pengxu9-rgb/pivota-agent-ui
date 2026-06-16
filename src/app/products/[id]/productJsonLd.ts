@@ -37,6 +37,7 @@ const DEFAULT_LOCALE_COUNTRY = 'US';
 type ProductJsonLdContext = {
   reviewsModule?: Record<string, any> | null;
   recommendationsModule?: Record<string, any> | null;
+  productIntelModule?: Record<string, any> | null;
 };
 
 // Schema.org availability vocabulary the major search engines understand.
@@ -790,6 +791,34 @@ function _buildRecommendationsItemList(
   };
 }
 
+// Render the backend's public-safe grounded claims as schema.org additionalProperty so a
+// crawling frontier model has citable substance (actives + mechanism), not just identity.
+// The UI is a DUMB RENDERER: the FTC/substantiation decision is single-sourced in the
+// gateway (pdpProductIntel.stampPublicGroundedClaims) — emit ONLY when public_ready===true
+// and ONLY the pre-filtered public_claims it hands us. Do NOT re-derive the gate here.
+function _buildGroundedClaimProperties(
+  productIntelModule?: Record<string, any> | null,
+): Array<Record<string, any>> {
+  const mod = _asRecord(productIntelModule);
+  if (!mod || mod.public_ready !== true) return [];
+  const core = _asRecord(mod.product_intel_core);
+  const claims = Array.isArray(core?.public_claims) ? core.public_claims : [];
+  const props: Array<Record<string, any>> = [];
+  for (const claim of claims) {
+    const record = _asRecord(claim);
+    if (!record) continue;
+    const value = _firstString(record.claim_text);
+    if (!value) continue;
+    const name = _firstString(record.source_ref, record.concern) || 'active ingredient';
+    const prop: Record<string, any> = { '@type': 'PropertyValue', name, value };
+    const citation = Array.isArray(record.source_refs) ? _firstString(...record.source_refs) : null;
+    if (citation) prop.url = citation;
+    props.push(prop);
+    if (props.length >= 6) break;
+  }
+  return props;
+}
+
 /**
  * Build the JSON-LD payload as a serialized string ready to drop into a
  * `<script type="application/ld+json">{...}</script>` block.
@@ -930,6 +959,12 @@ export function buildProductJsonLd(args: {
     '@type': 'BreadcrumbList',
     itemListElement: breadcrumbItems,
   };
+
+  const groundedClaimProps = _buildGroundedClaimProperties(context.productIntelModule);
+  if (groundedClaimProps.length) {
+    const existing = Array.isArray(ldRecord.additionalProperty) ? ldRecord.additionalProperty : [];
+    ldRecord.additionalProperty = [...existing, ...groundedClaimProps];
+  }
 
   const recommendationsItemList = _buildRecommendationsItemList(context.recommendationsModule);
 
