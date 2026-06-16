@@ -1421,3 +1421,38 @@ describe('Codex P1 followup: ProductGroup ID does not double-prefix pg_', () => 
     expect(parsed.productGroupID).toBe('pg_abcdef0123456789abcdef0123456789');
   });
 });
+
+describe('buildProductJsonLd — public grounded claims (additionalProperty)', () => {
+  const groundedModule = (publicReady: boolean) => ({
+    public_ready: publicReady,
+    product_intel_core: {
+      public_claims: [
+        { claim_text: 'Adenosine supports skin firmness.', source_ref: 'Adenosine', evidence_grade: 'A', source_refs: ['https://example.test/adenosine'] },
+        { claim_text: 'Niacinamide supports the skin barrier.', source_ref: 'Niacinamide', evidence_grade: 'B', source_refs: [] },
+      ],
+    },
+  });
+  const base = { product: { title: 'Tofu Collagen Dual-Firming Jelly Cream' }, productId: PRODUCT_ID };
+
+  it('emits public_claims as PropertyValue additionalProperty when public_ready', () => {
+    const parsed = JSON.parse(buildProductJsonLd(base, { productIntelModule: groundedModule(true) })!);
+    const props = parsed.additionalProperty as Array<Record<string, any>>;
+    expect(Array.isArray(props)).toBe(true);
+    expect(props.map((p) => p.name)).toEqual(['Adenosine', 'Niacinamide']);
+    expect(props[0]).toMatchObject({
+      '@type': 'PropertyValue',
+      value: 'Adenosine supports skin firmness.',
+      url: 'https://example.test/adenosine',
+    });
+    expect(props[1].url).toBeUndefined(); // no citation → no url
+  });
+
+  it('emits NO claim properties when public_ready is false (UI trusts the backend gate)', () => {
+    const parsed = JSON.parse(buildProductJsonLd(base, { productIntelModule: groundedModule(false) })!);
+    expect(parsed.additionalProperty).toBeUndefined();
+  });
+
+  it('emits NO claim properties when the product_intel module is absent', () => {
+    expect(JSON.parse(buildProductJsonLd(base, {})!).additionalProperty).toBeUndefined();
+  });
+});
