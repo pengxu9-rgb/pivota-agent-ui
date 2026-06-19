@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from 'react';
 import { GlassCard } from '@/components/ui/glass-card';
 import { Button } from '@/components/ui/button';
 import { normalizeDisplayImageUrl } from '@/lib/displayImage';
+import { recordMerchantName } from '@/lib/merchantRegistry';
 import { useCartStore } from '@/store/cartStore';
 import { hideProductRouteLoading, showProductRouteLoading } from '@/lib/productRouteLoading';
 import { buildProductHrefForProduct, isExternalAliasOnlyProduct } from '@/lib/productHref';
@@ -70,6 +71,12 @@ export default function ProductCard({
   const isNavigatingRef = useRef(false);
   const resetTimerRef = useRef<number | null>(null);
   const { addItem } = useCartStore();
+
+  // Capture (merchant_id → merchant_name) for the runtime registry. See
+  // CartDrawer hydration path — closes the PDP-frozen merchant-name gap.
+  useEffect(() => {
+    recordMerchantName(merchant_id, merchant_name);
+  }, [merchant_id, merchant_name]);
   const isExternal = Boolean(external_redirect_url);
   const displayPrice = Number(price);
   const hasValidDisplayPrice = Number.isFinite(displayPrice) && displayPrice > 0;
@@ -108,6 +115,7 @@ export default function ProductCard({
         currency,
         imageUrl: resolvedImage,
         merchant_id,
+        merchant_name,
         quantity: 1,
       });
       toast.success(`✓ Added to cart! ${title}`);
