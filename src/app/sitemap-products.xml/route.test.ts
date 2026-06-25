@@ -242,4 +242,40 @@ describe('/sitemap-products.xml — serving-eligible product sitemap', () => {
       'public, max-age=3600, s-maxage=3600, stale-while-revalidate=3600',
     );
   });
+
+  it('includes offer-free index_eligible rows keyed on content_key (store-less brands)', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          items: [
+            // store-less brand-authored: no sig, index_eligible → /products/{ck}
+            {
+              sig_id: null,
+              content_key: 'ck_storeless_brand',
+              serving_eligible: false,
+              index_eligible: true,
+              updated_at: '2026-05-01T12:00:00.000Z',
+            },
+            // a buyable row still keyed on its sig
+            canonicalProduct('sig_buyable'),
+            // index_eligible but no content_key → excluded (no identity/URL key)
+            { sig_id: null, index_eligible: true },
+          ],
+          total: 2,
+          limit: 1000,
+          offset: 0,
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
+
+    const res = await GET();
+    const locs = sitemapLocs(await readBody(res));
+    // store-less citation row surfaces under its content_key
+    expect(locs).toContain('https://agent.pivota.cc/products/ck_storeless_brand');
+    // buyable row still surfaces under its sig
+    expect(locs).toContain('https://agent.pivota.cc/products/sig_buyable');
+    // the no-content_key row is dropped
+    expect(locs).toHaveLength(2);
+  });
 });
