@@ -92,22 +92,33 @@ function isTruthyEligibility(value: unknown): boolean {
   return value === true || value === 1 || value === 'true'
 }
 
-function isServingEligibleProduct(item: Record<string, unknown>): boolean {
+// A row belongs in the sitemap when the backend marks it serving_eligible
+// (buyable) OR index_eligible (offer-free citation — e.g. store-less brands).
+// The backend already applies the authoritative gate (and only returns
+// index_eligible rows when INDEX_ELIGIBLE_SITEMAP is on), so trusting these
+// flags can't surface anything the backend didn't intend.
+function isSitemapEligibleProduct(item: Record<string, unknown>): boolean {
   return (
     isTruthyEligibility(item.serving_eligible) ||
-    isTruthyEligibility(item.is_serving_eligible)
+    isTruthyEligibility(item.is_serving_eligible) ||
+    isTruthyEligibility(item.index_eligible)
   )
 }
 
 function readCanonicalProduct(item: unknown): SitemapProduct | null {
   if (!item || typeof item !== 'object') return null
   const row = item as Record<string, unknown>
-  if (!isServingEligibleProduct(row)) return null
+  if (!isSitemapEligibleProduct(row)) return null
 
-  const id = String(row.sig_id || '').trim()
-  if (!id.startsWith('sig_')) return null
+  // content_key is the core identity and the served-PDP key — always required.
   const contentKey = String(row.content_key || '').trim()
   if (!contentKey.startsWith('ck_')) return null
+
+  // Prefer the canonical sig for the URL; fall back to content_key for
+  // store-less brand-authored rows that have no minted sig (offer-free
+  // citation). Both /products/{sig} and /products/{ck} resolve on the PDP.
+  const sig = String(row.sig_id || '').trim()
+  const id = sig.startsWith('sig_') ? sig : contentKey
 
   return {
     id,
