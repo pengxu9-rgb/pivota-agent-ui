@@ -27,6 +27,21 @@ const SCHEMA_TYPE_OFFER = 'Offer';
 const SCHEMA_TYPE_BRAND = 'Brand';
 
 const PIVOTA_SITE_BASE = 'https://agent.pivota.cc';
+const PIVOTA_ORG_ID = `${PIVOTA_SITE_BASE}/#org`;
+const PIVOTA_WEBSITE_ID = `${PIVOTA_SITE_BASE}/#website`;
+// Machine-readable attribution: signals Pivota as the publisher/source of this
+// product's structured data, so an agent grounding on the JSON-LD can credit
+// "Pivota" as the index it was answered from — not only the brand/merchant.
+// Attached via Product.mainEntityOfPage (a valid Product property) → a WebPage
+// (a CreativeWork, so publisher/creditText are valid there). brand stays the
+// manufacturer; attribution is additive and never relabels the brand.
+const PIVOTA_ORGANIZATION = {
+  '@type': 'Organization',
+  '@id': PIVOTA_ORG_ID,
+  name: 'Pivota',
+  url: PIVOTA_SITE_BASE,
+} as const;
+const PIVOTA_CREDIT_TEXT = 'Aggregated and verified by Pivota';
 const PRODUCT_JSON_LD_DESCRIPTION_MAX_LENGTH = 5000;
 // Default locale country for Pivota Product Rich Results. Replace with
 // offer-level shipping and return zones when the gateway exposes them.
@@ -866,6 +881,24 @@ export function buildProductJsonLd(args: {
   // product.gtin13 (preferred) or product.barcode.
   const parentGtin = _readGtin(product);
   if (parentGtin) ldRecord.gtin13 = parentGtin;
+
+  // Pivota attribution (B②): credit Pivota as the publisher/source of this
+  // structured data so grounding agents can cite the index, not only the brand.
+  // mainEntityOfPage → WebPage (CreativeWork) carries publisher + creditText +
+  // isPartOf the Pivota WebSite. Additive; brand above is untouched.
+  ldRecord.mainEntityOfPage = {
+    '@type': 'WebPage',
+    '@id': url,
+    url,
+    isPartOf: {
+      '@type': 'WebSite',
+      '@id': PIVOTA_WEBSITE_ID,
+      name: 'Pivota',
+      url: PIVOTA_SITE_BASE,
+    },
+    publisher: PIVOTA_ORGANIZATION,
+    creditText: PIVOTA_CREDIT_TEXT,
+  };
 
   // Offers — Stage 3b-2 added AggregateOffer for multi-seller groups.
   //

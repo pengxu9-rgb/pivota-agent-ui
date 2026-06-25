@@ -73,6 +73,30 @@ describe('buildProductJsonLd — minimum viable schema', () => {
     expect(parsed.brand).toEqual({ '@type': 'Brand', name: 'the ordinary' });
   });
 
+  it('stamps Pivota attribution (publisher + creditText) without relabeling the brand', () => {
+    const out = buildProductJsonLd({
+      product: { title: 'X', brand: { name: 'the ordinary' } },
+      productId: PRODUCT_ID,
+    });
+    const parsed = JSON.parse(out!);
+    // brand stays the manufacturer — attribution is additive
+    expect(parsed.brand).toEqual({ '@type': 'Brand', name: 'the ordinary' });
+    // Pivota credited as publisher/source via mainEntityOfPage → WebPage
+    const page = parsed.mainEntityOfPage;
+    expect(page['@type']).toBe('WebPage');
+    expect(page.publisher).toEqual({
+      '@type': 'Organization',
+      '@id': 'https://agent.pivota.cc/#org',
+      name: 'Pivota',
+      url: 'https://agent.pivota.cc',
+    });
+    expect(page.isPartOf.name).toBe('Pivota');
+    expect(typeof page.creditText).toBe('string');
+    expect(page.creditText).toMatch(/Pivota/);
+    // the page identity ties back to this PDP's canonical url
+    expect(page['@id']).toBe(parsed.url);
+  });
+
   it('reads brand from various legacy fields', () => {
     const a = buildProductJsonLd({
       product: { title: 'X', brand_name: 'Acme' },
