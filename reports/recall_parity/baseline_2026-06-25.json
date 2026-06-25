@@ -1,0 +1,53 @@
+{
+  "generated_at_note": "stamp externally; harness avoids Date.now for determinism",
+  "corpus": "eval_corpus_recall_v1.jsonl",
+  "queries": 53,
+  "scored": 53,
+  "pivot_auth_failures": 0,
+  "mean_overlap_jaccard": 0.24411144135573132,
+  "top1_agreement_rate": 0.03773584905660377,
+  "mean_abs_rank_delta_on_shared": 2.694444444444444,
+  "high_divergence_count": 41,
+  "worst_overlap": [
+    {
+      "query": "acne cleanser",
+      "overlap": 0
+    },
+    {
+      "query": "gentle cleanser",
+      "overlap": 0
+    },
+    {
+      "query": "barrier moisturizer",
+      "overlap": 0
+    },
+    {
+      "query": "hydrating barrier moisturizer fragrance free",
+      "overlap": 0
+    },
+    {
+      "query": "lightweight gel moisturizer for acne-prone skin",
+      "overlap": 0
+    },
+    {
+      "query": "moisturizer",
+      "overlap": 0
+    },
+    {
+      "query": "sunscreen",
+      "overlap": 0
+    },
+    {
+      "query": "spf 50",
+      "overlap": 0
+    },
+    {
+      "query": "lipstick",
+      "overlap": 0
+    },
+    {
+      "query": "red lipstick long-lasting",
+      "overlap": 0
+    }
+  ]
+}

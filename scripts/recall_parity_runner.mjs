@@ -42,8 +42,10 @@ function identityOf(item) {
   if (!item || typeof item !== 'object') return null;
   const prod = item.product && typeof item.product === 'object' ? item.product : item;
   const keys = [
-    'content_key', 'contentKey', 'pivota_signature_id', 'pivotaSignatureId',
-    'sig_id', 'id', 'product_id', 'productId', 'product_key',
+    // product_key (prod::merchant::platform::source_id) is the ONE identity both
+    // surfaces expose identically; /v1/pivot omits content_key + sig, so prefer it.
+    'product_key', 'productKey', 'source_product_id',
+    'content_key', 'contentKey', 'pivota_signature_id', 'sig_id', 'id', 'product_id', 'productId',
   ];
   for (const k of keys) {
     const v = prod[k] ?? item[k];
