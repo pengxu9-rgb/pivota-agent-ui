@@ -20,8 +20,18 @@ const PIVOTA_CANONICAL_PAGE_SIZE = 1000
 // TODO(VIS-5): add sitemap index shards before the canonical catalog exceeds 50k URLs.
 const SITEMAP_MAX_URLS = 50000
 const DEFAULT_CANONICAL_PRODUCTS_BASE_URL = 'https://web-production-fedb.up.railway.app'
+// Edge-cache TTLs tuned so crawlers (GSC, Bingbot, GPTBot) never pay the
+// serverless cold-start + backend catalog fetch that trips GSC "Couldn't fetch".
+// After the first warm-up the Vercel edge serves fresh for s-maxage, then serves
+// the STALE copy INSTANTLY for the long stale-while-revalidate window while it
+// revalidates in the background. As long as the URL is fetched at least once per
+// week (crawlers guarantee this), the edge never fully expires, so no fetch ever
+// blocks on a cold multi-second response. (max-age is the browser TTL and is
+// irrelevant to crawlers, which always revalidate.)
+const SITEMAP_FRESH_SECONDS = 21600 // 6h — re-pull the canonical catalog at most this often
+const SITEMAP_STALE_SECONDS = 604800 // 7d — serve stale instantly + revalidate in the background
 const SITEMAP_CACHE_CONTROL =
-  `public, max-age=${revalidate}, s-maxage=${revalidate}, stale-while-revalidate=${revalidate}`
+  `public, max-age=${revalidate}, s-maxage=${SITEMAP_FRESH_SECONDS}, stale-while-revalidate=${SITEMAP_STALE_SECONDS}`
 // When we fall back to the last-known-good snapshot, cache it for a short
 // window so the edge keeps answering 200 while the backend recovers, but
 // revalidate sooner than a fresh build so we re-attempt promptly.

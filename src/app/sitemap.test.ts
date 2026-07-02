@@ -42,7 +42,7 @@ describe('/sitemap.xml — sitemap index', () => {
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toMatch(/application\/xml/);
     expect(res.headers.get('cache-control')).toBe(
-      'public, max-age=3600, s-maxage=3600, stale-while-revalidate=3600',
+      'public, max-age=3600, s-maxage=86400, stale-while-revalidate=604800',
     );
     expect(xml).toContain('<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">');
     expect(xml).not.toContain('<lastmod>');
@@ -58,7 +58,7 @@ describe('/sitemap.xml — sitemap index', () => {
     expect(res.status).toBe(200);
     expect(await res.text()).toBe('');
     expect(res.headers.get('cache-control')).toBe(
-      'public, max-age=3600, s-maxage=3600, stale-while-revalidate=3600',
+      'public, max-age=3600, s-maxage=86400, stale-while-revalidate=604800',
     );
   });
 });
