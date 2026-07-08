@@ -1,0 +1,48 @@
+# Regenerate the committed static sitemaps in public/ from the canonical
+# catalog and push the refresh to main (which triggers the normal Vercel
+# deploy). The sitemaps are static files — not serverless routes — so crawler
+# fetches never depend on a live backend; this workflow is the only thing that
+# talks to the backend. See scripts/generate_sitemaps.mjs for the full story.
+#
+# The generator is deterministic (sorted, no timestamps) and exits non-zero
+# WITHOUT writing when the new build looks truncated (never publish a stub
+# over the full set), so a backend outage makes this run fail red and the
+# committed last-known-good keeps serving.
+name: Regenerate sitemaps
+
+on:
+  schedule:
+    - cron: '17 1,7,13,19 * * *' # every 6h, off the top of the hour
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sitemaps
+  cancel-in-progress: false
+
+jobs:
+  regenerate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Generate sitemaps
+        run: node scripts/generate_sitemaps.mjs
+      - name: Commit and push if changed
+        run: |
+          FILES="public/sitemap.xml public/sitemap-static.xml public/sitemap-products.xml"
+          if git diff --quiet -- $FILES; then
+            echo "sitemaps unchanged"
+            exit 0
+          fi
+          git config user.name "pivota-sitemap-bot"
+          git config user.email "actions-bot@users.noreply.github.com"
+          git add $FILES
+          git commit -m "chore(seo): refresh generated sitemaps"
+          # Tolerate a deploy landing mid-run.
+          git pull --rebase origin main
+          git push origin main
