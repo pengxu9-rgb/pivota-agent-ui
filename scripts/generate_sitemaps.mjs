@@ -74,10 +74,14 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-async function fetchCanonicalProductsPageOnce(baseUrl, offset) {
+async function fetchCanonicalProductsPageOnce(baseUrl, { offset = 0, cursor = null }) {
   const url = new URL('/api/canonical/products', baseUrl)
   url.searchParams.set('limit', String(PIVOTA_CANONICAL_PAGE_SIZE))
-  url.searchParams.set('offset', String(offset))
+  if (cursor) {
+    url.searchParams.set('cursor', cursor)
+  } else {
+    url.searchParams.set('offset', String(offset))
+  }
 
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), PAGE_TIMEOUT_MS)
@@ -102,21 +106,25 @@ async function fetchCanonicalProductsPageOnce(baseUrl, offset) {
     items: Array.isArray(data.items) ? data.items : [],
     total: readInteger(data.total, 0),
     limit: readInteger(data.limit, 1) || PIVOTA_CANONICAL_PAGE_SIZE,
+    hasMore: typeof data.has_more === 'boolean' ? data.has_more : null,
+    nextCursor:
+      typeof data.next_cursor === 'string' && data.next_cursor ? data.next_cursor : null,
   }
 }
 
-async function fetchCanonicalProductsPage(baseUrl, offset) {
+async function fetchCanonicalProductsPage(baseUrl, params) {
+  const pageLabel = params.cursor ? `cursor=${params.cursor}` : `offset=${params.offset}`
   let lastError
   for (let attempt = 0; attempt <= PAGE_RETRY_DELAYS_MS.length; attempt++) {
     if (attempt > 0) {
       const delay = PAGE_RETRY_DELAYS_MS[attempt - 1]
       console.warn(
-        `offset=${offset}: attempt ${attempt} failed (${lastError?.message}); retrying in ${delay}ms`,
+        `${pageLabel}: attempt ${attempt} failed (${lastError?.message}); retrying in ${delay}ms`,
       )
       await sleep(delay)
     }
     try {
-      return await fetchCanonicalProductsPageOnce(baseUrl, offset)
+      return await fetchCanonicalProductsPageOnce(baseUrl, params)
     } catch (error) {
       lastError = error
     }
@@ -128,11 +136,12 @@ export async function collectSitemapProducts(baseUrl) {
   const products = []
   const seenIds = new Set()
   let offset = 0
+  let cursor = null
   let stoppedForCap = false
   let sawInvalidCanonicalItem = false
 
   while (products.length < SITEMAP_MAX_URLS) {
-    const page = await fetchCanonicalProductsPage(baseUrl, offset)
+    const page = await fetchCanonicalProductsPage(baseUrl, cursor ? { cursor } : { offset })
     if (page.items.length === 0) break
 
     for (const item of page.items) {
@@ -147,9 +156,16 @@ export async function collectSitemapProducts(baseUrl) {
       if (products.length >= SITEMAP_MAX_URLS) break
     }
 
-    const nextOffset = offset + page.limit
+    // Keep the offset in step even while paging by cursor, so a backend
+    // that stops emitting next_cursor mid-crawl degrades to offset paging
+    // instead of restarting from 0.
+    offset += page.limit
     const hasMore =
-      page.total !== null ? nextOffset < page.total : page.items.length >= page.limit
+      page.hasMore !== null
+        ? page.hasMore
+        : page.total !== null
+          ? offset < page.total
+          : page.items.length >= page.limit
 
     if (products.length >= SITEMAP_MAX_URLS && hasMore) {
       stoppedForCap = true
@@ -157,7 +173,11 @@ export async function collectSitemapProducts(baseUrl) {
     }
     if (!hasMore) break
 
-    offset = nextOffset
+    // Prefer the backend's keyset cursor (pivota-backend PR #1239): it seeks
+    // on the sort key, so page cost stays constant instead of growing with
+    // OFFSET depth (deep pages could trip the backend's 4s DB timeout).
+    // Backends that predate next_cursor keep paging by offset.
+    cursor = page.nextCursor
   }
 
   // Deterministic order: backend pagination order is mutable
