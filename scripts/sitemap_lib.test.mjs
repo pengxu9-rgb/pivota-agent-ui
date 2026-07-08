@@ -38,8 +38,8 @@ function products(count, prefix = 'sig_mock_product') {
   )
 }
 
-function pageResponse(items, total, offset = 0) {
-  return new Response(JSON.stringify({ items, total, limit: 1000, offset }), {
+function pageResponse(items, total, offset = 0, extra = {}) {
+  return new Response(JSON.stringify({ items, total, limit: 1000, offset, ...extra }), {
     status: 200,
     headers: { 'Content-Type': 'application/json' },
   })
@@ -207,6 +207,81 @@ describe('collectSitemapProducts — backend pagination', () => {
 
     expect(collected.map((p) => p.id)).toEqual(['sig_keep_me'])
     expect(source).toBe('serving_eligible_partial')
+  })
+
+  it('pages by keyset cursor when the backend provides next_cursor', async () => {
+    const firstPage = products(1000, 'sig_cursor_one')
+    const secondPage = [canonicalProduct('sig_cursor_two_0000')]
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = new URL(String(input))
+      if (url.searchParams.get('cursor') === 'opaque-cursor-1') {
+        return pageResponse(secondPage, null, 0, { has_more: false, next_cursor: null })
+      }
+      return pageResponse(firstPage, 1001, 0, {
+        has_more: true,
+        next_cursor: 'opaque-cursor-1',
+      })
+    })
+
+    const { products: collected, source } = await collectSitemapProducts(
+      'https://canonical.example.com',
+    )
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    const firstUrl = new URL(String(fetchMock.mock.calls[0][0]))
+    expect(firstUrl.searchParams.get('offset')).toBe('0')
+    expect(firstUrl.searchParams.get('cursor')).toBeNull()
+    const secondUrl = new URL(String(fetchMock.mock.calls[1][0]))
+    expect(secondUrl.searchParams.get('cursor')).toBe('opaque-cursor-1')
+    // Cursor and offset are mutually exclusive on the backend.
+    expect(secondUrl.searchParams.get('offset')).toBeNull()
+    expect(collected).toHaveLength(1001)
+    expect(source).toBe('serving_eligible')
+  })
+
+  it('stops on has_more=false even when the page is full and total is null', async () => {
+    // New backend, catalog exactly one page: total present only on page one,
+    // has_more says stop. The legacy full-page heuristic alone would have
+    // issued a wasted second fetch.
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(
+        pageResponse(products(1000), 1000, 0, { has_more: false, next_cursor: null }),
+      )
+
+    const { products: collected } = await collectSitemapProducts(
+      'https://canonical.example.com',
+    )
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(collected).toHaveLength(1000)
+  })
+
+  it('falls back to offset paging when next_cursor stops mid-crawl', async () => {
+    // Defensive backend path: has_more=true but no cursor. The crawl must
+    // continue from the rows already consumed, not restart at offset=0.
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = new URL(String(input))
+      const offset = url.searchParams.get('offset')
+      if (offset === '0') {
+        return pageResponse(products(1000, 'sig_fb_one'), null, 0, {
+          has_more: true,
+          next_cursor: null,
+        })
+      }
+      return pageResponse([canonicalProduct('sig_fb_two_0000')], null, 1000, {
+        has_more: false,
+        next_cursor: null,
+      })
+    })
+
+    const { products: collected } = await collectSitemapProducts(
+      'https://canonical.example.com',
+    )
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(new URL(String(fetchMock.mock.calls[1][0])).searchParams.get('offset')).toBe('1000')
+    expect(collected).toHaveLength(1001)
   })
 
   it('returns an empty set when the endpoint has no products', async () => {
