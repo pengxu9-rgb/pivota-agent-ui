@@ -139,9 +139,14 @@ export async function collectSitemapProducts(baseUrl) {
   let cursor = null
   let stoppedForCap = false
   let sawInvalidCanonicalItem = false
+  let cursorPages = 0
+  let offsetPages = 0
 
   while (products.length < SITEMAP_MAX_URLS) {
-    const page = await fetchCanonicalProductsPage(baseUrl, cursor ? { cursor } : { offset })
+    const usingCursor = Boolean(cursor)
+    const page = await fetchCanonicalProductsPage(baseUrl, usingCursor ? { cursor } : { offset })
+    if (usingCursor) cursorPages++
+    else offsetPages++
     if (page.items.length === 0) break
 
     for (const item of page.items) {
@@ -156,10 +161,14 @@ export async function collectSitemapProducts(baseUrl) {
       if (products.length >= SITEMAP_MAX_URLS) break
     }
 
-    // Keep the offset in step even while paging by cursor, so a backend
-    // that stops emitting next_cursor mid-crawl degrades to offset paging
-    // instead of restarting from 0.
-    offset += page.limit
+    // Keep `offset` in step as a fallback resume anchor: if the backend
+    // stops emitting next_cursor mid-crawl (a widened-sitemap page whose
+    // last row has a NULL sig_id, which the backend can't mint a cursor
+    // from), the next page pages by offset from where we left off rather
+    // than restarting at 0. Advance by ACTUAL rows returned, not the
+    // nominal page size: the offset-resume point must equal rows consumed,
+    // so a short page (fewer items than `limit`) can't make us skip rows.
+    offset += page.items.length
     const hasMore =
       page.hasMore !== null
         ? page.hasMore
@@ -178,7 +187,20 @@ export async function collectSitemapProducts(baseUrl) {
     // OFFSET depth (deep pages could trip the backend's 4s DB timeout).
     // Backends that predate next_cursor keep paging by offset.
     cursor = page.nextCursor
+    if (usingCursor && !cursor) {
+      // Downgrade cursor→offset (see above). Rare and self-correcting, but
+      // loud because a wrong offset anchor here silently truncates the set.
+      console.warn(
+        `pagination downgraded to offset at offset=${offset} ` +
+          `(backend returned has_more with no next_cursor)`,
+      )
+    }
   }
+
+  console.log(
+    `pagination: ${cursorPages + offsetPages} page(s) ` +
+      `(cursor=${cursorPages}, offset=${offsetPages})`,
+  )
 
   // Deterministic order: backend pagination order is mutable
   // (content_changed_at DESC), which would produce a different diff — and

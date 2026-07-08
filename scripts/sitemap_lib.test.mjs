@@ -284,6 +284,52 @@ describe('collectSitemapProducts — backend pagination', () => {
     expect(collected).toHaveLength(1001)
   })
 
+  it('offset-resume anchor tracks rows consumed, not the nominal page size', async () => {
+    // The failure this guards: cursor paging, then next_cursor drops on a
+    // SHORT page (fewer items than `limit`) while has_more stays true. The
+    // offset fallback must resume at the exact count of rows already consumed
+    // (1000 + 400 = 1400), NOT `offset += limit` (which would jump to 2000 and
+    // silently skip 600 rows — an undercount small enough to slip past the
+    // 50%-shrink guard).
+    const calls = []
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = new URL(String(input))
+      const cursor = url.searchParams.get('cursor')
+      const offset = url.searchParams.get('offset')
+      calls.push({ cursor, offset })
+      if (cursor === null && offset === '0') {
+        return pageResponse(products(1000, 'sig_anchor_a'), null, 0, {
+          has_more: true,
+          next_cursor: 'CUR1',
+        })
+      }
+      if (cursor === 'CUR1') {
+        // Short page + downgrade: has_more true, no next_cursor.
+        return pageResponse(products(400, 'sig_anchor_b'), null, 0, {
+          has_more: true,
+          next_cursor: null,
+        })
+      }
+      // Resume-by-offset page: the offset it arrives with is the assertion.
+      return pageResponse(products(2, 'sig_anchor_c'), null, Number(offset), {
+        has_more: false,
+        next_cursor: null,
+      })
+    })
+
+    const { products: collected } = await collectSitemapProducts(
+      'https://canonical.example.com',
+    )
+
+    // Page 3 resumed at rows consumed (1000 + 400), not at offset += limit.
+    expect(calls).toHaveLength(3)
+    expect(calls[1]).toEqual({ cursor: 'CUR1', offset: null })
+    expect(calls[2]).toEqual({ cursor: null, offset: '1400' })
+    // Full set collected, no gaps and no duplicates.
+    expect(collected).toHaveLength(1402)
+    expect(new Set(collected.map((p) => p.id)).size).toBe(1402)
+  })
+
   it('returns an empty set when the endpoint has no products', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(pageResponse([], 0))
 
