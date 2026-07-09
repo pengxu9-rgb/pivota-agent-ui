@@ -148,8 +148,36 @@ export function readCanonicalProduct(item) {
 
   return {
     id,
+    contentKey,
     lastmod: parseLastmod(row.updated_at || row.last_modified),
   }
+}
+
+// One URL per product. The catalog carries duplicate signatures for the same
+// content_key (~1,218 products have >1 sig — different ingestion paths minted
+// 24- vs 32-hex sigs), which used to emit up to 17% redundant sitemap URLs
+// (7,407 URLs for 6,133 distinct products) and split index signal across
+// duplicate pages. Pick one deterministic URL id per content_key:
+// prefer the longer sig class (32-hex content sigs over legacy 24-hex, any
+// sig over the ck_ fallback), then lexicographic — stable run-to-run
+// regardless of backend page ordering, so URLs don't churn between builds.
+export function preferSitemapId(a, b) {
+  const hexLen = (id) => (String(id).startsWith('sig_') ? id.length - 4 : -1)
+  if (hexLen(a) !== hexLen(b)) return hexLen(a) > hexLen(b) ? a : b
+  return a <= b ? a : b
+}
+
+export function mergeDuplicateProduct(existing, incoming) {
+  const id = preferSitemapId(existing.id, incoming.id)
+  const lastmod =
+    !existing.lastmod
+      ? incoming.lastmod
+      : !incoming.lastmod
+        ? existing.lastmod
+        : existing.lastmod > incoming.lastmod
+          ? existing.lastmod
+          : incoming.lastmod
+  return { id, contentKey: existing.contentKey, lastmod }
 }
 
 export function productUrlEntries(products) {
