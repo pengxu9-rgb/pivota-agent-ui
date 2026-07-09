@@ -7,7 +7,9 @@ import {
   buildSitemapIndexXml,
   buildSitemapUrlsetXml,
   countLocs,
+  mergeDuplicateProduct,
   parseLastmod,
+  preferSitemapId,
   productUrlEntries,
   readCanonicalProduct,
   sitemapCountGuard,
@@ -158,6 +160,37 @@ describe('product row parsing (eligibility, identity, lastmod)', () => {
   })
 })
 
+describe('one URL per product — content_key dedup (identity fragmentation)', () => {
+  const sig24a = `sig_${'a'.repeat(24)}`
+  const sig24b = `sig_${'b'.repeat(24)}`
+  const sig32a = `sig_${'a'.repeat(32)}`
+  const sig32b = `sig_${'b'.repeat(32)}`
+
+  it('prefers 32-hex content sigs over 24-hex, then lexicographic; any sig over the ck fallback', () => {
+    expect(preferSitemapId(sig24a, sig32b)).toBe(sig32b)
+    expect(preferSitemapId(sig32b, sig24a)).toBe(sig32b)
+    expect(preferSitemapId(sig32b, sig32a)).toBe(sig32a)
+    expect(preferSitemapId('ck_storeless', sig24b)).toBe(sig24b)
+    // symmetric: argument order must not change the winner
+    expect(preferSitemapId(sig24b, 'ck_storeless')).toBe(sig24b)
+  })
+
+  it('merges duplicate sigs for one content_key: preferred id + max lastmod, no fabrication', () => {
+    const older = { id: sig24a, contentKey: 'ck_dup', lastmod: new Date('2026-01-01T00:00:00Z') }
+    const newer = { id: sig32b, contentKey: 'ck_dup', lastmod: new Date('2026-06-01T00:00:00Z') }
+    const merged = mergeDuplicateProduct(older, newer)
+    expect(merged.id).toBe(sig32b)
+    expect(merged.contentKey).toBe('ck_dup')
+    expect(merged.lastmod).toEqual(new Date('2026-06-01T00:00:00Z'))
+
+    // one side missing lastmod → keep the known one; both missing → undefined-ish
+    expect(mergeDuplicateProduct({ ...older, lastmod: null }, newer).lastmod).toEqual(
+      new Date('2026-06-01T00:00:00Z'),
+    )
+    expect(mergeDuplicateProduct({ ...older, lastmod: null }, { ...newer, lastmod: null }).lastmod).toBeNull()
+  })
+})
+
 describe('collectSitemapProducts — backend pagination', () => {
   beforeEach(() => {
     vi.stubEnv('PIVOTA_BACKEND_BASE_URL', 'https://canonical.example.com')
@@ -194,6 +227,31 @@ describe('collectSitemapProducts — backend pagination', () => {
     expect(ids).toContain('sig_page_two_0000')
     // deterministic output: sorted by id regardless of backend order
     expect(ids).toEqual([...ids].sort())
+  })
+
+  it('emits ONE url when multiple sigs share a content_key (multi-sig product)', async () => {
+    const sig24 = `sig_${'1'.repeat(24)}`
+    const sig32 = `sig_${'2'.repeat(32)}`
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      pageResponse(
+        [
+          { sig_id: sig24, content_key: 'ck_same_product', serving_eligible: true, updated_at: '2026-01-01T00:00:00.000Z' },
+          { sig_id: sig32, content_key: 'ck_same_product', serving_eligible: true, updated_at: '2026-06-01T00:00:00.000Z' },
+          canonicalProduct('sig_other_product'),
+        ],
+        3,
+      ),
+    )
+
+    const { products: collected, source } = await collectSitemapProducts(
+      'https://canonical.example.com',
+    )
+
+    expect(collected).toHaveLength(2)
+    const dup = collected.find((p) => p.contentKey === 'ck_same_product')
+    expect(dup?.id).toBe(sig32) // deterministic winner: longer sig class
+    expect(dup?.lastmod).toEqual(new Date('2026-06-01T00:00:00.000Z'))
+    expect(source).toBe('serving_eligible')
   })
 
   it('reports serving_eligible_partial when rows are filtered out', async () => {

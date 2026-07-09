@@ -29,6 +29,7 @@ import {
   buildSitemapIndexXml,
   buildSitemapUrlsetXml,
   countLocs,
+  mergeDuplicateProduct,
   productUrlEntries,
   readCanonicalProduct,
   sitemapCountGuard,
@@ -133,8 +134,10 @@ async function fetchCanonicalProductsPage(baseUrl, params) {
 }
 
 export async function collectSitemapProducts(baseUrl) {
-  const products = []
-  const seenIds = new Set()
+  // Keyed by content_key — ONE URL per product. Duplicate signatures for the
+  // same content_key are merged via mergeDuplicateProduct (deterministic id,
+  // max lastmod) instead of each minting their own sitemap entry.
+  const productsByContentKey = new Map()
   let offset = 0
   let cursor = null
   let stoppedForCap = false
@@ -142,7 +145,7 @@ export async function collectSitemapProducts(baseUrl) {
   let cursorPages = 0
   let offsetPages = 0
 
-  while (products.length < SITEMAP_MAX_URLS) {
+  while (productsByContentKey.size < SITEMAP_MAX_URLS) {
     const usingCursor = Boolean(cursor)
     const page = await fetchCanonicalProductsPage(baseUrl, usingCursor ? { cursor } : { offset })
     if (usingCursor) cursorPages++
@@ -155,10 +158,13 @@ export async function collectSitemapProducts(baseUrl) {
         sawInvalidCanonicalItem = true
         continue
       }
-      if (seenIds.has(product.id)) continue
-      seenIds.add(product.id)
-      products.push(product)
-      if (products.length >= SITEMAP_MAX_URLS) break
+      const existing = productsByContentKey.get(product.contentKey)
+      if (existing) {
+        productsByContentKey.set(product.contentKey, mergeDuplicateProduct(existing, product))
+        continue
+      }
+      productsByContentKey.set(product.contentKey, product)
+      if (productsByContentKey.size >= SITEMAP_MAX_URLS) break
     }
 
     // Keep `offset` in step as a fallback resume anchor: if the backend
@@ -176,7 +182,7 @@ export async function collectSitemapProducts(baseUrl) {
           ? offset < page.total
           : page.items.length >= page.limit
 
-    if (products.length >= SITEMAP_MAX_URLS && hasMore) {
+    if (productsByContentKey.size >= SITEMAP_MAX_URLS && hasMore) {
       stoppedForCap = true
       break
     }
@@ -205,6 +211,7 @@ export async function collectSitemapProducts(baseUrl) {
   // Deterministic order: backend pagination order is mutable
   // (content_changed_at DESC), which would produce a different diff — and
   // therefore a commit + deploy — on every run even for an unchanged catalog.
+  const products = Array.from(productsByContentKey.values())
   products.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
 
   return {
