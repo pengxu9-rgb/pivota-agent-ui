@@ -167,6 +167,42 @@ describe('product page metadata', () => {
     expect(metadata.title).toBe('Pivota Shopping AI');
   });
 
+  it('keeps the defensive noindex on SSR failure for non-sitemap routes', async () => {
+    getPdpV2Mock.mockRejectedValue(new Error('missing'));
+
+    const metadata = await generateMetadata({
+      params: Promise.resolve({ id: 'missing' }),
+      searchParams: Promise.resolve({}),
+    });
+
+    expect((metadata.robots as any)?.index).toBe(false);
+    expect((metadata.robots as any)?.follow).toBe(false);
+  });
+
+  it('omits robots (never hard-noindex) on SSR failure for sitemap sig_ routes', async () => {
+    getPdpV2Mock.mockRejectedValue(new Error('transient backend failure'));
+
+    const metadata = await generateMetadata({
+      params: Promise.resolve({ id: 'sig_7ad40676c42fb9c96e2a8136' }),
+      searchParams: Promise.resolve({}),
+    });
+
+    expect(metadata.title).toBe('Pivota Shopping AI');
+    expect(metadata.robots).toBeUndefined();
+  });
+
+  it('omits robots (never hard-noindex) on SSR failure for sitemap ck_ routes', async () => {
+    getPdpV2Mock.mockRejectedValue(new Error('transient backend failure'));
+
+    const metadata = await generateMetadata({
+      params: Promise.resolve({ id: 'ck_29d0bbfe6981112f320b5ace1df66aee' }),
+      searchParams: Promise.resolve({}),
+    });
+
+    expect(metadata.title).toBe('Pivota Shopping AI');
+    expect(metadata.robots).toBeUndefined();
+  });
+
   it('uses product-group canonical metadata for multi-merchant PDP responses', async () => {
     getPdpV2Mock.mockResolvedValue({
       subject: { type: 'product_group', id: 'pg_catalog_abc123' },

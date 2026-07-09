@@ -293,13 +293,23 @@ export async function generateMetadata({
   const merchantId = isCanonicalSig ? '' : readSearchParam(resolvedSearchParams.merchant_id);
   const renderData = await fetchPdpForServerRender(productId, merchantId);
 
-  return renderData
-    ? buildMetadataFromProduct(renderData.product, renderData.canonicalRouteId)
-    : {
-        title: DEFAULT_TITLE,
-        description: 'Shop products with Pivota Shopping AI.',
-        robots: { index: false, follow: false },
-      };
+  if (renderData) {
+    return buildMetadataFromProduct(renderData.product, renderData.canonicalRouteId);
+  }
+  // Server-side PDP fetch failed. For a route we publish in the product
+  // sitemap (sig_ canonical signatures AND the ck_ content-key fallback for
+  // store-less brands), a get_pdp_v2 failure is often transient (backend
+  // cold-start / timeout) — emitting a hard `noindex` here actively
+  // de-indexes a sitemap URL on a hiccup, and revalidate=3600 caches that
+  // noindex for up to an hour. Omit the robots directive so Google can
+  // retry/crawl; the client component still hydrates the product on the
+  // page. Non-sitemap/alias routes keep the defensive noindex.
+  const isSitemapRoute = isCanonicalSig || productId.startsWith('ck_');
+  return {
+    title: DEFAULT_TITLE,
+    description: 'Shop products with Pivota Shopping AI.',
+    ...(isSitemapRoute ? {} : { robots: { index: false, follow: false } }),
+  };
 }
 
 export default async function ProductDetailPage(props: Props) {
