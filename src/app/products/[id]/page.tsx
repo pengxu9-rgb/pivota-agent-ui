@@ -296,17 +296,19 @@ export async function generateMetadata({
   if (renderData) {
     return buildMetadataFromProduct(renderData.product, renderData.canonicalRouteId);
   }
-  // Server-side PDP fetch failed. For a canonical signature route (i.e. a URL we
-  // publish in the product sitemap), a get_pdp_v2 failure is often transient
-  // (backend cold-start / timeout / a not-yet-resolvable store-less signature) —
-  // emitting a hard `noindex` here actively de-indexes a sitemap URL on a hiccup.
-  // Omit the robots directive so Google can retry/crawl; the client component
-  // still hydrates the product on the page. Non-canonical/alias routes keep the
-  // defensive noindex.
+  // Server-side PDP fetch failed. For a route we publish in the product
+  // sitemap (sig_ canonical signatures AND the ck_ content-key fallback for
+  // store-less brands), a get_pdp_v2 failure is often transient (backend
+  // cold-start / timeout) — emitting a hard `noindex` here actively
+  // de-indexes a sitemap URL on a hiccup, and revalidate=3600 caches that
+  // noindex for up to an hour. Omit the robots directive so Google can
+  // retry/crawl; the client component still hydrates the product on the
+  // page. Non-sitemap/alias routes keep the defensive noindex.
+  const isSitemapRoute = isCanonicalSig || productId.startsWith('ck_');
   return {
     title: DEFAULT_TITLE,
     description: 'Shop products with Pivota Shopping AI.',
-    ...(isCanonicalSig ? {} : { robots: { index: false, follow: false } }),
+    ...(isSitemapRoute ? {} : { robots: { index: false, follow: false } }),
   };
 }
 
