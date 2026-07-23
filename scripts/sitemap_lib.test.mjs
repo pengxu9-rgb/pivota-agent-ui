@@ -293,6 +293,25 @@ describe('collectSitemapProducts — backend pagination', () => {
     expect(source).toBe('serving_eligible_partial')
   })
 
+  it('renderable=false drops do NOT mark the run partial (expected filter, not anomaly)', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      pageResponse(
+        [
+          canonicalProduct('sig_keep_me'),
+          { ...canonicalProduct('sig_dead_pdp'), renderable: false },
+        ],
+        2,
+      ),
+    )
+
+    const { products: collected, source } = await collectSitemapProducts(
+      'https://canonical.example.com',
+    )
+
+    expect(collected.map((p) => p.id)).toEqual(['sig_keep_me'])
+    expect(source).toBe('serving_eligible')
+  })
+
   it('pages by keyset cursor when the backend provides next_cursor', async () => {
     const firstPage = products(1000, 'sig_cursor_one')
     const secondPage = [canonicalProduct('sig_cursor_two_0000')]
