@@ -10,6 +10,17 @@ const UCP_WEB_BASE_URL =
     /\/$/,
     '',
   )
+// UCP identity cleanup (2026-07-23): /.well-known/ucp now serves the safety-kernel
+// profile from the GATEWAY (merchant_of_record:false, commerce_index_passthrough —
+// the mid-man identity), not the legacy ucp-web creator lane, which was the one
+// surface that ever declared Pivota merchant-of-record. /ucp/v1/* below still
+// routes to ucp-web: that is the creator lane's session RUNTIME (order page), a
+// separate retirement decision.
+const UCP_DISCOVERY_BASE_URL =
+  (process.env.UCP_DISCOVERY_BASE_URL || 'https://pivota-agent-production.up.railway.app').replace(
+    /\/$/,
+    '',
+  )
 const REVIEWS_UPSTREAM_BASE_URL = (
   process.env.NEXT_PUBLIC_REVIEWS_API_URL ||
   process.env.NEXT_PUBLIC_REVIEWS_BACKEND_URL ||
@@ -136,7 +147,11 @@ const nextConfig = {
       },
       {
         source: '/.well-known/ucp',
-        destination: `${UCP_WEB_BASE_URL}/.well-known/ucp`,
+        destination: `${UCP_DISCOVERY_BASE_URL}/.well-known/ucp`,
+      },
+      {
+        source: '/ucp/capabilities',
+        destination: `${UCP_DISCOVERY_BASE_URL}/ucp/capabilities`,
       },
     ]
   },
