@@ -146,6 +146,20 @@ export function readCanonicalProduct(item) {
   const sig = String(row.sig_id || '').trim()
   const id = sig.startsWith('sig_') ? sig : contentKey
 
+  // Renderability gate (the 52%-dead-PDP fix): serving_eligible says the
+  // backend WANTS the row public; `renderable` says the PDP will actually
+  // render (the sig's own row has an approved, live-read-enabled
+  // pdp_identity_listing — row grain, sibling listings don't count). A URL
+  // that fails it serves the generic shell, so advertising it points
+  // crawlers at an empty page. Drop only on an explicit `false`:
+  //  - absent/undefined (a backend that predates the field) keeps the
+  //    pre-fix behavior instead of emptying the sitemap, and
+  //  - the filter runs BEFORE the content_key dedup, so the one-URL-per-
+  //    product choice is made among renderable sigs only.
+  // ck-keyed citation rows (no sig) are exempt: `renderable` is defined for
+  // sig PDPs, and the offer-free citation surface has its own gate.
+  if (sig.startsWith('sig_') && row.renderable === false) return null
+
   return {
     id,
     contentKey,

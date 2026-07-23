@@ -155,7 +155,12 @@ export async function collectSitemapProducts(baseUrl) {
     for (const item of page.items) {
       const product = readCanonicalProduct(item)
       if (!product) {
-        sawInvalidCanonicalItem = true
+        // A renderable=false drop is the EXPECTED dead-PDP filter, not a
+        // malformed row — don't let it pin the source label to "_partial"
+        // forever (that label is the anomaly signal for parse failures).
+        const droppedAsDead =
+          item && typeof item === 'object' && item.renderable === false
+        if (!droppedAsDead) sawInvalidCanonicalItem = true
         continue
       }
       const existing = productsByContentKey.get(product.contentKey)

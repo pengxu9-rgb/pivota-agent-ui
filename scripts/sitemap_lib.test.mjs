@@ -116,6 +116,32 @@ describe('product row parsing (eligibility, identity, lastmod)', () => {
     expect(kept.map((p) => p.id)).toEqual(['sig_keep_me'])
   })
 
+  it('drops sig rows the backend marks renderable=false (dead-PDP shells)', () => {
+    const dead = readCanonicalProduct({ ...canonicalProduct('sig_dead'), renderable: false })
+    const live = readCanonicalProduct({ ...canonicalProduct('sig_live'), renderable: true })
+
+    expect(dead).toBeNull()
+    expect(live?.id).toBe('sig_live')
+  })
+
+  it('keeps rows when renderable is absent (backend predating the field)', () => {
+    // Fail-open on ABSENCE only: an older backend must reproduce the
+    // pre-fix sitemap, not an empty one. Explicit false still drops.
+    const legacy = readCanonicalProduct(canonicalProduct('sig_legacy'))
+    expect(legacy?.id).toBe('sig_legacy')
+  })
+
+  it('does not apply the renderable gate to ck-keyed citation rows', () => {
+    const citation = readCanonicalProduct({
+      sig_id: null,
+      content_key: 'ck_citation_brand',
+      serving_eligible: false,
+      index_eligible: true,
+      renderable: false,
+    })
+    expect(citation?.id).toBe('ck_citation_brand')
+  })
+
   it('includes offer-free index_eligible rows keyed on content_key (store-less brands)', () => {
     const storeless = readCanonicalProduct({
       sig_id: null,
@@ -265,6 +291,25 @@ describe('collectSitemapProducts — backend pagination', () => {
 
     expect(collected.map((p) => p.id)).toEqual(['sig_keep_me'])
     expect(source).toBe('serving_eligible_partial')
+  })
+
+  it('renderable=false drops do NOT mark the run partial (expected filter, not anomaly)', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      pageResponse(
+        [
+          canonicalProduct('sig_keep_me'),
+          { ...canonicalProduct('sig_dead_pdp'), renderable: false },
+        ],
+        2,
+      ),
+    )
+
+    const { products: collected, source } = await collectSitemapProducts(
+      'https://canonical.example.com',
+    )
+
+    expect(collected.map((p) => p.id)).toEqual(['sig_keep_me'])
+    expect(source).toBe('serving_eligible')
   })
 
   it('pages by keyset cursor when the backend provides next_cursor', async () => {
