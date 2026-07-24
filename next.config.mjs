@@ -122,42 +122,58 @@ const nextConfig = {
   // Optimize production builds
   // Enable React strict mode
   productionBrowserSourceMaps: false,
-  async headers() {
-    // Explicit CDN cache for the canonical crawlable PDP prefixes that appear in
-    // sitemap-products.xml (sig_ signatures, ck_ content-keys, pg_ product groups).
-    // One entry per prefix: path-to-regexp rejects a nested alternation group like
-    // `((sig_|ck_|pg_)[^/]+)` inside a `:param(...)` pattern (breaks `next build`).
-    const pdpCacheHeaders = [
-      {
-        key: 'Cache-Control',
-        value: 'public, s-maxage=3600, stale-while-revalidate=86400',
-      },
-    ]
-    return [
-      { source: '/products/:id(sig_[^/]+)', headers: pdpCacheHeaders },
-      { source: '/products/:id(ck_[^/]+)', headers: pdpCacheHeaders },
-      { source: '/products/:id(pg_[^/]+)', headers: pdpCacheHeaders },
-    ]
-  },
+  // NOTE: deliberately NO static Cache-Control header for /products/* here.
+  // A next.config header is stamped on EVERY response for the path — including
+  // degraded renders (the static route's 500 and the alias route's uncached
+  // shell) — so `public, s-maxage=...` would tell the CDN to cache a degraded
+  // response for an hour even though Next itself stored nothing. The
+  // /products/[id] route is static/ISR (revalidate + generateStaticParams), so
+  // Next emits the correct Cache-Control per render outcome: s-maxage from
+  // `revalidate` on healthy cached renders, private/no-store on dynamic
+  // bail-outs (degraded shells, personalized alias renders).
   async rewrites() {
-    return [
-      {
-        source: '/agent/shop/v1/review-media/:path*',
-        destination: `${REVIEWS_UPSTREAM_BASE_URL}/agent/shop/v1/review-media/:path*`,
-      },
-      {
-        source: '/ucp/v1/:path*',
-        destination: `${UCP_WEB_BASE_URL}/ucp/v1/:path*`,
-      },
-      {
-        source: '/.well-known/ucp',
-        destination: `${UCP_DISCOVERY_BASE_URL}/.well-known/ucp`,
-      },
-      {
-        source: '/ucp/capabilities',
-        destination: `${UCP_DISCOVERY_BASE_URL}/ucp/capabilities`,
-      },
-    ]
+    return {
+      // beforeFiles: must win over the filesystem match on /products/[id].
+      // That route is static/ISR and can never read searchParams (a
+      // dynamic-API touch during on-demand static generation is a hard 500) —
+      // so merchant-personalized requests are routed to the force-dynamic
+      // /products/m/[id] alias route. The visible URL stays /products/:id and
+      // the query string is passed through.
+      //
+      // ACCEPTED OVER-BREADTH: `:id` matches ANY single-segment child of
+      // /products, so a sibling route like /products/indexability?merchant_id=x
+      // would also be captured and render as a (not-found) PDP. Nothing emits
+      // merchant_id on those URLs, and a tighter id-shape match is
+      // impractical — path-to-regexp rejects nested alternation groups in a
+      // :param(...) pattern (see the removed headers() note in git history).
+      // If a new single-segment /products/* route ever legitimately takes a
+      // merchant_id query, it needs its own preceding beforeFiles self-rewrite.
+      beforeFiles: [
+        {
+          source: '/products/:id',
+          has: [{ type: 'query', key: 'merchant_id' }],
+          destination: '/products/m/:id',
+        },
+      ],
+      afterFiles: [
+        {
+          source: '/agent/shop/v1/review-media/:path*',
+          destination: `${REVIEWS_UPSTREAM_BASE_URL}/agent/shop/v1/review-media/:path*`,
+        },
+        {
+          source: '/ucp/v1/:path*',
+          destination: `${UCP_WEB_BASE_URL}/ucp/v1/:path*`,
+        },
+        {
+          source: '/.well-known/ucp',
+          destination: `${UCP_DISCOVERY_BASE_URL}/.well-known/ucp`,
+        },
+        {
+          source: '/ucp/capabilities',
+          destination: `${UCP_DISCOVERY_BASE_URL}/ucp/capabilities`,
+        },
+      ],
+    }
   },
 };
 

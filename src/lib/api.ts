@@ -3257,10 +3257,12 @@ export async function getPdpV2(args: {
  * `next.config` header, and per-fetch layers never stuck — they all sit ABOVE the POST.
  *
  * `unstable_cache` caches the RESULT of the call (keyed on the inputs below) in the
- * Data Cache regardless of the POST inside it. With the dynamic fetch gone, the route
- * renders statically, the page-level `revalidate` and the `next.config` `s-maxage`
- * header on `/products/:id(sig_*)` finally take effect, and crawlers hit warm cache
- * instead of a cold multi-second SSR.
+ * Data Cache regardless of the POST inside it. With the dynamic fetch gone (and the
+ * route opted into static/ISR via `generateStaticParams` + `revalidate` — `revalidate`
+ * alone never flips a dynamic-segment route static), the route renders statically,
+ * Next emits `s-maxage` from `revalidate` per render outcome (there is deliberately
+ * no static `next.config` Cache-Control header — it would also stamp degraded
+ * bail-out responses), and crawlers hit warm cache instead of a cold multi-second SSR.
  *
  * MUST be used only for canonical, non-personalized reads (no searchParams, no checkout
  * token, no per-user data) — else per-user data would be cached across visitors.
