@@ -12,7 +12,7 @@ import type { Metadata } from 'next';
 import ProductDetailClient from './ProductDetailClient';
 import { buildProductDescription } from './productDescription';
 import { buildProductJsonLd } from './productJsonLd';
-import { getPdpV2, getServicesBrowse } from '@/lib/api';
+import { getPdpV2, getPdpV2Cached, getServicesBrowse } from '@/lib/api';
 import { mapPdpV2ToPdpPayload } from '@/features/pdp/adapter/mapPdpV2ToPdpPayload';
 import type { PDPPayload } from '@/features/pdp/types';
 import { isBeautyProduct } from '@/features/pdp/utils/isBeautyProduct';
@@ -33,8 +33,21 @@ interface Props {
 }
 
 const DEFAULT_TITLE = 'Pivota Shopping AI';
-export const revalidate = 3600;
+const PDP_ROUTE_REVALIDATE_S = 3600;
+export const revalidate = PDP_ROUTE_REVALIDATE_S;
 const PDP_SERVER_FETCH_TIMEOUT_MS = 9000;
+
+// The anonymous, crawlable, sitemap-published PDP route ids: Pivota signatures
+// (sig_), content-key canonicals (ck_) for store-less brands, and product groups
+// (pg_). These render identically for every visitor — no searchParams, no per-user
+// merchant — so they skip the dynamic-render triggers and are data-cached.
+function isCanonicalCrawlableRoute(productId: string): boolean {
+  return (
+    isPivotaSignatureRouteId(productId) ||
+    isProductGroupRouteId(productId) ||
+    String(productId || '').startsWith('ck_')
+  );
+}
 const PDP_SERVER_INCLUDE = [
   'offers',
   'variant_selector',
@@ -179,9 +192,18 @@ type ServerPdpRenderData = {
   canonicalRouteId: string;
 };
 
+// Seconds to cache the canonical (crawlable, anonymous) PDP server fetch in
+// Next's data cache. Matches the route-level `revalidate` above. Only applied to
+// the canonical sitemap path — the personalized (searchParams/merchant) path stays
+// uncached. Without this the get_pdp_v2 POST is uncacheable, which forces the whole
+// route to render dynamically (`private, no-store`) and every crawl of the ~1,900
+// sitemap URLs is a cold multi-second SSR → Google/AI crawl budget collapse.
+const PDP_CANONICAL_REVALIDATE_S = 3600;
+
 async function _fetchPdpForServerRenderUncached(
   productIdInput: string,
   merchantIdInput: string,
+  revalidateSeconds?: number,
 ): Promise<ServerPdpRenderData | null> {
   const productId = String(productIdInput || '').trim();
   if (!productId) return null;
@@ -190,21 +212,30 @@ async function _fetchPdpForServerRenderUncached(
   const explicitMerchantId = inferCanonicalPdpMerchantId(productId, normalizedMerchantId);
   const routeIsProductGroup = isProductGroupRouteId(productId);
 
+  // Canonical crawlable routes (no personalization) go through the unstable_cache-
+  // backed read so the render has no dynamic POST fetch → the route can render
+  // static and the CDN/ISR cache serves crawlers a warm page. Personalized loads
+  // (searchParams / explicit merchant on a non-canonical id) stay on the raw
+  // uncached read. The caller passes revalidateSeconds only for the canonical path.
+  const cacheable = typeof revalidateSeconds === 'number' && revalidateSeconds > 0;
+  const fetchArgs = {
+    product_id: productId,
+    ...(routeIsProductGroup
+      ? { subject: { type: 'product_group' as const, id: productId } }
+      : explicitMerchantId
+        ? { merchant_id: explicitMerchantId }
+        : {}),
+    include: [
+      ...PDP_SERVER_INCLUDE,
+      ...(PDP_GROUNDED_CLAIMS_JSONLD_ENABLED ? ['product_intel'] : []),
+    ],
+    timeout_ms: PDP_SERVER_FETCH_TIMEOUT_MS,
+    gatewayBaseUrl: resolveServerGatewayBaseUrl(),
+  };
   try {
-    const v2 = await getPdpV2({
-      product_id: productId,
-      ...(routeIsProductGroup
-        ? { subject: { type: 'product_group' as const, id: productId } }
-        : explicitMerchantId
-          ? { merchant_id: explicitMerchantId }
-          : {}),
-      include: [
-        ...PDP_SERVER_INCLUDE,
-        ...(PDP_GROUNDED_CLAIMS_JSONLD_ENABLED ? ['product_intel'] : []),
-      ],
-      timeout_ms: PDP_SERVER_FETCH_TIMEOUT_MS,
-      gatewayBaseUrl: resolveServerGatewayBaseUrl(),
-    });
+    const v2 = cacheable
+      ? await getPdpV2Cached({ ...fetchArgs, revalidateSeconds })
+      : await getPdpV2(fetchArgs);
     const initialPayload = mapPdpV2ToPdpPayload(v2);
     if (!initialPayload?.product) return null;
     const product = buildJsonLdProduct(initialPayload);
@@ -233,8 +264,8 @@ async function _fetchPdpForServerRenderUncached(
  * inner function still executes, just without memoization.
  */
 const fetchPdpForServerRender = cache(
-  async (productId: string, merchantId: string) => {
-    return _fetchPdpForServerRenderUncached(productId, merchantId);
+  async (productId: string, merchantId: string, revalidateSeconds?: number) => {
+    return _fetchPdpForServerRenderUncached(productId, merchantId, revalidateSeconds);
   },
 );
 
@@ -288,10 +319,17 @@ export async function generateMetadata({
 }: Props): Promise<Metadata> {
   const resolvedParams = await params;
   const productId = decodeProductIdParam(resolvedParams.id);
-  const isCanonicalSig = isPivotaSignatureRouteId(productId);
-  const resolvedSearchParams = !isCanonicalSig && searchParams ? await searchParams : {};
-  const merchantId = isCanonicalSig ? '' : readSearchParam(resolvedSearchParams.merchant_id);
-  const renderData = await fetchPdpForServerRender(productId, merchantId);
+  // Canonical crawlable routes (sig_ signatures, ck_ content-keys, and product
+  // groups) are anonymous sitemap URLs — identical for every visitor. They must
+  // NOT await searchParams (a dynamic-render trigger) and CAN be data-cached.
+  const isCanonicalCrawlRoute = isCanonicalCrawlableRoute(productId);
+  const resolvedSearchParams = !isCanonicalCrawlRoute && searchParams ? await searchParams : {};
+  const merchantId = isCanonicalCrawlRoute ? '' : readSearchParam(resolvedSearchParams.merchant_id);
+  const renderData = await fetchPdpForServerRender(
+    productId,
+    merchantId,
+    isCanonicalCrawlRoute ? PDP_ROUTE_REVALIDATE_S : undefined,
+  );
 
   if (renderData) {
     return buildMetadataFromProduct(renderData.product, renderData.canonicalRouteId);
@@ -304,7 +342,7 @@ export async function generateMetadata({
   // noindex for up to an hour. Omit the robots directive so Google can
   // retry/crawl; the client component still hydrates the product on the
   // page. Non-sitemap/alias routes keep the defensive noindex.
-  const isSitemapRoute = isCanonicalSig || productId.startsWith('ck_');
+  const isSitemapRoute = isCanonicalCrawlRoute;
   return {
     title: DEFAULT_TITLE,
     description: 'Shop products with Pivota Shopping AI.',
@@ -318,12 +356,17 @@ export default async function ProductDetailPage(props: Props) {
   // own data on hydration). Schema markup is purely additive.
   const resolvedParams = await props.params;
   const productId = decodeProductIdParam(resolvedParams.id);
-  const isCanonicalSig = isPivotaSignatureRouteId(productId);
-  const resolvedSearchParams = !isCanonicalSig && props.searchParams ? await props.searchParams : {};
-  const merchantId = isCanonicalSig ? '' : readSearchParam(resolvedSearchParams.merchant_id);
+  const isCanonicalCrawlRoute = isCanonicalCrawlableRoute(productId);
+  const resolvedSearchParams =
+    !isCanonicalCrawlRoute && props.searchParams ? await props.searchParams : {};
+  const merchantId = isCanonicalCrawlRoute ? '' : readSearchParam(resolvedSearchParams.merchant_id);
 
   const renderData = productId
-    ? await fetchPdpForServerRender(productId, merchantId)
+    ? await fetchPdpForServerRender(
+        productId,
+        merchantId,
+        isCanonicalCrawlRoute ? PDP_ROUTE_REVALIDATE_S : undefined,
+      )
     : null;
   const beautyServicesEnabled = process.env.NEXT_PUBLIC_BEAUTY_SERVICES_RECS_ENABLED === '1';
   const serviceRecommendations: ServiceCardData[] =

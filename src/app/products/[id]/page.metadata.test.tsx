@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import ProductDetailPage, { generateMetadata } from './page';
 
 const getPdpV2Mock = vi.hoisted(() => vi.fn());
+const getPdpV2CachedMock = vi.hoisted(() => vi.fn());
 const mapPdpV2ToPdpPayloadMock = vi.hoisted(() => vi.fn());
 const headersMock = vi.hoisted(() => vi.fn(async () => new Headers({
   'x-forwarded-host': 'agent.pivota.cc',
@@ -15,6 +16,16 @@ vi.mock('next/headers', () => ({
 
 vi.mock('@/lib/api', () => ({
   getPdpV2: (...args: unknown[]) => getPdpV2Mock(...args),
+  // The canonical crawlable path uses the cached read. Mirror the real wrapper:
+  // strip the cache-only keys and delegate to getPdpV2, so the underlying
+  // fetch-arg assertions stay valid AND we can assert the cached path was taken.
+  getPdpV2Cached: (args: Record<string, unknown>) => {
+    getPdpV2CachedMock(args);
+    const { revalidateSeconds, cacheTags, ...rest } = args || {};
+    void revalidateSeconds;
+    void cacheTags;
+    return getPdpV2Mock(rest);
+  },
 }));
 
 vi.mock('@/features/pdp/adapter/mapPdpV2ToPdpPayload', () => ({
@@ -29,6 +40,7 @@ const corePdpInclude = [
   'offers',
   'variant_selector',
   'product_overview',
+  'reviews_preview',
 ] as const;
 
 function buildPayload(product: Record<string, unknown>, overrides: Record<string, unknown> = {}) {
@@ -201,6 +213,50 @@ describe('product page metadata', () => {
 
     expect(metadata.title).toBe('Pivota Shopping AI');
     expect(metadata.robots).toBeUndefined();
+  });
+
+  it('routes canonical crawlable PDPs through the CACHED read (the crawl-collapse fix)', async () => {
+    // sig_/ck_/pg_ canonical routes must use getPdpV2Cached so the render has no
+    // uncacheable dynamic fetch → the route can render static and crawlers hit warm
+    // cache instead of a cold SSR. This is the regression guard for the fix; if a
+    // future change routes canonical PDPs back through the raw getPdpV2, the page
+    // silently reverts to dynamic (private, no-store) and crawl budget collapses.
+    getPdpV2Mock.mockResolvedValue({
+      modules: [{ type: 'canonical', data: { product_id: 'sig_cache_guard', title: 'Guard' } }],
+    });
+    mapPdpV2ToPdpPayloadMock.mockReturnValue({ product: { title: 'Guard' } });
+
+    for (const id of ['sig_cache_guard', 'ck_cache_guard', 'pg_cache_guard']) {
+      getPdpV2CachedMock.mockClear();
+      await generateMetadata({
+        params: Promise.resolve({ id }),
+        searchParams: Promise.resolve({}),
+      });
+      expect(getPdpV2CachedMock).toHaveBeenCalledTimes(1);
+      expect(getPdpV2CachedMock.mock.calls[0]?.[0]).toEqual(
+        expect.objectContaining({ product_id: id, revalidateSeconds: 3600 }),
+      );
+    }
+  });
+
+  it('does NOT cache a personalized (merchant searchParam) non-canonical route', async () => {
+    // The personalized path must stay on the raw uncached read — caching it would
+    // serve one visitor's merchant-scoped view to everyone.
+    getPdpV2Mock.mockResolvedValue({
+      modules: [{ type: 'canonical', data: { product_id: 'plain-id', title: 'X' } }],
+    });
+    mapPdpV2ToPdpPayloadMock.mockReturnValue({ product: { title: 'X' } });
+    getPdpV2CachedMock.mockClear();
+
+    await generateMetadata({
+      params: Promise.resolve({ id: 'plain-id' }),
+      searchParams: Promise.resolve({ merchant_id: 'merch_123' }),
+    });
+
+    expect(getPdpV2CachedMock).not.toHaveBeenCalled();
+    expect(getPdpV2Mock).toHaveBeenCalledWith(
+      expect.objectContaining({ merchant_id: 'merch_123' }),
+    );
   });
 
   it('uses product-group canonical metadata for multi-merchant PDP responses', async () => {

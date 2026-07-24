@@ -1,5 +1,6 @@
 // Centralized API helpers for calling the Pivota Agent Gateway and Accounts API
 // All UI components should import functions from here instead of using fetch directly.
+import { unstable_cache } from 'next/cache'
 import {
   getCheckoutContextFromBrowser,
   normalizeCheckoutSource,
@@ -3243,6 +3244,72 @@ export async function getPdpV2(args: {
   );
 
   return data as GetPdpV2Response;
+}
+
+/**
+ * CACHEABLE canonical PDP read — for CRAWLABLE, ANONYMOUS routes only.
+ *
+ * Why this exists (the fix for the recurring crawl-collapse bug): `getPdpV2` funnels
+ * through `callGateway`, which is a POST. Next 15's fetch Data Cache only caches GET,
+ * so a POST — even with `next: { revalidate }` — is treated as an uncacheable dynamic
+ * data source, which forces the whole RSC route to render dynamically and emit
+ * `cache-control: private, no-store`. That is why prior fixes at the page-config,
+ * `next.config` header, and per-fetch layers never stuck — they all sit ABOVE the POST.
+ *
+ * `unstable_cache` caches the RESULT of the call (keyed on the inputs below) in the
+ * Data Cache regardless of the POST inside it. With the dynamic fetch gone, the route
+ * renders statically, the page-level `revalidate` and the `next.config` `s-maxage`
+ * header on `/products/:id(sig_*)` finally take effect, and crawlers hit warm cache
+ * instead of a cold multi-second SSR.
+ *
+ * MUST be used only for canonical, non-personalized reads (no searchParams, no checkout
+ * token, no per-user data) — else per-user data would be cached across visitors.
+ */
+export async function getPdpV2Cached(args: {
+  product_id: string;
+  merchant_id?: string | null;
+  subject?: { type: 'product_group'; id: string } | null;
+  include?: string[] | string | null;
+  timeout_ms?: number;
+  gatewayBaseUrl?: string | null;
+  serving_eligible_only?: boolean;
+  revalidateSeconds?: number;
+  cacheTags?: string[];
+}): Promise<GetPdpV2Response> {
+  const revalidate =
+    typeof args.revalidateSeconds === 'number' && args.revalidateSeconds > 0
+      ? args.revalidateSeconds
+      : 3600;
+  const includeKey = Array.isArray(args.include)
+    ? args.include.join(',')
+    : String(args.include || '');
+  // Cache key = the inputs that change the ANONYMOUS response. gatewayBaseUrl and
+  // timeout are transport-only and intentionally excluded so they don't fragment
+  // the cache. cache_bypass is never set here (this path is the cache).
+  const keyParts = [
+    'get_pdp_v2',
+    String(args.product_id || ''),
+    String(args.merchant_id || ''),
+    args.subject ? `pg:${args.subject.id}` : '',
+    includeKey,
+    String(args.serving_eligible_only !== false),
+  ];
+  const productTag = `pdp:${String(args.product_id || '')}`;
+  const load = unstable_cache(
+    async () =>
+      getPdpV2({
+        product_id: args.product_id,
+        merchant_id: args.merchant_id,
+        subject: args.subject,
+        include: args.include,
+        timeout_ms: args.timeout_ms,
+        gatewayBaseUrl: args.gatewayBaseUrl,
+        serving_eligible_only: args.serving_eligible_only,
+      }),
+    keyParts,
+    { revalidate, tags: [...(args.cacheTags || ['pdp']), productTag] },
+  );
+  return load();
 }
 
 function _inferReviewSubjectFromProduct(product: ProductResponse): {
