@@ -125,7 +125,7 @@ const nextConfig = {
   async headers() {
     return [
       {
-        source: '/products/:id(sig_[^/]+)',
+        source: '/products/:id((sig_|ck_|pg_)[^/]+)',
         headers: [
           {
             key: 'Cache-Control',

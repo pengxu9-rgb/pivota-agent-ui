@@ -3296,8 +3296,8 @@ export async function getPdpV2Cached(args: {
   ];
   const productTag = `pdp:${String(args.product_id || '')}`;
   const load = unstable_cache(
-    async () =>
-      getPdpV2({
+    async () => {
+      const res = await getPdpV2({
         product_id: args.product_id,
         merchant_id: args.merchant_id,
         subject: args.subject,
@@ -3305,7 +3305,18 @@ export async function getPdpV2Cached(args: {
         timeout_ms: args.timeout_ms,
         gatewayBaseUrl: args.gatewayBaseUrl,
         serving_eligible_only: args.serving_eligible_only,
-      }),
+      });
+      // Do NOT cache an empty/blocked payload: a product mid-ingestion or a
+      // transient serving-eligibility flap returns 200-but-no-modules, and
+      // caching that would serve degraded SSR (no JSON-LD/metadata) to crawlers
+      // for the full revalidate window. Throwing keeps it out of the cache
+      // (unstable_cache never stores a rejection); the caller's try/catch treats
+      // it as a transient miss (and, for sitemap routes, omits the noindex).
+      if (!res || !Array.isArray(res.modules) || res.modules.length === 0) {
+        throw new Error('pdp_empty_payload_not_cached');
+      }
+      return res;
+    },
     keyParts,
     { revalidate, tags: [...(args.cacheTags || ['pdp']), productTag] },
   );
@@ -3995,7 +4006,15 @@ function resolveServicesUrl(path: string): string {
   return `https://agent.pivota.cc${path}`;
 }
 
-export async function getServicesBrowse(query: ServicesBrowseQuery): Promise<ServicesBrowseResponse> {
+export async function getServicesBrowse(
+  query: ServicesBrowseQuery,
+  // Opt-in caching for anonymous CRAWLABLE renders. This is a GET, so a
+  // `next: { revalidate }` hint genuinely caches it (unlike the gateway POST) AND
+  // stops it from forcing the calling RSC route dynamic. Services browse carries
+  // no per-user data, so caching a shared result is always safe. Omitted = today's
+  // `no-store` (correct for interactive/personalized service browsing).
+  opts?: { revalidateSeconds?: number },
+): Promise<ServicesBrowseResponse> {
   validateServicesBrowseQuery(query || {});
   const params = new URLSearchParams();
   if (query.q) params.set('q', query.q);
@@ -4007,7 +4026,11 @@ export async function getServicesBrowse(query: ServicesBrowseQuery): Promise<Ser
   if (query.offset != null) params.set('offset', String(query.offset));
   if (query.limit != null) params.set('limit', String(query.limit));
   const qs = params.toString();
-  const res = await fetch(resolveServicesUrl(`/api/services${qs ? `?${qs}` : ''}`), { cache: 'no-store' });
+  const cacheInit: RequestInit =
+    typeof opts?.revalidateSeconds === 'number' && opts.revalidateSeconds > 0
+      ? { next: { revalidate: opts.revalidateSeconds, tags: ['services_browse'] } }
+      : { cache: 'no-store' };
+  const res = await fetch(resolveServicesUrl(`/api/services${qs ? `?${qs}` : ''}`), cacheInit);
   if (!res.ok) throw new Error(`services browse failed: ${res.status}`);
   const data = await res.json();
   return {

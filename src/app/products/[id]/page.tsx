@@ -45,7 +45,7 @@ function isCanonicalCrawlableRoute(productId: string): boolean {
   return (
     isPivotaSignatureRouteId(productId) ||
     isProductGroupRouteId(productId) ||
-    String(productId || '').startsWith('ck_')
+    String(productId || '').toLowerCase().startsWith('ck_')
   );
 }
 const PDP_SERVER_INCLUDE = [
@@ -168,13 +168,25 @@ function buildJsonLdProduct(payload: PDPPayload): Record<string, any> {
     : product;
 }
 
-async function fetchSeoulServicesForAnchor(product: PDPPayload['product']): Promise<ServiceCardData[]> {
+async function fetchSeoulServicesForAnchor(
+  product: PDPPayload['product'],
+  revalidateSeconds?: number,
+): Promise<ServiceCardData[]> {
   const inferredTypes = inferAnchorServiceTypesFromProduct(product);
   const primaryType = inferredTypes[0];
-  const response = await getServicesBrowse({
-    service_type: primaryType ? [primaryType] : undefined,
-    limit: 3,
-  });
+  const response = await getServicesBrowse(
+    {
+      service_type: primaryType ? [primaryType] : undefined,
+      limit: 3,
+    },
+    // On a canonical crawlable route the supplementary services fetch MUST be
+    // cacheable too — otherwise its no-store GET forces the whole beauty PDP
+    // dynamic and silently re-collapses the caching fix (the exact recurrence
+    // this change is meant to end).
+    typeof revalidateSeconds === 'number' && revalidateSeconds > 0
+      ? { revalidateSeconds }
+      : undefined,
+  );
 
   return (response.results || [])
     .filter((provider) => getProviderListings(provider).length > 0)
@@ -371,7 +383,10 @@ export default async function ProductDetailPage(props: Props) {
   const beautyServicesEnabled = process.env.NEXT_PUBLIC_BEAUTY_SERVICES_RECS_ENABLED === '1';
   const serviceRecommendations: ServiceCardData[] =
     renderData && beautyServicesEnabled && isBeautyProduct(renderData.initialPayload.product)
-      ? await fetchSeoulServicesForAnchor(renderData.initialPayload.product).catch(() => [])
+      ? await fetchSeoulServicesForAnchor(
+          renderData.initialPayload.product,
+          isCanonicalCrawlRoute ? PDP_ROUTE_REVALIDATE_S : undefined,
+        ).catch(() => [])
       : [];
 
   const reviewsModule = renderData
