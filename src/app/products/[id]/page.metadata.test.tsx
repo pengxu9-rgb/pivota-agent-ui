@@ -1,6 +1,20 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
-import ProductDetailPage, { generateMetadata } from './page';
+import ProductDetailPage, {
+  generateMetadata,
+  generateStaticParams,
+  revalidate,
+} from './page';
+// The force-dynamic alias route that serves merchant-personalized
+// (?merchant_id) requests via the next.config beforeFiles rewrite. The static
+// /products/[id] route can never read searchParams (a dynamic-API touch during
+// on-demand static generation is a hard 500), so the merchant-scoped SSR
+// contract lives here.
+import PersonalizedProductDetailPage, {
+  generateMetadata as generatePersonalizedMetadata,
+  dynamic as personalizedRouteDynamic,
+} from '../m/[id]/page';
+import { PDP_DEGRADED_RENDER_ERROR } from './pdpServerPage';
 
 const getPdpV2Mock = vi.hoisted(() => vi.fn());
 const getPdpV2CachedMock = vi.hoisted(() => vi.fn());
@@ -251,15 +265,16 @@ describe('product page metadata', () => {
   });
 
   it('does NOT cache a personalized (merchant searchParam) non-canonical route', async () => {
-    // The personalized path must stay on the raw uncached read — caching it would
-    // serve one visitor's merchant-scoped view to everyone.
+    // The personalized path (served by the force-dynamic alias route) must stay
+    // on the raw uncached read — caching it would serve one visitor's
+    // merchant-scoped view to everyone.
     getPdpV2Mock.mockResolvedValue({
       modules: [{ type: 'canonical', data: { product_id: 'plain-id', title: 'X' } }],
     });
     mapPdpV2ToPdpPayloadMock.mockReturnValue({ product: { title: 'X' } });
     getPdpV2CachedMock.mockClear();
 
-    await generateMetadata({
+    await generatePersonalizedMetadata({
       params: Promise.resolve({ id: 'plain-id' }),
       searchParams: Promise.resolve({ merchant_id: 'merch_123' }),
     });
@@ -270,31 +285,29 @@ describe('product page metadata', () => {
     );
   });
 
-  it('opts the degraded shell out of route/CDN caching when the canonical gateway read fails', async () => {
-    // S1 follow-up to the crawl-collapse fix: the degraded 200 shell
-    // (DEFAULT_TITLE, no JSON-LD, robots omitted on sitemap routes) must never
-    // be stored by the Full Route Cache or a CDN honoring s-maxage — one
-    // backend hiccup would otherwise pin the empty shell on a sitemap URL for
-    // an hour (+ a day stale). unstable_noStore marks the render uncacheable.
+  it('FAILS the degraded canonical render on the static route instead of shipping a cacheable shell', async () => {
+    // S1 follow-up to the crawl-collapse fix, revised for the static/ISR flip:
+    // the static route CANNOT serve a degraded 200 shell — the full-route cache
+    // would store it for `revalidate` seconds — and unstable_noStore cannot
+    // gracefully bail an on-demand static generation pass (it hard-500s
+    // unstyled). The degraded render must THROW: the fill stores nothing, a
+    // failed background revalidation keeps serving the last healthy page, and
+    // error.tsx serves the client-recovery PDP to human visitors.
     getPdpV2Mock.mockRejectedValue(new Error('transient backend failure'));
     const searchParamsAwaitTrap = buildSearchParamsAwaitTrap();
 
-    const element = await ProductDetailPage({
-      params: Promise.resolve({ id: 'sig_7ad40676c42fb9c96e2a8136' }),
-      searchParams: searchParamsAwaitTrap.searchParams,
-    });
-    const html = renderToStaticMarkup(element as any);
-
-    expect(noStoreMock).toHaveBeenCalled();
-    // Still the graceful 200 shell: no JSON-LD, client component ships and
-    // refetches on hydration. Only the CACHING of this render is opted out.
-    expect(html).not.toContain('application/ld+json');
+    await expect(
+      ProductDetailPage({
+        params: Promise.resolve({ id: 'sig_7ad40676c42fb9c96e2a8136' }),
+        searchParams: searchParamsAwaitTrap.searchParams,
+      }),
+    ).rejects.toThrow(PDP_DEGRADED_RENDER_ERROR);
     // The degraded path must not regress the static-render triggers either.
     expect(searchParamsAwaitTrap.then).not.toHaveBeenCalled();
     expect(headersMock).not.toHaveBeenCalled();
   });
 
-  it('opts the degraded shell out of caching when the gateway returns an empty payload', async () => {
+  it('keeps degraded METADATA graceful (no throw) so the page-level throw owns the failure', async () => {
     getPdpV2Mock.mockResolvedValue({ modules: [] });
     mapPdpV2ToPdpPayloadMock.mockReturnValue(null);
 
@@ -303,11 +316,27 @@ describe('product page metadata', () => {
       searchParams: Promise.resolve({}),
     });
 
-    expect(noStoreMock).toHaveBeenCalled();
     // Sitemap-route degraded semantics stay intact: fallback title, robots
     // omitted (never hard-noindex) so crawlers can retry.
     expect(metadata.title).toBe('Pivota Shopping AI');
     expect(metadata.robots).toBeUndefined();
+  });
+
+  it('serves the degraded 200 shell (uncached) on the force-dynamic alias route', async () => {
+    // The alias route is force-dynamic — nothing is ever stored — so the
+    // graceful shell + client-refetch recovery is safe there. unstable_noStore
+    // stays as a tripwire: if force-dynamic is ever dropped, degraded fills
+    // fail loudly instead of caching a personalized view.
+    getPdpV2Mock.mockRejectedValue(new Error('transient backend failure'));
+
+    const element = await PersonalizedProductDetailPage({
+      params: Promise.resolve({ id: 'plain-id' }),
+      searchParams: Promise.resolve({ merchant_id: 'merch_123' }),
+    });
+    const html = renderToStaticMarkup(element as any);
+
+    expect(noStoreMock).toHaveBeenCalled();
+    expect(html).not.toContain('application/ld+json');
   });
 
   it('NEVER opts a successful canonical render out of caching (healthy PDPs stay cacheable)', async () => {
@@ -335,12 +364,11 @@ describe('product page metadata', () => {
     expect(noStoreMock).not.toHaveBeenCalled();
   });
 
-  it('propagates the noStore bail-out throw instead of swallowing it in the gateway catch', async () => {
-    // In a real request-time static generation pass unstable_noStore throws
-    // DynamicServerError so Next re-renders the request dynamically. If the
-    // page's own try/catch ever swallows that throw, the bail-out dies and the
-    // degraded shell gets stored after all. The call must sit OUTSIDE the
-    // gateway-error catch.
+  it('propagates the noStore tripwire throw on the alias route instead of swallowing it', async () => {
+    // If the alias route ever loses force-dynamic, a real static generation
+    // pass makes unstable_noStore throw DynamicServerError. If the page's own
+    // try/catch swallowed that throw, the degraded personalized shell would
+    // get stored after all. The call must sit OUTSIDE the gateway-error catch.
     const bailout = new Error('DYNAMIC_SERVER_USAGE_BAILOUT_SENTINEL');
     noStoreMock.mockImplementation(() => {
       throw bailout;
@@ -348,22 +376,21 @@ describe('product page metadata', () => {
     getPdpV2Mock.mockRejectedValue(new Error('transient backend failure'));
 
     await expect(
-      ProductDetailPage({
-        params: Promise.resolve({ id: 'sig_7ad40676c42fb9c96e2a8136' }),
-        searchParams: Promise.resolve({}),
+      PersonalizedProductDetailPage({
+        params: Promise.resolve({ id: 'plain-id' }),
+        searchParams: Promise.resolve({ merchant_id: 'merch_123' }),
       }),
     ).rejects.toThrow('DYNAMIC_SERVER_USAGE_BAILOUT_SENTINEL');
   });
 
-  it('opts degraded personalized (non-canonical) renders out of caching too', async () => {
+  it('keeps the defensive noindex on degraded personalized (non-canonical) metadata', async () => {
     getPdpV2Mock.mockRejectedValue(new Error('transient backend failure'));
 
-    const metadata = await generateMetadata({
+    const metadata = await generatePersonalizedMetadata({
       params: Promise.resolve({ id: 'plain-id' }),
       searchParams: Promise.resolve({ merchant_id: 'merch_123' }),
     });
 
-    expect(noStoreMock).toHaveBeenCalled();
     // Non-sitemap routes keep the defensive noindex on failure.
     expect((metadata.robots as any)?.index).toBe(false);
   });
@@ -398,7 +425,7 @@ describe('product page metadata', () => {
       },
     ));
 
-    const metadata = await generateMetadata({
+    const metadata = await generatePersonalizedMetadata({
       params: Promise.resolve({ id: '10064558129449' }),
       searchParams: Promise.resolve({ merchant_id: 'merch_1' }),
     });
@@ -442,7 +469,7 @@ describe('product page metadata', () => {
       },
     ));
 
-    const metadata = await generateMetadata({
+    const metadata = await generatePersonalizedMetadata({
       params: Promise.resolve({ id: '10064558129449' }),
       searchParams: Promise.resolve({ merchant_id: 'merch_1' }),
     });
@@ -476,7 +503,7 @@ describe('product page metadata', () => {
     expect(headersMock).not.toHaveBeenCalled();
   });
 
-  it('keeps merchant-scoped SSR fetches for non-signature product routes', async () => {
+  it('keeps merchant-scoped SSR fetches for non-signature product routes (alias route)', async () => {
     const v2Response = { modules: [] };
     getPdpV2Mock.mockResolvedValue(v2Response);
     mapPdpV2ToPdpPayloadMock.mockReturnValue(buildPayload({
@@ -484,7 +511,7 @@ describe('product page metadata', () => {
       title: 'Merchant Scoped Product',
     }));
 
-    await ProductDetailPage({
+    await PersonalizedProductDetailPage({
       params: Promise.resolve({ id: 'prod_1' }),
       searchParams: Promise.resolve({ merchant_id: 'merchant_a' }),
     });
@@ -496,6 +523,60 @@ describe('product page metadata', () => {
         include: corePdpInclude,
       }),
     );
+  });
+
+  it('never awaits searchParams on the static route — even for non-canonical ids', async () => {
+    // The canonical /products/[id] route is static/ISR via generateStaticParams.
+    // During on-demand static generation of ANY id (canonical or not), touching
+    // searchParams is a hard 500 (DYNAMIC_SERVER_USAGE), not a graceful dynamic
+    // fallback — so the static route must render every id anonymously through
+    // the cached read. Merchant personalization is the alias route's job.
+    const v2Response = { modules: [] };
+    getPdpV2Mock.mockResolvedValue(v2Response);
+    mapPdpV2ToPdpPayloadMock.mockReturnValue(buildPayload({
+      product_id: 'prod_1',
+      title: 'Anonymous Non-Canonical Product',
+    }));
+    getPdpV2CachedMock.mockClear();
+    const searchParamsAwaitTrap = buildSearchParamsAwaitTrap();
+
+    await ProductDetailPage({
+      params: Promise.resolve({ id: 'prod_1' }),
+      searchParams: searchParamsAwaitTrap.searchParams,
+    });
+
+    expect(searchParamsAwaitTrap.then).not.toHaveBeenCalled();
+    expect(getPdpV2CachedMock).toHaveBeenCalledTimes(1);
+    expect(getPdpV2Mock.mock.calls[0]?.[0]).not.toHaveProperty('merchant_id');
+
+    getPdpV2CachedMock.mockClear();
+    getPdpV2Mock.mockClear();
+    const metadataTrap = buildSearchParamsAwaitTrap();
+    await generateMetadata({
+      params: Promise.resolve({ id: 'prod_1' }),
+      searchParams: metadataTrap.searchParams,
+    });
+    expect(metadataTrap.then).not.toHaveBeenCalled();
+    expect(getPdpV2CachedMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the static/ISR opt-in on the canonical route (generateStaticParams + revalidate)', async () => {
+    // Root cause of the crawl-collapse fix not taking effect on deploy: a
+    // dynamic-segment route WITHOUT generateStaticParams is always rendered
+    // dynamically — `revalidate` alone never opts it into static/ISR, so every
+    // canonical PDP shipped `private, no-store` despite #266. The empty array
+    // (no build-time prerenders, generate-on-first-visit) is the opt-in; if
+    // either export disappears, the route silently reverts to
+    // dynamic-per-request and crawl budget collapses again.
+    await expect(generateStaticParams()).resolves.toEqual([]);
+    expect(revalidate).toBe(3600);
+  });
+
+  it('keeps the merchant alias route force-dynamic', () => {
+    // The alias route reads searchParams per-request; if force-dynamic is ever
+    // dropped it becomes a static route and merchant-personalized requests
+    // start 500ing during on-demand static generation.
+    expect(personalizedRouteDynamic).toBe('force-dynamic');
   });
 
   it('renders recommendations ItemList from the mapped server payload', async () => {
