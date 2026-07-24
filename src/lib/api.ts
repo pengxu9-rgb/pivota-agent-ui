@@ -1,5 +1,6 @@
 // Centralized API helpers for calling the Pivota Agent Gateway and Accounts API
 // All UI components should import functions from here instead of using fetch directly.
+import { unstable_cache } from 'next/cache'
 import {
   getCheckoutContextFromBrowser,
   normalizeCheckoutSource,
@@ -3245,6 +3246,83 @@ export async function getPdpV2(args: {
   return data as GetPdpV2Response;
 }
 
+/**
+ * CACHEABLE canonical PDP read — for CRAWLABLE, ANONYMOUS routes only.
+ *
+ * Why this exists (the fix for the recurring crawl-collapse bug): `getPdpV2` funnels
+ * through `callGateway`, which is a POST. Next 15's fetch Data Cache only caches GET,
+ * so a POST — even with `next: { revalidate }` — is treated as an uncacheable dynamic
+ * data source, which forces the whole RSC route to render dynamically and emit
+ * `cache-control: private, no-store`. That is why prior fixes at the page-config,
+ * `next.config` header, and per-fetch layers never stuck — they all sit ABOVE the POST.
+ *
+ * `unstable_cache` caches the RESULT of the call (keyed on the inputs below) in the
+ * Data Cache regardless of the POST inside it. With the dynamic fetch gone, the route
+ * renders statically, the page-level `revalidate` and the `next.config` `s-maxage`
+ * header on `/products/:id(sig_*)` finally take effect, and crawlers hit warm cache
+ * instead of a cold multi-second SSR.
+ *
+ * MUST be used only for canonical, non-personalized reads (no searchParams, no checkout
+ * token, no per-user data) — else per-user data would be cached across visitors.
+ */
+export async function getPdpV2Cached(args: {
+  product_id: string;
+  merchant_id?: string | null;
+  subject?: { type: 'product_group'; id: string } | null;
+  include?: string[] | string | null;
+  timeout_ms?: number;
+  gatewayBaseUrl?: string | null;
+  serving_eligible_only?: boolean;
+  revalidateSeconds?: number;
+  cacheTags?: string[];
+}): Promise<GetPdpV2Response> {
+  const revalidate =
+    typeof args.revalidateSeconds === 'number' && args.revalidateSeconds > 0
+      ? args.revalidateSeconds
+      : 3600;
+  const includeKey = Array.isArray(args.include)
+    ? args.include.join(',')
+    : String(args.include || '');
+  // Cache key = the inputs that change the ANONYMOUS response. gatewayBaseUrl and
+  // timeout are transport-only and intentionally excluded so they don't fragment
+  // the cache. cache_bypass is never set here (this path is the cache).
+  const keyParts = [
+    'get_pdp_v2',
+    String(args.product_id || ''),
+    String(args.merchant_id || ''),
+    args.subject ? `pg:${args.subject.id}` : '',
+    includeKey,
+    String(args.serving_eligible_only !== false),
+  ];
+  const productTag = `pdp:${String(args.product_id || '')}`;
+  const load = unstable_cache(
+    async () => {
+      const res = await getPdpV2({
+        product_id: args.product_id,
+        merchant_id: args.merchant_id,
+        subject: args.subject,
+        include: args.include,
+        timeout_ms: args.timeout_ms,
+        gatewayBaseUrl: args.gatewayBaseUrl,
+        serving_eligible_only: args.serving_eligible_only,
+      });
+      // Do NOT cache an empty/blocked payload: a product mid-ingestion or a
+      // transient serving-eligibility flap returns 200-but-no-modules, and
+      // caching that would serve degraded SSR (no JSON-LD/metadata) to crawlers
+      // for the full revalidate window. Throwing keeps it out of the cache
+      // (unstable_cache never stores a rejection); the caller's try/catch treats
+      // it as a transient miss (and, for sitemap routes, omits the noindex).
+      if (!res || !Array.isArray(res.modules) || res.modules.length === 0) {
+        throw new Error('pdp_empty_payload_not_cached');
+      }
+      return res;
+    },
+    keyParts,
+    { revalidate, tags: [...(args.cacheTags || ['pdp']), productTag] },
+  );
+  return load();
+}
+
 function _inferReviewSubjectFromProduct(product: ProductResponse): {
   merchant_id: string;
   platform: string;
@@ -3928,7 +4006,15 @@ function resolveServicesUrl(path: string): string {
   return `https://agent.pivota.cc${path}`;
 }
 
-export async function getServicesBrowse(query: ServicesBrowseQuery): Promise<ServicesBrowseResponse> {
+export async function getServicesBrowse(
+  query: ServicesBrowseQuery,
+  // Opt-in caching for anonymous CRAWLABLE renders. This is a GET, so a
+  // `next: { revalidate }` hint genuinely caches it (unlike the gateway POST) AND
+  // stops it from forcing the calling RSC route dynamic. Services browse carries
+  // no per-user data, so caching a shared result is always safe. Omitted = today's
+  // `no-store` (correct for interactive/personalized service browsing).
+  opts?: { revalidateSeconds?: number },
+): Promise<ServicesBrowseResponse> {
   validateServicesBrowseQuery(query || {});
   const params = new URLSearchParams();
   if (query.q) params.set('q', query.q);
@@ -3940,7 +4026,11 @@ export async function getServicesBrowse(query: ServicesBrowseQuery): Promise<Ser
   if (query.offset != null) params.set('offset', String(query.offset));
   if (query.limit != null) params.set('limit', String(query.limit));
   const qs = params.toString();
-  const res = await fetch(resolveServicesUrl(`/api/services${qs ? `?${qs}` : ''}`), { cache: 'no-store' });
+  const cacheInit: RequestInit =
+    typeof opts?.revalidateSeconds === 'number' && opts.revalidateSeconds > 0
+      ? { next: { revalidate: opts.revalidateSeconds, tags: ['services_browse'] } }
+      : { cache: 'no-store' };
+  const res = await fetch(resolveServicesUrl(`/api/services${qs ? `?${qs}` : ''}`), cacheInit);
   if (!res.ok) throw new Error(`services browse failed: ${res.status}`);
   const data = await res.json();
   return {
