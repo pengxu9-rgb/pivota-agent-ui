@@ -33,8 +33,11 @@ interface Props {
 }
 
 const DEFAULT_TITLE = 'Pivota Shopping AI';
+// Next route segment config exports MUST be statically-analyzable literals — a
+// const reference here breaks `next build` ("invalid segment configuration").
+// Keep this literal in lockstep with PDP_ROUTE_REVALIDATE_S below.
+export const revalidate = 3600;
 const PDP_ROUTE_REVALIDATE_S = 3600;
-export const revalidate = PDP_ROUTE_REVALIDATE_S;
 const PDP_SERVER_FETCH_TIMEOUT_MS = 9000;
 
 // The anonymous, crawlable, sitemap-published PDP route ids: Pivota signatures

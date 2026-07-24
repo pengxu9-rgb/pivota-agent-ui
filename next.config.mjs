@@ -123,16 +123,20 @@ const nextConfig = {
   // Enable React strict mode
   productionBrowserSourceMaps: false,
   async headers() {
-    return [
+    // Explicit CDN cache for the canonical crawlable PDP prefixes that appear in
+    // sitemap-products.xml (sig_ signatures, ck_ content-keys, pg_ product groups).
+    // One entry per prefix: path-to-regexp rejects a nested alternation group like
+    // `((sig_|ck_|pg_)[^/]+)` inside a `:param(...)` pattern (breaks `next build`).
+    const pdpCacheHeaders = [
       {
-        source: '/products/:id((sig_|ck_|pg_)[^/]+)',
-        headers: [
-          {
-            key: 'Cache-Control',
-            value: 'public, s-maxage=3600, stale-while-revalidate=86400',
-          },
-        ],
+        key: 'Cache-Control',
+        value: 'public, s-maxage=3600, stale-while-revalidate=86400',
       },
+    ]
+    return [
+      { source: '/products/:id(sig_[^/]+)', headers: pdpCacheHeaders },
+      { source: '/products/:id(ck_[^/]+)', headers: pdpCacheHeaders },
+      { source: '/products/:id(pg_[^/]+)', headers: pdpCacheHeaders },
     ]
   },
   async rewrites() {
