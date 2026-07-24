@@ -27,6 +27,23 @@ describe('next config PDP caching contract', () => {
     });
   });
 
+  it('documents the ACCEPTED over-breadth of the merchant rewrite source', async () => {
+    // `/products/:id` matches ANY single-segment child of /products — including
+    // sibling routes like /products/indexability — whenever ?merchant_id is
+    // present. Accepted: nothing emits merchant_id on those URLs, and a tighter
+    // id-shape match is impractical (path-to-regexp rejects nested alternation
+    // groups inside a :param pattern). This test pins the accepted contract so
+    // a future single-segment /products/* route that takes merchant_id is
+    // forced to confront it (add a preceding beforeFiles self-rewrite).
+    const rewrites = await nextConfig.rewrites();
+    const merchantRewrite = rewrites.beforeFiles.find(
+      (rewrite) => rewrite.destination === '/products/m/:id',
+    );
+
+    expect(merchantRewrite?.source).toBe('/products/:id');
+    expect(merchantRewrite?.has).toEqual([{ type: 'query', key: 'merchant_id' }]);
+  });
+
   it('keeps the legacy proxy rewrites in afterFiles', async () => {
     const rewrites = await nextConfig.rewrites();
     const afterFileSources = (rewrites.afterFiles || []).map((rewrite) => rewrite.source);

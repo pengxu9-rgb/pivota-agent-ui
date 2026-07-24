@@ -124,9 +124,9 @@ const nextConfig = {
   productionBrowserSourceMaps: false,
   // NOTE: deliberately NO static Cache-Control header for /products/* here.
   // A next.config header is stamped on EVERY response for the path — including
-  // a degraded-shell render that bailed out of static generation via
-  // unstable_noStore() — so `public, s-maxage=...` would tell the CDN to cache
-  // the empty shell for an hour even though Next itself stored nothing. The
+  // degraded renders (the static route's 500 and the alias route's uncached
+  // shell) — so `public, s-maxage=...` would tell the CDN to cache a degraded
+  // response for an hour even though Next itself stored nothing. The
   // /products/[id] route is static/ISR (revalidate + generateStaticParams), so
   // Next emits the correct Cache-Control per render outcome: s-maxage from
   // `revalidate` on healthy cached renders, private/no-store on dynamic
@@ -139,6 +139,15 @@ const nextConfig = {
       // so merchant-personalized requests are routed to the force-dynamic
       // /products/m/[id] alias route. The visible URL stays /products/:id and
       // the query string is passed through.
+      //
+      // ACCEPTED OVER-BREADTH: `:id` matches ANY single-segment child of
+      // /products, so a sibling route like /products/indexability?merchant_id=x
+      // would also be captured and render as a (not-found) PDP. Nothing emits
+      // merchant_id on those URLs, and a tighter id-shape match is
+      // impractical — path-to-regexp rejects nested alternation groups in a
+      // :param(...) pattern (see the removed headers() note in git history).
+      // If a new single-segment /products/* route ever legitimately takes a
+      // merchant_id query, it needs its own preceding beforeFiles self-rewrite.
       beforeFiles: [
         {
           source: '/products/:id',

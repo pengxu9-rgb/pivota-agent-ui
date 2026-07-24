@@ -226,14 +226,6 @@ type ServerPdpRenderData = {
   canonicalRouteId: string;
 };
 
-// Seconds to cache the canonical (crawlable, anonymous) PDP server fetch in
-// Next's data cache. Matches the route-level `revalidate` above. Only applied to
-// the canonical sitemap path — the personalized (searchParams/merchant) path stays
-// uncached. Without this the get_pdp_v2 POST is uncacheable, which forces the whole
-// route to render dynamically (`private, no-store`) and every crawl of the ~1,900
-// sitemap URLs is a cold multi-second SSR → Google/AI crawl budget collapse.
-const PDP_CANONICAL_REVALIDATE_S = 3600;
-
 /**
  * Degraded-render handling (S1 follow-up to the crawl-collapse fix, revised
  * for the static/ISR flip).
