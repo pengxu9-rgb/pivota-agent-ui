@@ -41,6 +41,25 @@ export const revalidate = 3600;
 const PDP_ROUTE_REVALIDATE_S = 3600;
 const PDP_SERVER_FETCH_TIMEOUT_MS = 9000;
 
+// THE KEYSTONE of the crawl-collapse fix (#266/#267 fixed the data-fetch layer;
+// this fixes the ROUTE layer they sat above). A dynamic `[id]` route with only
+// `revalidate` and NO `generateStaticParams` is classified `ƒ (Dynamic)`: it
+// renders on-demand PER REQUEST and emits `cache-control: private, no-store`, so
+// every crawl of the ~1,901 sitemap PDPs is a cold SSR and the CDN never caches
+// (verified in prod post-#266: `x-nextjs-cache` absent, always MISS, and the
+// framework's dynamic `no-store` overrides the next.config `s-maxage` header).
+// Providing generateStaticParams — even empty, with the default
+// `dynamicParams = true` — flips the route to `●` ISR: params are generated on
+// first hit and CACHED for `revalidate` (verified locally: build `● /products/[id]`,
+// runtime x-nextjs-cache MISS then HIT, cached body carries the real product).
+// We return [] so the build prerenders none (fast build); all PDPs generate on
+// demand then cache. Personalized renders (searchParams/merchant) still opt into
+// dynamic per-request, which is correct.
+export const dynamicParams = true;
+export async function generateStaticParams(): Promise<Array<{ id: string }>> {
+  return [];
+}
+
 // The anonymous, crawlable, sitemap-published PDP route ids: Pivota signatures
 // (sig_), content-key canonicals (ck_) for store-less brands, and product groups
 // (pg_). These render identically for every visitor — no searchParams, no per-user
