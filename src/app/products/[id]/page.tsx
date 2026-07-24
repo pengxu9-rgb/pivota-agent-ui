@@ -9,6 +9,7 @@ const cache: _CacheFn = typeof _reactCache === 'function'
   ? (_reactCache as unknown as _CacheFn)
   : ((fn) => fn);
 import type { Metadata } from 'next';
+import { unstable_noStore } from 'next/cache';
 import ProductDetailClient from './ProductDetailClient';
 import { buildProductDescription } from './productDescription';
 import { buildProductJsonLd } from './productJsonLd';
@@ -215,13 +216,45 @@ type ServerPdpRenderData = {
 // sitemap URLs is a cold multi-second SSR → Google/AI crawl budget collapse.
 const PDP_CANONICAL_REVALIDATE_S = 3600;
 
+/**
+ * Degraded-shell cache opt-out (S1 follow-up to the crawl-collapse fix).
+ *
+ * A degraded PDP render — gateway read failed or returned an empty payload —
+ * ships a thin 200 shell: DEFAULT_TITLE, no JSON-LD, robots omitted on sitemap
+ * routes so crawlers can retry. That shell must NEVER be stored by any
+ * full-route / CDN cache: on a caching route (`revalidate = 3600` + the
+ * next.config s-maxage header) a single backend hiccup would pin the empty
+ * shell for an hour (+ a day of stale-while-revalidate) on exactly the URLs we
+ * publish in the sitemap.
+ *
+ * `unstable_noStore()` is the per-render opt-out with the differential
+ * behavior we need in Next 15:
+ * - In a request-time static/ISR generation pass it marks the pending route
+ *   entry uncacheable (revalidate 0) and throws DynamicServerError, bailing
+ *   the render out to dynamic rendering — Next serves the request dynamically
+ *   and stores nothing, so the next request re-renders from scratch. This is
+ *   why callers MUST invoke it outside their own try/catch: the bail-out
+ *   error has to propagate to the framework.
+ * - In an already-dynamic render it is a harmless no-op marker.
+ * - Outside a Next render runtime (vitest) it returns silently.
+ *
+ * Successful renders must never reach this call — caching healthy canonical
+ * PDPs is the whole point of the crawl-collapse fix.
+ */
+function markDegradedPdpRenderUncacheable(): void {
+  unstable_noStore();
+}
+
 async function _fetchPdpForServerRenderUncached(
   productIdInput: string,
   merchantIdInput: string,
   revalidateSeconds?: number,
 ): Promise<ServerPdpRenderData | null> {
   const productId = String(productIdInput || '').trim();
-  if (!productId) return null;
+  if (!productId) {
+    markDegradedPdpRenderUncacheable();
+    return null;
+  }
 
   const normalizedMerchantId = normalizeProductRouteMerchantId(merchantIdInput, productId);
   const explicitMerchantId = inferCanonicalPdpMerchantId(productId, normalizedMerchantId);
@@ -247,21 +280,30 @@ async function _fetchPdpForServerRenderUncached(
     timeout_ms: PDP_SERVER_FETCH_TIMEOUT_MS,
     gatewayBaseUrl: resolveServerGatewayBaseUrl(),
   };
+  let renderData: ServerPdpRenderData | null = null;
   try {
     const v2 = cacheable
       ? await getPdpV2Cached({ ...fetchArgs, revalidateSeconds })
       : await getPdpV2(fetchArgs);
     const initialPayload = mapPdpV2ToPdpPayload(v2);
-    if (!initialPayload?.product) return null;
-    const product = buildJsonLdProduct(initialPayload);
-    return {
-      initialPayload,
-      product,
-      canonicalRouteId: readServerCanonicalRouteId(v2, initialPayload, productId),
-    };
+    if (initialPayload?.product) {
+      renderData = {
+        initialPayload,
+        product: buildJsonLdProduct(initialPayload),
+        canonicalRouteId: readServerCanonicalRouteId(v2, initialPayload, productId),
+      };
+    }
   } catch {
-    return null;
+    renderData = null;
   }
+  if (!renderData) {
+    // Degraded outcome (gateway error OR 200-but-empty payload): opt this
+    // render out of full-route/CDN caching. Deliberately OUTSIDE the
+    // try/catch above — unstable_noStore's DynamicServerError bail-out must
+    // propagate to Next, not be swallowed by the gateway-error handling.
+    markDegradedPdpRenderUncacheable();
+  }
+  return renderData;
 }
 
 

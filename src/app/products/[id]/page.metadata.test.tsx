@@ -5,6 +5,7 @@ import ProductDetailPage, { generateMetadata } from './page';
 const getPdpV2Mock = vi.hoisted(() => vi.fn());
 const getPdpV2CachedMock = vi.hoisted(() => vi.fn());
 const mapPdpV2ToPdpPayloadMock = vi.hoisted(() => vi.fn());
+const noStoreMock = vi.hoisted(() => vi.fn());
 const headersMock = vi.hoisted(() => vi.fn(async () => new Headers({
   'x-forwarded-host': 'agent.pivota.cc',
   'x-forwarded-proto': 'https',
@@ -12,6 +13,15 @@ const headersMock = vi.hoisted(() => vi.fn(async () => new Headers({
 
 vi.mock('next/headers', () => ({
   headers: headersMock,
+}));
+
+// The page opts DEGRADED renders (gateway error / empty payload) out of
+// full-route + CDN caching via unstable_noStore. In a real request-time
+// static generation pass this throws DynamicServerError to bail the render
+// out to dynamic; the mock lets tests assert both when it fires and that the
+// page never swallows its throw.
+vi.mock('next/cache', () => ({
+  unstable_noStore: (...args: unknown[]) => noStoreMock(...args),
 }));
 
 vi.mock('@/lib/api', () => ({
@@ -79,6 +89,7 @@ describe('product page metadata', () => {
     getPdpV2Mock.mockReset();
     mapPdpV2ToPdpPayloadMock.mockReset();
     headersMock.mockClear();
+    noStoreMock.mockReset();
     vi.stubEnv('NEXT_PUBLIC_APP_URL', '');
     vi.stubEnv('VERCEL_URL', '');
   });
@@ -257,6 +268,104 @@ describe('product page metadata', () => {
     expect(getPdpV2Mock).toHaveBeenCalledWith(
       expect.objectContaining({ merchant_id: 'merch_123' }),
     );
+  });
+
+  it('opts the degraded shell out of route/CDN caching when the canonical gateway read fails', async () => {
+    // S1 follow-up to the crawl-collapse fix: the degraded 200 shell
+    // (DEFAULT_TITLE, no JSON-LD, robots omitted on sitemap routes) must never
+    // be stored by the Full Route Cache or a CDN honoring s-maxage — one
+    // backend hiccup would otherwise pin the empty shell on a sitemap URL for
+    // an hour (+ a day stale). unstable_noStore marks the render uncacheable.
+    getPdpV2Mock.mockRejectedValue(new Error('transient backend failure'));
+    const searchParamsAwaitTrap = buildSearchParamsAwaitTrap();
+
+    const element = await ProductDetailPage({
+      params: Promise.resolve({ id: 'sig_7ad40676c42fb9c96e2a8136' }),
+      searchParams: searchParamsAwaitTrap.searchParams,
+    });
+    const html = renderToStaticMarkup(element as any);
+
+    expect(noStoreMock).toHaveBeenCalled();
+    // Still the graceful 200 shell: no JSON-LD, client component ships and
+    // refetches on hydration. Only the CACHING of this render is opted out.
+    expect(html).not.toContain('application/ld+json');
+    // The degraded path must not regress the static-render triggers either.
+    expect(searchParamsAwaitTrap.then).not.toHaveBeenCalled();
+    expect(headersMock).not.toHaveBeenCalled();
+  });
+
+  it('opts the degraded shell out of caching when the gateway returns an empty payload', async () => {
+    getPdpV2Mock.mockResolvedValue({ modules: [] });
+    mapPdpV2ToPdpPayloadMock.mockReturnValue(null);
+
+    const metadata = await generateMetadata({
+      params: Promise.resolve({ id: 'sig_7ad40676c42fb9c96e2a8136' }),
+      searchParams: Promise.resolve({}),
+    });
+
+    expect(noStoreMock).toHaveBeenCalled();
+    // Sitemap-route degraded semantics stay intact: fallback title, robots
+    // omitted (never hard-noindex) so crawlers can retry.
+    expect(metadata.title).toBe('Pivota Shopping AI');
+    expect(metadata.robots).toBeUndefined();
+  });
+
+  it('NEVER opts a successful canonical render out of caching (healthy PDPs stay cacheable)', async () => {
+    // Mutation guard for the crawl-collapse fix: if the noStore call ever
+    // leaks onto the success path, every canonical PDP render silently goes
+    // dynamic/uncacheable again and crawl budget re-collapses.
+    getPdpV2Mock.mockResolvedValue({
+      modules: [{ type: 'canonical', data: { pdp_payload: {} } }],
+    });
+    mapPdpV2ToPdpPayloadMock.mockReturnValue(buildPayload({
+      title: 'Healthy Product',
+    }));
+
+    const metadata = await generateMetadata({
+      params: Promise.resolve({ id: 'sig_7ad40676c42fb9c96e2a8136' }),
+      searchParams: Promise.resolve({}),
+    });
+    const element = await ProductDetailPage({
+      params: Promise.resolve({ id: 'sig_7ad40676c42fb9c96e2a8136' }),
+      searchParams: Promise.resolve({}),
+    });
+    renderToStaticMarkup(element as any);
+
+    expect(metadata.title).toBe('Healthy Product | Pivota');
+    expect(noStoreMock).not.toHaveBeenCalled();
+  });
+
+  it('propagates the noStore bail-out throw instead of swallowing it in the gateway catch', async () => {
+    // In a real request-time static generation pass unstable_noStore throws
+    // DynamicServerError so Next re-renders the request dynamically. If the
+    // page's own try/catch ever swallows that throw, the bail-out dies and the
+    // degraded shell gets stored after all. The call must sit OUTSIDE the
+    // gateway-error catch.
+    const bailout = new Error('DYNAMIC_SERVER_USAGE_BAILOUT_SENTINEL');
+    noStoreMock.mockImplementation(() => {
+      throw bailout;
+    });
+    getPdpV2Mock.mockRejectedValue(new Error('transient backend failure'));
+
+    await expect(
+      ProductDetailPage({
+        params: Promise.resolve({ id: 'sig_7ad40676c42fb9c96e2a8136' }),
+        searchParams: Promise.resolve({}),
+      }),
+    ).rejects.toThrow('DYNAMIC_SERVER_USAGE_BAILOUT_SENTINEL');
+  });
+
+  it('opts degraded personalized (non-canonical) renders out of caching too', async () => {
+    getPdpV2Mock.mockRejectedValue(new Error('transient backend failure'));
+
+    const metadata = await generateMetadata({
+      params: Promise.resolve({ id: 'plain-id' }),
+      searchParams: Promise.resolve({ merchant_id: 'merch_123' }),
+    });
+
+    expect(noStoreMock).toHaveBeenCalled();
+    // Non-sitemap routes keep the defensive noindex on failure.
+    expect((metadata.robots as any)?.index).toBe(false);
   });
 
   it('uses product-group canonical metadata for multi-merchant PDP responses', async () => {
