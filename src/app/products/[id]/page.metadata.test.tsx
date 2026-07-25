@@ -974,9 +974,12 @@ describe('PDP permanent-unbuildable vs transient failure semantics', () => {
       });
     mapPdpV2ToPdpPayloadMock.mockReturnValue({ product: { title: 'Recovered' } });
 
-    const element = await ProductDetailPage({
+    // The retry must still yield a renderable product. Assert via the LAYOUT:
+    // since #271 the canonical route's JSON-LD is emitted there (the page's own
+    // output streams inside a CSR-bailed boundary crawlers never see).
+    const element = await ProductDetailLayout({
       params: Promise.resolve({ id: 'sig_7ad40676c42fb9c96e2a8136' }),
-      searchParams: Promise.resolve({}),
+      children: null,
     });
 
     expect(getPdpV2Mock).toHaveBeenCalledTimes(2);
