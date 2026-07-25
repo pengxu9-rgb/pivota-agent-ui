@@ -781,12 +781,18 @@ describe('PdpContainer structured PDP modules', () => {
     expect(screen.getAllByText('$24').length).toBeGreaterThan(0);
   });
 
-  // QUARANTINED — see #277. Fails from at least fc15d27 (predates the #266-#273
-  // PDP series), surfaced when test CI was wired up. The sibling product-line
-  // prefetch this asserts no longer happens: getPdpV2 is called 0 times, not 1.
-  // Needs a product call on whether cross-URL shade prefetch was dropped on
-  // purpose or shade-switching is silently broken. Do NOT weaken the
-  // assertions to go green.
+  // QUARANTINED — see #277. Red since ~2026-06-01; surfaced when test CI was
+  // wired up. ROOT CAUSE FOUND: the sibling shade here is `ext_boj_dn310`, and
+  // isExternalAliasOnlyProduct() (src/lib/productHref.ts) returns true for any
+  // route id starting with `ext_`, so the prefetch-candidate filter in
+  // PdpContainer drops it and getPdpV2 is never called.
+  //
+  // That predicate conflates PROVENANCE (came from external seed) with
+  // ROUTABILITY (cannot be linked) — the same conflation #274/#275 fixed in the
+  // sitemap generator. Verified: giving the option a `pivota_signature_id:
+  // 'sig_...'` flips isExternalAliasOnlyProduct to false.
+  //
+  // Fix the predicate, not this test. Do NOT weaken the assertions to go green.
   it.skip('renders cross-url product-line shades as swatches and switches in place', async () => {
     const payload = buildBeautyPayload();
     payload.product.product_id = 'ext_boj_dn350';

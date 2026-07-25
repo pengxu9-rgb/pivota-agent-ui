@@ -14,9 +14,9 @@ describe('browseHistoryStorage', () => {
 
   it('dedupes local browse history writes by product and merchant', () => {
     // `price` is required: upsertLocalBrowseHistory drops anything without a
-    // positive one (see the drop test below). This fixture predated that gate
-    // and silently asserted nothing for months — there is no CI here, so a
-    // stale test stays green-looking until someone runs the suite by hand.
+    // positive one (see the drop test below). This fixture predated that gate,
+    // so the test had been FAILING loudly — not silently passing. Nobody ran
+    // it: there was no CI, so a red test stayed invisible rather than vacuous.
     upsertLocalBrowseHistory({
       product_id: 'prod_1',
       merchant_id: 'merchant_1',

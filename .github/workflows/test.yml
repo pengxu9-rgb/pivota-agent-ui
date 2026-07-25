@@ -1,8 +1,13 @@
-# The test gate for this repo — until this landed there was none.
+# Runs the test suite for this repo — until this landed, nothing did.
 #
 # `.github/workflows/sitemaps.yml` was the ONLY workflow, and Vercel builds with
 # `next build`, so `npm test` ran nowhere: vitest assertions guarded nothing and
-# main had been red for months without anyone seeing it (#277).
+# main had been red since 2026-05-21 without anyone seeing it (#277).
+#
+# NOT YET A GATE. `main` has no branch protection and no rulesets, so this check
+# is advisory: a red PR is still mergeable and direct pushes to main are still
+# unrestricted. To make it binding, add a ruleset on main requiring the `test`
+# status check. Until then this reports, it does not enforce.
 #
 # Deliberately does NOT run `next build` — Vercel already does that on every PR,
 # and duplicating a multi-minute build here buys nothing.
@@ -12,12 +17,19 @@ on:
   pull_request:
   push:
     branches: [main]
+  workflow_dispatch:
 
-# A PR push supersedes its own in-flight run; main is never cancelled so the
-# post-merge result on a commit is always real.
+# A PR push supersedes its own in-flight run.
+#
+# Every main push gets its OWN group, keyed by sha. `cancel-in-progress: false`
+# would NOT have been enough: GitHub keeps at most one PENDING run per group, so
+# a third merge landing while one run is in-flight and another is queued evicts
+# the queued one — that commit would get a cancelled run and never a real
+# result. With merges sometimes landing minutes apart here, that is not
+# hypothetical. Per-sha groups mean main pushes never queue behind each other.
 concurrency:
-  group: tests-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+  group: tests-${{ github.event_name == 'push' && github.sha || github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'push' }}
 
 permissions:
   contents: read
@@ -25,6 +37,9 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    # Observed runtime is under 2 minutes. The default is 6 HOURS, which a hung
+    # jsdom waitFor would happily burn.
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
