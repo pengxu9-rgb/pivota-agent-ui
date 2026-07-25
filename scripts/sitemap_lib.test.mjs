@@ -595,6 +595,42 @@ describe('id guard — never publish a URL that errors (#274 ck_ lesson)', () =>
     expect(() => sitemapIdGuard([null, undefined, {}])).not.toThrow()
     expect(sitemapIdGuard([null, undefined, {}])).toMatch(/^3 product URL\(s\)/)
   })
+
+  it('reports non-array input instead of throwing', () => {
+    for (const input of [undefined, null, {}, 'abc']) {
+      expect(() => sitemapIdGuard(input)).not.toThrow()
+      expect(sitemapIdGuard(input)).toMatch(/not an array/)
+    }
+  })
+
+  it('refuses a bare sig_ with no id body', () => {
+    // /products/sig_ errors exactly like a ck_ URL, and it passes a naive
+    // startsWith — so the guard checks length as well as prefix.
+    expect(sitemapIdGuard([{ loc: 'https://agent.pivota.cc/products/sig_' }])).toMatch(
+      /not sig-keyed/,
+    )
+    expect(sitemapIdGuard([{ loc: 'https://agent.pivota.cc/products/sig_a' }])).toBeNull()
+  })
+})
+
+describe('readCanonicalProduct rejects a degenerate sig_ (keeps the un-forceable guard unreachable)', () => {
+  it('drops a row whose sig_id is a bare prefix', () => {
+    // If this row survived, it would reach sitemapIdGuard — which SITEMAP_FORCE
+    // cannot bypass — and wedge the cron red with no escape hatch. Drop it here
+    // instead, where one bad row just costs one URL.
+    expect(
+      readCanonicalProduct({ sig_id: 'sig_', content_key: 'ck_x', serving_eligible: true }),
+    ).toBeNull()
+    expect(
+      readCanonicalProduct({ sig_id: '  sig_  ', content_key: 'ck_x', serving_eligible: true }),
+    ).toBeNull()
+  })
+
+  it('still accepts a normal sig', () => {
+    const row = readCanonicalProduct(canonicalProduct('sig_abc123'))
+    expect(row).not.toBeNull()
+    expect(row.id).toBe('sig_abc123')
+  })
 })
 
 describe('deterministic observability comment', () => {

@@ -2,8 +2,14 @@
 //
 // The sitemaps are generated files (scripts/generate_sitemaps.mjs, refreshed
 // by .github/workflows/sitemaps.yml) served as static assets — the durable fix
-// for GSC "Couldn't fetch". This test fails CI if they are deleted, truncated,
+// for GSC "Couldn't fetch". This test catches them being deleted, truncated,
 // or hand-mangled.
+//
+// It does NOT currently run in CI: .github/workflows/sitemaps.yml is this
+// repo's only workflow and Vercel builds with `next build`, so nothing invokes
+// `npm test`. Treat this as a local/pre-merge check. The enforcing guards live
+// in scripts/sitemap_lib.mjs (sitemapCountGuard, sitemapIdGuard), which run
+// inside the generator itself and so cover the 6h cron that pushes to main.
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';

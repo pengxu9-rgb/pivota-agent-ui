@@ -154,8 +154,19 @@ export function readCanonicalProduct(item) {
   // Dropping them costs 7 offer-free citation candidates. To restore the
   // feature, make the BACKEND resolve a bare ck_ (or mint sigs for these rows)
   // and then relax this gate — do not re-add the fallback while the URL 500s.
+  // The prefix alone is not enough: a bare "sig_" with no body is as dead as a
+  // ck_ URL (/products/sig_ errors the same way), and because it passes
+  // startsWith it would sail past the sig-only gate below and reach
+  // sitemapIdGuard — which is deliberately un-forceable, so a backend emitting
+  // a placeholder sig_id could wedge the cron red with no escape hatch. Drop
+  // the row here instead, where a bad row is routine and costs one URL.
+  //
+  // Note this drop DOES pin the source label to `_partial`, unlike the ck-only
+  // drop that F1 exempted — intentionally. A ck-only row is an expected
+  // category (offer-free citation); a sig_id of literally "sig_" is a backend
+  // data bug, which is exactly what that anomaly signal is for.
   const sig = String(row.sig_id || '').trim()
-  if (!sig.startsWith('sig_')) return null
+  if (!/^sig_.+/.test(sig)) return null
   const id = sig
 
   // Renderability gate (the 52%-dead-PDP fix): serving_eligible says the
@@ -250,8 +261,16 @@ export function sitemapCountGuard(newCount, previousCount) {
 // Deliberately NOT bypassable by SITEMAP_FORCE. That escape hatch exists for
 // genuine catalog shrinks; a non-sig URL is never intentional.
 export function sitemapIdGuard(urls) {
+  if (!Array.isArray(urls)) return 'product URL list is not an array'
+
+  // Length check as well as prefix: a bare "sig_" carries no id and errors just
+  // like a ck_ URL. readCanonicalProduct already drops those, so this is
+  // defense-in-depth against a regression there, not the primary gate.
   const prefix = `${SITEMAP_BASE_URL}/products/sig_`
-  const bad = urls.filter((entry) => !String(entry?.loc ?? '').startsWith(prefix))
+  const bad = urls.filter((entry) => {
+    const loc = String(entry?.loc ?? '')
+    return !loc.startsWith(prefix) || loc.length <= prefix.length
+  })
   if (bad.length === 0) return null
 
   const sample = bad
