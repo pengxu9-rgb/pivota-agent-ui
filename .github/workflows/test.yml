@@ -1,0 +1,54 @@
+# The test gate for this repo — until this landed there was none.
+#
+# `.github/workflows/sitemaps.yml` was the ONLY workflow, and Vercel builds with
+# `next build`, so `npm test` ran nowhere: vitest assertions guarded nothing and
+# main had been red for months without anyone seeing it (#277).
+#
+# Deliberately does NOT run `next build` — Vercel already does that on every PR,
+# and duplicating a multi-minute build here buys nothing.
+name: Tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# A PR push supersedes its own in-flight run; main is never cancelled so the
+# post-merge result on a commit is always real.
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # Matches sitemaps.yml, which runs the same scripts/ code.
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        id: install
+        run: npm ci
+
+      # Each gate runs even if an earlier GATE failed, so one red run reports
+      # every problem at once instead of one per push-and-wait cycle. All three
+      # are still skipped if install failed, since their output would be noise.
+      - name: Typecheck
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npx tsc --noEmit
+
+      - name: Lint
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm run lint
+
+      - name: Test
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm test

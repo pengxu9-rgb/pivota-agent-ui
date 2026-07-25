@@ -13,16 +13,22 @@ describe('browseHistoryStorage', () => {
   });
 
   it('dedupes local browse history writes by product and merchant', () => {
+    // `price` is required: upsertLocalBrowseHistory drops anything without a
+    // positive one (see the drop test below). This fixture predated that gate
+    // and silently asserted nothing for months — there is no CI here, so a
+    // stale test stays green-looking until someone runs the suite by hand.
     upsertLocalBrowseHistory({
       product_id: 'prod_1',
       merchant_id: 'merchant_1',
       title: 'Older title',
+      price: 19.99,
       timestamp: 1000,
     });
     upsertLocalBrowseHistory({
       product_id: 'prod_1',
       merchant_id: 'merchant_1',
       title: 'Newer title',
+      price: 19.99,
       timestamp: 2000,
     });
 
@@ -34,6 +40,26 @@ describe('browseHistoryStorage', () => {
       title: 'Newer title',
       timestamp: 2000,
     });
+  });
+
+  it('drops items with no positive price (the "real price chain" gate)', () => {
+    // Deliberate behaviour from d6f5add "Fix browse history real price chain":
+    // the recency rail must not render price-less cards. Asserted explicitly so
+    // it reads as intent rather than as the accident that broke the test above.
+    //
+    // Note this also drops price: null — an honest "unknown", not "free". If
+    // that ever needs to change, it is a product decision, not a bug fix.
+    for (const price of [undefined, null, 0, -1]) {
+      upsertLocalBrowseHistory({
+        product_id: 'prod_nopricecheck',
+        merchant_id: 'merchant_1',
+        title: 'No price',
+        price: price as number | null | undefined,
+        timestamp: 1000,
+      });
+    }
+
+    expect(readLocalBrowseHistory(10)).toHaveLength(0);
   });
 
   it('merges account and local recent views in recency order without duplicates', () => {
