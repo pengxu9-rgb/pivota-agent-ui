@@ -171,15 +171,28 @@ export function readCanonicalProduct(item) {
 
   // Renderability gate (the 52%-dead-PDP fix): serving_eligible says the
   // backend WANTS the row public; `renderable` says the PDP will actually
-  // render (the sig's own row has an approved, live-read-enabled
-  // pdp_identity_listing — row grain, sibling listings don't count). A URL
-  // that fails it serves the generic shell, so advertising it points
-  // crawlers at an empty page. Drop only on an explicit `false`:
+  // render. A URL that fails it errors or serves an empty page, so
+  // advertising it burns crawl budget. Drop only on an explicit `false`:
   //  - absent/undefined (a backend that predates the field) keeps the
   //    pre-fix behavior instead of emptying the sitemap, and
   //  - the filter runs BEFORE the content_key dedup, so the one-URL-per-
   //    product choice is made among renderable sigs only.
   // (ck-keyed rows can no longer reach here — they are dropped above.)
+  //
+  // WHAT `renderable` MEANS — corrected 2026-07-25, pivota-backend#1584.
+  // It used to mean "the sig's own row has an approved, live-read-enabled
+  // pdp_identity_listing". 29 live PDP fetches disproved that in BOTH
+  // directions: rows with NO identity listing at all served full 200s with
+  // product JSON-LD, and rows with a perfect listing served hard 500s.
+  // get_pdp_v2's serving gate never reads pdp_identity_listing;
+  // live_read_enabled gates the identity promotion lane, not the renderer.
+  // The field now means "the gateway can resolve a PDP CONTENT ROUTE for this
+  // row" — an acceptable external_product_seeds row on the row's route key,
+  // or a live merchant-sync upstream. Nothing changes on this side: the
+  // contract is still a plain boolean and the drop is still on explicit
+  // `false`. Expect the URL count to GROW when the backend ships (~943 rows
+  // that render fine were being withheld); the shrink guard does not gate
+  // growth, so eyeball the first regenerated diff.
   if (row.renderable === false) return null
 
   return {
