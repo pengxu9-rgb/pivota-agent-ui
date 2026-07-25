@@ -556,12 +556,19 @@ describe('PdpContainer structured PDP modules', () => {
     fireEvent.click(howToUseAccordion);
     expect(screen.getByText('Apply after cleansing.')).toBeInTheDocument();
 
-    // The brand-story product field still renders inside the detail
-    // accordion; structured product_facts / product_overview sections do not.
+    // Brand Story, the product_overview block and the structured product_facts
+    // sections all live inside the collapsed "Product details" accordion. They
+    // are BELOW the fold, not suppressed — opening that accordion revealed them
+    // before this change too. What changed is that they are now rendered into
+    // the HTML and hidden with `hidden` rather than left unmounted, so assert
+    // HIDDEN rather than absent (the assertion shape PR #171 adopted for
+    // StructuredDetailsBlocks). Visually identical; a crawler can now read them.
     expect(screen.getAllByText('Brand Story').length).toBeGreaterThan(0);
-    expect(screen.queryByText('Overview')).not.toBeInTheDocument();
-    expect(screen.queryByText('Clinical Results')).not.toBeInTheDocument();
-    expect(screen.queryByText('Rice-Infused Hydration')).not.toBeInTheDocument();
+    expect(screen.getByText('Overview').closest('[hidden]')).not.toBeNull();
+    expect(screen.getByText('Clinical Results').closest('[hidden]')).not.toBeNull();
+    expect(screen.getByText('Rice-Infused Hydration').closest('[hidden]')).not.toBeNull();
+    // Genuinely suppressed regardless of collapse state — legacy/retail-scraped
+    // detail blocks never render on a beauty PDP.
     expect(screen.queryByRole('button', { name: 'Legacy Ingredients' })).not.toBeInTheDocument();
     expect(screen.queryByText('Retail PDP')).not.toBeInTheDocument();
     expect(screen.queryByText('PDP Section')).not.toBeInTheDocument();
