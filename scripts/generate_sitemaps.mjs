@@ -33,6 +33,7 @@ import {
   productUrlEntries,
   readCanonicalProduct,
   sitemapCountGuard,
+  sitemapIdGuard,
   sitemapIndexEntries,
   staticSitemapEntries,
 } from './sitemap_lib.mjs'
@@ -268,6 +269,23 @@ export async function generateSitemaps() {
   const urls = productUrlEntries(products)
 
   const productsPath = path.join(PUBLIC_DIR, 'sitemap-products.xml')
+
+  // Checked before the shrink guard: a non-sig URL is the more specific and
+  // more actionable failure, and it is the one SITEMAP_FORCE must never wave
+  // through.
+  const idViolation = sitemapIdGuard(urls)
+  if (idViolation) {
+    console.error(
+      `REFUSING to write sitemaps: ${idViolation}.\n` +
+        `Advertising a URL that errors is strictly worse than omitting it — it ` +
+        `burns crawl budget and teaches crawlers the domain is flaky. Fix ` +
+        `readCanonicalProduct (or mint sigs for these rows); SITEMAP_FORCE does ` +
+        `NOT bypass this guard.`,
+    )
+    process.exitCode = 1
+    return null
+  }
+
   const previousCount = await readExistingLocCount(productsPath)
   const guardViolation = sitemapCountGuard(urls.length, previousCount)
   if (guardViolation && process.env.SITEMAP_FORCE !== '1') {

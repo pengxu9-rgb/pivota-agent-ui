@@ -13,6 +13,7 @@ import {
   productUrlEntries,
   readCanonicalProduct,
   sitemapCountGuard,
+  sitemapIdGuard,
   sitemapIndexEntries,
   staticSitemapEntries,
 } from './sitemap_lib.mjs'
@@ -539,6 +540,60 @@ describe('sanity guard — never publish a stub over the full set (#219/#223 les
       readCanonicalProduct(canonicalProduct('sig_b')),
     ]))
     expect(countLocs(xml)).toBe(2)
+  })
+})
+
+describe('id guard — never publish a URL that errors (#274 ck_ lesson)', () => {
+  it('passes a wholly sig-keyed set', () => {
+    const urls = productUrlEntries([
+      readCanonicalProduct(canonicalProduct('sig_a')),
+      readCanonicalProduct(canonicalProduct('sig_b')),
+    ])
+    expect(sitemapIdGuard(urls)).toBeNull()
+  })
+
+  it('passes an empty set (the count guard owns emptiness)', () => {
+    expect(sitemapIdGuard([])).toBeNull()
+  })
+
+  it('refuses a ck-keyed URL and names it', () => {
+    const violation = sitemapIdGuard([
+      { loc: 'https://agent.pivota.cc/products/sig_ok' },
+      { loc: 'https://agent.pivota.cc/products/ck_04f8072d8e35a9f1977d67a97daef873' },
+    ])
+    expect(violation).toMatch(/1 product URL\(s\) are not sig-keyed/)
+    expect(violation).toContain('ck_04f8072d8e35a9f1977d67a97daef873')
+  })
+
+  it('refuses ext_ and other non-sig prefixes too', () => {
+    expect(sitemapIdGuard([{ loc: 'https://agent.pivota.cc/products/ext_1' }])).toMatch(
+      /not sig-keyed/,
+    )
+    expect(sitemapIdGuard([{ loc: 'https://agent.pivota.cc/products/' }])).toMatch(/not sig-keyed/)
+  })
+
+  it('is not fooled by a sig_ appearing off the id position', () => {
+    // Wrong host, and a path that merely contains "sig_" further along.
+    expect(sitemapIdGuard([{ loc: 'https://evil.example/products/sig_a' }])).toMatch(
+      /not sig-keyed/,
+    )
+    expect(sitemapIdGuard([{ loc: 'https://agent.pivota.cc/products/ck_x/sig_a' }])).toMatch(
+      /not sig-keyed/,
+    )
+  })
+
+  it('truncates the sample but reports the full count', () => {
+    const urls = Array.from({ length: 9 }, (_, i) => ({
+      loc: `https://agent.pivota.cc/products/ck_${i}`,
+    }))
+    const violation = sitemapIdGuard(urls)
+    expect(violation).toMatch(/^9 product URL\(s\)/)
+    expect(violation).toContain(', …')
+  })
+
+  it('treats malformed entries as violations rather than throwing', () => {
+    expect(() => sitemapIdGuard([null, undefined, {}])).not.toThrow()
+    expect(sitemapIdGuard([null, undefined, {}])).toMatch(/^3 product URL\(s\)/)
   })
 })
 

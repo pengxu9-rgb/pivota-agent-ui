@@ -50,9 +50,16 @@ describe('committed static sitemaps in public/', () => {
     expect(urls.length).toBeGreaterThanOrEqual(1000);
     // Google's per-file limit; shard before this trips (VIS-5).
     expect(urls.length).toBeLessThanOrEqual(50000);
+    // Every id must be a minted sig. ck-keyed URLs were permitted here on the
+    // belief that /products/{ck} resolves — it does not: the backend rejects a
+    // bare content_key with MISSING_MERCHANT_CONTEXT and the PDP 500s, so all
+    // 7 that shipped were advertising errors to crawlers (#274).
     for (const url of urls) {
-      expect(url).toMatch(/^https:\/\/agent\.pivota\.cc\/products\/(sig_|ck_)/);
+      expect(url).toMatch(/^https:\/\/agent\.pivota\.cc\/products\/sig_/);
     }
+    // Whole-file assertions, so a regression still fails if the loop above is
+    // ever refactored into something weaker.
+    expect(xml).not.toContain('/products/ck_');
     expect(xml).not.toContain('/products/ext_');
   });
 });

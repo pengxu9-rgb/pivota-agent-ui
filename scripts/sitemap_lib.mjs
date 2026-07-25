@@ -237,3 +237,29 @@ export function sitemapCountGuard(newCount, previousCount) {
   }
   return null
 }
+
+// Every product URL id must be a minted sig. /products/{content_key} 500s in
+// production — get_pdp_v2 rejects a bare content_key with
+// MISSING_MERCHANT_CONTEXT — so a ck-keyed URL in the published sitemap spends
+// crawl budget on errors, right after #266/#269/#271/#272 spent four PRs
+// earning that budget back. readCanonicalProduct (#274) drops sig-less rows;
+// this is the last check before the bytes hit disk, and unlike a vitest
+// assertion it covers every caller: the 6h cron in .github/workflows/
+// sitemaps.yml, which commits straight to main, and a local `npm run sitemaps`.
+//
+// Deliberately NOT bypassable by SITEMAP_FORCE. That escape hatch exists for
+// genuine catalog shrinks; a non-sig URL is never intentional.
+export function sitemapIdGuard(urls) {
+  const prefix = `${SITEMAP_BASE_URL}/products/sig_`
+  const bad = urls.filter((entry) => !String(entry?.loc ?? '').startsWith(prefix))
+  if (bad.length === 0) return null
+
+  const sample = bad
+    .slice(0, 5)
+    .map((entry) => entry?.loc ?? String(entry))
+    .join(', ')
+  return (
+    `${bad.length} product URL(s) are not sig-keyed and would error for crawlers: ` +
+    `${sample}${bad.length > 5 ? ', …' : ''}`
+  )
+}
