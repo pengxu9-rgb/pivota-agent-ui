@@ -9,6 +9,7 @@ const cache: _CacheFn = typeof _reactCache === 'function'
   ? (_reactCache as unknown as _CacheFn)
   : ((fn) => fn);
 import type { Metadata } from 'next';
+import { notFound } from 'next/navigation';
 import { unstable_noStore } from 'next/cache';
 import ProductDetailClient from './ProductDetailClient';
 import { buildProductDescription } from './productDescription';
@@ -58,6 +59,10 @@ export interface PdpRouteMode {
 const DEFAULT_TITLE = 'Pivota Shopping AI';
 const PDP_ROUTE_REVALIDATE_S = 3600;
 const PDP_SERVER_FETCH_TIMEOUT_MS = 9000;
+// Budget for the single transient-only retry (see _fetchPdpForServerRenderUncached).
+// Kept well under the first-attempt budget so a retry cannot double worst-case
+// ISR fill latency.
+const PDP_SERVER_RETRY_TIMEOUT_MS = 4000;
 
 // The anonymous, crawlable, sitemap-published PDP route ids: Pivota signatures
 // (sig_), content-key canonicals (ck_) for store-less brands, and product groups
@@ -268,14 +273,78 @@ function markDegradedPdpRenderUncacheable(): void {
   unstable_noStore();
 }
 
+/**
+ * Why a server-side PDP read produced no renderable product.
+ *
+ * The static/ISR flip made this distinction load-bearing. Before it, every
+ * failure rendered the same 200 shell; after it, every failure THREW, so
+ * ~127 of the 1,901 sitemap URLs (6.7%) started serving HTTP 500 — products
+ * the gateway hard-404s because their `external_product_seeds.status` is
+ * `inactive`. Those will never render, and a repeated 5xx on a sitemap URL
+ * burns Google crawl budget instead of retiring the URL.
+ *
+ * - `unbuildable` — PERMANENT. The gateway gave a definitive negative answer
+ *   (4xx / PRODUCT_NOT_FOUND) or answered 200 with a payload carrying no
+ *   mappable product. Retrying cannot change the outcome → `notFound()` (404).
+ * - `degraded` — TRANSIENT. Timeout, network failure, 5xx, or a throttling
+ *   status. Retrying is the correct behavior → keep the honest 500 so the
+ *   crawler comes back and nothing broken is cached.
+ *
+ * Default-transient is the safe bias: misclassifying a transient blip as
+ * permanent would 404 (and cache that 404) on a healthy product, which is
+ * strictly worse than a 500 that self-heals. So only definitive signals map
+ * to `unbuildable`.
+ */
+export type PdpFetchOutcome =
+  | { status: 'ok'; data: ServerPdpRenderData }
+  | { status: 'unbuildable' }
+  | { status: 'degraded' };
+
+// Statuses that are 4xx but explicitly mean "ask again later", not
+// "this does not exist": request timeout, too-early, and rate limiting.
+const TRANSIENT_4XX_STATUSES = new Set([408, 425, 429]);
+
+// Gateway reason codes that are a definitive negative answer about the
+// product itself, independent of the HTTP status that carried them.
+const PERMANENT_GATEWAY_CODES = new Set([
+  'PRODUCT_NOT_FOUND',
+  'PRODUCT_NOT_AVAILABLE',
+  'PRODUCT_UNAVAILABLE',
+  'NOT_FOUND',
+  'INVALID_REQUEST',
+  'INVALID_PRODUCT_ID',
+]);
+
+/**
+ * Classify a thrown gateway error as permanently unbuildable vs transient.
+ *
+ * `callGateway` attaches `status` (the upstream HTTP status) and `code` (the
+ * gateway reason code) to the Error it throws, which is what makes this
+ * distinction possible without re-probing.
+ */
+export function classifyPdpFetchFailure(err: unknown): 'unbuildable' | 'degraded' {
+  const code = String((err as any)?.code || '').trim().toUpperCase();
+  // UPSTREAM_TIMEOUT is minted by callGatewayWithTimeout on our own abort —
+  // always transient, and it can arrive with no status at all.
+  if (code === 'UPSTREAM_TIMEOUT' || code === 'TEMPORARY_UNAVAILABLE') return 'degraded';
+  if (PERMANENT_GATEWAY_CODES.has(code)) return 'unbuildable';
+
+  const status = Number((err as any)?.status);
+  if (!Number.isFinite(status)) return 'degraded'; // network/abort — retryable
+  if (TRANSIENT_4XX_STATUSES.has(status)) return 'degraded';
+  if (status >= 400 && status < 500) return 'unbuildable';
+  return 'degraded'; // 5xx and anything else
+}
+
 async function _fetchPdpForServerRenderUncached(
   productIdInput: string,
   merchantIdInput: string,
   revalidateSeconds?: number,
-): Promise<ServerPdpRenderData | null> {
+): Promise<PdpFetchOutcome> {
   const productId = String(productIdInput || '').trim();
   if (!productId) {
-    return null;
+    // No id at all — there is nothing to retry into existence.
+    return { status: 'unbuildable' };
   }
 
   const normalizedMerchantId = normalizeProductRouteMerchantId(merchantIdInput, productId);
@@ -303,23 +372,46 @@ async function _fetchPdpForServerRenderUncached(
     timeout_ms: PDP_SERVER_FETCH_TIMEOUT_MS,
     gatewayBaseUrl: resolveServerGatewayBaseUrl(),
   };
-  let renderData: ServerPdpRenderData | null = null;
-  try {
-    const v2 = cacheable
-      ? await getPdpV2Cached({ ...fetchArgs, revalidateSeconds })
-      : await getPdpV2(fetchArgs);
-    const initialPayload = mapPdpV2ToPdpPayload(v2);
-    if (initialPayload?.product) {
-      renderData = {
-        initialPayload,
-        product: buildJsonLdProduct(initialPayload),
-        canonicalRouteId: readServerCanonicalRouteId(v2, initialPayload, productId),
-      };
+  const attempt = async (timeoutMs: number): Promise<PdpFetchOutcome> => {
+    const args = { ...fetchArgs, timeout_ms: timeoutMs };
+    try {
+      const v2 = cacheable
+        ? await getPdpV2Cached({ ...args, revalidateSeconds })
+        : await getPdpV2(args);
+      const initialPayload = mapPdpV2ToPdpPayload(v2);
+      if (initialPayload?.product) {
+        return {
+          status: 'ok',
+          data: {
+            initialPayload,
+            product: buildJsonLdProduct(initialPayload),
+            canonicalRouteId: readServerCanonicalRouteId(v2, initialPayload, productId),
+          },
+        };
+      }
+      // HTTP 200 with a payload that carries no mappable product: the gateway
+      // answered successfully and the answer is "nothing to render". Retrying
+      // an identical successful read cannot produce a different product.
+      return { status: 'unbuildable' };
+    } catch (err) {
+      return { status: classifyPdpFetchFailure(err) };
     }
-  } catch {
-    renderData = null;
-  }
-  return renderData;
+  };
+
+  const first = await attempt(PDP_SERVER_FETCH_TIMEOUT_MS);
+  // One short retry, TRANSIENT ONLY. It buys back the single-hiccup case that
+  // would otherwise 500 a healthy sitemap URL, without ever re-asking a
+  // question the gateway has already answered definitively (`unbuildable`) —
+  // retrying those would just double the load and the latency for products
+  // that are on their way to a 404 anyway.
+  //
+  // The retry runs on a DELIBERATELY SMALLER budget. The dominant transient
+  // failure is the 9s timeout, so a full-budget retry would push worst-case
+  // ISR fill to ~18s — slower than the cold SSR this whole workstream exists
+  // to kill. Capped at PDP_SERVER_RETRY_TIMEOUT_MS, worst case stays ~13s and
+  // a gateway that is merely slow (rather than briefly down) still fails fast.
+  if (first.status !== 'degraded') return first;
+  return attempt(PDP_SERVER_RETRY_TIMEOUT_MS);
 }
 
 
@@ -406,23 +498,34 @@ export async function generatePdpMetadata(
   const merchantId = personalizeThisRequest
     ? readSearchParam(resolvedSearchParams.merchant_id)
     : '';
-  const renderData = await fetchPdpForServerRender(
+  const outcome = await fetchPdpForServerRender(
     productId,
     merchantId,
     personalizeThisRequest ? undefined : PDP_ROUTE_REVALIDATE_S,
   );
 
-  if (renderData) {
-    return buildMetadataFromProduct(renderData.product, renderData.canonicalRouteId);
+  if (outcome.status === 'ok') {
+    return buildMetadataFromProduct(outcome.data.product, outcome.data.canonicalRouteId);
   }
-  // Server-side PDP fetch failed. For a route we publish in the product
-  // sitemap (sig_ canonical signatures AND the ck_ content-key fallback for
-  // store-less brands), a get_pdp_v2 failure is often transient (backend
-  // cold-start / timeout) — emitting a hard `noindex` here actively
-  // de-indexes a sitemap URL on a hiccup, and revalidate=3600 caches that
-  // noindex for up to an hour. Omit the robots directive so Google can
-  // retry/crawl; the client component still hydrates the product on the
-  // page. Non-sitemap/alias routes keep the defensive noindex.
+  // PERMANENTLY unbuildable: renderPdpPage will call notFound() for this same
+  // id, so this metadata only ever decorates the 404. Emit the defensive
+  // noindex regardless of route — there is no product here to index, and
+  // unlike the transient case below there is no hiccup to protect against.
+  if (outcome.status === 'unbuildable') {
+    return {
+      title: DEFAULT_TITLE,
+      description: 'Shop products with Pivota Shopping AI.',
+      robots: { index: false, follow: false },
+    };
+  }
+  // TRANSIENT failure. For a route we publish in the product sitemap (sig_
+  // canonical signatures AND the ck_ content-key fallback for store-less
+  // brands), a get_pdp_v2 failure is often transient (backend cold-start /
+  // timeout) — emitting a hard `noindex` here actively de-indexes a sitemap
+  // URL on a hiccup, and revalidate=3600 caches that noindex for up to an
+  // hour. Omit the robots directive so Google can retry/crawl; the client
+  // component still hydrates the product on the page. Non-sitemap/alias
+  // routes keep the defensive noindex.
   const isSitemapRoute = isCanonicalCrawlRoute;
   return {
     title: DEFAULT_TITLE,
@@ -449,9 +552,29 @@ export async function renderPdpPage(props: PdpRouteProps, mode: PdpRouteMode) {
     : '';
   const fetchRevalidateSeconds = personalizeThisRequest ? undefined : PDP_ROUTE_REVALIDATE_S;
 
-  const renderData = productId
+  const outcome: PdpFetchOutcome = productId
     ? await fetchPdpForServerRender(productId, merchantId, fetchRevalidateSeconds)
-    : null;
+    : { status: 'unbuildable' };
+
+  // PERMANENTLY unbuildable → 404, on the crawlable static/ISR route only.
+  //
+  // This is the regression #269 introduced: the gateway hard-404s these ids
+  // (`external_seed_not_active`), the fetch threw, and the throw below turned
+  // every one of them into a 500 — ~127 sitemap URLs repeatedly serving 5xx,
+  // which throttles crawl budget instead of retiring the URL. A 404 tells
+  // Google to drop it, and Next stores the 404 rather than a bogus 200 shell,
+  // so nothing broken gets cached as valid.
+  //
+  // Scoped to the canonical route deliberately. On the personalized alias
+  // route a 4xx can mean "not visible to THIS merchant scope" rather than
+  // "does not exist", so it keeps rendering the graceful 200 shell exactly as
+  // before — that route is force-dynamic and no-store, so it is never cached
+  // and never crawled.
+  if (outcome.status === 'unbuildable' && !mode.personalized) {
+    notFound();
+  }
+
+  const renderData = outcome.status === 'ok' ? outcome.data : null;
   if (!renderData) {
     // See PDP_DEGRADED_RENDER_ERROR doc above: on the static/ISR route a 200
     // shell would be STORED for `revalidate` seconds, so the render must fail

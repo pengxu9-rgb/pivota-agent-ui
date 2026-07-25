@@ -29,6 +29,19 @@ vi.mock('next/headers', () => ({
   headers: headersMock,
 }));
 
+// notFound() is how a PERMANENTLY unbuildable PDP exits (404). The real one
+// throws a digest-tagged error that Next intercepts; this mock reproduces the
+// throw so tests can assert the 404 path fired AND that the render never
+// continues past it into a 200 shell or a 500.
+const NOT_FOUND_THROWN = 'NEXT_NOT_FOUND_THROWN';
+const notFoundMock = vi.hoisted(() => vi.fn(() => {
+  throw new Error('NEXT_NOT_FOUND_THROWN');
+}));
+
+vi.mock('next/navigation', () => ({
+  notFound: () => notFoundMock(),
+}));
+
 // The page opts DEGRADED renders (gateway error / empty payload) out of
 // full-route + CDN caching via unstable_noStore. In a real request-time
 // static generation pass this throws DynamicServerError to bail the render
@@ -104,6 +117,7 @@ describe('product page metadata', () => {
     mapPdpV2ToPdpPayloadMock.mockReset();
     headersMock.mockClear();
     noStoreMock.mockReset();
+    notFoundMock.mockClear();
     vi.stubEnv('NEXT_PUBLIC_APP_URL', '');
     vi.stubEnv('VERCEL_URL', '');
   });
@@ -308,8 +322,10 @@ describe('product page metadata', () => {
   });
 
   it('keeps degraded METADATA graceful (no throw) so the page-level throw owns the failure', async () => {
-    getPdpV2Mock.mockResolvedValue({ modules: [] });
-    mapPdpV2ToPdpPayloadMock.mockReturnValue(null);
+    // TRANSIENT failure specifically (a rejected gateway read). A 200 carrying
+    // no mappable product is now classified PERMANENT and gets the hard
+    // noindex instead — see the unbuildable suite below.
+    getPdpV2Mock.mockRejectedValue(new Error('transient backend failure'));
 
     const metadata = await generateMetadata({
       params: Promise.resolve({ id: 'sig_7ad40676c42fb9c96e2a8136' }),
@@ -627,5 +643,235 @@ describe('product page metadata', () => {
         },
       ],
     });
+  });
+});
+
+/**
+ * PERMANENT-vs-TRANSIENT split (the #269 500-regression fix).
+ *
+ * #269 flipped canonical PDPs to static/ISR and made every degraded render
+ * THROW so nothing broken could be cached. That was right for transient
+ * failures and wrong for permanent ones: ~127 of the 1,901 sitemap URLs point
+ * at products the gateway hard-404s (`external_seed_not_active`), so they went
+ * from thin 200 shells to permanent HTTP 500s — a repeated 5xx on a sitemap URL
+ * throttles crawl budget instead of retiring the URL.
+ *
+ * The contract these tests pin:
+ *   permanent (definitive 4xx / PRODUCT_NOT_FOUND / 200-with-no-product)
+ *       -> notFound() = 404, never 500, never a cacheable 200
+ *   transient (timeout / 5xx / network / 408-425-429)
+ *       -> keep throwing = 500, the honest retry signal
+ */
+describe('PDP permanent-unbuildable vs transient failure semantics', () => {
+  beforeEach(() => {
+    getPdpV2Mock.mockReset();
+    mapPdpV2ToPdpPayloadMock.mockReset();
+    headersMock.mockClear();
+    noStoreMock.mockReset();
+    // Re-establish the throw: the sibling suite's afterEach calls
+    // vi.restoreAllMocks(), which can strip an implementation baked in at
+    // vi.fn() creation time. Without this the 404 assertions would silently
+    // pass through instead of exercising notFound().
+    notFoundMock.mockReset();
+    notFoundMock.mockImplementation(() => {
+      throw new Error(NOT_FOUND_THROWN);
+    });
+    vi.stubEnv('NEXT_PUBLIC_APP_URL', '');
+    vi.stubEnv('VERCEL_URL', '');
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  });
+
+  function gatewayError(status: number | undefined, code?: string) {
+    const err = new Error(code || `gateway ${status}`) as Error & {
+      status?: number;
+      code?: string;
+    };
+    if (typeof status === 'number') err.status = status;
+    if (code) err.code = code;
+    return err;
+  }
+
+  it('404s (not 500s) the real production cohort: gateway PRODUCT_NOT_FOUND / external_seed_not_active', async () => {
+    // Verbatim shape of the live failure — probed 2026-07-25 against
+    // sig_4f21951a14b8995c1afd0ea4a0a9b5f1: HTTP 404, error PRODUCT_NOT_FOUND,
+    // details.reason external_seed_not_active.
+    getPdpV2Mock.mockRejectedValue(gatewayError(404, 'PRODUCT_NOT_FOUND'));
+
+    await expect(
+      ProductDetailPage({
+        params: Promise.resolve({ id: 'sig_4f21951a14b8995c1afd0ea4a0a9b5f1' }),
+        searchParams: Promise.resolve({}),
+      }),
+    ).rejects.toThrow(NOT_FOUND_THROWN);
+
+    expect(notFoundMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('does NOT retry a permanent failure — the gateway already answered definitively', async () => {
+    getPdpV2Mock.mockRejectedValue(gatewayError(404, 'PRODUCT_NOT_FOUND'));
+
+    await expect(
+      ProductDetailPage({
+        params: Promise.resolve({ id: 'sig_4f21951a14b8995c1afd0ea4a0a9b5f1' }),
+        searchParams: Promise.resolve({}),
+      }),
+    ).rejects.toThrow(NOT_FOUND_THROWN);
+
+    // One call, not two: re-asking a settled question just doubles load and
+    // latency on a URL that is on its way to a 404 regardless.
+    expect(getPdpV2Mock).toHaveBeenCalledTimes(1);
+  });
+
+  it('treats a 200 carrying no mappable product as permanent (404, not a cached empty shell)', async () => {
+    getPdpV2Mock.mockResolvedValue({ modules: [] });
+    mapPdpV2ToPdpPayloadMock.mockReturnValue(null);
+
+    await expect(
+      ProductDetailPage({
+        params: Promise.resolve({ id: 'sig_7ad40676c42fb9c96e2a8136' }),
+        searchParams: Promise.resolve({}),
+      }),
+    ).rejects.toThrow(NOT_FOUND_THROWN);
+
+    expect(notFoundMock).toHaveBeenCalledTimes(1);
+    // A successful read that yields nothing is settled — no retry.
+    expect(getPdpV2Mock).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the 500 for a TRANSIENT timeout — 404ing a healthy URL on a hiccup is the worse failure', async () => {
+    getPdpV2Mock.mockRejectedValue(gatewayError(undefined, 'UPSTREAM_TIMEOUT'));
+
+    await expect(
+      ProductDetailPage({
+        params: Promise.resolve({ id: 'sig_7ad40676c42fb9c96e2a8136' }),
+        searchParams: Promise.resolve({}),
+      }),
+    ).rejects.toThrow(PDP_DEGRADED_RENDER_ERROR);
+
+    expect(notFoundMock).not.toHaveBeenCalled();
+  });
+
+  it('keeps the 500 for a gateway 5xx', async () => {
+    getPdpV2Mock.mockRejectedValue(gatewayError(503));
+
+    await expect(
+      ProductDetailPage({
+        params: Promise.resolve({ id: 'sig_7ad40676c42fb9c96e2a8136' }),
+        searchParams: Promise.resolve({}),
+      }),
+    ).rejects.toThrow(PDP_DEGRADED_RENDER_ERROR);
+    expect(notFoundMock).not.toHaveBeenCalled();
+  });
+
+  it.each([408, 425, 429])(
+    'treats HTTP %i as transient despite being 4xx (ask-again-later, not gone)',
+    async (status) => {
+      getPdpV2Mock.mockRejectedValue(gatewayError(status));
+
+      await expect(
+        ProductDetailPage({
+          params: Promise.resolve({ id: 'sig_7ad40676c42fb9c96e2a8136' }),
+          searchParams: Promise.resolve({}),
+        }),
+      ).rejects.toThrow(PDP_DEGRADED_RENDER_ERROR);
+      expect(notFoundMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it('treats a status-less network failure as transient (default-transient bias)', async () => {
+    getPdpV2Mock.mockRejectedValue(new Error('fetch failed'));
+
+    await expect(
+      ProductDetailPage({
+        params: Promise.resolve({ id: 'sig_7ad40676c42fb9c96e2a8136' }),
+        searchParams: Promise.resolve({}),
+      }),
+    ).rejects.toThrow(PDP_DEGRADED_RENDER_ERROR);
+    expect(notFoundMock).not.toHaveBeenCalled();
+  });
+
+  it('RETRIES a transient failure once and renders when the retry succeeds', async () => {
+    // The whole point of the retry: a single gateway hiccup must not 500 a
+    // healthy sitemap URL for an hour.
+    getPdpV2Mock
+      .mockRejectedValueOnce(gatewayError(503))
+      .mockResolvedValueOnce({
+        modules: [{ type: 'canonical', data: { product_id: 'sig_retry', title: 'Recovered' } }],
+      });
+    mapPdpV2ToPdpPayloadMock.mockReturnValue({ product: { title: 'Recovered' } });
+
+    const element = await ProductDetailPage({
+      params: Promise.resolve({ id: 'sig_7ad40676c42fb9c96e2a8136' }),
+      searchParams: Promise.resolve({}),
+    });
+
+    expect(getPdpV2Mock).toHaveBeenCalledTimes(2);
+    expect(notFoundMock).not.toHaveBeenCalled();
+    const html = renderToStaticMarkup(element as any);
+    expect(html).toContain('application/ld+json');
+  });
+
+  it('bounds the retry to a SMALLER timeout so a retry cannot double ISR fill latency', async () => {
+    getPdpV2Mock.mockRejectedValue(gatewayError(503));
+
+    await expect(
+      ProductDetailPage({
+        params: Promise.resolve({ id: 'sig_7ad40676c42fb9c96e2a8136' }),
+        searchParams: Promise.resolve({}),
+      }),
+    ).rejects.toThrow(PDP_DEGRADED_RENDER_ERROR);
+
+    expect(getPdpV2Mock).toHaveBeenCalledTimes(2);
+    const firstTimeout = getPdpV2Mock.mock.calls[0]?.[0]?.timeout_ms;
+    const retryTimeout = getPdpV2Mock.mock.calls[1]?.[0]?.timeout_ms;
+    expect(firstTimeout).toBe(9000);
+    expect(retryTimeout).toBeLessThan(firstTimeout);
+  });
+
+  it('emits a hard noindex in METADATA for a permanently unbuildable id', async () => {
+    // Unlike the transient case there is no hiccup to protect against — there
+    // is no product here to index, and the page 404s anyway.
+    getPdpV2Mock.mockRejectedValue(gatewayError(404, 'PRODUCT_NOT_FOUND'));
+
+    const metadata = await generateMetadata({
+      params: Promise.resolve({ id: 'sig_4f21951a14b8995c1afd0ea4a0a9b5f1' }),
+      searchParams: Promise.resolve({}),
+    });
+
+    expect(metadata.robots).toEqual({ index: false, follow: false });
+  });
+
+  it('never 404s the force-dynamic alias route — a 4xx there can mean merchant scope, not gone', async () => {
+    // That route is force-dynamic + no-store: never cached, never crawled, so
+    // the graceful 200 shell + client refetch stays the better human experience.
+    getPdpV2Mock.mockRejectedValue(gatewayError(404, 'PRODUCT_NOT_FOUND'));
+
+    const element = await PersonalizedProductDetailPage({
+      params: Promise.resolve({ id: 'plain-id' }),
+      searchParams: Promise.resolve({ merchant_id: 'merch_123' }),
+    });
+
+    expect(notFoundMock).not.toHaveBeenCalled();
+    expect(noStoreMock).toHaveBeenCalled();
+    renderToStaticMarkup(element as any);
+  });
+
+  it('does not touch dynamic APIs on the permanent-unbuildable path (static-render trigger guard)', async () => {
+    getPdpV2Mock.mockRejectedValue(gatewayError(404, 'PRODUCT_NOT_FOUND'));
+    const searchParamsAwaitTrap = buildSearchParamsAwaitTrap();
+
+    await expect(
+      ProductDetailPage({
+        params: Promise.resolve({ id: 'sig_4f21951a14b8995c1afd0ea4a0a9b5f1' }),
+        searchParams: searchParamsAwaitTrap.searchParams,
+      }),
+    ).rejects.toThrow(NOT_FOUND_THROWN);
+
+    expect(searchParamsAwaitTrap.then).not.toHaveBeenCalled();
+    expect(headersMock).not.toHaveBeenCalled();
   });
 });
