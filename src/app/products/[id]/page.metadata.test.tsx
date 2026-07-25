@@ -966,6 +966,30 @@ describe('PDP permanent-unbuildable vs transient failure semantics', () => {
   // Retry scope
   // ---------------------------------------------------------------------
 
+  it('never emits Product schema for an unbuildable (404) or degraded product', async () => {
+    // The property the outcome guard exists for. `unbuildable` -> renderPdpPage
+    // calls notFound(), `degraded` -> it throws; Next renders not-found.tsx /
+    // error.tsx INSIDE this segment's layout, so without the guard we would
+    // attach Product schema to a real 404 page or an error shell.
+    getPdpV2Mock.mockRejectedValue(externalSeedInactiveError());
+    const unbuildable = renderToStaticMarkup(
+      (await ProductDetailLayout({
+        params: Promise.resolve({ id: 'sig_unbuildable_guard' }),
+        children: null,
+      })) as any,
+    );
+    expect(unbuildable).not.toContain('application/ld+json');
+
+    getPdpV2Mock.mockRejectedValue(gatewayError(503));
+    const degraded = renderToStaticMarkup(
+      (await ProductDetailLayout({
+        params: Promise.resolve({ id: 'sig_degraded_guard' }),
+        children: null,
+      })) as any,
+    );
+    expect(degraded).not.toContain('application/ld+json');
+  });
+
   it('RETRIES a timeout once and renders when the retry succeeds', async () => {
     getPdpV2Mock
       .mockRejectedValueOnce(gatewayError(undefined, 'UPSTREAM_TIMEOUT'))
