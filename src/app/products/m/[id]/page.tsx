@@ -18,6 +18,11 @@ import {
 // route, just uncached — merchant personalization never applies to them.
 export const dynamic = 'force-dynamic';
 
+// Same budget arithmetic as the canonical route (see /products/[id]/page.tsx):
+// a 9s server read plus up to 3s for the single transient retry, plus render.
+// Pinned rather than inherited from the platform default.
+export const maxDuration = 20;
+
 export async function generateMetadata(props: PdpRouteProps): Promise<Metadata> {
   return generatePdpMetadata(props, { personalized: true });
 }

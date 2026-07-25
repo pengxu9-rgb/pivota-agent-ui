@@ -374,13 +374,37 @@ export function classifyPdpFetchFailure(err: unknown): 'unbuildable' | 'degraded
   return 'degraded';
 }
 
-// Transient failures worth one retry: our own timeout, and status-less
-// network/abort errors. Deliberately NOT 5xx — a gateway returning 503
-// because it is overloaded should not receive double the cold-fill traffic.
+/**
+ * Is this failure worth exactly one more attempt?
+ *
+ * An ALLOWLIST, for the same reason the classifier is one: every retry is a
+ * second gateway POST inside an ISR fill, so a loose predicate turns a
+ * backend wobble into amplified load on the backend that is already wobbling.
+ *
+ * Retryable = our own client-side timeout, plus genuine transport failures
+ * (fetch rejects with a TypeError; aborts surface as AbortError).
+ *
+ * Deliberately NOT retried:
+ * - 5xx — the gateway is explicitly reporting distress; doubling cold-fill
+ *   traffic makes the outage worse.
+ * - `pdp_empty_payload_not_cached` — getPdpV2Cached's sentinel for a
+ *   mid-ingestion product. It carries no status, so a "no status means
+ *   network error" rule would retry every one of them.
+ * - Anything thrown by our own mapping code (mapPdpV2ToPdpPayload,
+ *   buildJsonLdProduct, readServerCanonicalRouteId all run inside the try).
+ *   A programming error is perfectly reproducible; retrying it just doubles
+ *   the cost of the crash.
+ */
+const RETRYABLE_ERROR_NAMES = new Set(['TypeError', 'AbortError', 'FetchError']);
+
 function shouldRetryPdpFetchFailure(err: unknown): boolean {
   const code = String((err as any)?.code || '').trim().toUpperCase();
   if (code === 'UPSTREAM_TIMEOUT') return true;
-  return !Number.isFinite(Number((err as any)?.status));
+  // A transport failure never reaches the response-parsing branch that would
+  // have attached a status, so require BOTH: no status, and an error shaped
+  // like a fetch/abort rejection.
+  if (Number.isFinite(Number((err as any)?.status))) return false;
+  return RETRYABLE_ERROR_NAMES.has(String((err as any)?.name || ''));
 }
 
 async function _fetchPdpForServerRenderUncached(

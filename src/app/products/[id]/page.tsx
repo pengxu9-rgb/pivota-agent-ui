@@ -14,6 +14,17 @@ import {
 // Keep this literal in lockstep with PDP_ROUTE_REVALIDATE_S in pdpServerPage.
 export const revalidate = 3600;
 
+// Pin the serverless function ceiling instead of inheriting the platform
+// default (vercel.json declares no `functions` block, so the limit was
+// whatever the plan happened to default to — a number nobody here controls).
+//
+// The server PDP read budgets 9s, plus up to 3s for the single transient
+// retry (PDP_SERVER_FETCH_TIMEOUT_MS + PDP_SERVER_RETRY_TIMEOUT_MS), plus
+// render. 20s keeps that arithmetic enforced with headroom: an ISR fill
+// killed mid-render surfaces as a 504, which is strictly worse than the 500
+// the retry exists to avoid. Raise the fetch budgets and this must move too.
+export const maxDuration = 20;
+
 // THE static/ISR opt-in — and the root cause of the crawl-collapse fix (#266)
 // not taking effect: a dynamic-segment route WITHOUT generateStaticParams is
 // always server-rendered on demand. `revalidate` alone never makes it static,

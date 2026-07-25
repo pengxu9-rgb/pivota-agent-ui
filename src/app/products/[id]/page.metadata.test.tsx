@@ -38,7 +38,10 @@ const notFoundMock = vi.hoisted(() => vi.fn(() => {
   throw new Error('NEXT_NOT_FOUND_THROWN');
 }));
 
-vi.mock('next/navigation', () => ({
+// Spread the real module so a future useRouter/useParams/redirect import
+// anywhere in the page's graph does not fail with an opaque "not a function".
+vi.mock('next/navigation', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   notFound: () => notFoundMock(),
 }));
 
@@ -902,8 +905,8 @@ describe('PDP permanent-unbuildable vs transient failure semantics', () => {
     expect(renderToStaticMarkup(element as any)).toContain('application/ld+json');
   });
 
-  it('retries a status-less network failure', async () => {
-    getPdpV2Mock.mockRejectedValue(new Error('fetch failed'));
+  it('retries a genuine transport failure (fetch rejects with a TypeError)', async () => {
+    getPdpV2Mock.mockRejectedValue(new TypeError('fetch failed'));
 
     await expect(
       ProductDetailPage({
@@ -912,6 +915,38 @@ describe('PDP permanent-unbuildable vs transient failure semantics', () => {
       }),
     ).rejects.toThrow(PDP_DEGRADED_RENDER_ERROR);
     expect(getPdpV2Mock).toHaveBeenCalledTimes(2);
+  });
+
+  it('does NOT retry the empty-payload sentinel — every mid-ingestion PDP would double its gateway calls', async () => {
+    // getPdpV2Cached throws a bare Error with no status. A "no status means
+    // network error" retry rule would fire on all of them.
+    getPdpV2Mock.mockRejectedValue(new Error('pdp_empty_payload_not_cached'));
+
+    await expect(
+      ProductDetailPage({
+        params: Promise.resolve({ id: 'sig_7ad40676c42fb9c96e2a8136' }),
+        searchParams: Promise.resolve({}),
+      }),
+    ).rejects.toThrow(PDP_DEGRADED_RENDER_ERROR);
+    expect(getPdpV2Mock).toHaveBeenCalledTimes(1);
+  });
+
+  it('does NOT retry a programming error thrown by our own mapping code', async () => {
+    // mapPdpV2ToPdpPayload / buildJsonLdProduct / readServerCanonicalRouteId
+    // all run inside the try. A reproducible crash should not cost two calls.
+    getPdpV2Mock.mockResolvedValue({ modules: [] });
+    mapPdpV2ToPdpPayloadMock.mockImplementation(() => {
+      throw new ReferenceError('x is not defined');
+    });
+
+    await expect(
+      ProductDetailPage({
+        params: Promise.resolve({ id: 'sig_7ad40676c42fb9c96e2a8136' }),
+        searchParams: Promise.resolve({}),
+      }),
+    ).rejects.toThrow(PDP_DEGRADED_RENDER_ERROR);
+    expect(getPdpV2Mock).toHaveBeenCalledTimes(1);
+    expect(notFoundMock).not.toHaveBeenCalled();
   });
 
   it('does NOT retry a 5xx — doubling cold-fill traffic on an overloaded gateway makes the outage worse', async () => {
