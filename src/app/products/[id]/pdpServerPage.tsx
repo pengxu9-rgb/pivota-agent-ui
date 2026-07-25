@@ -666,8 +666,12 @@ export async function buildCanonicalPdpJsonLd(
     const productId = decodeProductIdParam(resolvedParams.id);
     if (!productId) return null;
 
-    const renderData = await fetchPdpForServerRender(productId, '', PDP_ROUTE_REVALIDATE_S);
-    if (!renderData) return null;
+    // #270 turned this into a discriminated union: only `ok` carries data, and
+    // `unbuildable`/`degraded` mean there is no product to describe. Emitting
+    // markup for either would put schema on a 404 or an error shell.
+    const outcome = await fetchPdpForServerRender(productId, '', PDP_ROUTE_REVALIDATE_S);
+    if (outcome.status !== 'ok') return null;
+    const renderData = outcome.data;
 
     return buildProductJsonLd(
       {

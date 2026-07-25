@@ -966,6 +966,30 @@ describe('PDP permanent-unbuildable vs transient failure semantics', () => {
   // Retry scope
   // ---------------------------------------------------------------------
 
+  it('never emits Product schema for an unbuildable (404) or degraded product', async () => {
+    // The property the outcome guard exists for. `unbuildable` -> renderPdpPage
+    // calls notFound(), `degraded` -> it throws; Next renders not-found.tsx /
+    // error.tsx INSIDE this segment's layout, so without the guard we would
+    // attach Product schema to a real 404 page or an error shell.
+    getPdpV2Mock.mockRejectedValue(externalSeedInactiveError());
+    const unbuildable = renderToStaticMarkup(
+      (await ProductDetailLayout({
+        params: Promise.resolve({ id: 'sig_unbuildable_guard' }),
+        children: null,
+      })) as any,
+    );
+    expect(unbuildable).not.toContain('application/ld+json');
+
+    getPdpV2Mock.mockRejectedValue(gatewayError(503));
+    const degraded = renderToStaticMarkup(
+      (await ProductDetailLayout({
+        params: Promise.resolve({ id: 'sig_degraded_guard' }),
+        children: null,
+      })) as any,
+    );
+    expect(degraded).not.toContain('application/ld+json');
+  });
+
   it('RETRIES a timeout once and renders when the retry succeeds', async () => {
     getPdpV2Mock
       .mockRejectedValueOnce(gatewayError(undefined, 'UPSTREAM_TIMEOUT'))
@@ -974,9 +998,12 @@ describe('PDP permanent-unbuildable vs transient failure semantics', () => {
       });
     mapPdpV2ToPdpPayloadMock.mockReturnValue({ product: { title: 'Recovered' } });
 
-    const element = await ProductDetailPage({
+    // The retry must still yield a renderable product. Assert via the LAYOUT:
+    // since #271 the canonical route's JSON-LD is emitted there (the page's own
+    // output streams inside a CSR-bailed boundary crawlers never see).
+    const element = await ProductDetailLayout({
       params: Promise.resolve({ id: 'sig_7ad40676c42fb9c96e2a8136' }),
-      searchParams: Promise.resolve({}),
+      children: null,
     });
 
     expect(getPdpV2Mock).toHaveBeenCalledTimes(2);
