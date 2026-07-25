@@ -140,16 +140,20 @@ export async function collectSitemapProducts(baseUrl, options = {}) {
   // content_key's dedup so an indexed URL is never swapped for an equivalent
   // sibling. See preferSitemapId for the full rationale. An empty/absent set
   // reproduces the pre-incumbency ordering exactly.
-  const incumbentIds = options.incumbentIds instanceof Set ? options.incumbentIds : new Set()
+  //
+  // Duck-typed on `.has` to match preferSitemapId exactly. An `instanceof Set`
+  // check here would disagree with the one downstream, so passing an Array
+  // (the obvious thing a future caller or test writes) would silently disable
+  // incumbency on a run that otherwise looks perfectly healthy.
+  const incumbentIds =
+    options.incumbentIds && typeof options.incumbentIds.has === 'function'
+      ? options.incumbentIds
+      : new Set()
 
   // Keyed by content_key — ONE URL per product. Duplicate signatures for the
   // same content_key are merged via mergeDuplicateProduct (deterministic id,
   // max lastmod) instead of each minting their own sitemap entry.
   const productsByContentKey = new Map()
-  // Ids that lost a dedup. Only used for reporting: an incumbent in here is a
-  // URL we are about to REPLACE, which is the failure mode incumbency exists to
-  // prevent, so it must be loud rather than silent if it ever happens again.
-  const displacedIds = new Set()
   let offset = 0
   let cursor = null
   let stoppedForCap = false
@@ -188,10 +192,10 @@ export async function collectSitemapProducts(baseUrl, options = {}) {
       }
       const existing = productsByContentKey.get(product.contentKey)
       if (existing) {
-        const merged = mergeDuplicateProduct(existing, product, incumbentIds)
-        if (merged.id !== existing.id) displacedIds.add(existing.id)
-        if (merged.id !== product.id) displacedIds.add(product.id)
-        productsByContentKey.set(product.contentKey, merged)
+        productsByContentKey.set(
+          product.contentKey,
+          mergeDuplicateProduct(existing, product, incumbentIds),
+        )
         continue
       }
       productsByContentKey.set(product.contentKey, product)
@@ -245,19 +249,27 @@ export async function collectSitemapProducts(baseUrl, options = {}) {
   const products = Array.from(productsByContentKey.values())
   products.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
 
-  // An incumbent that lost its dedup means a URL swap. Incumbency makes this
-  // impossible for a plain 2-candidate group, so it can only surface if the
-  // committed file already carried two sigs for one content_key (a sitemap
-  // predating the dedup). Report it rather than assert: dropping a
-  // pre-existing extra URL is the CORRECT outcome there, we just never want it
-  // to be invisible.
-  const replacedIncumbentIds = Array.from(displacedIds)
-    .filter((id) => incumbentIds.has(id))
+  // Every previously advertised URL that is NOT in this build. Deliberately a
+  // set difference against the FINAL output rather than bookkeeping inside the
+  // merge loop: it catches all the ways an advertised URL can disappear, not
+  // just the one incumbency guards against. A merge-time tally missed two real
+  // cases — a row dropped by the eligibility/renderable filter or gone from the
+  // feed never enters a merge at all (the COMMON cause), and a break on
+  // SITEMAP_MAX_URLS can end the crawl before a late-arriving incumbent sibling
+  // is ever merged. It also can't produce the false alarm a merge-time tally
+  // can, where a duplicate sig_id wins one content_key and loses another.
+  //
+  // Not an assertion. Most entries here are correct and expected — a URL whose
+  // row went renderable=false SHOULD leave the sitemap (#1583's dead URLs).
+  // The point is that losing an advertised URL is never invisible.
+  const outputIds = new Set(products.map((p) => p.id))
+  const lostIncumbentIds = Array.from(incumbentIds)
+    .filter((id) => !outputIds.has(id))
     .sort()
 
   return {
     products,
-    replacedIncumbentIds,
+    lostIncumbentIds,
     source: sawInvalidCanonicalItem
       ? 'serving_eligible_partial'
       : stoppedForCap
@@ -274,7 +286,24 @@ async function readExistingProductSitemap(filePath) {
   try {
     const xml = await readFile(filePath, 'utf8')
     return { count: countLocs(xml), ids: parseSitemapProductIds(xml) }
-  } catch {
+  } catch (error) {
+    // ENOENT is routine: first run, fresh clone, or a checkout without public/.
+    // ANYTHING ELSE is not, and it now costs more than it used to. Before
+    // incumbency this catch only stood the shrink guard down; now the same
+    // swallow also silently re-picks every duplicate content_key
+    // lexicographically — 183 indexed URLs churned, as measured — on a cron that
+    // commits straight to main with no review. Stay non-fatal (a readable
+    // catalog with no previous file must still publish) but never silent.
+    if (error?.code !== 'ENOENT') {
+      console.warn(
+        `WARNING: could not read ${filePath} (${error?.code || error?.message}). ` +
+          `Proceeding with NO incumbent URLs and NO shrink-guard baseline: the ` +
+          `content_key dedup will re-pick winners by sig class + lexicographic ` +
+          `order, which can replace already-indexed URLs. Expected only when the ` +
+          `file is genuinely absent (ENOENT) — investigate any other cause before ` +
+          `trusting this run's output.`,
+      )
+    }
     return { count: null, ids: new Set() }
   }
 }
@@ -305,7 +334,7 @@ export async function generateSitemaps() {
       `(incumbent urls=${previous.ids.size}) ...`,
   )
 
-  const { products, source, replacedIncumbentIds } = await collectSitemapProducts(baseUrl, {
+  const { products, source, lostIncumbentIds } = await collectSitemapProducts(baseUrl, {
     incumbentIds: previous.ids,
   })
   const urls = productUrlEntries(products)
@@ -313,14 +342,20 @@ export async function generateSitemaps() {
   const keptIncumbents = products.reduce((n, p) => n + (previous.ids.has(p.id) ? 1 : 0), 0)
   console.log(
     `incumbency: kept=${keptIncumbents}/${previous.ids.size} ` +
-      `new=${products.length - keptIncumbents} replaced=${replacedIncumbentIds.length}`,
+      `new=${products.length - keptIncumbents} dropped=${lostIncumbentIds.length}`,
   )
-  if (replacedIncumbentIds.length > 0) {
+  if (lostIncumbentIds.length > 0) {
+    // Usually correct and expected (see lostIncumbentIds), so this is a NOTE,
+    // not an alarm — but every dropped URL is a page crawlers will keep asking
+    // for, so the count belongs in the run log where the diff can be checked
+    // against it. Likely causes, roughly in order: the row went
+    // renderable=false or left the feed (correct — #1583's dead URLs); two
+    // content_keys merged by re-identification, putting two incumbents in one
+    // group; or a committed sitemap that predates the content_key dedup.
     console.warn(
-      `NOTE: ${replacedIncumbentIds.length} advertised URL(s) lost their content_key dedup ` +
-        `and will be dropped: ${replacedIncumbentIds.slice(0, 5).join(', ')}` +
-        `${replacedIncumbentIds.length > 5 ? ', …' : ''}. Expected only when the committed ` +
-        `sitemap predates the content_key dedup (two sigs for one product).`,
+      `NOTE: ${lostIncumbentIds.length} previously advertised URL(s) are not in this ` +
+        `build: ${lostIncumbentIds.slice(0, 5).join(', ')}` +
+        `${lostIncumbentIds.length > 5 ? ', …' : ''}`,
     )
   }
 

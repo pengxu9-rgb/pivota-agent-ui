@@ -260,8 +260,12 @@ describe('incumbency — an advertised URL is never swapped for an equivalent si
   // generated. Measured in prod: 441 such pairs now arrive with BOTH sigs
   // eligible, and hex/lexicographic order alone hands 183 of them to the fresh
   // minted sig — replacing an indexed URL with a brand-new one.
-  const mirrorSig = `sig_${'0'.repeat(32)}`
-  const mintedSig = `sig_${'f'.repeat(32)}`
+  //
+  // Hex values match generate_sitemaps.incumbency.test.mjs so the same pair
+  // means the same thing in both files: the MINTED sig wins the pure ordering,
+  // which is the only direction in which an incumbency bug can show up.
+  const mirrorSig = `sig_${'f'.repeat(32)}`
+  const mintedSig = `sig_${'0'.repeat(32)}`
 
   it('extracts the advertised product ids from a committed sitemap', () => {
     const xml = buildSitemapUrlsetXml([
@@ -291,11 +295,12 @@ describe('incumbency — an advertised URL is never swapped for an equivalent si
   })
 
   it('the incumbent beats the pure ordering in BOTH directions', () => {
-    // Without incumbency the all-zeros mirror sig wins lexicographically...
-    expect(preferSitemapId(mirrorSig, mintedSig)).toBe(mirrorSig)
-    // ...so the regression only shows when the INCUMBENT is the lexicographic
-    // loser. Pin that direction explicitly: an assertion that only covered the
-    // mirror-wins case would pass with the incumbency layer deleted.
+    // Without incumbency the all-zeros MINTED sig wins lexicographically — so
+    // the incumbent mirror is the pure-ordering LOSER, which is the only
+    // direction in which the incumbency layer can be caught missing. An
+    // assertion where the incumbent also won lexicographically would pass with
+    // the whole feature deleted.
+    expect(preferSitemapId(mirrorSig, mintedSig)).toBe(mintedSig)
     expect(preferSitemapId(mirrorSig, mintedSig, new Set([mintedSig]))).toBe(mintedSig)
     expect(preferSitemapId(mintedSig, mirrorSig, new Set([mintedSig]))).toBe(mintedSig)
     expect(preferSitemapId(mirrorSig, mintedSig, new Set([mirrorSig]))).toBe(mirrorSig)
@@ -310,13 +315,14 @@ describe('incumbency — an advertised URL is never swapped for an equivalent si
   })
 
   it('falls through to the pure ordering when both or neither are incumbents', () => {
-    expect(preferSitemapId(mirrorSig, mintedSig, new Set())).toBe(mirrorSig)
-    expect(preferSitemapId(mirrorSig, mintedSig, new Set([mirrorSig, mintedSig]))).toBe(mirrorSig)
+    expect(preferSitemapId(mirrorSig, mintedSig, new Set())).toBe(mintedSig)
+    expect(preferSitemapId(mirrorSig, mintedSig, new Set([mirrorSig, mintedSig]))).toBe(mintedSig)
     // An unrelated incumbent must not tip a comparison it isn't part of.
-    expect(preferSitemapId(mirrorSig, mintedSig, new Set(['sig_unrelated']))).toBe(mirrorSig)
+    expect(preferSitemapId(mirrorSig, mintedSig, new Set(['sig_unrelated']))).toBe(mintedSig)
     // Non-Set arguments are ignored rather than thrown on.
-    expect(preferSitemapId(mirrorSig, mintedSig, undefined)).toBe(mirrorSig)
-    expect(preferSitemapId(mirrorSig, mintedSig, null)).toBe(mirrorSig)
+    expect(preferSitemapId(mirrorSig, mintedSig, undefined)).toBe(mintedSig)
+    expect(preferSitemapId(mirrorSig, mintedSig, null)).toBe(mintedSig)
+    expect(preferSitemapId(mirrorSig, mintedSig, {})).toBe(mintedSig)
   })
 
   it('is a total order, so the pairwise fold is independent of feed page order', () => {
@@ -338,13 +344,31 @@ describe('incumbency — an advertised URL is never swapped for an equivalent si
   it('mergeDuplicateProduct threads the incumbent set through', () => {
     const mirror = { id: mirrorSig, contentKey: 'ck_p3', lastmod: new Date('2026-06-30T00:00:00Z') }
     const minted = { id: mintedSig, contentKey: 'ck_p3', lastmod: new Date('2026-07-17T00:00:00Z') }
-    const merged = mergeDuplicateProduct(mirror, minted, new Set([mintedSig]))
-    expect(merged.id).toBe(mintedSig)
+    // Pin the direction the pure ordering would get WRONG: mirrorSig loses
+    // lexicographically, so it can only win here if the set is threaded.
+    const merged = mergeDuplicateProduct(mirror, minted, new Set([mirrorSig]))
+    expect(merged.id).toBe(mirrorSig)
     // lastmod still merges to the max regardless of which id won.
     expect(merged.lastmod).toEqual(new Date('2026-07-17T00:00:00Z'))
-    expect(mergeDuplicateProduct(mirror, minted, new Set([mirrorSig])).lastmod).toEqual(
+    expect(mergeDuplicateProduct(mirror, minted, new Set([mintedSig])).lastmod).toEqual(
       new Date('2026-07-17T00:00:00Z'),
     )
+  })
+
+  it('unescapes before decoding, so an apostrophe in an id still matches itself', () => {
+    // Two writers run on the way out: productUrlEntries percent-encodes the id,
+    // then buildSitemapUrlsetXml escapes the <loc>. encodeURIComponent leaves
+    // `'` alone, so escapeXml is the one that touches it — and if the parse only
+    // undoes the percent-encoding, the id comes back as sig_a&apos;b and never
+    // matches its own product again.
+    const xml = buildSitemapUrlsetXml(productUrlEntries([{ id: "sig_a'b", lastmod: null }]))
+    expect(xml).toContain('&apos;')
+    expect(parseSitemapProductIds(xml)).toEqual(new Set(["sig_a'b"]))
+  })
+
+  it('an already-escaped ampersand survives the round-trip (&amp; unescapes last)', () => {
+    const xml = buildSitemapUrlsetXml(productUrlEntries([{ id: 'sig_a&lt;b', lastmod: null }]))
+    expect(parseSitemapProductIds(xml)).toEqual(new Set(['sig_a&lt;b']))
   })
 })
 

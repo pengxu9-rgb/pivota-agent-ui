@@ -236,4 +236,100 @@ describe('incumbency wiring — the committed sitemap decides the dedup winner',
     expect(result).not.toBeNull()
     expect(result.urlCount).toBe(1200)
   })
+
+  it('warns loudly when the committed file is unreadable for a reason OTHER than absence', async () => {
+    // ENOENT is routine; EACCES is not, and it silently costs the same thing a
+    // missing file costs (no incumbents ⇒ every duplicate content_key re-picked
+    // lexicographically). It must not pass for a normal first run.
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    readFile.mockImplementation(async () => {
+      const err = new Error('EACCES: permission denied')
+      err.code = 'EACCES'
+      throw err
+    })
+    stubFeed(filler(1200))
+
+    const result = await generateSitemaps()
+
+    // Still publishes — a readable catalog must not be blocked by this.
+    expect(result).not.toBeNull()
+    expect(warn.mock.calls.flat().join(' ')).toContain('EACCES')
+  })
+
+  it('does not warn for a plainly absent file', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    stubCommittedSitemap(null)
+    stubFeed(filler(1200))
+
+    await generateSitemaps()
+
+    expect(warn.mock.calls.flat().join(' ')).not.toContain('could not read')
+  })
+
+  it('accepts any .has-able incumbent collection, not just a Set', async () => {
+    // collectSitemapProducts and preferSitemapId must agree on the contract. An
+    // `instanceof Set` check in one and duck-typing in the other would let a
+    // Map (or a future custom collection) silently disable incumbency on a run
+    // that looks perfectly healthy.
+    stubFeed([...filler(1400), row(MIRROR_SIG, SHARED_CK), row(MINTED_SIG, SHARED_CK)])
+    const { collectSitemapProducts } = await import('./generate_sitemaps.mjs')
+
+    const viaMap = await collectSitemapProducts('https://x.example.com', {
+      incumbentIds: new Map([[MIRROR_SIG, true]]),
+    })
+    expect(viaMap.products.map((p) => p.id)).toContain(MIRROR_SIG)
+
+    // ...and a collection with no `.has` is ignored rather than throwing.
+    const viaArray = await collectSitemapProducts('https://x.example.com', {
+      incumbentIds: [MIRROR_SIG],
+    })
+    expect(viaArray.products.map((p) => p.id)).toContain(MINTED_SIG)
+  })
+
+  it('reports an incumbent lost to the renderable filter, not just one lost to a merge', async () => {
+    // The COMMON way an advertised URL disappears: the row goes
+    // renderable=false (or leaves the feed) and never reaches a merge at all. A
+    // merge-time tally would report zero here.
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const orphan = `sig_${'7'.repeat(32)}`
+    stubCommittedSitemap([...filler(1400).map((r) => r.sig_id), orphan])
+    stubFeed([...filler(1400), row(orphan, 'ck_orphan', { renderable: false })])
+
+    await generateSitemaps()
+
+    expect(writtenProductIds()).not.toContain(orphan)
+    expect(warn.mock.calls.flat().join(' ')).toContain(orphan)
+  })
+
+  it('a corrupt committed sitemap cannot inject a URL or wedge the un-forceable id guard', async () => {
+    // Incumbent ids are only ever a membership test — they are never a source of
+    // output ids. So a committed file full of ck_ URLs, foreign hosts and junk
+    // can at worst contribute nothing, and can NEVER put a non-sig URL in front
+    // of sitemapIdGuard (which SITEMAP_FORCE deliberately cannot bypass, so a
+    // wedge there would have no escape hatch).
+    readFile.mockImplementation(async (filePath) => {
+      if (String(filePath).endsWith('sitemap-products.xml')) {
+        return (
+          `<?xml version="1.0" encoding="UTF-8"?>\n<urlset>\n` +
+          `  <url><loc>https://agent.pivota.cc/products/ck_bare</loc></url>\n` +
+          `  <url><loc>https://evil.example.com/products/sig_notours</loc></url>\n` +
+          `  <url><loc>https://agent.pivota.cc/products/</loc></url>\n` +
+          `  <url><loc>not a url at all</loc></url>\n` +
+          `</urlset>\n`
+        )
+      }
+      const err = new Error('ENOENT: no such file or directory')
+      err.code = 'ENOENT'
+      throw err
+    })
+    stubFeed(filler(1200))
+
+    const result = await generateSitemaps()
+
+    expect(result).not.toBeNull()
+    expect(process.exitCode).not.toBe(1)
+    const ids = writtenProductIds()
+    expect(ids).toHaveLength(1200)
+    expect(ids.every((id) => id.startsWith('sig_'))).toBe(true)
+  })
 })

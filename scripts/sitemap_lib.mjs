@@ -22,6 +22,17 @@ export function escapeXml(s) {
     .replace(/'/g, '&apos;')
 }
 
+// Inverse of escapeXml. `&amp;` MUST be last so `&amp;lt;` decodes to `&lt;`
+// rather than `<`.
+export function unescapeXml(s) {
+  return String(s)
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, '&')
+}
+
 // `comment`, when provided, is emitted between the XML declaration and the
 // root element. It replaces the X-Pivota-Sitemap-Source/Url-Count response
 // headers the deleted dynamic route used to set. Keep it deterministic (no
@@ -214,7 +225,13 @@ export function parseSitemapProductIds(xml) {
   const re = /<loc>([^<]*)<\/loc>/g
   let m
   while ((m = re.exec(String(xml || ''))) !== null) {
-    const loc = m[1].trim()
+    // Undo escapeXml before decodeURIComponent, in that order. Both writers run
+    // on the way out — productUrlEntries percent-encodes the id, then
+    // buildSitemapUrlsetXml escapes the <loc> — so both have to be undone here
+    // or an id never matches itself run-to-run. In practice only `'` needs it:
+    // encodeURIComponent already consumes & < > " but leaves the apostrophe for
+    // escapeXml to turn into &apos;.
+    const loc = unescapeXml(m[1]).trim()
     if (!loc.startsWith(prefix)) continue
     const raw = loc.slice(prefix.length)
     if (!raw) continue
@@ -272,7 +289,10 @@ export function parseSitemapProductIds(xml) {
 //  - Deterministic. The incumbent set comes from a git-committed file, so the
 //    same commit + same feed produce the same bytes.
 //  - Convergent. After one run the winner IS the incumbent, so every later run
-//    is a fixed point — the opposite of flip-flop.
+//    is a fixed point FOR A STABLE CANDIDATE SET. It does not (and cannot) damp
+//    a `renderable` field that flaps: when the filter leaves one candidate
+//    standing there is nothing left to prefer, so the URL still follows the
+//    flap. That is a backend stability problem, not a dedup one.
 //  - Never additive-blocking. Incumbency only ORDERS candidates that already
 //    survived the eligibility + renderable filters; it cannot keep a URL in or
 //    out of the sitemap on its own. A product whose incumbent sig goes
@@ -291,6 +311,15 @@ export function parseSitemapProductIds(xml) {
 // last_modified. Deleting or hand-editing public/sitemap-products.xml
 // therefore forfeits the incumbency history and re-picks lexicographically —
 // one more reason never to hand-edit a cron-generated artifact.
+//
+// And the honest cost of putting incumbency ABOVE the sig-class layer: every
+// currently-advertised product is now frozen on whatever sig it already has,
+// including legacy 24-hex ones. Layer 2 only ever applies to products entering
+// the sitemap for the first time, so there is no longer a mechanism that
+// migrates an advertised URL to a preferred sig class. That is the intended
+// trade — a URL already earning index equity is worth more than a tidier id —
+// but if a sig class ever has to be retired, it needs a deliberate one-time
+// migration (redirects plus a forced regeneration), not a silent reshuffle.
 export function preferSitemapId(a, b, incumbentIds) {
   if (incumbentIds && typeof incumbentIds.has === 'function') {
     const aIncumbent = incumbentIds.has(a)
