@@ -7,6 +7,7 @@ import { PdpContainer } from './PdpContainer';
 import type { PDPPayload } from '@/features/pdp/types';
 
 const routerPush = vi.hoisted(() => vi.fn());
+let replaceStateSpy: ReturnType<typeof vi.spyOn>;
 const getPdpV2Mock = vi.hoisted(() => vi.fn());
 
 vi.mock('next/image', () => ({
@@ -505,6 +506,9 @@ describe('PdpContainer structured PDP modules', () => {
       writable: true,
       value: matchMedia,
     });
+    // In-place product-line switching syncs the address bar via replaceState;
+    // spied so tests can assert WHICH targets are allowed to rewrite it.
+    replaceStateSpy = vi.spyOn(window.history, 'replaceState').mockImplementation(() => {});
   });
 
   afterEach(() => {
@@ -781,19 +785,13 @@ describe('PdpContainer structured PDP modules', () => {
     expect(screen.getAllByText('$24').length).toBeGreaterThan(0);
   });
 
-  // QUARANTINED — see #277. Red since ~2026-06-01; surfaced when test CI was
-  // wired up. ROOT CAUSE FOUND: the sibling shade here is `ext_boj_dn310`, and
-  // isExternalAliasOnlyProduct() (src/lib/productHref.ts) returns true for any
-  // route id starting with `ext_`, so the prefetch-candidate filter in
-  // PdpContainer drops it and getPdpV2 is never called.
-  //
-  // That predicate conflates PROVENANCE (came from external seed) with
-  // ROUTABILITY (cannot be linked) — the same conflation #274/#275 fixed in the
-  // sitemap generator. Verified: giving the option a `pivota_signature_id:
-  // 'sig_...'` flips isExternalAliasOnlyProduct to false.
-  //
-  // Fix the predicate, not this test. Do NOT weaken the assertions to go green.
-  it.skip('renders cross-url product-line shades as swatches and switches in place', async () => {
+  // Was quarantined (#277): the alias-only guard in handleProductLineOptionSelect
+  // / the prefetch path rejected this `ext_boj_dn310` sibling, so getPdpV2 was
+  // never called and the swatch was a dead control. Routability was the wrong
+  // question — colour-selector switching is an in-place getPdpV2 fetch, not a
+  // navigation. Un-skipped now that the guard applies only to the router.push
+  // fallback.
+  it('renders cross-url product-line shades as swatches and switches in place', async () => {
     const payload = buildBeautyPayload();
     payload.product.product_id = 'ext_boj_dn350';
     payload.product.merchant_id = 'external_seed';
@@ -981,6 +979,61 @@ describe('PdpContainer structured PDP modules', () => {
         ),
       ).toBe(true);
     });
+
+    // The switch works, but the address bar must NOT be parked on the target:
+    // /products/ext_boj_dn310 is not a routable URL (it 500s), so rewriting to
+    // it would hand the user a link that breaks on reload or share. Enabling
+    // in-place switching for alias-only siblings is only safe with this held.
+    expect(replaceStateSpy).not.toHaveBeenCalled();
+  });
+
+  it('rewrites the URL when the shade sibling IS routable', async () => {
+    // Control for the assertion above: the no-rewrite rule must be specific to
+    // alias-only targets, not a blanket disabling of the URL sync.
+    const payload = buildBeautyPayload();
+    payload.product.product_id = 'sig_dn350';
+    payload.product.merchant_id = 'external_seed';
+    payload.product.product_line_option_name = 'Shade';
+    payload.product.product_line_options = [
+      {
+        option_id: 'external_seed:sig_dn310',
+        option_name: 'Shade',
+        axis: 'shade',
+        value: 'dn310',
+        label: 'DN310',
+        product_id: 'sig_dn310',
+        merchant_id: 'external_seed',
+        image_url: 'https://example.com/dn310-swatch.jpg',
+      },
+      {
+        option_id: 'external_seed:sig_dn350',
+        option_name: 'Shade',
+        axis: 'shade',
+        value: 'dn350',
+        label: 'DN350',
+        product_id: 'sig_dn350',
+        merchant_id: 'external_seed',
+        selected: true,
+      },
+    ];
+
+    const nextPayload = JSON.parse(JSON.stringify(payload)) as PDPPayload;
+    nextPayload.product.product_id = 'sig_dn310';
+    getPdpV2Mock.mockResolvedValue({
+      status: 'success',
+      modules: [{ type: 'canonical', data: { pdp_payload: nextPayload } }],
+    });
+
+    render(
+      <PdpContainer payload={payload} mode="beauty" onAddToCart={() => {}} onBuyNow={() => {}} />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'DN310' }));
+
+    await waitFor(() => {
+      expect(replaceStateSpy).toHaveBeenCalled();
+    });
+    expect(String(replaceStateSpy.mock.calls.at(-1)?.[2])).toContain('/products/sig_dn310');
   });
 
   it('uses the real shade variants when merged seller rows duplicate the variant axis', () => {

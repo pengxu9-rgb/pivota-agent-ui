@@ -2053,11 +2053,10 @@ export function PdpContainer({
 
     return visibleProductLineOptions
       .map((option, index) => ({ option, index, distance: Math.abs(index - selectedIndex) }))
-      .filter(
-        ({ option }) =>
-          !isSameProductLineOption(option, currentProductId, currentMerchantId) &&
-          !isExternalAliasOnlyProduct(option as any),
-      )
+      // Alias-only options are prefetched too: this memo only feeds the
+      // colour-selector (in-place) path, which addresses the sibling by
+      // (product_id, merchant_id) through getPdpV2, not by URL.
+      .filter(({ option }) => !isSameProductLineOption(option, currentProductId, currentMerchantId))
       .sort((left, right) => {
         if (left.distance !== right.distance) return left.distance - right.distance;
         return left.index - right.index;
@@ -3606,11 +3605,9 @@ export function PdpContainer({
       const merchantId = String(option.merchant_id || '').trim();
       const currentProductId = String(payload.product.product_id || '').trim();
       const currentMerchantId = String(payload.product.merchant_id || '').trim();
-      if (
-        !productId ||
-        isSameProductLineOption(option, currentProductId, currentMerchantId) ||
-        isExternalAliasOnlyProduct(option as any)
-      ) {
+      // No alias-only check: this only runs in colour-selector mode, where the
+      // switch is an in-place getPdpV2 fetch rather than a navigation.
+      if (!productId || isSameProductLineOption(option, currentProductId, currentMerchantId)) {
         return;
       }
       const cacheKey = buildProductLinePayloadCacheKey(productId, merchantId);
@@ -3696,7 +3693,17 @@ export function PdpContainer({
       const nextProductId = String(option.product_id || '').trim();
       if (!nextProductId) return;
       const nextMerchantId = String(option.merchant_id || '').trim();
-      if (isExternalAliasOnlyProduct(option as any)) return;
+      // NOTE: the alias-only check used to sit here, rejecting the option
+      // outright. That conflated two different questions. Selecting a shade in
+      // colour-selector mode does NOT navigate — it fetches the payload through
+      // getPdpV2 and swaps it in place — and an external-seed product is
+      // perfectly addressable by (product_id, merchant_id) even though
+      // /products/ext_… is not a routable URL. Blocking on routability made
+      // every cross-URL shade on an external-seed PDP a dead swatch: rendered,
+      // clickable, silently doing nothing.
+      //
+      // The check now guards only the router.push fallback below, which is the
+      // one path that genuinely needs a URL that resolves.
       const currentProductId = String(payload.product.product_id || '').trim();
       const currentMerchantId = String(payload.product.merchant_id || '').trim();
       if (
@@ -3726,6 +3733,11 @@ export function PdpContainer({
           option,
           currentRelativePath,
         );
+        // Swap the payload in place for any option, but only rewrite the address
+        // bar to a URL that actually resolves. For an alias-only sibling the
+        // switch still works; we just keep the current URL rather than parking
+        // the user on /products/ext_… , which 500s on reload or share.
+        const canRewriteUrlToTarget = !isExternalAliasOnlyProduct(option as any);
         const cacheKey = buildProductLinePayloadCacheKey(nextProductId, nextMerchantId);
         const cachedPayload = cacheKey
           ? productLinePayloadCacheRef.current.get(cacheKey) || null
@@ -3733,7 +3745,7 @@ export function PdpContainer({
 
         if (cachedPayload) {
           setPayload(cachedPayload);
-          if (typeof window !== 'undefined') {
+          if (typeof window !== 'undefined' && canRewriteUrlToTarget) {
             window.history.replaceState(window.history.state, '', targetPath);
             setCurrentRelativePath(getCurrentRelativePath());
           }
@@ -3762,7 +3774,7 @@ export function PdpContainer({
             throw new Error('PDP payload unavailable');
           }
           setPayload(nextPayload);
-          if (typeof window !== 'undefined') {
+          if (typeof window !== 'undefined' && canRewriteUrlToTarget) {
             window.history.replaceState(window.history.state, '', targetPath);
             setCurrentRelativePath(getCurrentRelativePath());
           }
@@ -3787,6 +3799,10 @@ export function PdpContainer({
         return;
       }
 
+      // Navigation fallback (no in-place colour selector). This one really does
+      // need a URL that resolves, so an alias-only option stops here rather than
+      // pushing the user to /products/ext_… , which 500s.
+      if (isExternalAliasOnlyProduct(option as any)) return;
       const pathname = targetHref.split('?')[0];
       router.push(`${pathname}${params.toString() ? `?${params.toString()}` : ''}`);
     },
