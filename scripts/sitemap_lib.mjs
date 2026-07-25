@@ -376,6 +376,50 @@ export function sitemapCountGuard(newCount, previousCount) {
   return null
 }
 
+// Rows the feed promised vs rows the walk actually consumed.
+//
+// The count guard above compares this build to the PREVIOUS build, so it only
+// fires once truncation has already changed the published number — and it is
+// blind to a walk that was truncated from the very first run, or to one whose
+// shortfall stays inside the 50% ratio. This guard compares the run to ITSELF:
+// the feed states `total` on page 1, and a correct walk consumes that many
+// rows. Anything less means pagination stopped early, whatever the reason
+// (a hasMore chain misreading an absent `total` as 0, a dropped cursor, a
+// backend that stops answering mid-crawl).
+//
+// It deliberately measures ROWS CONSUMED, not URLs emitted: URLs legitimately
+// come in far below `total` (renderable=false drops, sig-less rows,
+// content_key dedup — ~23% of the feed today), so an emitted-count comparison
+// would need a business-logic-aware expectation and would drift every time a
+// filter changes. Rows consumed has exactly one correct value.
+//
+// Skipped when `feedTotal` is null (backend reported no total — nothing to
+// compare against; collectSitemapProducts warns) and when the walk stopped at
+// SITEMAP_MAX_URLS, which is a legitimate short read already labelled
+// `serving_eligible_truncated`.
+//
+// Deliberately NOT bypassable by SITEMAP_FORCE, for the same reason as the id
+// guard: that hatch exists for genuine catalog shrinks, and a genuine shrink
+// lowers `total` alongside the rows — it never opens a gap between them.
+export const SITEMAP_ROW_WALK_TOLERANCE = 50
+
+export function sitemapCoverageGuard({ rowsSeen, feedTotal, stoppedForCap } = {}) {
+  if (typeof feedTotal !== 'number' || stoppedForCap) return null
+  if (typeof rowsSeen !== 'number') return 'coverage bookkeeping is missing rowsSeen'
+  // The tolerance absorbs concurrent catalog churn: `total` is measured on
+  // page 1 and the walk takes ~30s across ~6 pages, so a handful of rows can
+  // be deleted underneath us. It is an absolute allowance, not a ratio, so it
+  // cannot silently widen as the catalog grows — the failure this exists to
+  // catch drops rows by the thousand, not by the dozen.
+  if (rowsSeen >= feedTotal - SITEMAP_ROW_WALK_TOLERANCE) return null
+  const pct = ((rowsSeen / feedTotal) * 100).toFixed(1)
+  return (
+    `pagination consumed only ${rowsSeen} of the ${feedTotal} rows the feed reported ` +
+    `(${pct}%) — the walk stopped early, so this build is missing ` +
+    `${feedTotal - rowsSeen} rows' worth of products`
+  )
+}
+
 // Every product URL id must be a minted sig. /products/{content_key} 500s in
 // production — get_pdp_v2 rejects a bare content_key with
 // MISSING_MERCHANT_CONTEXT — so a ck-keyed URL in the published sitemap spends

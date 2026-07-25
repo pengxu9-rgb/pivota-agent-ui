@@ -14,6 +14,7 @@ import {
   productUrlEntries,
   readCanonicalProduct,
   sitemapCountGuard,
+  sitemapCoverageGuard,
   sitemapIdGuard,
   sitemapIndexEntries,
   staticSitemapEntries,
@@ -764,5 +765,235 @@ describe('deterministic observability comment', () => {
     expect(xml).toMatch(
       /^<\?xml version="1\.0" encoding="UTF-8"\?>\n<!-- source=serving_eligible urls=1 -->\n<urlset/,
     )
+  })
+})
+
+// The production feed's exact shape, and the reason these tests exist:
+// GET /api/canonical/products answers `total` on the FIRST page only —
+// offset>0 and cursor pages both return `total: null` — while `has_more` is
+// present on every page. Verified against prod 2026-07-25 (6 pages, 5,887
+// rows). A paging chain that mistakes that absent `total` for a real 0 caps
+// the walk at one page and publishes a fraction of the catalog.
+describe('collectSitemapProducts — `total` present on the first page only (prod shape)', () => {
+  beforeEach(() => {
+    vi.stubEnv('PIVOTA_BACKEND_BASE_URL', 'https://canonical.example.com')
+    vi.spyOn(console, 'log').mockImplementation(() => {})
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.unstubAllEnvs()
+  })
+
+  // Pages the way prod does: real `total` on page 1, `total: null` after.
+  function firstPageOnlyTotalFetch(pagesByOffset, grandTotal, { withHasMore }) {
+    return vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const offset = Number(new URL(String(input)).searchParams.get('offset') || 0)
+      const items = pagesByOffset[offset] ?? []
+      const consumed = offset + items.length
+      const body = {
+        items,
+        total: offset === 0 ? grandTotal : null,
+        limit: 1000,
+        offset,
+      }
+      if (withHasMore) body.has_more = consumed < grandTotal
+      return new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    })
+  }
+
+  it('walks every page when has_more is present (the arm prod actually uses)', async () => {
+    const fetchMock = firstPageOnlyTotalFetch(
+      {
+        0: products(1000, 'sig_p1'),
+        1000: products(1000, 'sig_p2'),
+        2000: products(500, 'sig_p3'),
+      },
+      2500,
+      { withHasMore: true },
+    )
+
+    const { products: collected, source, coverage } = await collectSitemapProducts(
+      'https://canonical.example.com',
+    )
+
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+    expect(collected).toHaveLength(2500)
+    expect(source).toBe('serving_eligible')
+    expect(coverage).toMatchObject({ rowsSeen: 2500, feedTotal: 2500, stoppedForCap: false })
+    expect(sitemapCoverageGuard(coverage)).toBeNull()
+  })
+
+  // THE REGRESSION FENCE. Strip has_more and the walk must fall through to the
+  // items-length heuristic. It only can if an absent `total` stays null:
+  // `Number(null)` is 0, 0 is finite, and `0 < 0` is false, so a bare Number()
+  // coercion yields total=0 — `offset < 0` is then always false and this stops
+  // after page 2 with 2,000 of 2,500 rows, silently.
+  it('falls back to the items-length heuristic when BOTH has_more and total are absent', async () => {
+    const fetchMock = firstPageOnlyTotalFetch(
+      {
+        0: products(1000, 'sig_p1'),
+        1000: products(1000, 'sig_p2'),
+        2000: products(500, 'sig_p3'),
+      },
+      2500,
+      { withHasMore: false },
+    )
+
+    const { products: collected, coverage } = await collectSitemapProducts(
+      'https://canonical.example.com',
+    )
+
+    expect(collected).toHaveLength(2500)
+    expect(coverage.rowsSeen).toBe(2500)
+    // Three pages exactly — the short final page terminates the walk; it must
+    // not fetch a fourth, empty page.
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+    expect(fetchMock.mock.calls.map((call) => new URL(String(call[0])).searchParams.get('offset')))
+      .toEqual(['0', '1000', '2000'])
+  })
+
+  it('uses `offset < total` on page 1 to stop without a wasted fetch', async () => {
+    // Isolates the middle arm. The page is FULL (1000 == limit), so the
+    // items-length heuristic alone would fetch a second, empty page; the
+    // page-1 `total` is what makes this a single-fetch walk. This only works
+    // on page 1 — `total` is unknown from page 2 on, by design of the feed.
+    const fetchMock = firstPageOnlyTotalFetch({ 0: products(1000, 'sig_p1') }, 1000, {
+      withHasMore: false,
+    })
+
+    const { products: collected, coverage } = await collectSitemapProducts(
+      'https://canonical.example.com',
+    )
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(collected).toHaveLength(1000)
+    expect(coverage).toMatchObject({ rowsSeen: 1000, feedTotal: 1000 })
+    expect(sitemapCoverageGuard(coverage)).toBeNull()
+  })
+
+  it('terminates on an empty page when a has_more-less walk ends on a full page', async () => {
+    // Documents the cost of losing has_more: with `total` unknown after page 1
+    // and a final page exactly `limit` wide, the heuristic cannot tell "done"
+    // from "more", so it spends one extra empty fetch to find out. Correct,
+    // just not free — and it must still terminate rather than loop.
+    const fetchMock = firstPageOnlyTotalFetch(
+      { 0: products(1000, 'sig_p1'), 1000: products(1000, 'sig_p2') },
+      2000,
+      { withHasMore: false },
+    )
+
+    const { products: collected, coverage } = await collectSitemapProducts(
+      'https://canonical.example.com',
+    )
+
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+    expect(collected).toHaveLength(2000)
+    // The empty third page adds no rows, so coverage still reconciles.
+    expect(coverage.rowsSeen).toBe(2000)
+    expect(sitemapCoverageGuard(coverage)).toBeNull()
+  })
+
+  it('accounts for every consumed row in the drop funnel', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      pageResponse(
+        [
+          canonicalProduct('sig_kept_one'),
+          canonicalProduct('sig_kept_two'),
+          // dead: explicitly non-renderable
+          { ...canonicalProduct('sig_dead'), renderable: false },
+          // merged: same content_key as sig_kept_one
+          { sig_id: 'sig_kept_one_dupe', content_key: 'ck_kept_one', serving_eligible: true },
+          // malformed / ineligible
+          { sig_id: 'ext_alias' },
+        ],
+        5,
+        0,
+        { has_more: false },
+      ),
+    )
+
+    const { products: collected, coverage } = await collectSitemapProducts(
+      'https://canonical.example.com',
+    )
+
+    expect(coverage.rowsSeen).toBe(5)
+    expect(coverage.dropped).toEqual({
+      dead: 1,
+      mergedDuplicate: 1,
+      notEligibleOrMalformed: 1,
+    })
+    // rowsSeen reconciles exactly: 5 rows = 2 URLs + 1 + 1 + 1 dropped.
+    const totalDropped =
+      coverage.dropped.dead +
+      coverage.dropped.mergedDuplicate +
+      coverage.dropped.notEligibleOrMalformed
+    expect(collected.length + totalDropped).toBe(coverage.rowsSeen)
+  })
+
+  it('reports feedTotal as null (not 0) when the backend never sends a total', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      pageResponse(products(3), null, 0, { has_more: false }),
+    )
+
+    const { coverage } = await collectSitemapProducts('https://canonical.example.com')
+
+    // Null, never 0 — 0 would read as "the feed has no products", and would
+    // make the coverage guard pass vacuously on a truncated walk.
+    expect(coverage.feedTotal).toBeNull()
+    expect(sitemapCoverageGuard(coverage)).toBeNull()
+  })
+})
+
+describe('coverage guard — rows consumed vs rows the feed promised', () => {
+  it('passes a walk that consumed every promised row', () => {
+    expect(
+      sitemapCoverageGuard({ rowsSeen: 5887, feedTotal: 5887, stoppedForCap: false }),
+    ).toBeNull()
+  })
+
+  it('refuses a walk that stopped early, naming both counts', () => {
+    const violation = sitemapCoverageGuard({
+      rowsSeen: 2000,
+      feedTotal: 5887,
+      stoppedForCap: false,
+    })
+    expect(violation).toContain('2000')
+    expect(violation).toContain('5887')
+    expect(violation).toContain('34.0%')
+  })
+
+  it('tolerates a handful of rows deleted mid-walk (concurrent catalog churn)', () => {
+    expect(
+      sitemapCoverageGuard({ rowsSeen: 5850, feedTotal: 5887, stoppedForCap: false }),
+    ).toBeNull()
+    expect(
+      sitemapCoverageGuard({ rowsSeen: 5800, feedTotal: 5887, stoppedForCap: false }),
+    ).not.toBeNull()
+  })
+
+  it('skips when the backend reported no total (nothing to compare against)', () => {
+    expect(
+      sitemapCoverageGuard({ rowsSeen: 10, feedTotal: null, stoppedForCap: false }),
+    ).toBeNull()
+  })
+
+  it('skips a legitimate short read at the 50k URL cap', () => {
+    expect(
+      sitemapCoverageGuard({ rowsSeen: 50000, feedTotal: 90000, stoppedForCap: true }),
+    ).toBeNull()
+  })
+
+  it('is not fooled by a feedTotal of 0 vs a missing one', () => {
+    expect(sitemapCoverageGuard({ rowsSeen: 0, feedTotal: 0, stoppedForCap: false })).toBeNull()
+  })
+
+  it('reports missing bookkeeping instead of passing silently', () => {
+    expect(sitemapCoverageGuard({ feedTotal: 100, stoppedForCap: false })).toContain('rowsSeen')
+    expect(sitemapCoverageGuard()).toBeNull()
   })
 })

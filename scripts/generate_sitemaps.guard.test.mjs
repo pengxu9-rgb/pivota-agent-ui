@@ -155,3 +155,118 @@ describe('generateSitemaps wiring — the id guard is actually called before wri
     expect(productsWrite[1]).not.toContain('/products/ck_')
   })
 })
+
+describe('generateSitemaps wiring — the coverage guard is called before writing', () => {
+  // A page that CLAIMS a large catalog but ends the walk immediately. This is
+  // the shape a paging bug produces: the feed says 5,887 rows exist, the walk
+  // consumed 1,500, and every other guard is happy — 1,500 clears the absolute
+  // floor and (on a first run) there is no committed count to shrink from.
+  function shortWalkPage(items, claimedTotal) {
+    return new Response(
+      JSON.stringify({ items, total: claimedTotal, limit: 1000, has_more: false }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    )
+  }
+
+  it('refuses to write when the walk consumed far fewer rows than the feed promised', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => shortWalkPage(rows({ sigCount: 1500, ckCount: 0 }), 5887)),
+    )
+
+    const result = await generateSitemaps()
+
+    expect(result).toBeNull()
+    expect(process.exitCode).toBe(1)
+    // The whole point: the last-known-good sitemap keeps serving.
+    expect(writeFile).not.toHaveBeenCalled()
+  })
+
+  it('is not bypassable by SITEMAP_FORCE (a paging bug is never a catalog shrink)', async () => {
+    vi.stubEnv('SITEMAP_FORCE', '1')
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => shortWalkPage(rows({ sigCount: 1500, ckCount: 0 }), 5887)),
+    )
+
+    const result = await generateSitemaps()
+
+    expect(result).toBeNull()
+    expect(process.exitCode).toBe(1)
+    expect(writeFile).not.toHaveBeenCalled()
+    vi.unstubAllEnvs()
+  })
+
+  it('writes normally when the walk consumed everything the feed promised', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => shortWalkPage(rows({ sigCount: 1500, ckCount: 0 }), 1500)),
+    )
+
+    const result = await generateSitemaps()
+
+    expect(result).not.toBeNull()
+    expect(result.urlCount).toBe(1500)
+    expect(process.exitCode).not.toBe(1)
+    expect(writeFile).toHaveBeenCalled()
+  })
+
+  it('does not fire on a legitimate shortfall from filters (rows consumed, URLs dropped)', async () => {
+    // 1,600 rows consumed against a promised 1,600, of which 100 are dropped
+    // downstream. Coverage measures ROWS, so filter drops must not trip it.
+    const items = [
+      ...rows({ sigCount: 1500, ckCount: 0 }),
+      ...Array.from({ length: 100 }, (_, i) => ({
+        sig_id: `sig_dead${i}`,
+        content_key: `ck_dead${i}`,
+        serving_eligible: true,
+        renderable: false,
+      })),
+    ]
+    vi.stubGlobal('fetch', vi.fn(async () => shortWalkPage(items, 1600)))
+
+    const result = await generateSitemaps()
+
+    expect(result).not.toBeNull()
+    expect(process.exitCode).not.toBe(1)
+    expect(writeFile).toHaveBeenCalled()
+  })
+})
+
+describe('generateSitemaps — a page that never succeeds aborts the whole run', () => {
+  // The static-file analogue of the deleted route's "budget exhausted" path.
+  // The route emitted a 503 (no sitemap at all); here the committed
+  // last-known-good keeps serving, which is strictly better — but only if the
+  // run refuses to write a partial set. Retries are driven with fake timers so
+  // the test doesn't sit through the real 30s backoff ladder.
+  it('propagates the failure and writes nothing when a mid-walk page exhausts its retries', async () => {
+    vi.useFakeTimers()
+    const fetchMock = vi.fn(async (input) => {
+      const offset = Number(new URL(String(input)).searchParams.get('offset') || 0)
+      if (offset === 0) {
+        return new Response(
+          JSON.stringify({
+            items: rows({ sigCount: 1000, ckCount: 0 }),
+            total: 3000,
+            limit: 1000,
+            has_more: true,
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        )
+      }
+      throw new Error('backend unavailable')
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    const run = generateSitemaps()
+    const assertion = expect(run).rejects.toThrow('backend unavailable')
+    await vi.runAllTimersAsync()
+    await assertion
+
+    // 1 good page + 4 attempts (initial + 3 retries) at the failing page.
+    expect(fetchMock).toHaveBeenCalledTimes(5)
+    expect(writeFile).not.toHaveBeenCalled()
+    vi.useRealTimers()
+  })
+})

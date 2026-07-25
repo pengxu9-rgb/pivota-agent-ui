@@ -34,6 +34,7 @@ import {
   productUrlEntries,
   readCanonicalProduct,
   sitemapCountGuard,
+  sitemapCoverageGuard,
   sitemapIdGuard,
   sitemapIndexEntries,
   staticSitemapEntries,
@@ -67,7 +68,23 @@ function getCanonicalProductsBaseUrl() {
   return DEFAULT_CANONICAL_PRODUCTS_BASE_URL
 }
 
+// Returns null for ABSENT/unparseable — never a number standing in for
+// "unknown". The distinction is load-bearing for `total`: this feed returns
+// `total` ONLY on the first page (offset>0 and cursor pages answer
+// `total: null`), so every page after the first hits the absent branch.
+//
+// The trap this guards, and why the nullish check cannot be dropped:
+// `Number(null)` is 0, and 0 passes `Number.isFinite`, and `0 < 0` is false —
+// so a plain `Number()` coercion turned an honest "unknown" into a confident
+// `total = 0`. Downstream, `offset < total` is then permanently false and the
+// intended `items.length >= limit` fallback becomes unreachable, capping the
+// walk at one page. `Number('')`, `Number([])`, and `Number(false)` are 0 too,
+// hence the type gate rather than a bare `value == null` check.
+// (Same shape as the `Number(x ?? 0)` trap in pivota-backend#1819, where an
+// honest null collapsing to 0 silently dropped in-stock products.)
 function readInteger(value, min) {
+  if (typeof value !== 'number' && typeof value !== 'string') return null
+  if (typeof value === 'string' && value.trim() === '') return null
   const n = Number(value)
   if (!Number.isFinite(n) || n < min) return null
   return Math.floor(n)
@@ -160,12 +177,23 @@ export async function collectSitemapProducts(baseUrl, options = {}) {
   let sawInvalidCanonicalItem = false
   let cursorPages = 0
   let offsetPages = 0
+  // Coverage bookkeeping: rows the feed PROMISED vs rows we actually consumed.
+  // `feedTotal` is only ever populated from the first page — this feed answers
+  // `total: null` for every subsequent page, so a later page must never be
+  // allowed to overwrite a known total back to unknown.
+  let feedTotal = null
+  let rowsSeen = 0
+  // Drop funnel — every row that does not become a URL lands in exactly one
+  // bucket, so `rowsSeen` always reconciles against the emitted count.
+  const dropped = { notEligibleOrMalformed: 0, dead: 0, mergedDuplicate: 0 }
 
   while (productsByContentKey.size < SITEMAP_MAX_URLS) {
     const usingCursor = Boolean(cursor)
     const page = await fetchCanonicalProductsPage(baseUrl, usingCursor ? { cursor } : { offset })
     if (usingCursor) cursorPages++
     else offsetPages++
+    if (feedTotal === null) feedTotal = page.total
+    rowsSeen += page.items.length
     if (page.items.length === 0) break
 
     for (const item of page.items) {
@@ -187,7 +215,11 @@ export async function collectSitemapProducts(baseUrl, options = {}) {
           (item.renderable === false ||
             (String(item.content_key || '').startsWith('ck_') &&
               !String(item.sig_id || '').trim().startsWith('sig_')))
-        if (!droppedAsDead) sawInvalidCanonicalItem = true
+        if (droppedAsDead) dropped.dead++
+        else {
+          dropped.notEligibleOrMalformed++
+          sawInvalidCanonicalItem = true
+        }
         continue
       }
       const existing = productsByContentKey.get(product.contentKey)
@@ -196,6 +228,7 @@ export async function collectSitemapProducts(baseUrl, options = {}) {
           product.contentKey,
           mergeDuplicateProduct(existing, product, incumbentIds),
         )
+        dropped.mergedDuplicate++
         continue
       }
       productsByContentKey.set(product.contentKey, product)
@@ -210,6 +243,23 @@ export async function collectSitemapProducts(baseUrl, options = {}) {
     // nominal page size: the offset-resume point must equal rows consumed,
     // so a short page (fewer items than `limit`) can't make us skip rows.
     offset += page.items.length
+    // PAGING STRATEGY (decided 2026-07-25) — three ranked signals, most authoritative
+    // first. Each arm is only consulted when the one above it is genuinely
+    // ABSENT, never when it is present-but-zero:
+    //
+    //   1. `has_more` — the backend's own answer. Today's feed sets it on every
+    //      page, so this is the arm that actually runs in production.
+    //   2. `offset < total` — only usable on page 1, because this feed returns
+    //      `total` on the first page ONLY. Reached whenever a backend omits
+    //      has_more. `page.total === null` here means UNKNOWN, and readInteger
+    //      guarantees that a missing `total` arrives as null rather than 0 —
+    //      without that guarantee this arm swallows the arm below it forever.
+    //   3. `items.length >= limit` — the last-resort heuristic: a page filled
+    //      to the limit implies another page may exist. Terminates on the
+    //      first short page.
+    //
+    // The walk itself prefers the keyset cursor over offset (see below); this
+    // chain only decides WHETHER to fetch another page, not how to address it.
     const hasMore =
       page.hasMore !== null
         ? page.hasMore
@@ -242,6 +292,25 @@ export async function collectSitemapProducts(baseUrl, options = {}) {
     `pagination: ${cursorPages + offsetPages} page(s) ` +
       `(cursor=${cursorPages}, offset=${offsetPages})`,
   )
+  // The reconciliation line. Every row the feed handed us is accounted for, so
+  // a shortfall can be attributed to a filter (expected) or to paging
+  // (a bug) by reading one line of cron output instead of re-deriving it.
+  console.log(
+    `coverage: rows_seen=${rowsSeen}/${feedTotal ?? 'unknown'} ` +
+      `urls=${productsByContentKey.size} ` +
+      `dropped_dead=${dropped.dead} ` +
+      `dropped_ineligible_or_malformed=${dropped.notEligibleOrMalformed} ` +
+      `merged_duplicate_sigs=${dropped.mergedDuplicate}`,
+  )
+  if (feedTotal === null) {
+    // Not fatal — a backend that never reports `total` is a supported shape —
+    // but it disables sitemapCoverageGuard, and losing a guard should never be
+    // silent.
+    console.warn(
+      'coverage: feed reported no `total` on the first page — the coverage ' +
+        'guard is INACTIVE for this run (paging truncation cannot be detected).',
+    )
+  }
 
   // Deterministic order: backend pagination order is mutable
   // (content_changed_at DESC), which would produce a different diff — and
@@ -275,6 +344,10 @@ export async function collectSitemapProducts(baseUrl, options = {}) {
       : stoppedForCap
         ? 'serving_eligible_truncated'
         : 'serving_eligible',
+    // Fed to sitemapCoverageGuard. `stoppedForCap` is passed through because a
+    // cap stop is a LEGITIMATE short walk (already labelled _truncated) and
+    // must not be reported as a paging failure.
+    coverage: { rowsSeen, feedTotal, stoppedForCap, dropped },
   }
 }
 
@@ -334,10 +407,27 @@ export async function generateSitemaps() {
       `(incumbent urls=${previous.ids.size}) ...`,
   )
 
-  const { products, source, lostIncumbentIds } = await collectSitemapProducts(baseUrl, {
+  const { products, source, coverage, lostIncumbentIds } = await collectSitemapProducts(baseUrl, {
     incumbentIds: previous.ids,
   })
   const urls = productUrlEntries(products)
+
+  // Checked FIRST: a short walk poisons every downstream number, so the other
+  // guards would be judging a set that was never fully read. This is also the
+  // only guard that can catch truncation on a first run, before there is a
+  // committed count to shrink away from.
+  const coverageViolation = sitemapCoverageGuard(coverage)
+  if (coverageViolation) {
+    console.error(
+      `REFUSING to write sitemaps: ${coverageViolation}.\n` +
+        `This is a PAGINATION failure, not a catalog change — publishing it ` +
+        `would advertise a fraction of the catalog and let crawlers cache that ` +
+        `fraction as THE sitemap. Check the pagination/coverage lines above ` +
+        `(has_more, next_cursor, total); SITEMAP_FORCE does NOT bypass this guard.`,
+    )
+    process.exitCode = 1
+    return null
+  }
 
   const keptIncumbents = products.reduce((n, p) => n + (previous.ids.has(p.id) ? 1 : 0), 0)
   console.log(
