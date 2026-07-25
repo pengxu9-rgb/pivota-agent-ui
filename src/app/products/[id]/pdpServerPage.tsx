@@ -13,6 +13,7 @@ import { notFound } from 'next/navigation';
 import { unstable_noStore } from 'next/cache';
 import ProductDetailClient from './ProductDetailClient';
 import { buildProductDescription } from './productDescription';
+import { unstable_rethrow } from 'next/navigation';
 import { buildProductJsonLd } from './productJsonLd';
 import { getPdpV2, getPdpV2Cached, getServicesBrowse } from '@/lib/api';
 import { mapPdpV2ToPdpPayload } from '@/features/pdp/adapter/mapPdpV2ToPdpPayload';
@@ -623,6 +624,71 @@ export async function generatePdpMetadata(
   };
 }
 
+/**
+ * Build the canonical route's JSON-LD for emission from `layout.tsx`, i.e.
+ * OUTSIDE the Suspense boundary that `loading.tsx` puts around the page.
+ *
+ * Why this exists: `ProductDetailClient` calls `useSearchParams()` (see
+ * ProductDetailClient.tsx) with no enclosing Suspense, so under a static/ISR
+ * prerender Next emits `BAILOUT_TO_CLIENT_SIDE_RENDERING` for that subtree —
+ * `<!--$!-->`, an ERRORED boundary whose fallback is permanent. The page's
+ * output, including its own `<script type="application/ld+json">`, therefore
+ * NEVER reaches the HTML; only the skeleton does. Measured on prod 2026-07-25:
+ * strip the `<script>` tags from a live PDP and the readable text is 69
+ * characters — `"<title> | Pivota  Loading products"`. Googlebot executes JS so
+ * it recovers; GPTBot/ClaudeBot and most LLM grounding crawlers do NOT.
+ *
+ * NOTE this is NOT ordinary Suspense streaming (a *pending* boundary does get
+ * backfilled into the byte stream, so deleting `loading.tsx` would not help) and
+ * it is not a regression from the ISR flip per se — the ISR flip is simply what
+ * turned an always-dynamic render into a prerender, where the bailout bites. The
+ * force-dynamic /products/m/[id] alias has no bailout and renders its full body.
+ *
+ * A LAYOUT renders outside that bailed subtree, so markup emitted here does reach
+ * the raw HTML.
+ *
+ * Cost: none extra. `fetchPdpForServerRender` is React-`cache()`d, so the page's
+ * own call in the same render pass reuses this promise — one backend read.
+ *
+ * NEVER THROWS. The canonical route deliberately throws on a degraded render so
+ * ISR won't store a 200 shell (see PDP_DEGRADED_RENDER_ERROR); that decision
+ * belongs to the page. If the layout threw first we'd 500 before the page could
+ * choose, so failures here degrade to "no markup" and the page still decides.
+ * (The underlying fetch swallows its own errors and resolves to `null` for BOTH
+ * callers, so the page still sees the degraded result and throws — one backend
+ * read, behaviour intact.)
+ */
+export async function buildCanonicalPdpJsonLd(
+  params: PdpRouteProps['params'],
+): Promise<string | null> {
+  try {
+    const resolvedParams = await params;
+    const productId = decodeProductIdParam(resolvedParams.id);
+    if (!productId) return null;
+
+    const renderData = await fetchPdpForServerRender(productId, '', PDP_ROUTE_REVALIDATE_S);
+    if (!renderData) return null;
+
+    return buildProductJsonLd(
+      {
+        product: renderData.product,
+        productId: renderData.canonicalRouteId || productId,
+      },
+      {
+        reviewsModule: readPdpModule(renderData.initialPayload, 'reviews_preview')?.data || null,
+        recommendationsModule:
+          readPdpModule(renderData.initialPayload, 'recommendations')?.data || null,
+        productIntelModule: readPdpModule(renderData.initialPayload, 'product_intel')?.data || null,
+      },
+    );
+  } catch (err) {
+    // Never swallow Next's control-flow signals (notFound/redirect/PPR postpone)
+    // — a bare catch would silently degrade those to "no JSON-LD".
+    unstable_rethrow(err);
+    return null;
+  }
+}
+
 export async function renderPdpPage(props: PdpRouteProps, mode: PdpRouteMode) {
   // Try to render JSON-LD server-side. Best-effort: when the PDP endpoint
   // call fails we still ship the client component (which fetches its
@@ -692,7 +758,12 @@ export async function renderPdpPage(props: PdpRouteProps, mode: PdpRouteMode) {
   const productIntelModule = renderData
     ? readPdpModule(renderData.initialPayload, 'product_intel')?.data || null
     : null;
-  const jsonLd = renderData
+  // On the CANONICAL route the JSON-LD is emitted by layout.tsx instead, so it
+  // lands in the SSR shell rather than the (crawler-invisible) streamed flight
+  // payload — see buildCanonicalPdpJsonLd. Emitting it here too would duplicate
+  // the block. The force-dynamic /products/m/[id] alias has no such layout, so
+  // it keeps rendering its own markup here.
+  const jsonLd = mode.personalized && renderData
     ? buildProductJsonLd(
         {
           product: renderData.product,
