@@ -2053,11 +2053,10 @@ export function PdpContainer({
 
     return visibleProductLineOptions
       .map((option, index) => ({ option, index, distance: Math.abs(index - selectedIndex) }))
-      .filter(
-        ({ option }) =>
-          !isSameProductLineOption(option, currentProductId, currentMerchantId) &&
-          !isExternalAliasOnlyProduct(option as any),
-      )
+      // Alias-only options are prefetched too: this memo only feeds the
+      // colour-selector (in-place) path, which addresses the sibling by
+      // (product_id, merchant_id) through getPdpV2, not by URL.
+      .filter(({ option }) => !isSameProductLineOption(option, currentProductId, currentMerchantId))
       .sort((left, right) => {
         if (left.distance !== right.distance) return left.distance - right.distance;
         return left.index - right.index;
@@ -3606,11 +3605,9 @@ export function PdpContainer({
       const merchantId = String(option.merchant_id || '').trim();
       const currentProductId = String(payload.product.product_id || '').trim();
       const currentMerchantId = String(payload.product.merchant_id || '').trim();
-      if (
-        !productId ||
-        isSameProductLineOption(option, currentProductId, currentMerchantId) ||
-        isExternalAliasOnlyProduct(option as any)
-      ) {
+      // No alias-only check: this only runs in colour-selector mode, where the
+      // switch is an in-place getPdpV2 fetch rather than a navigation.
+      if (!productId || isSameProductLineOption(option, currentProductId, currentMerchantId)) {
         return;
       }
       const cacheKey = buildProductLinePayloadCacheKey(productId, merchantId);
@@ -3696,7 +3693,20 @@ export function PdpContainer({
       const nextProductId = String(option.product_id || '').trim();
       if (!nextProductId) return;
       const nextMerchantId = String(option.merchant_id || '').trim();
-      if (isExternalAliasOnlyProduct(option as any)) return;
+      // NOTE: the alias-only check used to sit here, rejecting the option
+      // outright, which made every cross-URL shade on an external-seed PDP a
+      // dead swatch: rendered, enabled, clickable, silently doing nothing.
+      //
+      // Colour-selector switching does not navigate — it fetches through
+      // getPdpV2 and swaps the payload in place — and an ext_ alias IS
+      // addressable that way. Verified against production:
+      //   get_pdp_v2(ext_4325616696001433e9e318ca, external_seed)
+      //     -> status success, modules [canonical, variant_selector, offers]
+      // so there is nothing to protect against on this path.
+      //
+      // The check survives only on the router.push fallback below — see the
+      // comment there for why that is a canonical-URL preference rather than a
+      // routability requirement.
       const currentProductId = String(payload.product.product_id || '').trim();
       const currentMerchantId = String(payload.product.merchant_id || '').trim();
       if (
@@ -3705,6 +3715,18 @@ export function PdpContainer({
       ) {
         return;
       }
+      // Bail BEFORE tracking on the path we will not act on. The selector
+      // renders for any axis with >1 option, but only shade/colour/tone axes get
+      // in-place switching; everything else falls through to router.push below,
+      // which declines alias-only options. Tracking first would emit a
+      // select_product_line_option event for a selection that never happened —
+      // precisely on the external-seed cohort this change is about.
+      //
+      // KNOWN GAP: size/volume/capacity swatches on an alias-only external-seed
+      // PDP therefore remain inert. Making them work means letting the
+      // navigation fallback route to an alias URL — see below.
+      if (!shouldUseProductLineColorSelector && isExternalAliasOnlyProduct(option as any)) return;
+
       const targetHref = buildProductHrefForProduct(option as any);
       const params = new URLSearchParams(targetHref.split('?')[1] || '');
       if (currentRelativePath) params.set('return', currentRelativePath);
@@ -3787,6 +3809,20 @@ export function PdpContainer({
         return;
       }
 
+      // Navigation fallback (non-colour axes). Alias-only options were already
+      // returned above.
+      //
+      // To be precise about WHY, since the original comment here was wrong: an
+      // ext_ URL does resolve — /products/ext_4325616696001433e9e318ca renders
+      // a real PDP (verified in production). The earlier "it 500s" claim came
+      // from probing a fictional id out of a test fixture.
+      //
+      // So this is NOT a broken-link guard. It preserves existing behaviour on
+      // a path this change does not otherwise touch: f0e2cbe routes alias-only
+      // products to /products across ~15 call sites. Note the in-place branch
+      // above now does put an alias URL in the address bar, so this repo is no
+      // longer consistent on the point — whether to route to alias URLs is an
+      // open product call, not a settled preference.
       const pathname = targetHref.split('?')[0];
       router.push(`${pathname}${params.toString() ? `?${params.toString()}` : ''}`);
     },

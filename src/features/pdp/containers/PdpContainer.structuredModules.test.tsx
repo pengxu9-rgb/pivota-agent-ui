@@ -3,10 +3,13 @@ import React from 'react';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { pdpTracking } from '@/features/pdp/tracking';
 import { PdpContainer } from './PdpContainer';
 import type { PDPPayload } from '@/features/pdp/types';
 
 const routerPush = vi.hoisted(() => vi.fn());
+let replaceStateSpy: ReturnType<typeof vi.spyOn>;
+let trackSpy: ReturnType<typeof vi.spyOn>;
 const getPdpV2Mock = vi.hoisted(() => vi.fn());
 
 vi.mock('next/image', () => ({
@@ -505,6 +508,11 @@ describe('PdpContainer structured PDP modules', () => {
       writable: true,
       value: matchMedia,
     });
+    // In-place product-line switching syncs the address bar via replaceState;
+    // spied so tests can assert that the rewrite happens and names the target.
+    replaceStateSpy = vi.spyOn(window.history, 'replaceState').mockImplementation(() => {});
+    // Spied so tests can assert we do not report a selection that never happened.
+    trackSpy = vi.spyOn(pdpTracking, 'track').mockImplementation(() => {});
   });
 
   afterEach(() => {
@@ -781,19 +789,13 @@ describe('PdpContainer structured PDP modules', () => {
     expect(screen.getAllByText('$24').length).toBeGreaterThan(0);
   });
 
-  // QUARANTINED — see #277. Red since ~2026-06-01; surfaced when test CI was
-  // wired up. ROOT CAUSE FOUND: the sibling shade here is `ext_boj_dn310`, and
-  // isExternalAliasOnlyProduct() (src/lib/productHref.ts) returns true for any
-  // route id starting with `ext_`, so the prefetch-candidate filter in
-  // PdpContainer drops it and getPdpV2 is never called.
-  //
-  // That predicate conflates PROVENANCE (came from external seed) with
-  // ROUTABILITY (cannot be linked) — the same conflation #274/#275 fixed in the
-  // sitemap generator. Verified: giving the option a `pivota_signature_id:
-  // 'sig_...'` flips isExternalAliasOnlyProduct to false.
-  //
-  // Fix the predicate, not this test. Do NOT weaken the assertions to go green.
-  it.skip('renders cross-url product-line shades as swatches and switches in place', async () => {
+  // Was quarantined (#277): the alias-only guard in handleProductLineOptionSelect
+  // / the prefetch path rejected this `ext_boj_dn310` sibling, so getPdpV2 was
+  // never called and the swatch was a dead control. Routability was the wrong
+  // question — colour-selector switching is an in-place getPdpV2 fetch, not a
+  // navigation. Un-skipped now that the guard applies only to the router.push
+  // fallback.
+  it('renders cross-url product-line shades as swatches and switches in place', async () => {
     const payload = buildBeautyPayload();
     payload.product.product_id = 'ext_boj_dn350';
     payload.product.merchant_id = 'external_seed';
@@ -981,6 +983,59 @@ describe('PdpContainer structured PDP modules', () => {
         ),
       ).toBe(true);
     });
+
+    // The in-place switch syncs the address bar. ext_ URLs do resolve
+    // (/products/ext_… renders a real PDP in production), so the alias-only
+    // target is rewritten like any other.
+    expect(replaceStateSpy).toHaveBeenCalled();
+    expect(String(replaceStateSpy.mock.calls.at(-1)?.[2])).toContain('/products/ext_boj_dn310');
+  });
+
+  it('does not navigate or track when a NON-colour axis option is alias-only', async () => {
+    // Pins the relocated guard. Deleting it from handleProductLineOptionSelect
+    // left the whole suite green before this test existed, so the PR's central
+    // "the check moves rather than disappears" claim was unverified at its new
+    // home. A size axis gets no in-place switching, so it falls through to the
+    // router.push fallback — which must decline an alias-only target, and must
+    // not emit a selection event for a selection that never happens.
+    const payload = buildBeautyPayload();
+    payload.product.product_id = 'ext_rb_primer_mini';
+    payload.product.merchant_id = 'external_seed';
+    payload.product.product_line_option_name = 'Size';
+    payload.product.product_line_options = [
+      {
+        option_id: 'external_seed:ext_rb_primer_full',
+        option_name: 'Size',
+        axis: 'size',
+        value: 'full size',
+        label: 'Full Size',
+        product_id: 'ext_rb_primer_full',
+        merchant_id: 'external_seed',
+      },
+      {
+        option_id: 'external_seed:ext_rb_primer_mini',
+        option_name: 'Size',
+        axis: 'size',
+        value: 'mini',
+        label: 'Mini',
+        product_id: 'ext_rb_primer_mini',
+        merchant_id: 'external_seed',
+        selected: true,
+      },
+    ];
+
+    render(
+      <PdpContainer payload={payload} mode="beauty" onAddToCart={() => {}} onBuyNow={() => {}} />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /Full Size/ }));
+
+    expect(routerPush).not.toHaveBeenCalled();
+    expect(getPdpV2Mock).not.toHaveBeenCalled();
+    expect(trackSpy).not.toHaveBeenCalledWith(
+      'pdp_action_click',
+      expect.objectContaining({ action_type: 'select_product_line_option' }),
+    );
   });
 
   it('uses the real shade variants when merged seller rows duplicate the variant axis', () => {
