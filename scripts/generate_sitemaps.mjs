@@ -158,8 +158,19 @@ export async function collectSitemapProducts(baseUrl) {
         // A renderable=false drop is the EXPECTED dead-PDP filter, not a
         // malformed row — don't let it pin the source label to "_partial"
         // forever (that label is the anomaly signal for parse failures).
+        //
+        // Same reasoning for a ck-only row (valid content_key, no minted sig):
+        // readCanonicalProduct now rejects those because /products/{ck} 500s,
+        // but they are perfectly well-formed rows, not parse failures. Without
+        // this arm every regeneration would report `serving_eligible_partial`
+        // for as long as the feed contains one such row — permanently retiring
+        // the very anomaly signal this block exists to protect.
+        const isPlainItem = item && typeof item === 'object'
         const droppedAsDead =
-          item && typeof item === 'object' && item.renderable === false
+          isPlainItem &&
+          (item.renderable === false ||
+            (String(item.content_key || '').startsWith('ck_') &&
+              !String(item.sig_id || '').trim().startsWith('sig_')))
         if (!droppedAsDead) sawInvalidCanonicalItem = true
         continue
       }

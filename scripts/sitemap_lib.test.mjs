@@ -345,6 +345,41 @@ describe('collectSitemapProducts — backend pagination', () => {
     expect(source).toBe('serving_eligible')
   })
 
+  it('ck-only drops do NOT mark the run partial (well-formed row, not a parse failure)', async () => {
+    // Mirrors the renderable=false case above. ck-only rows are now rejected by
+    // readCanonicalProduct (their /products/{ck} URL 500s), but they are valid
+    // rows — if they counted as "invalid" the source label would read
+    // serving_eligible_partial on EVERY regeneration for as long as the feed
+    // contains one, permanently retiring the anomaly signal for real parse
+    // failures.
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      pageResponse(
+        [
+          canonicalProduct('sig_keep_me'),
+          { sig_id: null, content_key: 'ck_storeless_brand', index_eligible: true },
+        ],
+        2,
+      ),
+    )
+
+    const { products: collected, source } = await collectSitemapProducts(
+      'https://canonical.example.com',
+    )
+
+    expect(collected.map((p) => p.id)).toEqual(['sig_keep_me'])
+    expect(source).toBe('serving_eligible')
+  })
+
+  it('a genuinely malformed row STILL marks the run partial', async () => {
+    // The signal must survive: garbage rows are the thing _partial exists for.
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      pageResponse([canonicalProduct('sig_keep_me'), 'not-an-object'], 2),
+    )
+
+    const { source } = await collectSitemapProducts('https://canonical.example.com')
+    expect(source).toBe('serving_eligible_partial')
+  })
+
   it('pages by keyset cursor when the backend provides next_cursor', async () => {
     const firstPage = products(1000, 'sig_cursor_one')
     const secondPage = [canonicalProduct('sig_cursor_two_0000')]
