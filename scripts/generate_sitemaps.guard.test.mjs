@@ -104,6 +104,10 @@ afterEach(() => {
   process.exitCode = previousExitCode
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
+  // Unconditional, not left to the fake-timer test's last line: if an
+  // assertion there throws, that line never runs and fake timers leak into
+  // every later test in this worker. Harmless when timers are already real.
+  vi.useRealTimers()
 })
 
 describe('generateSitemaps wiring — the id guard is actually called before writing', () => {
@@ -195,6 +199,25 @@ describe('generateSitemaps wiring — the coverage guard is called before writin
     expect(process.exitCode).toBe(1)
     expect(writeFile).not.toHaveBeenCalled()
     vi.unstubAllEnvs()
+  })
+
+  it('WARNS but still writes a churn-scale shortfall (never freezes the sitemap)', async () => {
+    // 1,500 of 1,560 promised rows: past the 2% allowance, well under the 10%
+    // refusal band. The keyset walk genuinely loses rows edited mid-crawl, and
+    // that correlates with the enrichment backfills that make a refresh most
+    // valuable — refusing here would trade a 96% build for a 100% stale one.
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => shortWalkPage(rows({ sigCount: 1500, ckCount: 0 }), 1560)),
+    )
+
+    const result = await generateSitemaps()
+
+    expect(result).not.toBeNull()
+    expect(process.exitCode).not.toBe(1)
+    expect(writeFile).toHaveBeenCalled()
+    expect(warn.mock.calls.flat().join(' ')).toContain('coverage WARNING')
   })
 
   it('writes normally when the walk consumed everything the feed promised', async () => {

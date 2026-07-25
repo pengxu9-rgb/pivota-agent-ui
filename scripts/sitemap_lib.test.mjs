@@ -14,7 +14,7 @@ import {
   productUrlEntries,
   readCanonicalProduct,
   sitemapCountGuard,
-  sitemapCoverageGuard,
+  sitemapCoverageVerdict,
   sitemapIdGuard,
   sitemapIndexEntries,
   staticSitemapEntries,
@@ -825,7 +825,7 @@ describe('collectSitemapProducts — `total` present on the first page only (pro
     expect(collected).toHaveLength(2500)
     expect(source).toBe('serving_eligible')
     expect(coverage).toMatchObject({ rowsSeen: 2500, feedTotal: 2500, stoppedForCap: false })
-    expect(sitemapCoverageGuard(coverage)).toBeNull()
+    expect(sitemapCoverageVerdict(coverage).level).toBe('ok')
   })
 
   // THE REGRESSION FENCE. Strip has_more and the walk must fall through to the
@@ -873,7 +873,7 @@ describe('collectSitemapProducts — `total` present on the first page only (pro
     expect(fetchMock).toHaveBeenCalledTimes(1)
     expect(collected).toHaveLength(1000)
     expect(coverage).toMatchObject({ rowsSeen: 1000, feedTotal: 1000 })
-    expect(sitemapCoverageGuard(coverage)).toBeNull()
+    expect(sitemapCoverageVerdict(coverage).level).toBe('ok')
   })
 
   it('terminates on an empty page when a has_more-less walk ends on a full page', async () => {
@@ -895,7 +895,7 @@ describe('collectSitemapProducts — `total` present on the first page only (pro
     expect(collected).toHaveLength(2000)
     // The empty third page adds no rows, so coverage still reconciles.
     expect(coverage.rowsSeen).toBe(2000)
-    expect(sitemapCoverageGuard(coverage)).toBeNull()
+    expect(sitemapCoverageVerdict(coverage).level).toBe('ok')
   })
 
   it('accounts for every consumed row in the drop funnel', async () => {
@@ -926,12 +926,14 @@ describe('collectSitemapProducts — `total` present on the first page only (pro
       dead: 1,
       mergedDuplicate: 1,
       notEligibleOrMalformed: 1,
+      skippedAtCap: 0,
     })
     // rowsSeen reconciles exactly: 5 rows = 2 URLs + 1 + 1 + 1 dropped.
     const totalDropped =
       coverage.dropped.dead +
       coverage.dropped.mergedDuplicate +
-      coverage.dropped.notEligibleOrMalformed
+      coverage.dropped.notEligibleOrMalformed +
+      coverage.dropped.skippedAtCap
     expect(collected.length + totalDropped).toBe(coverage.rowsSeen)
   })
 
@@ -945,55 +947,133 @@ describe('collectSitemapProducts — `total` present on the first page only (pro
     // Null, never 0 — 0 would read as "the feed has no products", and would
     // make the coverage guard pass vacuously on a truncated walk.
     expect(coverage.feedTotal).toBeNull()
-    expect(sitemapCoverageGuard(coverage)).toBeNull()
+    expect(sitemapCoverageVerdict(coverage).level).toBe('ok')
   })
 })
 
-describe('coverage guard — rows consumed vs rows the feed promised', () => {
+describe('coverage verdict — rows consumed vs rows the feed promised', () => {
+  const walk = (rowsSeen, feedTotal, stoppedForCap = false) =>
+    sitemapCoverageVerdict({ rowsSeen, feedTotal, stoppedForCap })
+
   it('passes a walk that consumed every promised row', () => {
-    expect(
-      sitemapCoverageGuard({ rowsSeen: 5887, feedTotal: 5887, stoppedForCap: false }),
-    ).toBeNull()
+    expect(walk(5887, 5887).level).toBe('ok')
   })
 
-  it('refuses a walk that stopped early, naming both counts', () => {
-    const violation = sitemapCoverageGuard({
-      rowsSeen: 2000,
-      feedTotal: 5887,
-      stoppedForCap: false,
-    })
-    expect(violation).toContain('2000')
-    expect(violation).toContain('5887')
-    expect(violation).toContain('34.0%')
+  it('REFUSES a paging-scale shortfall, naming both counts', () => {
+    // The shape the `Number(null) === 0` trap produced: one page of six.
+    const verdict = walk(2000, 5887)
+    expect(verdict.level).toBe('refuse')
+    expect(verdict.message).toContain('2000')
+    expect(verdict.message).toContain('5887')
+    expect(verdict.message).toContain('34.0%')
   })
 
-  it('tolerates a handful of rows deleted mid-walk (concurrent catalog churn)', () => {
-    expect(
-      sitemapCoverageGuard({ rowsSeen: 5850, feedTotal: 5887, stoppedForCap: false }),
-    ).toBeNull()
-    expect(
-      sitemapCoverageGuard({ rowsSeen: 5800, feedTotal: 5887, stoppedForCap: false }),
-    ).not.toBeNull()
+  it('passes churn below the allowance without a warning', () => {
+    // 2% of 5,887 is 118 rows — comfortably above the worst observed
+    // enrichment burst (~135/min against a ~15s walk).
+    expect(walk(5887 - 100, 5887).level).toBe('ok')
+  })
+
+  it('WARNS but still publishes a churn-scale shortfall (self-healing next tick)', () => {
+    // Above the 2% allowance, below the 10% refusal band. Publishing a
+    // 96.6%-complete sitemap beats freezing the previous one — rows bumped
+    // mid-walk sort to the top of content_changed_at DESC and return next run.
+    const verdict = walk(5687, 5887)
+    expect(verdict.level).toBe('warn')
+    expect(verdict.message).toContain('200')
+    expect(verdict.message).toMatch(/next run/)
+  })
+
+  it('draws the refuse line at 10% of the promised total', () => {
+    expect(walk(5300, 5887).level).toBe('warn') // 587 missing, just under 10%
+    expect(walk(5298, 5887).level).toBe('refuse') // 589 missing, at/over 10%
+  })
+
+  it('scales the allowance with the catalog instead of tightening as it grows', () => {
+    // A fixed 50-row allowance would refuse both of these; churn scales with
+    // catalog size and walk duration, so the allowance must too.
+    expect(walk(49_400, 50_000).level).toBe('ok') // 600 missing = 1.2%
+    expect(walk(980, 1000).level).toBe('ok') // small catalog keeps the 50 floor
   })
 
   it('skips when the backend reported no total (nothing to compare against)', () => {
-    expect(
-      sitemapCoverageGuard({ rowsSeen: 10, feedTotal: null, stoppedForCap: false }),
-    ).toBeNull()
+    expect(walk(10, null).level).toBe('ok')
   })
 
   it('skips a legitimate short read at the 50k URL cap', () => {
-    expect(
-      sitemapCoverageGuard({ rowsSeen: 50000, feedTotal: 90000, stoppedForCap: true }),
-    ).toBeNull()
+    expect(walk(50_000, 90_000, true).level).toBe('ok')
   })
 
-  it('is not fooled by a feedTotal of 0 vs a missing one', () => {
-    expect(sitemapCoverageGuard({ rowsSeen: 0, feedTotal: 0, stoppedForCap: false })).toBeNull()
+  it('treats a wholly missing coverage object as a failure, NOT a pass', () => {
+    // Returning ok here would silently retire the guard the moment a caller
+    // renames the key — the invisible-regression class this suite exists for.
+    expect(sitemapCoverageVerdict().level).toBe('refuse')
+    expect(sitemapCoverageVerdict(null).level).toBe('refuse')
+    expect(sitemapCoverageVerdict('nope').level).toBe('refuse')
+    expect(sitemapCoverageVerdict({ feedTotal: 100, stoppedForCap: false }).level).toBe('refuse')
+    expect(sitemapCoverageVerdict({ feedTotal: 100 }).message).toContain('rowsSeen')
   })
 
-  it('reports missing bookkeeping instead of passing silently', () => {
-    expect(sitemapCoverageGuard({ feedTotal: 100, stoppedForCap: false })).toContain('rowsSeen')
-    expect(sitemapCoverageGuard()).toBeNull()
+  it('passes an empty catalog (0 of 0 is complete, not a shortfall)', () => {
+    expect(walk(0, 0).level).toBe('ok')
   })
+})
+
+describe('the 50k URL cap is labelled and accounted for, wherever it lands', () => {
+  beforeEach(() => {
+    vi.stubEnv('PIVOTA_BACKEND_BASE_URL', 'https://canonical.example.com')
+    vi.spyOn(console, 'log').mockImplementation(() => {})
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.unstubAllEnvs()
+  })
+
+  it('sets stoppedForCap and buckets the unvisited remainder when the cap lands mid-page', async () => {
+    // 900 keepers + 100 dead rows per page, so the 50,000th URL arrives partway
+    // through page 56 — NOT on a page boundary, and on a page the backend has
+    // already flagged has_more=false. Before this fix the in-loop break left
+    // stoppedForCap false: the build was truncated but labelled
+    // `serving_eligible`, and the skipped remainder fell out of the funnel.
+    const PAGE = 1000
+    const KEEP = 900
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const offset = Number(new URL(String(input)).searchParams.get('offset') || 0)
+      const items = Array.from({ length: PAGE }, (_, i) => {
+        const n = offset + i
+        const row = canonicalProduct(`sig_cap_${String(n).padStart(6, '0')}`)
+        // Deterministic 90/10 keep/dead split within each page.
+        return i < KEEP ? row : { ...row, renderable: false }
+      })
+      // has_more goes false on exactly the page where the cap lands (900
+      // keepers/page → the 50,000th arrives partway through the page at
+      // offset 55,000). That combination is the false-negative path: the
+      // in-loop break exits, and the `size >= MAX && hasMore` arm below can
+      // no longer set the flag because hasMore is false.
+      return pageResponse(items, null, offset, { has_more: offset < 55_000 })
+    })
+
+    const { products: collected, source, coverage } = await collectSitemapProducts(
+      'https://canonical.example.com',
+    )
+
+    expect(collected).toHaveLength(50_000)
+    expect(coverage.stoppedForCap).toBe(true)
+    expect(source).toBe('serving_eligible_truncated')
+    expect(coverage.dropped.skippedAtCap).toBeGreaterThan(0)
+
+    // The invariant the coverage log claims: nothing vanishes unaccounted.
+    const totalDropped = Object.values(coverage.dropped).reduce((a, b) => a + b, 0)
+    expect(collected.length + totalDropped).toBe(coverage.rowsSeen)
+
+    // A cap stop is a legitimate short read — it must not be reported as a
+    // pagination failure even though rowsSeen falls short of any total.
+    expect(sitemapCoverageVerdict(coverage).level).toBe('ok')
+    expect(fetchMock).toHaveBeenCalled()
+    // Explicit headroom: this is the only test that walks 56 pages / 56k rows
+    // (~1.3s warm). The 5s default is uncomfortably close on a cold-cache run
+    // where vitest's transform step already dominates the clock.
+  }, 30_000)
 })

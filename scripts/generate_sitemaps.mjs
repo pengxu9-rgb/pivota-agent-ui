@@ -34,7 +34,7 @@ import {
   productUrlEntries,
   readCanonicalProduct,
   sitemapCountGuard,
-  sitemapCoverageGuard,
+  sitemapCoverageVerdict,
   sitemapIdGuard,
   sitemapIndexEntries,
   staticSitemapEntries,
@@ -178,25 +178,31 @@ export async function collectSitemapProducts(baseUrl, options = {}) {
   let cursorPages = 0
   let offsetPages = 0
   // Coverage bookkeeping: rows the feed PROMISED vs rows we actually consumed.
-  // `feedTotal` is only ever populated from the first page — this feed answers
-  // `total: null` for every subsequent page, so a later page must never be
-  // allowed to overwrite a known total back to unknown.
+  // `feedTotal` is read from the FIRST page only, by page index rather than by
+  // "first non-null" — this feed computes the COUNT(*) solely on the
+  // offset=0/no-cursor branch, so a total arriving later would describe a
+  // different window than `rowsSeen` has already accumulated and would make
+  // the ratio meaningless (rows_seen=3000/1000).
   let feedTotal = null
   let rowsSeen = 0
+  let pageIndex = 0
   // Drop funnel — every row that does not become a URL lands in exactly one
-  // bucket, so `rowsSeen` always reconciles against the emitted count.
-  const dropped = { notEligibleOrMalformed: 0, dead: 0, mergedDuplicate: 0 }
+  // bucket, so emitted URLs + drops always reconciles against `rowsSeen`.
+  const dropped = { notEligibleOrMalformed: 0, dead: 0, mergedDuplicate: 0, skippedAtCap: 0 }
 
   while (productsByContentKey.size < SITEMAP_MAX_URLS) {
     const usingCursor = Boolean(cursor)
     const page = await fetchCanonicalProductsPage(baseUrl, usingCursor ? { cursor } : { offset })
     if (usingCursor) cursorPages++
     else offsetPages++
-    if (feedTotal === null) feedTotal = page.total
+    if (pageIndex === 0) feedTotal = page.total
+    pageIndex++
     rowsSeen += page.items.length
     if (page.items.length === 0) break
 
+    let consumedThisPage = 0
     for (const item of page.items) {
+      consumedThisPage++
       const product = readCanonicalProduct(item)
       if (!product) {
         // A renderable=false drop is the EXPECTED dead-PDP filter, not a
@@ -232,7 +238,16 @@ export async function collectSitemapProducts(baseUrl, options = {}) {
         continue
       }
       productsByContentKey.set(product.contentKey, product)
-      if (productsByContentKey.size >= SITEMAP_MAX_URLS) break
+      if (productsByContentKey.size >= SITEMAP_MAX_URLS) {
+        // Hitting the cap mid-page IS a truncation, even when this happens to
+        // be the last page (has_more=false) and the walk would have ended
+        // anyway. Setting the flag here rather than only in the has_more arm
+        // below keeps the `_truncated` label honest, and bucketing the
+        // unvisited remainder keeps the funnel reconciling with rowsSeen.
+        stoppedForCap = true
+        dropped.skippedAtCap += page.items.length - consumedThisPage
+        break
+      }
     }
 
     // Keep `offset` in step as a fallback resume anchor: if the backend
@@ -300,11 +315,12 @@ export async function collectSitemapProducts(baseUrl, options = {}) {
       `urls=${productsByContentKey.size} ` +
       `dropped_dead=${dropped.dead} ` +
       `dropped_ineligible_or_malformed=${dropped.notEligibleOrMalformed} ` +
-      `merged_duplicate_sigs=${dropped.mergedDuplicate}`,
+      `merged_duplicate_sigs=${dropped.mergedDuplicate} ` +
+      `skipped_at_cap=${dropped.skippedAtCap}`,
   )
   if (feedTotal === null) {
     // Not fatal — a backend that never reports `total` is a supported shape —
-    // but it disables sitemapCoverageGuard, and losing a guard should never be
+    // but it disables the coverage verdict, and losing a guard should never be
     // silent.
     console.warn(
       'coverage: feed reported no `total` on the first page — the coverage ' +
@@ -344,8 +360,8 @@ export async function collectSitemapProducts(baseUrl, options = {}) {
       : stoppedForCap
         ? 'serving_eligible_truncated'
         : 'serving_eligible',
-    // Fed to sitemapCoverageGuard. `stoppedForCap` is passed through because a
-    // cap stop is a LEGITIMATE short walk (already labelled _truncated) and
+    // Fed to sitemapCoverageVerdict. `stoppedForCap` is passed through because
+    // a cap stop is a LEGITIMATE short walk (already labelled _truncated) and
     // must not be reported as a paging failure.
     coverage: { rowsSeen, feedTotal, stoppedForCap, dropped },
   }
@@ -416,17 +432,22 @@ export async function generateSitemaps() {
   // guards would be judging a set that was never fully read. This is also the
   // only guard that can catch truncation on a first run, before there is a
   // committed count to shrink away from.
-  const coverageViolation = sitemapCoverageGuard(coverage)
-  if (coverageViolation) {
+  const coverageVerdict = sitemapCoverageVerdict(coverage)
+  if (coverageVerdict.level === 'refuse') {
     console.error(
-      `REFUSING to write sitemaps: ${coverageViolation}.\n` +
-        `This is a PAGINATION failure, not a catalog change — publishing it ` +
-        `would advertise a fraction of the catalog and let crawlers cache that ` +
-        `fraction as THE sitemap. Check the pagination/coverage lines above ` +
-        `(has_more, next_cursor, total); SITEMAP_FORCE does NOT bypass this guard.`,
+      `REFUSING to write sitemaps: ${coverageVerdict.message}.\n` +
+        `Publishing it would advertise a fraction of the catalog and let ` +
+        `crawlers cache that fraction as THE sitemap. Check the ` +
+        `pagination/coverage lines above (has_more, next_cursor, total); ` +
+        `SITEMAP_FORCE does NOT bypass this guard.`,
     )
     process.exitCode = 1
     return null
+  }
+  if (coverageVerdict.level === 'warn') {
+    // Loud, but NOT fatal — see sitemapCoverageVerdict for why publishing a
+    // ~1%-short build beats freezing the last one.
+    console.warn(`coverage WARNING: ${coverageVerdict.message}`)
   }
 
   const keptIncumbents = products.reduce((n, p) => n + (previous.ids.has(p.id) ? 1 : 0), 0)
