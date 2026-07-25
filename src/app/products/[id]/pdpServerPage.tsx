@@ -61,8 +61,12 @@ const PDP_ROUTE_REVALIDATE_S = 3600;
 const PDP_SERVER_FETCH_TIMEOUT_MS = 9000;
 // Budget for the single transient-only retry (see _fetchPdpForServerRenderUncached).
 // Kept well under the first-attempt budget so a retry cannot double worst-case
-// ISR fill latency.
-const PDP_SERVER_RETRY_TIMEOUT_MS = 4000;
+// ISR fill latency: 9s + 3s = 12s, which still leaves render headroom inside
+// the platform's default serverless function limit (vercel.json sets no
+// maxDuration). Raising either budget needs that ceiling re-checked — an ISR
+// fill that gets killed mid-render is a 504, which is worse than the 500 the
+// retry exists to avoid.
+const PDP_SERVER_RETRY_TIMEOUT_MS = 3000;
 
 // The anonymous, crawlable, sitemap-published PDP route ids: Pivota signatures
 // (sig_), content-key canonicals (ck_) for store-less brands, and product groups
@@ -283,57 +287,100 @@ function markDegradedPdpRenderUncacheable(): void {
  * `inactive`. Those will never render, and a repeated 5xx on a sitemap URL
  * burns Google crawl budget instead of retiring the URL.
  *
- * - `unbuildable` — PERMANENT. The gateway gave a definitive negative answer
- *   (4xx / PRODUCT_NOT_FOUND) or answered 200 with a payload carrying no
- *   mappable product. Retrying cannot change the outcome → `notFound()` (404).
- * - `degraded` — TRANSIENT. Timeout, network failure, 5xx, or a throttling
- *   status. Retrying is the correct behavior → keep the honest 500 so the
- *   crawler comes back and nothing broken is cached.
+ * - `unbuildable` — PERMANENT. The gateway named a specific, settled reason
+ *   this product cannot render. Retrying cannot change the outcome →
+ *   `notFound()` (404).
+ * - `degraded` — TRANSIENT. Everything else: timeout, network failure, 5xx,
+ *   throttling, an unrecognized 4xx. Keep the honest 500 so the crawler comes
+ *   back and nothing broken is cached.
  *
- * Default-transient is the safe bias: misclassifying a transient blip as
- * permanent would 404 (and cache that 404) on a healthy product, which is
- * strictly worse than a 500 that self-heals. So only definitive signals map
- * to `unbuildable`.
+ * THE CLASSIFIER IS A STRICT ALLOWLIST, AND MUST STAY ONE.
+ *
+ * The asymmetry is severe. A wrong `degraded` costs a 500 that self-heals on
+ * the next crawl. A wrong `unbuildable` costs a 404 that Next STORES in the
+ * ISR/CDN cache with the route's `s-maxage` (plus a long
+ * stale-while-revalidate), so it outlives the incident that caused it and
+ * actively de-indexes a healthy product.
+ *
+ * Blast radius is what rules out the tempting general rules:
+ *
+ * - "any 4xx is permanent" — the gateway's serving-eligibility gate FAILS
+ *   CLOSED to `404 PRODUCT_NOT_SERVABLE` whenever it cannot read eligibility,
+ *   including on any DB error (the read returns null and is only warn-logged).
+ *   One Postgres hiccup would therefore 404 the ENTIRE catalog, and cache it.
+ * - "PRODUCT_NOT_FOUND is permanent" — also reachable from identity-resolution
+ *   misses, which flap.
+ * - "INVALID_REQUEST is permanent" — that is the invoke-envelope schema
+ *   rejection, raised for EVERY operation. agent-ui and PIVOTA-Agent deploy
+ *   independently, so a request-shape drift would 404 every PDP at once.
+ * - "200 with no mappable product is permanent" — `getPdpV2Cached` documents
+ *   the opposite: an empty payload means mid-ingestion or a serving-eligibility
+ *   flap, which is exactly the transient case.
+ *
+ * So only reasons we have empirically confirmed to be terminal qualify, and
+ * each must be matched on the gateway's own `details.reason`, not on a status
+ * class.
  */
 export type PdpFetchOutcome =
   | { status: 'ok'; data: ServerPdpRenderData }
   | { status: 'unbuildable' }
   | { status: 'degraded' };
 
-// Statuses that are 4xx but explicitly mean "ask again later", not
-// "this does not exist": request timeout, too-early, and rate limiting.
-const TRANSIENT_4XX_STATUSES = new Set([408, 425, 429]);
-
-// Gateway reason codes that are a definitive negative answer about the
-// product itself, independent of the HTTP status that carried them.
-const PERMANENT_GATEWAY_CODES = new Set([
-  'PRODUCT_NOT_FOUND',
-  'PRODUCT_NOT_AVAILABLE',
-  'PRODUCT_UNAVAILABLE',
-  'NOT_FOUND',
-  'INVALID_REQUEST',
-  'INVALID_PRODUCT_ID',
+/**
+ * The allowlist: gateway `details.reason` values that are settled facts about
+ * the product, not about the health of the read path.
+ *
+ * `external_seed_not_active` — the seed-status precheck runs BEFORE identity
+ * resolution and hard-404s any `external_product_seeds` row whose status is
+ * not 'active'. Nothing downstream can make such a row render, and the status
+ * only changes via a deliberate seed-lifecycle write. This is the measured
+ * cohort: 127 of 1,901 sitemap URLs on 2026-07-25, 100% of the 500s found in
+ * a 60-URL sample.
+ *
+ * Adding an entry here is a load-bearing decision. Require evidence that the
+ * reason cannot be produced by a transient infrastructure failure.
+ */
+const PERMANENTLY_UNBUILDABLE_GATEWAY_REASONS = new Set([
+  'external_seed_not_active',
 ]);
+
+function readGatewayFailureReason(err: unknown): string {
+  // callGateway parks the whole parsed error body on `err.detail`.
+  const detail = (err as any)?.detail;
+  const reason =
+    detail?.details?.reason ??
+    detail?.error?.details?.reason ??
+    detail?.detail?.details?.reason;
+  return String(reason || '').trim().toLowerCase();
+}
 
 /**
  * Classify a thrown gateway error as permanently unbuildable vs transient.
  *
- * `callGateway` attaches `status` (the upstream HTTP status) and `code` (the
- * gateway reason code) to the Error it throws, which is what makes this
- * distinction possible without re-probing.
+ * `callGateway` attaches `status`, `code`, and the parsed body (`detail`) to
+ * the Error it throws, which is what makes this distinction possible without
+ * re-probing.
  */
 export function classifyPdpFetchFailure(err: unknown): 'unbuildable' | 'degraded' {
   const code = String((err as any)?.code || '').trim().toUpperCase();
-  // UPSTREAM_TIMEOUT is minted by callGatewayWithTimeout on our own abort —
-  // always transient, and it can arrive with no status at all.
-  if (code === 'UPSTREAM_TIMEOUT' || code === 'TEMPORARY_UNAVAILABLE') return 'degraded';
-  if (PERMANENT_GATEWAY_CODES.has(code)) return 'unbuildable';
+  // Guard the allowlist behind the not-found code as well as the reason, so a
+  // reason string echoed on some unrelated 5xx cannot 404 a live product.
+  if (code === 'PRODUCT_NOT_FOUND') {
+    const reason = readGatewayFailureReason(err);
+    if (PERMANENTLY_UNBUILDABLE_GATEWAY_REASONS.has(reason)) return 'unbuildable';
+  }
+  // Everything else — including bare 4xx, PRODUCT_NOT_SERVABLE, and
+  // INVALID_REQUEST — is treated as a possibly-transient read failure.
+  return 'degraded';
+}
 
-  const status = Number((err as any)?.status);
-  if (!Number.isFinite(status)) return 'degraded'; // network/abort — retryable
-  if (TRANSIENT_4XX_STATUSES.has(status)) return 'degraded';
-  if (status >= 400 && status < 500) return 'unbuildable';
-  return 'degraded'; // 5xx and anything else
+// Transient failures worth one retry: our own timeout, and status-less
+// network/abort errors. Deliberately NOT 5xx — a gateway returning 503
+// because it is overloaded should not receive double the cold-fill traffic.
+function shouldRetryPdpFetchFailure(err: unknown): boolean {
+  const code = String((err as any)?.code || '').trim().toUpperCase();
+  if (code === 'UPSTREAM_TIMEOUT') return true;
+  return !Number.isFinite(Number((err as any)?.status));
 }
 
 async function _fetchPdpForServerRenderUncached(
@@ -372,7 +419,9 @@ async function _fetchPdpForServerRenderUncached(
     timeout_ms: PDP_SERVER_FETCH_TIMEOUT_MS,
     gatewayBaseUrl: resolveServerGatewayBaseUrl(),
   };
-  const attempt = async (timeoutMs: number): Promise<PdpFetchOutcome> => {
+  type Attempt = { outcome: PdpFetchOutcome; retryable: boolean };
+
+  const attempt = async (timeoutMs: number): Promise<Attempt> => {
     const args = { ...fetchArgs, timeout_ms: timeoutMs };
     try {
       const v2 = cacheable
@@ -381,37 +430,48 @@ async function _fetchPdpForServerRenderUncached(
       const initialPayload = mapPdpV2ToPdpPayload(v2);
       if (initialPayload?.product) {
         return {
-          status: 'ok',
-          data: {
-            initialPayload,
-            product: buildJsonLdProduct(initialPayload),
-            canonicalRouteId: readServerCanonicalRouteId(v2, initialPayload, productId),
+          outcome: {
+            status: 'ok',
+            data: {
+              initialPayload,
+              product: buildJsonLdProduct(initialPayload),
+              canonicalRouteId: readServerCanonicalRouteId(v2, initialPayload, productId),
+            },
           },
+          retryable: false,
         };
       }
-      // HTTP 200 with a payload that carries no mappable product: the gateway
-      // answered successfully and the answer is "nothing to render". Retrying
-      // an identical successful read cannot produce a different product.
-      return { status: 'unbuildable' };
+      // HTTP 200 whose payload carries no mappable product. This is NOT
+      // treated as permanent: getPdpV2Cached documents an empty payload as a
+      // product mid-ingestion or a serving-eligibility flap — transient by
+      // construction. It stays a degraded 500 exactly as it was before the
+      // static/ISR flip. (On the canonical route this branch is largely
+      // academic: getPdpV2Cached rejects an empty payload rather than caching
+      // it, so the throw lands in the catch below and classifies the same way.)
+      return { outcome: { status: 'degraded' }, retryable: false };
     } catch (err) {
-      return { status: classifyPdpFetchFailure(err) };
+      return {
+        outcome: { status: classifyPdpFetchFailure(err) },
+        retryable: shouldRetryPdpFetchFailure(err),
+      };
     }
   };
 
   const first = await attempt(PDP_SERVER_FETCH_TIMEOUT_MS);
-  // One short retry, TRANSIENT ONLY. It buys back the single-hiccup case that
-  // would otherwise 500 a healthy sitemap URL, without ever re-asking a
-  // question the gateway has already answered definitively (`unbuildable`) —
-  // retrying those would just double the load and the latency for products
-  // that are on their way to a 404 anyway.
+  // One short retry, narrowly scoped: only our own timeout and status-less
+  // network errors. It buys back the single-hiccup case that would otherwise
+  // 500 a healthy sitemap URL, without re-asking a question the gateway has
+  // already answered, and without adding load to a gateway that is explicitly
+  // reporting distress (a 5xx is NOT retried — doubling cold-fill traffic on
+  // an overloaded backend makes the outage worse).
   //
   // The retry runs on a DELIBERATELY SMALLER budget. The dominant transient
   // failure is the 9s timeout, so a full-budget retry would push worst-case
   // ISR fill to ~18s — slower than the cold SSR this whole workstream exists
   // to kill. Capped at PDP_SERVER_RETRY_TIMEOUT_MS, worst case stays ~13s and
   // a gateway that is merely slow (rather than briefly down) still fails fast.
-  if (first.status !== 'degraded') return first;
-  return attempt(PDP_SERVER_RETRY_TIMEOUT_MS);
+  if (!first.retryable) return first.outcome;
+  return (await attempt(PDP_SERVER_RETRY_TIMEOUT_MS)).outcome;
 }
 
 
@@ -507,11 +567,16 @@ export async function generatePdpMetadata(
   if (outcome.status === 'ok') {
     return buildMetadataFromProduct(outcome.data.product, outcome.data.canonicalRouteId);
   }
-  // PERMANENTLY unbuildable: renderPdpPage will call notFound() for this same
-  // id, so this metadata only ever decorates the 404. Emit the defensive
-  // noindex regardless of route — there is no product here to index, and
-  // unlike the transient case below there is no hiccup to protect against.
-  if (outcome.status === 'unbuildable') {
+  // PERMANENTLY unbuildable on the route that 404s: renderPdpPage calls
+  // notFound() for this same id, so this metadata only ever decorates the 404.
+  // Emit the defensive noindex — there is no product here to index, and unlike
+  // the transient case below there is no hiccup to protect against.
+  //
+  // Scoped to `!mode.personalized` on purpose. The alias route does NOT 404 an
+  // unbuildable id; it renders the 200 shell and lets the client hydrate a real
+  // product. Stamping noindex on that page would be a live 200 telling crawlers
+  // to drop a product that renders fine.
+  if (outcome.status === 'unbuildable' && !mode.personalized) {
     return {
       title: DEFAULT_TITLE,
       description: 'Shop products with Pivota Shopping AI.',
