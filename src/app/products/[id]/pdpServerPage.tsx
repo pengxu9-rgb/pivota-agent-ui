@@ -431,6 +431,59 @@ export async function generatePdpMetadata(
   };
 }
 
+/**
+ * Build the canonical route's JSON-LD for emission from `layout.tsx`, i.e.
+ * OUTSIDE the Suspense boundary that `loading.tsx` puts around the page.
+ *
+ * Why this exists: everything the page renders (including the `<script
+ * type="application/ld+json">` block) streams as an RSC flight chunk that only
+ * materializes when React hydrates. Measured on prod 2026-07-25: strip the
+ * `<script>` tags from a live PDP and the readable text is 69 characters —
+ * `"<title> | Pivota  Loading products"`. Googlebot executes JS so it recovers;
+ * GPTBot/ClaudeBot and most LLM grounding crawlers do NOT, so they saw a loading
+ * skeleton with zero product facts. That is the mechanical reason the AEO Phase-0
+ * probe measured 0/8 citations.
+ *
+ * A layout renders in the SSR shell (the Suspense boundary wraps the page, not
+ * the layout), so emitting the markup here puts it in the raw HTML.
+ *
+ * Cost: none extra. `fetchPdpForServerRender` is React-`cache()`d, so the page's
+ * own call in the same render pass reuses this promise — one backend read.
+ *
+ * NEVER THROWS. The canonical route deliberately throws on a degraded render so
+ * ISR won't store a 200 shell (see PDP_DEGRADED_RENDER_ERROR); that decision
+ * belongs to the page. If the layout threw first we'd 500 before the page could
+ * choose, so failures here degrade to "no markup" and the page still decides.
+ * (The cached promise replays its rejection to the page, so behaviour is intact.)
+ */
+export async function buildCanonicalPdpJsonLd(
+  params: PdpRouteProps['params'],
+): Promise<string | null> {
+  try {
+    const resolvedParams = await params;
+    const productId = decodeProductIdParam(resolvedParams.id);
+    if (!productId) return null;
+
+    const renderData = await fetchPdpForServerRender(productId, '', PDP_ROUTE_REVALIDATE_S);
+    if (!renderData) return null;
+
+    return buildProductJsonLd(
+      {
+        product: renderData.product,
+        productId: renderData.canonicalRouteId || productId,
+      },
+      {
+        reviewsModule: readPdpModule(renderData.initialPayload, 'reviews_preview')?.data || null,
+        recommendationsModule:
+          readPdpModule(renderData.initialPayload, 'recommendations')?.data || null,
+        productIntelModule: readPdpModule(renderData.initialPayload, 'product_intel')?.data || null,
+      },
+    );
+  } catch {
+    return null;
+  }
+}
+
 export async function renderPdpPage(props: PdpRouteProps, mode: PdpRouteMode) {
   // Try to render JSON-LD server-side. Best-effort: when the PDP endpoint
   // call fails we still ship the client component (which fetches its
@@ -480,7 +533,12 @@ export async function renderPdpPage(props: PdpRouteProps, mode: PdpRouteMode) {
   const productIntelModule = renderData
     ? readPdpModule(renderData.initialPayload, 'product_intel')?.data || null
     : null;
-  const jsonLd = renderData
+  // On the CANONICAL route the JSON-LD is emitted by layout.tsx instead, so it
+  // lands in the SSR shell rather than the (crawler-invisible) streamed flight
+  // payload — see buildCanonicalPdpJsonLd. Emitting it here too would duplicate
+  // the block. The force-dynamic /products/m/[id] alias has no such layout, so
+  // it keeps rendering its own markup here.
+  const jsonLd = mode.personalized && renderData
     ? buildProductJsonLd(
         {
           product: renderData.product,

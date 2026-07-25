@@ -15,6 +15,7 @@ import PersonalizedProductDetailPage, {
   dynamic as personalizedRouteDynamic,
 } from '../m/[id]/page';
 import { PDP_DEGRADED_RENDER_ERROR } from './pdpServerPage';
+import ProductDetailLayout from './layout';
 
 const getPdpV2Mock = vi.hoisted(() => vi.fn());
 const getPdpV2CachedMock = vi.hoisted(() => vi.fn());
@@ -579,6 +580,50 @@ describe('product page metadata', () => {
     expect(personalizedRouteDynamic).toBe('force-dynamic');
   });
 
+  it('emits JSON-LD from the LAYOUT (SSR shell), not the page — crawler visibility', async () => {
+    // THE regression guard. loading.tsx wraps the PAGE in a Suspense boundary, so
+    // anything the page returns streams as an RSC flight chunk that only exists
+    // after hydration. Measured on prod 2026-07-25: a live PDP stripped of
+    // <script> tags had 69 chars of readable text and ZERO structured data, which
+    // is why GPTBot/ClaudeBot had nothing to cite. The layout renders outside that
+    // boundary, so the markup must come from there — and must NOT be duplicated.
+    getPdpV2Mock.mockResolvedValue({ modules: [] });
+    mapPdpV2ToPdpPayloadMock.mockReturnValue(
+      buildPayload({ product_id: 'sig_shell_ldjson', title: 'Shell Serum' }),
+    );
+
+    const layoutHtml = renderToStaticMarkup(
+      (await ProductDetailLayout({
+        params: Promise.resolve({ id: 'sig_shell_ldjson' }),
+        children: null,
+      })) as any,
+    );
+    expect(layoutHtml).toContain('application/ld+json');
+
+    const pageHtml = renderToStaticMarkup(
+      (await ProductDetailPage({
+        params: Promise.resolve({ id: 'sig_shell_ldjson' }),
+        searchParams: Promise.resolve({}),
+      })) as any,
+    );
+    expect(pageHtml).not.toContain('application/ld+json');
+  });
+
+  it('layout never throws — the PAGE keeps sole ownership of the degraded decision', async () => {
+    // The canonical page deliberately throws on a degraded render so ISR won't
+    // store a 200 shell. If the layout threw first we would 500 before the page
+    // could decide, so the layout must degrade to "no markup" instead.
+    // Force an error that ESCAPES the inner fetch (which swallows its own
+    // failures and returns null) so the layout's own catch is what's under test.
+    const html = renderToStaticMarkup(
+      (await ProductDetailLayout({
+        params: Promise.reject(new Error('params blew up')) as any,
+        children: null,
+      })) as any,
+    );
+    expect(html).not.toContain('application/ld+json');
+  });
+
   it('renders recommendations ItemList from the mapped server payload', async () => {
     const v2Response = { modules: [] };
     getPdpV2Mock.mockResolvedValue(v2Response);
@@ -605,9 +650,12 @@ describe('product page metadata', () => {
       },
     ));
 
-    const element = await ProductDetailPage({
+    // The canonical route's JSON-LD is emitted by layout.tsx (SSR shell), not by
+    // the page — the page's output streams inside loading.tsx's Suspense boundary
+    // where non-JS crawlers never see it.
+    const element = await ProductDetailLayout({
       params: Promise.resolve({ id: 'sig_jsonld_recommendations' }),
-      searchParams: Promise.resolve({}),
+      children: null,
     });
     const html = renderToStaticMarkup(element as any);
     const scriptMatch = html.match(/<script type="application\/ld\+json">(.*?)<\/script>/);
