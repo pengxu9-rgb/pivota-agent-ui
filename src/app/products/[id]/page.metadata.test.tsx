@@ -580,6 +580,37 @@ describe('product page metadata', () => {
     expect(personalizedRouteDynamic).toBe('force-dynamic');
   });
 
+  it('layout and page fetch with IDENTICAL args so React cache() dedupes them', async () => {
+    // React cache() keys on argument identity. If the layout and the canonical
+    // page disagree on ANY arg, they miss each other's memo: two backend reads on
+    // every one of ~1,900 ISR pages, and — if the merchant id diverged — a
+    // merchant-scoped JSON-LD block baked into a PUBLIC cached page. cache() is a
+    // passthrough under vitest so dedupe itself isn't observable; assert the
+    // arg tuples match instead, which is the property that makes dedupe possible.
+    getPdpV2Mock.mockResolvedValue({ modules: [] });
+    mapPdpV2ToPdpPayloadMock.mockReturnValue(
+      buildPayload({ product_id: 'sig_cache_key', title: 'Cache Key Serum' }),
+    );
+
+    getPdpV2CachedMock.mockClear();
+    await ProductDetailLayout({
+      params: Promise.resolve({ id: 'sig_cache_key' }),
+      children: null,
+    });
+    const layoutArgs = getPdpV2CachedMock.mock.calls.at(-1)?.[0];
+
+    getPdpV2CachedMock.mockClear();
+    await ProductDetailPage({
+      params: Promise.resolve({ id: 'sig_cache_key' }),
+      searchParams: Promise.resolve({}),
+    });
+    const pageArgs = getPdpV2CachedMock.mock.calls.at(-1)?.[0];
+
+    expect(layoutArgs).toBeDefined();
+    expect(pageArgs).toBeDefined();
+    expect(layoutArgs).toEqual(pageArgs);
+  });
+
   it('emits JSON-LD from the LAYOUT (SSR shell), not the page — crawler visibility', async () => {
     // THE regression guard. loading.tsx wraps the PAGE in a Suspense boundary, so
     // anything the page returns streams as an RSC flight chunk that only exists

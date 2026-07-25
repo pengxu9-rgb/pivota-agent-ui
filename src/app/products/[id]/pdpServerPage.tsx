@@ -12,6 +12,7 @@ import type { Metadata } from 'next';
 import { unstable_noStore } from 'next/cache';
 import ProductDetailClient from './ProductDetailClient';
 import { buildProductDescription } from './productDescription';
+import { unstable_rethrow } from 'next/navigation';
 import { buildProductJsonLd } from './productJsonLd';
 import { getPdpV2, getPdpV2Cached, getServicesBrowse } from '@/lib/api';
 import { mapPdpV2ToPdpPayload } from '@/features/pdp/adapter/mapPdpV2ToPdpPayload';
@@ -435,17 +436,24 @@ export async function generatePdpMetadata(
  * Build the canonical route's JSON-LD for emission from `layout.tsx`, i.e.
  * OUTSIDE the Suspense boundary that `loading.tsx` puts around the page.
  *
- * Why this exists: everything the page renders (including the `<script
- * type="application/ld+json">` block) streams as an RSC flight chunk that only
- * materializes when React hydrates. Measured on prod 2026-07-25: strip the
- * `<script>` tags from a live PDP and the readable text is 69 characters —
- * `"<title> | Pivota  Loading products"`. Googlebot executes JS so it recovers;
- * GPTBot/ClaudeBot and most LLM grounding crawlers do NOT, so they saw a loading
- * skeleton with zero product facts. That is the mechanical reason the AEO Phase-0
- * probe measured 0/8 citations.
+ * Why this exists: `ProductDetailClient` calls `useSearchParams()` (see
+ * ProductDetailClient.tsx) with no enclosing Suspense, so under a static/ISR
+ * prerender Next emits `BAILOUT_TO_CLIENT_SIDE_RENDERING` for that subtree —
+ * `<!--$!-->`, an ERRORED boundary whose fallback is permanent. The page's
+ * output, including its own `<script type="application/ld+json">`, therefore
+ * NEVER reaches the HTML; only the skeleton does. Measured on prod 2026-07-25:
+ * strip the `<script>` tags from a live PDP and the readable text is 69
+ * characters — `"<title> | Pivota  Loading products"`. Googlebot executes JS so
+ * it recovers; GPTBot/ClaudeBot and most LLM grounding crawlers do NOT.
  *
- * A layout renders in the SSR shell (the Suspense boundary wraps the page, not
- * the layout), so emitting the markup here puts it in the raw HTML.
+ * NOTE this is NOT ordinary Suspense streaming (a *pending* boundary does get
+ * backfilled into the byte stream, so deleting `loading.tsx` would not help) and
+ * it is not a regression from the ISR flip per se — the ISR flip is simply what
+ * turned an always-dynamic render into a prerender, where the bailout bites. The
+ * force-dynamic /products/m/[id] alias has no bailout and renders its full body.
+ *
+ * A LAYOUT renders outside that bailed subtree, so markup emitted here does reach
+ * the raw HTML.
  *
  * Cost: none extra. `fetchPdpForServerRender` is React-`cache()`d, so the page's
  * own call in the same render pass reuses this promise — one backend read.
@@ -454,7 +462,9 @@ export async function generatePdpMetadata(
  * ISR won't store a 200 shell (see PDP_DEGRADED_RENDER_ERROR); that decision
  * belongs to the page. If the layout threw first we'd 500 before the page could
  * choose, so failures here degrade to "no markup" and the page still decides.
- * (The cached promise replays its rejection to the page, so behaviour is intact.)
+ * (The underlying fetch swallows its own errors and resolves to `null` for BOTH
+ * callers, so the page still sees the degraded result and throws — one backend
+ * read, behaviour intact.)
  */
 export async function buildCanonicalPdpJsonLd(
   params: PdpRouteProps['params'],
@@ -479,7 +489,10 @@ export async function buildCanonicalPdpJsonLd(
         productIntelModule: readPdpModule(renderData.initialPayload, 'product_intel')?.data || null,
       },
     );
-  } catch {
+  } catch (err) {
+    // Never swallow Next's control-flow signals (notFound/redirect/PPR postpone)
+    // — a bare catch would silently degrade those to "no JSON-LD".
+    unstable_rethrow(err);
     return null;
   }
 }
