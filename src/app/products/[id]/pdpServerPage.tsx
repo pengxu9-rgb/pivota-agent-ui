@@ -658,6 +658,21 @@ export async function generatePdpMetadata(
  * callers, so the page still sees the degraded result and throws — one backend
  * read, behaviour intact.)
  */
+function serializeSearchParams(
+  params: Record<string, string | string[] | undefined>,
+): string {
+  const out = new URLSearchParams();
+  for (const [key, value] of Object.entries(params || {})) {
+    if (Array.isArray(value)) {
+      for (const v of value) if (v != null) out.append(key, String(v));
+    } else if (value != null) {
+      out.append(key, String(value));
+    }
+  }
+  const qs = out.toString();
+  return qs ? `?${qs}` : '';
+}
+
 export async function buildCanonicalPdpJsonLd(
   params: PdpRouteProps['params'],
 ): Promise<string | null> {
@@ -797,6 +812,11 @@ export async function renderPdpPage(props: PdpRouteProps, mode: PdpRouteMode) {
         params={props.params}
         initialPayload={renderData?.initialPayload ?? null}
         serviceRecommendations={serviceRecommendations}
+        // Server snapshot for useUrlSearchParams. '' on the canonical route
+        // (anonymous by contract), the real query on the force-dynamic alias.
+        // Reading searchParams here on the canonical route would 500 the
+        // on-demand ISR render, which is why personalizeThisRequest gates it.
+        initialSearch={serializeSearchParams(resolvedSearchParams)}
       />
     </>
   );

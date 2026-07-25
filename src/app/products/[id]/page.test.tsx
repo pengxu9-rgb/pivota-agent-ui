@@ -52,6 +52,13 @@ vi.mock('next/navigation', () => ({
   useSearchParams: () => new URLSearchParams(searchParamsValue),
 }));
 
+// ProductDetailClient now reads the URL through useUrlSearchParams (prerender-safe)
+// rather than next/navigation's useSearchParams, which bailed the route out of
+// static rendering. Drive it from the same per-test value.
+vi.mock('./useUrlSearchParams', () => ({
+  useUrlSearchParams: () => new URLSearchParams(searchParamsValue),
+}));
+
 vi.mock('sonner', () => ({
   toast: {
     message: vi.fn(),
