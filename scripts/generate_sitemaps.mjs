@@ -30,6 +30,7 @@ import {
   buildSitemapUrlsetXml,
   countLocs,
   mergeDuplicateProduct,
+  parseSitemapProductIds,
   productUrlEntries,
   readCanonicalProduct,
   sitemapCountGuard,
@@ -134,11 +135,21 @@ async function fetchCanonicalProductsPage(baseUrl, params) {
   throw lastError
 }
 
-export async function collectSitemapProducts(baseUrl) {
+export async function collectSitemapProducts(baseUrl, options = {}) {
+  // Ids already advertised by the committed sitemap — they win their
+  // content_key's dedup so an indexed URL is never swapped for an equivalent
+  // sibling. See preferSitemapId for the full rationale. An empty/absent set
+  // reproduces the pre-incumbency ordering exactly.
+  const incumbentIds = options.incumbentIds instanceof Set ? options.incumbentIds : new Set()
+
   // Keyed by content_key — ONE URL per product. Duplicate signatures for the
   // same content_key are merged via mergeDuplicateProduct (deterministic id,
   // max lastmod) instead of each minting their own sitemap entry.
   const productsByContentKey = new Map()
+  // Ids that lost a dedup. Only used for reporting: an incumbent in here is a
+  // URL we are about to REPLACE, which is the failure mode incumbency exists to
+  // prevent, so it must be loud rather than silent if it ever happens again.
+  const displacedIds = new Set()
   let offset = 0
   let cursor = null
   let stoppedForCap = false
@@ -177,7 +188,10 @@ export async function collectSitemapProducts(baseUrl) {
       }
       const existing = productsByContentKey.get(product.contentKey)
       if (existing) {
-        productsByContentKey.set(product.contentKey, mergeDuplicateProduct(existing, product))
+        const merged = mergeDuplicateProduct(existing, product, incumbentIds)
+        if (merged.id !== existing.id) displacedIds.add(existing.id)
+        if (merged.id !== product.id) displacedIds.add(product.id)
+        productsByContentKey.set(product.contentKey, merged)
         continue
       }
       productsByContentKey.set(product.contentKey, product)
@@ -231,8 +245,19 @@ export async function collectSitemapProducts(baseUrl) {
   const products = Array.from(productsByContentKey.values())
   products.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
 
+  // An incumbent that lost its dedup means a URL swap. Incumbency makes this
+  // impossible for a plain 2-candidate group, so it can only surface if the
+  // committed file already carried two sigs for one content_key (a sitemap
+  // predating the dedup). Report it rather than assert: dropping a
+  // pre-existing extra URL is the CORRECT outcome there, we just never want it
+  // to be invisible.
+  const replacedIncumbentIds = Array.from(displacedIds)
+    .filter((id) => incumbentIds.has(id))
+    .sort()
+
   return {
     products,
+    replacedIncumbentIds,
     source: sawInvalidCanonicalItem
       ? 'serving_eligible_partial'
       : stoppedForCap
@@ -241,11 +266,16 @@ export async function collectSitemapProducts(baseUrl) {
   }
 }
 
-async function readExistingLocCount(filePath) {
+// Reads the committed product sitemap once and derives both things we need
+// from it: the shrink guard's previous count and the dedup's incumbent ids.
+// A missing file yields `{ count: null, ids: empty }` — first run / fresh
+// clone, guard and incumbency both stand down.
+async function readExistingProductSitemap(filePath) {
   try {
-    return countLocs(await readFile(filePath, 'utf8'))
+    const xml = await readFile(filePath, 'utf8')
+    return { count: countLocs(xml), ids: parseSitemapProductIds(xml) }
   } catch {
-    return null
+    return { count: null, ids: new Set() }
   }
 }
 
@@ -263,12 +293,36 @@ async function writeIfChanged(filePath, content) {
 
 export async function generateSitemaps() {
   const baseUrl = getCanonicalProductsBaseUrl()
-  console.log(`fetching canonical products from ${baseUrl} ...`)
+  const productsPath = path.join(PUBLIC_DIR, 'sitemap-products.xml')
 
-  const { products, source } = await collectSitemapProducts(baseUrl)
+  // Read BEFORE fetching: the committed file supplies the dedup's incumbent
+  // ids as well as the shrink guard's previous count.
+  const previous = await readExistingProductSitemap(productsPath)
+  const previousCount = previous.count
+
+  console.log(
+    `fetching canonical products from ${baseUrl} ` +
+      `(incumbent urls=${previous.ids.size}) ...`,
+  )
+
+  const { products, source, replacedIncumbentIds } = await collectSitemapProducts(baseUrl, {
+    incumbentIds: previous.ids,
+  })
   const urls = productUrlEntries(products)
 
-  const productsPath = path.join(PUBLIC_DIR, 'sitemap-products.xml')
+  const keptIncumbents = products.reduce((n, p) => n + (previous.ids.has(p.id) ? 1 : 0), 0)
+  console.log(
+    `incumbency: kept=${keptIncumbents}/${previous.ids.size} ` +
+      `new=${products.length - keptIncumbents} replaced=${replacedIncumbentIds.length}`,
+  )
+  if (replacedIncumbentIds.length > 0) {
+    console.warn(
+      `NOTE: ${replacedIncumbentIds.length} advertised URL(s) lost their content_key dedup ` +
+        `and will be dropped: ${replacedIncumbentIds.slice(0, 5).join(', ')}` +
+        `${replacedIncumbentIds.length > 5 ? ', …' : ''}. Expected only when the committed ` +
+        `sitemap predates the content_key dedup (two sigs for one product).`,
+    )
+  }
 
   // Checked before the shrink guard: a non-sig URL is the more specific and
   // more actionable failure, and it is the one SITEMAP_FORCE must never wave
@@ -286,7 +340,6 @@ export async function generateSitemaps() {
     return null
   }
 
-  const previousCount = await readExistingLocCount(productsPath)
   const guardViolation = sitemapCountGuard(urls.length, previousCount)
   if (guardViolation && process.env.SITEMAP_FORCE !== '1') {
     console.error(

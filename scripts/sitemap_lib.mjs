@@ -202,22 +202,107 @@ export function readCanonicalProduct(item) {
   }
 }
 
+// Extract the product URL ids already advertised by a committed
+// sitemap-products.xml. These are the INCUMBENTS — see preferSitemapId.
+//
+// Parses the same `<loc>` entries countLocs counts, so a file this function
+// reads zero ids out of is either empty or not a product sitemap; callers
+// treat that as "no incumbents" and fall back to the pure ordering.
+export function parseSitemapProductIds(xml) {
+  const ids = new Set()
+  const prefix = `${SITEMAP_BASE_URL}/products/`
+  const re = /<loc>([^<]*)<\/loc>/g
+  let m
+  while ((m = re.exec(String(xml || ''))) !== null) {
+    const loc = m[1].trim()
+    if (!loc.startsWith(prefix)) continue
+    const raw = loc.slice(prefix.length)
+    if (!raw) continue
+    let id = raw
+    try {
+      id = decodeURIComponent(raw)
+    } catch {
+      // Leave the raw form — productUrlEntries re-encodes, so a malformed
+      // escape still round-trips to the same <loc> and still matches.
+    }
+    ids.add(id)
+  }
+  return ids
+}
+
 // One URL per product. The catalog carries duplicate signatures for the same
 // content_key (~1,218 products have >1 sig — different ingestion paths minted
 // 24- vs 32-hex sigs), which used to emit up to 17% redundant sitemap URLs
 // (7,407 URLs for 6,133 distinct products) and split index signal across
-// duplicate pages. Pick one deterministic URL id per content_key:
-// prefer the longer sig class (32-hex content sigs over legacy 24-hex, any
-// sig over the ck_ fallback), then lexicographic — stable run-to-run
-// regardless of backend page ordering, so URLs don't churn between builds.
-export function preferSitemapId(a, b) {
+// duplicate pages. Pick ONE URL id per content_key.
+//
+// The ordering is a strict total order on ids, applied in three layers:
+//
+//   1. INCUMBENCY — an id already advertised by the committed
+//      sitemap-products.xml beats one that is not.
+//   2. Sig class — the longer sig (32-hex content sigs over legacy 24-hex).
+//   3. Lexicographic.
+//
+// Layers 2+3 alone are deterministic but NOT stability-preserving, and
+// 2026-07-25 (pivota-backend#1585 / PIVOTA-Agent#1828, "P3") turned that from
+// theory into a measured 183-URL regression waiting on the next cron tick.
+// P3 taught the gateway to resolve minted Path-C canonicals via
+// `attached_product_key`, which flipped ~2,051 minted rows from
+// renderable=false to renderable=true. 482 of those minted rows share a
+// content_key with the external_seed MIRROR row they were minted from (their
+// seed's external_product_id IS the mirror's source_product_id): 441 pairs now
+// arrive with BOTH sigs sitemap-eligible where only the mirror used to survive
+// the renderable filter. Live probes of 12 pairs (24 fetches) confirmed both
+// sigs serve HTTP 200 with the same title and the same Product JSON-LD — they
+// are true duplicates, and either URL is equally serviceable.
+//
+// Which means the ONLY thing that distinguishes them is index equity, and the
+// mirror has all of it: all 367 of these products that appear in the live
+// sitemap appear there under the MIRROR sig, because the minted sig was
+// renderable=false when it was generated. Under layers 2+3 the freshly
+// eligible minted sig wins 183 of those coin flips on hex/lexicographic order
+// and silently REPLACES an indexed URL with a brand-new one. A sitemap whose
+// canonical URL flip-flops is worse than a duplicate: the crawler has to
+// rediscover and requalify the new URL and the old one decays to a soft 404 in
+// the index, throwing away exactly the crawl equity #266/#269/#271/#272 spent
+// four PRs earning. Incumbency makes the choice sticky instead: whatever URL we
+// already advertise for a product stays the URL we advertise.
+//
+// Properties that matter:
+//  - Deterministic. The incumbent set comes from a git-committed file, so the
+//    same commit + same feed produce the same bytes.
+//  - Convergent. After one run the winner IS the incumbent, so every later run
+//    is a fixed point — the opposite of flip-flop.
+//  - Never additive-blocking. Incumbency only ORDERS candidates that already
+//    survived the eligibility + renderable filters; it cannot keep a URL in or
+//    out of the sitemap on its own. A product whose incumbent sig goes
+//    renderable=false loses it at the filter (which runs BEFORE this dedup, by
+//    design — see readCanonicalProduct) and the surviving sibling is then the
+//    only candidate, so genuinely dead URLs still rotate out.
+//  - Degrades to the old behavior. No committed file (fresh clone, first run)
+//    or an unparseable one means no incumbents and layers 2+3 decide, exactly
+//    as before.
+//
+// The trade-off, stated plainly: the output is no longer a pure function of the
+// backend feed — it also depends on the committed file. That is already true of
+// the shrink guard, and it is the only signal available. The feed CANNOT
+// distinguish these rows: minted and mirror rows are byte-identical across
+// every field except sig_id, canonical_url (each self-referential) and
+// last_modified. Deleting or hand-editing public/sitemap-products.xml
+// therefore forfeits the incumbency history and re-picks lexicographically —
+// one more reason never to hand-edit a cron-generated artifact.
+export function preferSitemapId(a, b, incumbentIds) {
+  if (incumbentIds && typeof incumbentIds.has === 'function') {
+    const aIncumbent = incumbentIds.has(a)
+    if (aIncumbent !== incumbentIds.has(b)) return aIncumbent ? a : b
+  }
   const hexLen = (id) => (String(id).startsWith('sig_') ? id.length - 4 : -1)
   if (hexLen(a) !== hexLen(b)) return hexLen(a) > hexLen(b) ? a : b
   return a <= b ? a : b
 }
 
-export function mergeDuplicateProduct(existing, incoming) {
-  const id = preferSitemapId(existing.id, incoming.id)
+export function mergeDuplicateProduct(existing, incoming, incumbentIds) {
+  const id = preferSitemapId(existing.id, incoming.id, incumbentIds)
   const lastmod =
     !existing.lastmod
       ? incoming.lastmod

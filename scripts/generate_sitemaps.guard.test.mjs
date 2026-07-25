@@ -12,12 +12,32 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const writeFile = vi.hoisted(() => vi.fn(async () => {}))
+// Deliberately ENOENT. With no committed sitemap there is no previous count, so
+// the shrink guard stands down and cannot mask the id guard these tests are
+// about (the 1,500-row fixtures below are well under 50% of the real
+// public/sitemap-products.xml). The count-guard and incumbency wiring — which
+// DO need a previous file — live in generate_sitemaps.incumbency.test.mjs.
+//
+// This used to be implicit and accidental: the mock restated only `writeFile`,
+// and `{ ...actual }` on a node builtin does NOT carry named exports through
+// (vitest: `No "readFile" export is defined on the "node:fs/promises" mock`).
+// Every readFile call threw a TypeError that the surrounding try/catch
+// swallowed — same observable outcome, reached by a bug, and it left the ratio
+// arm of sitemapCountGuard with no wiring coverage anywhere. Restate every
+// named export the module under test imports.
+const readFile = vi.hoisted(() =>
+  vi.fn(async () => {
+    const err = new Error('ENOENT: no such file or directory')
+    err.code = 'ENOENT'
+    throw err
+  }),
+)
 
 vi.mock('node:fs/promises', async (importOriginal) => {
   const actual = await importOriginal()
   // node builtins need `default` restated explicitly — spreading the namespace
   // does not carry it, and generate_sitemaps.mjs's importer resolves it.
-  return { ...actual, default: { ...actual.default, writeFile }, writeFile }
+  return { ...actual, default: { ...actual.default, readFile, writeFile }, readFile, writeFile }
 })
 
 // Partial mock: everything real except readCanonicalProduct, which we make
