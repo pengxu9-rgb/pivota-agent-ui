@@ -1,7 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState, useRef, use } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
+import { useUrlSearchParams } from './useUrlSearchParams';
 import { toast } from 'sonner';
 import { useCartStore } from '@/store/cartStore';
 import { useAuthStore } from '@/store/authStore';
@@ -60,6 +61,13 @@ interface Props {
   params: Promise<{ id: string }>;
   initialPayload?: PDPPayload | null;
   serviceRecommendations?: ServiceCardData[] | null;
+  /**
+   * Query string the SERVER rendered with. Empty on the anonymous canonical
+   * route; the force-dynamic /products/m/[id] alias passes the real one. Feeds
+   * useUrlSearchParams' server snapshot so this component can prerender —
+   * see useUrlSearchParams for why useSearchParams() cannot.
+   */
+  initialSearch?: string;
 }
 
 const PDP_V2_SCOPED_TIMEOUT_MS = 9000;
@@ -622,7 +630,7 @@ function shouldRetryWithCoreOnlyPdp(err: unknown): boolean {
   const message = String((err as Error)?.message || '').toLowerCase();
   return message.includes('timed out') || message.includes('timeout') || message.includes('temporarily unavailable');
 }
-export default function ProductDetailPage({ params, initialPayload, serviceRecommendations = null }: Props) {
+export default function ProductDetailPage({ params, initialPayload, serviceRecommendations = null, initialSearch = '' }: Props) {
   const { id: rawId } = use(params);
   // Next.js dynamic params arrive URL-encoded (e.g. `ulta%3Ahash`); gateway
   // lookups (external_product_id, source_product_id) want the decoded form.
@@ -635,7 +643,10 @@ export default function ProductDetailPage({ params, initialPayload, serviceRecom
       return trimmed;
     }
   })();
-  const searchParams = useSearchParams();
+  // NOT next/navigation's useSearchParams(): that marks this subtree client-only
+  // and makes the whole canonical PDP bail out of static rendering, so crawlers
+  // received an empty skeleton. See useUrlSearchParams.
+  const searchParams = useUrlSearchParams(initialSearch);
   const searchParamsString = searchParams.toString();
   const rawMerchantIdParam = searchParams.get('merchant_id');
   const merchantIdParam = normalizeProductRouteMerchantId(rawMerchantIdParam, id);
