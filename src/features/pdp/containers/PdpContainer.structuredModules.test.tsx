@@ -3,11 +3,13 @@ import React from 'react';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { pdpTracking } from '@/features/pdp/tracking';
 import { PdpContainer } from './PdpContainer';
 import type { PDPPayload } from '@/features/pdp/types';
 
 const routerPush = vi.hoisted(() => vi.fn());
 let replaceStateSpy: ReturnType<typeof vi.spyOn>;
+let trackSpy: ReturnType<typeof vi.spyOn>;
 const getPdpV2Mock = vi.hoisted(() => vi.fn());
 
 vi.mock('next/image', () => ({
@@ -509,6 +511,8 @@ describe('PdpContainer structured PDP modules', () => {
     // In-place product-line switching syncs the address bar via replaceState;
     // spied so tests can assert WHICH targets are allowed to rewrite it.
     replaceStateSpy = vi.spyOn(window.history, 'replaceState').mockImplementation(() => {});
+    // Spied so tests can assert we do not report a selection that never happened.
+    trackSpy = vi.spyOn(pdpTracking, 'track').mockImplementation(() => {});
   });
 
   afterEach(() => {
@@ -980,60 +984,58 @@ describe('PdpContainer structured PDP modules', () => {
       ).toBe(true);
     });
 
-    // The switch works, but the address bar must NOT be parked on the target:
-    // /products/ext_boj_dn310 is not a routable URL (it 500s), so rewriting to
-    // it would hand the user a link that breaks on reload or share. Enabling
-    // in-place switching for alias-only siblings is only safe with this held.
-    expect(replaceStateSpy).not.toHaveBeenCalled();
+    // The in-place switch syncs the address bar. ext_ URLs do resolve
+    // (/products/ext_… renders a real PDP in production), so the alias-only
+    // target is rewritten like any other.
+    expect(replaceStateSpy).toHaveBeenCalled();
+    expect(String(replaceStateSpy.mock.calls.at(-1)?.[2])).toContain('/products/ext_boj_dn310');
   });
 
-  it('rewrites the URL when the shade sibling IS routable', async () => {
-    // Control for the assertion above: the no-rewrite rule must be specific to
-    // alias-only targets, not a blanket disabling of the URL sync.
+  it('does not navigate or track when a NON-colour axis option is alias-only', async () => {
+    // Pins the relocated guard. Deleting it from handleProductLineOptionSelect
+    // left the whole suite green before this test existed, so the PR's central
+    // "the check moves rather than disappears" claim was unverified at its new
+    // home. A size axis gets no in-place switching, so it falls through to the
+    // router.push fallback — which must decline an alias-only target, and must
+    // not emit a selection event for a selection that never happens.
     const payload = buildBeautyPayload();
-    payload.product.product_id = 'sig_dn350';
+    payload.product.product_id = 'ext_rb_primer_mini';
     payload.product.merchant_id = 'external_seed';
-    payload.product.product_line_option_name = 'Shade';
+    payload.product.product_line_option_name = 'Size';
     payload.product.product_line_options = [
       {
-        option_id: 'external_seed:sig_dn310',
-        option_name: 'Shade',
-        axis: 'shade',
-        value: 'dn310',
-        label: 'DN310',
-        product_id: 'sig_dn310',
+        option_id: 'external_seed:ext_rb_primer_full',
+        option_name: 'Size',
+        axis: 'size',
+        value: 'full size',
+        label: 'Full Size',
+        product_id: 'ext_rb_primer_full',
         merchant_id: 'external_seed',
-        image_url: 'https://example.com/dn310-swatch.jpg',
       },
       {
-        option_id: 'external_seed:sig_dn350',
-        option_name: 'Shade',
-        axis: 'shade',
-        value: 'dn350',
-        label: 'DN350',
-        product_id: 'sig_dn350',
+        option_id: 'external_seed:ext_rb_primer_mini',
+        option_name: 'Size',
+        axis: 'size',
+        value: 'mini',
+        label: 'Mini',
+        product_id: 'ext_rb_primer_mini',
         merchant_id: 'external_seed',
         selected: true,
       },
     ];
 
-    const nextPayload = JSON.parse(JSON.stringify(payload)) as PDPPayload;
-    nextPayload.product.product_id = 'sig_dn310';
-    getPdpV2Mock.mockResolvedValue({
-      status: 'success',
-      modules: [{ type: 'canonical', data: { pdp_payload: nextPayload } }],
-    });
-
     render(
       <PdpContainer payload={payload} mode="beauty" onAddToCart={() => {}} onBuyNow={() => {}} />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'DN310' }));
+    fireEvent.click(screen.getByRole('button', { name: /Full Size/ }));
 
-    await waitFor(() => {
-      expect(replaceStateSpy).toHaveBeenCalled();
-    });
-    expect(String(replaceStateSpy.mock.calls.at(-1)?.[2])).toContain('/products/sig_dn310');
+    expect(routerPush).not.toHaveBeenCalled();
+    expect(getPdpV2Mock).not.toHaveBeenCalled();
+    expect(trackSpy).not.toHaveBeenCalledWith(
+      'pdp_action_click',
+      expect.objectContaining({ action_type: 'select_product_line_option' }),
+    );
   });
 
   it('uses the real shade variants when merged seller rows duplicate the variant axis', () => {
