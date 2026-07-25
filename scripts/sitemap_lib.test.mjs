@@ -116,6 +116,27 @@ describe('product row parsing (eligibility, identity, lastmod)', () => {
     expect(kept.map((p) => p.id)).toEqual(['sig_keep_me'])
   })
 
+  it('drops ck-keyed rows with no minted sig — those URLs 500 in production', () => {
+    // Regression guard. The old fallback `sig.startsWith('sig_') ? sig : contentKey`
+    // advertised /products/ck_… for store-less brand rows, on the assumption that
+    // both id forms resolve. They do not: verified 2026-07-25, ALL 7 ck-keyed URLs
+    // in the live sitemap returned 500 (get_pdp_v2 rejects a bare content_key with
+    // MISSING_MERCHANT_CONTEXT). A sitemap must never advertise a URL that errors.
+    const ckOnly = readCanonicalProduct({
+      content_key: 'ck_no_sig_minted',
+      serving_eligible: true,
+    })
+    const ckOnlyIndexable = readCanonicalProduct({
+      content_key: 'ck_citation_row',
+      index_eligible: true,
+    })
+
+    expect(ckOnly).toBeNull()
+    expect(ckOnlyIndexable).toBeNull()
+    // …and a proper sig row is unaffected.
+    expect(readCanonicalProduct(canonicalProduct('sig_ok'))?.id).toBe('sig_ok')
+  })
+
   it('drops sig rows the backend marks renderable=false (dead-PDP shells)', () => {
     const dead = readCanonicalProduct({ ...canonicalProduct('sig_dead'), renderable: false })
     const live = readCanonicalProduct({ ...canonicalProduct('sig_live'), renderable: true })
@@ -131,18 +152,30 @@ describe('product row parsing (eligibility, identity, lastmod)', () => {
     expect(legacy?.id).toBe('sig_legacy')
   })
 
-  it('does not apply the renderable gate to ck-keyed citation rows', () => {
-    const citation = readCanonicalProduct({
-      sig_id: null,
-      content_key: 'ck_citation_brand',
-      serving_eligible: false,
-      index_eligible: true,
-      renderable: false,
-    })
-    expect(citation?.id).toBe('ck_citation_brand')
+  it('ck-keyed rows are dropped before the renderable gate is reached', () => {
+    // Previously exempt from the renderable gate (renderable is only defined for
+    // sig PDPs). Now moot: ck-keyed rows are rejected earlier for lacking a sig,
+    // so neither renderable=false nor an absent flag can readmit them.
+    expect(readCanonicalProduct({
+      content_key: 'ck_citation', index_eligible: true, renderable: false,
+    })).toBeNull()
+    expect(readCanonicalProduct({
+      content_key: 'ck_citation2', index_eligible: true,
+    })).toBeNull()
   })
 
-  it('includes offer-free index_eligible rows keyed on content_key (store-less brands)', () => {
+  it('WITHHOLDS offer-free ck-keyed rows while /products/{ck} 500s (was: included)', () => {
+    // This encoded a real feature: store-less brands with no minted sig were
+    // published for offer-free citation at /products/{content_key}. The feature
+    // is DISABLED here, not deleted, because it is 100% broken in production —
+    // all 7 such URLs in the live sitemap returned 500 on 2026-07-25 (get_pdp_v2
+    // rejects a bare content_key: MISSING_MERCHANT_CONTEXT). A sitemap that
+    // advertises 500s spends crawl budget on errors and signals an unhealthy
+    // domain, which is strictly worse than omitting the rows.
+    //
+    // TO RESTORE: make the backend resolve a bare ck_ (or mint sigs for these
+    // rows), verify /products/{ck} returns 200, then re-allow the ck fallback in
+    // readCanonicalProduct and flip these expectations back.
     const storeless = readCanonicalProduct({
       sig_id: null,
       content_key: 'ck_storeless_brand',
@@ -153,7 +186,7 @@ describe('product row parsing (eligibility, identity, lastmod)', () => {
     const buyable = readCanonicalProduct(canonicalProduct('sig_buyable'))
     const noIdentity = readCanonicalProduct({ sig_id: null, index_eligible: true })
 
-    expect(storeless?.id).toBe('ck_storeless_brand')
+    expect(storeless).toBeNull()
     expect(buyable?.id).toBe('sig_buyable')
     expect(noIdentity).toBeNull()
   })
