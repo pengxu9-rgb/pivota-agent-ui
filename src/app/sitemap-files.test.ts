@@ -2,8 +2,14 @@
 //
 // The sitemaps are generated files (scripts/generate_sitemaps.mjs, refreshed
 // by .github/workflows/sitemaps.yml) served as static assets — the durable fix
-// for GSC "Couldn't fetch". This test fails CI if they are deleted, truncated,
+// for GSC "Couldn't fetch". This test catches them being deleted, truncated,
 // or hand-mangled.
+//
+// It does NOT currently run in CI: .github/workflows/sitemaps.yml is this
+// repo's only workflow and Vercel builds with `next build`, so nothing invokes
+// `npm test`. Treat this as a local/pre-merge check. The enforcing guards live
+// in scripts/sitemap_lib.mjs (sitemapCountGuard, sitemapIdGuard), which run
+// inside the generator itself and so cover the 6h cron that pushes to main.
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -50,9 +56,16 @@ describe('committed static sitemaps in public/', () => {
     expect(urls.length).toBeGreaterThanOrEqual(1000);
     // Google's per-file limit; shard before this trips (VIS-5).
     expect(urls.length).toBeLessThanOrEqual(50000);
+    // Every id must be a minted sig. ck-keyed URLs were permitted here on the
+    // belief that /products/{ck} resolves — it does not: the backend rejects a
+    // bare content_key with MISSING_MERCHANT_CONTEXT and the PDP 500s, so all
+    // 7 that shipped were advertising errors to crawlers (#274).
     for (const url of urls) {
-      expect(url).toMatch(/^https:\/\/agent\.pivota\.cc\/products\/(sig_|ck_)/);
+      expect(url).toMatch(/^https:\/\/agent\.pivota\.cc\/products\/sig_/);
     }
+    // Whole-file assertions, so a regression still fails if the loop above is
+    // ever refactored into something weaker.
+    expect(xml).not.toContain('/products/ck_');
     expect(xml).not.toContain('/products/ext_');
   });
 });
