@@ -140,11 +140,23 @@ export function readCanonicalProduct(item) {
   const contentKey = String(row.content_key || '').trim()
   if (!contentKey.startsWith('ck_')) return null
 
-  // Prefer the canonical sig for the URL; fall back to content_key for
-  // store-less brand-authored rows that have no minted sig (offer-free
-  // citation). Both /products/{sig} and /products/{ck} resolve on the PDP.
+  // The URL id MUST be a minted sig. The previous fallback to content_key for
+  // store-less brand-authored rows rested on "both /products/{sig} and
+  // /products/{ck} resolve on the PDP" — that is FALSE in production: every
+  // ck-keyed URL 500s. Verified 2026-07-25, all 7 in the live sitemap:
+  //   GET /products/ck_… -> 500 (x-matched-path /500)
+  // because get_pdp_v2 rejects a bare content_key with MISSING_MERCHANT_CONTEXT
+  // ("merchant_id is required when canonical product identity cannot be
+  // resolved"). Advertising a URL that 500s is strictly worse than omitting it:
+  // it burns crawl budget on errors and teaches crawlers the domain is flaky,
+  // right after the ISR/prerender work spent two PRs earning that budget back.
+  //
+  // Dropping them costs 7 offer-free citation candidates. To restore the
+  // feature, make the BACKEND resolve a bare ck_ (or mint sigs for these rows)
+  // and then relax this gate — do not re-add the fallback while the URL 500s.
   const sig = String(row.sig_id || '').trim()
-  const id = sig.startsWith('sig_') ? sig : contentKey
+  if (!sig.startsWith('sig_')) return null
+  const id = sig
 
   // Renderability gate (the 52%-dead-PDP fix): serving_eligible says the
   // backend WANTS the row public; `renderable` says the PDP will actually
@@ -156,9 +168,8 @@ export function readCanonicalProduct(item) {
   //    pre-fix behavior instead of emptying the sitemap, and
   //  - the filter runs BEFORE the content_key dedup, so the one-URL-per-
   //    product choice is made among renderable sigs only.
-  // ck-keyed citation rows (no sig) are exempt: `renderable` is defined for
-  // sig PDPs, and the offer-free citation surface has its own gate.
-  if (sig.startsWith('sig_') && row.renderable === false) return null
+  // (ck-keyed rows can no longer reach here — they are dropped above.)
+  if (row.renderable === false) return null
 
   return {
     id,
