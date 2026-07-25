@@ -509,7 +509,7 @@ describe('PdpContainer structured PDP modules', () => {
       value: matchMedia,
     });
     // In-place product-line switching syncs the address bar via replaceState;
-    // spied so tests can assert WHICH targets are allowed to rewrite it.
+    // spied so tests can assert that the rewrite happens and names the target.
     replaceStateSpy = vi.spyOn(window.history, 'replaceState').mockImplementation(() => {});
     // Spied so tests can assert we do not report a selection that never happened.
     trackSpy = vi.spyOn(pdpTracking, 'track').mockImplementation(() => {});

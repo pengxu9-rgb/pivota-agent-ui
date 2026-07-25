@@ -3815,10 +3815,14 @@ export function PdpContainer({
       // To be precise about WHY, since the original comment here was wrong: an
       // ext_ URL does resolve — /products/ext_4325616696001433e9e318ca renders
       // a real PDP (verified in production). The earlier "it 500s" claim came
-      // from probing a fictional id out of a test fixture. Declining to route
-      // there is a canonical-URL preference — pdpServerPage emits a canonical
-      // link precisely so Google does not conflate ext_ aliases with the sig_
-      // PDP — not a broken-link guard. Revisiting it is a product call.
+      // from probing a fictional id out of a test fixture.
+      //
+      // So this is NOT a broken-link guard. It preserves existing behaviour on
+      // a path this change does not otherwise touch: f0e2cbe routes alias-only
+      // products to /products across ~15 call sites. Note the in-place branch
+      // above now does put an alias URL in the address bar, so this repo is no
+      // longer consistent on the point — whether to route to alias URLs is an
+      // open product call, not a settled preference.
       const pathname = targetHref.split('?')[0];
       router.push(`${pathname}${params.toString() ? `?${params.toString()}` : ''}`);
     },
