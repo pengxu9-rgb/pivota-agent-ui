@@ -499,6 +499,160 @@ describe('product page metadata', () => {
     );
   });
 
+  // ---------------------------------------------------------------------
+  // SAME-CONTENT duplicates: content_canonical_route_id.
+  //
+  // 474 content_keys serve identical content — same title, same Product
+  // JSON-LD, confirmed by live probes — under 2 to 7 sig URLs, a population P3
+  // grew when it made minted canonicals renderable next to the mirror they
+  // were minted from. Every one of those pages emitted a SELF-referential
+  // canonical, so both URLs declared themselves canonical for the same content
+  // and Google was free to index the one the sitemap omits.
+  //
+  // #280 fixed the sitemap; these tests are the other half. The value comes
+  // from the gateway rather than being derived here on purpose: it MUST equal
+  // the sig the sitemap advertises, and that winner is sticky on index equity
+  // rather than computable from the row. A tag naming a different sig than the
+  // sitemap submits would tell the crawler to drop the URL we just submitted —
+  // worse than the duplicate.
+  // ---------------------------------------------------------------------
+  it('points a duplicate sig PDP at the ELECTED canonical instead of itself', async () => {
+    const elected = 'sig_c1ae6bae3c95e29035cf91b46a81b224';
+    const losing = 'sig_2f057569e49bcc11a33e54dcac6d9dca';
+    getPdpV2Mock.mockResolvedValue({
+      modules: [{ type: 'canonical', data: { content_canonical_route_id: elected } }],
+    });
+    mapPdpV2ToPdpPayloadMock.mockReturnValue(buildPayload({
+      product_id: losing,
+      title: 'Acme Glow Serum',
+      pivota_signature_id: losing,
+    }));
+
+    const metadata = await generatePersonalizedMetadata({
+      params: Promise.resolve({ id: losing }),
+      searchParams: Promise.resolve({ merchant_id: 'merch_1' }),
+    });
+
+    expect((metadata.alternates as any)?.canonical).toBe(
+      `https://agent.pivota.cc/products/${elected}`,
+    );
+    expect((metadata.openGraph as any)?.url).toBe(
+      `https://agent.pivota.cc/products/${elected}`,
+    );
+  });
+
+  it('stays self-referential when the elected sig IS this page', async () => {
+    // The winner must not canonicalise away from itself — that would strip the
+    // one URL we advertise of its own tag.
+    const elected = 'sig_c1ae6bae3c95e29035cf91b46a81b224';
+    getPdpV2Mock.mockResolvedValue({
+      modules: [{ type: 'canonical', data: { content_canonical_route_id: elected } }],
+    });
+    mapPdpV2ToPdpPayloadMock.mockReturnValue(buildPayload({
+      product_id: elected,
+      title: 'Acme Glow Serum',
+      pivota_signature_id: elected,
+    }));
+
+    const metadata = await generatePersonalizedMetadata({
+      params: Promise.resolve({ id: elected }),
+      searchParams: Promise.resolve({ merchant_id: 'merch_1' }),
+    });
+
+    expect((metadata.alternates as any)?.canonical).toBe(
+      `https://agent.pivota.cc/products/${elected}`,
+    );
+  });
+
+  it('falls back to self when the content_key has no election', async () => {
+    // Freshly minted, or a backend predating migration 181. Absent must mean
+    // "unchanged", never "no canonical".
+    const own = 'sig_2f057569e49bcc11a33e54dcac6d9dca';
+    for (const data of [
+      {},
+      { content_canonical_route_id: null },
+      { content_canonical_route_id: '' },
+    ]) {
+      getPdpV2Mock.mockResolvedValue({ modules: [{ type: 'canonical', data }] });
+      mapPdpV2ToPdpPayloadMock.mockReturnValue(buildPayload({
+        product_id: own,
+        title: 'Acme Glow Serum',
+        pivota_signature_id: own,
+      }));
+
+      const metadata = await generatePersonalizedMetadata({
+        params: Promise.resolve({ id: own }),
+        searchParams: Promise.resolve({ merchant_id: 'merch_1' }),
+      });
+
+      expect((metadata.alternates as any)?.canonical).toBe(
+        `https://agent.pivota.cc/products/${own}`,
+      );
+    }
+  });
+
+  it('ignores a malformed election rather than emitting a URL that 500s', async () => {
+    // /products/ck_… and /products/sig_ both error in production. An election
+    // is not a licence to skip the route-id shape check.
+    const own = 'sig_2f057569e49bcc11a33e54dcac6d9dca';
+    for (const bad of ['ck_7f02a883e39e2529c8299393cf8e9669', 'sig_', 'not-an-id']) {
+      getPdpV2Mock.mockResolvedValue({
+        modules: [{ type: 'canonical', data: { content_canonical_route_id: bad } }],
+      });
+      mapPdpV2ToPdpPayloadMock.mockReturnValue(buildPayload({
+        product_id: own,
+        title: 'Acme Glow Serum',
+        pivota_signature_id: own,
+      }));
+
+      const metadata = await generatePersonalizedMetadata({
+        params: Promise.resolve({ id: own }),
+        searchParams: Promise.resolve({ merchant_id: 'merch_1' }),
+      });
+
+      expect((metadata.alternates as any)?.canonical).toBe(
+        `https://agent.pivota.cc/products/${own}`,
+      );
+    }
+  });
+
+  it('a multi-merchant GROUP still outranks the content-key election', async () => {
+    // The ranking, stated as a test: the group is the wider canonicalisation
+    // and subsumes this one. If the narrower rule won, a grouped PDP would stop
+    // pointing at its group and that consolidation would silently unwind.
+    getPdpV2Mock.mockResolvedValue({
+      subject: { type: 'product_group', id: 'pg_catalog_abc123' },
+      modules: [
+        {
+          type: 'canonical',
+          data: {
+            product_group_id: 'pg_catalog_abc123',
+            canonical_scope: 'multi_merchant_canonical',
+            content_canonical_route_id: 'sig_c1ae6bae3c95e29035cf91b46a81b224',
+          },
+        },
+        { type: 'offers', data: { offers_count: 2 } },
+      ],
+    });
+    mapPdpV2ToPdpPayloadMock.mockReturnValue(buildPayload(
+      { product_id: 'sig_2f057569e49bcc11a33e54dcac6d9dca', title: 'Barrier Serum' },
+      {
+        product_group_id: 'pg_catalog_abc123',
+        canonical_scope: 'multi_merchant_canonical',
+        offers_count: 2,
+      },
+    ));
+
+    const metadata = await generatePersonalizedMetadata({
+      params: Promise.resolve({ id: 'sig_2f057569e49bcc11a33e54dcac6d9dca' }),
+      searchParams: Promise.resolve({ merchant_id: 'merch_1' }),
+    });
+
+    expect((metadata.alternates as any)?.canonical).toBe(
+      'https://agent.pivota.cc/products/pg_catalog_abc123',
+    );
+  });
+
   it('server-renders signature PDPs without awaiting searchParams', async () => {
     const v2Response = { modules: [] };
     getPdpV2Mock.mockResolvedValue(v2Response);

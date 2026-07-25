@@ -235,9 +235,19 @@ export function readCanonicalProduct(item) {
   // this can merge before or after the backend side with no coupling.
   if (row.content_depth === false) return null
 
+  // The backend's ELECTED winner for this content_key (pivota-backend
+  // migration 181), or '' when nothing has been elected. Carried through the
+  // dedup as layer 0 — see preferSitemapId.
+  //
+  // Read AFTER the eligibility/renderable/content_depth drops above, so an
+  // election can never resurrect a row those filters rejected — the property
+  // this PR's description calls out as "ignored rather than honoured".
+  const electedId = String(row.canonical_sig_id || '').trim()
+
   return {
     id,
     contentKey,
+    electedId: /^sig_.+/.test(electedId) ? electedId : '',
     lastmod: parseLastmod(row.updated_at || row.last_modified),
   }
 }
@@ -282,12 +292,46 @@ export function parseSitemapProductIds(xml) {
 // (7,407 URLs for 6,133 distinct products) and split index signal across
 // duplicate pages. Pick ONE URL id per content_key.
 //
-// The ordering is a strict total order on ids, applied in three layers:
+// The ordering is a strict total order on ids, applied in four layers:
 //
+//   0. ELECTED — the winner the BACKEND named for this content_key
+//      (`canonical_sig_id` on the feed row, pivota-backend migration 181).
+//      Authoritative when present.
 //   1. INCUMBENCY — an id already advertised by the committed
 //      sitemap-products.xml beats one that is not.
 //   2. Sig class — the longer sig (32-hex content sigs over legacy 24-hex).
 //   3. Lexicographic.
+//
+// WHY LAYER 0 OUTRANKS EVERYTHING, including incumbency.
+//
+// #280 fixed the sitemap and only the sitemap. The duplicate PAGES were
+// untouched: all 474 content_keys with more than one eligible sig serve
+// identical content — same title, same Product JSON-LD, verified by 24 live
+// fetches — under a SELF-referential <link rel="canonical"> each. Two URLs,
+// same content, both claiming to be canonical, and Google picks one of them
+// arbitrarily. Advertising the right one does not stop it choosing the other.
+//
+// The fix is for the losing sig's PDP to canonicalise at the winner, which
+// requires the GATEWAY to know which sig this file picked. It cannot: our rule
+// is anchored on incumbency, and incumbency lives in a git-tracked artifact
+// that a PDP request has no way to consult. So the decision moved to the
+// backend, seeded ONCE from this file's own answer (all 474 groups had exactly
+// one member in the live sitemap, so the import was exact, not a guess), and
+// both surfaces now READ it.
+//
+// That makes layer 0 the invariant rather than a preference. If this file
+// preferred its incumbent over the backend's winner, the sitemap would
+// advertise URL A while A's own page pointed its canonical at B — actively
+// instructing the crawler to drop the URL we just submitted, which is worse
+// than the duplicate we set out to fix. Whenever the two disagree, the backend
+// is right BY CONSTRUCTION, because the gateway is what stamps the tag.
+//
+// Layers 1-3 are now the fallback for rows the backend has not elected yet
+// (freshly minted content_keys, or a backend that predates migration 181).
+// They are unchanged, and they still matter: they are what holds the line
+// during the window before a new content_key's first election, which is why
+// the backend's own fallback ordering is a deliberate byte-for-byte copy of
+// layers 2-3.
 //
 // Layers 2+3 alone are deterministic but NOT stability-preserving, and
 // 2026-07-25 (pivota-backend#1585 / PIVOTA-Agent#1828, "P3") turned that from
@@ -349,7 +393,18 @@ export function parseSitemapProductIds(xml) {
 // trade — a URL already earning index equity is worth more than a tidier id —
 // but if a sig class ever has to be retired, it needs a deliberate one-time
 // migration (redirects plus a forced regeneration), not a silent reshuffle.
-export function preferSitemapId(a, b, incumbentIds) {
+export function preferSitemapId(a, b, incumbentIds, electedId) {
+  // LAYER 0 — the backend's elected winner. Only ever returns a value that is
+  // ALREADY one of the two candidates: an election naming a sig that did not
+  // survive the eligibility + renderable filters must not resurrect it, and an
+  // election this file has never heard of must not be able to invent a URL.
+  // (The backend elects from the same filtered set, so a disagreement here
+  // means the two ran against different corpus states — a stale sweep — and
+  // falling through to layers 1-3 is the right answer for that window.)
+  if (electedId) {
+    if (electedId === a) return a
+    if (electedId === b) return b
+  }
   if (incumbentIds && typeof incumbentIds.has === 'function') {
     const aIncumbent = incumbentIds.has(a)
     if (aIncumbent !== incumbentIds.has(b)) return aIncumbent ? a : b
@@ -360,7 +415,11 @@ export function preferSitemapId(a, b, incumbentIds) {
 }
 
 export function mergeDuplicateProduct(existing, incoming, incumbentIds) {
-  const id = preferSitemapId(existing.id, incoming.id, incumbentIds)
+  // Both rows carry the same content_key, so they carry the same election —
+  // but read it from whichever side has one, so a feed that is mid-rollout (or
+  // a row the backend has not re-served yet) still resolves.
+  const electedId = existing.electedId || incoming.electedId || ''
+  const id = preferSitemapId(existing.id, incoming.id, incumbentIds, electedId)
   const lastmod =
     !existing.lastmod
       ? incoming.lastmod
@@ -369,7 +428,7 @@ export function mergeDuplicateProduct(existing, incoming, incumbentIds) {
         : existing.lastmod > incoming.lastmod
           ? existing.lastmod
           : incoming.lastmod
-  return { id, contentKey: existing.contentKey, lastmod }
+  return { id, contentKey: existing.contentKey, electedId, lastmod }
 }
 
 export function productUrlEntries(products) {

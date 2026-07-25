@@ -172,6 +172,41 @@ function readServerCanonicalRouteId(
     );
   if (shouldUseGroup) return groupId;
 
+  // SAME-CONTENT duplicates, one rung narrower than the group above.
+  //
+  // 474 content_keys serve identical content — same title, same Product
+  // JSON-LD, verified by live probes — under 2 to 7 sig URLs. Until now every
+  // one of those pages emitted a SELF-referential canonical, so two URLs each
+  // declared themselves canonical for the same content and Google was free to
+  // index the one the sitemap omits. #280 made the sitemap advertise exactly
+  // one; this makes the OTHER pages point at it.
+  //
+  // The value is the gateway's, not ours. It has to be the same sig the
+  // sitemap advertises, and that winner is sticky on index equity (#280 seeded
+  // it from the URLs already indexed) rather than derivable from the row — so
+  // both surfaces read one stored answer from pivota-backend rather than each
+  // applying a rule. Recomputing it here would let this tag name sig A while
+  // the sitemap submits sig B, which tells the crawler to drop the URL we just
+  // submitted: strictly worse than the duplicate.
+  //
+  // Ranked BELOW the group: a multi-merchant group is the wider
+  // canonicalisation and already subsumes this one. Absent (null, or an
+  // unelected content_key) falls through to self, exactly as before.
+  //
+  // The prefix alone is NOT enough. `isPivotaSignatureRouteId` is a
+  // startsWith check, so a bare "sig_" with no body passes it — and
+  // /products/sig_ errors in production exactly like a ck_ URL does (the same
+  // trap scripts/sitemap_lib.mjs documents at its sig gate). Canonicalising a
+  // live page at a URL that 500s is worse than leaving the duplicate: it hands
+  // the crawler an error page as the preferred version.
+  const contentCanonicalRouteId = firstString(canonicalData.content_canonical_route_id);
+  if (
+    isPivotaSignatureRouteId(contentCanonicalRouteId) &&
+    contentCanonicalRouteId.length > 'sig_'.length
+  ) {
+    return contentCanonicalRouteId;
+  }
+
   return resolveProductRouteId(product) || requestedProductId;
 }
 
