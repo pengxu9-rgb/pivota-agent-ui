@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useId, useState } from 'react';
 
 /**
  * Accordion row for the Beauty mobile PDP detail group.
@@ -8,6 +8,18 @@ import { useState } from 'react';
  *   1px bottom hairline, a full-width 16/18 padded header (14px semibold
  *   title + optional faint count) with a chevron that rotates 0→90° on
  *   open, and 0/18/16 padded content.
+ *
+ * The body is ALWAYS in the DOM and collapsed with the `hidden` attribute
+ * rather than being conditionally mounted. It used to be `{open ? … : null}`,
+ * which meant a closed section's text existed only in the client flight
+ * payload — so a crawler fetching the SSR HTML saw the header and nothing
+ * else. That silently withheld Description / Ingredients / How to use from
+ * every non-JS reader (GPTBot, ClaudeBot, Googlebot's HTML pass): the
+ * mixsoon Bean Essence PDP served 624 readable chars while holding 726
+ * chars of description it never rendered.
+ *
+ * This is not cloaking — the markup a crawler receives is exactly the markup
+ * a browser receives, and one click reveals it.
  */
 export function BeautyAccordion({
   title,
@@ -21,12 +33,14 @@ export function BeautyAccordion({
   children: React.ReactNode;
 }) {
   const [open, setOpen] = useState(defaultOpen);
+  const panelId = `${useId()}-panel`;
   return (
     <div className="border-b border-border">
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
+        aria-controls={panelId}
         className="flex w-full items-center justify-between px-4 py-4"
       >
         <span className="flex items-center gap-2 text-[14px] font-semibold text-foreground">
@@ -45,7 +59,9 @@ export function BeautyAccordion({
           </svg>
         </span>
       </button>
-      {open ? <div className="px-4 pb-4">{children}</div> : null}
+      <div id={panelId} hidden={!open} className="px-4 pb-4">
+        {children}
+      </div>
     </div>
   );
 }
