@@ -54,7 +54,15 @@ vi.mock('./sitemap_lib.mjs', async (importOriginal) => {
       const id = sig.startsWith('sig_') ? sig : contentKey
       // contentKey is the dedup key downstream — omitting it collapses every
       // row into one product and the count guard fires instead of the id guard.
-      return id ? { id, contentKey, lastmod: undefined } : null
+      //
+      // servingEligible must be restated even though nothing here asserts on
+      // it: it feeds the header's serving_eligible/index_only breakdown, and a
+      // stub that omits it makes this suite build a header claiming 0 buyable
+      // URLs over fixtures that are entirely serving_eligible: true. Nothing
+      // fails today, but it hands a nonsense baseline to whoever adds a header
+      // assertion here — this being the other end-to-end generateSitemaps()
+      // suite, that is where they would add it.
+      return id ? { id, contentKey, servingEligible: true, lastmod: undefined } : null
     },
   }
 })

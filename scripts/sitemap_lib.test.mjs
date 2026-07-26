@@ -466,7 +466,7 @@ describe('collectSitemapProducts — backend pagination', () => {
       return pageResponse(offset === '0' ? firstPage : secondPage, 1002, Number(offset || 0))
     })
 
-    const { products: collected, source } = await collectSitemapProducts(
+    const { products: collected, feedHealth } = await collectSitemapProducts(
       'https://canonical.example.com',
     )
 
@@ -478,7 +478,7 @@ describe('collectSitemapProducts — backend pagination', () => {
     expect(fetchedUrl.searchParams.get('limit')).toBe('1000')
     // duplicate sig_page_one_0000 dropped
     expect(collected).toHaveLength(1001)
-    expect(source).toBe('serving_eligible')
+    expect(feedHealth).toBe('ok')
     const ids = collected.map((p) => p.id)
     expect(ids).toContain('sig_page_one_0000')
     expect(ids).toContain('sig_page_two_0000')
@@ -500,7 +500,7 @@ describe('collectSitemapProducts — backend pagination', () => {
       ),
     )
 
-    const { products: collected, source } = await collectSitemapProducts(
+    const { products: collected, feedHealth } = await collectSitemapProducts(
       'https://canonical.example.com',
     )
 
@@ -508,20 +508,20 @@ describe('collectSitemapProducts — backend pagination', () => {
     const dup = collected.find((p) => p.contentKey === 'ck_same_product')
     expect(dup?.id).toBe(sig32) // deterministic winner: longer sig class
     expect(dup?.lastmod).toEqual(new Date('2026-06-01T00:00:00.000Z'))
-    expect(source).toBe('serving_eligible')
+    expect(feedHealth).toBe('ok')
   })
 
-  it('reports serving_eligible_partial when rows are filtered out', async () => {
+  it('reports feed_health=partial when rows are filtered out', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
       pageResponse([canonicalProduct('sig_keep_me'), { sig_id: 'ext_alias' }], 2),
     )
 
-    const { products: collected, source } = await collectSitemapProducts(
+    const { products: collected, feedHealth } = await collectSitemapProducts(
       'https://canonical.example.com',
     )
 
     expect(collected.map((p) => p.id)).toEqual(['sig_keep_me'])
-    expect(source).toBe('serving_eligible_partial')
+    expect(feedHealth).toBe('partial')
   })
 
   it('renderable=false drops do NOT mark the run partial (expected filter, not anomaly)', async () => {
@@ -535,19 +535,19 @@ describe('collectSitemapProducts — backend pagination', () => {
       ),
     )
 
-    const { products: collected, source } = await collectSitemapProducts(
+    const { products: collected, feedHealth } = await collectSitemapProducts(
       'https://canonical.example.com',
     )
 
     expect(collected.map((p) => p.id)).toEqual(['sig_keep_me'])
-    expect(source).toBe('serving_eligible')
+    expect(feedHealth).toBe('ok')
   })
 
   it('content_depth=false drops do NOT mark the run partial (expected filter, not anomaly)', async () => {
     // Same reasoning as the renderable=false case above, and higher stakes:
     // this drop fires on 364 rows on the FIRST cron run after the floor ships.
-    // If it counted as "invalid", the source label would read
-    // serving_eligible_partial from then on, permanently retiring the anomaly
+    // If it counted as "invalid", the health label would read
+    // feed_health=partial from then on, permanently retiring the anomaly
     // signal for real parse failures.
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
       pageResponse(
@@ -559,19 +559,19 @@ describe('collectSitemapProducts — backend pagination', () => {
       ),
     )
 
-    const { products: collected, source } = await collectSitemapProducts(
+    const { products: collected, feedHealth } = await collectSitemapProducts(
       'https://canonical.example.com',
     )
 
     expect(collected.map((p) => p.id)).toEqual(['sig_keep_me'])
-    expect(source).toBe('serving_eligible')
+    expect(feedHealth).toBe('ok')
   })
 
   it('serving_eligible=false drops do NOT mark the run partial (expected filter, not anomaly)', async () => {
     // The fourth arm of the same invariant, and the one that shipped missing:
     // the serving-gate drop fires on 77 rows on the FIRST cron run after it
     // lands, so leaving it out of the droppedAsDead predicate pins the label
-    // to serving_eligible_partial on that run and never unpins it —
+    // to feed_health=partial on that run and never unpins it —
     // permanently retiring the only signal that surfaces a renamed field,
     // malformed rows, or a truncated feed payload. The three tests above
     // exercise readCanonicalProduct; none of them reaches this funnel, which
@@ -592,19 +592,19 @@ describe('collectSitemapProducts — backend pagination', () => {
       ),
     )
 
-    const { products: collected, source } = await collectSitemapProducts(
+    const { products: collected, feedHealth } = await collectSitemapProducts(
       'https://canonical.example.com',
     )
 
     expect(collected.map((p) => p.id)).toEqual(['sig_keep_me'])
-    expect(source).toBe('serving_eligible')
+    expect(feedHealth).toBe('ok')
   })
 
   it('ck-only drops do NOT mark the run partial (well-formed row, not a parse failure)', async () => {
     // Mirrors the renderable=false case above. ck-only rows are now rejected by
     // readCanonicalProduct (their /products/{ck} URL 500s), but they are valid
-    // rows — if they counted as "invalid" the source label would read
-    // serving_eligible_partial on EVERY regeneration for as long as the feed
+    // rows — if they counted as "invalid" the health label would read
+    // feed_health=partial on EVERY regeneration for as long as the feed
     // contains one, permanently retiring the anomaly signal for real parse
     // failures.
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
@@ -617,22 +617,22 @@ describe('collectSitemapProducts — backend pagination', () => {
       ),
     )
 
-    const { products: collected, source } = await collectSitemapProducts(
+    const { products: collected, feedHealth } = await collectSitemapProducts(
       'https://canonical.example.com',
     )
 
     expect(collected.map((p) => p.id)).toEqual(['sig_keep_me'])
-    expect(source).toBe('serving_eligible')
+    expect(feedHealth).toBe('ok')
   })
 
   it('a genuinely malformed row STILL marks the run partial', async () => {
-    // The signal must survive: garbage rows are the thing _partial exists for.
+    // The signal must survive: garbage rows are the thing `partial` exists for.
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
       pageResponse([canonicalProduct('sig_keep_me'), 'not-an-object'], 2),
     )
 
-    const { source } = await collectSitemapProducts('https://canonical.example.com')
-    expect(source).toBe('serving_eligible_partial')
+    const { feedHealth } = await collectSitemapProducts('https://canonical.example.com')
+    expect(feedHealth).toBe('partial')
   })
 
   it('pages by keyset cursor when the backend provides next_cursor', async () => {
@@ -649,7 +649,7 @@ describe('collectSitemapProducts — backend pagination', () => {
       })
     })
 
-    const { products: collected, source } = await collectSitemapProducts(
+    const { products: collected, feedHealth } = await collectSitemapProducts(
       'https://canonical.example.com',
     )
 
@@ -662,7 +662,7 @@ describe('collectSitemapProducts — backend pagination', () => {
     // Cursor and offset are mutually exclusive on the backend.
     expect(secondUrl.searchParams.get('offset')).toBeNull()
     expect(collected).toHaveLength(1001)
-    expect(source).toBe('serving_eligible')
+    expect(feedHealth).toBe('ok')
   })
 
   it('stops on has_more=false even when the page is full and total is null', async () => {
@@ -759,12 +759,12 @@ describe('collectSitemapProducts — backend pagination', () => {
   it('returns an empty set when the endpoint has no products', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(pageResponse([], 0))
 
-    const { products: collected, source } = await collectSitemapProducts(
+    const { products: collected, feedHealth } = await collectSitemapProducts(
       'https://canonical.example.com',
     )
 
     expect(collected).toHaveLength(0)
-    expect(source).toBe('serving_eligible')
+    expect(feedHealth).toBe('ok')
     const xml = buildSitemapUrlsetXml(productUrlEntries(collected))
     expect(xml).toContain('<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">')
     expect(xml).not.toContain('<url>')
@@ -888,14 +888,14 @@ describe('readCanonicalProduct rejects a degenerate sig_ (keeps the un-forceable
 })
 
 describe('deterministic observability comment', () => {
-  it('embeds source and count as an XML comment after the declaration', () => {
+  it('embeds the caller-supplied label as an XML comment after the declaration', () => {
     const xml = buildSitemapUrlsetXml(
       productUrlEntries([readCanonicalProduct(canonicalProduct('sig_a'))]),
-      'source=serving_eligible urls=1',
+      'feed_health=ok urls=1 serving_eligible=1 index_only=0',
     )
 
     expect(xml).toMatch(
-      /^<\?xml version="1\.0" encoding="UTF-8"\?>\n<!-- source=serving_eligible urls=1 -->\n<urlset/,
+      /^<\?xml version="1\.0" encoding="UTF-8"\?>\n<!-- feed_health=ok urls=1 serving_eligible=1 index_only=0 -->\n<urlset/,
     )
   })
 })
@@ -949,13 +949,13 @@ describe('collectSitemapProducts — `total` present on the first page only (pro
       { withHasMore: true },
     )
 
-    const { products: collected, source, coverage } = await collectSitemapProducts(
+    const { products: collected, feedHealth, coverage } = await collectSitemapProducts(
       'https://canonical.example.com',
     )
 
     expect(fetchMock).toHaveBeenCalledTimes(3)
     expect(collected).toHaveLength(2500)
-    expect(source).toBe('serving_eligible')
+    expect(feedHealth).toBe('ok')
     expect(coverage).toMatchObject({ rowsSeen: 2500, feedTotal: 2500, stoppedForCap: false })
     expect(sitemapCoverageVerdict(coverage).level).toBe('ok')
   })
@@ -1242,13 +1242,13 @@ describe('the 50k URL cap is labelled and accounted for, wherever it lands', () 
       return pageResponse(items, null, offset, { has_more: offset < 55_000 })
     })
 
-    const { products: collected, source, coverage } = await collectSitemapProducts(
+    const { products: collected, feedHealth, coverage } = await collectSitemapProducts(
       'https://canonical.example.com',
     )
 
     expect(collected).toHaveLength(50_000)
     expect(coverage.stoppedForCap).toBe(true)
-    expect(source).toBe('serving_eligible_truncated')
+    expect(feedHealth).toBe('truncated')
     expect(coverage.dropped.skippedAtCap).toBeGreaterThan(0)
 
     // The invariant the coverage log claims: nothing vanishes unaccounted.

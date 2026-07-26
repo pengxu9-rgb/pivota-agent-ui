@@ -142,6 +142,27 @@ export function isSitemapEligibleProduct(item) {
   )
 }
 
+// The narrower HALF of the admission gate above — reporting only, never a
+// filter: the backend considers this row buyable. A row admitted to the
+// sitemap by `index_eligible` alone is in the file
+// WITHOUT being serving_eligible, and that gap is not hypothetical — on
+// 2026-07-26 the committed file carried 77 such URLs (INDEX_ELIGIBLE_SITEMAP=1
+// in prod) and none of them served, because the renderer's serving gate had
+// never been widened alongside the feed.
+//
+// The serving-gate drop above now withholds the explicit-false shape those 77
+// had, but it keys on an explicit false by design, so `index_eligible` rows
+// that simply omit the field still ship. Those are what this counts.
+//
+// It is reported per-build in the sitemap header (`serving_eligible=` /
+// `index_only=`) so that "did index-only rows get into this file?" is
+// answerable by reading the file, which is what the old `source=` label
+// looked like it answered and did not — see the header comment in
+// generate_sitemaps.mjs.
+export function isServingEligibleProduct(item) {
+  return isTruthyEligibility(item.serving_eligible) || isTruthyEligibility(item.is_serving_eligible)
+}
+
 export function readCanonicalProduct(item) {
   if (!item || typeof item !== 'object') return null
   const row = item
@@ -172,7 +193,7 @@ export function readCanonicalProduct(item) {
   // a placeholder sig_id could wedge the cron red with no escape hatch. Drop
   // the row here instead, where a bad row is routine and costs one URL.
   //
-  // Note this drop DOES pin the source label to `_partial`, unlike the ck-only
+  // Note this drop DOES pin feed_health to `partial`, unlike the ck-only
   // drop that F1 exempted — intentionally. A ck-only row is an expected
   // category (offer-free citation); a sig_id of literally "sig_" is a backend
   // data bug, which is exactly what that anomaly signal is for.
@@ -301,6 +322,10 @@ export function readCanonicalProduct(item) {
   return {
     id,
     contentKey,
+    // Which gate admitted this row — carried through the dedup so the header
+    // can break the emitted set down honestly. Not a filter: an index-only row
+    // still belongs in the sitemap when the backend says it renders.
+    servingEligible: isServingEligibleProduct(row),
     electedId: /^sig_.+/.test(electedId) ? electedId : '',
     lastmod: parseLastmod(row.updated_at || row.last_modified),
   }
@@ -482,7 +507,12 @@ export function mergeDuplicateProduct(existing, incoming, incumbentIds) {
         : existing.lastmod > incoming.lastmod
           ? existing.lastmod
           : incoming.lastmod
-  return { id, contentKey: existing.contentKey, electedId, lastmod }
+  // Follows the WINNING id, and is deliberately not OR'd across the group: the
+  // header's breakdown describes the URLs actually advertised, so an
+  // index-only URL must not be reported as serving_eligible on the strength of
+  // a buyable sibling that lost the dedup and is not in the file.
+  const servingEligible = id === existing.id ? existing.servingEligible : incoming.servingEligible
+  return { id, contentKey: existing.contentKey, servingEligible, electedId, lastmod }
 }
 
 export function productUrlEntries(products) {
@@ -538,7 +568,7 @@ export function sitemapCountGuard(newCount, previousCount) {
 // Skipped when `feedTotal` is null (backend reported no total — nothing to
 // compare against; collectSitemapProducts warns) and when the walk stopped at
 // SITEMAP_MAX_URLS, which is a legitimate short read already labelled
-// `serving_eligible_truncated`.
+// `feed_health=truncated`.
 //
 // WHY THIS IS TIERED rather than a plain pass/fail (the sibling guards return
 // string|null; this one returns a verdict object, deliberately).
