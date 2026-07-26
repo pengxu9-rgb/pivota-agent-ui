@@ -142,8 +142,9 @@ export function isSitemapEligibleProduct(item) {
   )
 }
 
-// The NARROWER of the two admission gates above: the backend considers this
-// row buyable. A row admitted only by `index_eligible` is in the sitemap
+// The narrower HALF of the admission gate above — reporting only, never a
+// filter: the backend considers this row buyable. A row admitted to the
+// sitemap by `index_eligible` alone is in the file
 // WITHOUT being serving_eligible, and that gap is not hypothetical — on
 // 2026-07-26 the committed file carried 77 such URLs (INDEX_ELIGIBLE_SITEMAP=1
 // in prod) and every one of them returned a hard 500, because get_pdp_v2's

@@ -282,7 +282,7 @@ export async function collectSitemapProducts(baseUrl, options = {}) {
         // Hitting the cap mid-page IS a truncation, even when this happens to
         // be the last page (has_more=false) and the walk would have ended
         // anyway. Setting the flag here rather than only in the has_more arm
-        // below keeps the `_truncated` label honest, and bucketing the
+        // below keeps the `truncated` label honest, and bucketing the
         // unvisited remainder keeps the funnel reconciling with rowsSeen.
         stoppedForCap = true
         dropped.skippedAtCap += page.items.length - consumedThisPage

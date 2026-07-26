@@ -18,6 +18,8 @@
 // name was wrong).
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { SITEMAP_MIN_PRODUCT_URLS } from './sitemap_lib.mjs'
+
 const writeFile = vi.hoisted(() => vi.fn(async () => {}))
 // ENOENT: no committed sitemap, so the shrink guard and incumbency both stand
 // down and cannot interfere with the header these tests are about. Every named
@@ -70,14 +72,22 @@ function indexOnlyRow(i) {
   }
 }
 
-// 1,500 clears SITEMAP_MIN_PRODUCT_URLS (1,000); below it the count guard
-// refuses to write and nothing reaches writeFile to assert on.
-const SERVING_ROWS = 1500
+// Must clear SITEMAP_MIN_PRODUCT_URLS, or the count guard refuses to write and
+// nothing reaches writeFile to assert on. Derived from the constant rather than
+// hardcoded at 1,500 so that raising the floor cannot silently turn every test
+// in this file into "sitemap-products.xml was never written".
+const SERVING_ROWS = SITEMAP_MIN_PRODUCT_URLS + 500
 const INDEX_ONLY_ROWS = 77
 
 function productSitemapXml() {
   const call = writeFile.mock.calls.find(([p]) => String(p).endsWith('sitemap-products.xml'))
-  if (!call) throw new Error('sitemap-products.xml was never written')
+  if (!call) {
+    throw new Error(
+      'sitemap-products.xml was never written — a guard refused the build ' +
+        '(coverage, id or count). Check the fixture size against ' +
+        `SITEMAP_MIN_PRODUCT_URLS (${SITEMAP_MIN_PRODUCT_URLS}).`,
+    )
+  }
   return String(call[1])
 }
 
@@ -153,8 +163,14 @@ describe('sitemap header — the eligibility breakdown is measured, not asserted
       ...Array.from({ length: INDEX_ONLY_ROWS }, (_, i) => indexOnlyRow(i)),
       // Dropped by the filters, so they must appear in NEITHER bucket: the
       // breakdown describes the file, not the feed.
-      { ...indexOnlyRow(900), renderable: false },
-      { ...servingRow(900), content_depth: false },
+      //
+      // Indices are deliberately OUTSIDE the fixture ranges above. At
+      // servingRow(900) this row shared a content_key with a row already in the
+      // set, so if the content_depth filter stopped firing it would merge into
+      // that product instead of adding a URL and every assertion here would
+      // still pass — an inert fixture that looked like coverage.
+      { ...indexOnlyRow(9001), renderable: false },
+      { ...servingRow(9002), content_depth: false },
     ]
     vi.stubGlobal(
       'fetch',
@@ -165,47 +181,150 @@ describe('sitemap header — the eligibility breakdown is measured, not asserted
     const line = header(xml)
     const read = (key) => Number(line.match(new RegExp(`\\b${key}=(\\d+)`))[1])
 
+    // The sum is structural (index_only is a subtraction), so this line is a
+    // consistency check, not the teeth. The teeth are the two below: `urls`
+    // has to match the file's OWN content, and the dropped rows must not have
+    // landed in either bucket.
     expect(read('serving_eligible') + read('index_only')).toBe(read('urls'))
-    // …and `urls` is the file's own truth, not a number carried alongside it.
     expect(read('urls')).toBe((xml.match(/<loc>/g) || []).length)
     expect(read('index_only')).toBe(INDEX_ONLY_ROWS)
+    expect(read('serving_eligible')).toBe(SERVING_ROWS)
   })
 
-  it('an index-only URL that WINS the dedup is counted as index_only', async () => {
-    // The subtle way the breakdown could go wrong: two sigs share a
-    // content_key, the index-only one wins the ordering, and an OR across the
-    // group would report the emitted URL as serving_eligible on the strength of
-    // a buyable sibling that is not in the file.
-    //
-    // 32-hex beats 24-hex (preferSitemapId layer 2), so the index-only sig wins
-    // — assert that below rather than trusting it, since a change to the
-    // ordering would otherwise turn this into a test of nothing.
-    const shared = 'ck_contested00000'
-    const indexOnlyWinner = `sig_${'a'.repeat(32)}`
-    const servingLoser = `sig_${'b'.repeat(24)}`
+  // The subtle way the breakdown could go wrong: two sigs share a content_key,
+  // the index-only one wins the ordering, and the flag is taken from the wrong
+  // side — either OR'd across the group, or read off whichever row happened to
+  // arrive last. Both report the emitted URL as serving_eligible on the
+  // strength of a buyable sibling that is NOT in the file: the 2026-07-26 lie,
+  // rebuilt one layer down.
+  //
+  // Swept across BOTH dimensions, because each one alone leaves a mutant alive:
+  //
+  //   emission order — with the serving row first, "follows the winning id" and
+  //   "follows the incoming row" give the same answer, so one order pins
+  //   neither.
+  //
+  //   which side wins — when only the index-only row ever wins, "correctly
+  //   false" is indistinguishable from "flag dropped entirely" (both are
+  //   falsy). The serving-wins case is what forces the flag to be carried.
+  //
+  // ~482 minted/mirror pairs share a content_key today, so this path is
+  // load-bearing, not a curiosity.
+  //
+  // 32-hex beats 24-hex (preferSitemapId layer 2), so the winner is chosen by
+  // which side gets the long sig — asserted below rather than assumed, since a
+  // change to the ordering would otherwise turn this into a test of nothing.
+  for (const indexOnlyWins of [true, false]) {
+    for (const servingFirst of [true, false]) {
+      const winner = indexOnlyWins ? 'index-only' : 'serving'
+      it(`the dedup winner decides the bucket: ${winner} wins, serving row ${
+        servingFirst ? 'first' : 'last'
+      }`, async () => {
+        const shared = 'ck_contested00000'
+        const longSig = `sig_${'a'.repeat(32)}`
+        const shortSig = `sig_${'b'.repeat(24)}`
+        const indexOnlySig = indexOnlyWins ? longSig : shortSig
+        const servingSig = indexOnlyWins ? shortSig : longSig
+        const contested = [
+          { sig_id: servingSig, content_key: shared, serving_eligible: true, renderable: true },
+          {
+            sig_id: indexOnlySig,
+            content_key: shared,
+            serving_eligible: false,
+            index_eligible: true,
+            renderable: true,
+          },
+        ]
+        const items = [
+          ...Array.from({ length: SERVING_ROWS }, (_, i) => servingRow(i)),
+          ...(servingFirst ? contested : [...contested].reverse()),
+        ]
+        vi.stubGlobal(
+          'fetch',
+          vi.fn(async () => page(items)),
+        )
+
+        const xml = await generateSitemaps().then(() => productSitemapXml())
+
+        expect(xml).toContain(`/products/${longSig}<`)
+        expect(xml).not.toContain(`/products/${shortSig}<`)
+        expect(header(xml)).toBe(
+          `feed_health=ok urls=${SERVING_ROWS + 1} ` +
+            `serving_eligible=${SERVING_ROWS + (indexOnlyWins ? 0 : 1)} ` +
+            `index_only=${indexOnlyWins ? 1 : 0}`,
+        )
+      })
+    }
+  }
+
+  // The health token has to be READ from the walk, not baked into the string.
+  // Every other test here runs a clean walk, so `feed_health=ok` hardcoded into
+  // the comment would satisfy all of them — and then a truncated or malformed
+  // walk would publish a clean bill of health, which is the original bug with a
+  // different subject.
+  it('a malformed row reaches the file as feed_health=partial', async () => {
     const items = [
       ...Array.from({ length: SERVING_ROWS }, (_, i) => servingRow(i)),
-      { sig_id: servingLoser, content_key: shared, serving_eligible: true, renderable: true },
-      {
-        sig_id: indexOnlyWinner,
-        content_key: shared,
-        serving_eligible: false,
-        index_eligible: true,
-        renderable: true,
-      },
+      ...Array.from({ length: INDEX_ONLY_ROWS }, (_, i) => indexOnlyRow(i)),
+      // Not one of the EXPECTED filters (renderable / content_depth / ck-only),
+      // which are exempted so they cannot pin the label — this is a genuine
+      // parse failure, the anomaly the signal exists for.
+      'not-an-object',
     ]
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => page(items)),
     )
 
+    await generateSitemaps()
+
+    expect(header(productSitemapXml())).toBe(
+      `feed_health=partial urls=${SERVING_ROWS + INDEX_ONLY_ROWS} ` +
+        `serving_eligible=${SERVING_ROWS} index_only=${INDEX_ONLY_ROWS}`,
+    )
+  })
+
+  // Every fixture above states `serving_eligible` explicitly as a boolean, so
+  // none of them exercise the other shapes the predicate deliberately accepts.
+  // Each row below is admitted to the sitemap by isSitemapEligibleProduct, so
+  // each MUST land in one bucket or the other — and a predicate that mishandled
+  // any of them would misreport a URL that is really in the file.
+  it('counts the eligibility shapes the predicate actually accepts', async () => {
+    const extras = [
+      // The alias. isSitemapEligibleProduct admits on it, so the breakdown has
+      // to read it too — dropping this arm is otherwise invisible.
+      { sig_id: 'sig_alias0000', content_key: 'ck_alias0000', is_serving_eligible: true },
+      // isTruthyEligibility accepts 1 and 'true', not just boolean true.
+      { sig_id: 'sig_numeric000', content_key: 'ck_numeric000', serving_eligible: 1 },
+      { sig_id: 'sig_stringy000', content_key: 'ck_stringy000', serving_eligible: 'true' },
+      // Both flags — a row can be buyable AND citation-eligible. It is buyable,
+      // so it belongs in serving_eligible, not index_only.
+      {
+        sig_id: 'sig_both00000',
+        content_key: 'ck_both00000',
+        serving_eligible: true,
+        index_eligible: true,
+      },
+      // No serving flag at all (not merely false): admitted by index_eligible
+      // alone, so it is index_only. The absent case and the explicit-false case
+      // are different branches and both occur in the wild.
+      { sig_id: 'sig_absent000', content_key: 'ck_absent000', index_eligible: true },
+    ]
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        page([...Array.from({ length: SERVING_ROWS }, (_, i) => servingRow(i)), ...extras]),
+      ),
+    )
+
     const xml = await generateSitemaps().then(() => productSitemapXml())
 
-    expect(xml).toContain(`/products/${indexOnlyWinner}<`)
-    expect(xml).not.toContain(`/products/${servingLoser}<`)
+    // All five are advertised…
+    expect((xml.match(/<loc>/g) || []).length).toBe(SERVING_ROWS + extras.length)
+    // …four of them as buyable, one as citation-only.
     expect(header(xml)).toBe(
-      `feed_health=ok urls=${SERVING_ROWS + 1} ` +
-        `serving_eligible=${SERVING_ROWS} index_only=1`,
+      `feed_health=ok urls=${SERVING_ROWS + 5} ` +
+        `serving_eligible=${SERVING_ROWS + 4} index_only=1`,
     )
   })
 })

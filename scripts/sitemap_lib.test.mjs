@@ -626,7 +626,7 @@ describe('collectSitemapProducts — backend pagination', () => {
   })
 
   it('a genuinely malformed row STILL marks the run partial', async () => {
-    // The signal must survive: garbage rows are the thing _partial exists for.
+    // The signal must survive: garbage rows are the thing `partial` exists for.
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
       pageResponse([canonicalProduct('sig_keep_me'), 'not-an-object'], 2),
     )
