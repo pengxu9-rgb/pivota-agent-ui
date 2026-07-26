@@ -296,14 +296,21 @@ export function readCanonicalProduct(item) {
   // evidence it is running. Verified 2026-07-26: `content_depth` is absent
   // from all 5,887 rows of https://api.pivota.cc/api/canonical/products, so
   // this drops ZERO rows. #282 shipped this consumer half on 2026-07-26; the
-  // producer half is pivota-backend#1588, still OPEN at the time of writing.
+  // producer half is pivota-backend#1591.
+  //
+  // THE PRODUCER HAS ALREADY FAILED ONCE IN PROD, which is why the pointer is
+  // worth keeping current. pivota-backend#1588 was the original producer: it
+  // merged on 2026-07-26 and took GET /api/canonical/products to a hard 500
+  // for every caller (an untyped `concat` bind param Postgres could not type —
+  // asyncpg IndeterminateDatatypeError). Reverted 16 minutes later in #1590.
+  // #1591 is the reland with the parameter typed and a dialect-compile guard.
   //
   // Re-check in one line before trusting the floor — if this prints 0, the
   // floor is still a no-op no matter what the comments above say:
   //   curl -s 'https://api.pivota.cc/api/canonical/products?limit=200' \
   //     | jq '[.items[] | select(has("content_depth"))] | length'
   //
-  // When #1588 lands, expect the URL count to SHRINK by ~364 (4,528 → ~4,164
+  // When #1591 lands, expect the URL count to SHRINK by ~364 (4,528 → ~4,164
   // against the 2026-07-26 feed, 8.0%). That is well inside sitemapCountGuard's
   // 50% floor, so the guard will not stop it — read the coverage line's
   // `dropped_thin=` counter on the first cron run after the deploy to confirm

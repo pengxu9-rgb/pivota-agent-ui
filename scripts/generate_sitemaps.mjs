@@ -367,7 +367,7 @@ export async function collectSitemapProducts(baseUrl, options = {}) {
     // no output saying so. Silence is what made that possible.
     console.log(
       `NOTE: the feed carries no content_depth field on any of ${rowsSeen} row(s), ` +
-        'so the thin-content floor dropped nothing (pivota-backend#1588 ships it). ' +
+        'so the thin-content floor dropped nothing (pivota-backend#1591 ships it). ' +
         'This line disappearing is how you know the floor went live.',
     )
   }
