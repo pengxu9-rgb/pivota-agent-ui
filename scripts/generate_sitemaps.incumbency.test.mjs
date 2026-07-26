@@ -266,6 +266,67 @@ describe('incumbency wiring — the committed sitemap decides the dedup winner',
     expect(warn.mock.calls.flat().join(' ')).not.toContain('could not read')
   })
 
+  // LAYER 0 wiring — the backend's elected canonical, threaded end to end.
+  //
+  // Same reason this file exists at all: sitemap_elected_canonical.test.mjs
+  // covers readCanonicalProduct/preferSitemapId/mergeDuplicateProduct as pure
+  // functions, which leaves the part that actually protects production
+  // untested — whether collectSitemapProducts carries `canonical_sig_id` off
+  // the feed row and into the dedup. Delete the wiring and every pure test
+  // stays green.
+  it('THE INVARIANT: advertises the backend-elected sig over its own incumbent', async () => {
+    // The gateway is already stamping the elected sig into every sibling's
+    // <link rel="canonical">. If this file kept preferring its incumbent, the
+    // sitemap would submit MIRROR while MIRROR's own page pointed at MINTED —
+    // instructing the crawler to drop the URL we just submitted, which is worse
+    // than the duplicate this whole line of work is closing.
+    stubCommittedSitemap([...filler(1400).map((r) => r.sig_id), MIRROR_SIG])
+    stubFeed([
+      ...filler(1400),
+      row(MIRROR_SIG, SHARED_CK, { canonical_sig_id: MINTED_SIG }),
+      row(MINTED_SIG, SHARED_CK, { canonical_sig_id: MINTED_SIG }),
+    ])
+
+    await generateSitemaps()
+
+    const ids = writtenProductIds()
+    expect(ids).toContain(MINTED_SIG)
+    expect(ids).not.toContain(MIRROR_SIG)
+  })
+
+  it('falls back to incumbency for a content_key the backend has not elected', async () => {
+    // Freshly minted content_keys, and every row until the election sweep
+    // reaches them. Absent must degrade to #280's behaviour, not to the
+    // lexicographic ordering #280 replaced — MINTED is the sig that wins the
+    // pure ordering, so seeing it here would mean incumbency had been lost.
+    stubCommittedSitemap([...filler(1400).map((r) => r.sig_id), MIRROR_SIG])
+    stubFeed([...filler(1400), row(MIRROR_SIG, SHARED_CK), row(MINTED_SIG, SHARED_CK)])
+
+    await generateSitemaps()
+
+    const ids = writtenProductIds()
+    expect(ids).toContain(MIRROR_SIG)
+    expect(ids).not.toContain(MINTED_SIG)
+  })
+
+  it('ignores an election naming a sig the renderable filter dropped', async () => {
+    // The elected row lost the filter that runs BEFORE this dedup. Honouring it
+    // would advertise a URL we have just established does not render — #1583's
+    // dead-URL bug through a new door. The surviving sibling wins instead.
+    stubCommittedSitemap(filler(1400).map((r) => r.sig_id))
+    stubFeed([
+      ...filler(1400),
+      row(MIRROR_SIG, SHARED_CK, { canonical_sig_id: MINTED_SIG }),
+      row(MINTED_SIG, SHARED_CK, { canonical_sig_id: MINTED_SIG, renderable: false }),
+    ])
+
+    await generateSitemaps()
+
+    const ids = writtenProductIds()
+    expect(ids).toContain(MIRROR_SIG)
+    expect(ids).not.toContain(MINTED_SIG)
+  })
+
   it('accepts any .has-able incumbent collection, not just a Set', async () => {
     // collectSitemapProducts and preferSitemapId must agree on the contract. An
     // `instanceof Set` check in one and duck-typing in the other would let a

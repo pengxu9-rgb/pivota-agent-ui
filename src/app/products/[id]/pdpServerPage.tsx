@@ -172,6 +172,70 @@ function readServerCanonicalRouteId(
     );
   if (shouldUseGroup) return groupId;
 
+  // SAME-CONTENT duplicates, one rung narrower than the group above.
+  //
+  // 474 content_keys serve identical content — same title, same Product
+  // JSON-LD, verified by live probes — under 2 to 7 sig URLs. Until now every
+  // one of those pages emitted a SELF-referential canonical, so two URLs each
+  // declared themselves canonical for the same content and Google was free to
+  // index the one the sitemap omits. #280 made the sitemap advertise exactly
+  // one; this makes the OTHER pages point at it.
+  //
+  // The value is the gateway's, not ours. It has to be the same sig the
+  // sitemap advertises, and that winner is sticky on index equity (#280 seeded
+  // it from the URLs already indexed) rather than derivable from the row — so
+  // both surfaces read one stored answer from pivota-backend rather than each
+  // applying a rule. Recomputing it here would let this tag name sig A while
+  // the sitemap submits sig B, which tells the crawler to drop the URL we just
+  // submitted: strictly worse than the duplicate.
+  //
+  // Ranked BELOW the group: a multi-merchant group is the wider
+  // canonicalisation and already subsumes this one. Absent (null, or an
+  // unelected content_key) falls through to self, exactly as before.
+  //
+  // The validation is `/^sig_.+/` — CASE-SENSITIVE, and deliberately not
+  // `isPivotaSignatureRouteId`.
+  //
+  // Two traps, both of which end in this page naming a URL the sitemap does
+  // not, which is the invariant break:
+  //
+  //  1. `isPivotaSignatureRouteId` is a lowercasing startsWith, so it accepts
+  //     "SIG_ABC" while scripts/sitemap_lib.mjs's `/^sig_.+/` rejects it. The
+  //     two halves would then validate the same stored field with different
+  //     predicates — and this PR's whole thesis is one stored answer read
+  //     identically by both surfaces.
+  //  2. startsWith alone accepts a bare "sig_" with no body, and
+  //     /products/sig_ errors in production exactly like a ck_ URL does (the
+  //     same trap sitemap_lib.mjs documents at its own sig gate).
+  //
+  // Canonicalising a live page at a URL that 500s is worse than leaving the
+  // duplicate: it hands the crawler an error page as the preferred version.
+  // A step-5 DEDUPE KEEPER outranks the content-key election.
+  //
+  // PIVOTA-Agent#1833 points a tombstoned dedupe loser at its keeper and
+  // signals it with canonical_route_basis='dedupe_keeper'. That keeper lives in
+  // the SAME content_key, so both mechanisms canonicalise one group — and the
+  // row layer decided this one on 2026-07-10 with an explicit
+  // suppression_metadata.keeper_product_key, which is strictly better evidence
+  // than an election seeded from whichever URL happened to be indexed. Letting
+  // the election win here would point a live keeper back at the tombstone it
+  // replaced and silently undo a fix already in production.
+  //
+  // The backend refuses to elect a tombstoned row at all, so in a healthy
+  // system the two agree and this branch never has to arbitrate. It is here
+  // because "the two agree" is exactly the assumption that failed once.
+  const dedupeKeeperSigId = firstString(
+    (product as any)?.canonical_route_basis === 'dedupe_keeper'
+      ? (product as any)?.canonical_route_sig_id
+      : '',
+  );
+  if (/^sig_.+/.test(dedupeKeeperSigId)) return dedupeKeeperSigId;
+
+  const contentCanonicalRouteId = firstString(canonicalData.content_canonical_route_id);
+  if (/^sig_.+/.test(contentCanonicalRouteId)) {
+    return contentCanonicalRouteId;
+  }
+
   return resolveProductRouteId(product) || requestedProductId;
 }
 

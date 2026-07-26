@@ -499,6 +499,240 @@ describe('product page metadata', () => {
     );
   });
 
+  // ---------------------------------------------------------------------
+  // SAME-CONTENT duplicates: content_canonical_route_id.
+  //
+  // 474 content_keys serve identical content — same title, same Product
+  // JSON-LD, confirmed by live probes — under 2 to 7 sig URLs, a population P3
+  // grew when it made minted canonicals renderable next to the mirror they
+  // were minted from. Every one of those pages emitted a SELF-referential
+  // canonical, so both URLs declared themselves canonical for the same content
+  // and Google was free to index the one the sitemap omits.
+  //
+  // #280 fixed the sitemap; these tests are the other half. The value comes
+  // from the gateway rather than being derived here on purpose: it MUST equal
+  // the sig the sitemap advertises, and that winner is sticky on index equity
+  // rather than computable from the row. A tag naming a different sig than the
+  // sitemap submits would tell the crawler to drop the URL we just submitted —
+  // worse than the duplicate.
+  // ---------------------------------------------------------------------
+  it('points a duplicate sig PDP at the ELECTED canonical instead of itself', async () => {
+    const elected = 'sig_c1ae6bae3c95e29035cf91b46a81b224';
+    const losing = 'sig_2f057569e49bcc11a33e54dcac6d9dca';
+    getPdpV2Mock.mockResolvedValue({
+      modules: [{ type: 'canonical', data: { content_canonical_route_id: elected } }],
+    });
+    mapPdpV2ToPdpPayloadMock.mockReturnValue(buildPayload({
+      product_id: losing,
+      title: 'Acme Glow Serum',
+      pivota_signature_id: losing,
+    }));
+
+    const metadata = await generatePersonalizedMetadata({
+      params: Promise.resolve({ id: losing }),
+      searchParams: Promise.resolve({ merchant_id: 'merch_1' }),
+    });
+
+    expect((metadata.alternates as any)?.canonical).toBe(
+      `https://agent.pivota.cc/products/${elected}`,
+    );
+    expect((metadata.openGraph as any)?.url).toBe(
+      `https://agent.pivota.cc/products/${elected}`,
+    );
+  });
+
+  it('stays self-referential when the elected sig IS this page', async () => {
+    // The winner must not canonicalise away from itself — that would strip the
+    // one URL we advertise of its own tag.
+    const elected = 'sig_c1ae6bae3c95e29035cf91b46a81b224';
+    getPdpV2Mock.mockResolvedValue({
+      modules: [{ type: 'canonical', data: { content_canonical_route_id: elected } }],
+    });
+    mapPdpV2ToPdpPayloadMock.mockReturnValue(buildPayload({
+      product_id: elected,
+      title: 'Acme Glow Serum',
+      pivota_signature_id: elected,
+    }));
+
+    const metadata = await generatePersonalizedMetadata({
+      params: Promise.resolve({ id: elected }),
+      searchParams: Promise.resolve({ merchant_id: 'merch_1' }),
+    });
+
+    expect((metadata.alternates as any)?.canonical).toBe(
+      `https://agent.pivota.cc/products/${elected}`,
+    );
+  });
+
+  it('falls back to self when the content_key has no election', async () => {
+    // Freshly minted, or a backend predating migration 181. Absent must mean
+    // "unchanged", never "no canonical".
+    const own = 'sig_2f057569e49bcc11a33e54dcac6d9dca';
+    for (const data of [
+      {},
+      { content_canonical_route_id: null },
+      { content_canonical_route_id: '' },
+    ]) {
+      getPdpV2Mock.mockResolvedValue({ modules: [{ type: 'canonical', data }] });
+      mapPdpV2ToPdpPayloadMock.mockReturnValue(buildPayload({
+        product_id: own,
+        title: 'Acme Glow Serum',
+        pivota_signature_id: own,
+      }));
+
+      const metadata = await generatePersonalizedMetadata({
+        params: Promise.resolve({ id: own }),
+        searchParams: Promise.resolve({ merchant_id: 'merch_1' }),
+      });
+
+      expect((metadata.alternates as any)?.canonical).toBe(
+        `https://agent.pivota.cc/products/${own}`,
+      );
+    }
+  });
+
+  it('ignores a malformed election rather than emitting a URL that 500s', async () => {
+    // /products/ck_… and /products/sig_ both error in production. An election
+    // is not a licence to skip the route-id shape check.
+    const own = 'sig_2f057569e49bcc11a33e54dcac6d9dca';
+    // 'SIG_...' is in the list because the sitemap validates with a
+    // case-SENSITIVE /^sig_.+/ — accepting it here would let the two halves
+    // disagree about the same stored value, which is the invariant break.
+    for (const bad of [
+      'ck_7f02a883e39e2529c8299393cf8e9669',
+      'sig_',
+      'not-an-id',
+      'SIG_C1AE6BAE3C95E29035CF91B46A81B224',
+    ]) {
+      getPdpV2Mock.mockResolvedValue({
+        modules: [{ type: 'canonical', data: { content_canonical_route_id: bad } }],
+      });
+      mapPdpV2ToPdpPayloadMock.mockReturnValue(buildPayload({
+        product_id: own,
+        title: 'Acme Glow Serum',
+        pivota_signature_id: own,
+      }));
+
+      const metadata = await generatePersonalizedMetadata({
+        params: Promise.resolve({ id: own }),
+        searchParams: Promise.resolve({ merchant_id: 'merch_1' }),
+      });
+
+      expect((metadata.alternates as any)?.canonical).toBe(
+        `https://agent.pivota.cc/products/${own}`,
+      );
+    }
+  });
+
+  it('a step-5 DEDUPE KEEPER outranks the content-key election', async () => {
+    // The collision that nearly shipped. PIVOTA-Agent#1833 points a tombstoned
+    // dedupe loser at its keeper, and that keeper is in the SAME content_key —
+    // so both mechanisms canonicalise one group, in OPPOSITE directions:
+    // #1833 sends loser -> keeper, while an incumbency-seeded election would
+    // crown the LOSER (362 of the 431 tombstones are the indexed URL) and send
+    // keeper -> loser.
+    //
+    // Measured 2026-07-25: zero of the 3,326 advertised sitemap URLs are absent
+    // from the canonical feed, which is only possible if tombstoned rows pass
+    // `suppressed_at IS NULL` — they carry suppression_REASON only. So the two
+    // populations genuinely overlap; this is not theoretical.
+    //
+    // The row layer decided this on 2026-07-10 with an explicit
+    // keeper_product_key, which beats an election seeded from whichever URL
+    // happened to be indexed. Backend refuses to elect a tombstone at all, so
+    // in a healthy system these agree — this asserts the arbitration for when
+    // they do not.
+    const keeper = 'sig_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+    const tombstone = 'sig_2f057569e49bcc11a33e54dcac6d9dca';
+    getPdpV2Mock.mockResolvedValue({
+      modules: [
+        {
+          type: 'canonical',
+          // A stale election still naming the tombstone.
+          data: { content_canonical_route_id: tombstone },
+        },
+      ],
+    });
+    mapPdpV2ToPdpPayloadMock.mockReturnValue(buildPayload({
+      product_id: tombstone,
+      title: 'Merit The Color Duo',
+      pivota_signature_id: tombstone,
+      canonical_route_sig_id: keeper,
+      canonical_route_basis: 'dedupe_keeper',
+    }));
+
+    const metadata = await generatePersonalizedMetadata({
+      params: Promise.resolve({ id: tombstone }),
+      searchParams: Promise.resolve({ merchant_id: 'merch_1' }),
+    });
+
+    expect((metadata.alternates as any)?.canonical).toBe(
+      `https://agent.pivota.cc/products/${keeper}`,
+    );
+  });
+
+  it('ignores canonical_route_sig_id when the basis is not dedupe_keeper', async () => {
+    // The field is only trustworthy under its own basis; reading it unguarded
+    // would let any future producer of that key hijack the canonical.
+    const own = 'sig_2f057569e49bcc11a33e54dcac6d9dca';
+    getPdpV2Mock.mockResolvedValue({
+      modules: [{ type: 'canonical', data: {} }],
+    });
+    mapPdpV2ToPdpPayloadMock.mockReturnValue(buildPayload({
+      product_id: own,
+      title: 'Acme Glow Serum',
+      pivota_signature_id: own,
+      canonical_route_sig_id: 'sig_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      canonical_route_basis: 'something_else',
+    }));
+
+    const metadata = await generatePersonalizedMetadata({
+      params: Promise.resolve({ id: own }),
+      searchParams: Promise.resolve({ merchant_id: 'merch_1' }),
+    });
+
+    expect((metadata.alternates as any)?.canonical).toBe(
+      `https://agent.pivota.cc/products/${own}`,
+    );
+  });
+
+  it('a multi-merchant GROUP still outranks the content-key election', async () => {
+    // The ranking, stated as a test: the group is the wider canonicalisation
+    // and subsumes this one. If the narrower rule won, a grouped PDP would stop
+    // pointing at its group and that consolidation would silently unwind.
+    getPdpV2Mock.mockResolvedValue({
+      subject: { type: 'product_group', id: 'pg_catalog_abc123' },
+      modules: [
+        {
+          type: 'canonical',
+          data: {
+            product_group_id: 'pg_catalog_abc123',
+            canonical_scope: 'multi_merchant_canonical',
+            content_canonical_route_id: 'sig_c1ae6bae3c95e29035cf91b46a81b224',
+          },
+        },
+        { type: 'offers', data: { offers_count: 2 } },
+      ],
+    });
+    mapPdpV2ToPdpPayloadMock.mockReturnValue(buildPayload(
+      { product_id: 'sig_2f057569e49bcc11a33e54dcac6d9dca', title: 'Barrier Serum' },
+      {
+        product_group_id: 'pg_catalog_abc123',
+        canonical_scope: 'multi_merchant_canonical',
+        offers_count: 2,
+      },
+    ));
+
+    const metadata = await generatePersonalizedMetadata({
+      params: Promise.resolve({ id: 'sig_2f057569e49bcc11a33e54dcac6d9dca' }),
+      searchParams: Promise.resolve({ merchant_id: 'merch_1' }),
+    });
+
+    expect((metadata.alternates as any)?.canonical).toBe(
+      'https://agent.pivota.cc/products/pg_catalog_abc123',
+    );
+  });
+
   it('server-renders signature PDPs without awaiting searchParams', async () => {
     const v2Response = { modules: [] };
     getPdpV2Mock.mockResolvedValue(v2Response);
