@@ -1135,6 +1135,73 @@ describe('PDP permanent-unbuildable vs transient failure semantics', () => {
     expect(notFoundMock).not.toHaveBeenCalled();
   });
 
+  it('does NOT 404 the VERBATIM fail-closed payload — the exact bytes a DB error produces', async () => {
+    // THE MUTANT-KILLER for the index_row_found check, and the reason that
+    // check is a separate conjunct instead of relying on serving_eligible
+    // alone. Every other fixture in this block omits `serving_eligible` from
+    // the fail-closed shape, so they pass via `undefined === false` and stay
+    // green even if `details.index_row_found === true` is deleted from the
+    // predicate — i.e. they do not test the guard they are named for.
+    //
+    // These are the literal bytes of buildPdpServingEligibilityDetails'
+    // `!eligibility` branch (PIVOTA-Agent src/server.js): serving_eligible IS
+    // present and IS false, and ONLY the missing index_row_found separates it
+    // from a settled fact. Delete that conjunct and this product — healthy,
+    // merely unreadable for an instant — gets a 404 cached for the full
+    // revalidate window.
+    const err = new Error('PRODUCT_NOT_SERVABLE') as Error & {
+      status?: number;
+      code?: string;
+      detail?: unknown;
+    };
+    err.status = 404;
+    err.code = 'PRODUCT_NOT_SERVABLE';
+    err.detail = {
+      error: 'PRODUCT_NOT_SERVABLE',
+      details: { reason: 'serving_eligibility_missing', serving_eligible: false },
+    };
+    getPdpV2Mock.mockRejectedValue(err);
+
+    await expect(
+      ProductDetailPage({
+        params: Promise.resolve({ id: 'sig_7ad40676c42fb9c96e2a8136' }),
+        searchParams: Promise.resolve({}),
+      }),
+    ).rejects.toThrow(PDP_DEGRADED_RENDER_ERROR);
+    expect(notFoundMock).not.toHaveBeenCalled();
+  });
+
+  it('does NOT 404 a found row whose ips join missed (index_row_found === false)', async () => {
+    // The LEFT JOIN miss: catalog row found, no index_pipeline_state row, so
+    // serving_eligible is NULL and the normalizer emits index_row_found:false
+    // rather than omitting it. Distinct shape from the branch above, same
+    // required answer — a product mid-ingestion must not be 404-cached.
+    const err = new Error('PRODUCT_NOT_SERVABLE') as Error & {
+      status?: number;
+      code?: string;
+      detail?: unknown;
+    };
+    err.status = 404;
+    err.code = 'PRODUCT_NOT_SERVABLE';
+    err.detail = {
+      error: 'PRODUCT_NOT_SERVABLE',
+      details: {
+        reason: 'serving_eligibility_missing',
+        serving_eligible: false,
+        index_row_found: false,
+      },
+    };
+    getPdpV2Mock.mockRejectedValue(err);
+
+    await expect(
+      ProductDetailPage({
+        params: Promise.resolve({ id: 'sig_7ad40676c42fb9c96e2a8136' }),
+        searchParams: Promise.resolve({}),
+      }),
+    ).rejects.toThrow(PDP_DEGRADED_RENDER_ERROR);
+    expect(notFoundMock).not.toHaveBeenCalled();
+  });
+
   it('does NOT 404 when index_row_found is true but the gate says the product IS eligible', async () => {
     // Contradictory shape — an eligible product cannot be the reason for a
     // not-servable answer, so something else failed. Stay degraded.
