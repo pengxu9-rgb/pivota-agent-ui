@@ -154,6 +154,39 @@ describe('product row parsing (eligibility, identity, lastmod)', () => {
     expect(legacy?.id).toBe('sig_legacy')
   })
 
+  it('drops sig rows the backend marks content_depth=false (renderable shells)', () => {
+    // The 364 URLs measured 2026-07-25 that answer a clean 200 and still serve
+    // only ~510 chars of chrome. Independent of renderable: these ARE
+    // renderable, which is exactly why the renderable gate never caught them.
+    const shell = readCanonicalProduct({
+      ...canonicalProduct('sig_shell'), renderable: true, content_depth: false,
+    })
+    const deep = readCanonicalProduct({
+      ...canonicalProduct('sig_deep'), renderable: true, content_depth: true,
+    })
+
+    expect(shell).toBeNull()
+    expect(deep?.id).toBe('sig_deep')
+  })
+
+  it('keeps rows when content_depth is absent (backend predating the field)', () => {
+    // Fail-open on ABSENCE, same convention as renderable, so this side can
+    // ship before or after the backend with no coupling and no empty sitemap.
+    const legacy = readCanonicalProduct(canonicalProduct('sig_no_depth_field'))
+    expect(legacy?.id).toBe('sig_no_depth_field')
+  })
+
+  it('the two gates are independent — either false drops the row', () => {
+    // Guards against collapsing them into one: they answer different
+    // questions and a row can pass either while failing the other.
+    expect(readCanonicalProduct({
+      ...canonicalProduct('sig_a'), renderable: true, content_depth: false,
+    })).toBeNull()
+    expect(readCanonicalProduct({
+      ...canonicalProduct('sig_b'), renderable: false, content_depth: true,
+    })).toBeNull()
+  })
+
   it('ck-keyed rows are dropped before the renderable gate is reached', () => {
     // Previously exempt from the renderable gate (renderable is only defined for
     // sig PDPs). Now moot: ck-keyed rows are rejected earlier for lacking a sig,
