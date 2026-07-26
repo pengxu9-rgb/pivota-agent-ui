@@ -1062,6 +1062,87 @@ describe('PDP permanent-unbuildable vs transient failure semantics', () => {
   // and Next would cache every one of those 404s.
   // ---------------------------------------------------------------------
 
+  // ---------------------------------------------------------------------
+  // WHERE the 404 is decided. The page's notFound() is unreachable on the
+  // wire: loading.tsx + the useSearchParams bail-out mean the shell (and
+  // HTTP 200) is flushed before the page runs, so a notFound() there only
+  // streams not-found UI into a committed 200. Measured in production
+  // 2026-07-26 after #285: gated PDPs served 200 + noindex + "This page could
+  // not be found", CACHED. #270's cohort had done the same since it merged.
+  //
+  // These assert the decision happens in the LAYOUT, which renders before the
+  // flush. A unit test cannot see a status code — the real gate is an HTTP
+  // probe against a running server (`next dev`, verified 404 on three gated
+  // ids with a healthy control still 200) — but these pin the wiring that
+  // makes the status possible.
+  // ---------------------------------------------------------------------
+
+  it('the LAYOUT 404s an unbuildable id — before the shell is flushed', async () => {
+    getPdpV2Mock.mockRejectedValue(externalSeedInactiveError());
+
+    await expect(
+      ProductDetailLayout({
+        params: Promise.resolve({ id: 'sig_layout_unbuildable' }),
+        children: null,
+      }),
+    ).rejects.toThrow(NOT_FOUND_THROWN);
+
+    expect(notFoundMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('the LAYOUT 404s a settled serving-ineligibility too', async () => {
+    const err = new Error('PRODUCT_NOT_SERVABLE') as Error & {
+      status?: number;
+      code?: string;
+      detail?: unknown;
+    };
+    err.status = 404;
+    err.code = 'PRODUCT_NOT_SERVABLE';
+    err.detail = {
+      error: 'PRODUCT_NOT_SERVABLE',
+      details: { reason: 'low_quality', serving_eligible: false, index_row_found: true },
+    };
+    getPdpV2Mock.mockRejectedValue(err);
+
+    await expect(
+      ProductDetailLayout({
+        params: Promise.resolve({ id: 'sig_layout_gated' }),
+        children: null,
+      }),
+    ).rejects.toThrow(NOT_FOUND_THROWN);
+
+    expect(notFoundMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('the LAYOUT does NOT 404 a degraded (transient) failure — it must stay a 5xx, not a cached 404', async () => {
+    getPdpV2Mock.mockRejectedValue(
+      gatewayError(404, 'PRODUCT_NOT_SERVABLE', 'serving_eligibility_missing'),
+    );
+
+    // Renders (no JSON-LD, nothing to describe) and leaves the degraded
+    // decision to the page, which throws.
+    const element = await ProductDetailLayout({
+      params: Promise.resolve({ id: 'sig_layout_degraded' }),
+      children: null,
+    });
+    expect(element).toBeTruthy();
+    expect(notFoundMock).not.toHaveBeenCalled();
+  });
+
+  it('the LAYOUT does NOT 404 a healthy product', async () => {
+    getPdpV2Mock.mockResolvedValue({ modules: [] });
+    mapPdpV2ToPdpPayloadMock.mockReturnValue(
+      buildPayload({ product_id: 'sig_layout_ok', title: 'Healthy Serum' }),
+    );
+
+    const element = await ProductDetailLayout({
+      params: Promise.resolve({ id: 'sig_layout_ok' }),
+      children: null,
+    });
+    expect(element).toBeTruthy();
+    expect(notFoundMock).not.toHaveBeenCalled();
+  });
+
   /**
    * PRODUCT_NOT_SERVABLE with a real index row behind it — the settled half.
    * `buildPdpServingEligibilityDetails` only emits `index_row_found` when the
@@ -1390,19 +1471,23 @@ describe('PDP permanent-unbuildable vs transient failure semantics', () => {
   // ---------------------------------------------------------------------
 
   it('never emits Product schema for an unbuildable (404) or degraded product', async () => {
-    // The property the outcome guard exists for. `unbuildable` -> renderPdpPage
-    // calls notFound(), `degraded` -> it throws; Next renders not-found.tsx /
-    // error.tsx INSIDE this segment's layout, so without the guard we would
-    // attach Product schema to a real 404 page or an error shell.
+    // The property the outcome guard exists for: never attach Product schema
+    // to a 404 page or an error shell.
+    //
+    // `unbuildable` now satisfies this the strongest possible way — the layout
+    // 404s before emitting anything, so there is no markup to inspect. (It
+    // used to return a schema-less shell; the 404 moved here because the
+    // page's notFound() lands after the flush and only produced a soft-404.)
     getPdpV2Mock.mockRejectedValue(externalSeedInactiveError());
-    const unbuildable = renderToStaticMarkup(
-      (await ProductDetailLayout({
+    await expect(
+      ProductDetailLayout({
         params: Promise.resolve({ id: 'sig_unbuildable_guard' }),
         children: null,
-      })) as any,
-    );
-    expect(unbuildable).not.toContain('application/ld+json');
+      }),
+    ).rejects.toThrow(NOT_FOUND_THROWN);
 
+    // `degraded` still renders a schema-less shell here and leaves the throw
+    // (and the 5xx) to the page.
     getPdpV2Mock.mockRejectedValue(gatewayError(503));
     const degraded = renderToStaticMarkup(
       (await ProductDetailLayout({

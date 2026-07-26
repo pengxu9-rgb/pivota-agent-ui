@@ -792,18 +792,57 @@ function serializeSearchParams(
 export async function buildCanonicalPdpJsonLd(
   params: PdpRouteProps['params'],
 ): Promise<string | null> {
+  // Resolved OUTSIDE the try below, because the 404 decision must not sit
+  // inside a catch. See the notFound() note after it.
+  let productId = '';
+  let outcome: PdpFetchOutcome;
   try {
     const resolvedParams = await params;
-    const productId = decodeProductIdParam(resolvedParams.id);
+    productId = decodeProductIdParam(resolvedParams.id);
     if (!productId) return null;
+    outcome = await fetchPdpForServerRender(productId, '', PDP_ROUTE_REVALIDATE_S);
+  } catch (err) {
+    unstable_rethrow(err);
+    return null;
+  }
 
-    // #270 turned this into a discriminated union: only `ok` carries data, and
-    // `unbuildable`/`degraded` mean there is no product to describe. Emitting
-    // markup for either would put schema on a 404 or an error shell.
-    const outcome = await fetchPdpForServerRender(productId, '', PDP_ROUTE_REVALIDATE_S);
-    if (outcome.status !== 'ok') return null;
-    const renderData = outcome.data;
+  // THE 404 IS DECIDED HERE, not in renderPdpPage, because this runs in the
+  // LAYOUT — before the response is flushed. The page's `notFound()` cannot
+  // set a status: `loading.tsx` plus the `useSearchParams()` CSR bail-out (see
+  // layout.tsx) mean the shell, and HTTP 200 with it, is already on the wire by
+  // the time the page body runs, so `notFound()` there only streams not-found
+  // UI into a committed 200.
+  //
+  // Measured in production 2026-07-26, right after #285 shipped the classifier:
+  // every gated PDP served 200 + `x-vercel-cache: HIT` + "This page could not
+  // be found" + `robots: noindex,nofollow` — a CACHED SOFT-404. #270's
+  // `external_seed_not_active` cohort had been doing the same since it merged;
+  // the page-level call has never produced a 404 on this route.
+  //
+  // OUTSIDE the try/catch on purpose. `notFound()` works by throwing, and a
+  // catch that only re-throws recognised Next signals is the wrong thing to
+  // stand between a 404 and the response: `unstable_rethrow` identifies the
+  // signal by an internal digest, so anything that changes that shape (a Next
+  // upgrade, a test double) silently converts the 404 back into a soft-404 —
+  // exactly the bug this fixes. Outside the catch there is nothing to swallow.
+  //
+  // One call, one decision: a separate assert-helper would need its own
+  // `fetchPdpForServerRender`, and that is only free while React's `cache()`
+  // memoizes, which it does not do outside a server request.
+  //
+  // Scope is structural, not a `!mode.personalized` check: only
+  // `/products/[id]` has this layout, and the personalized `/products/m/[id]`
+  // alias is a sibling segment with no layout of its own, so it can never
+  // inherit the 404.
+  if (outcome.status === 'unbuildable') notFound();
 
+  // #270's discriminated union: only `ok` carries data. `degraded` means there
+  // is no product to describe, and the PAGE still owns that decision (it
+  // throws, yielding a 5xx rather than a cached 404).
+  if (outcome.status !== 'ok') return null;
+  const renderData = outcome.data;
+
+  try {
     return buildProductJsonLd(
       {
         product: renderData.product,
@@ -817,8 +856,7 @@ export async function buildCanonicalPdpJsonLd(
       },
     );
   } catch (err) {
-    // Never swallow Next's control-flow signals (notFound/redirect/PPR postpone)
-    // — a bare catch would silently degrade those to "no JSON-LD".
+    // JSON-LD is purely additive — a mapping bug must not take down the shell.
     unstable_rethrow(err);
     return null;
   }
