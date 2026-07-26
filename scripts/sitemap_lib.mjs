@@ -267,6 +267,26 @@ export function readCanonicalProduct(item) {
   // Drop only on an explicit `false`, the same convention `renderable` uses:
   // a backend that predates the field leaves the sitemap exactly as it is, so
   // this can merge before or after the backend side with no coupling.
+  //
+  // ⚠ STATUS — this line is INERT until the backend emits the field, and its
+  // inertness is silent BY DESIGN (that is what "drop only on explicit false"
+  // buys). Do not read the measured paragraphs above as a description of what
+  // the sitemap currently does; they are the rationale for the floor, not
+  // evidence it is running. Verified 2026-07-26: `content_depth` is absent
+  // from all 5,887 rows of https://api.pivota.cc/api/canonical/products, so
+  // this drops ZERO rows. #282 shipped this consumer half on 2026-07-26; the
+  // producer half is pivota-backend#1588, still OPEN at the time of writing.
+  //
+  // Re-check in one line before trusting the floor — if this prints 0, the
+  // floor is still a no-op no matter what the comments above say:
+  //   curl -s 'https://api.pivota.cc/api/canonical/products?limit=200' \
+  //     | jq '[.items[] | select(has("content_depth"))] | length'
+  //
+  // When #1588 lands, expect the URL count to SHRINK by ~364 (4,528 → ~4,164
+  // against the 2026-07-26 feed, 8.0%). That is well inside sitemapCountGuard's
+  // 50% floor, so the guard will not stop it — read the coverage line's
+  // `dropped_thin=` counter on the first cron run after the deploy to confirm
+  // the floor actually engaged, and to see it stay non-zero afterwards.
   if (row.content_depth === false) return null
 
   // The backend's ELECTED winner for this content_key (pivota-backend

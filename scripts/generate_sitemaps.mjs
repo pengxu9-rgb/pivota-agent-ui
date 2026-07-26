@@ -188,7 +188,11 @@ export async function collectSitemapProducts(baseUrl, options = {}) {
   let pageIndex = 0
   // Drop funnel — every row that does not become a URL lands in exactly one
   // bucket, so emitted URLs + drops always reconciles against `rowsSeen`.
-  const dropped = { notEligibleOrMalformed: 0, dead: 0, mergedDuplicate: 0, skippedAtCap: 0 }
+  const dropped = { notEligibleOrMalformed: 0, dead: 0, thin: 0, mergedDuplicate: 0, skippedAtCap: 0 }
+  // Does the feed carry `content_depth` at all? Distinguishes an inert floor
+  // (backend predates the field) from an engaged one that found nothing to
+  // drop — see the bucket note below.
+  let sawContentDepthField = false
 
   while (productsByContentKey.size < SITEMAP_MAX_URLS) {
     const usingCursor = Boolean(cursor)
@@ -203,6 +207,11 @@ export async function collectSitemapProducts(baseUrl, options = {}) {
     let consumedThisPage = 0
     for (const item of page.items) {
       consumedThisPage++
+      // Presence, not truthiness — an all-true `content_depth` still proves the
+      // producer shipped, which is the thing `dropped_thin=0` cannot tell you.
+      if (item && typeof item === 'object' && 'content_depth' in item) {
+        sawContentDepthField = true
+      }
       const product = readCanonicalProduct(item)
       if (!product) {
         // A renderable=false drop is the EXPECTED dead-PDP filter, not a
@@ -217,26 +226,42 @@ export async function collectSitemapProducts(baseUrl, options = {}) {
         // the very anomaly signal this block exists to protect.
         //
         // …and the same again for content_depth=false, the thin-content floor.
-        // That drop fires on 364 rows TODAY, so leaving it out would pin the
-        // label to `_partial` on the FIRST cron run after the floor ships and
-        // never unpin it. Every expected filter in readCanonicalProduct needs
-        // an arm here; only a genuinely malformed row may set the flag.
+        // That drop fires on ZERO rows today — the backend does not emit the
+        // field yet (see the STATUS note on the floor in sitemap_lib.mjs) — but
+        // the arm has to exist BEFORE the producer ships, or the first cron run
+        // after it lands pins the label to `_partial` and never unpins it.
+        // Every expected filter in readCanonicalProduct needs an arm here; only
+        // a genuinely malformed row may set the flag.
         //
         // …and the same again for serving_eligible=false, the serving-gate
         // drop. That one fires on 77 rows TODAY, so omitting it would pin the
         // label to `_partial` on the FIRST cron run after it ships and never
         // unpin it — permanently retiring the only signal that would surface a
         // renamed field, malformed rows, or a truncated payload.
+        //
+        // Thin rows get their OWN bucket rather than folding into `dead`. The
+        // floor sat inert for a full release because nothing in this output
+        // distinguished "the floor dropped nothing" from "the floor is not
+        // running": both read as the same `dropped_dead` number. A counter that
+        // is 0 while the feed carries the field is a real finding; one that is 0
+        // because the field is absent is a different one. `dropped_thin=0` on a
+        // run whose feed HAS content_depth means the cohort is gone; on a feed
+        // without it, it means the producer still has not shipped.
         const isPlainItem = item && typeof item === 'object'
         const droppedAsDead =
           isPlainItem &&
           (item.renderable === false ||
             item.serving_eligible === false ||
             item.is_serving_eligible === false ||
-            item.content_depth === false ||
             (String(item.content_key || '').startsWith('ck_') &&
               !String(item.sig_id || '').trim().startsWith('sig_')))
+        // Mirror readCanonicalProduct's order: it tests eligibility and
+        // `renderable` BEFORE `content_depth`, so a row failing an earlier gate
+        // too is attributed to `dead` there and must be attributed to `dead`
+        // here too, or the funnel double-counts a single drop.
+        const droppedAsThin = !droppedAsDead && isPlainItem && item.content_depth === false
         if (droppedAsDead) dropped.dead++
+        else if (droppedAsThin) dropped.thin++
         else {
           dropped.notEligibleOrMalformed++
           sawInvalidCanonicalItem = true
@@ -329,10 +354,23 @@ export async function collectSitemapProducts(baseUrl, options = {}) {
     `coverage: rows_seen=${rowsSeen}/${feedTotal ?? 'unknown'} ` +
       `urls=${productsByContentKey.size} ` +
       `dropped_dead=${dropped.dead} ` +
+      `dropped_thin=${dropped.thin} ` +
       `dropped_ineligible_or_malformed=${dropped.notEligibleOrMalformed} ` +
       `merged_duplicate_sigs=${dropped.mergedDuplicate} ` +
       `skipped_at_cap=${dropped.skippedAtCap}`,
   )
+  if (!sawContentDepthField && rowsSeen > 0) {
+    // NOT an alarm — the floor is designed to merge before its producer, and
+    // this is the supported state, not a failure. It is a NOTE because the
+    // alternative is what actually happened: the floor shipped, read as live to
+    // every reviewer of the code, and dropped nothing for a full release with
+    // no output saying so. Silence is what made that possible.
+    console.log(
+      `NOTE: the feed carries no content_depth field on any of ${rowsSeen} row(s), ` +
+        'so the thin-content floor dropped nothing (pivota-backend#1588 ships it). ' +
+        'This line disappearing is how you know the floor went live.',
+    )
+  }
   if (feedTotal === null) {
     // Not fatal — a backend that never reports `total` is a supported shape —
     // but it disables the coverage verdict, and losing a guard should never be

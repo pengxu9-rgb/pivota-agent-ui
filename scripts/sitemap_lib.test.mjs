@@ -1038,12 +1038,21 @@ describe('collectSitemapProducts — `total` present on the first page only (pro
           canonicalProduct('sig_kept_two'),
           // dead: explicitly non-renderable
           { ...canonicalProduct('sig_dead'), renderable: false },
+          // thin: renders fine, but there is no prose behind it. Its own
+          // bucket, NOT `dead` — the two carry different verdicts (a dead URL
+          // is broken, a thin one is real and merely not worth advertising),
+          // and folding them together is what let the floor sit inert without
+          // anything in the coverage line saying so.
+          { ...canonicalProduct('sig_thin'), content_depth: false },
+          // both gates fail: attributed to `dead`, mirroring readCanonicalProduct's
+          // order, so one row can never be counted in two buckets.
+          { ...canonicalProduct('sig_dead_and_thin'), renderable: false, content_depth: false },
           // merged: same content_key as sig_kept_one
           { sig_id: 'sig_kept_one_dupe', content_key: 'ck_kept_one', serving_eligible: true },
           // malformed / ineligible
           { sig_id: 'ext_alias' },
         ],
-        5,
+        7,
         0,
         { has_more: false },
       ),
@@ -1053,20 +1062,66 @@ describe('collectSitemapProducts — `total` present on the first page only (pro
       'https://canonical.example.com',
     )
 
-    expect(coverage.rowsSeen).toBe(5)
+    expect(coverage.rowsSeen).toBe(7)
     expect(coverage.dropped).toEqual({
-      dead: 1,
+      dead: 2,
+      thin: 1,
       mergedDuplicate: 1,
       notEligibleOrMalformed: 1,
       skippedAtCap: 0,
     })
-    // rowsSeen reconciles exactly: 5 rows = 2 URLs + 1 + 1 + 1 dropped.
-    const totalDropped =
-      coverage.dropped.dead +
-      coverage.dropped.mergedDuplicate +
-      coverage.dropped.notEligibleOrMalformed +
-      coverage.dropped.skippedAtCap
+    // rowsSeen reconciles exactly: 7 rows = 2 URLs + 2 + 1 + 1 + 1 dropped.
+    // Summed shape-agnostically so a future bucket cannot silently fall out of
+    // the funnel — the assertion above pins the shape.
+    const totalDropped = Object.values(coverage.dropped).reduce((a, b) => a + b, 0)
     expect(collected.length + totalDropped).toBe(coverage.rowsSeen)
+  })
+
+  // THE REGRESSION THESE TWO PIN. The content-depth floor shipped in #282 and
+  // dropped nothing for a full release, because the producer half
+  // (pivota-backend#1588, `content_depth` on the canonical feed) never landed.
+  // Nothing caught it: the drop is on an explicit `false` by design, so an
+  // absent field is silently a no-op, and `dropped_dead` looked identical
+  // either way. A reviewer had only a confident code comment to go on. The run
+  // now says which state it is in, so the next inert gate announces itself.
+  it('says so out loud when the feed carries no content_depth (floor inert)', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      // Deliberately the pre-#1588 prod shape: renderable present, no content_depth.
+      pageResponse([canonicalProduct('sig_a'), canonicalProduct('sig_b')], 2, 0, {
+        has_more: false,
+      }),
+    )
+
+    const { coverage } = await collectSitemapProducts('https://canonical.example.com')
+
+    const out = log.mock.calls.flat().join('\n')
+    expect(out).toContain('no content_depth field')
+    expect(coverage.dropped.thin).toBe(0)
+  })
+
+  it('stays quiet about content_depth once the backend emits it, even if nothing is thin', async () => {
+    // Presence, not truthiness: an all-true feed still proves #1588 shipped.
+    // Without this arm the NOTE would keep firing after the producer landed and
+    // train everyone to ignore it — the failure mode that makes a signal worse
+    // than none.
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      pageResponse(
+        [
+          { ...canonicalProduct('sig_a'), content_depth: true },
+          { ...canonicalProduct('sig_b'), content_depth: true },
+        ],
+        2,
+        0,
+        { has_more: false },
+      ),
+    )
+
+    const { coverage } = await collectSitemapProducts('https://canonical.example.com')
+
+    expect(log.mock.calls.flat().join('\n')).not.toContain('no content_depth field')
+    expect(coverage.dropped.thin).toBe(0)
   })
 
   it('reports feedTotal as null (not 0) when the backend never sends a total', async () => {
