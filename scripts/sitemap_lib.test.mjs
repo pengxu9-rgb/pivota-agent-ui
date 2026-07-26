@@ -1079,15 +1079,20 @@ describe('collectSitemapProducts — `total` present on the first page only (pro
 
   // THE REGRESSION THESE TWO PIN. The content-depth floor shipped in #282 and
   // dropped nothing for a full release, because the producer half
-  // (pivota-backend#1588, `content_depth` on the canonical feed) never landed.
-  // Nothing caught it: the drop is on an explicit `false` by design, so an
-  // absent field is silently a no-op, and `dropped_dead` looked identical
-  // either way. A reviewer had only a confident code comment to go on. The run
-  // now says which state it is in, so the next inert gate announces itself.
+  // (`content_depth` on the canonical feed) had not landed. Nothing caught it:
+  // the drop is on an explicit `false` by design, so an absent field is
+  // silently a no-op, and `dropped_dead` looked identical either way. A
+  // reviewer had only a confident code comment to go on. The run now says which
+  // state it is in, so the next inert gate announces itself.
+  //
+  // The inert state is not a historical curiosity — it is the CURRENT state,
+  // twice over. pivota-backend#1588 merged on 2026-07-26, 500ed the feed
+  // outright, and was reverted within 16 minutes (#1590). The reland is #1591.
+  // Until that lands these two tests describe production exactly.
   it('says so out loud when the feed carries no content_depth (floor inert)', async () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => {})
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
-      // Deliberately the pre-#1588 prod shape: renderable present, no content_depth.
+      // Deliberately today's prod shape: renderable present, no content_depth.
       pageResponse([canonicalProduct('sig_a'), canonicalProduct('sig_b')], 2, 0, {
         has_more: false,
       }),
@@ -1101,7 +1106,8 @@ describe('collectSitemapProducts — `total` present on the first page only (pro
   })
 
   it('stays quiet about content_depth once the backend emits it, even if nothing is thin', async () => {
-    // Presence, not truthiness: an all-true feed still proves #1588 shipped.
+    // Presence, not truthiness: an all-true feed still proves the producer
+    // shipped.
     // Without this arm the NOTE would keep firing after the producer landed and
     // train everyone to ignore it — the failure mode that makes a signal worse
     // than none.
