@@ -376,6 +376,100 @@ export function sitemapCountGuard(newCount, previousCount) {
   return null
 }
 
+// Rows the feed promised vs rows the walk actually consumed.
+//
+// The count guard above compares this build to the PREVIOUS build, so it only
+// fires once truncation has already changed the published number — and it is
+// blind to a walk that was truncated from the very first run, or to one whose
+// shortfall stays inside the 50% ratio. This guard compares the run to ITSELF:
+// the feed states `total` on page 1, and a correct walk consumes that many
+// rows. Anything less means pagination stopped early, whatever the reason
+// (a hasMore chain misreading an absent `total` as 0, a dropped cursor, a
+// backend that stops answering mid-crawl).
+//
+// It deliberately measures ROWS CONSUMED, not URLs emitted: URLs legitimately
+// come in far below `total` (renderable=false drops, sig-less rows,
+// content_key dedup — ~23% of the feed today), so an emitted-count comparison
+// would need a business-logic-aware expectation and would drift every time a
+// filter changes. Rows consumed has exactly one correct value.
+//
+// Skipped when `feedTotal` is null (backend reported no total — nothing to
+// compare against; collectSitemapProducts warns) and when the walk stopped at
+// SITEMAP_MAX_URLS, which is a legitimate short read already labelled
+// `serving_eligible_truncated`.
+//
+// WHY THIS IS TIERED rather than a plain pass/fail (the sibling guards return
+// string|null; this one returns a verdict object, deliberately).
+//
+// A small shortfall is EXPECTED on a healthy walk, and it is self-healing.
+// The backend pages by keyset on `content_changed_at DESC`
+// (pivota_canonical_routes.py) and a BEFORE UPDATE trigger (migration 138)
+// bumps `content_changed_at` on any content edit. So a not-yet-visited row
+// that is edited mid-walk jumps ABOVE the cursor and is skipped by every
+// later page — while still being counted in the page-1 COUNT(*) that produced
+// `total`. Observed enrichment bursts reach ~135 rows/minute against a ~15s
+// walk, so ordinary backfills routinely cost tens of rows.
+//
+// Crucially, those rows are not lost: the bump moves them to the TOP of
+// `content_changed_at DESC`, so the very next 6h run finds them on page 1.
+// Refusing to publish over that would freeze the sitemap precisely when a
+// backfill has just made a refresh most valuable — trading a ~1% stale build
+// for a 100% stale one. So churn-scale shortfalls WARN and publish.
+//
+// A paging bug is a different animal: it drops rows by the thousand (the
+// original `Number(null) === 0` trap capped the walk at one page of six, a
+// ~83% shortfall). That band still refuses, and stays un-bypassable by
+// SITEMAP_FORCE — the hatch exists for genuine catalog shrinks, and a real
+// shrink lowers `total` alongside the rows rather than opening a gap.
+//
+// The bands are far apart on purpose: reaching 10% on today's 6-page walk
+// would take ~589 rows bumped in ~15s, 4x the worst burst ever observed.
+export const SITEMAP_ROW_WALK_TOLERANCE = 50
+// Ratio as well as floor: churn scales WITH catalog size and walk duration, so
+// a fixed allowance silently tightens in relative terms as the catalog grows
+// (50 rows is 0.85% of today's 5,887 but 0.1% of a 50k catalog).
+export const SITEMAP_ROW_WALK_TOLERANCE_RATIO = 0.02
+export const SITEMAP_ROW_WALK_REFUSE_RATIO = 0.1
+
+export function sitemapCoverageVerdict(coverage) {
+  // A missing coverage object is a bookkeeping failure, NOT a pass. Returning
+  // `ok` here would silently retire the guard the moment a caller renames the
+  // key — the same invisible-regression class generate_sitemaps.guard.test.mjs
+  // exists to catch.
+  if (!coverage || typeof coverage !== 'object') {
+    return { level: 'refuse', message: 'coverage bookkeeping is missing entirely' }
+  }
+  const { rowsSeen, feedTotal, stoppedForCap } = coverage
+  if (typeof feedTotal !== 'number' || stoppedForCap) return { level: 'ok' }
+  if (typeof rowsSeen !== 'number') {
+    return { level: 'refuse', message: 'coverage bookkeeping is missing rowsSeen' }
+  }
+
+  const missing = feedTotal - rowsSeen
+  const allowance = Math.max(
+    SITEMAP_ROW_WALK_TOLERANCE,
+    Math.ceil(feedTotal * SITEMAP_ROW_WALK_TOLERANCE_RATIO),
+  )
+  if (missing <= allowance) return { level: 'ok' }
+
+  const pct = ((rowsSeen / feedTotal) * 100).toFixed(1)
+  const detail =
+    `pagination consumed ${rowsSeen} of the ${feedTotal} rows the feed reported ` +
+    `(${pct}%) — this build is missing ${missing} rows' worth of products`
+
+  if (missing >= feedTotal * SITEMAP_ROW_WALK_REFUSE_RATIO) {
+    return { level: 'refuse', message: `${detail}; that is a pagination failure, not churn` }
+  }
+  return {
+    level: 'warn',
+    message:
+      `${detail}. Below the ${SITEMAP_ROW_WALK_REFUSE_RATIO * 100}% refusal band, so this is ` +
+      `most likely rows edited mid-walk jumping above the keyset cursor — they ` +
+      `sort to the top of content_changed_at DESC and return on the next run. ` +
+      `Publishing anyway; investigate if it persists across ticks.`,
+  }
+}
+
 // Every product URL id must be a minted sig. /products/{content_key} 500s in
 // production — get_pdp_v2 rejects a bare content_key with
 // MISSING_MERCHANT_CONTEXT — so a ck-keyed URL in the published sitemap spends
