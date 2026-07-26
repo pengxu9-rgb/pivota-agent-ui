@@ -571,7 +571,7 @@ describe('collectSitemapProducts — backend pagination', () => {
     // The fourth arm of the same invariant, and the one that shipped missing:
     // the serving-gate drop fires on 77 rows on the FIRST cron run after it
     // lands, so leaving it out of the droppedAsDead predicate pins the label
-    // to serving_eligible_partial on that run and never unpins it —
+    // to feed_health=partial on that run and never unpins it —
     // permanently retiring the only signal that surfaces a renamed field,
     // malformed rows, or a truncated feed payload. The three tests above
     // exercise readCanonicalProduct; none of them reaches this funnel, which
@@ -592,12 +592,12 @@ describe('collectSitemapProducts — backend pagination', () => {
       ),
     )
 
-    const { products: collected, source } = await collectSitemapProducts(
+    const { products: collected, feedHealth } = await collectSitemapProducts(
       'https://canonical.example.com',
     )
 
     expect(collected.map((p) => p.id)).toEqual(['sig_keep_me'])
-    expect(source).toBe('serving_eligible')
+    expect(feedHealth).toBe('ok')
   })
 
   it('ck-only drops do NOT mark the run partial (well-formed row, not a parse failure)', async () => {

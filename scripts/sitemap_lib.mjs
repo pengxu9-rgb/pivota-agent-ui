@@ -147,8 +147,12 @@ export function isSitemapEligibleProduct(item) {
 // sitemap by `index_eligible` alone is in the file
 // WITHOUT being serving_eligible, and that gap is not hypothetical — on
 // 2026-07-26 the committed file carried 77 such URLs (INDEX_ELIGIBLE_SITEMAP=1
-// in prod) and every one of them returned a hard 500, because get_pdp_v2's
-// serving gate had never been widened alongside the feed.
+// in prod) and none of them served, because the renderer's serving gate had
+// never been widened alongside the feed.
+//
+// The serving-gate drop above now withholds the explicit-false shape those 77
+// had, but it keys on an explicit false by design, so `index_eligible` rows
+// that simply omit the field still ship. Those are what this counts.
 //
 // It is reported per-build in the sitemap header (`serving_eligible=` /
 // `index_only=`) so that "did index-only rows get into this file?" is

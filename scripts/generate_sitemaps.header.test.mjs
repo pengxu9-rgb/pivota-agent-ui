@@ -8,14 +8,20 @@
 // auditing "did index-only rows get into the sitemap?" read the label and
 // concluded no.
 //
-// pivota-backend#1589 fixed the `renderable` predicate and removed those
-// specific 77, so the ONLY thing standing between the next widening and the
-// same silent misreport is this file. These tests therefore assert against a
-// fixture that deliberately contains index-only rows — the exact condition the
-// old label got wrong — and they run the REAL readCanonicalProduct end to end
-// through generateSitemaps(), because a unit test of the counting expression
-// would not have caught the original bug either (the expression was right; the
-// name was wrong).
+// Those specific 77 are now gone twice over — pivota-backend#1589 fixed the
+// `renderable` predicate, and #289 added an agent-side serving-gate drop that
+// withholds any row carrying an explicit `serving_eligible: false`. Neither
+// touched the LABEL, and neither closed the lane: #289 keys on an explicit
+// false, so a feed that simply omits the field still ships index-only URLs into
+// a renderer with no INDEX_ELIGIBLE_READ. That population is what `index_only=`
+// counts, and this file is the only thing standing between the next widening
+// and the same silent misreport.
+//
+// The tests therefore assert against a fixture that deliberately contains
+// index-only rows in the shape that can still reach the file, and they run the
+// REAL readCanonicalProduct end to end through generateSitemaps() — a unit test
+// of the counting expression would not have caught the original bug either
+// (the expression was right; the name was wrong).
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { SITEMAP_MIN_PRODUCT_URLS } from './sitemap_lib.mjs'
@@ -57,16 +63,24 @@ function servingRow(i) {
   }
 }
 
-// The cohort the old label hid: admitted by index_eligible ALONE. Explicitly
-// `serving_eligible: false` rather than absent — that is the shape the live
-// feed emitted for all 77 (renderable=true, serving_eligible=false,
-// blocker_code='no_price'), and a test that only covered the absent case would
-// pass against a predicate that read the field as "missing means index-only".
+// The index-only cohort AS IT CAN STILL REACH THE FILE after #289: admitted by
+// `index_eligible`, with no `serving_eligible` field at all.
+//
+// The explicit `serving_eligible: false` shape — what the live feed emitted for
+// all 77 — is no longer an index-only row in the sitemap, because #289's
+// serving-gate drop removes it in readCanonicalProduct before it can be
+// counted. That shape is covered separately below, where it must land in
+// NEITHER bucket.
+//
+// The lane itself is NOT retired (see "keeps an index_eligible row the serving
+// gate has NOT rejected" in sitemap_lib.test.mjs): the drop keys on an explicit
+// false, so a feed that omits the field still ships index-only URLs — into a
+// renderer that has no INDEX_ELIGIBLE_READ. That is precisely the population
+// this header's `index_only=` exists to count.
 function indexOnlyRow(i) {
   return {
     sig_id: `sig_indexonly${String(i).padStart(5, '0')}`,
     content_key: `ck_indexonly${String(i).padStart(5, '0')}`,
-    serving_eligible: false,
     index_eligible: true,
     renderable: true,
   }
@@ -171,6 +185,12 @@ describe('sitemap header — the eligibility breakdown is measured, not asserted
       // still pass — an inert fixture that looked like coverage.
       { ...indexOnlyRow(9001), renderable: false },
       { ...servingRow(9002), content_depth: false },
+      // #289's serving-gate drop. This one is the reason the breakdown has to
+      // be counted off the EMITTED set rather than the feed: it is the exact
+      // cohort the old `source=serving_eligible` label was wrong about, it is
+      // still index_eligible, and it must now show up in neither bucket
+      // because it is no longer in the file.
+      { ...indexOnlyRow(9003), serving_eligible: false },
     ]
     vi.stubGlobal(
       'fetch',
@@ -227,13 +247,10 @@ describe('sitemap header — the eligibility breakdown is measured, not asserted
         const servingSig = indexOnlyWins ? shortSig : longSig
         const contested = [
           { sig_id: servingSig, content_key: shared, serving_eligible: true, renderable: true },
-          {
-            sig_id: indexOnlySig,
-            content_key: shared,
-            serving_eligible: false,
-            index_eligible: true,
-            renderable: true,
-          },
+          // No `serving_eligible` field — the shape that survives #289's
+          // serving gate (an explicit false would be dropped before the dedup
+          // and this contest would never happen).
+          { sig_id: indexOnlySig, content_key: shared, index_eligible: true, renderable: true },
         ]
         const items = [
           ...Array.from({ length: SERVING_ROWS }, (_, i) => servingRow(i)),

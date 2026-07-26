@@ -562,10 +562,16 @@ export async function generateSitemaps() {
   // asserted an eligibility set it had never measured. On 2026-07-26 it carried
   // `source=serving_eligible` over 77 URLs that were index_eligible and NOT
   // serving_eligible — admitted by INDEX_ELIGIBLE_SITEMAP=1 in prod — and all
-  // 77 hard-500'd. Anyone auditing "did index-only rows get in?" read that
-  // label and concluded no. pivota-backend#1589 removed those 77 by fixing the
-  // `renderable` predicate, so the token is renamed AND the breakdown is
-  // measured: the next widening must not be able to hide the same way.
+  // 77 failed to serve. Anyone auditing "did index-only rows get in?" read that
+  // label and concluded no.
+  //
+  // Those 77 are gone (pivota-backend#1589 fixed `renderable`; #289 added the
+  // serving-gate drop above), but the LANE is not closed: #289 keys on an
+  // explicit `serving_eligible: false`, so a feed that omits the field still
+  // ships index-only URLs into a renderer that has no INDEX_ELIGIBLE_READ. So
+  // the token is renamed AND the breakdown is measured — `index_only=0` is now
+  // a positive statement that the serving gate is holding, and the next
+  // widening cannot hide the way the last one did.
   //
   // Counted off the FINAL product list, after the eligibility/renderable/
   // content_depth drops and after the content_key dedup, so the two buckets
