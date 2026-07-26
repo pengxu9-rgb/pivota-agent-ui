@@ -215,13 +215,13 @@ export async function collectSitemapProducts(baseUrl, options = {}) {
       const product = readCanonicalProduct(item)
       if (!product) {
         // A renderable=false drop is the EXPECTED dead-PDP filter, not a
-        // malformed row — don't let it pin the source label to "_partial"
+        // malformed row — don't let it pin feed_health to "partial"
         // forever (that label is the anomaly signal for parse failures).
         //
         // Same reasoning for a ck-only row (valid content_key, no minted sig):
         // readCanonicalProduct now rejects those because /products/{ck} 500s,
         // but they are perfectly well-formed rows, not parse failures. Without
-        // this arm every regeneration would report `serving_eligible_partial`
+        // this arm every regeneration would report `feed_health=partial`
         // for as long as the feed contains one such row — permanently retiring
         // the very anomaly signal this block exists to protect.
         //
@@ -229,13 +229,13 @@ export async function collectSitemapProducts(baseUrl, options = {}) {
         // That drop fires on ZERO rows today — the backend does not emit the
         // field yet (see the STATUS note on the floor in sitemap_lib.mjs) — but
         // the arm has to exist BEFORE the producer ships, or the first cron run
-        // after it lands pins the label to `_partial` and never unpins it.
+        // after it lands pins the label to `partial` and never unpins it.
         // Every expected filter in readCanonicalProduct needs an arm here; only
         // a genuinely malformed row may set the flag.
         //
         // …and the same again for serving_eligible=false, the serving-gate
         // drop. That one fires on 77 rows TODAY, so omitting it would pin the
-        // label to `_partial` on the FIRST cron run after it ships and never
+        // label to `partial` on the FIRST cron run after it ships and never
         // unpin it — permanently retiring the only signal that would surface a
         // renamed field, malformed rows, or a truncated payload.
         //
@@ -408,13 +408,13 @@ export async function collectSitemapProducts(baseUrl, options = {}) {
   return {
     products,
     lostIncumbentIds,
-    source: sawInvalidCanonicalItem
-      ? 'serving_eligible_partial'
-      : stoppedForCap
-        ? 'serving_eligible_truncated'
-        : 'serving_eligible',
+    // HEALTH, not provenance. This says whether the WALK was clean — it says
+    // nothing about which eligibility gate admitted the rows, and it used to be
+    // named `source` and valued `serving_eligible…`, which read as exactly the
+    // claim it does not make (see the header construction in generateSitemaps).
+    feedHealth: sawInvalidCanonicalItem ? 'partial' : stoppedForCap ? 'truncated' : 'ok',
     // Fed to sitemapCoverageVerdict. `stoppedForCap` is passed through because
-    // a cap stop is a LEGITIMATE short walk (already labelled _truncated) and
+    // a cap stop is a LEGITIMATE short walk (already labelled `truncated`) and
     // must not be reported as a paging failure.
     coverage: { rowsSeen, feedTotal, stoppedForCap, dropped },
   }
@@ -476,9 +476,10 @@ export async function generateSitemaps() {
       `(incumbent urls=${previous.ids.size}) ...`,
   )
 
-  const { products, source, coverage, lostIncumbentIds } = await collectSitemapProducts(baseUrl, {
-    incumbentIds: previous.ids,
-  })
+  const { products, feedHealth, coverage, lostIncumbentIds } = await collectSitemapProducts(
+    baseUrl,
+    { incumbentIds: previous.ids },
+  )
   const urls = productUrlEntries(products)
 
   // Checked FIRST: a short walk poisons every downstream number, so the other
@@ -551,7 +552,30 @@ export async function generateSitemaps() {
     return null
   }
 
-  const comment = `source=${source} urls=${urls.length}`
+  // THE HEADER IS AN AUDIT SURFACE — every token must describe what is in THIS
+  // file, because it is the only thing an auditor reading public/ can check
+  // without re-running the generator.
+  //
+  // It used to read `source=serving_eligible urls=N`, which was wrong in the
+  // most expensive way available: `source` is the WALK-HEALTH label (values
+  // `ok`/`partial`/`truncated`, then named `serving_eligible…`), so the file
+  // asserted an eligibility set it had never measured. On 2026-07-26 it carried
+  // `source=serving_eligible` over 77 URLs that were index_eligible and NOT
+  // serving_eligible — admitted by INDEX_ELIGIBLE_SITEMAP=1 in prod — and all
+  // 77 hard-500'd. Anyone auditing "did index-only rows get in?" read that
+  // label and concluded no. pivota-backend#1589 removed those 77 by fixing the
+  // `renderable` predicate, so the token is renamed AND the breakdown is
+  // measured: the next widening must not be able to hide the same way.
+  //
+  // Counted off the FINAL product list, after the eligibility/renderable/
+  // content_depth drops and after the content_key dedup, so the two buckets
+  // always sum to `urls` — a breakdown of the rows the feed offered would be a
+  // different (and, for this question, useless) number.
+  const servingEligibleCount = products.reduce((n, p) => n + (p.servingEligible ? 1 : 0), 0)
+  const indexOnlyCount = products.length - servingEligibleCount
+  const comment =
+    `feed_health=${feedHealth} urls=${urls.length} ` +
+    `serving_eligible=${servingEligibleCount} index_only=${indexOnlyCount}`
   const written = []
   if (await writeIfChanged(productsPath, buildSitemapUrlsetXml(urls, comment))) {
     written.push('sitemap-products.xml')
@@ -574,10 +598,18 @@ export async function generateSitemaps() {
   }
 
   console.log(
-    `source=${source} product_urls=${urls.length} previous=${previousCount ?? 'none'} ` +
+    `feed_health=${feedHealth} product_urls=${urls.length} ` +
+      `serving_eligible=${servingEligibleCount} index_only=${indexOnlyCount} ` +
+      `previous=${previousCount ?? 'none'} ` +
       `written=[${written.join(', ') || 'nothing — all unchanged'}]`,
   )
-  return { urlCount: urls.length, source, written }
+  return {
+    urlCount: urls.length,
+    feedHealth,
+    servingEligibleCount,
+    indexOnlyCount,
+    written,
+  }
 }
 
 const isDirectRun =
