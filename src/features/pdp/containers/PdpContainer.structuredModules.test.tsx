@@ -568,7 +568,10 @@ describe('PdpContainer structured PDP modules', () => {
 
     expect(screen.getByRole('button', { name: 'Add to bag' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^Buy Now/ })).toBeInTheDocument();
-  });
+    // Explicit timeout: this is the first test to mount the full PdpContainer
+    // tree, so on a cold transform cache it absorbs the module-graph import
+    // cost and can exceed the 5s default under parallel-worker CPU contention.
+  }, 20_000);
 
   it('isolates external-seed beauty PDPs from legacy detail media and product information', () => {
     const payload = buildBeautyPayload();
