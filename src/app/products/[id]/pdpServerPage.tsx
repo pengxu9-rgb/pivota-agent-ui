@@ -193,17 +193,46 @@ function readServerCanonicalRouteId(
   // canonicalisation and already subsumes this one. Absent (null, or an
   // unelected content_key) falls through to self, exactly as before.
   //
-  // The prefix alone is NOT enough. `isPivotaSignatureRouteId` is a
-  // startsWith check, so a bare "sig_" with no body passes it — and
-  // /products/sig_ errors in production exactly like a ck_ URL does (the same
-  // trap scripts/sitemap_lib.mjs documents at its sig gate). Canonicalising a
-  // live page at a URL that 500s is worse than leaving the duplicate: it hands
-  // the crawler an error page as the preferred version.
+  // The validation is `/^sig_.+/` — CASE-SENSITIVE, and deliberately not
+  // `isPivotaSignatureRouteId`.
+  //
+  // Two traps, both of which end in this page naming a URL the sitemap does
+  // not, which is the invariant break:
+  //
+  //  1. `isPivotaSignatureRouteId` is a lowercasing startsWith, so it accepts
+  //     "SIG_ABC" while scripts/sitemap_lib.mjs's `/^sig_.+/` rejects it. The
+  //     two halves would then validate the same stored field with different
+  //     predicates — and this PR's whole thesis is one stored answer read
+  //     identically by both surfaces.
+  //  2. startsWith alone accepts a bare "sig_" with no body, and
+  //     /products/sig_ errors in production exactly like a ck_ URL does (the
+  //     same trap sitemap_lib.mjs documents at its own sig gate).
+  //
+  // Canonicalising a live page at a URL that 500s is worse than leaving the
+  // duplicate: it hands the crawler an error page as the preferred version.
+  // A step-5 DEDUPE KEEPER outranks the content-key election.
+  //
+  // PIVOTA-Agent#1833 points a tombstoned dedupe loser at its keeper and
+  // signals it with canonical_route_basis='dedupe_keeper'. That keeper lives in
+  // the SAME content_key, so both mechanisms canonicalise one group — and the
+  // row layer decided this one on 2026-07-10 with an explicit
+  // suppression_metadata.keeper_product_key, which is strictly better evidence
+  // than an election seeded from whichever URL happened to be indexed. Letting
+  // the election win here would point a live keeper back at the tombstone it
+  // replaced and silently undo a fix already in production.
+  //
+  // The backend refuses to elect a tombstoned row at all, so in a healthy
+  // system the two agree and this branch never has to arbitrate. It is here
+  // because "the two agree" is exactly the assumption that failed once.
+  const dedupeKeeperSigId = firstString(
+    (product as any)?.canonical_route_basis === 'dedupe_keeper'
+      ? (product as any)?.canonical_route_sig_id
+      : '',
+  );
+  if (/^sig_.+/.test(dedupeKeeperSigId)) return dedupeKeeperSigId;
+
   const contentCanonicalRouteId = firstString(canonicalData.content_canonical_route_id);
-  if (
-    isPivotaSignatureRouteId(contentCanonicalRouteId) &&
-    contentCanonicalRouteId.length > 'sig_'.length
-  ) {
+  if (/^sig_.+/.test(contentCanonicalRouteId)) {
     return contentCanonicalRouteId;
   }
 

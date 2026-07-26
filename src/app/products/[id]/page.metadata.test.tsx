@@ -595,7 +595,15 @@ describe('product page metadata', () => {
     // /products/ck_… and /products/sig_ both error in production. An election
     // is not a licence to skip the route-id shape check.
     const own = 'sig_2f057569e49bcc11a33e54dcac6d9dca';
-    for (const bad of ['ck_7f02a883e39e2529c8299393cf8e9669', 'sig_', 'not-an-id']) {
+    // 'SIG_...' is in the list because the sitemap validates with a
+    // case-SENSITIVE /^sig_.+/ — accepting it here would let the two halves
+    // disagree about the same stored value, which is the invariant break.
+    for (const bad of [
+      'ck_7f02a883e39e2529c8299393cf8e9669',
+      'sig_',
+      'not-an-id',
+      'SIG_C1AE6BAE3C95E29035CF91B46A81B224',
+    ]) {
       getPdpV2Mock.mockResolvedValue({
         modules: [{ type: 'canonical', data: { content_canonical_route_id: bad } }],
       });
@@ -614,6 +622,78 @@ describe('product page metadata', () => {
         `https://agent.pivota.cc/products/${own}`,
       );
     }
+  });
+
+  it('a step-5 DEDUPE KEEPER outranks the content-key election', async () => {
+    // The collision that nearly shipped. PIVOTA-Agent#1833 points a tombstoned
+    // dedupe loser at its keeper, and that keeper is in the SAME content_key —
+    // so both mechanisms canonicalise one group, in OPPOSITE directions:
+    // #1833 sends loser -> keeper, while an incumbency-seeded election would
+    // crown the LOSER (362 of the 431 tombstones are the indexed URL) and send
+    // keeper -> loser.
+    //
+    // Measured 2026-07-25: zero of the 3,326 advertised sitemap URLs are absent
+    // from the canonical feed, which is only possible if tombstoned rows pass
+    // `suppressed_at IS NULL` — they carry suppression_REASON only. So the two
+    // populations genuinely overlap; this is not theoretical.
+    //
+    // The row layer decided this on 2026-07-10 with an explicit
+    // keeper_product_key, which beats an election seeded from whichever URL
+    // happened to be indexed. Backend refuses to elect a tombstone at all, so
+    // in a healthy system these agree — this asserts the arbitration for when
+    // they do not.
+    const keeper = 'sig_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+    const tombstone = 'sig_2f057569e49bcc11a33e54dcac6d9dca';
+    getPdpV2Mock.mockResolvedValue({
+      modules: [
+        {
+          type: 'canonical',
+          // A stale election still naming the tombstone.
+          data: { content_canonical_route_id: tombstone },
+        },
+      ],
+    });
+    mapPdpV2ToPdpPayloadMock.mockReturnValue(buildPayload({
+      product_id: tombstone,
+      title: 'Merit The Color Duo',
+      pivota_signature_id: tombstone,
+      canonical_route_sig_id: keeper,
+      canonical_route_basis: 'dedupe_keeper',
+    }));
+
+    const metadata = await generatePersonalizedMetadata({
+      params: Promise.resolve({ id: tombstone }),
+      searchParams: Promise.resolve({ merchant_id: 'merch_1' }),
+    });
+
+    expect((metadata.alternates as any)?.canonical).toBe(
+      `https://agent.pivota.cc/products/${keeper}`,
+    );
+  });
+
+  it('ignores canonical_route_sig_id when the basis is not dedupe_keeper', async () => {
+    // The field is only trustworthy under its own basis; reading it unguarded
+    // would let any future producer of that key hijack the canonical.
+    const own = 'sig_2f057569e49bcc11a33e54dcac6d9dca';
+    getPdpV2Mock.mockResolvedValue({
+      modules: [{ type: 'canonical', data: {} }],
+    });
+    mapPdpV2ToPdpPayloadMock.mockReturnValue(buildPayload({
+      product_id: own,
+      title: 'Acme Glow Serum',
+      pivota_signature_id: own,
+      canonical_route_sig_id: 'sig_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      canonical_route_basis: 'something_else',
+    }));
+
+    const metadata = await generatePersonalizedMetadata({
+      params: Promise.resolve({ id: own }),
+      searchParams: Promise.resolve({ merchant_id: 'merch_1' }),
+    });
+
+    expect((metadata.alternates as any)?.canonical).toBe(
+      `https://agent.pivota.cc/products/${own}`,
+    );
   });
 
   it('a multi-merchant GROUP still outranks the content-key election', async () => {
