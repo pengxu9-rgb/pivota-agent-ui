@@ -4350,6 +4350,11 @@ export function PdpContainer({
               suppressOverview
               showDetailMedia={false}
               showProductInformation={false}
+              // Product-level copy belongs to the productDetails instance only —
+              // all three render from the same `product`, so leaving these on
+              // emits the title <h2> and Brand Story three times.
+              showProductHeader={false}
+              showBrandStory={false}
             />
           ) : null
         }
@@ -4366,6 +4371,8 @@ export function PdpContainer({
               suppressOverview
               showDetailMedia={false}
               showProductInformation={false}
+              showProductHeader={false}
+              showBrandStory={false}
             />
           ) : null
         }

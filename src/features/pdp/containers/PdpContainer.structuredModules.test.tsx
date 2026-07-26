@@ -525,11 +525,15 @@ describe('PdpContainer structured PDP modules', () => {
 
   it('renders beauty ingredient + how-to-use accordions and suppresses structured detail sections', () => {
     // The redesign collapses structured detail modules into the Ingredients
-    // and How-to-use accordions. The brand-story field still renders, but
-    // structured detail sections (Overview, Clinical Results, product_overview
-    // copy) are intentionally not rendered — Pivota Insights replaces merchant
-    // marketing copy. The product_facts-vs-overview preference logic is
-    // unit-covered in pdpDisplaySanitizers.test.ts.
+    // and How-to-use accordions. Structured detail sections (Overview, Clinical
+    // Results, product_overview copy) live inside the collapsed "Product
+    // details" accordion — rendered into the HTML, hidden until opened. They
+    // are BELOW THE FOLD, not suppressed; the earlier wording here said
+    // "intentionally not rendered / Pivota Insights replaces merchant marketing
+    // copy", which described the accordion's unmount rather than any policy.
+    // Legacy/retail-scraped blocks ARE genuinely suppressed — asserted below.
+    // The product_facts-vs-overview preference logic is unit-covered in
+    // pdpDisplaySanitizers.test.ts.
     const payload = buildBeautyPayload();
     payload.product.merchant_id = 'merchant_beauty';
 

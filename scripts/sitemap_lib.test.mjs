@@ -500,6 +500,30 @@ describe('collectSitemapProducts — backend pagination', () => {
     expect(source).toBe('serving_eligible')
   })
 
+  it('content_depth=false drops do NOT mark the run partial (expected filter, not anomaly)', async () => {
+    // Same reasoning as the renderable=false case above, and higher stakes:
+    // this drop fires on 364 rows on the FIRST cron run after the floor ships.
+    // If it counted as "invalid", the source label would read
+    // serving_eligible_partial from then on, permanently retiring the anomaly
+    // signal for real parse failures.
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      pageResponse(
+        [
+          canonicalProduct('sig_keep_me'),
+          { ...canonicalProduct('sig_thin_shell'), renderable: true, content_depth: false },
+        ],
+        2,
+      ),
+    )
+
+    const { products: collected, source } = await collectSitemapProducts(
+      'https://canonical.example.com',
+    )
+
+    expect(collected.map((p) => p.id)).toEqual(['sig_keep_me'])
+    expect(source).toBe('serving_eligible')
+  })
+
   it('ck-only drops do NOT mark the run partial (well-formed row, not a parse failure)', async () => {
     // Mirrors the renderable=false case above. ck-only rows are now rejected by
     // readCanonicalProduct (their /products/{ck} URL 500s), but they are valid

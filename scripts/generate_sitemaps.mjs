@@ -181,10 +181,17 @@ export async function collectSitemapProducts(baseUrl, options = {}) {
         // this arm every regeneration would report `serving_eligible_partial`
         // for as long as the feed contains one such row — permanently retiring
         // the very anomaly signal this block exists to protect.
+        //
+        // …and the same again for content_depth=false, the thin-content floor.
+        // That drop fires on 364 rows TODAY, so leaving it out would pin the
+        // label to `_partial` on the FIRST cron run after the floor ships and
+        // never unpin it. Every expected filter in readCanonicalProduct needs
+        // an arm here; only a genuinely malformed row may set the flag.
         const isPlainItem = item && typeof item === 'object'
         const droppedAsDead =
           isPlainItem &&
           (item.renderable === false ||
+            item.content_depth === false ||
             (String(item.content_key || '').startsWith('ck_') &&
               !String(item.sig_id || '').trim().startsWith('sig_')))
         if (!droppedAsDead) sawInvalidCanonicalItem = true
