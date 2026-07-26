@@ -206,6 +206,40 @@ export function readCanonicalProduct(item) {
   // growth, so eyeball the first regenerated diff.
   if (row.renderable === false) return null
 
+  // SERVING-GATE drop. `renderable` asks whether the gateway can RESOLVE a
+  // content route; this asks whether it will actually SERVE the result. They
+  // are different questions, and a row can pass the first and fail the second.
+  //
+  // Measured 2026-07-26: 77 of the 4,528 advertised URLs carried
+  // `serving_eligible=false`, and every one answered HTTP 404 — the gateway
+  // rejects them with `PRODUCT_NOT_SERVABLE / no_price`. Breakdown: 51 Mintree
+  // + 22 RED DANE, whose offers are deliberately suppressed with
+  // `source_currency_or_channel_defect` (the INR/ZAR-served-as-USD
+  // containment — these MUST NOT serve until that is fixed), plus 6 with
+  // genuinely absent price data.
+  //
+  // Why isSitemapEligibleProduct did not catch them: it admits a row on
+  // `serving_eligible OR index_eligible`, on the stated assumption that "the
+  // backend already applies the authoritative gate, so trusting these flags
+  // can't surface anything the backend didn't intend". That assumption does
+  // not survive a SERVICE BOUNDARY. pivota-backend runs INDEX_ELIGIBLE_SITEMAP=1
+  // and INDEX_ELIGIBLE_READ=1, so it both emits and honours index_eligible;
+  // PIVOTA-Agent — the service that actually answers the PDP — has no
+  // INDEX_ELIGIBLE_READ set at all, so it does not. The feed advertises a lane
+  // the renderer does not implement.
+  //
+  // Dropping on an explicit `false` (not on "not true") is deliberate, the
+  // same convention as `renderable` and `content_depth`: a feed that omits the
+  // field keeps today's behaviour instead of emptying the sitemap.
+  //
+  // This does NOT retire the index_eligible lane — it declines to advertise
+  // rows the renderer currently 404s. If the gateway is ever given
+  // INDEX_ELIGIBLE_READ, the backend marks those rows serving_eligible and
+  // this drop stops firing for them on its own. Verified safe at the time of
+  // writing: all 77 rows it removes return 404 today, and no URL currently
+  // serving 200 is affected.
+  if (row.serving_eligible === false || row.is_serving_eligible === false) return null
+
   // Content-depth floor. `renderable` asks "will the URL answer?"; this asks
   // "once it answers, is there prose on it, or only chrome?" They are
   // independent, and 364 of the 3,326 URLs this file advertised on 2026-07-25

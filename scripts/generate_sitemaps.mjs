@@ -221,10 +221,18 @@ export async function collectSitemapProducts(baseUrl, options = {}) {
         // label to `_partial` on the FIRST cron run after the floor ships and
         // never unpin it. Every expected filter in readCanonicalProduct needs
         // an arm here; only a genuinely malformed row may set the flag.
+        //
+        // …and the same again for serving_eligible=false, the serving-gate
+        // drop. That one fires on 77 rows TODAY, so omitting it would pin the
+        // label to `_partial` on the FIRST cron run after it ships and never
+        // unpin it — permanently retiring the only signal that would surface a
+        // renamed field, malformed rows, or a truncated payload.
         const isPlainItem = item && typeof item === 'object'
         const droppedAsDead =
           isPlainItem &&
           (item.renderable === false ||
+            item.serving_eligible === false ||
+            item.is_serving_eligible === false ||
             item.content_depth === false ||
             (String(item.content_key || '').startsWith('ck_') &&
               !String(item.sig_id || '').trim().startsWith('sig_')))

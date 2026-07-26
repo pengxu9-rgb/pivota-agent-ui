@@ -155,6 +155,48 @@ describe('product row parsing (eligibility, identity, lastmod)', () => {
     expect(legacy?.id).toBe('sig_legacy')
   })
 
+  it('drops an index_eligible row the SERVING gate rejects — the renderer 404s it', () => {
+    // Measured 2026-07-26: 77 of 4,528 advertised URLs carried
+    // serving_eligible=false and every one answered 404
+    // (PRODUCT_NOT_SERVABLE / no_price). isSitemapEligibleProduct admitted
+    // them through its `index_eligible` arm, on the stated assumption that the
+    // backend's gate is authoritative — which does not survive a SERVICE
+    // BOUNDARY: pivota-backend runs INDEX_ELIGIBLE_READ=1, PIVOTA-Agent (which
+    // actually answers the PDP) has it unset. The feed advertises a lane the
+    // renderer does not implement.
+    const unservable = readCanonicalProduct({
+      ...canonicalProduct('sig_no_price'),
+      serving_eligible: false,
+      index_eligible: true,
+      renderable: true,
+      content_depth: true,
+    })
+    expect(unservable).toBeNull()
+  })
+
+  it('keeps an index_eligible row the serving gate has NOT rejected', () => {
+    // The lane itself is not retired — only rows the renderer currently 404s
+    // are withheld. index_eligible with no explicit serving_eligible=false
+    // still ships.
+    const citation = readCanonicalProduct({
+      ...canonicalProduct('sig_citation'),
+      serving_eligible: undefined,
+      index_eligible: true,
+      renderable: true,
+      content_depth: true,
+    })
+    expect(citation?.id).toBe('sig_citation')
+  })
+
+  it('the serving-gate drop keys on an explicit false, not on "not true"', () => {
+    // Same fail-open-on-absence convention as renderable/content_depth: a feed
+    // omitting the field must reproduce today's sitemap, not an empty one.
+    expect(readCanonicalProduct(canonicalProduct('sig_absent_field'))?.id).toBe('sig_absent_field')
+    expect(readCanonicalProduct({
+      ...canonicalProduct('sig_alias_false'), is_serving_eligible: false,
+    })).toBeNull()
+  })
+
   it('drops sig rows the backend marks content_depth=false (renderable shells)', () => {
     // The 364 URLs measured 2026-07-25 that answer a clean 200 and still serve
     // only ~510 chars of chrome. Independent of renderable: these ARE
@@ -512,6 +554,39 @@ describe('collectSitemapProducts — backend pagination', () => {
         [
           canonicalProduct('sig_keep_me'),
           { ...canonicalProduct('sig_thin_shell'), renderable: true, content_depth: false },
+        ],
+        2,
+      ),
+    )
+
+    const { products: collected, source } = await collectSitemapProducts(
+      'https://canonical.example.com',
+    )
+
+    expect(collected.map((p) => p.id)).toEqual(['sig_keep_me'])
+    expect(source).toBe('serving_eligible')
+  })
+
+  it('serving_eligible=false drops do NOT mark the run partial (expected filter, not anomaly)', async () => {
+    // The fourth arm of the same invariant, and the one that shipped missing:
+    // the serving-gate drop fires on 77 rows on the FIRST cron run after it
+    // lands, so leaving it out of the droppedAsDead predicate pins the label
+    // to serving_eligible_partial on that run and never unpins it —
+    // permanently retiring the only signal that surfaces a renamed field,
+    // malformed rows, or a truncated feed payload. The three tests above
+    // exercise readCanonicalProduct; none of them reaches this funnel, which
+    // is exactly why the gap was invisible.
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      pageResponse(
+        [
+          canonicalProduct('sig_keep_me'),
+          {
+            ...canonicalProduct('sig_no_price'),
+            renderable: true,
+            content_depth: true,
+            serving_eligible: false,
+            index_eligible: true,
+          },
         ],
         2,
       ),
