@@ -567,6 +567,39 @@ describe('collectSitemapProducts — backend pagination', () => {
     expect(source).toBe('serving_eligible')
   })
 
+  it('serving_eligible=false drops do NOT mark the run partial (expected filter, not anomaly)', async () => {
+    // The fourth arm of the same invariant, and the one that shipped missing:
+    // the serving-gate drop fires on 77 rows on the FIRST cron run after it
+    // lands, so leaving it out of the droppedAsDead predicate pins the label
+    // to serving_eligible_partial on that run and never unpins it —
+    // permanently retiring the only signal that surfaces a renamed field,
+    // malformed rows, or a truncated feed payload. The three tests above
+    // exercise readCanonicalProduct; none of them reaches this funnel, which
+    // is exactly why the gap was invisible.
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      pageResponse(
+        [
+          canonicalProduct('sig_keep_me'),
+          {
+            ...canonicalProduct('sig_no_price'),
+            renderable: true,
+            content_depth: true,
+            serving_eligible: false,
+            index_eligible: true,
+          },
+        ],
+        2,
+      ),
+    )
+
+    const { products: collected, source } = await collectSitemapProducts(
+      'https://canonical.example.com',
+    )
+
+    expect(collected.map((p) => p.id)).toEqual(['sig_keep_me'])
+    expect(source).toBe('serving_eligible')
+  })
+
   it('ck-only drops do NOT mark the run partial (well-formed row, not a parse failure)', async () => {
     // Mirrors the renderable=false case above. ck-only rows are now rejected by
     // readCanonicalProduct (their /products/{ck} URL 500s), but they are valid
