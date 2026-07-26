@@ -289,32 +289,52 @@ export function readCanonicalProduct(item) {
   // a backend that predates the field leaves the sitemap exactly as it is, so
   // this can merge before or after the backend side with no coupling.
   //
-  // ⚠ STATUS — this line is INERT until the backend emits the field, and its
-  // inertness is silent BY DESIGN (that is what "drop only on explicit false"
-  // buys). Do not read the measured paragraphs above as a description of what
-  // the sitemap currently does; they are the rationale for the floor, not
-  // evidence it is running. Verified 2026-07-26: `content_depth` is absent
-  // from all 5,887 rows of https://api.pivota.cc/api/canonical/products, so
-  // this drops ZERO rows. #282 shipped this consumer half on 2026-07-26; the
-  // producer half is pivota-backend#1591.
-  //
-  // THE PRODUCER HAS ALREADY FAILED ONCE IN PROD, which is why the pointer is
-  // worth keeping current. pivota-backend#1588 was the original producer: it
-  // merged on 2026-07-26 and took GET /api/canonical/products to a hard 500
-  // for every caller (an untyped `concat` bind param Postgres could not type —
-  // asyncpg IndeterminateDatatypeError). Reverted 16 minutes later in #1590.
-  // #1591 is the reland with the parameter typed and a dialect-compile guard.
-  //
-  // Re-check in one line before trusting the floor — if this prints 0, the
-  // floor is still a no-op no matter what the comments above say:
+  // ✅ STATUS — LIVE since pivota-backend#1591 deployed 2026-07-26. The feed
+  // emits `content_depth` on all 5,887 rows and this line drops 437 of them.
+  // Confirm in one line; if it prints 0 the floor has gone inert again and
+  // nothing else here will tell you:
   //   curl -s 'https://api.pivota.cc/api/canonical/products?limit=200' \
   //     | jq '[.items[] | select(has("content_depth"))] | length'
   //
-  // When #1591 lands, expect the URL count to SHRINK by ~364 (4,528 → ~4,164
-  // against the 2026-07-26 feed, 8.0%). That is well inside sitemapCountGuard's
-  // 50% floor, so the guard will not stop it — read the coverage line's
-  // `dropped_thin=` counter on the first cron run after the deploy to confirm
-  // the floor actually engaged, and to see it stay non-zero afterwards.
+  // WHAT IT ACTUALLY DOES — measured on the live feed the day it went live, and
+  // NOT what this comment predicted. The prediction was "the sitemap shrinks by
+  // ~364, 4,528 → ~4,164, 8.0%". Reality:
+  //
+  //   rows dropped by this line ............................. 437
+  //   URLs before / after .................................. 4,451 → 4,443
+  //   NET URL change ........................................... −8  (0.18%)
+  //   previously-advertised URLs no longer in the file ....... 364
+  //   URLs new to the file .................................. 356
+  //
+  // The floor is overwhelmingly a DEDUP TIE-BREAKER, not a remover. Only 8
+  // content_keys are entirely thin, so only 8 products actually leave. For the
+  // other 358 the thin sig was one of several sigs on the same content_key: it
+  // is dropped here, a deep sibling wins the dedup instead, and the product
+  // keeps a URL — a DIFFERENT one. That is why 364 leave and 356 arrive.
+  //
+  // READ THAT SECOND NUMBER BEFORE PANICKING AT THE FIRST. The next cron will
+  // print "NOTE: 364 previously advertised URL(s) are not in this build", which
+  // reads like the floor deleted 364 pages. It did not. 356 of those products
+  // are still advertised under a better sig. The count that matters is the net,
+  // and sitemapCountGuard (50% floor) is nowhere near tripping on 0.18%.
+  //
+  // Whether the 356-URL swap is worth it is a real question, not a settled one:
+  // it trades whatever indexing the thin URLs had accrued for URLs that carry
+  // content, and the incumbency layer cannot protect them because this drop
+  // runs BEFORE the dedup by design. It looked worth it at zero indexed pages.
+  // Re-open the question if that changes. The elected-canonical layer does not
+  // currently interact with this — `canonical_sig_id` was empty on all 4,451
+  // content_keys on 2026-07-26, i.e. the election is dormant — but if it ever
+  // populates, an elected sig that is thin would be dropped here and the file
+  // would advertise a NON-elected sig while the PDP self-canonicals elsewhere.
+  // Check that before turning the election on.
+  //
+  // THE PRODUCER HAS ALREADY FAILED ONCE IN PROD. pivota-backend#1588 was the
+  // original producer: it merged 2026-07-26 and took GET
+  // /api/canonical/products to a hard 500 for every caller (an untyped `concat`
+  // bind param Postgres could not type — asyncpg IndeterminateDatatypeError),
+  // reverted 16 minutes later in #1590. #1591 is the reland, with the parameter
+  // typed and a real-Postgres route test that reproduces the failure.
   if (row.content_depth === false) return null
 
   // The backend's ELECTED winner for this content_key (pivota-backend

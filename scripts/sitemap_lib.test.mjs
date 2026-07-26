@@ -1085,12 +1085,16 @@ describe('collectSitemapProducts — `total` present on the first page only (pro
   // reviewer had only a confident code comment to go on. The run now says which
   // state it is in, so the next inert gate announces itself.
   //
-  // The inert state is not a historical curiosity — it is the CURRENT state,
-  // twice over. pivota-backend#1588 merged on 2026-07-26, 500ed the feed
-  // outright, and was reverted within 16 minutes (#1590). The reland is #1591.
-  // Until that lands these two tests describe production exactly.
-  it('says so out loud when the feed carries no content_depth (floor inert)', async () => {
-    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+  // SEVERITY INVERTED 2026-07-26, when pivota-backend#1591 deployed. While the
+  // producer was unmerged an absent field was the EXPECTED state and this was a
+  // benign NOTE. Now the field arrives on every row, so absence means it
+  // stopped arriving — a rollback (which happened once already: #1588 → #1590),
+  // a rename, or a truncated payload. Hence console.warn, and hence this test
+  // asserts on warn: if a future change quietly demotes it back to a log, the
+  // regression signal is gone and this fails.
+  it('WARNS when the feed carries no content_depth (floor inert = regression)', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    vi.spyOn(console, 'log').mockImplementation(() => {})
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
       // Deliberately today's prod shape: renderable present, no content_depth.
       pageResponse([canonicalProduct('sig_a'), canonicalProduct('sig_b')], 2, 0, {
@@ -1100,8 +1104,9 @@ describe('collectSitemapProducts — `total` present on the first page only (pro
 
     const { coverage } = await collectSitemapProducts('https://canonical.example.com')
 
-    const out = log.mock.calls.flat().join('\n')
+    const out = warn.mock.calls.flat().join('\n')
     expect(out).toContain('no content_depth field')
+    expect(out).toContain('INERT')
     expect(coverage.dropped.thin).toBe(0)
   })
 
@@ -1111,7 +1116,8 @@ describe('collectSitemapProducts — `total` present on the first page only (pro
     // Without this arm the NOTE would keep firing after the producer landed and
     // train everyone to ignore it — the failure mode that makes a signal worse
     // than none.
-    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    vi.spyOn(console, 'log').mockImplementation(() => {})
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
       pageResponse(
         [
@@ -1126,7 +1132,7 @@ describe('collectSitemapProducts — `total` present on the first page only (pro
 
     const { coverage } = await collectSitemapProducts('https://canonical.example.com')
 
-    expect(log.mock.calls.flat().join('\n')).not.toContain('no content_depth field')
+    expect(warn.mock.calls.flat().join('\n')).not.toContain('no content_depth field')
     expect(coverage.dropped.thin).toBe(0)
   })
 
