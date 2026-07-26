@@ -196,5 +196,9 @@ describe('OrderFlow guest-first checkout', () => {
     })
     expect(toastErrorMock).not.toHaveBeenCalledWith('Please verify your email before paying.')
     expect(toastErrorMock).not.toHaveBeenCalledWith('Please complete email verification before paying.')
-  })
+    // Explicit timeout: this is the only test here that mounts the full
+    // OrderFlow tree, so on a cold run it absorbs the first-render and
+    // jsdom-layout cost and can exceed the 5s default under parallel-worker
+    // CPU contention.
+  }, 20_000)
 })
