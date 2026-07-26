@@ -1062,12 +1062,201 @@ describe('PDP permanent-unbuildable vs transient failure semantics', () => {
   // and Next would cache every one of those 404s.
   // ---------------------------------------------------------------------
 
-  it('does NOT 404 PRODUCT_NOT_SERVABLE — the eligibility gate fails CLOSED on any gateway DB error', async () => {
+  /**
+   * PRODUCT_NOT_SERVABLE with a real index row behind it — the settled half.
+   * `buildPdpServingEligibilityDetails` only emits `index_row_found` when the
+   * eligibility read actually SUCCEEDED, so its presence is what separates
+   * "the index gated this product" from "we could not ask".
+   */
+  function servingIneligibleError(blockerCode: string) {
+    const err = new Error('PRODUCT_NOT_SERVABLE') as Error & {
+      status?: number;
+      code?: string;
+      detail?: unknown;
+    };
+    err.status = 404;
+    err.code = 'PRODUCT_NOT_SERVABLE';
+    err.detail = {
+      error: 'PRODUCT_NOT_SERVABLE',
+      details: {
+        reason: blockerCode,
+        serving_eligible: false,
+        index_row_found: true,
+        blocker_code: blockerCode,
+      },
+    };
+    return err;
+  }
+
+  // The six blocker codes measured across the 116 gated keepers on 2026-07-26.
+  it.each(['low_quality', 'non_core_product', 'short_description', 'no_price', 'no_seed', 'not_live'])(
+    '404s a settled serving-ineligibility (%s) instead of 500ing',
+    async (blockerCode) => {
+      getPdpV2Mock.mockRejectedValue(servingIneligibleError(blockerCode));
+
+      await expect(
+        ProductDetailPage({
+          params: Promise.resolve({ id: 'sig_05b7efd76887fce60fd119b17314fec5' }),
+          searchParams: Promise.resolve({}),
+        }),
+      ).rejects.toThrow(NOT_FOUND_THROWN);
+
+      expect(notFoundMock).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it('does not retry a settled serving-ineligibility — the index already answered', async () => {
+    getPdpV2Mock.mockRejectedValue(servingIneligibleError('low_quality'));
+
+    await expect(
+      ProductDetailPage({
+        params: Promise.resolve({ id: 'sig_05b7efd76887fce60fd119b17314fec5' }),
+        searchParams: Promise.resolve({}),
+      }),
+    ).rejects.toThrow(NOT_FOUND_THROWN);
+
+    expect(getPdpV2Mock).toHaveBeenCalledTimes(1);
+  });
+
+  it('does NOT 404 when index_row_found is absent, even with a blocker-shaped reason', async () => {
+    // The fail-closed branch can carry any reason string. Only the explicit
+    // index_row_found=true makes it a settled fact; without it this must stay
+    // degraded or one DB blip 404s a healthy catalog.
+    getPdpV2Mock.mockRejectedValue(
+      gatewayError(404, 'PRODUCT_NOT_SERVABLE', 'low_quality'),
+    );
+
+    await expect(
+      ProductDetailPage({
+        params: Promise.resolve({ id: 'sig_7ad40676c42fb9c96e2a8136' }),
+        searchParams: Promise.resolve({}),
+      }),
+    ).rejects.toThrow(PDP_DEGRADED_RENDER_ERROR);
+    expect(notFoundMock).not.toHaveBeenCalled();
+  });
+
+  it('does NOT 404 the VERBATIM fail-closed payload — the exact bytes a DB error produces', async () => {
+    // THE MUTANT-KILLER for the index_row_found check, and the reason that
+    // check is a separate conjunct instead of relying on serving_eligible
+    // alone. Every other fixture in this block omits `serving_eligible` from
+    // the fail-closed shape, so they pass via `undefined === false` and stay
+    // green even if `details.index_row_found === true` is deleted from the
+    // predicate — i.e. they do not test the guard they are named for.
+    //
+    // These are the literal bytes of buildPdpServingEligibilityDetails'
+    // `!eligibility` branch (PIVOTA-Agent src/server.js): serving_eligible IS
+    // present and IS false, and ONLY the missing index_row_found separates it
+    // from a settled fact. Delete that conjunct and this product — healthy,
+    // merely unreadable for an instant — gets a 404 cached for the full
+    // revalidate window.
+    const err = new Error('PRODUCT_NOT_SERVABLE') as Error & {
+      status?: number;
+      code?: string;
+      detail?: unknown;
+    };
+    err.status = 404;
+    err.code = 'PRODUCT_NOT_SERVABLE';
+    err.detail = {
+      error: 'PRODUCT_NOT_SERVABLE',
+      details: { reason: 'serving_eligibility_missing', serving_eligible: false },
+    };
+    getPdpV2Mock.mockRejectedValue(err);
+
+    await expect(
+      ProductDetailPage({
+        params: Promise.resolve({ id: 'sig_7ad40676c42fb9c96e2a8136' }),
+        searchParams: Promise.resolve({}),
+      }),
+    ).rejects.toThrow(PDP_DEGRADED_RENDER_ERROR);
+    expect(notFoundMock).not.toHaveBeenCalled();
+  });
+
+  it('does NOT 404 a found row whose ips join missed (index_row_found === false)', async () => {
+    // The LEFT JOIN miss: catalog row found, no index_pipeline_state row, so
+    // serving_eligible is NULL and the normalizer emits index_row_found:false
+    // rather than omitting it. Distinct shape from the branch above, same
+    // required answer — a product mid-ingestion must not be 404-cached.
+    const err = new Error('PRODUCT_NOT_SERVABLE') as Error & {
+      status?: number;
+      code?: string;
+      detail?: unknown;
+    };
+    err.status = 404;
+    err.code = 'PRODUCT_NOT_SERVABLE';
+    err.detail = {
+      error: 'PRODUCT_NOT_SERVABLE',
+      details: {
+        reason: 'serving_eligibility_missing',
+        serving_eligible: false,
+        index_row_found: false,
+      },
+    };
+    getPdpV2Mock.mockRejectedValue(err);
+
+    await expect(
+      ProductDetailPage({
+        params: Promise.resolve({ id: 'sig_7ad40676c42fb9c96e2a8136' }),
+        searchParams: Promise.resolve({}),
+      }),
+    ).rejects.toThrow(PDP_DEGRADED_RENDER_ERROR);
+    expect(notFoundMock).not.toHaveBeenCalled();
+  });
+
+  it('does NOT 404 when index_row_found is true but the gate says the product IS eligible', async () => {
+    // Contradictory shape — an eligible product cannot be the reason for a
+    // not-servable answer, so something else failed. Stay degraded.
+    const err = new Error('PRODUCT_NOT_SERVABLE') as Error & {
+      status?: number;
+      code?: string;
+      detail?: unknown;
+    };
+    err.status = 404;
+    err.code = 'PRODUCT_NOT_SERVABLE';
+    err.detail = {
+      error: 'PRODUCT_NOT_SERVABLE',
+      details: { reason: 'low_quality', serving_eligible: true, index_row_found: true },
+    };
+    getPdpV2Mock.mockRejectedValue(err);
+
+    await expect(
+      ProductDetailPage({
+        params: Promise.resolve({ id: 'sig_7ad40676c42fb9c96e2a8136' }),
+        searchParams: Promise.resolve({}),
+      }),
+    ).rejects.toThrow(PDP_DEGRADED_RENDER_ERROR);
+    expect(notFoundMock).not.toHaveBeenCalled();
+  });
+
+  it('does NOT 404 a settled-looking ineligibility under a different code', async () => {
+    // index_row_found must never be enough on its own — the code gate stays.
+    const err = new Error('INTERNAL_ERROR') as Error & {
+      status?: number;
+      code?: string;
+      detail?: unknown;
+    };
+    err.status = 500;
+    err.code = 'INTERNAL_ERROR';
+    err.detail = {
+      error: 'INTERNAL_ERROR',
+      details: { reason: 'low_quality', serving_eligible: false, index_row_found: true },
+    };
+    getPdpV2Mock.mockRejectedValue(err);
+
+    await expect(
+      ProductDetailPage({
+        params: Promise.resolve({ id: 'sig_7ad40676c42fb9c96e2a8136' }),
+        searchParams: Promise.resolve({}),
+      }),
+    ).rejects.toThrow(PDP_DEGRADED_RENDER_ERROR);
+    expect(notFoundMock).not.toHaveBeenCalled();
+  });
+
+  it('does NOT 404 the fail-closed flavour of PRODUCT_NOT_SERVABLE — the gate fails CLOSED on any gateway DB error', async () => {
     // server.js returns 404 PRODUCT_NOT_SERVABLE whenever it cannot READ
     // serving eligibility, including on a plain Postgres error (the read
-    // returns null and is only warn-logged). Treating this as permanent would
-    // 404 the entire catalog on one DB hiccup, cached for the full revalidate
-    // window.
+    // returns null and is only warn-logged). That branch omits
+    // index_row_found entirely. Treating it as permanent would 404 the entire
+    // catalog on one DB hiccup, cached for the full revalidate window.
     getPdpV2Mock.mockRejectedValue(
       gatewayError(404, 'PRODUCT_NOT_SERVABLE', 'serving_eligibility_missing'),
     );

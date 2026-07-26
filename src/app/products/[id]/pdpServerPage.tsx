@@ -419,6 +419,46 @@ function readGatewayFailureReason(err: unknown): string {
   return String(reason || '').trim().toLowerCase();
 }
 
+function readGatewayFailureDetails(err: unknown): Record<string, unknown> | null {
+  const detail = (err as any)?.detail;
+  const details =
+    detail?.details ?? detail?.error?.details ?? detail?.detail?.details;
+  return details && typeof details === 'object' ? (details as Record<string, unknown>) : null;
+}
+
+/**
+ * PRODUCT_NOT_SERVABLE splits into a settled fact and a fail-closed guess, and
+ * only the structure of `details` tells them apart — the reason string alone
+ * cannot, which is why this is a predicate and not another allowlist entry.
+ *
+ * The gateway builds these details in `buildPdpServingEligibilityDetails`
+ * (PIVOTA-Agent src/server.js):
+ *
+ *   - eligibility row READ, row exists, gate says no
+ *       -> { index_row_found: true, serving_eligible: false,
+ *            reason: <blocker_code> }
+ *     An `index_pipeline_state` row exists and says this product is not
+ *     eligible. Settled: it only changes when the pipeline re-scores or
+ *     re-extracts. Measured blocker codes across the 116 affected keepers on
+ *     2026-07-26: low_quality 101, non_core_product 10, short_description 2,
+ *     no_price 1, no_seed 1, not_live 1 — every one a fact about the product's
+ *     content, none about the health of the read path.
+ *
+ *   - eligibility read FAILED or returned nothing
+ *       -> { reason: 'serving_eligibility_missing', serving_eligible: false }
+ *     with NO `index_row_found` key at all. This is the fail-closed branch a
+ *     DB blip or replica lag produces, and 404ing it would deindex healthy
+ *     products during an incident.
+ *
+ * So require `index_row_found === true` explicitly. Absent or false stays
+ * degraded, which keeps the dangerous case on the safe side of the split.
+ */
+function isSettledServingIneligibility(err: unknown): boolean {
+  const details = readGatewayFailureDetails(err);
+  if (!details) return false;
+  return details.index_row_found === true && details.serving_eligible === false;
+}
+
 /**
  * Classify a thrown gateway error as permanently unbuildable vs transient.
  *
@@ -434,8 +474,20 @@ export function classifyPdpFetchFailure(err: unknown): 'unbuildable' | 'degraded
     const reason = readGatewayFailureReason(err);
     if (PERMANENTLY_UNBUILDABLE_GATEWAY_REASONS.has(reason)) return 'unbuildable';
   }
-  // Everything else — including bare 4xx, PRODUCT_NOT_SERVABLE, and
-  // INVALID_REQUEST — is treated as a possibly-transient read failure.
+  // PRODUCT_NOT_SERVABLE, but only the half of it that is a settled fact —
+  // see isSettledServingIneligibility. Measured on 2026-07-26: 117 of 703
+  // dedupe-keeper PDPs (16.6%) answered HTTP 500 here, and the gateway had
+  // already returned a clean 404 with index_row_found=true for 116 of them.
+  // A 500 is the worst available answer for a product the index has
+  // deliberately gated: it burns crawl budget on a retry loop and tells a
+  // crawler nothing. These URLs became reachable from indexed pages when
+  // PIVOTA-Agent#1833 started pointing duplicate PDPs at their keeper.
+  if (code === 'PRODUCT_NOT_SERVABLE' && isSettledServingIneligibility(err)) {
+    return 'unbuildable';
+  }
+  // Everything else — including bare 4xx, INVALID_REQUEST, and the
+  // fail-closed `serving_eligibility_missing` flavour of PRODUCT_NOT_SERVABLE
+  // — is treated as a possibly-transient read failure.
   return 'degraded';
 }
 
