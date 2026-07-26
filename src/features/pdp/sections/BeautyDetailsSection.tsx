@@ -34,6 +34,8 @@ export function BeautyDetailsSection({
   suppressOverview = false,
   showDetailMedia = true,
   showProductInformation = true,
+  showProductHeader = true,
+  showBrandStory = true,
 }: {
   data?: ProductDetailsData | null;
   product: Product;
@@ -46,6 +48,15 @@ export function BeautyDetailsSection({
   suppressOverview?: boolean;
   showDetailMedia?: boolean;
   showProductInformation?: boolean;
+  // The Beauty PDP mounts THREE of these — one per accordion (ingredients,
+  // how-to-use, product details) — all from the same `product`. The title
+  // header and the Brand Story block are product-level, not section-level, so
+  // only the product-details instance may emit them. Left ungated they render
+  // three times each; that was invisible while collapsed accordions were
+  // unmounted, and became three duplicate <h2>s in the crawlable HTML the
+  // moment they weren't. Default true so no other call site changes.
+  showProductHeader?: boolean;
+  showBrandStory?: boolean;
 }) {
   const sections = Array.isArray(data?.sections) ? data.sections : [];
   const detailImages = getDistinctProductDetailMediaItems({
@@ -87,10 +98,12 @@ export function BeautyDetailsSection({
         </div>
       ) : null}
 
-      <div className="px-2.5 py-6 text-center sm:px-3">
-        <h2 className="text-xl font-serif tracking-wide">{product.title}</h2>
-        {product.subtitle ? <p className="mt-2 text-sm text-muted-foreground">{product.subtitle}</p> : null}
-      </div>
+      {showProductHeader ? (
+        <div className="px-2.5 py-6 text-center sm:px-3">
+          <h2 className="text-xl font-serif tracking-wide">{product.title}</h2>
+          {product.subtitle ? <p className="mt-2 text-sm text-muted-foreground">{product.subtitle}</p> : null}
+        </div>
+      ) : null}
 
       {accentImages.length ? (
         <div className="space-y-6 px-2.5 sm:px-3">
@@ -131,7 +144,7 @@ export function BeautyDetailsSection({
         />
       </div>
 
-      {formattedBrandStory ? (
+      {showBrandStory && formattedBrandStory ? (
         <div className="border-t border-muted/60 px-2.5 py-6 sm:px-3">
           <h3 className="text-sm font-semibold mb-2">Brand Story</h3>
           {brandStoryParagraphs.length ? (

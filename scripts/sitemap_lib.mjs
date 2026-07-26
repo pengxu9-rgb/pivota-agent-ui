@@ -206,6 +206,35 @@ export function readCanonicalProduct(item) {
   // growth, so eyeball the first regenerated diff.
   if (row.renderable === false) return null
 
+  // Content-depth floor. `renderable` asks "will the URL answer?"; this asks
+  // "once it answers, is there prose on it, or only chrome?" They are
+  // independent, and 364 of the 3,326 URLs this file advertised on 2026-07-25
+  // answered a clean 200 and were still a ~510-character shell — title, price,
+  // "Customer photos", "No reviews", nothing else. No rendering change reaches
+  // them: they carry no description, no INCI and no dossier, so there is
+  // nothing behind them to render. All 364 are external_seed rows across seven
+  // brands, none of them wedge inventory.
+  //
+  // Advertising a shell is worse than omitting it. A crawler that samples the
+  // sitemap and finds a tenth of it thin can discount the whole surface, and
+  // the surface is at ZERO indexed pages — the first impression is still to
+  // be made.
+  //
+  // WHY THE BACKEND DECIDES THIS AND NOT A CHARACTER COUNT HERE. The floor was
+  // specified as "~800 readable characters", but readable length is not
+  // knowable at generation time and its available proxies were measured and
+  // rejected: gating on `description >= 400 chars` drops a page that actually
+  // serves 1,210 readable chars, and `content_quality_score` does not separate
+  // the cohorts at all (70.9 average on the empty 364, 70.0 on the thin ones,
+  // 73.5 on the deep ones). Component presence — description OR INCI OR
+  // dossier — drops nothing above 588 readable chars, which is the clean cut.
+  // The predicate lives in pivota-backend services/pdp_content_depth.py.
+  //
+  // Drop only on an explicit `false`, the same convention `renderable` uses:
+  // a backend that predates the field leaves the sitemap exactly as it is, so
+  // this can merge before or after the backend side with no coupling.
+  if (row.content_depth === false) return null
+
   return {
     id,
     contentKey,

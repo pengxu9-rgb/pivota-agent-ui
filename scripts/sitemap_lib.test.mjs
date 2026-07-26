@@ -155,6 +155,39 @@ describe('product row parsing (eligibility, identity, lastmod)', () => {
     expect(legacy?.id).toBe('sig_legacy')
   })
 
+  it('drops sig rows the backend marks content_depth=false (renderable shells)', () => {
+    // The 364 URLs measured 2026-07-25 that answer a clean 200 and still serve
+    // only ~510 chars of chrome. Independent of renderable: these ARE
+    // renderable, which is exactly why the renderable gate never caught them.
+    const shell = readCanonicalProduct({
+      ...canonicalProduct('sig_shell'), renderable: true, content_depth: false,
+    })
+    const deep = readCanonicalProduct({
+      ...canonicalProduct('sig_deep'), renderable: true, content_depth: true,
+    })
+
+    expect(shell).toBeNull()
+    expect(deep?.id).toBe('sig_deep')
+  })
+
+  it('keeps rows when content_depth is absent (backend predating the field)', () => {
+    // Fail-open on ABSENCE, same convention as renderable, so this side can
+    // ship before or after the backend with no coupling and no empty sitemap.
+    const legacy = readCanonicalProduct(canonicalProduct('sig_no_depth_field'))
+    expect(legacy?.id).toBe('sig_no_depth_field')
+  })
+
+  it('the two gates are independent — either false drops the row', () => {
+    // Guards against collapsing them into one: they answer different
+    // questions and a row can pass either while failing the other.
+    expect(readCanonicalProduct({
+      ...canonicalProduct('sig_a'), renderable: true, content_depth: false,
+    })).toBeNull()
+    expect(readCanonicalProduct({
+      ...canonicalProduct('sig_b'), renderable: false, content_depth: true,
+    })).toBeNull()
+  })
+
   it('ck-keyed rows are dropped before the renderable gate is reached', () => {
     // Previously exempt from the renderable gate (renderable is only defined for
     // sig PDPs). Now moot: ck-keyed rows are rejected earlier for lacking a sig,
@@ -455,6 +488,30 @@ describe('collectSitemapProducts — backend pagination', () => {
         [
           canonicalProduct('sig_keep_me'),
           { ...canonicalProduct('sig_dead_pdp'), renderable: false },
+        ],
+        2,
+      ),
+    )
+
+    const { products: collected, source } = await collectSitemapProducts(
+      'https://canonical.example.com',
+    )
+
+    expect(collected.map((p) => p.id)).toEqual(['sig_keep_me'])
+    expect(source).toBe('serving_eligible')
+  })
+
+  it('content_depth=false drops do NOT mark the run partial (expected filter, not anomaly)', async () => {
+    // Same reasoning as the renderable=false case above, and higher stakes:
+    // this drop fires on 364 rows on the FIRST cron run after the floor ships.
+    // If it counted as "invalid", the source label would read
+    // serving_eligible_partial from then on, permanently retiring the anomaly
+    // signal for real parse failures.
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      pageResponse(
+        [
+          canonicalProduct('sig_keep_me'),
+          { ...canonicalProduct('sig_thin_shell'), renderable: true, content_depth: false },
         ],
         2,
       ),
