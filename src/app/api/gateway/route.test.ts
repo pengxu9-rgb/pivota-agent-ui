@@ -1098,3 +1098,161 @@ describe('/api/gateway checkout-safe proxy', () => {
     expect(url).toBe('https://invoke.example.com/agent/shop/v1/invoke');
   });
 });
+
+describe('/api/gateway upstream auth headers', () => {
+  // The invoke surface's `X-Checkout-Token` bypass authenticates on a token
+  // nothing verifies. Closing it requires this proxy to send a real credential
+  // FIRST, because today a browser session with a checkout token sends none at
+  // all. These pin the additive half and, just as importantly, pin that the
+  // money lane was NOT touched.
+  beforeEach(() => {
+    vi.useRealTimers();
+    vi.resetModules();
+    vi.restoreAllMocks();
+    vi.unstubAllEnvs();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+    vi.unstubAllEnvs();
+  });
+
+  const callGateway = async (
+    body: unknown,
+    headers: Record<string, string> = {},
+    { agentKey = 'ak_live_testkey' }: { agentKey?: string } = {},
+  ): Promise<{ url: string; headers: Record<string, string> }> => {
+    vi.stubEnv('SHOP_UPSTREAM_API_URL', 'https://invoke.example.com');
+    vi.stubEnv('PIVOTA_BACKEND_BASE_URL', 'https://checkout.example.com');
+    vi.stubEnv('NEXT_PUBLIC_REVIEWS_API_URL', 'https://reviews.example.com');
+    vi.stubEnv('NEXT_PUBLIC_AGENT_API_KEY', agentKey);
+
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ ok: true }));
+    const { POST } = await import('@/app/api/gateway/route');
+
+    await POST(
+      new Request('http://localhost/api/gateway', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...headers },
+        body: JSON.stringify(body),
+      }) as any,
+    );
+
+    // LAST call, not first: the spy accumulates across invocations within one
+    // `it`, so reading calls[0] silently re-asserts the previous request.
+    const [url, init] = fetchMock.mock.calls.at(-1) as [string, RequestInit];
+    return { url, headers: init.headers as Record<string, string> };
+  };
+
+  const postGateway = async (
+    body: unknown,
+    headers: Record<string, string> = {},
+  ): Promise<Record<string, string>> => {
+    vi.stubEnv('SHOP_UPSTREAM_API_URL', 'https://invoke.example.com');
+    vi.stubEnv('PIVOTA_BACKEND_BASE_URL', 'https://checkout.example.com');
+    vi.stubEnv('NEXT_PUBLIC_REVIEWS_API_URL', 'https://reviews.example.com');
+    vi.stubEnv('NEXT_PUBLIC_AGENT_API_KEY', 'ak_live_testkey');
+
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ ok: true }));
+    const { POST } = await import('@/app/api/gateway/route');
+
+    await POST(
+      new Request('http://localhost/api/gateway', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...headers },
+        body: JSON.stringify(body),
+      }) as any,
+    );
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    return init.headers as Record<string, string>;
+  };
+
+  it('sends the API key ALONGSIDE the checkout token on the shop-invoke lane', async () => {
+    const headers = await postGateway(
+      { operation: 'get_pdp_v2', payload: { product_ref: { product_id: 'ext_x' } } },
+      { 'X-Checkout-Token': 'tok_buyer_1' },
+    );
+
+    // Both. The old code was a ternary: token OR key, never both.
+    expect(headers['X-Checkout-Token']).toBe('tok_buyer_1');
+    expect(headers['X-API-Key']).toBe('ak_live_testkey');
+    expect(headers.Authorization).toBe('Bearer ak_live_testkey');
+  });
+
+  it('still sends the key alone when there is no checkout token', async () => {
+    const headers = await postGateway({
+      operation: 'get_pdp_v2',
+      payload: { product_ref: { product_id: 'ext_x' } },
+    });
+
+    expect(headers['X-Checkout-Token']).toBeUndefined();
+    expect(headers['X-API-Key']).toBe('ak_live_testkey');
+  });
+
+  it('does NOT add a credential to the checkout-safe money lane', async () => {
+    // preview_quote/create_order/submit_payment go to pivota-backend, not to the
+    // gateway. Adding a Bearer to a money request that has never carried one is
+    // not additive — the backend may authenticate on it and bind the order to a
+    // different principal. That lane is out of scope for the bypass fix and must
+    // stay byte-identical.
+    const headers = await postGateway(
+      {
+        operation: 'get_order_status',
+        payload: { status: { order_id: 'ord_1' } },
+      },
+      { 'X-Checkout-Token': 'tok_buyer_1' },
+    );
+
+    expect(headers['X-Checkout-Token']).toBe('tok_buyer_1');
+    expect(headers['X-API-Key']).toBeUndefined();
+    expect(headers.Authorization).toBeUndefined();
+  });
+
+  it('does NOT add a credential to the reviews lane', async () => {
+    const headers = await postGateway(
+      { operation: 'get_review_summary', payload: {} },
+      { 'X-Checkout-Token': 'tok_buyer_1' },
+    );
+
+    expect(headers['X-Checkout-Token']).toBe('tok_buyer_1');
+    expect(headers['X-API-Key']).toBeUndefined();
+    expect(headers.Authorization).toBeUndefined();
+  });
+
+  it('THE COUPLING: the credential decision follows the DESTINATION, both cases', async () => {
+    // The auth predicate and the upstream selector are derived from one `lane`
+    // value precisely so they cannot drift. Both sides read the reviews set on
+    // the RAW operation and the checkout set on the LOWERCASED one, so a
+    // mixed-case reviews op routes to the SHOP gateway — and must therefore be
+    // credentialed like one. If someone later normalizes one side without the
+    // other, a Bearer lands on a pivota-backend request. That is the whole
+    // failure mode; pin both halves together.
+    const mixedCase = await callGateway(
+      { operation: 'Get_Review_Summary', payload: {} },
+      { 'X-Checkout-Token': 'tok_buyer_1' },
+    );
+    expect(mixedCase.url).toContain('https://invoke.example.com');
+    expect(mixedCase.headers.Authorization).toBe('Bearer ak_live_testkey');
+
+    const lowerCase = await callGateway(
+      { operation: 'get_review_summary', payload: {} },
+      { 'X-Checkout-Token': 'tok_buyer_1' },
+    );
+    expect(lowerCase.url).toContain('https://reviews.example.com');
+    expect(lowerCase.headers.Authorization).toBeUndefined();
+  });
+
+  it('sends the token alone when no agent key is configured', async () => {
+    const { headers } = await callGateway(
+      { operation: 'get_pdp_v2', payload: { product_ref: { product_id: 'ext_x' } } },
+      { 'X-Checkout-Token': 'tok_buyer_1' },
+      { agentKey: '' },
+    );
+
+    expect(headers['X-Checkout-Token']).toBe('tok_buyer_1');
+    expect(headers['X-API-Key']).toBeUndefined();
+    expect(headers.Authorization).toBeUndefined();
+  });
+});

@@ -900,6 +900,76 @@ function jsonProxyResponse(
   });
 }
 
+/**
+ * Auth headers for the upstream hop.
+ *
+ * THE POINT OF THIS FUNCTION: on the shop-invoke lane the API key is now sent
+ * ALONGSIDE `X-Checkout-Token`, not instead of it.
+ *
+ * The old shape was `checkoutToken ? {token} : {key}` — a browser session that
+ * carried a checkout token sent NO API KEY AT ALL. That matters because
+ * PIVOTA-Agent's `requireExternalInvokeAuth` treats any non-empty
+ * `X-Checkout-Token` as authentication on its own, with no validation and no
+ * verifier anywhere in the gateway (it holds no key to check the token
+ * against). So the bypass was not a shortcut past a credential — for this
+ * caller it WAS the credential, and removing the bypass would have 401'd every
+ * logged-in checkout on agent.pivota.cc.
+ *
+ * Sending both is the precondition for closing that hole: the key becomes the
+ * credential and the token goes back to being buyer CONTEXT. This half is inert
+ * today by construction — `requireExternalInvokeAuth` checks the checkout token
+ * FIRST and short-circuits, so with both present the request authenticates
+ * exactly as it does now (`auth_mode: 'checkout_token'`, `raw_token: null`), and
+ * the gateway's own upstream hop still forwards token-only. Nothing observable
+ * changes until the gateway side lands, deliberately.
+ *
+ * SCOPED TO THE SHOP-INVOKE LANE ON PURPOSE — this is the one non-obvious part.
+ * The same header block also serves `CHECKOUT_SAFE_OPERATIONS` (preview_quote /
+ * create_order / submit_payment / confirm_payment / get_order_status /
+ * record_payment_offer_evidence) and `REVIEWS_OPERATIONS`, and BOTH of those go
+ * to pivota-backend, not to the gateway. Adding a `Bearer` to money-path
+ * requests that have never carried one is not "additive": the backend may
+ * authenticate on it, and could bind an order to a different principal. Those
+ * lanes keep byte-identical headers ON THIS HOP. Only the lane whose bypass we
+ * intend to close gets the key.
+ *
+ * Two things that sentence should NOT be read to mean:
+ *  - The reviews UPSTREAM already sees this key by another route —
+ *    `fetchReviewSummaryForPdp` Bearers it on every PDP server render. The
+ *    caution above is about not changing THIS request's credential, not a claim
+ *    that the reviews backend has never seen the key.
+ *  - "Shop-invoke lane" is not the same as "not a money op". `request_after_sales`
+ *    is in the gateway's own AGENT_CHECKOUT_STRICT_MONEY_OPS but is absent from
+ *    CHECKOUT_SAFE_OPERATIONS, so it rides this lane and now carries the key.
+ *    Verified inert: the strict route derives identity from `X-Agent-User-JWT`
+ *    and `req.invokeAuth` only, and reads no `Authorization` header.
+ *
+ * `X-API-Key` is carried for symmetry with the no-token branch and with the rest
+ * of the codebase; note that only `Authorization` can ever become the credential
+ * on this hop — `extractInvokeAuthToken` reads `X-Agent-API-Key` or a Bearer,
+ * never `X-API-Key`. Deliberately NOT switching to `X-Agent-API-Key`: the
+ * gateway's `classifyClient` keys its rate-limit bucket on that header before
+ * the IP, so every buyer would collapse into ONE shared bucket.
+ */
+function buildUpstreamAuthHeaders({
+  checkoutToken,
+  isShopInvokeLane,
+}: {
+  checkoutToken: string | null;
+  isShopInvokeLane: boolean;
+}): Record<string, string> {
+  const apiKeyHeaders: Record<string, string> = AGENT_API_KEY
+    ? { 'X-API-Key': AGENT_API_KEY, Authorization: `Bearer ${AGENT_API_KEY}` }
+    : {};
+
+  if (!checkoutToken) return apiKeyHeaders;
+
+  return {
+    'X-Checkout-Token': checkoutToken,
+    ...(isShopInvokeLane ? apiKeyHeaders : {}),
+  };
+}
+
 export async function POST(req: NextRequest) {
   try {
     const proxyHopCount = Math.max(0, Number(req.headers.get(GATEWAY_PROXY_HOP_HEADER) || 0) || 0);
@@ -938,11 +1008,23 @@ export async function POST(req: NextRequest) {
     const { upstreamBase: resolvedShopUpstreamBase, recursionPrevented } = resolveShopUpstreamBase(
       req.url,
     );
-    const upstreamBase = REVIEWS_OPERATIONS.has(operation)
-      ? REVIEWS_UPSTREAM_BASE
+    // ONE source of truth for which upstream this request is bound for. The auth headers below key off the
+    // SAME value, because a credential decision that disagrees with the destination is the exact failure to
+    // avoid here: a Bearer landing on a pivota-backend money request. Deriving both from one `lane` means the
+    // two cannot drift — an earlier version hand-copied the predicate, including its raw-vs-normalized
+    // asymmetry (`REVIEWS_OPERATIONS.has(operation)` on the raw string, `useCheckoutSafeProxy` on the
+    // lowercased one), and a later tidy-up of one side would have silently moved the other.
+    const lane: 'reviews' | 'checkout' | 'shop' = REVIEWS_OPERATIONS.has(operation)
+      ? 'reviews'
       : useCheckoutSafeProxy
-        ? CHECKOUT_UPSTREAM_BASE
-        : resolvedShopUpstreamBase;
+        ? 'checkout'
+        : 'shop';
+    const upstreamBase =
+      lane === 'reviews'
+        ? REVIEWS_UPSTREAM_BASE
+        : lane === 'checkout'
+          ? CHECKOUT_UPSTREAM_BASE
+          : resolvedShopUpstreamBase;
     const upstreamUrl =
       checkoutSafeRequest && !('error' in checkoutSafeRequest)
         ? checkoutSafeRequest.url
@@ -971,14 +1053,7 @@ export async function POST(req: NextRequest) {
       method: upstreamMethod,
       headers: {
         'Content-Type': 'application/json',
-        ...(checkoutToken
-          ? { 'X-Checkout-Token': checkoutToken }
-          : AGENT_API_KEY
-            ? {
-                'X-API-Key': AGENT_API_KEY,
-                Authorization: `Bearer ${AGENT_API_KEY}`,
-              }
-            : {}),
+        ...buildUpstreamAuthHeaders({ checkoutToken, isShopInvokeLane: lane === 'shop' }),
         [GATEWAY_PROXY_HOP_HEADER]: String(proxyHopCount + 1),
       },
       ...(upstreamMethod === 'GET' ? {} : { body: JSON.stringify(upstreamBody || {}) }),
