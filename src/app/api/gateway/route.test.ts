@@ -1118,6 +1118,33 @@ describe('/api/gateway upstream auth headers', () => {
     vi.unstubAllEnvs();
   });
 
+  const callGateway = async (
+    body: unknown,
+    headers: Record<string, string> = {},
+    { agentKey = 'ak_live_testkey' }: { agentKey?: string } = {},
+  ): Promise<{ url: string; headers: Record<string, string> }> => {
+    vi.stubEnv('SHOP_UPSTREAM_API_URL', 'https://invoke.example.com');
+    vi.stubEnv('PIVOTA_BACKEND_BASE_URL', 'https://checkout.example.com');
+    vi.stubEnv('NEXT_PUBLIC_REVIEWS_API_URL', 'https://reviews.example.com');
+    vi.stubEnv('NEXT_PUBLIC_AGENT_API_KEY', agentKey);
+
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ ok: true }));
+    const { POST } = await import('@/app/api/gateway/route');
+
+    await POST(
+      new Request('http://localhost/api/gateway', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...headers },
+        body: JSON.stringify(body),
+      }) as any,
+    );
+
+    // LAST call, not first: the spy accumulates across invocations within one
+    // `it`, so reading calls[0] silently re-asserts the previous request.
+    const [url, init] = fetchMock.mock.calls.at(-1) as [string, RequestInit];
+    return { url, headers: init.headers as Record<string, string> };
+  };
+
   const postGateway = async (
     body: unknown,
     headers: Record<string, string> = {},
@@ -1187,6 +1214,41 @@ describe('/api/gateway upstream auth headers', () => {
     const headers = await postGateway(
       { operation: 'get_review_summary', payload: {} },
       { 'X-Checkout-Token': 'tok_buyer_1' },
+    );
+
+    expect(headers['X-Checkout-Token']).toBe('tok_buyer_1');
+    expect(headers['X-API-Key']).toBeUndefined();
+    expect(headers.Authorization).toBeUndefined();
+  });
+
+  it('THE COUPLING: the credential decision follows the DESTINATION, both cases', async () => {
+    // The auth predicate and the upstream selector are derived from one `lane`
+    // value precisely so they cannot drift. Both sides read the reviews set on
+    // the RAW operation and the checkout set on the LOWERCASED one, so a
+    // mixed-case reviews op routes to the SHOP gateway — and must therefore be
+    // credentialed like one. If someone later normalizes one side without the
+    // other, a Bearer lands on a pivota-backend request. That is the whole
+    // failure mode; pin both halves together.
+    const mixedCase = await callGateway(
+      { operation: 'Get_Review_Summary', payload: {} },
+      { 'X-Checkout-Token': 'tok_buyer_1' },
+    );
+    expect(mixedCase.url).toContain('https://invoke.example.com');
+    expect(mixedCase.headers.Authorization).toBe('Bearer ak_live_testkey');
+
+    const lowerCase = await callGateway(
+      { operation: 'get_review_summary', payload: {} },
+      { 'X-Checkout-Token': 'tok_buyer_1' },
+    );
+    expect(lowerCase.url).toContain('https://reviews.example.com');
+    expect(lowerCase.headers.Authorization).toBeUndefined();
+  });
+
+  it('sends the token alone when no agent key is configured', async () => {
+    const { headers } = await callGateway(
+      { operation: 'get_pdp_v2', payload: { product_ref: { product_id: 'ext_x' } } },
+      { 'X-Checkout-Token': 'tok_buyer_1' },
+      { agentKey: '' },
     );
 
     expect(headers['X-Checkout-Token']).toBe('tok_buyer_1');
