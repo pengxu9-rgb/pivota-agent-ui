@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { revalidatePath } from 'next/cache';
 import { createHash, timingSafeEqual } from 'node:crypto';
+import { buildRevalidateTarget } from './target';
 
 /**
  * On-demand ISR purge for a single PDP.
@@ -122,6 +123,29 @@ const SAFE_PRODUCT_ID = /^[A-Za-z0-9][A-Za-z0-9._:~-]{0,127}$/;
 const ID_PREFIX_SEPARATOR = /[_:]/;
 
 /**
+ * PERCENT-ENCODING IS REJECTED, NEVER DECODED — and this rule survives any
+ * redesign of the containment guards, because it is about a different thing:
+ * whether the string we purge matches the string the cache entry actually
+ * carries.
+ *
+ * The PDP's own cache tag is built from the ALREADY-DECODED `product_id` that
+ * Next's routing hands the page (`src/lib/api.ts:3299`). This route reads the id
+ * from a JSON body, where nothing decodes. So a caller POSTing `mintree%3Aabc`
+ * would target `…mintree%3Aabc` while the entry carries `…mintree:abc` — a
+ * purge that matches nothing and returns 200, which is the exact failure mode
+ * this endpoint must never have.
+ *
+ * Decoding to compensate would be worse: it invites double-decode ambiguity
+ * (`%253A` -> `%3A` -> `:`), where the number of decodes becomes part of the
+ * contract. Rejecting is unambiguous, and the 400 names the decoded form the
+ * caller should have sent.
+ *
+ * A real product id never contains `%`; verified across all 10,452 ids in the
+ * live corpus.
+ */
+const PERCENT_ENCODED = /%/;
+
+/**
  * Per-path cooldown. Cheap insurance given this app's crawl-collapse history: a
  * hot path purged in a loop cold-SSRs every crawler arriving in between.
  *
@@ -198,16 +222,49 @@ export async function POST(req: NextRequest) {
     body && typeof body === 'object' ? (body as Record<string, unknown>).product_id : null;
   const productId = typeof rawId === 'string' ? rawId.trim() : '';
 
+  // Percent-encoding first, and with its own message: it is the one rejection a
+  // legitimate caller is likely to hit, and "invalid" alone would send them
+  // looking in the wrong place. Naming the decoded form turns a dead end into a
+  // one-line fix.
+  if (PERCENT_ENCODED.test(productId)) {
+    return NextResponse.json(
+      {
+        revalidated: false,
+        error: 'PERCENT_ENCODED_PRODUCT_ID',
+        message:
+          'product_id must be sent DECODED. This is a JSON body, not a URL — nothing ' +
+          'decodes it here, and the cache entry is tagged with the decoded id, so an ' +
+          'encoded id would purge nothing while returning success. Send e.g. ' +
+          '"mintree:abc", not "mintree%3Aabc".',
+      },
+      { status: 400 },
+    );
+  }
+
   if (
     !SAFE_PRODUCT_ID.test(productId) ||
     productId.includes('..') ||
     !ID_PREFIX_SEPARATOR.test(productId) ||
     RESERVED_SEGMENTS.has(productId.toLowerCase())
   ) {
-    return NextResponse.json({ revalidated: false, error: 'INVALID_PRODUCT_ID' }, { status: 400 });
+    return NextResponse.json(
+      {
+        revalidated: false,
+        error: 'INVALID_PRODUCT_ID',
+        message:
+          'product_id must be a single decoded product identifier containing "_" or ":" ' +
+          '(e.g. sig_…, ck_…, pg_…, ext_…, merchant:slug).',
+      },
+      { status: 400 },
+    );
   }
 
-  const path = `/products/${productId}`;
+  let path: string;
+  try {
+    path = buildRevalidateTarget(productId);
+  } catch {
+    return NextResponse.json({ revalidated: false, error: 'EMPTY_PRODUCT_ID' }, { status: 400 });
+  }
 
   if (!claimCooldown(path, Date.now())) {
     return NextResponse.json(
@@ -227,5 +284,10 @@ export async function POST(req: NextRequest) {
     JSON.stringify({ event: 'isr_revalidate', path, at: new Date().toISOString() }),
   );
 
-  return NextResponse.json({ revalidated: true, path, now: Date.now() });
+  // ECHO THE EXACT TARGET. A status code cannot distinguish a real purge from a
+  // typo that happened to be well-formed — and an inert purge reporting success
+  // is the failure mode that has bitten this codebase repeatedly. A caller that
+  // can read back `/products/mintree:abc` can see at a glance whether it hit the
+  // product it meant.
+  return NextResponse.json({ revalidated: true, path, product_id: productId, now: Date.now() });
 }

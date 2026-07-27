@@ -229,4 +229,54 @@ describe('/api/revalidate', () => {
     expect(second.status).toBe(429);
     expect(revalidatePath).toHaveBeenCalledTimes(1);
   });
+
+  it('REJECTS percent-encoding rather than decoding it, and says what to send', async () => {
+    // The tag the entry carries is built from the DECODED id the page receives.
+    // This route reads a JSON body, where nothing decodes — so an encoded id
+    // would purge nothing while returning 200. Decoding to compensate invites
+    // double-decode ambiguity (%253A -> %3A -> :), so it is a hard reject, and
+    // the message names the decoded form because this is the one rejection a
+    // legitimate caller is likely to hit.
+    vi.stubEnv('PIVOTA_REVALIDATE_SECRET', 'correct-horse');
+    for (const productId of ['mintree%3Aabc', 'sig_a%2Fb', 'ext%5Fx', 'a%25b']) {
+      revalidatePath.mockClear();
+      const res = await post({ product_id: productId }, { 'x-revalidate-secret': 'correct-horse' });
+      expect(res.status, `${productId} must be rejected`).toBe(400);
+      expect(res.json.error).toBe('PERCENT_ENCODED_PRODUCT_ID');
+      expect(res.json.message).toMatch(/mintree:abc/);
+      expect(revalidatePath).not.toHaveBeenCalled();
+    }
+  });
+
+  it('asserts non-empty at the point the target is built, not by inheritance', async () => {
+    // SAFE_PRODUCT_ID already forbids an empty id, but an inherited guarantee is
+    // one refactor from disappearing — and the consequence is the bare `pdp`
+    // tag, which sits on EVERY PDP entry: the full blast radius under a new
+    // name. This fails if the explicit assertion is removed AND the regex is
+    // loosened, which is exactly the two-step nobody notices.
+    vi.stubEnv('PIVOTA_REVALIDATE_SECRET', 'correct-horse');
+    for (const productId of ['', '   ', '\t']) {
+      revalidatePath.mockClear();
+      const res = await post({ product_id: productId }, { 'x-revalidate-secret': 'correct-horse' });
+      expect(res.status).toBe(400);
+      expect(revalidatePath).not.toHaveBeenCalled();
+    }
+  });
+
+  it('echoes the exact target purged, so a caller can spot a well-formed typo', async () => {
+    // A status code cannot distinguish a real purge from a typo that happened to
+    // be valid. An inert purge reporting success is the failure mode that has
+    // bitten this codebase repeatedly.
+    vi.stubEnv('PIVOTA_REVALIDATE_SECRET', 'correct-horse');
+    const res = await post(
+      { product_id: 'mintree:bc2bb213984257bc' },
+      { 'x-revalidate-secret': 'correct-horse' },
+    );
+    expect(res.status).toBe(200);
+    expect(res.json).toMatchObject({
+      revalidated: true,
+      path: '/products/mintree:bc2bb213984257bc',
+      product_id: 'mintree:bc2bb213984257bc',
+    });
+  });
 });
