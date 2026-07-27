@@ -36,10 +36,12 @@ describe('/api/revalidate', () => {
   });
 
   it('is INERT, not open, when the secret is unconfigured', async () => {
-    // An unconfigured deploy must be a well-behaved 503 — never a fallback to
-    // "allow". A door that cannot verify should not open at all.
+    // An unconfigured deploy must be inert — never a fallback to "allow". A door
+    // that cannot verify should not open at all. 501 and not 503: 503 means "try
+    // again later" and would have callers retrying forever against a route that
+    // is permanently dead until an operator sets the variable.
     const res = await post({ product_id: 'sig_abc' });
-    expect(res.status).toBe(503);
+    expect(res.status).toBe(501);
     expect(res.json.error).toBe('REVALIDATE_NOT_CONFIGURED');
     expect(revalidatePath).not.toHaveBeenCalled();
   });
@@ -51,6 +53,15 @@ describe('/api/revalidate', () => {
     expect(revalidatePath).not.toHaveBeenCalled();
   });
 
+  // KNOWN LIMIT, stated rather than papered over: swapping `secretMatches` for a
+  // plain `===` passes every test in this file. Constant-time behaviour is a
+  // TIMING property and a unit test cannot observe it — the accept/reject truth
+  // table is identical. The tests below pin the truth table; the docblock on
+  // `secretMatches` is what defends the timing property, and a reviewer reading
+  // the diff is the only thing that can enforce it. Mutations that ARE caught:
+  // dropping the `..` check, the leading-alnum anchor, the reserved-segment
+  // deny-list, the 'page' type argument, the unconfigured guard, the secret
+  // trim, and the cooldown.
   it('rejects a secret that is a PREFIX of the real one', async () => {
     // The reason for the constant-time compare: a prefix must not read as
     // "closer" than any other wrong answer, and must certainly not pass.
@@ -86,12 +97,24 @@ describe('/api/revalidate', () => {
     // The blast radius has to be capped by construction. `revalidatePath('/products')`
     // would drop ~4,400 ISR entries and hand every crawler a cold 2-3s SSR — the
     // crawl collapse this codebase already fixed once.
+    //
+    // THE FIRST VERSION OF THIS LIST ONLY COVERED TRAVERSAL SHAPES, and the real
+    // escape is not traversal-shaped. Next's `revalidatePath(p, type)` does not
+    // resolve routes; it builds the string tag `_N_T_${p}` and appends `/${type}`.
+    // So `revalidatePath('/products/layout')` and `revalidatePath('/products',
+    // 'layout')` produce the BYTE-IDENTICAL tag `_N_T_/products/layout`, which
+    // every PDP cache entry carries implicitly. `layout` is pure alphanumeric: it
+    // sailed through the regex and the `..` check untouched. `page`, `route`,
+    // `default`, `template`, `error`, `loading`, `not-found` and `global-error`
+    // are the same family. And a bare `.` normalizes `/products/.` to `/products`.
     vi.stubEnv('PIVOTA_REVALIDATE_SECRET', 'correct-horse');
 
     for (const productId of [
       '',
       '   ',
+      '.',
       '..',
+      'a..b',
       '../products',
       'sig_a/../..',
       'sig_a/sig_b',
@@ -100,6 +123,18 @@ describe('/api/revalidate', () => {
       'sig_a b',
       'sig_a\n/products',
       'sig_' + 'x'.repeat(200),
+      // Next's reserved segment names — the ones that actually work.
+      'layout',
+      'page',
+      'route',
+      'default',
+      'template',
+      'error',
+      'loading',
+      'not-found',
+      'global-error',
+      'LAYOUT',
+      'Page',
     ]) {
       revalidatePath.mockClear();
       const res = await post({ product_id: productId }, { 'x-revalidate-secret': 'correct-horse' });
@@ -137,5 +172,61 @@ describe('/api/revalidate', () => {
       expect(res.status, `${productId} must be accepted`).toBe(200);
       expect(revalidatePath).toHaveBeenCalledWith(`/products/${productId}`);
     }
+  });
+
+  it('rejects a non-string product_id instead of coercing it', async () => {
+    // `String(...)` coercion meant `["layout"]` and `12345` both returned 200.
+    // An array whose first element is a reserved name is the whole-route purge
+    // wearing a different coat.
+    vi.stubEnv('PIVOTA_REVALIDATE_SECRET', 'correct-horse');
+    for (const productId of [['layout'], ['sig_abc'], 12345, true, {}, null]) {
+      revalidatePath.mockClear();
+      const res = await post({ product_id: productId }, { 'x-revalidate-secret': 'correct-horse' });
+      expect(res.status, `${JSON.stringify(productId)} must be rejected`).toBe(400);
+      expect(revalidatePath).not.toHaveBeenCalled();
+    }
+  });
+
+  it('calls revalidatePath with NO type — a type makes it inert', async () => {
+    // Measured on a real build: revalidatePath(p, 'page') builds the tag
+    // `_N_T_${p}/page`, the ISR entry carries `_N_T_${p}`, and the purge does
+    // nothing while still returning 200. A mock can only see that the function
+    // was called, which is exactly why that shipped past the first test suite.
+    vi.stubEnv('PIVOTA_REVALIDATE_SECRET', 'correct-horse');
+    const res = await post({ product_id: 'sig_abc' }, { 'x-revalidate-secret': 'correct-horse' });
+    expect(res.status).toBe(200);
+    expect(revalidatePath).toHaveBeenCalledWith('/products/sig_abc');
+  });
+
+  it('requires a prefix separator, which is what makes reserved names unreachable', async () => {
+    // Every real product id contains `_` or `:` — verified against all 10,452
+    // ids in the live corpus. No Next reserved segment name does.
+    vi.stubEnv('PIVOTA_REVALIDATE_SECRET', 'correct-horse');
+    for (const productId of ['layout', 'page', 'products', 'index', 'abc123']) {
+      revalidatePath.mockClear();
+      const res = await post({ product_id: productId }, { 'x-revalidate-secret': 'correct-horse' });
+      expect(res.status, `${productId} must be rejected`).toBe(400);
+      expect(revalidatePath).not.toHaveBeenCalled();
+    }
+  });
+
+  it('a secret with surrounding whitespace behaves the same on both sides', async () => {
+    // The operational footgun: readSecret trimmed the PROVIDED value but not the
+    // configured one, so a secret pasted into the Vercel UI with a trailing
+    // newline would permanently 401 the correct caller, with no diagnostic.
+    vi.stubEnv('PIVOTA_REVALIDATE_SECRET', '  correct-horse\n');
+    const res = await post({ product_id: 'sig_abc' }, { 'x-revalidate-secret': 'correct-horse' });
+    expect(res.status).toBe(200);
+  });
+
+  it('rate-limits repeated purges of the same path', async () => {
+    // Cheap insurance given this app's crawl-collapse history: a hot path purged
+    // in a loop cold-SSRs every crawler that arrives in between.
+    vi.stubEnv('PIVOTA_REVALIDATE_SECRET', 'correct-horse');
+    const first = await post({ product_id: 'sig_hot' }, { 'x-revalidate-secret': 'correct-horse' });
+    expect(first.status).toBe(200);
+    const second = await post({ product_id: 'sig_hot' }, { 'x-revalidate-secret': 'correct-horse' });
+    expect(second.status).toBe(429);
+    expect(revalidatePath).toHaveBeenCalledTimes(1);
   });
 });
