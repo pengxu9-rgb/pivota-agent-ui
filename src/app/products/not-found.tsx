@@ -21,13 +21,25 @@ import Link from 'next/link';
  *
  * Moving it UP one segment is the minimum that works. A root
  * `app/not-found.tsx` would also catch it, but would restyle every 404 on the
- * site; this stays scoped to `/products/*`. The tradeoff is that a 404 under a
- * sibling product route (`/products/indexability`) now shows product-flavoured
- * copy — accepted, as the alternative is a site-wide change and nothing else
- * under `/products/` 404s today.
+ * site; this stays scoped to `/products/*`.
  *
- * The status code is what matters for crawlers, and Next sets it to 404 for
- * this boundary regardless of what is rendered here.
+ * THE TRADEOFF, stated exactly. One other route under `/products/` calls
+ * notFound() today: `indexability/page/[n]/page.tsx`, deliberately, for the
+ * page-1 alias and for a malformed `n`. Those three URLs now show
+ * product-flavoured copy on a listing-pagination route. Accepted — nothing
+ * internal links to them (`IndexabilityListing` maps page 1 to
+ * `/products/indexability`), the status code is unchanged, and the alternative
+ * is a site-wide restyle. A URL that simply does not MATCH a route
+ * (`/products/foo/bar`) never reaches here at all: nested not-found boundaries
+ * catch a thrown notFound(), while route misses go to Next's `/_not-found`.
+ *
+ * THIS COPY RENDERS CLIENT-SIDE ONLY. #287 put the throw in the layout, so the
+ * SSR shell render throws and Next emits its `<html id="__next_error__">` shell
+ * with an EMPTY body, inlining the RSC tree for the client to recover from. A
+ * browser shows this page; a non-JS fetcher (GPTBot, ClaudeBot) gets 404 with
+ * no readable text. That is fine — the status code is what crawlers act on, and
+ * Next sets it to 404 for this boundary regardless of what renders — but do not
+ * read "it actually renders" as "crawlers can read it".
  */
 export default function ProductNotFound() {
   return (
