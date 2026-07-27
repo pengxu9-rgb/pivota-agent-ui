@@ -226,10 +226,9 @@ export async function collectSitemapProducts(baseUrl, options = {}) {
         // the very anomaly signal this block exists to protect.
         //
         // …and the same again for content_depth=false, the thin-content floor.
-        // That drop fires on ZERO rows today — the backend does not emit the
-        // field yet (see the STATUS note on the floor in sitemap_lib.mjs) — but
-        // the arm has to exist BEFORE the producer ships, or the first cron run
-        // after it lands pins the label to `partial` and never unpins it.
+        // That drop fires on 437 rows as of 2026-07-26, the day its producer
+        // (pivota-backend#1591) went live. Without this arm the label would read
+        // `partial` on every run from that deploy onward and never unpin.
         // Every expected filter in readCanonicalProduct needs an arm here; only
         // a genuinely malformed row may set the flag.
         //
@@ -242,11 +241,21 @@ export async function collectSitemapProducts(baseUrl, options = {}) {
         // Thin rows get their OWN bucket rather than folding into `dead`. The
         // floor sat inert for a full release because nothing in this output
         // distinguished "the floor dropped nothing" from "the floor is not
-        // running": both read as the same `dropped_dead` number. A counter that
-        // is 0 while the feed carries the field is a real finding; one that is 0
-        // because the field is absent is a different one. `dropped_thin=0` on a
-        // run whose feed HAS content_depth means the cohort is gone; on a feed
-        // without it, it means the producer still has not shipped.
+        // running": both read as the same `dropped_dead` number. Now that the
+        // producer is live, `dropped_thin` should sit around 437. A sudden 0 is
+        // AMBIGUOUS, and the two readings are opposites: on a feed that still
+        // HAS content_depth it means the thin cohort was authored away, which
+        // is a win; on a feed without the field it means the producer stopped
+        // emitting, which is a regression. The WARNING below fires only in the
+        // second case, so its presence or absence is what tells them apart.
+        //
+        // NOTE ON READING THIS NUMBER: `dropped_thin` counts ROWS, not URLs.
+        // Only 8 of the 437 remove a product from the sitemap; the other 429
+        // are duplicate sigs whose content_key keeps a deep sibling, so the
+        // product stays under a different sig. See the STATUS block in
+        // sitemap_lib.mjs — the row count overstates the URL effect ~55x
+        // (437/8). Not to be confused with the ~45x elsewhere in this change,
+        // which is the unrelated predicted-vs-actual ratio (364/8).
         const isPlainItem = item && typeof item === 'object'
         const droppedAsDead =
           isPlainItem &&
@@ -360,15 +369,21 @@ export async function collectSitemapProducts(baseUrl, options = {}) {
       `skipped_at_cap=${dropped.skippedAtCap}`,
   )
   if (!sawContentDepthField && rowsSeen > 0) {
-    // NOT an alarm — the floor is designed to merge before its producer, and
-    // this is the supported state, not a failure. It is a NOTE because the
-    // alternative is what actually happened: the floor shipped, read as live to
-    // every reviewer of the code, and dropped nothing for a full release with
-    // no output saying so. Silence is what made that possible.
-    console.log(
-      `NOTE: the feed carries no content_depth field on any of ${rowsSeen} row(s), ` +
-        'so the thin-content floor dropped nothing (pivota-backend#1591 ships it). ' +
-        'This line disappearing is how you know the floor went live.',
+    // THIS USED TO BE A BENIGN NOTE AND IS NOW A REGRESSION SIGNAL. While the
+    // producer was unmerged, an absent field was the expected state — the floor
+    // is deliberately built to ship before its backend. Since
+    // pivota-backend#1591 deployed on 2026-07-26 the field arrives on every
+    // row, so absence now means it STOPPED arriving: a rollback (which already
+    // happened once, #1588 → #1590), a renamed field, or a truncated payload.
+    //
+    // Deliberately a warn, not a throw. The floor failing open is the designed
+    // behaviour and the sitemap it produces is still valid — just unfiltered.
+    // Being loud is enough; refusing to publish over it would be worse.
+    console.warn(
+      `WARNING: the feed carries no content_depth field on any of ${rowsSeen} row(s). ` +
+        'The thin-content floor is INERT and dropped nothing. It was live as of ' +
+        '2026-07-26 (pivota-backend#1591), so this means the field stopped ' +
+        'arriving — check for a backend rollback or a renamed field.',
     )
   }
   if (feedTotal === null) {
