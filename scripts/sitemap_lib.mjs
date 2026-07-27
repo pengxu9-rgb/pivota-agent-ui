@@ -308,9 +308,15 @@ export function readCanonicalProduct(item) {
   //
   // The floor is overwhelmingly a DEDUP TIE-BREAKER, not a remover. Only 8
   // content_keys are entirely thin, so only 8 products actually leave. For the
-  // other 358 the thin sig was one of several sigs on the same content_key: it
-  // is dropped here, a deep sibling wins the dedup instead, and the product
-  // keeps a URL — a DIFFERENT one. That is why 364 leave and 356 arrive.
+  // other 356 the thin sig was one of several sigs on the same content_key AND
+  // was the sig the dedup previously kept: it is dropped here, a deep sibling
+  // wins the dedup instead, and the product keeps a URL — a DIFFERENT one.
+  // 8 + 356 = 364 leave, 356 arrive.
+  //
+  // (429 rows, spanning 358 content_keys, are tie-break drops. 356 of those
+  // keys change URL; the other 2 held a thin sig that was ALREADY losing the
+  // dedup, so dropping it changes nothing. Hence 356 in the arithmetic above
+  // and not 358 — the numbers are close enough to swap by accident.)
   //
   // READ THAT SECOND NUMBER BEFORE PANICKING AT THE FIRST. The next cron will
   // print "NOTE: 364 previously advertised URL(s) are not in this build", which
@@ -323,8 +329,9 @@ export function readCanonicalProduct(item) {
   // content, and the incumbency layer cannot protect them because this drop
   // runs BEFORE the dedup by design. It looked worth it at zero indexed pages.
   // Re-open the question if that changes. The elected-canonical layer does not
-  // currently interact with this — `canonical_sig_id` was empty on all 4,451
-  // content_keys on 2026-07-26, i.e. the election is dormant — but if it ever
+  // currently interact with this — `canonical_sig_id` was empty on all 5,887
+  // feed rows (4,572 distinct content_keys) on 2026-07-26, i.e. the election is
+  // dormant; 4,451 is the URL count, a different quantity — but if it ever
   // populates, an elected sig that is thin would be dropped here and the file
   // would advertise a NON-elected sig while the PDP self-canonicals elsewhere.
   // Check that before turning the election on.

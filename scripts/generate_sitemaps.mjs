@@ -242,14 +242,20 @@ export async function collectSitemapProducts(baseUrl, options = {}) {
         // floor sat inert for a full release because nothing in this output
         // distinguished "the floor dropped nothing" from "the floor is not
         // running": both read as the same `dropped_dead` number. Now that the
-        // producer is live, `dropped_thin` should sit around 437; a sudden 0
-        // means the field stopped arriving, and the NOTE below says which.
+        // producer is live, `dropped_thin` should sit around 437. A sudden 0 is
+        // AMBIGUOUS, and the two readings are opposites: on a feed that still
+        // HAS content_depth it means the thin cohort was authored away, which
+        // is a win; on a feed without the field it means the producer stopped
+        // emitting, which is a regression. The WARNING below fires only in the
+        // second case, so its presence or absence is what tells them apart.
         //
         // NOTE ON READING THIS NUMBER: `dropped_thin` counts ROWS, not URLs.
         // Only 8 of the 437 remove a product from the sitemap; the other 429
         // are duplicate sigs whose content_key keeps a deep sibling, so the
         // product stays under a different sig. See the STATUS block in
-        // sitemap_lib.mjs — the row count overstates the URL effect ~45x.
+        // sitemap_lib.mjs — the row count overstates the URL effect ~55x
+        // (437/8). Not to be confused with the ~45x elsewhere in this change,
+        // which is the unrelated predicted-vs-actual ratio (364/8).
         const isPlainItem = item && typeof item === 'object'
         const droppedAsDead =
           isPlainItem &&
