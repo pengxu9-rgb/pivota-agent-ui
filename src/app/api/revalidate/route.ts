@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { revalidatePath } from 'next/cache';
+import { revalidateTag } from 'next/cache';
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { buildRevalidateTarget } from './target';
 
@@ -13,42 +13,35 @@ import { buildRevalidateTarget } from './target';
  * prerequisite for the tombstone sitemap flip: moving a URL is not safe while
  * the old answer can persist for an hour after the data is fixed.
  *
- * ── THE ESCAPE THIS ROUTE HAD TO BE REDESIGNED AROUND ────────────────────────
- * `revalidatePath` DOES NOT RESOLVE ROUTES. It builds a string tag:
- * `_N_T_${path}`, plus `/${type}` when a type is given (Next 15.5.7,
- * server/web/spec-extension/revalidate.js). So
+ * ── WHY IT PURGES A TAG AND NOT A PATH ──────────────────────────────────────
+ * `revalidatePath` DOES NOT RESOLVE ROUTES — it builds a string tag, `_N_T_${p}`,
+ * plus `/${type}` when a type is given. So `revalidatePath('/products/layout')`
+ * and `revalidatePath('/products', 'layout')` are the BYTE-IDENTICAL tag
+ * `_N_T_/products/layout`, and the second is what every PDP entry carries for
+ * its subtree. A single POST with `product_id: "layout"` purged all ~4,400 ISR
+ * entries. The guard at the time was traversal-shaped; the escape was Next's
+ * reserved segment names, which are not traversal-shaped at all.
  *
- *     revalidatePath('/products/layout')      -> "_N_T_/products/layout"
- *     revalidatePath('/products', 'layout')   -> "_N_T_/products/layout"
+ * Passing the type looked like the fix and made the route silently INERT — the
+ * tag becomes `_N_T_/products/<id>/page` and the entry carries
+ * `_N_T_/products/<id>`, so the purge returned 200 and `x-nextjs-cache` stayed
+ * HIT. Measured on a real build; a mock can only see that the function was
+ * called, which is why no unit test caught it.
  *
- * are BYTE-IDENTICAL — and the second is the tag every PDP cache entry carries
- * implicitly for its subtree. A single POST with `product_id: "layout"` would
- * therefore have purged all ~4,400 ISR entries: precisely the self-inflicted
- * crawl collapse (#266) this endpoint exists to avoid. `"layout"` is pure
- * alphanumeric, so it passed a traversal-shaped guard untouched. The first
- * version of this route defended against `../`; the real escape is Next's
- * RESERVED SEGMENT NAMES, which are not traversal-shaped at all.
+ * SO THE TARGET IS THE PDP'S OWN TAG. `src/lib/api.ts:3299` attaches
+ * ``pdp:${product_id}`` to each entry, and `revalidateTag` is EXACT-MATCH ONLY —
+ * verified live: a strict prefix of a real tag, and the bare `pdp:`, both purged
+ * nothing. A namespace cannot widen the way a path prefix can, so `pdp:layout`
+ * is merely inert rather than catastrophic.
  *
- * ⚠️ THE OBVIOUS FIX DOES NOT WORK HERE, and I only found that out by measuring.
- * Passing the type — `revalidatePath(path, 'page')` — yields the tag
- * `_N_T_/products/<id>/page`, which cannot collide with a layout tag and looks
- * like the perfect belt. It also matches NOTHING: the ISR entry carries
- * `_N_T_/products/<id>`, so the route silently became INERT. Measured on a real
- * build — purge returned 200 and `x-nextjs-cache` stayed HIT. The unit test could
- * not see it, because all a mock can check is that `revalidatePath` was CALLED.
- * The `type` argument is for route PATTERNS (`/products/[id]`), not for a
- * concrete pathname. So: no type, and the guard has to live in the id.
+ * That is why this route no longer carries a reserved-segment deny-list or an
+ * id-shape rule. Both were belts against a path prefix widening; under a
+ * namespaced tag they are not merely sufficient, they are unreachable — and a
+ * guard no test can kill is dead weight, not defence in depth.
  *
- * TWO INDEPENDENT BELTS, the first structural so it cannot rot:
- *   1. THE ID MUST CONTAIN `_` OR `:`. Every real product id does — verified
- *      against all 10,452 ids in the live corpus (4,443 sitemap + 5,887 feed
- *      sigs + content_keys): zero exceptions. No Next reserved name does, and
- *      none plausibly ever will, because they are English words. This is a
- *      positive rule about what a product id IS, not a list of what it is not.
- *   2. An explicit, case-insensitive deny-list of the reserved segment names.
- *
- * Beyond that: one path, one product, no wildcards, no tag purge, no
- * "revalidate everything" escape hatch, and a per-path cooldown.
+ * Two rules DO survive, because they are about a different thing: whether the
+ * tag we build matches the tag the entry actually carries. See PERCENT_ENCODED
+ * below and the non-empty assertion in ./target.
  *
  * ── AUTH ─────────────────────────────────────────────────────────────────────
  * Shared secret in `PIVOTA_REVALIDATE_SECRET`, compared in constant time over
@@ -76,27 +69,6 @@ export const dynamic = 'force-dynamic';
 const REVALIDATE_SECRET = (process.env.PIVOTA_REVALIDATE_SECRET || '').trim();
 
 /**
- * Next's reserved special-file segment names. Any of these as the final segment
- * makes `revalidatePath('/products/<name>')` collide with the tag that
- * `revalidatePath('/products', '<name>')` produces for the whole subtree.
- *
- * `layout` is the catastrophic one — every PDP entry carries the subtree layout
- * tag. `page` purges the `/products` listing. The rest are the same shape, cost
- * nothing to deny, and a product id can never legitimately be one of these.
- */
-const RESERVED_SEGMENTS = new Set([
-  'layout',
-  'page',
-  'route',
-  'default',
-  'template',
-  'error',
-  'loading',
-  'not-found',
-  'global-error',
-]);
-
-/**
  * Product ids are opaque tokens (`sig_…`, `ck_…`, `pg_…`, `ext_…`, and merchant
  * forms like `mintree:abc`). Rather than enumerate them, reject anything that
  * could escape the single-path guarantee: no slashes, no `..`, no whitespace, no
@@ -110,19 +82,6 @@ const RESERVED_SEGMENTS = new Set([
 const SAFE_PRODUCT_ID = /^[A-Za-z0-9][A-Za-z0-9._:~-]{0,127}$/;
 
 /**
- * BELT ONE, and the one that does not rot: a real product id always carries a
- * prefix separator — `sig_…`, `ck_…`, `pg_…`, `ext_…`, or `merchant:slug`.
- * Verified against every id in the live corpus (10,452 distinct: 4,443 sitemap
- * URLs plus 5,887 feed sig_ids and content_keys) — zero exceptions. Every Next
- * reserved segment name is a bare English word and fails it.
- *
- * This is a positive statement about what a product id IS. The deny-list below
- * is defence in depth against a name I have not thought of; this rule is what
- * makes such a name unreachable in the first place.
- */
-const ID_PREFIX_SEPARATOR = /[_:]/;
-
-/**
  * PERCENT-ENCODING IS REJECTED, NEVER DECODED — and this rule survives any
  * redesign of the containment guards, because it is about a different thing:
  * whether the string we purge matches the string the cache entry actually
@@ -131,7 +90,7 @@ const ID_PREFIX_SEPARATOR = /[_:]/;
  * The PDP's own cache tag is built from the ALREADY-DECODED `product_id` that
  * Next's routing hands the page (`src/lib/api.ts:3299`). This route reads the id
  * from a JSON body, where nothing decodes. So a caller POSTing `mintree%3Aabc`
- * would target `…mintree%3Aabc` while the entry carries `…mintree:abc` — a
+ * would build `pdp:mintree%3Aabc` while the entry carries `pdp:mintree:abc` — a
  * purge that matches nothing and returns 200, which is the exact failure mode
  * this endpoint must never have.
  *
@@ -140,8 +99,13 @@ const ID_PREFIX_SEPARATOR = /[_:]/;
  * contract. Rejecting is unambiguous, and the 400 names the decoded form the
  * caller should have sent.
  *
- * A real product id never contains `%`; verified across all 10,452 ids in the
- * live corpus.
+ * Kept even now that both spellings would converge on the same entry: accepting
+ * two spellings of one id silently is worse than a 400 that names the right one.
+ *
+ * A real product id never contains `%` — verified across the union of the
+ * canonical feed (5,887 rows) and the sitemap (4,443 URLs, a strict subset of
+ * the feed): 10,453 distinct ids, none containing `%`, none longer than 36
+ * chars.
  */
 const PERCENT_ENCODED = /%/;
 
@@ -161,8 +125,10 @@ const lastPurgedAt = new Map<string, number>();
 function claimCooldown(path: string, now: number): boolean {
   const previous = lastPurgedAt.get(path);
   if (previous !== undefined && now - previous < COOLDOWN_MS) return false;
-  // Bound the map. Dropping the oldest is fine: an evicted entry only means a
-  // path becomes purgeable again sooner than the cooldown nominally promises.
+  // Bound the map. This evicts oldest-INSERTED, not least-recently-used —
+  // `Map.set` on an existing key does not reorder, so a hot tag is evicted
+  // first. Harmless (an evicted entry just becomes purgeable again sooner than
+  // the cooldown nominally promises) but do not mistake it for an LRU.
   if (lastPurgedAt.size >= COOLDOWN_MAX_ENTRIES) {
     const oldest = lastPurgedAt.keys().next();
     if (!oldest.done) lastPurgedAt.delete(oldest.value);
@@ -243,45 +209,43 @@ export async function POST(req: NextRequest) {
 
   if (
     !SAFE_PRODUCT_ID.test(productId) ||
-    productId.includes('..') ||
-    !ID_PREFIX_SEPARATOR.test(productId) ||
-    RESERVED_SEGMENTS.has(productId.toLowerCase())
+    productId.includes('..')
   ) {
     return NextResponse.json(
       {
         revalidated: false,
         error: 'INVALID_PRODUCT_ID',
         message:
-          'product_id must be a single decoded product identifier containing "_" or ":" ' +
+          'product_id must be a single decoded product identifier ' +
           '(e.g. sig_…, ck_…, pg_…, ext_…, merchant:slug).',
       },
       { status: 400 },
     );
   }
 
-  let path: string;
+  let tag: string;
   try {
-    path = buildRevalidateTarget(productId);
+    tag = buildRevalidateTarget(productId);
   } catch {
     return NextResponse.json({ revalidated: false, error: 'EMPTY_PRODUCT_ID' }, { status: 400 });
   }
 
-  if (!claimCooldown(path, Date.now())) {
+  if (!claimCooldown(tag, Date.now())) {
     return NextResponse.json(
       { revalidated: false, error: 'COOLDOWN', retry_after_ms: COOLDOWN_MS },
       { status: 429 },
     );
   }
 
-  // NO type argument — see the docblock. Passing 'page' produces a tag the ISR
-  // entry does not carry, and the route goes silently inert.
-  revalidatePath(path);
+  // Verified live against a real build: this purges the route HTML, not merely
+  // the data cache (target A -> MISS, sibling B -> HIT).
+  revalidateTag(tag);
 
   // A route whose job is mutating production cache emitted nothing until now, so
   // the first "why did the cache drop?" question had nothing to read. Path only,
   // never the secret.
   console.log(
-    JSON.stringify({ event: 'isr_revalidate', path, at: new Date().toISOString() }),
+    JSON.stringify({ event: 'isr_revalidate', tag, at: new Date().toISOString() }),
   );
 
   // ECHO THE EXACT TARGET. A status code cannot distinguish a real purge from a
@@ -289,5 +253,5 @@ export async function POST(req: NextRequest) {
   // is the failure mode that has bitten this codebase repeatedly. A caller that
   // can read back `/products/mintree:abc` can see at a glance whether it hit the
   // product it meant.
-  return NextResponse.json({ revalidated: true, path, product_id: productId, now: Date.now() });
+  return NextResponse.json({ revalidated: true, tag, product_id: productId, now: Date.now() });
 }

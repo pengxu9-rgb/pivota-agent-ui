@@ -5,8 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // modes are "purges more than one page" (a self-inflicted crawl collapse across
 // ~4,400 ISR URLs) and "opens when it should not".
 
-const revalidatePath = vi.fn();
-vi.mock('next/cache', () => ({ revalidatePath: (...args: unknown[]) => revalidatePath(...args) }));
+const revalidateTag = vi.fn();
+vi.mock('next/cache', () => ({ revalidateTag: (...args: unknown[]) => revalidateTag(...args) }));
 
 const post = async (
   body: unknown,
@@ -26,7 +26,7 @@ const post = async (
 describe('/api/revalidate', () => {
   beforeEach(() => {
     vi.resetModules();
-    revalidatePath.mockClear();
+    revalidateTag.mockClear();
     vi.unstubAllEnvs();
   });
 
@@ -43,14 +43,14 @@ describe('/api/revalidate', () => {
     const res = await post({ product_id: 'sig_abc' });
     expect(res.status).toBe(501);
     expect(res.json.error).toBe('REVALIDATE_NOT_CONFIGURED');
-    expect(revalidatePath).not.toHaveBeenCalled();
+    expect(revalidateTag).not.toHaveBeenCalled();
   });
 
   it('rejects a wrong secret, and revalidates nothing', async () => {
     vi.stubEnv('PIVOTA_REVALIDATE_SECRET', 'correct-horse');
     const res = await post({ product_id: 'sig_abc' }, { 'x-revalidate-secret': 'wrong-horse' });
     expect(res.status).toBe(401);
-    expect(revalidatePath).not.toHaveBeenCalled();
+    expect(revalidateTag).not.toHaveBeenCalled();
   });
 
   // KNOWN LIMIT, stated rather than papered over: swapping `secretMatches` for a
@@ -68,7 +68,7 @@ describe('/api/revalidate', () => {
     vi.stubEnv('PIVOTA_REVALIDATE_SECRET', 'correct-horse');
     const res = await post({ product_id: 'sig_abc' }, { 'x-revalidate-secret': 'correct' });
     expect(res.status).toBe(401);
-    expect(revalidatePath).not.toHaveBeenCalled();
+    expect(revalidateTag).not.toHaveBeenCalled();
   });
 
   it('accepts the secret via header or bearer, and purges exactly one path', async () => {
@@ -80,33 +80,27 @@ describe('/api/revalidate', () => {
     );
     expect(viaHeader.status).toBe(200);
     expect(viaHeader.json.revalidated).toBe(true);
-    expect(revalidatePath).toHaveBeenCalledTimes(1);
-    expect(revalidatePath).toHaveBeenCalledWith('/products/sig_1b4d53ca07835e10cdaada553bc26ed6');
+    expect(revalidateTag).toHaveBeenCalledTimes(1);
+    expect(revalidateTag).toHaveBeenCalledWith('pdp:sig_1b4d53ca07835e10cdaada553bc26ed6');
 
-    revalidatePath.mockClear();
+    revalidateTag.mockClear();
     const viaBearer = await post(
       { product_id: 'ck_abc123' },
       { authorization: 'Bearer correct-horse' },
     );
     expect(viaBearer.status).toBe(200);
-    expect(revalidatePath).toHaveBeenCalledTimes(1);
-    expect(revalidatePath).toHaveBeenCalledWith('/products/ck_abc123');
+    expect(revalidateTag).toHaveBeenCalledTimes(1);
+    expect(revalidateTag).toHaveBeenCalledWith('pdp:ck_abc123');
   });
 
-  it('CANNOT be talked into purging the whole route', async () => {
-    // The blast radius has to be capped by construction. `revalidatePath('/products')`
-    // would drop ~4,400 ISR entries and hand every crawler a cold 2-3s SSR — the
-    // crawl collapse this codebase already fixed once.
-    //
-    // THE FIRST VERSION OF THIS LIST ONLY COVERED TRAVERSAL SHAPES, and the real
-    // escape is not traversal-shaped. Next's `revalidatePath(p, type)` does not
-    // resolve routes; it builds the string tag `_N_T_${p}` and appends `/${type}`.
-    // So `revalidatePath('/products/layout')` and `revalidatePath('/products',
-    // 'layout')` produce the BYTE-IDENTICAL tag `_N_T_/products/layout`, which
-    // every PDP cache entry carries implicitly. `layout` is pure alphanumeric: it
-    // sailed through the regex and the `..` check untouched. `page`, `route`,
-    // `default`, `template`, `error`, `loading`, `not-found` and `global-error`
-    // are the same family. And a bare `.` normalizes `/products/.` to `/products`.
+  it('rejects malformed ids: traversal, separators, whitespace, length', async () => {
+    // RENAMED FROM "CANNOT be talked into purging the whole route", because that
+    // is no longer what this test proves. Under `revalidateTag('pdp:'+id)` the
+    // blast radius is capped by the NAMESPACE, not by this list — `pdp:layout`
+    // matches nothing. What survives here is a narrower, honest guarantee: the
+    // id is a single well-formed token, so the tag we build is the tag the entry
+    // carries. Reserved names moved to their own test, where they are asserted
+    // INERT rather than rejected.
     vi.stubEnv('PIVOTA_REVALIDATE_SECRET', 'correct-horse');
 
     for (const productId of [
@@ -123,23 +117,11 @@ describe('/api/revalidate', () => {
       'sig_a b',
       'sig_a\n/products',
       'sig_' + 'x'.repeat(200),
-      // Next's reserved segment names — the ones that actually work.
-      'layout',
-      'page',
-      'route',
-      'default',
-      'template',
-      'error',
-      'loading',
-      'not-found',
-      'global-error',
-      'LAYOUT',
-      'Page',
     ]) {
-      revalidatePath.mockClear();
+      revalidateTag.mockClear();
       const res = await post({ product_id: productId }, { 'x-revalidate-secret': 'correct-horse' });
       expect(res.status, `${JSON.stringify(productId)} must be rejected`).toBe(400);
-      expect(revalidatePath, `${JSON.stringify(productId)} must purge nothing`).not.toHaveBeenCalled();
+      expect(revalidateTag, `${JSON.stringify(productId)} must purge nothing`).not.toHaveBeenCalled();
     }
   });
 
@@ -154,7 +136,7 @@ describe('/api/revalidate', () => {
       }) as any,
     );
     expect(res.status).toBe(400);
-    expect(revalidatePath).not.toHaveBeenCalled();
+    expect(revalidateTag).not.toHaveBeenCalled();
   });
 
   it('accepts the real id shapes this catalog actually uses', async () => {
@@ -167,10 +149,10 @@ describe('/api/revalidate', () => {
       'mintree:bc2bb213984257bc',
       'rejuran:healer-turnover-ampoule',
     ]) {
-      revalidatePath.mockClear();
+      revalidateTag.mockClear();
       const res = await post({ product_id: productId }, { 'x-revalidate-secret': 'correct-horse' });
       expect(res.status, `${productId} must be accepted`).toBe(200);
-      expect(revalidatePath).toHaveBeenCalledWith(`/products/${productId}`);
+      expect(revalidateTag).toHaveBeenCalledWith(`pdp:${productId}`);
     }
   });
 
@@ -180,34 +162,36 @@ describe('/api/revalidate', () => {
     // wearing a different coat.
     vi.stubEnv('PIVOTA_REVALIDATE_SECRET', 'correct-horse');
     for (const productId of [['layout'], ['sig_abc'], 12345, true, {}, null]) {
-      revalidatePath.mockClear();
+      revalidateTag.mockClear();
       const res = await post({ product_id: productId }, { 'x-revalidate-secret': 'correct-horse' });
       expect(res.status, `${JSON.stringify(productId)} must be rejected`).toBe(400);
-      expect(revalidatePath).not.toHaveBeenCalled();
+      expect(revalidateTag).not.toHaveBeenCalled();
     }
   });
 
-  it('calls revalidatePath with NO type — a type makes it inert', async () => {
-    // Measured on a real build: revalidatePath(p, 'page') builds the tag
-    // `_N_T_${p}/page`, the ISR entry carries `_N_T_${p}`, and the purge does
-    // nothing while still returning 200. A mock can only see that the function
-    // was called, which is exactly why that shipped past the first test suite.
+  it('can NEVER emit the bare `pdp` tag, which sits on every PDP entry', async () => {
+    // The one string that would restore the full ~4,400-entry blast radius under
+    // a new name. `pdp:${id}` cannot equal `pdp` for any non-empty id, and the
+    // non-empty check is asserted in ./target where a test can actually kill it.
     vi.stubEnv('PIVOTA_REVALIDATE_SECRET', 'correct-horse');
     const res = await post({ product_id: 'sig_abc' }, { 'x-revalidate-secret': 'correct-horse' });
     expect(res.status).toBe(200);
-    expect(revalidatePath).toHaveBeenCalledWith('/products/sig_abc');
+    expect(revalidateTag).toHaveBeenCalledWith('pdp:sig_abc');
+    expect(revalidateTag).not.toHaveBeenCalledWith('pdp');
+    expect(revalidateTag).not.toHaveBeenCalledWith('pdp:');
   });
 
-  it('requires a prefix separator, which is what makes reserved names unreachable', async () => {
-    // Every real product id contains `_` or `:` — verified against all 10,452
-    // ids in the live corpus. No Next reserved segment name does.
+  it('a reserved segment name is now merely INERT, not catastrophic', async () => {
+    // Under a path scheme `layout` purged the whole subtree. Under a namespaced
+    // tag `pdp:layout` matches nothing. That is why RESERVED_SEGMENTS and the
+    // id-shape rule were DELETED rather than kept: they were unkillable by
+    // mutation precisely because they were redundant, and a guard no test can
+    // kill is dead weight rather than defence in depth.
     vi.stubEnv('PIVOTA_REVALIDATE_SECRET', 'correct-horse');
-    for (const productId of ['layout', 'page', 'products', 'index', 'abc123']) {
-      revalidatePath.mockClear();
-      const res = await post({ product_id: productId }, { 'x-revalidate-secret': 'correct-horse' });
-      expect(res.status, `${productId} must be rejected`).toBe(400);
-      expect(revalidatePath).not.toHaveBeenCalled();
-    }
+    const res = await post({ product_id: 'layout' }, { 'x-revalidate-secret': 'correct-horse' });
+    expect(res.status).toBe(200);
+    expect(revalidateTag).toHaveBeenCalledWith('pdp:layout');
+    expect(revalidateTag).not.toHaveBeenCalledWith('pdp');
   });
 
   it('a secret with surrounding whitespace behaves the same on both sides', async () => {
@@ -227,7 +211,7 @@ describe('/api/revalidate', () => {
     expect(first.status).toBe(200);
     const second = await post({ product_id: 'sig_hot' }, { 'x-revalidate-secret': 'correct-horse' });
     expect(second.status).toBe(429);
-    expect(revalidatePath).toHaveBeenCalledTimes(1);
+    expect(revalidateTag).toHaveBeenCalledTimes(1);
   });
 
   it('REJECTS percent-encoding rather than decoding it, and says what to send', async () => {
@@ -239,12 +223,12 @@ describe('/api/revalidate', () => {
     // legitimate caller is likely to hit.
     vi.stubEnv('PIVOTA_REVALIDATE_SECRET', 'correct-horse');
     for (const productId of ['mintree%3Aabc', 'sig_a%2Fb', 'ext%5Fx', 'a%25b']) {
-      revalidatePath.mockClear();
+      revalidateTag.mockClear();
       const res = await post({ product_id: productId }, { 'x-revalidate-secret': 'correct-horse' });
       expect(res.status, `${productId} must be rejected`).toBe(400);
       expect(res.json.error).toBe('PERCENT_ENCODED_PRODUCT_ID');
       expect(res.json.message).toMatch(/mintree:abc/);
-      expect(revalidatePath).not.toHaveBeenCalled();
+      expect(revalidateTag).not.toHaveBeenCalled();
     }
   });
 
@@ -256,10 +240,10 @@ describe('/api/revalidate', () => {
     // loosened, which is exactly the two-step nobody notices.
     vi.stubEnv('PIVOTA_REVALIDATE_SECRET', 'correct-horse');
     for (const productId of ['', '   ', '\t']) {
-      revalidatePath.mockClear();
+      revalidateTag.mockClear();
       const res = await post({ product_id: productId }, { 'x-revalidate-secret': 'correct-horse' });
       expect(res.status).toBe(400);
-      expect(revalidatePath).not.toHaveBeenCalled();
+      expect(revalidateTag).not.toHaveBeenCalled();
     }
   });
 
@@ -275,7 +259,7 @@ describe('/api/revalidate', () => {
     expect(res.status).toBe(200);
     expect(res.json).toMatchObject({
       revalidated: true,
-      path: '/products/mintree:bc2bb213984257bc',
+      tag: 'pdp:mintree:bc2bb213984257bc',
       product_id: 'mintree:bc2bb213984257bc',
     });
   });
