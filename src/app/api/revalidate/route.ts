@@ -55,7 +55,9 @@ import { buildRevalidateTarget } from './target';
  * "allow" — a door that cannot verify should not open at all.
  *
  * SETTING THE SECRET IS AN OPERATOR ACTION, not something this PR does. Until it
- * exists this route is a well-behaved 501.
+ * exists this route is a well-behaved 501. Operator docs — setup, response
+ * table, and the Vercel-vs-local verification caveat — live in
+ * docs/isr_revalidate_runbook.md rather than only in this file.
  */
 
 // Node runtime: `timingSafeEqual`/`createHash` are node:crypto APIs the edge
@@ -102,10 +104,17 @@ const SAFE_PRODUCT_ID = /^[A-Za-z0-9][A-Za-z0-9._:~-]{0,127}$/;
  * Kept even now that both spellings would converge on the same entry: accepting
  * two spellings of one id silently is worse than a 400 that names the right one.
  *
- * A real product id never contains `%` — verified across the union of the
- * canonical feed (5,887 rows) and the sitemap (4,443 URLs, a strict subset of
- * the feed): 10,453 distinct ids, none containing `%`, none longer than 36
- * chars.
+ * A real product id never contains `%`. Verified across the live corpus:
+ * 5,880 distinct `sig_id` + 4,572 distinct `content_key` from the canonical feed
+ * (5,887 rows), plus the sitemap's 4,443 ids — of which ZERO fall outside the
+ * feed, so it is a strict subset and contributes nothing. Union = **10,452**
+ * ids; none contain `%`, none exceed 36 chars, and none are rejected by
+ * `SAFE_PRODUCT_ID`.
+ *
+ * (An earlier revision "corrected" this to 10,453 on the reasoning that the
+ * previous figure double-counted the sitemap. That was backwards — a strict
+ * subset contributes zero, so removing a double-count cannot RAISE a union. The
+ * original 10,452 was right. Re-measured to settle it.)
  */
 const PERCENT_ENCODED = /%/;
 
@@ -169,8 +178,14 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // No `!provided ||` short-circuit: the 501 guard above already guarantees a
+  // non-empty configured secret, so an empty `provided` cannot match and the
+  // check is unreachable. Mutation testing flagged it as unkillable — the same
+  // species of redundant guard this route deleted RESERVED_SEGMENTS for, and
+  // worth removing for the same reason: redundancy hides which guard is
+  // load-bearing.
   const provided = readSecret(req);
-  if (!provided || !secretMatches(provided, REVALIDATE_SECRET)) {
+  if (!secretMatches(provided, REVALIDATE_SECRET)) {
     return NextResponse.json({ revalidated: false, error: 'UNAUTHORIZED' }, { status: 401 });
   }
 
@@ -233,7 +248,9 @@ export async function POST(req: NextRequest) {
   if (!claimCooldown(tag, Date.now())) {
     return NextResponse.json(
       { revalidated: false, error: 'COOLDOWN', retry_after_ms: COOLDOWN_MS },
-      { status: 429 },
+      // `Retry-After` in seconds as well as the JSON field: generic HTTP clients
+      // and retry middleware read the header, not the body.
+      { status: 429, headers: { 'Retry-After': String(Math.ceil(COOLDOWN_MS / 1000)) } },
     );
   }
 

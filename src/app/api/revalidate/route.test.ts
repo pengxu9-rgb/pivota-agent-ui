@@ -58,10 +58,14 @@ describe('/api/revalidate', () => {
   // TIMING property and a unit test cannot observe it — the accept/reject truth
   // table is identical. The tests below pin the truth table; the docblock on
   // `secretMatches` is what defends the timing property, and a reviewer reading
-  // the diff is the only thing that can enforce it. Mutations that ARE caught:
-  // dropping the `..` check, the leading-alnum anchor, the reserved-segment
-  // deny-list, the 'page' type argument, the unconfigured guard, the secret
-  // trim, and the cooldown.
+  // the diff is the only thing that can enforce it.
+  //
+  // Mutations that ARE caught (11): allow percent-encoding; drop the non-empty
+  // assertion in ./target; drop the leading-alnum anchor; loosen the charset
+  // entirely; drop the `..` check; restore String() coercion; drop the
+  // unconfigured guard; drop the configured-secret trim; drop the cooldown; drop
+  // the echo of `product_id`; drop the echo of `tag`. Plus buildRevalidateTarget
+  // returning the bare namespace, which fails 7 tests.
   it('rejects a secret that is a PREFIX of the real one', async () => {
     // The reason for the constant-time compare: a prefix must not read as
     // "closer" than any other wrong answer, and must certainly not pass.
