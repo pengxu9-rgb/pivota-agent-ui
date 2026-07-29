@@ -1066,6 +1066,10 @@ describe('collectSitemapProducts — `total` present on the first page only (pro
     expect(coverage.dropped).toEqual({
       dead: 2,
       thin: 1,
+      // No tombstoned rows in this fixture — but the key must be PRESENT, so a
+      // bucket that stops being emitted fails here rather than silently
+      // vanishing from the reconciliation below.
+      tombstoned: 0,
       mergedDuplicate: 1,
       notEligibleOrMalformed: 1,
       skippedAtCap: 0,
@@ -1073,6 +1077,39 @@ describe('collectSitemapProducts — `total` present on the first page only (pro
     // rowsSeen reconciles exactly: 7 rows = 2 URLs + 2 + 1 + 1 + 1 dropped.
     // Summed shape-agnostically so a future bucket cannot silently fall out of
     // the funnel — the assertion above pins the shape.
+    const totalDropped = Object.values(coverage.dropped).reduce((a, b) => a + b, 0)
+    expect(collected.length + totalDropped).toBe(coverage.rowsSeen)
+  })
+
+  it('counts tombstoned rows in their own bucket, after thin', async () => {
+    // The bucket must be able to answer non-zero, not merely exist: a
+    // present-but-always-0 key is indistinguishable from "the backend stopped
+    // sending the field", which is the reading this bucket exists to prevent.
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      pageResponse(
+        [
+          canonicalProduct('sig_live'),
+          // retired at the row layer, still serving — the shape that passes
+          // every suppressed_at IS NULL filter and reached the sitemap.
+          { ...canonicalProduct('sig_retired'), tombstoned: true },
+          // fails content_depth TOO: must be attributed to `thin`, mirroring
+          // readCanonicalProduct's order, so one row is never counted twice.
+          { ...canonicalProduct('sig_thin_and_retired'), content_depth: false, tombstoned: true },
+        ],
+        3,
+        0,
+        { has_more: false },
+      ),
+    )
+
+    const { products: collected, coverage } = await collectSitemapProducts(
+      'https://canonical.example.com',
+    )
+
+    expect(collected).toHaveLength(1)
+    expect(coverage.dropped.tombstoned).toBe(1)
+    expect(coverage.dropped.thin).toBe(1)
+    expect(coverage.dropped.notEligibleOrMalformed).toBe(0)
     const totalDropped = Object.values(coverage.dropped).reduce((a, b) => a + b, 0)
     expect(collected.length + totalDropped).toBe(coverage.rowsSeen)
   })
