@@ -742,3 +742,39 @@ export function sitemapIdGuard(urls) {
     `${sample}${bad.length > 5 ? ', …' : ''}`
   )
 }
+
+// One-sided churn: many URLs REMOVED while few arrive. The shrink guard only
+// refuses below 50% of the previous build, so a slow bleed publishes silently —
+// on 2026-07-28 a currency correction removed 99 advertised URLs (added 0) and
+// nothing in the run output distinguished it from an ordinary refresh; it was
+// found a day later by hand-diffing two commits.
+//
+// NET removals is the signal, not gross: a URL *swap* retires one sig and
+// advertises a sibling in the same build, and swaps are routine here.
+// Calibrated against every large event this file has actually produced:
+//
+//   2026-07-28  currency drop        removed  99  added   0   net  99  WARN
+//   2026-07-26  renderable fix       removed  77  added   0   net  77  WARN
+//   2026-07-26  content_depth floor  removed 364  added 356   net   8  quiet
+//   2026-07-29  tombstones+rescore   removed 194  added 523   net<0   quiet
+//
+// The two WARNs were both deliberate changes — and that is fine. This is a
+// WARNING in the run log, never a refusal: its job is that a one-sided removal
+// is impossible to miss, not to decide whether it was intended. Blocking here
+// would freeze an unattended cron on every legitimate cleanup, which is the
+// same reason sitemapCoverageVerdict is tiered.
+export const SITEMAP_CHURN_WARN_NET_REMOVED = 50
+
+export function sitemapChurnVerdict(previousIds, outputIds, options = {}) {
+  const threshold = Number.isFinite(options.netRemovedWarnThreshold)
+    ? options.netRemovedWarnThreshold
+    : SITEMAP_CHURN_WARN_NET_REMOVED
+  const prev = previousIds instanceof Set ? previousIds : new Set(previousIds || [])
+  const next = outputIds instanceof Set ? outputIds : new Set(outputIds || [])
+  let removed = 0
+  for (const id of prev) if (!next.has(id)) removed++
+  let added = 0
+  for (const id of next) if (!prev.has(id)) added++
+  const net = removed - added
+  return { removed, added, net, warn: net >= threshold }
+}
