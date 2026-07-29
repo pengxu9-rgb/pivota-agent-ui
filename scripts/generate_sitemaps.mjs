@@ -188,7 +188,7 @@ export async function collectSitemapProducts(baseUrl, options = {}) {
   let pageIndex = 0
   // Drop funnel — every row that does not become a URL lands in exactly one
   // bucket, so emitted URLs + drops always reconciles against `rowsSeen`.
-  const dropped = { notEligibleOrMalformed: 0, dead: 0, thin: 0, mergedDuplicate: 0, skippedAtCap: 0 }
+  const dropped = { notEligibleOrMalformed: 0, dead: 0, thin: 0, tombstoned: 0, mergedDuplicate: 0, skippedAtCap: 0 }
   // Does the feed carry `content_depth` at all? Distinguishes an inert floor
   // (backend predates the field) from an engaged one that found nothing to
   // drop — see the bucket note below.
@@ -269,8 +269,20 @@ export async function collectSitemapProducts(baseUrl, options = {}) {
         // too is attributed to `dead` there and must be attributed to `dead`
         // here too, or the funnel double-counts a single drop.
         const droppedAsThin = !droppedAsDead && isPlainItem && item.content_depth === false
+        // Same ordering rule again: readCanonicalProduct tests content_depth
+        // BEFORE tombstoned, so a row failing both is attributed to `thin`
+        // there and must be attributed to `thin` here, or the funnel
+        // double-counts one drop. Its own bucket rather than folding into
+        // `dead` for the reason the thin cohort got one: `dropped_tombstoned=0`
+        // must be readable as "the row layer retired nothing" and not be
+        // indistinguishable from "the backend stopped emitting the field".
+        // Unlike `thin`, this bucket is ~1:1 with URLs REMOVED — only 2 of the
+        // 187 measured on 2026-07-29 had a clean sibling to take the URL over.
+        const droppedAsTombstoned =
+          !droppedAsDead && !droppedAsThin && isPlainItem && item.tombstoned === true
         if (droppedAsDead) dropped.dead++
         else if (droppedAsThin) dropped.thin++
+        else if (droppedAsTombstoned) dropped.tombstoned++
         else {
           dropped.notEligibleOrMalformed++
           sawInvalidCanonicalItem = true
@@ -364,6 +376,7 @@ export async function collectSitemapProducts(baseUrl, options = {}) {
       `urls=${productsByContentKey.size} ` +
       `dropped_dead=${dropped.dead} ` +
       `dropped_thin=${dropped.thin} ` +
+      `dropped_tombstoned=${dropped.tombstoned} ` +
       `dropped_ineligible_or_malformed=${dropped.notEligibleOrMalformed} ` +
       `merged_duplicate_sigs=${dropped.mergedDuplicate} ` +
       `skipped_at_cap=${dropped.skippedAtCap}`,

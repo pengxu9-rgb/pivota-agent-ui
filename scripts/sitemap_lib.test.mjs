@@ -1276,3 +1276,61 @@ describe('the 50k URL cap is labelled and accounted for, wherever it lands', () 
     // where vitest's transform step already dominates the clock.
   }, 30_000)
 })
+
+describe('tombstone drop — rows the row layer retired but left serving', () => {
+  // `suppression_reason` set WITHOUT `suppressed_at` leaves a row serving, so it
+  // passes every `suppressed_at IS NULL` filter — including the backend's own
+  // sitemap_candidate_filter. Measured 2026-07-29: 187 of the 7,509 live URLs
+  // pointed at such a row; 135 were retired for carrying the WRONG BRAND, so
+  // advertising them publishes a PDP with incorrect brand attribution.
+  //
+  // Unlike the content_depth floor beside it, this one really does remove URLs:
+  // only 2 of the 187 had a clean same-content_key sibling to take over.
+
+  it('drops a tombstoned row', () => {
+    const dropped = readCanonicalProduct({
+      ...canonicalProduct('sig_tomb'),
+      renderable: true,
+      content_depth: true,
+      tombstoned: true,
+    })
+    expect(dropped).toBeNull()
+  })
+
+  it('keeps a row explicitly not tombstoned', () => {
+    const kept = readCanonicalProduct({
+      ...canonicalProduct('sig_live'),
+      renderable: true,
+      content_depth: true,
+      tombstoned: false,
+    })
+    expect(kept?.id).toBe('sig_live')
+  })
+
+  it('is inert against a backend that predates the field', () => {
+    // Load-bearing for merge order: the two repos may land in either sequence,
+    // so anything other than a real boolean true must keep the row.
+    for (const value of [undefined, null, 0, '', 'false', 'true', NaN]) {
+      const kept = readCanonicalProduct({
+        ...canonicalProduct('sig_absent'),
+        renderable: true,
+        content_depth: true,
+        tombstoned: value,
+      })
+      expect(kept?.id, `tombstoned=${String(value)} must not drop`).toBe('sig_absent')
+    }
+  })
+
+  it('runs AFTER content_depth so the drop funnel cannot double-count', () => {
+    // generate_sitemaps attributes a row failing both to `thin`;
+    // readCanonicalProduct must reject in the same order or the two disagree
+    // about a single drop.
+    const both = readCanonicalProduct({
+      ...canonicalProduct('sig_both'),
+      renderable: true,
+      content_depth: false,
+      tombstoned: true,
+    })
+    expect(both).toBeNull()
+  })
+})
