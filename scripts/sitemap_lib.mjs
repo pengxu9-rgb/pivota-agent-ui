@@ -344,6 +344,39 @@ export function readCanonicalProduct(item) {
   // typed and a real-Postgres route test that reproduces the failure.
   if (row.content_depth === false) return null
 
+  // TOMBSTONE drop. The row layer RETIRED this row and left it serving:
+  // `catalog_products.suppression_reason` is set while `suppressed_at` is NULL.
+  // That combination passes every `suppressed_at IS NULL` filter in the system —
+  // including the backend's own `sitemap_candidate_filter` — so these rows reach
+  // this feed looking exactly like undecided ones. The canonical ELECTION
+  // already excludes them (`not_tombstoned()`); the sitemap did not, which is
+  // how a decision made at the row layer never reached the URL layer.
+  //
+  // MEASURED on the live 7,509-URL file, 2026-07-29 — 187 advertised URLs point
+  // at a tombstoned row:
+  //
+  //   wrong_brand_namesake_wave3_20260718      135
+  //   cross_merchant_redundant_external_seed    50
+  //   step5_campaign_clone_dup                   2
+  //
+  // The first group is why this is not merely tidy. Those rows were retired for
+  // carrying the WRONG BRAND, so advertising them publishes a PDP with incorrect
+  // brand attribution — the single claim an identity-led index cannot get wrong.
+  //
+  // THIS ONE REALLY DOES REMOVE URLs, unlike the content_depth floor beside it.
+  // That drop fired on 437 rows but cost only 8 products, because the dropped
+  // sig was usually one of several on a content_key and a sibling won the dedup
+  // instead. Here only 2 of the 187 have a clean same-content_key sibling to
+  // take over: 185 are genuine removals, ~2.5% of the file. Expect the next cron
+  // to print "NOTE: ~185 previously advertised URL(s) are not in this build" and
+  // do NOT read that as breakage. sitemapCountGuard (50% floor) is nowhere near
+  // tripping.
+  //
+  // Drop on an explicit `true`, the mirror of the `=== false` convention used
+  // above: a backend that predates the field emits nothing and this line is
+  // inert, so the two repos can merge in either order.
+  if (row.tombstoned === true) return null
+
   // The backend's ELECTED winner for this content_key (pivota-backend
   // migration 181), or '' when nothing has been elected. Carried through the
   // dedup as layer 0 — see preferSitemapId.

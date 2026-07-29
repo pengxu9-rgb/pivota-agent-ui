@@ -1066,6 +1066,10 @@ describe('collectSitemapProducts — `total` present on the first page only (pro
     expect(coverage.dropped).toEqual({
       dead: 2,
       thin: 1,
+      // No tombstoned rows in this fixture — but the key must be PRESENT, so a
+      // bucket that stops being emitted fails here rather than silently
+      // vanishing from the reconciliation below.
+      tombstoned: 0,
       mergedDuplicate: 1,
       notEligibleOrMalformed: 1,
       skippedAtCap: 0,
@@ -1073,6 +1077,39 @@ describe('collectSitemapProducts — `total` present on the first page only (pro
     // rowsSeen reconciles exactly: 7 rows = 2 URLs + 2 + 1 + 1 + 1 dropped.
     // Summed shape-agnostically so a future bucket cannot silently fall out of
     // the funnel — the assertion above pins the shape.
+    const totalDropped = Object.values(coverage.dropped).reduce((a, b) => a + b, 0)
+    expect(collected.length + totalDropped).toBe(coverage.rowsSeen)
+  })
+
+  it('counts tombstoned rows in their own bucket, after thin', async () => {
+    // The bucket must be able to answer non-zero, not merely exist: a
+    // present-but-always-0 key is indistinguishable from "the backend stopped
+    // sending the field", which is the reading this bucket exists to prevent.
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      pageResponse(
+        [
+          canonicalProduct('sig_live'),
+          // retired at the row layer, still serving — the shape that passes
+          // every suppressed_at IS NULL filter and reached the sitemap.
+          { ...canonicalProduct('sig_retired'), tombstoned: true },
+          // fails content_depth TOO: must be attributed to `thin`, mirroring
+          // readCanonicalProduct's order, so one row is never counted twice.
+          { ...canonicalProduct('sig_thin_and_retired'), content_depth: false, tombstoned: true },
+        ],
+        3,
+        0,
+        { has_more: false },
+      ),
+    )
+
+    const { products: collected, coverage } = await collectSitemapProducts(
+      'https://canonical.example.com',
+    )
+
+    expect(collected).toHaveLength(1)
+    expect(coverage.dropped.tombstoned).toBe(1)
+    expect(coverage.dropped.thin).toBe(1)
+    expect(coverage.dropped.notEligibleOrMalformed).toBe(0)
     const totalDropped = Object.values(coverage.dropped).reduce((a, b) => a + b, 0)
     expect(collected.length + totalDropped).toBe(coverage.rowsSeen)
   })
@@ -1275,4 +1312,62 @@ describe('the 50k URL cap is labelled and accounted for, wherever it lands', () 
     // (~1.3s warm). The 5s default is uncomfortably close on a cold-cache run
     // where vitest's transform step already dominates the clock.
   }, 30_000)
+})
+
+describe('tombstone drop — rows the row layer retired but left serving', () => {
+  // `suppression_reason` set WITHOUT `suppressed_at` leaves a row serving, so it
+  // passes every `suppressed_at IS NULL` filter — including the backend's own
+  // sitemap_candidate_filter. Measured 2026-07-29: 187 of the 7,509 live URLs
+  // pointed at such a row; 135 were retired for carrying the WRONG BRAND, so
+  // advertising them publishes a PDP with incorrect brand attribution.
+  //
+  // Unlike the content_depth floor beside it, this one really does remove URLs:
+  // only 2 of the 187 had a clean same-content_key sibling to take over.
+
+  it('drops a tombstoned row', () => {
+    const dropped = readCanonicalProduct({
+      ...canonicalProduct('sig_tomb'),
+      renderable: true,
+      content_depth: true,
+      tombstoned: true,
+    })
+    expect(dropped).toBeNull()
+  })
+
+  it('keeps a row explicitly not tombstoned', () => {
+    const kept = readCanonicalProduct({
+      ...canonicalProduct('sig_live'),
+      renderable: true,
+      content_depth: true,
+      tombstoned: false,
+    })
+    expect(kept?.id).toBe('sig_live')
+  })
+
+  it('is inert against a backend that predates the field', () => {
+    // Load-bearing for merge order: the two repos may land in either sequence,
+    // so anything other than a real boolean true must keep the row.
+    for (const value of [undefined, null, 0, '', 'false', 'true', NaN]) {
+      const kept = readCanonicalProduct({
+        ...canonicalProduct('sig_absent'),
+        renderable: true,
+        content_depth: true,
+        tombstoned: value,
+      })
+      expect(kept?.id, `tombstoned=${String(value)} must not drop`).toBe('sig_absent')
+    }
+  })
+
+  it('runs AFTER content_depth so the drop funnel cannot double-count', () => {
+    // generate_sitemaps attributes a row failing both to `thin`;
+    // readCanonicalProduct must reject in the same order or the two disagree
+    // about a single drop.
+    const both = readCanonicalProduct({
+      ...canonicalProduct('sig_both'),
+      renderable: true,
+      content_depth: false,
+      tombstoned: true,
+    })
+    expect(both).toBeNull()
+  })
 })
