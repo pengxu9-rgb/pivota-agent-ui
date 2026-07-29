@@ -39,6 +39,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      # Snapshot BEFORE generation: the pre-warm step diffs previous vs new to
+      # find ADDED urls. Taken from the checkout rather than git history because
+      # the checkout is fetch-depth 1 and the commit step rebases, so HEAD~1 is
+      # not a reliable "previous build".
+      - name: Snapshot previous sitemap
+        run: cp public/sitemap-products.xml /tmp/sitemap-products.prev.xml || true
       - name: Generate sitemaps
         run: node scripts/generate_sitemaps.mjs
         env:
@@ -58,3 +64,9 @@ jobs:
           # Tolerate a deploy landing mid-run.
           git pull --rebase origin main
           git push origin main
+      # Warm the ISR cache for urls NEW in this build, so the first crawler hit
+      # lands on a warm page instead of paying the 3-5s cold fill (and sometimes
+      # a 500 — ~15% at 12-way concurrency, measured 2026-07-28). Best-effort:
+      # the script always exits 0; a slow tail here must never mark the cron red.
+      - name: Pre-warm newly added URLs
+        run: node scripts/prewarm_sitemap.mjs --base /tmp/sitemap-products.prev.xml --head public/sitemap-products.xml
