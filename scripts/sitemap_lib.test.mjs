@@ -13,6 +13,8 @@ import {
   preferSitemapId,
   productUrlEntries,
   readCanonicalProduct,
+  SITEMAP_CHURN_WARN_NET_REMOVED,
+  sitemapChurnVerdict,
   sitemapCountGuard,
   sitemapCoverageVerdict,
   sitemapIdGuard,
@@ -1369,5 +1371,52 @@ describe('tombstone drop — rows the row layer retired but left serving', () =>
       tombstoned: true,
     })
     expect(both).toBeNull()
+  })
+})
+
+
+describe('one-sided churn alarm — sitemapChurnVerdict', () => {
+  // sitemapCountGuard only refuses below 50% of the previous build, so a slow
+  // one-sided bleed publishes silently: the 2026-07-28 currency correction
+  // removed 99 advertised URLs (added 0) and was found by hand-diffing commits
+  // a day later. NET removals is the signal because URL *swaps* — retire one
+  // sig, advertise a sibling in the same build — are routine here.
+  const ids = (n, prefix = 's') => Array.from({ length: n }, (_, i) => `${prefix}${i}`)
+
+  it('warns on the 2026-07-28 shape: 99 removed, 0 added', () => {
+    const v = sitemapChurnVerdict(ids(4443), ids(4344))
+    expect(v).toEqual({ removed: 99, added: 0, net: 99, warn: true })
+  })
+
+  it('stays quiet on a swap (content_depth floor: 364 out, 356 in)', () => {
+    const prev = ids(4451, 'a')
+    const next = [...prev.slice(364), ...ids(356, 'b')]
+    const v = sitemapChurnVerdict(prev, next)
+    expect(v.net).toBe(8)
+    expect(v.warn).toBe(false)
+  })
+
+  it('stays quiet on net growth (tombstones+rescore: 194 out, 523 in)', () => {
+    const prev = ids(7509, 'c')
+    const next = [...prev.slice(194), ...ids(523, 'd')]
+    expect(sitemapChurnVerdict(prev, next).warn).toBe(false)
+  })
+
+  it('threshold boundary: net 49 quiet, net 50 warns', () => {
+    expect(sitemapChurnVerdict(ids(100), ids(51)).warn).toBe(false)
+    expect(sitemapChurnVerdict(ids(100), ids(50)).warn).toBe(true)
+  })
+
+  it('accepts Sets and Arrays interchangeably', () => {
+    // previous.ids arrives as a Set from parseSitemapProductIds; the output side
+    // is built inline. Neither call site should have to care.
+    const v = sitemapChurnVerdict(new Set(ids(100)), new Set(ids(30)))
+    expect(v).toEqual({ removed: 70, added: 0, net: 70, warn: true })
+  })
+
+  it('threshold is overridable but defaults to the exported constant', () => {
+    const quiet = sitemapChurnVerdict(ids(100), ids(30), { netRemovedWarnThreshold: 71 })
+    expect(quiet.warn).toBe(false)
+    expect(SITEMAP_CHURN_WARN_NET_REMOVED).toBe(50)
   })
 })

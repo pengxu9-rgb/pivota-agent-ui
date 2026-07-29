@@ -35,6 +35,7 @@ import {
   readCanonicalProduct,
   sitemapCountGuard,
   sitemapCoverageVerdict,
+  sitemapChurnVerdict,
   sitemapIdGuard,
   sitemapIndexEntries,
   staticSitemapEntries,
@@ -549,6 +550,25 @@ export async function generateSitemaps() {
       `NOTE: ${lostIncumbentIds.length} previously advertised URL(s) are not in this ` +
         `build: ${lostIncumbentIds.slice(0, 5).join(', ')}` +
         `${lostIncumbentIds.length > 5 ? ', …' : ''}`,
+    )
+  }
+
+  // One-sided churn alarm — the NOTE above says WHAT left; this says whether
+  // the shape is a bleed. sitemapCountGuard only refuses below 50% of the
+  // previous build, so a 99-URL one-sided removal (2026-07-28, the currency
+  // correction) published without a word and was found by hand-diffing commits
+  // a day later. WARNING, never a refusal: a legitimate cleanup should be loud,
+  // not blocked — see sitemapChurnVerdict for the calibration table.
+  const churn = sitemapChurnVerdict(
+    previous.ids,
+    new Set(products.map((p) => p.id)),
+  )
+  if (churn.warn) {
+    console.warn(
+      `WARNING: one-sided sitemap churn — removed=${churn.removed} added=${churn.added} ` +
+        `(net -${churn.net}). A swap retires and replaces in the same build; this did not. ` +
+        `If this is not a deliberate cleanup, the feed lost rows — check the drop funnel ` +
+        `above before the next cron compounds it.`,
     )
   }
 
