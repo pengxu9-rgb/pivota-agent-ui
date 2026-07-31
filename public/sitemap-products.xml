@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- feed_health=ok urls=7916 serving_eligible=7916 index_only=0 -->
+<!-- feed_health=ok urls=7912 serving_eligible=7912 index_only=0 -->
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://agent.pivota.cc/products/sig_000348608dab8c172868d835c91b3cf4</loc>
@@ -3013,11 +3013,6 @@
   </url>
   <url>
     <loc>https://agent.pivota.cc/products/sig_130ad37a6ab2b24a4cc0c62fdbb35f06</loc>
-    <lastmod>2026-05-25T13:34:25.148Z</lastmod>
-    <changefreq>weekly</changefreq>
-  </url>
-  <url>
-    <loc>https://agent.pivota.cc/products/sig_13170192a26be3ab8f5c4160331fda34</loc>
     <lastmod>2026-05-25T13:34:25.148Z</lastmod>
     <changefreq>weekly</changefreq>
   </url>
@@ -7168,11 +7163,6 @@
   </url>
   <url>
     <loc>https://agent.pivota.cc/products/sig_2db02b649b39014034f49f8c</loc>
-    <lastmod>2026-05-25T13:34:25.148Z</lastmod>
-    <changefreq>weekly</changefreq>
-  </url>
-  <url>
-    <loc>https://agent.pivota.cc/products/sig_2dba3f7f9b54fd6a10e115686988ddf7</loc>
     <lastmod>2026-05-25T13:34:25.148Z</lastmod>
     <changefreq>weekly</changefreq>
   </url>
@@ -19908,11 +19898,6 @@
   </url>
   <url>
     <loc>https://agent.pivota.cc/products/sig_803621b45c14b38fbcabd058809e2438</loc>
-    <lastmod>2026-05-25T13:34:25.148Z</lastmod>
-    <changefreq>weekly</changefreq>
-  </url>
-  <url>
-    <loc>https://agent.pivota.cc/products/sig_803e6a0f603940b3942fbacfdd5cf240</loc>
     <lastmod>2026-05-25T13:34:25.148Z</lastmod>
     <changefreq>weekly</changefreq>
   </url>
@@ -35283,11 +35268,6 @@
   </url>
   <url>
     <loc>https://agent.pivota.cc/products/sig_e4a9cd466e7f16d22eb622de17d770c7</loc>
-    <lastmod>2026-05-25T13:34:25.148Z</lastmod>
-    <changefreq>weekly</changefreq>
-  </url>
-  <url>
-    <loc>https://agent.pivota.cc/products/sig_e4aaa6399edc827852223a71fb2333ee</loc>
     <lastmod>2026-05-25T13:34:25.148Z</lastmod>
     <changefreq>weekly</changefreq>
   </url>
