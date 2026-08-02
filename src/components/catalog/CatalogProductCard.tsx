@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { Plus } from 'lucide-react';
 import type { ProductResponse } from '@/lib/api';
+import { recordMerchantName } from '@/lib/merchantRegistry';
 import { normalizeDisplayImageUrl } from '@/lib/displayImage';
 import { resolveProductCardPresentation } from '@/lib/productCardPresentation';
 import { formatProductCardTitle } from '@/lib/productCardTitle';
@@ -158,6 +159,14 @@ export function CatalogProductCard({
     setImageSrc(resolvedImage);
   }, [resolvedImage]);
 
+  // Capture (merchant_id → merchant_name) into the runtime registry so
+  // PDP-frozen add-to-cart paths can still render real merchant names in
+  // the editorial cart drawer once the user has seen this merchant on any
+  // feed surface. No-op when merchant_name is absent.
+  useEffect(() => {
+    recordMerchantName(product.merchant_id, product.merchant_name);
+  }, [product.merchant_id, product.merchant_name]);
+
   const handleQuickAction = (event: React.MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
     event.stopPropagation();
@@ -183,6 +192,7 @@ export function CatalogProductCard({
       currency: product.currency,
       imageUrl: imageSrc,
       merchant_id: product.merchant_id,
+      merchant_name: product.merchant_name,
       quantity: 1,
     });
     openCart();
