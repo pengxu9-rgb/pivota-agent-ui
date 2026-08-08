@@ -4,6 +4,7 @@
 // scripts/generate_sitemaps.mjs.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  updateRetiredSigRegistry,
   buildSitemapIndexXml,
   buildSitemapUrlsetXml,
   countLocs,
@@ -1418,5 +1419,52 @@ describe('one-sided churn alarm — sitemapChurnVerdict', () => {
     const quiet = sitemapChurnVerdict(ids(100), ids(30), { netRemovedWarnThreshold: 71 })
     expect(quiet.warn).toBe(false)
     expect(SITEMAP_CHURN_WARN_NET_REMOVED).toBe(50)
+  })
+})
+
+describe('updateRetiredSigRegistry', () => {
+  const run = (over = {}) =>
+    updateRetiredSigRegistry({
+      existingSigs: [],
+      lostIncumbentIds: [],
+      feedSigIds: new Set(),
+      outputIds: new Set(),
+      ...over,
+    })
+
+  it('retires a lost incumbent only when it left the feed entirely', () => {
+    const out = run({
+      lostIncumbentIds: ['sig_gone', 'sig_dedup_loser'],
+      feedSigIds: new Set(['sig_dedup_loser']),
+    })
+    // The dedup loser's PDP still serves 200 with a canonical to its keeper —
+    // answering 410 there would kill a live page.
+    expect(out).toEqual(['sig_gone'])
+  })
+
+  it('honors resurrection from either the feed or the sitemap', () => {
+    const out = run({
+      existingSigs: ['sig_back_in_feed', 'sig_back_in_map', 'sig_still_gone'],
+      feedSigIds: new Set(['sig_back_in_feed']),
+      outputIds: new Set(['sig_back_in_map']),
+    })
+    expect(out).toEqual(['sig_still_gone'])
+  })
+
+  it('keeps newest retirements when the cap trims', () => {
+    const out = run({
+      existingSigs: ['sig_oldest', 'sig_older'],
+      lostIncumbentIds: ['sig_newest'],
+      cap: 2,
+    })
+    expect(out).toEqual(['sig_older', 'sig_newest'])
+  })
+
+  it('never registers non-sig ids', () => {
+    const out = run({
+      existingSigs: ['ck_not_a_sig', 42],
+      lostIncumbentIds: ['sig_', 'sig_ok'],
+    })
+    expect(out).toEqual(['sig_ok'])
   })
 })
