@@ -56,14 +56,23 @@ export async function GET() {
                   },
                   resolve: {
                     summary: 'Resolve merchant candidates for a known product',
+                    // The example id is a sig_* public id — the namespace
+                    // find_products_multi emits and PDP URLs carry. The prior
+                    // example ('9886499864904', a platform product id pinned to
+                    // no live product) resolved to a hollow zero-offer success
+                    // for anyone who copy-pasted it. include_offers/limit live
+                    // under `options` (the server reads options.include_offers;
+                    // the top-level form was silently ignored).
                     value: {
                       operation: 'resolve_product_candidates',
                       payload: {
                         product_ref: {
-                          product_id: '9886499864904',
+                          product_id: 'sig_000348608dab8c172868d835c91b3cf4',
                         },
-                        include_offers: true,
-                        limit: 5,
+                        options: {
+                          include_offers: true,
+                          limit: 5,
+                        },
                       },
                     },
                   },
@@ -171,12 +180,33 @@ export async function GET() {
                 product_ref: {
                   type: 'object',
                   properties: {
-                    product_id: { type: 'string' },
+                    product_id: {
+                      type: 'string',
+                      description:
+                        'Preferred: the sig_* public id emitted by find_products_multi and ' +
+                        'carried in PDP URLs (agent.pivota.cc/products/sig_*). Merchant-source ' +
+                        'product ids also work when merchant_id is supplied.',
+                    },
                     merchant_id: { type: 'string' },
                   },
                 },
-                include_offers: { type: 'boolean' },
-                limit: { type: 'integer' },
+                options: {
+                  type: 'object',
+                  description:
+                    'include_offers and limit are read from here; the legacy top-level ' +
+                    'payload.include_offers was silently ignored by the server.',
+                  properties: {
+                    include_offers: { type: 'boolean', default: true },
+                    limit: { type: 'integer', default: 10, maximum: 50 },
+                  },
+                },
+                context: {
+                  type: 'object',
+                  properties: {
+                    country: { type: 'string', description: 'ISO country code, e.g. US' },
+                    postal_code: { type: 'string' },
+                  },
+                },
               },
             },
           },
