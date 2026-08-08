@@ -34,6 +34,7 @@ import {
   productUrlEntries,
   readCanonicalProduct,
   sitemapCountGuard,
+  updateRetiredSigRegistry,
   sitemapCoverageVerdict,
   sitemapChurnVerdict,
   sitemapIdGuard,
@@ -194,6 +195,10 @@ export async function collectSitemapProducts(baseUrl, options = {}) {
   // (backend predates the field) from an engaged one that found nothing to
   // drop — see the bucket note below.
   let sawContentDepthField = false
+  // Every sig present anywhere in the RAW feed, before any drop filter. Used
+  // by the retired-sig registry: a lost incumbent still in the feed is a dedup
+  // loser or an advisory drop whose PDP still serves — NOT a retirement.
+  const feedSigIds = new Set()
 
   while (productsByContentKey.size < SITEMAP_MAX_URLS) {
     const usingCursor = Boolean(cursor)
@@ -213,6 +218,8 @@ export async function collectSitemapProducts(baseUrl, options = {}) {
       if (item && typeof item === 'object' && 'content_depth' in item) {
         sawContentDepthField = true
       }
+      const rawSig = String(item?.sig_id || '').trim()
+      if (rawSig.startsWith('sig_')) feedSigIds.add(rawSig)
       const product = readCanonicalProduct(item)
       if (!product) {
         // A renderable=false drop is the EXPECTED dead-PDP filter, not a
@@ -437,6 +444,7 @@ export async function collectSitemapProducts(baseUrl, options = {}) {
   return {
     products,
     lostIncumbentIds,
+    feedSigIds,
     // HEALTH, not provenance. This says whether the WALK was clean — it says
     // nothing about which eligibility gate admitted the rows, and it used to be
     // named `source` and valued `serving_eligible…`, which read as exactly the
@@ -505,7 +513,7 @@ export async function generateSitemaps() {
       `(incumbent urls=${previous.ids.size}) ...`,
   )
 
-  const { products, feedHealth, coverage, lostIncumbentIds } = await collectSitemapProducts(
+  const { products, feedHealth, coverage, lostIncumbentIds, feedSigIds } = await collectSitemapProducts(
     baseUrl,
     { incumbentIds: previous.ids },
   )
@@ -633,6 +641,49 @@ export async function generateSitemaps() {
   const written = []
   if (await writeIfChanged(productsPath, buildSitemapUrlsetXml(urls, comment))) {
     written.push('sitemap-products.xml')
+  }
+  // Retired-sig registry (the 410 set for src/middleware.ts). Computed off the
+  // same run: previously-advertised sigs that left the FEED entirely join;
+  // anything back in the feed or the sitemap leaves. Committed and deployed
+  // with the sitemaps so the 410 set and the advertised set move together.
+  {
+    const retiredPath = path.join(PUBLIC_DIR, 'retired-sigs.json')
+    let existingSigs = []
+    let existingComment = ''
+    try {
+      const parsed = JSON.parse(await readFile(retiredPath, 'utf8'))
+      if (Array.isArray(parsed?.sigs)) existingSigs = parsed.sigs
+      if (typeof parsed?._comment === 'string') existingComment = parsed._comment
+    } catch {
+      // First run or unreadable file: start from empty, never fail the cron.
+    }
+    const outputIds = new Set(products.map((p) => p.id))
+    const retired = updateRetiredSigRegistry({
+      existingSigs,
+      lostIncumbentIds,
+      feedSigIds,
+      outputIds,
+    })
+    const retiredDoc = `${JSON.stringify(
+      {
+        _comment:
+          existingComment ||
+          'Previously advertised sigs that left the canonical feed entirely ' +
+            '(deliberate takedowns). Maintained by scripts/generate_sitemaps.mjs; ' +
+            'served as HTTP 410 Gone by src/middleware.ts.',
+        sigs: retired,
+      },
+      null,
+      2,
+    )}\n`
+    if (await writeIfChanged(retiredPath, retiredDoc)) {
+      written.push('retired-sigs.json')
+    }
+    console.log(
+      `retired-sig registry: total=${retired.length} ` +
+        `(+${retired.filter((sig) => !existingSigs.includes(sig)).length} new, ` +
+        `resurrected removed=${existingSigs.filter((sig) => !retired.includes(sig)).length})`,
+    )
   }
   if (
     await writeIfChanged(

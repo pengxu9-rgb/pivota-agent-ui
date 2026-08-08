@@ -52,7 +52,7 @@ jobs:
           SITEMAP_FORCE: ${{ inputs.force == true && '1' || '' }}
       - name: Commit and push if changed
         run: |
-          FILES="public/sitemap.xml public/sitemap-static.xml public/sitemap-products.xml"
+          FILES="public/sitemap.xml public/sitemap-static.xml public/sitemap-products.xml public/retired-sigs.json"
           if git diff --quiet -- $FILES; then
             echo "sitemaps unchanged"
             exit 0
