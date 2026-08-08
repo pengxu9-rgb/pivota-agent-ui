@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { SITEMAP_SEED_PRODUCT_IDS } from '../sitemap-seeds';
 
 const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://agent.pivota.cc';
 
@@ -67,7 +68,10 @@ export async function GET() {
                       operation: 'resolve_product_candidates',
                       payload: {
                         product_ref: {
-                          product_id: 'sig_000348608dab8c172868d835c91b3cf4',
+                          // First maintained sitemap seed — a curated, prod-verified id kept
+                          // live by the seed list's own upkeep, instead of a one-off
+                          // literal that can be suppressed/tombstoned silently.
+                          product_id: SITEMAP_SEED_PRODUCT_IDS[0],
                         },
                         options: {
                           include_offers: true,
