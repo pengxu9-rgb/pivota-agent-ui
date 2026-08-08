@@ -20,9 +20,14 @@ export async function GET() {
       is_user_authenticated: false,
     },
     logo_url: `${BASE_URL}/icon-192.png`,
-    contact_email: 'support@pivota.ai',
-    legal_info_url: 'https://pivota.ai/legal',
-    terms_of_service_url: 'https://pivota.ai/terms',
+    // pivota.ai does not resolve (no DNS) — every URL on that domain failed the
+    // 2026-08-08 discovery-artifact audit, and plugin validators reject a dead
+    // legal_info_url. pivota.cc/terms is the live legal surface (it doubles as
+    // legal info until a dedicated page exists), and support@pivota.cc is the
+    // address the app already uses for order support.
+    contact_email: 'support@pivota.cc',
+    legal_info_url: 'https://pivota.cc/terms',
+    terms_of_service_url: 'https://pivota.cc/terms',
   };
 
   return NextResponse.json(manifest, {

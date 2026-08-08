@@ -145,9 +145,14 @@ export function _renderMarkdown(products: IndexedProduct[]): string {
   lines.push('## Featured products');
   lines.push('');
   lines.push(
-    '> Each PDP carries Schema.org Product JSON-LD with brand, GTIN-13, ' +
-      'and shade/size variants. Multi-seller offers (where available) ' +
-      'aggregate canonical merchants for the same physical product.',
+    // Say only what the pages measurably carry. GTIN-13 was claimed here while
+    // the source column was empty (1 of 11,122 rows, audited 2026-08-08) — an
+    // agent that spot-checks a false capability claim discounts the rest of
+    // this file. Re-add GTIN if/when the enrichment pipeline actually fills it.
+    '> Each PDP carries Schema.org Product JSON-LD with brand, price and ' +
+      'availability offers, and shade/size variants. Multi-seller offers ' +
+      '(where available) aggregate canonical merchants for the same physical ' +
+      'product.',
   );
   lines.push('');
   for (const p of products) {
