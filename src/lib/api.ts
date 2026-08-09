@@ -2737,6 +2737,10 @@ export async function getShoppingDiscoveryFeed(args: {
   sort?: BrandDiscoverySort;
   signal?: AbortSignal;
   timeout_ms?: number;
+  // Server-render support: the browse page's RSC fetch must post to an
+  // absolute gateway URL (the relative /api/gateway default only works in a
+  // browser). Same passthrough getPdpV2 already has via GatewayCallOptions.
+  gatewayBaseUrl?: string | null;
 }): Promise<ShoppingDiscoveryFeedResult> {
   const surface: ShoppingDiscoverySurface =
     args.surface === 'home_hot_deals' ? 'home_hot_deals' : 'browse_products';
@@ -2797,6 +2801,7 @@ export async function getShoppingDiscoveryFeed(args: {
       timeoutMs: Number.isFinite(Number(args.timeout_ms))
         ? Number(args.timeout_ms)
         : 12000,
+      gatewayBaseUrl: args.gatewayBaseUrl || undefined,
     },
   );
 

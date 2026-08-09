@@ -118,7 +118,17 @@ export function CatalogProductCard({
   const [imageSrc, setImageSrc] = useState(resolvedImage);
 
   const href = isExternalAliasOnlyProduct(product) ? '/products' : buildProductHrefForProduct(product);
-  const hrefWithReturn = appendCurrentPathAsReturn(href);
+  // The `?return=` param is applied AFTER mount, never during the first render.
+  // `appendCurrentPathAsReturn` is a no-op on the server, so computing it inline
+  // made the first client render disagree with the server HTML on every card's
+  // href (24 attribute mismatches on a server-rendered browse grid). React does
+  // not patch attribute mismatches, so the clean href stuck and the return param
+  // was silently lost anyway. Deferring to an effect makes the first render
+  // byte-identical to the server's, then a real state change applies the param.
+  const [hrefWithReturn, setHrefWithReturn] = useState(href);
+  useEffect(() => {
+    setHrefWithReturn(appendCurrentPathAsReturn(href));
+  }, [href]);
   const card = resolveProductCardPresentation(product);
   const offerSavingsSource = pickOfferSavingsSource(product);
   const multipleSellerOffers = hasMultipleSellerOffers(product);

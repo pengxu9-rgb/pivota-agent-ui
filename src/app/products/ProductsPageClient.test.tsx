@@ -2,7 +2,9 @@ import React from 'react';
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import ProductsPage from './page';
+// The route's page.tsx is now an async RSC (server-fetched browse feed);
+// these tests exercise the interactive client component it renders.
+import { ProductsPageClient as ProductsPage } from './ProductsPageClient';
 
 const getShoppingDiscoveryFeedMock = vi.fn();
 const getMerchantProductsFeedMock = vi.fn();
@@ -292,5 +294,35 @@ describe('ProductsPage', () => {
     expect(getShoppingDiscoveryFeedMock).not.toHaveBeenCalled();
     expect(screen.getByText('Merchant products')).toBeInTheDocument();
     expect(await screen.findByText('Shopify Serum')).toBeInTheDocument();
+  });
+});
+
+describe('server-rendered initial grid (the crawler guarantee)', () => {
+  beforeEach(() => {
+    // The grid render mounts the infinite-scroll observer immediately.
+    (globalThis as any).IntersectionObserver = class {
+      observe() {}
+      disconnect() {}
+      unobserve() {}
+    };
+  });
+
+  it('renders the product grid — not the empty state — before any client fetch', () => {
+    // A crawler reads exactly this first render: initialProducts present, no
+    // effects run yet. The empty-state copy ("browse feed is empty") was what
+    // every crawler saw while the page was client-only.
+    getShoppingDiscoveryFeedMock.mockReturnValue(new Promise(() => {}));
+    render(
+      <ProductsPage
+        initialProducts={[
+          { product_id: 'sig_ssr1', title: 'Server Rendered Serum' } as never,
+        ]}
+      />,
+    );
+
+    expect(screen.getByText('Server Rendered Serum')).toBeTruthy();
+    expect(screen.queryByText(/browse feed is empty/i)).toBeNull();
+    // Grid, not skeleton: hasLoadedOnce is seeded by the server render.
+    expect(screen.queryByTestId('catalog-product-skeleton')).toBeNull();
   });
 });
