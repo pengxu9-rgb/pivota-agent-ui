@@ -34,18 +34,21 @@ const RETIRED = new Set<string>(
 const GONE_BODY = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Product retired</title><meta name="robots" content="noindex"></head><body><h1>410 — this product was retired</h1><p>This page was deliberately removed and will not return. Browse the catalog at <a href="/products">/products</a>.</p></body></html>`;
 
 export function middleware(request: NextRequest) {
-  const segments = request.nextUrl.pathname.split('/');
-  // /products/<sig> → segments[2]; alias routes (/products/m/<id>) and the
-  // listing itself never match a sig_ entry.
-  const candidate = segments[2] || '';
+  const segments = request.nextUrl.pathname.split('/').filter(Boolean);
+  // EXACTLY /products/<sig>. Anything deeper (/products/<sig>/reviews) is a URL
+  // that never existed and must keep 404-ing, not inherit a permanent 410;
+  // alias routes (/products/m/<id>) and the listing never match a sig_ entry.
+  const candidate = segments.length === 2 ? segments[1] : '';
   if (RETIRED.has(candidate)) {
     return new NextResponse(GONE_BODY, {
       status: 410,
       headers: {
         'Content-Type': 'text/html; charset=utf-8',
-        // Cacheable at the CDN: retirement is permanent by definition, and a
-        // resurrected sig leaves the set only via a deploy, which purges this.
-        'Cache-Control': 'public, s-maxage=86400, max-age=3600',
+        // CDN-cacheable, but deliberately max-age=0 for the browser: a deploy
+        // purges the shared cache, so a mistaken 410 is recoverable there —
+        // whereas a browser max-age is a client-side directive NO deploy can
+        // reach, which would strand the error for its full lifetime.
+        'Cache-Control': 'public, s-maxage=86400, max-age=0, must-revalidate',
       },
     });
   }
@@ -53,5 +56,9 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: '/products/:path*',
+  // EXACTLY one segment. `:path*` also matched deeper URLs, so
+  // /products/<retired-sig>/anything answered 410 for a path that never
+  // existed — those must keep 404-ing. It also pulled every /products/m/*
+  // alias and /products/indexability* request through this check for nothing.
+  matcher: '/products/:id',
 };
