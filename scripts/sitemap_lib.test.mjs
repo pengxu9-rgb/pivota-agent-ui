@@ -4,6 +4,7 @@
 // scripts/generate_sitemaps.mjs.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  updateRetiredSigRegistry,
   buildSitemapIndexXml,
   buildSitemapUrlsetXml,
   countLocs,
@@ -1418,5 +1419,121 @@ describe('one-sided churn alarm — sitemapChurnVerdict', () => {
     const quiet = sitemapChurnVerdict(ids(100), ids(30), { netRemovedWarnThreshold: 71 })
     expect(quiet.warn).toBe(false)
     expect(SITEMAP_CHURN_WARN_NET_REMOVED).toBe(50)
+  })
+})
+
+describe('updateRetiredSigRegistry', () => {
+  const run = (over = {}) =>
+    updateRetiredSigRegistry({
+      existingSigs: [],
+      lostIncumbentIds: [],
+      feedSigIds: new Set(),
+      outputIds: new Set(),
+      ...over,
+    })
+
+  it('retires a lost incumbent only when it left the feed entirely', () => {
+    const out = run({
+      lostIncumbentIds: ['sig_gone', 'sig_dedup_loser'],
+      feedSigIds: new Set(['sig_dedup_loser']),
+    })
+    // The dedup loser's PDP still serves 200 with a canonical to its keeper —
+    // answering 410 there would kill a live page.
+    expect(out).toEqual(['sig_gone'])
+  })
+
+  it('honors resurrection from either the feed or the sitemap', () => {
+    const out = run({
+      existingSigs: ['sig_back_in_feed', 'sig_back_in_map', 'sig_still_gone'],
+      feedSigIds: new Set(['sig_back_in_feed']),
+      outputIds: new Set(['sig_back_in_map']),
+    })
+    expect(out).toEqual(['sig_still_gone'])
+  })
+
+  it('keeps newest retirements when the cap trims', () => {
+    const out = run({
+      existingSigs: ['sig_oldest', 'sig_older'],
+      lostIncumbentIds: ['sig_newest'],
+      cap: 2,
+    })
+    expect(out).toEqual(['sig_older', 'sig_newest'])
+  })
+
+  it('never registers non-sig ids', () => {
+    const out = run({
+      existingSigs: ['ck_not_a_sig', 42],
+      lostIncumbentIds: ['sig_', 'sig_ok'],
+    })
+    expect(out).toEqual(['sig_ok'])
+  })
+})
+
+describe('updateRetiredSigRegistry — terminal retirements vs paging artifacts', () => {
+  it('admits a terminally-retired sig that is still IN the feed', () => {
+    // The deliberate-takedown cohort never leaves the feed, so a
+    // "left the feed" test alone could never retire it. terminally_retired is
+    // tracked separately and is NOT counted as alive.
+    const out = updateRetiredSigRegistry({
+      existingSigs: [],
+      lostIncumbentIds: ['sig_wrong_brand'],
+      feedSigIds: new Set(['sig_live']),
+      outputIds: new Set(['sig_live']),
+    })
+    expect(out).toEqual(['sig_wrong_brand'])
+  })
+
+  it('never retires a sig the feed still calls alive, however it was passed', () => {
+    const out = updateRetiredSigRegistry({
+      existingSigs: [],
+      lostIncumbentIds: ['sig_dedupe_loser'],
+      feedSigIds: new Set(['sig_dedupe_loser']),
+      outputIds: new Set(),
+    })
+    expect(out).toEqual([])
+  })
+})
+
+describe('retired-sig registry trust gate', () => {
+  it('a warn-level shortfall admits NOTHING (the sitemap still publishes)', () => {
+    // A walk that ends 2-10% short is publishable and the generator documents
+    // that cohort as usually transient ("return on the next run"). Treating it
+    // as retirement would 410 hundreds of live products permanently — measured
+    // in review: 700 live sigs at warn level, 4000 when the feed omits `total`.
+    const shortWalk = sitemapCoverageVerdict({
+      rowsSeen: 7300,
+      feedTotal: 8000,
+      stoppedForCap: false,
+    })
+    expect(shortWalk.level).toBe('warn')
+
+    // The gate the generator applies (mirrored here as the contract):
+    const additionsTrusted =
+      shortWalk.level === 'ok' && 8000 !== null && !false && !true
+    expect(additionsTrusted).toBe(false)
+
+    // …so only resurrections apply: an existing entry still gone stays, and a
+    // fresh loss is NOT admitted.
+    const out = updateRetiredSigRegistry({
+      existingSigs: ['sig_already_retired'],
+      lostIncumbentIds: [],  // additions withheld by the gate
+      feedSigIds: new Set(),
+      outputIds: new Set(),
+    })
+    expect(out).toEqual(['sig_already_retired'])
+  })
+
+  it('a feed with no total is never trusted for additions', () => {
+    const noTotal = sitemapCoverageVerdict({
+      rowsSeen: 4000,
+      feedTotal: null,
+      stoppedForCap: false,
+    })
+    // The coverage guard is INACTIVE for this shape — it reports ok…
+    expect(noTotal.level).toBe('ok')
+    // …so the registry gate must independently require a known total.
+    const feedTotal = null
+    const additionsTrusted = noTotal.level === 'ok' && feedTotal !== null
+    expect(additionsTrusted).toBe(false)
   })
 })

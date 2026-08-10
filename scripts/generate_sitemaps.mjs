@@ -34,6 +34,7 @@ import {
   productUrlEntries,
   readCanonicalProduct,
   sitemapCountGuard,
+  updateRetiredSigRegistry,
   sitemapCoverageVerdict,
   sitemapChurnVerdict,
   sitemapIdGuard,
@@ -194,6 +195,13 @@ export async function collectSitemapProducts(baseUrl, options = {}) {
   // (backend predates the field) from an engaged one that found nothing to
   // drop — see the bucket note below.
   let sawContentDepthField = false
+  // Every sig present anywhere in the RAW feed, before any drop filter. Used
+  // by the retired-sig registry: a lost incumbent still in the feed is a dedup
+  // loser or an advisory drop whose PDP still serves — NOT a retirement.
+  const feedSigIds = new Set()
+  // Sigs the feed reports as PERMANENTLY retired (terminally_retired=true).
+  // Kept apart from feedSigIds: present in the feed, but not alive.
+  const terminallyRetiredSigIds = new Set()
 
   while (productsByContentKey.size < SITEMAP_MAX_URLS) {
     const usingCursor = Boolean(cursor)
@@ -212,6 +220,24 @@ export async function collectSitemapProducts(baseUrl, options = {}) {
       // producer shipped, which is the thing `dropped_thin=0` cannot tell you.
       if (item && typeof item === 'object' && 'content_depth' in item) {
         sawContentDepthField = true
+      }
+      const rawSig = String(item?.sig_id || '').trim()
+      if (rawSig.startsWith('sig_')) {
+        // A deliberate retirement stays IN the feed (tombstoned=true), so
+        // counting every present sig as "alive" inverted the signal: the 185
+        // genuine takedowns measured 2026-07-29 could never be retired, while
+        // rows merely ABSENT from a walk — which this generator itself
+        // documents as usually transient — were the only ones that could.
+        //
+        // But `tombstoned` is NOT the right admission test either: that cohort
+        // is 135 wrong-brand retirements mixed with 52 DEDUPE losers whose
+        // product still exists at the keeper's URL, and 410 for those is both
+        // false and destroys the keeper's consolidation signal. The backend
+        // publishes the split as `terminally_retired` (one shared allowlist, so
+        // the feed, the by-sig resolver and this generator cannot disagree), and
+        // only that field may drive a permanent 410.
+        if (item?.terminally_retired === true) terminallyRetiredSigIds.add(rawSig)
+        else feedSigIds.add(rawSig)
       }
       const product = readCanonicalProduct(item)
       if (!product) {
@@ -437,6 +463,8 @@ export async function collectSitemapProducts(baseUrl, options = {}) {
   return {
     products,
     lostIncumbentIds,
+    feedSigIds,
+    terminallyRetiredSigIds,
     // HEALTH, not provenance. This says whether the WALK was clean — it says
     // nothing about which eligibility gate admitted the rows, and it used to be
     // named `source` and valued `serving_eligible…`, which read as exactly the
@@ -505,7 +533,14 @@ export async function generateSitemaps() {
       `(incumbent urls=${previous.ids.size}) ...`,
   )
 
-  const { products, feedHealth, coverage, lostIncumbentIds } = await collectSitemapProducts(
+  const {
+    products,
+    feedHealth,
+    coverage,
+    lostIncumbentIds,
+    feedSigIds,
+    terminallyRetiredSigIds,
+  } = await collectSitemapProducts(
     baseUrl,
     { incumbentIds: previous.ids },
   )
@@ -633,6 +668,101 @@ export async function generateSitemaps() {
   const written = []
   if (await writeIfChanged(productsPath, buildSitemapUrlsetXml(urls, comment))) {
     written.push('sitemap-products.xml')
+  }
+  // Retired-sig registry (the 410 set for src/middleware.ts). Computed off the
+  // same run: previously-advertised sigs that left the FEED entirely join;
+  // anything back in the feed or the sitemap leaves. Committed and deployed
+  // with the sitemaps so the 410 set and the advertised set move together.
+  {
+    const retiredPath = path.join(PUBLIC_DIR, 'retired-sigs.json')
+    let existingSigs = []
+    let registryReadable = true
+    try {
+      const parsed = JSON.parse(await readFile(retiredPath, 'utf8'))
+      if (Array.isArray(parsed?.sigs)) existingSigs = parsed.sigs
+    } catch (err) {
+      if (err?.code === 'ENOENT') {
+        // First run: an empty starting set is correct.
+      } else {
+        // A parse/IO failure is NOT an empty registry. Rewriting from an empty
+        // read would silently un-410 up to RETIRED_SIGS_CAP URLs — the same
+        // failure mode readExistingProductSitemap was explicitly taught to
+        // refuse. So skip the registry ENTIRELY this run and leave the file
+        // byte-identical. Loud + non-zero exit so CI surfaces it, but NOT fatal
+        // to the sitemaps: a readable catalog must still publish, and the
+        // registry is an auxiliary artifact, not a precondition.
+        console.error(
+          `retired-sig registry SKIPPED: ${retiredPath} is unreadable ` +
+            `(${err?.message || err}). Leaving it untouched — rewriting from an ` +
+            'empty read would resurrect every retired URL. Resolve by hand.',
+        )
+        process.exitCode = 1
+        registryReadable = false
+      }
+    }
+    const outputIds = new Set(products.map((p) => p.id))
+    // TRUSTWORTHINESS GATE for ADDITIONS. 410 is permanent and CDN-cached, so a
+    // sig may only be admitted from a run we are confident read the whole feed.
+    // Demonstrated hazard: a walk that ends early is publishable at
+    // `warn` level (2-10% short), and a feed that omits `total` disables the
+    // coverage guard entirely — either shape hands `lostIncumbentIds` hundreds
+    // or thousands of LIVE products, and the generator's own note says that
+    // cohort is usually "rows edited mid-walk … return on the next run".
+    // SITEMAP_FORCE exists to publish a legitimate large shrink, which is
+    // exactly when a mass-retirement would be most damaging, so it also
+    // disqualifies additions.
+    //
+    // REMOVALS (resurrections) stay unconditional: they only ever un-410 a URL,
+    // which is always safe to do on any evidence.
+    const additionsTrusted =
+      coverageVerdict.level === 'ok' &&
+      coverage?.feedTotal !== null &&
+      coverage?.feedTotal !== undefined &&
+      !coverage?.stoppedForCap &&
+      process.env.SITEMAP_FORCE !== '1' &&
+      !churn.warn
+    if (!additionsTrusted) {
+      console.warn(
+        'retired-sig registry: additions SKIPPED this run (coverage=' +
+          `${coverageVerdict.level} feed_total=${coverage?.feedTotal ?? 'unknown'} ` +
+          `force=${process.env.SITEMAP_FORCE === '1'} churn_warn=${Boolean(churn.warn)}). ` +
+          'Resurrections still applied. A short or forced walk cannot be told ' +
+          'apart from a mass takedown, and 410 is permanent.',
+      )
+    }
+    const retired = updateRetiredSigRegistry({
+      existingSigs,
+      // Permanent retirements the feed still reports are the signal that
+      // actually means retired, so they are admitted even when the walk is
+      // short — being IN the feed proves the walk saw them.
+      lostIncumbentIds: additionsTrusted
+        ? lostIncumbentIds.concat(Array.from(terminallyRetiredSigIds))
+        : Array.from(terminallyRetiredSigIds),
+      feedSigIds,
+      outputIds,
+    })
+    const retiredDoc = `${JSON.stringify(
+      {
+        // AUDIT SURFACE: regenerated every run so it always describes THIS
+        // file, never a frozen historical claim.
+        _comment:
+          `${retired.length} sig(s) answered HTTP 410 Gone by src/middleware.ts. ` +
+          'Admitted when the feed reports terminally_retired=true, or when a ' +
+          'previously advertised sig left a FULLY-READ feed. Maintained by ' +
+          'scripts/generate_sitemaps.mjs — do not hand-edit.',
+        sigs: retired,
+      },
+      null,
+      2,
+    )}\n`
+    if (registryReadable && (await writeIfChanged(retiredPath, retiredDoc))) {
+      written.push('retired-sigs.json')
+    }
+    console.log(
+      `retired-sig registry: total=${retired.length} ` +
+        `(+${retired.filter((sig) => !existingSigs.includes(sig)).length} new, ` +
+        `resurrected removed=${existingSigs.filter((sig) => !retired.includes(sig)).length})`,
+    )
   }
   if (
     await writeIfChanged(

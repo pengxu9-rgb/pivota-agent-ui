@@ -778,3 +778,39 @@ export function sitemapChurnVerdict(previousIds, outputIds, options = {}) {
   const net = removed - added
   return { removed, added, net, warn: net >= threshold }
 }
+
+// ── Retired-sig registry ─────────────────────────────────────────────────────
+// Feeds public/retired-sigs.json, which src/middleware.ts serves as HTTP 410
+// Gone. A sig is RETIRED when it was advertised (previously in the sitemap)
+// and has left the canonical feed entirely — a deliberate takedown. A lost
+// incumbent still present anywhere in the raw feed is a dedup loser or an
+// advisory drop whose PDP still serves 200 and must NOT 410.
+//
+// Resurrection is honored in both forms: a sig back in the sitemap OR merely
+// back in the feed leaves the registry — 410 is "gone for good", and a revert
+// must never fight a permanent answer the CDN may have cached.
+export const RETIRED_SIGS_CAP = 5000
+
+export function updateRetiredSigRegistry({
+  existingSigs,
+  lostIncumbentIds,
+  feedSigIds,
+  outputIds,
+  cap = RETIRED_SIGS_CAP,
+} = {}) {
+  const feed = feedSigIds instanceof Set ? feedSigIds : new Set(feedSigIds || [])
+  const output = outputIds instanceof Set ? outputIds : new Set(outputIds || [])
+  const alive = (sig) => feed.has(sig) || output.has(sig)
+  const isSig = (value) => typeof value === 'string' && /^sig_.+/.test(value)
+
+  const kept = (Array.isArray(existingSigs) ? existingSigs : []).filter(
+    (sig) => isSig(sig) && !alive(sig),
+  )
+  const keptSet = new Set(kept)
+  const added = (Array.isArray(lostIncumbentIds) ? lostIncumbentIds : []).filter(
+    (sig) => isSig(sig) && !alive(sig) && !keptSet.has(sig),
+  )
+  // Newest retirements last; the cap drops the OLDEST entries — engines have
+  // long since dropped a URL that has answered 410 for thousands of refreshes.
+  return kept.concat(added).slice(-Math.max(1, cap))
+}
