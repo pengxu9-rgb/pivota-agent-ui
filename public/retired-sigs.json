@@ -1,5 +1,5 @@
 {
-  "_comment": "Sigs that were advertised in sitemap-products.xml and have since left the canonical feed entirely (deliberate takedowns, not dedup losers). Maintained by scripts/generate_sitemaps.mjs on every sitemap refresh; consumed by src/middleware.ts to answer HTTP 410 Gone so engines drop the URL for good instead of re-trying a bare 404 (Search Console churn). Seeded 2026-08-08 from the 62 URLs the refresh at cff8fb1 removed, each verified absent from the feed and 404ing live.",
+  "_comment": "62 sig(s) answered HTTP 410 Gone by src/middleware.ts. Admitted when the feed reports terminally_retired=true, or when a previously advertised sig left a FULLY-READ feed. Maintained by scripts/generate_sitemaps.mjs — do not hand-edit.",
   "sigs": [
     "sig_0334979c4b5f786351950bf1b9281ae8",
     "sig_06e7dc355861c2e470ed4c23e93be3da",
