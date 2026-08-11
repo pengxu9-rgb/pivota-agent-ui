@@ -8,7 +8,16 @@ import { PromotionForm } from "@/components/promotions/PromotionForm";
 import type { Promotion, PromotionStatus, PromotionType } from "@/types/promotion";
 import { computePromotionStatus } from "@/types/promotion";
 import { toast } from "sonner";
-import { Loader2, Plus, RefreshCcw, X } from "lucide-react";
+import { Loader2, Plus, RefreshCcw, RotateCcw, Sparkles, X } from "lucide-react";
+import {
+  DEMO_PRODUCTS,
+  deleteDemoPromotion,
+  listDemoPromotions,
+  resetDemoPromotions,
+  simulateAgentQuote,
+  updateDemoPromotion,
+} from "@/lib/promotionsDemoStore";
+import type { DemoProduct } from "@/lib/promotionsDemoStore";
 
 type FilterStatus = "ALL" | PromotionStatus;
 type FilterType = "ALL" | PromotionType;
@@ -27,6 +36,9 @@ export default function PromotionsConsolePage() {
   const [creatorVisibleOnly, setCreatorVisibleOnly] = useState(false);
   const [search, setSearch] = useState("");
 
+  const [demoProductId, setDemoProductId] = useState<string>(DEMO_PRODUCTS[0].id);
+  const [demoQuantity, setDemoQuantity] = useState<number>(1);
+
   const [showForm, setShowForm] = useState(false);
   const [formMode, setFormMode] = useState<"create" | "edit">("create");
   const [selectedPromotion, setSelectedPromotion] = useState<Promotion | undefined>(undefined);
@@ -39,47 +51,25 @@ export default function PromotionsConsolePage() {
     setIsLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/promotions", { cache: "no-store" });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || "Failed to load promotions.");
-      }
-      const data = (await res.json()) as PromotionApiResponse;
-      const normalized =
-        data.promotions?.map((p) => {
-          const merchantId =
-            p.merchantId ||
-            p.merchant_id ||
-            p.scope?.merchantIds?.[0] ||
-            p.scope?.merchant_ids?.[0] ||
-            "—";
-          return {
-            humanReadableRule: p.humanReadableRule || p.human_readable_rule || "",
-            allowedCreatorIds: p.allowedCreatorIds || p.allowed_creator_ids || [],
-            exposeToCreators:
-              p.exposeToCreators !== undefined
-                ? p.exposeToCreators
-                : p.expose_to_creators ?? true,
-            ...p,
-            merchantId,
-            scope: {
-              productIds: p.scope?.productIds || p.scope?.product_ids || [],
-              categoryIds: p.scope?.categoryIds || p.scope?.category_ids || [],
-              brandIds: p.scope?.brandIds || p.scope?.brand_ids || [],
-              global: p.scope?.global ?? false,
-              merchantIds: p.scope?.merchantIds || p.scope?.merchant_ids || [],
-            },
-          } as Promotion;
-        }) || [];
-      setPromotions(normalized);
+      setPromotions(await listDemoPromotions());
     } catch (err: any) {
       console.error(err);
-      setError(err.message || "Failed to load promotions.");
-      toast.error("Failed to load promotions.");
+      setError(err.message || "Failed to load demo promotions.");
     } finally {
       setIsLoading(false);
     }
   };
+
+  const handleResetDemo = () => {
+    setPromotions(resetDemoPromotions());
+    toast.success("Demo data reset to the seeded storyboard.");
+  };
+
+  const simulatedQuote = useMemo(() => {
+    const product: DemoProduct =
+      DEMO_PRODUCTS.find((p) => p.id === demoProductId) || DEMO_PRODUCTS[0];
+    return simulateAgentQuote(product, demoQuantity, promotions);
+  }, [demoProductId, demoQuantity, promotions]);
 
   const filteredPromotions = useMemo(() => {
     return promotions.filter((p) => {
@@ -110,45 +100,19 @@ export default function PromotionsConsolePage() {
   };
 
   const handleDelete = async (promotion: Promotion) => {
-    const confirmDelete = window.confirm(
-      `Delete "${promotion.name}"? This removes it from Creator Agents.`
-    );
+    const confirmDelete = window.confirm(`Delete "${promotion.name}" from the demo?`);
     if (!confirmDelete) return;
-    try {
-      const res = await fetch(`/api/promotions/${promotion.id}`, {
-        method: "DELETE",
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || "Failed to delete promotion.");
-      }
-      toast.success("Promotion deleted.");
-      loadPromotions();
-    } catch (err: any) {
-      console.error(err);
-      toast.error(err.message || "Failed to delete promotion.");
-    }
+    await deleteDemoPromotion(promotion.id);
+    toast.success("Demo promotion deleted.");
+    loadPromotions();
   };
 
   const handleEnd = async (promotion: Promotion) => {
     const confirmEnd = window.confirm(`End "${promotion.name}" now?`);
     if (!confirmEnd) return;
-    try {
-      const res = await fetch(`/api/promotions/${promotion.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ endAt: new Date().toISOString() }),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || "Failed to end promotion.");
-      }
-      toast.success("Promotion ended.");
-      loadPromotions();
-    } catch (err: any) {
-      console.error(err);
-      toast.error(err.message || "Failed to end promotion.");
-    }
+    await updateDemoPromotion(promotion.id, { endAt: new Date().toISOString() });
+    toast.success("Demo promotion ended.");
+    loadPromotions();
   };
 
   const renderStatusBadge = (promotion: Promotion) => {
@@ -188,12 +152,25 @@ export default function PromotionsConsolePage() {
       <div className="max-w-6xl mx-auto px-6 py-10 space-y-6">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-semibold">Promotions</h1>
+            <div className="flex items-center gap-3">
+              <h1 className="text-3xl font-semibold">Promotions</h1>
+              <Badge className="bg-amber-500/20 text-amber-200 border border-amber-500/50">
+                Partner Preview — demo data
+              </Badge>
+            </div>
             <p className="text-sm text-muted-foreground">
-              Internal console for managing merchant deals used by creator agents.
+              A self-contained storyboard of AI-channel deals. Everything on this page lives in
+              your browser (localStorage); nothing is written to any Pivota system. It shows the
+              target design from ADR-022: a merchant authors an agent-exclusive deal, Pivota
+              materializes it as a Shopify discount code, the agent presents the code at
+              checkout, and Shopify — the checkout authority — enforces it.
             </p>
           </div>
           <div className="flex gap-2">
+            <Button variant="ghost" onClick={handleResetDemo}>
+              <RotateCcw className="h-4 w-4" />
+              Reset demo
+            </Button>
             <Button variant="ghost" onClick={loadPromotions} disabled={isLoading}>
               <RefreshCcw className="h-4 w-4" />
               Refresh
@@ -204,6 +181,61 @@ export default function PromotionsConsolePage() {
             </Button>
           </div>
         </div>
+
+        <GlassCard className="p-5 bg-white/5 border border-amber-500/20">
+          <div className="flex items-center gap-2 mb-3">
+            <Sparkles className="h-4 w-4 text-amber-300" />
+            <h2 className="text-lg font-medium">See it apply at checkout</h2>
+          </div>
+          <div className="flex flex-wrap gap-3 items-center mb-4">
+            <select
+              className="bg-slate-900 border border-white/15 rounded-md px-3 py-2 text-sm"
+              value={demoProductId}
+              onChange={(e) => setDemoProductId(e.target.value)}
+            >
+              {DEMO_PRODUCTS.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name} — ${p.price.toFixed(2)}
+                </option>
+              ))}
+            </select>
+            <select
+              className="bg-slate-900 border border-white/15 rounded-md px-3 py-2 text-sm"
+              value={demoQuantity}
+              onChange={(e) => setDemoQuantity(Number(e.target.value))}
+            >
+              {[1, 2, 3, 4, 5].map((q) => (
+                <option key={q} value={q}>
+                  Qty {q}
+                </option>
+              ))}
+            </select>
+            <div className="text-sm text-muted-foreground">
+              {simulatedQuote.appliedPromotion ? (
+                <span>
+                  <span className="line-through opacity-60 mr-2">
+                    ${simulatedQuote.originalTotal.toFixed(2)}
+                  </span>
+                  <span className="text-emerald-300 font-semibold">
+                    ${simulatedQuote.finalTotal.toFixed(2)}
+                  </span>
+                  {simulatedQuote.agentAppliedCode ? (
+                    <span className="ml-2 px-2 py-0.5 rounded bg-emerald-500/15 border border-emerald-500/40 text-emerald-200 text-xs">
+                      code {simulatedQuote.agentAppliedCode}
+                    </span>
+                  ) : null}
+                </span>
+              ) : (
+                <span>${simulatedQuote.originalTotal.toFixed(2)} — no active deal applies</span>
+              )}
+            </div>
+          </div>
+          <ol className="text-xs text-muted-foreground space-y-1 list-decimal list-inside">
+            {simulatedQuote.narrative.map((line, idx) => (
+              <li key={idx}>{line}</li>
+            ))}
+          </ol>
+        </GlassCard>
 
         <GlassCard className="p-5 bg-white/5">
           <div className="flex flex-wrap gap-3 items-center mb-4">
