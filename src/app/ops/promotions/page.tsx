@@ -22,10 +22,6 @@ import type { DemoProduct } from "@/lib/promotionsDemoStore";
 type FilterStatus = "ALL" | PromotionStatus;
 type FilterType = "ALL" | PromotionType;
 
-interface PromotionApiResponse {
-  promotions?: any[];
-}
-
 export default function PromotionsConsolePage() {
   const [promotions, setPromotions] = useState<Promotion[]>([]);
   const [isLoading, setIsLoading] = useState(false);

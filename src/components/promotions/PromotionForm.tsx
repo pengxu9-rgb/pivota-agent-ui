@@ -263,6 +263,10 @@ export function PromotionForm({
       allowedCreatorIds: form.exposeToCreators
         ? parseCsv(form.allowedCreatorIds)
         : [],
+      humanReadableRule:
+        form.type === "FLASH_SALE"
+          ? `${form.name}: $${Number(form.config.originalPrice)} → $${Number(form.config.flashPrice)}`
+          : `Buy ${Number(form.config.thresholdQuantity)}, get ${Number(form.config.discountPercent)}% off`,
     };
 
     setSubmitting(true);

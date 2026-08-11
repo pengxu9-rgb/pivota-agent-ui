@@ -57,7 +57,8 @@ function seedPromotions(): Promotion[] {
       merchantId: "demo_merchant_lumine",
       name: "48h flash sale: Hydra Cream",
       type: "FLASH_SALE",
-      description: "Storyboard of a time-boxed price drop surfaced to agents with urgency metadata.",
+      description:
+        "Storyboard of a time-boxed price drop surfaced to agents with urgency metadata. Materialized as Shopify code PIVOTA-FLASH-48H.",
       startAt: iso(-0.5),
       endAt: iso(1.5),
       channels: ["creator_agents", "web"],
@@ -94,6 +95,7 @@ export interface DemoProduct {
   merchantId: string;
   name: string;
   category: string;
+  brand: string;
   price: number;
   currency: string;
 }
@@ -101,6 +103,7 @@ export interface DemoProduct {
 export const DEMO_PRODUCTS: DemoProduct[] = [
   {
     id: "demo_prod_glow_serum",
+    brand: "Lumine",
     merchantId: "demo_merchant_lumine",
     name: "Glow Renewal Serum",
     category: "serums",
@@ -109,6 +112,7 @@ export const DEMO_PRODUCTS: DemoProduct[] = [
   },
   {
     id: "demo_prod_hydra_cream",
+    brand: "Lumine",
     merchantId: "demo_merchant_lumine",
     name: "Hydra Cream",
     category: "moisturizers",
@@ -117,6 +121,7 @@ export const DEMO_PRODUCTS: DemoProduct[] = [
   },
   {
     id: "demo_prod_clay_mask",
+    brand: "Atelier",
     merchantId: "demo_merchant_atelier",
     name: "Detox Clay Mask",
     category: "masks",
@@ -228,15 +233,19 @@ function promoAppliesToProduct(promotion: Promotion, product: DemoProduct): bool
   if (scope.global) return true;
   if (scope.productIds?.includes(product.id)) return true;
   if (scope.categoryIds?.includes(product.category)) return true;
+  if (scope.brandIds?.includes(product.brand)) return true;
   return false;
 }
 
 function codeForPromotion(promotion: Promotion): string {
-  const match = promotion.description?.match(/[A-Z0-9][A-Z0-9-]{4,}/);
+  // Only trust an explicit PIVOTA- code in the description; arbitrary uppercase
+  // runs ("SUMMER") must not become checkout codes.
+  const match = promotion.description?.match(/PIVOTA-[A-Z0-9-]{2,}/);
   if (match) return match[0];
-  const pct =
-    promotion.config.kind === "MULTI_BUY_DISCOUNT" ? promotion.config.discountPercent : "";
-  return `PIVOTA-AGENT-${pct || "DEAL"}`;
+  if (promotion.config.kind === "MULTI_BUY_DISCOUNT") {
+    return `PIVOTA-AGENT-${promotion.config.discountPercent}`;
+  }
+  return "PIVOTA-AGENT-FLASH";
 }
 
 export function simulateAgentQuote(
@@ -265,6 +274,10 @@ export function simulateAgentQuote(
     } else {
       continue;
     }
+    // A deal that does not lower the price is not a deal — never surface it.
+    // (Reachable: the form validates flashPrice <= originalPrice but never
+    // compares either to the demo product's actual price.)
+    if (total >= originalTotal) continue;
     if (!best || total < best.total) best = { promotion, total };
   }
 
