@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import type { Promotion, PromotionConfig, PromotionType } from "@/types/promotion";
 import { toast } from "sonner";
-import { createDemoPromotion, updateDemoPromotion } from "@/lib/promotionsDemoStore";
 
 type PromotionFormMode = "create" | "edit";
 
@@ -263,26 +262,30 @@ export function PromotionForm({
       allowedCreatorIds: form.exposeToCreators
         ? parseCsv(form.allowedCreatorIds)
         : [],
-      humanReadableRule:
-        form.type === "FLASH_SALE"
-          ? `${form.name}: $${Number(form.config.originalPrice)} → $${Number(form.config.flashPrice)}`
-          : `Buy ${Number(form.config.thresholdQuantity)}, get ${Number(form.config.discountPercent)}% off`,
     };
 
     setSubmitting(true);
     try {
-      // Partner Preview: writes go to the in-browser demo store, never the network.
-      if (mode === "create") {
-        await createDemoPromotion(payload as any);
-      } else {
-        if (!initial?.id) throw new Error("Missing demo promotion id.");
-        await updateDemoPromotion(initial.id, payload as any);
+      const res = await fetch(
+        mode === "create"
+          ? "/api/promotions"
+          : `/api/promotions/${initial?.id}`,
+        {
+          method: mode === "create" ? "POST" : "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        }
+      );
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to save promotion.");
       }
 
       toast.success(
         mode === "create"
-          ? "Demo promotion created."
-          : "Demo promotion updated."
+          ? "Promotion created."
+          : "Promotion updated."
       );
       onSubmitSuccess();
     } catch (err: any) {
