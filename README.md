@@ -37,18 +37,13 @@ This app is deployed on Vercel at [https://agent.pivota.cc](https://agent.pivota
   - `src/app/api/checkout/**`
   - `src/app/api/ucp/checkout-sessions/**`
 
-## Promotions — Partner Preview (demo only)
+## Promotions console (internal)
 
-- Route: `/ops/promotions` — a self-contained storyboard of AI-channel deals for
-  partner conversations. The production promotions lane was deleted end-to-end
-  (ADR-022 in pivota-backend); this page is the surviving demo of the target
-  design: merchant authors an agent-exclusive deal → Pivota materializes it as
-  a Shopify discount code → the agent presents the code → Shopify (the checkout
-  authority) enforces it.
-- All data lives in the visitor's browser (`localStorage` via
-  `src/lib/promotionsDemoStore.ts`). No network calls, no env vars, nothing is
-  written to any Pivota system. The former `MERCHANT_API_BASE_URL` /
-  `MERCHANT_ADMIN_KEY` proxy env vars are dead and can be removed from Vercel.
+- Route: `/ops/promotions` (internal-only console for configuring deals used by Creator Agents).
+- Server-side proxy env vars (required):  
+  - `MERCHANT_API_BASE_URL` – base URL of the gateway backend (e.g. https://pivota-agent-production.up.railway.app)  
+  - `MERCHANT_ADMIN_KEY` – admin key injected via proxy headers (`X-ADMIN-KEY`)
+- The browser never sees the admin key; all calls go through `/api/promotions`.
 
 ## Aurora orders merchant scope (embed only)
 
