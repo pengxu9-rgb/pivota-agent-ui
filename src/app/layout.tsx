@@ -1,6 +1,6 @@
 import { Suspense } from "react";
 import type { Metadata } from "next";
-import { Newsreader, Geist, Geist_Mono } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 import "../../public/pivota-brand/pivota-brand.css";
 import { Toaster } from "sonner";
@@ -13,28 +13,49 @@ import AuroraEmbedBridge from "@/components/aurora/AuroraEmbedBridge";
 // redesigned pages can opt-in via `var(--f-*)` or the `pv-*` utility
 // classes without changing the global Tailwind `font-sans` / `font-serif`
 // defaults (PDP keeps Cormorant + Inter; checkout flow is frozen).
-const editorialSerif = Newsreader({
-  subsets: ["latin"],
-  style: ["normal", "italic"],
-  // `weight: 'variable'` keeps the variable font intact so the `opsz`
-  // axis is controllable via `font-variation-settings`. Pinning weights
-  // is mutually exclusive with `axes` per next/font.
-  weight: "variable",
-  axes: ["opsz"],
+//
+// SELF-HOSTED (was next/font/google): `next/font/google` downloads font files
+// from fonts.gstatic.com AT BUILD TIME, so a transient network failure in the
+// build container fails the entire build — which is exactly what took down the
+// deploy of #301, in a file that PR never touched. These are the same Google
+// `latin`-subset variable files, vendored under ./fonts, so the build no longer
+// reaches the network. See ./fonts/README.md for provenance and refresh steps.
+const editorialSerif = localFont({
+  // Variable file keeps the `opsz` axis (6..72) intact, so it stays
+  // controllable via `font-variation-settings` exactly as before.
+  src: [
+    {
+      path: "./fonts/Newsreader-latin-variable.woff2",
+      style: "normal",
+      weight: "200 800",
+    },
+    {
+      path: "./fonts/Newsreader-latin-variable-italic.woff2",
+      style: "italic",
+      weight: "200 800",
+    },
+  ],
   variable: "--f-serif",
   display: "swap",
+  adjustFontFallback: "Times New Roman",
 });
-const editorialSans = Geist({
-  subsets: ["latin"],
-  weight: ["300", "400", "500", "600", "700"],
+const editorialSans = localFont({
+  src: "./fonts/Geist-latin-variable.woff2",
+  style: "normal",
+  // File carries wght 100..900; the design uses 300-700 within that range.
+  weight: "100 900",
   variable: "--f-sans",
   display: "swap",
+  adjustFontFallback: "Arial",
 });
-const editorialMono = Geist_Mono({
-  subsets: ["latin"],
-  weight: ["400", "500", "600"],
+const editorialMono = localFont({
+  src: "./fonts/GeistMono-latin-variable.woff2",
+  style: "normal",
+  // File carries wght 100..900; the design uses 400-600 within that range.
+  weight: "100 900",
   variable: "--f-mono",
   display: "swap",
+  adjustFontFallback: "Arial",
 });
 export const metadata: Metadata = {
   title: "Pivota Shopping AI",
