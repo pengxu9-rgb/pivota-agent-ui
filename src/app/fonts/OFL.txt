@@ -1,0 +1,13 @@
+These vendored font files are licensed under the SIL Open Font License, Version 1.1.
+
+  - Geist, Geist Mono — Copyright (c) 2023 Vercel, Inc. (https://github.com/vercel/geist-font)
+  - Newsreader — Copyright (c) 2019 Production Type (https://github.com/productiontype/Newsreader)
+
+The SIL Open Font License 1.1 permits redistribution and self-hosting of these
+files, bundled or standalone, provided this notice is retained and the fonts are
+not sold by themselves.
+
+Full license text: https://openfontlicense.org/open-font-license-official-text/
+Upstream license files:
+  - https://github.com/vercel/geist-font/blob/main/LICENSE.TXT
+  - https://github.com/productiontype/Newsreader/blob/master/OFL.txt
