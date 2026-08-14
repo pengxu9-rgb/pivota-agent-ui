@@ -1,8 +1,15 @@
 # Regenerate the committed static sitemaps in public/ from the canonical
-# catalog and push the refresh to main (which triggers the normal Vercel
+# catalog and land the refresh on main (which triggers the normal Vercel
 # deploy). The sitemaps are static files — not serverless routes — so crawler
 # fetches never depend on a live backend; this workflow is the only thing that
 # talks to the backend. See scripts/generate_sitemaps.mjs for the full story.
+#
+# main is protected (PRs only + required `test` check, admins included), so the
+# refresh lands via a short-lived PR: push bot/sitemap-refresh, dispatch the
+# Tests workflow on it (a GITHUB_TOKEN push triggers no workflows, but explicit
+# workflow_dispatch is exempt from that rule and its `test` check run counts
+# for the required check), wait for green, squash-merge. A red test run fails
+# this job red and leaves the PR open for inspection.
 #
 # The generator is deterministic (sorted, no timestamps) and exits non-zero
 # WITHOUT writing when the new build looks truncated (never publish a stub
@@ -26,6 +33,8 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write # create + merge the refresh PR
+  actions: write # dispatch the Tests workflow onto the PR branch
 
 concurrency:
   group: sitemaps
@@ -34,6 +43,8 @@ concurrency:
 jobs:
   regenerate:
     runs-on: ubuntu-latest
+    # Generation ~20s + tests <2 min + a 15-min poll budget; the default is 6h.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -41,8 +52,7 @@ jobs:
           node-version: 22
       # Snapshot BEFORE generation: the pre-warm step diffs previous vs new to
       # find ADDED urls. Taken from the checkout rather than git history because
-      # the checkout is fetch-depth 1 and the commit step rebases, so HEAD~1 is
-      # not a reliable "previous build".
+      # the checkout is fetch-depth 1, so HEAD~1 is not available.
       - name: Snapshot previous sitemap
         run: cp public/sitemap-products.xml /tmp/sitemap-products.prev.xml || true
       - name: Generate sitemaps
@@ -50,7 +60,10 @@ jobs:
         env:
           # Empty (guard active) unless a manual dispatch checked `force`.
           SITEMAP_FORCE: ${{ inputs.force == true && '1' || '' }}
-      - name: Commit and push if changed
+      - name: Commit, PR, and merge if changed
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: bot/sitemap-refresh
         run: |
           FILES="public/sitemap.xml public/sitemap-static.xml public/sitemap-products.xml public/retired-sigs.json"
           if git diff --quiet -- $FILES; then
@@ -59,11 +72,41 @@ jobs:
           fi
           git config user.name "pivota-sitemap-bot"
           git config user.email "actions-bot@users.noreply.github.com"
+          # -B + force-push: a leftover branch from a failed run is stale by
+          # definition (its data is 6h old) — always supersede it.
+          git checkout -B "$BRANCH"
           git add $FILES
           git commit -m "chore(seo): refresh generated sitemaps"
-          # Tolerate a deploy landing mid-run.
-          git pull --rebase origin main
-          git push origin main
+          git push -f origin "$BRANCH"
+          SHA=$(git rev-parse HEAD)
+
+          PR=$(gh pr list --head "$BRANCH" --base main --state open --json number -q '.[0].number')
+          if [ -z "$PR" ]; then
+            gh pr create --base main --head "$BRANCH" \
+              --title "chore(seo): refresh generated sitemaps" \
+              --body "Automated refresh from the sitemaps cron. Squash-merged automatically once the required \`test\` check is green."
+            PR=$(gh pr list --head "$BRANCH" --base main --state open --json number -q '.[0].number')
+          fi
+
+          gh workflow run test.yml --ref "$BRANCH"
+
+          # Tests observed <2 min; budget 15 min for runner queue.
+          CONCLUSION=""
+          for _ in $(seq 1 60); do
+            sleep 15
+            CONCLUSION=$(gh api "repos/$GITHUB_REPOSITORY/commits/$SHA/check-runs?check_name=test" \
+              -q '[.check_runs[] | select(.status == "completed")] | sort_by(.completed_at) | last | .conclusion // empty')
+            [ -n "$CONCLUSION" ] && break
+          done
+          if [ "$CONCLUSION" != "success" ]; then
+            echo "test check concluded '${CONCLUSION:-timeout}' on $SHA — leaving PR #$PR open" >&2
+            exit 1
+          fi
+
+          gh pr merge "$PR" --squash
+          # Not `--delete-branch`: that also switches/deletes the LOCAL branch,
+          # which we are standing on. Remote-only delete.
+          git push origin --delete "$BRANCH" || true
       # Warm the ISR cache for urls NEW in this build, so the first crawler hit
       # lands on a warm page instead of paying the 3-5s cold fill (and sometimes
       # a 500 — ~15% at 12-way concurrency, measured 2026-07-28). Best-effort:
