@@ -4,10 +4,11 @@
 # `next build`, so `npm test` ran nowhere: vitest assertions guarded nothing and
 # main had been red since 2026-05-21 without anyone seeing it (#277).
 #
-# NOT YET A GATE. `main` has no branch protection and no rulesets, so this check
-# is advisory: a red PR is still mergeable and direct pushes to main are still
-# unrestricted. To make it binding, add a ruleset on main requiring the `test`
-# status check. Until then this reports, it does not enforce.
+# A GATE since 2026-08-13: branch protection on `main` requires PRs and this
+# workflow's `test` check (admins included). That is also why sitemaps.yml
+# lands its refresh via a PR and dispatches this workflow onto the PR branch —
+# GITHUB_TOKEN pushes trigger no workflows, so without the dispatch the
+# required check would never run and the bot PR could never merge.
 #
 # Deliberately does NOT run `next build` — Vercel already does that on every PR,
 # and duplicating a multi-minute build here buys nothing.
