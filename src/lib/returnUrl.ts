@@ -1,9 +1,28 @@
+// Post-checkout redirect targets. Every entry here is a host we control, because a return URL is
+// followed by a buyer's browser after a purchase — an attacker-supplied value on an allowlisted host
+// is a credible phishing landing.
+//
+// Deliberately NOT allowlisted:
+//   *.railway.app / *.up.railway.app — the PaaS wildcard, not a Pivota property. It admitted every
+//     tenant on the platform, and once we leave Railway a re-registered slot on that wildcard would
+//     still satisfy this check. Pivota's own Railway services are reached through pivota.cc names.
+//   pivota.com — registered in 2011 through a domain-parking registrar and serving no HTTPS; there
+//     is no evidence Pivota owns it. If that is wrong, re-add it deliberately with a note.
 export function safeReturnUrl(input: string | null): string | null {
   if (!input) return null
   const trimmed = input.trim()
   if (!trimmed) return null
 
-  if (trimmed.startsWith('/')) return trimmed
+  // A same-origin path is allowed without consulting the host policy - but ONLY a real path.
+  // `//evil.example.com/x` is a PROTOCOL-RELATIVE URL: the browser resolves it against the current
+  // scheme and navigates off-origin, so returning it here would be a post-authentication open
+  // redirect from a pivota.cc page, bypassing the entire allowlist below. `/\evil.example.com`
+  // is treated as `//` by browsers, and `///host` collapses the same way, so reject all three.
+  if (trimmed.startsWith('/')) {
+    const secondChar = trimmed[1]
+    if (secondChar === '/' || secondChar === '\\') return null
+    return trimmed
+  }
 
   try {
     const u = new URL(trimmed)
@@ -17,11 +36,7 @@ export function safeReturnUrl(input: string | null): string | null {
       host === 'g.co' ||
       host.endsWith('.g.co') ||
       host === 'pivota.cc' ||
-      host.endsWith('.pivota.cc') ||
-      host === 'pivota.com' ||
-      host.endsWith('.pivota.com') ||
-      host.endsWith('.railway.app') ||
-      host.endsWith('.up.railway.app')
+      host.endsWith('.pivota.cc')
     return allowed ? u.toString() : null
   } catch {
     return null
@@ -89,4 +104,34 @@ export function resolveExternalAgentHomeUrl(entry: string | null | undefined): s
   }
 
   return null
+}
+
+// A UCP agent-profile URL is NOT a browser redirect target, and the two must not share an allowlist.
+// `safeReturnUrl` governs where a buyer's browser is sent after checkout, so it is deliberately
+// narrow. A profile URL is only ever fetched/advertised server-side as an identity document, and
+// today production legitimately serves it from a Railway host (audit R5 — the UCP profile is itself
+// on infrastructure and should move to a pivota.cc name; until it does, tightening this in step with
+// `safeReturnUrl` would break UCP checkout-session creation).
+//
+// Same shape checks, own host policy, so each can move independently.
+export function safeUcpProfileUrl(input: string | null): string | null {
+  if (!input) return null
+  const trimmed = input.trim()
+  if (!trimmed) return null
+  try {
+    const u = new URL(trimmed)
+    if (u.protocol !== 'https:' && u.protocol !== 'http:') return null
+    const host = u.hostname.toLowerCase()
+    const allowed =
+      host === 'localhost' ||
+      host === '127.0.0.1' ||
+      host === 'pivota.cc' ||
+      host.endsWith('.pivota.cc') ||
+      // TODO(R5): drop once UCP_AGENT_PROFILE_URL moves off the Railway host.
+      host.endsWith('.railway.app') ||
+      host.endsWith('.up.railway.app')
+    return allowed ? u.toString() : null
+  } catch {
+    return null
+  }
 }

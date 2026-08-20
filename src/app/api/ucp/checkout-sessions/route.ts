@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { safeReturnUrl } from '@/lib/returnUrl';
+import { safeReturnUrl, safeUcpProfileUrl } from '@/lib/returnUrl';
 
 export const runtime = 'nodejs';
 export const preferredRegion = 'home';
@@ -129,7 +129,8 @@ function appendQueryParams(url: string, params: Record<string, string | null | u
 }
 
 function buildUcpAgentHeader(profileUrl: string | null): string | null {
-  const normalized = safeReturnUrl(profileUrl);
+  // Identity document, not a redirect target — see safeUcpProfileUrl.
+  const normalized = safeUcpProfileUrl(profileUrl);
   if (!normalized) return null;
   return `profile="${normalized}"`;
 }
