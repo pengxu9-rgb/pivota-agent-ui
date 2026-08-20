@@ -12,7 +12,7 @@ export const preferredRegion = 'home';
 // it's the recursion-prevention escape hatch when SHOP_UPSTREAM_API_URL is
 // configured to point at this same gateway's origin (see
 // resolveShopUpstreamBase below). NOT a misconfig fallback; do not warn on it.
-const DEFAULT_SHOP_UPSTREAM_BASE = 'https://pivota-agent-production.up.railway.app';
+const DEFAULT_SHOP_UPSTREAM_BASE = 'https://gateway.pivota.cc';
 
 const SHOP_UPSTREAM_BASE =
   process.env.SHOP_UPSTREAM_API_URL ||
@@ -24,7 +24,7 @@ const SHOP_UPSTREAM_BASE =
 // proxies through CHECKOUT_UPSTREAM_BASE. Fail loud in any deployed runtime if
 // the env var is missing — never silently route real payment traffic to a
 // hardcoded prod backend from a misconfigured preview/staging deploy.
-const CHECKOUT_UPSTREAM_FALLBACK = 'https://web-production-fedb.up.railway.app';
+const CHECKOUT_UPSTREAM_FALLBACK = 'https://api.pivota.cc';
 const CHECKOUT_UPSTREAM_BASE = requireUpstreamBase({
   routeLabel: 'api/gateway:checkout',
   envVarsTried: ['PIVOTA_BACKEND_BASE_URL', 'NEXT_PUBLIC_PIVOTA_BACKEND_BASE_URL'],

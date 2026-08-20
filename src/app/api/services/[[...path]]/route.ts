@@ -4,7 +4,7 @@ import { warnIfHardcodedFallbackUsed } from '@/lib/upstreamFallback';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-const DEFAULT_SERVICES_UPSTREAM = 'https://pivota-agent-production.up.railway.app';
+const DEFAULT_SERVICES_UPSTREAM = 'https://gateway.pivota.cc';
 
 if (!process.env.SHOP_UPSTREAM_API_URL && !process.env.SERVICES_UPSTREAM_BASE) {
   warnIfHardcodedFallbackUsed({

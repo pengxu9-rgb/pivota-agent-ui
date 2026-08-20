@@ -17,7 +17,7 @@ const UCP_WEB_BASE_URL =
 // routes to ucp-web: that is the creator lane's session RUNTIME (order page), a
 // separate retirement decision.
 const UCP_DISCOVERY_BASE_URL =
-  (process.env.UCP_DISCOVERY_BASE_URL || 'https://pivota-agent-production.up.railway.app').replace(
+  (process.env.UCP_DISCOVERY_BASE_URL || 'https://gateway.pivota.cc').replace(
     /\/$/,
     '',
   )
@@ -87,6 +87,15 @@ const IMAGE_REMOTE_PATTERNS = [
   {
     protocol: 'https',
     hostname: 'pivota-agent-production.up.railway.app',
+  },
+  // Pivota-owned equivalents, added alongside the Railway hosts for the migration window.
+  {
+    protocol: 'https',
+    hostname: 'api.pivota.cc',
+  },
+  {
+    protocol: 'https',
+    hostname: 'gateway.pivota.cc',
   },
   ...(REVIEWS_UPSTREAM_HOSTNAME
     ? [

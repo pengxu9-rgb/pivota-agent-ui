@@ -41,7 +41,7 @@ describe('direct Agent read routing', () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe('https://pivota-agent-production.up.railway.app/agent/shop/v1/invoke');
+    expect(url).toBe('https://gateway.pivota.cc/agent/shop/v1/invoke');
     expect(init.headers).toEqual(
       expect.objectContaining({
         Authorization: `Bearer ${agentKey}`,
@@ -82,7 +82,7 @@ describe('direct Agent read routing', () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(fetchMock.mock.calls[0][0]).toBe(
-      'https://pivota-agent-production.up.railway.app/agent/shop/v1/invoke',
+      'https://gateway.pivota.cc/agent/shop/v1/invoke',
     );
     expect(fetchMock.mock.calls[1][0]).toBe('/api/gateway');
   });

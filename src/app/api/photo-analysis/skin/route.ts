@@ -4,7 +4,7 @@ import { warnIfHardcodedFallbackUsed } from '@/lib/upstreamFallback';
 export const runtime = 'nodejs';
 export const preferredRegion = 'home';
 
-const DEFAULT_AGENT_BASE = 'https://pivota-agent-production.up.railway.app';
+const DEFAULT_AGENT_BASE = 'https://gateway.pivota.cc';
 const _PHOTO_SKIN_AGENT_ENVS = [
   'PIVOTA_AGENT_BASE_URL',
   'SHOP_UPSTREAM_API_URL',
