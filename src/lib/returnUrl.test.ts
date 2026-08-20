@@ -57,6 +57,31 @@ describe('external agent helpers', () => {
     expect(safeReturnUrl('https://railway.app.evil.example/pwn')).toBeNull()
   })
 
+  // The suffix matcher for the hosts we DO keep must be pinned too. Without a pivota.cc-prefixed
+  // lookalike here, swapping endsWith() for includes() passes the entire suite while opening a
+  // full redirect - the negative cases above only probe a matcher this change deleted.
+  it('refuses lookalikes that merely contain a host we control', () => {
+    // These two CONTAIN '.pivota.cc' without ENDING in it - the only shape that distinguishes
+    // endsWith() from includes(). Without them the permissive-matcher mutant passes the suite.
+    expect(safeReturnUrl('https://agent.pivota.cc.evil.com/pwn')).toBeNull()
+    expect(safeReturnUrl('https://x.pivota.cc.attacker.io/pwn')).toBeNull()
+    expect(safeReturnUrl('https://pivota.cc.evil.example/pwn')).toBeNull()
+    expect(safeReturnUrl('https://evil-pivota.cc.attacker.io/pwn')).toBeNull()
+    expect(safeReturnUrl('https://pivota.ccx.evil.com/pwn')).toBeNull()
+    expect(safeReturnUrl('https://notpivota.cc/pwn')).toBeNull()
+  })
+
+  // A protocol-relative URL is not a same-origin path: the browser resolves `//host/x` against the
+  // current scheme and leaves the origin, so the `startsWith('/')` fast path must not return it.
+  it('refuses protocol-relative and backslash-prefixed targets', () => {
+    expect(safeReturnUrl('//evil.example.com/pwn')).toBeNull()
+    expect(safeReturnUrl('///evil.example.com/pwn')).toBeNull()
+    expect(safeReturnUrl('/\\evil.example.com/pwn')).toBeNull()
+    expect(safeReturnUrl('   //evil.example.com/pwn')).toBeNull()
+    // ...while a genuine same-origin path still works.
+    expect(safeReturnUrl('/my-orders?tab=open')).toBe('/my-orders?tab=open')
+  })
+
   it('refuses pivota.com, which Pivota does not own', () => {
     expect(safeReturnUrl('https://pivota.com/pwn')).toBeNull()
     expect(safeReturnUrl('https://checkout.pivota.com/pwn')).toBeNull()

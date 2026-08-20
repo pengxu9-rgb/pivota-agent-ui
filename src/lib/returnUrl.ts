@@ -13,7 +13,16 @@ export function safeReturnUrl(input: string | null): string | null {
   const trimmed = input.trim()
   if (!trimmed) return null
 
-  if (trimmed.startsWith('/')) return trimmed
+  // A same-origin path is allowed without consulting the host policy - but ONLY a real path.
+  // `//evil.example.com/x` is a PROTOCOL-RELATIVE URL: the browser resolves it against the current
+  // scheme and navigates off-origin, so returning it here would be a post-authentication open
+  // redirect from a pivota.cc page, bypassing the entire allowlist below. `/\evil.example.com`
+  // is treated as `//` by browsers, and `///host` collapses the same way, so reject all three.
+  if (trimmed.startsWith('/')) {
+    const secondChar = trimmed[1]
+    if (secondChar === '/' || secondChar === '\\') return null
+    return trimmed
+  }
 
   try {
     const u = new URL(trimmed)
