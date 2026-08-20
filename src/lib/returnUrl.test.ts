@@ -46,4 +46,26 @@ describe('external agent helpers', () => {
     expect(resolveExternalAgentHomeUrl('creator_agent')).toBe('https://creator.pivota.cc/');
     expect(resolveExternalAgentHomeUrl('aurora_chatbox')).toBe('https://aurora.pivota.cc/');
   });
+
+  // R8: these were allowlisted and are not any more. Driving BOTH sides of the split - the hosts we
+  // control still pass - is what proves the allowlist is doing the work rather than the function
+  // simply rejecting everything.
+  it('refuses the Railway PaaS wildcard as a return target', () => {
+    expect(safeReturnUrl('https://anything.railway.app/pwn')).toBeNull()
+    expect(safeReturnUrl('https://someone-elses-app.up.railway.app/pwn')).toBeNull()
+    // A lookalike that merely CONTAINS the suffix must also be refused, not accidentally admitted.
+    expect(safeReturnUrl('https://railway.app.evil.example/pwn')).toBeNull()
+  })
+
+  it('refuses pivota.com, which Pivota does not own', () => {
+    expect(safeReturnUrl('https://pivota.com/pwn')).toBeNull()
+    expect(safeReturnUrl('https://checkout.pivota.com/pwn')).toBeNull()
+  })
+
+  it('still admits the hosts we do control', () => {
+    expect(safeReturnUrl('https://pivota.cc/x')).toBe('https://pivota.cc/x')
+    expect(safeReturnUrl('https://agent.pivota.cc/x')).toBe('https://agent.pivota.cc/x')
+    expect(safeReturnUrl('https://gateway.pivota.cc/x')).toBe('https://gateway.pivota.cc/x')
+    expect(safeReturnUrl('/relative/path')).toBe('/relative/path')
+  })
 });
