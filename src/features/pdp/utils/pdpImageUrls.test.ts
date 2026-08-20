@@ -101,4 +101,14 @@ describe('normalizePdpImageUrl', () => {
       ),
     ).toBe(true);
   });
+
+  // The Railway case above must KEEP passing: catalog rows persisted before the rename still carry
+  // that host. This pins the Pivota-owned name that newly minted URLs use.
+  it('bypasses the optimizer for catalog image cache assets on gateway.pivota.cc', () => {
+    expect(
+      shouldBypassNextImageOptimizer(
+        'https://gateway.pivota.cc/catalog-image-cache/4f/4f5867bf9011ada573a9d7ed588a76f63617aa39828d962deeeef0a82d512d92.avif',
+      ),
+    ).toBe(true);
+  });
 });

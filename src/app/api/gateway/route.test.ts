@@ -584,7 +584,7 @@ describe('/api/gateway checkout-safe proxy', () => {
     expect(data).toMatchObject({ status: 'success' });
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe('https://pivota-agent-production.up.railway.app/agent/shop/v1/invoke');
+    expect(url).toBe('https://gateway.pivota.cc/agent/shop/v1/invoke');
     expect((init.headers as Record<string, string>)['x-gateway-proxy-hop']).toBe('1');
   });
 
@@ -653,7 +653,7 @@ describe('/api/gateway checkout-safe proxy', () => {
     expect(data).toMatchObject({ status: 'success' });
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe('https://pivota-agent-production.up.railway.app/agent/shop/v1/invoke');
+    expect(url).toBe('https://gateway.pivota.cc/agent/shop/v1/invoke');
   });
 
   // -------------------------------------------------------------------------

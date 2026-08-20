@@ -44,7 +44,7 @@ const API_BASE =
   process.env.NEXT_PUBLIC_API_URL ||
   '/api/gateway'; // default to same-origin proxy to avoid CORS
 const DEFAULT_AGENT_DIRECT_API_URL =
-  'https://pivota-agent-production.up.railway.app/agent/shop/v1/invoke';
+  'https://gateway.pivota.cc/agent/shop/v1/invoke';
 const AGENT_DIRECT_API_URL =
   process.env.NEXT_PUBLIC_AGENT_DIRECT_API_URL ||
   process.env.NEXT_PUBLIC_AGENT_API_URL ||

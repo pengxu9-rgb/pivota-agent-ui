@@ -35,6 +35,11 @@ const DIRECT_REMOTE_IMAGE_HOSTS = [
   'images.unsplash.com',
   'web-production-fedb.up.railway.app',
   'pivota-agent-production.up.railway.app',
+  // Pivota-owned names for the same two services. Kept ALONGSIDE the Railway hosts, not
+  // instead of them: image URLs already persisted in catalog rows still carry the old host,
+  // and an unlisted host fails silently (blank image, no error).
+  'api.pivota.cc',
+  'gateway.pivota.cc',
 ] as const;
 
 function rewriteTomFordAssetHost(parsed: URL): URL {
@@ -89,8 +94,12 @@ function isDemandwareImageAsset(parsed: URL): boolean {
 function isPivotaCatalogImageCacheAsset(parsed: URL): boolean {
   const pathname = parsed.pathname.toLowerCase();
   return (
-    isKnownRemoteHost(parsed.hostname, ['pivota-agent-production.up.railway.app']) &&
-    pathname.startsWith('/catalog-image-cache/')
+    // Both hosts serve the same gateway during the migration window. Persisted catalog rows carry
+    // the Railway host; newly minted URLs carry the Pivota-owned one.
+    isKnownRemoteHost(parsed.hostname, [
+      'pivota-agent-production.up.railway.app',
+      'gateway.pivota.cc',
+    ]) && pathname.startsWith('/catalog-image-cache/')
   );
 }
 
