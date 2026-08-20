@@ -66,14 +66,38 @@ function resolveAgentApiKey(): string {
   );
 }
 
+function resolveAuroraSurfaceInternalKey(): string {
+  return firstNonEmpty(
+    process.env.AURORA_SURFACE_INTERNAL_KEY,
+    process.env.PIVOTA_AURORA_SURFACE_INTERNAL_KEY,
+  );
+}
+
 function buildAuthHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {};
+
+  // X-Internal-Key authenticates THIS PROXY HOP to the gateway's Aurora-surface guard
+  // (PIVOTA-Agent #2038). It is deliberately independent of the agent key below: it identifies the
+  // caller, not the end user, and must be sent even when no agent key is configured — otherwise
+  // this route starts 401ing the moment AURORA_SURFACE_AUTH_MODE is flipped to `enforce`.
+  //
+  // Safe to ship ahead of that flip: the gateway is in `observe` mode, where the header is recorded
+  // and ignored. That ordering is the point — enforcement must never land before its consumers.
+  //
+  // It is read server-side only. This file is a Next route handler (`runtime = 'nodejs'`), so the
+  // browser never sees the value; do NOT move it to a NEXT_PUBLIC_ name, which would inline it into
+  // the client bundle and stop it being a secret at all.
+  const internalKey = resolveAuroraSurfaceInternalKey();
+  if (internalKey) headers['X-Internal-Key'] = internalKey;
+
   const key = resolveAgentApiKey();
-  if (!key) return {};
-  return {
-    'X-Agent-API-Key': key,
-    'X-API-Key': key,
-    Authorization: `Bearer ${key}`,
-  };
+  if (key) {
+    headers['X-Agent-API-Key'] = key;
+    headers['X-API-Key'] = key;
+    headers.Authorization = `Bearer ${key}`;
+  }
+
+  return headers;
 }
 
 function forwardLang(raw: string | null): string {
