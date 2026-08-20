@@ -81,11 +81,15 @@ describe('photo-analysis routes send the Aurora surface internal key', () => {
   });
 
   it('BOTH routes carry the wiring — they hold independent copies of the helper', () => {
-    // The upload route reads formData(), which does not resolve under this test environment, so it
-    // cannot be driven end-to-end here. The risk that matters is duplication, not behaviour: the two
-    // files each carry their own buildAuthHeaders, so patching one and not the other would leave
-    // /v1/photos/upload 401ing at the flip while /v1/analysis/skin was fine. That is a source-shape
-    // question and a source assertion answers it exactly.
+    // A source check, and it is NOT sufficient on its own: review showed that deleting
+    // `...buildAuthHeaders(),` from upload's fetch leaves every string below intact while the route
+    // sends no auth headers at all. The behavioural cover for that lives in
+    // auroraSurfaceInternalKey.upload.test.ts, which drives the real route under the node
+    // environment. (The first version of this file claimed formData() "does not resolve under this
+    // test environment" — that is true of the repo's default jsdom env only, not of the route.)
+    //
+    // This test still earns its place for the narrower question it can actually answer: that neither
+    // COPY of the helper has drifted, including the NEXT_PUBLIC prohibition in both.
     const fs = require('node:fs') as typeof import('node:fs');
     const path = require('node:path') as typeof import('node:path');
     for (const f of ['skin', 'upload']) {
