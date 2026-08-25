@@ -80,6 +80,64 @@ function applyWidthHint(url: URL, width: number | null): URL {
   return out;
 }
 
+const IMAGE_CONTENT_TYPE_RE = /^image\//i;
+const SNIFFABLE_GENERIC_TYPES = new Set(['', 'application/octet-stream', 'binary/octet-stream']);
+
+/**
+ * Identify an image by magic bytes, for upstreams that send no content-type or a generic
+ * octet-stream. Deliberately does NOT sniff SVG: SVG is text, so "looks like markup" would
+ * let an arbitrary HTML/text body be re-labelled as an image and served from our origin.
+ */
+function sniffImageMime(bytes: Uint8Array): string | null {
+  const at = (i: number) => bytes[i];
+  const ascii = (start: number, end: number) =>
+    String.fromCharCode(...Array.from(bytes.slice(start, end)));
+
+  if (bytes.length >= 8 && at(0) === 0x89 && ascii(1, 4) === 'PNG') return 'image/png';
+  if (bytes.length >= 3 && at(0) === 0xff && at(1) === 0xd8 && at(2) === 0xff) return 'image/jpeg';
+  if (bytes.length >= 6 && (ascii(0, 6) === 'GIF87a' || ascii(0, 6) === 'GIF89a')) return 'image/gif';
+  if (bytes.length >= 12 && ascii(0, 4) === 'RIFF' && ascii(8, 12) === 'WEBP') return 'image/webp';
+  if (bytes.length >= 2 && ascii(0, 2) === 'BM') return 'image/bmp';
+  if (bytes.length >= 4 && (ascii(0, 4) === 'II*\u0000' || ascii(0, 4) === 'MM\u0000*')) return 'image/tiff';
+  if (bytes.length >= 12 && ascii(4, 8) === 'ftyp') {
+    const brand = ascii(8, 12).toLowerCase();
+    if (brand.startsWith('avif') || brand.startsWith('avis')) return 'image/avif';
+    if (brand.startsWith('heic') || brand.startsWith('heix') || brand.startsWith('mif1')) {
+      return 'image/heic';
+    }
+  }
+  return null;
+}
+
+/**
+ * Decide what content-type to serve, or throw to fall through to the placeholder.
+ *
+ * The proxy used to forward `response.headers.get('content-type')` verbatim, so a URL that
+ * resolved to a web page was served as `200 text/html` with the page's full markup. Anything
+ * treating that 200 as an image rendered a broken image, and a same-origin HTML body is a
+ * far worse thing to hand a browser than a missing picture.
+ */
+function resolveImageContentType(rawContentType: string, body: ArrayBuffer): string {
+  const declared = rawContentType.split(';')[0].trim().toLowerCase();
+  if (IMAGE_CONTENT_TYPE_RE.test(declared)) return rawContentType;
+  if (SNIFFABLE_GENERIC_TYPES.has(declared)) {
+    const sniffed = sniffImageMime(new Uint8Array(body.slice(0, 16)));
+    if (sniffed) return sniffed;
+  }
+  throw new Error(`Upstream is not an image (content-type: ${declared || 'none'})`);
+}
+
+/**
+ * Neutralize the proxy's own origin as an execution surface. `nosniff` stops a browser
+ * second-guessing the type we just validated, and the CSP means a remote SVG — the one
+ * image format that is also a scriptable document — cannot run script or fetch anything
+ * if it is opened directly rather than through an <img> tag.
+ */
+const IMAGE_PROXY_SECURITY_HEADERS = {
+  'X-Content-Type-Options': 'nosniff',
+  'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; sandbox",
+} as const;
+
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
   const imageUrl = searchParams.get('url');
@@ -123,13 +181,17 @@ export async function GET(request: NextRequest) {
       throw new Error(`Failed to fetch image: ${response.status}`);
     }
 
-    const contentType = response.headers.get('content-type') || 'image/jpeg';
     const imageBuffer = await response.arrayBuffer();
+    const contentType = resolveImageContentType(
+      response.headers.get('content-type') || '',
+      imageBuffer,
+    );
 
     return new NextResponse(imageBuffer, {
       headers: {
         'Content-Type': contentType,
         'Cache-Control': 'public, max-age=31536000, immutable',
+        ...IMAGE_PROXY_SECURITY_HEADERS,
         ...(widthHint ? { 'X-Image-Proxy-Width-Hint': String(widthHint) } : {}),
       },
     });
@@ -140,6 +202,7 @@ export async function GET(request: NextRequest) {
       headers: {
         'Content-Type': 'image/svg+xml; charset=utf-8',
         'Cache-Control': 'public, max-age=3600, stale-while-revalidate=86400',
+        ...IMAGE_PROXY_SECURITY_HEADERS,
         'X-Image-Proxy-Fallback': 'inline-placeholder',
       },
     });
