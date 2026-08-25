@@ -59,6 +59,8 @@ export interface ProductCardProps {
   font?: 'serif' | 'sans';
 }
 
+const PLACEHOLDER_IMAGE = '/placeholder.svg';
+
 const aspectClass: Record<NonNullable<ProductCardProps['aspect']>, string> = {
   '4/5': 'aspect-[4/5]',
   '1/1': 'aspect-square',
@@ -81,6 +83,14 @@ export function ProductCard({
   className,
   font = 'serif',
 }: ProductCardProps) {
+  // Fall back to the placeholder when the upstream image cannot be fetched, matching
+  // every sibling product card. Without this a dead or unfetchable URL renders as the
+  // browser's broken-image glyph inside the card frame.
+  const [imageSrc, setImageSrc] = React.useState(image);
+  React.useEffect(() => {
+    setImageSrc(image);
+  }, [image]);
+
   const handleSave = (event: React.MouseEvent) => {
     event.preventDefault();
     event.stopPropagation();
@@ -97,11 +107,14 @@ export function ProductCard({
     <div className={cn('group flex flex-col', className)}>
       <div className={cn('relative w-full overflow-hidden bg-paper-2', aspectClass[aspect])}>
         <Image
-          src={image}
+          src={imageSrc}
           alt={imageAlt || title}
           fill
           className="object-cover transition-transform duration-300 lg:group-hover:scale-[1.03]"
           sizes="(min-width: 1024px) 25vw, 50vw"
+          onError={() => {
+            if (imageSrc !== PLACEHOLDER_IMAGE) setImageSrc(PLACEHOLDER_IMAGE);
+          }}
         />
         {badge ? (
           <div className="absolute left-2 top-2 flex flex-col items-start gap-1">
