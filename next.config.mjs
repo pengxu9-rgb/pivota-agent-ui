@@ -1,6 +1,8 @@
 import path from "path";
 import { fileURLToPath } from "url";
 
+import { IMAGE_REMOTE_HOSTS } from "./src/lib/imageRemoteHosts.mjs";
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -38,66 +40,15 @@ function hostnameFromUrl(url) {
 
 const REVIEWS_UPSTREAM_HOSTNAME = hostnameFromUrl(REVIEWS_UPSTREAM_BASE_URL);
 
+// Derived from the shared host list so `next.config` and `src/lib/displayImage.ts`
+// can never disagree about which hosts the optimizer accepts. See
+// `src/lib/imageRemoteHosts.mjs` for why that drift matters.
 const IMAGE_REMOTE_PATTERNS = [
-  {
-    protocol: 'https',
-    hostname: 'm.media-amazon.com',
-  },
-  {
-    protocol: 'https',
-    hostname: 'cdn.shopify.com',
-  },
-  {
-    protocol: 'https',
-    hostname: 'sdcdn.io',
-  },
-  {
-    protocol: 'https',
-    hostname: 'assets.sdcdn.io',
-  },
-  {
-    protocol: 'https',
-    hostname: 'drjart.com',
-  },
-  {
-    protocol: 'https',
-    hostname: 'www.drjart.com',
-  },
-  {
-    protocol: 'https',
-    hostname: 'guerlain.com',
-  },
-  {
-    protocol: 'https',
-    hostname: 'www.guerlain.com',
-  },
-  {
-    protocol: 'https',
-    hostname: 'static.wixstatic.com',
-  },
-  {
-    protocol: 'https',
-    hostname: 'images.unsplash.com',
-  },
-  // Review media is signed and served by backend public host.
-  {
-    protocol: 'https',
-    hostname: 'web-production-fedb.up.railway.app',
-  },
-  {
-    protocol: 'https',
-    hostname: 'pivota-agent-production.up.railway.app',
-  },
-  // Pivota-owned equivalents, added alongside the Railway hosts for the migration window.
-  {
-    protocol: 'https',
-    hostname: 'api.pivota.cc',
-  },
-  {
-    protocol: 'https',
-    hostname: 'gateway.pivota.cc',
-  },
-  ...(REVIEWS_UPSTREAM_HOSTNAME
+  ...IMAGE_REMOTE_HOSTS.map((hostname) => ({ protocol: 'https', hostname })),
+  // Env-configured and therefore not statically known to the client-side helper.
+  // Its default (web-production-fedb.up.railway.app) is already in the shared list;
+  // an override that is not simply gets proxied instead of optimized, which still renders.
+  ...(REVIEWS_UPSTREAM_HOSTNAME && !IMAGE_REMOTE_HOSTS.includes(REVIEWS_UPSTREAM_HOSTNAME)
     ? [
         {
           protocol: 'https',
