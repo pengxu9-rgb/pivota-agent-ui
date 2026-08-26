@@ -1,29 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { warnIfHardcodedFallbackUsed } from '@/lib/upstreamFallback';
+import { requireUpstreamBase } from '@/lib/upstreamFallback';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-const DEFAULT_ACCOUNTS_BASE = 'https://web-production-fedb.up.railway.app/accounts';
+// Was `https://web-production-fedb.up.railway.app/accounts`, decommissioned 2026-08-25.
+// Resolved once at module init and fails loud (throws under NODE_ENV=production)
+// rather than silently proxying to a hardcoded host that may no longer exist.
+const DEFAULT_ACCOUNTS_BASE = 'https://api.pivota.cc/accounts';
 
-if (!process.env.ACCOUNTS_UPSTREAM_BASE && !process.env.NEXT_PUBLIC_ACCOUNTS_BASE) {
-  warnIfHardcodedFallbackUsed({
-    routeLabel: 'api/accounts-root',
-    envVarsTried: ['ACCOUNTS_UPSTREAM_BASE', 'NEXT_PUBLIC_ACCOUNTS_BASE'],
-    fallback: DEFAULT_ACCOUNTS_BASE,
-  });
-}
+const UPSTREAM_ACCOUNTS_BASE = requireUpstreamBase({
+  routeLabel: 'api/accounts-root',
+  envVarsTried: ['ACCOUNTS_UPSTREAM_BASE', 'NEXT_PUBLIC_ACCOUNTS_BASE'],
+  fallback: DEFAULT_ACCOUNTS_BASE,
+});
 
 type RouteContext = {
   params: Promise<{ path: string[] }>;
 };
 
 function getUpstreamAccountsBase(): string {
-  const explicit =
-    process.env.ACCOUNTS_UPSTREAM_BASE || process.env.NEXT_PUBLIC_ACCOUNTS_BASE || DEFAULT_ACCOUNTS_BASE;
-  return String(explicit || DEFAULT_ACCOUNTS_BASE)
-    .trim()
-    .replace(/\/$/, '');
+  return String(UPSTREAM_ACCOUNTS_BASE).trim().replace(/\/$/, '');
 }
 
 function getUpstreamOriginBase(): string {

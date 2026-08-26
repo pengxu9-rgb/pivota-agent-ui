@@ -8,16 +8,21 @@ const __dirname = path.dirname(__filename);
 
 /** @type {import('next').NextConfig} */
 const UCP_WEB_BASE_URL =
-  (process.env.UCP_WEB_BASE_URL || 'https://ucp-web-production-production.up.railway.app').replace(
+  (process.env.UCP_WEB_BASE_URL || 'https://gateway.pivota.cc').replace(
     /\/$/,
     '',
   )
 // UCP identity cleanup (2026-07-23): /.well-known/ucp now serves the safety-kernel
 // profile from the GATEWAY (merchant_of_record:false, commerce_index_passthrough —
 // the mid-man identity), not the legacy ucp-web creator lane, which was the one
-// surface that ever declared Pivota merchant-of-record. /ucp/v1/* below still
-// routes to ucp-web: that is the creator lane's session RUNTIME (order page), a
-// separate retirement decision.
+// surface that ever declared Pivota merchant-of-record.
+//
+// 2026-08-26: the ucp-web default was `ucp-web-production-production.up.railway.app`,
+// which died with the Railway decommission (2026-08-25). Prod already overrides
+// UCP_WEB_BASE_URL to the gateway — verified live: /ucp/v1/* answers from the gateway
+// (x-service-commit e128a2d58c47), not Railway — so the default now names the gateway
+// instead of a host that no longer resolves. Retiring the creator lane's session
+// RUNTIME (order page) remains a separate decision; this only fixes the fallback.
 const UCP_DISCOVERY_BASE_URL =
   (process.env.UCP_DISCOVERY_BASE_URL || 'https://gateway.pivota.cc').replace(
     /\/$/,
@@ -27,7 +32,7 @@ const REVIEWS_UPSTREAM_BASE_URL = (
   process.env.NEXT_PUBLIC_REVIEWS_API_URL ||
   process.env.NEXT_PUBLIC_REVIEWS_BACKEND_URL ||
   process.env.REVIEWS_BACKEND_URL ||
-  'https://web-production-fedb.up.railway.app'
+  'https://api.pivota.cc'
 ).replace(/\/$/, '')
 
 function hostnameFromUrl(url) {
@@ -46,7 +51,7 @@ const REVIEWS_UPSTREAM_HOSTNAME = hostnameFromUrl(REVIEWS_UPSTREAM_BASE_URL);
 const IMAGE_REMOTE_PATTERNS = [
   ...IMAGE_REMOTE_HOSTS.map((hostname) => ({ protocol: 'https', hostname })),
   // Env-configured and therefore not statically known to the client-side helper.
-  // Its default (web-production-fedb.up.railway.app) is already in the shared list;
+  // Its default (api.pivota.cc) is already in the shared list;
   // an override that is not simply gets proxied instead of optimized, which still renders.
   ...(REVIEWS_UPSTREAM_HOSTNAME && !IMAGE_REMOTE_HOSTS.includes(REVIEWS_UPSTREAM_HOSTNAME)
     ? [

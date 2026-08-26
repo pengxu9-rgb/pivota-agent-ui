@@ -5,7 +5,8 @@ import { requireUpstreamBase } from '@/lib/upstreamFallback';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-const PIVOTA_BACKEND_FALLBACK = 'https://web-production-fedb.up.railway.app';
+// Was `https://web-production-fedb.up.railway.app`, decommissioned 2026-08-25.
+const PIVOTA_BACKEND_FALLBACK = 'https://api.pivota.cc';
 // Fail loud in any deployed runtime rather than silently routing checkout
 // prefill (publishable key + stripe_account) to a hardcoded prod backend.
 const PIVOTA_BACKEND_BASE = requireUpstreamBase({

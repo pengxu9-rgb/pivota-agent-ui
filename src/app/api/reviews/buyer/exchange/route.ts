@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { warnIfHardcodedFallbackUsed } from '@/lib/upstreamFallback';
 
-const DEFAULT_ACCOUNTS_BASE = 'https://web-production-fedb.up.railway.app/accounts';
+// Was `https://web-production-fedb.up.railway.app/accounts`, decommissioned 2026-08-25.
+const DEFAULT_ACCOUNTS_BASE = 'https://api.pivota.cc/accounts';
 const _REVIEWS_BUYER_EXCHANGE_ENVS = [
   'REVIEWS_UPSTREAM_BASE',
   'NEXT_PUBLIC_REVIEWS_UPSTREAM_BASE',
