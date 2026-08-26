@@ -617,6 +617,7 @@ function HomePageApp() {
         currency: product.currency,
         imageUrl: normalizeDisplayImageUrl(product.image_url, '/placeholder.svg'),
         merchant_id: product.merchant_id,
+        merchant_name: product.merchant_name,
         quantity: 1,
       });
       toast.success(`Added to bag — ${product.title}`);
