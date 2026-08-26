@@ -42,11 +42,28 @@ import {
   staticSitemapEntries,
 } from './sitemap_lib.mjs'
 
-// Was `https://web-production-fedb.up.railway.app`, decommissioned 2026-08-25.
+// The prod backend, reached through the load balancer rather than a Cloud Run
+// *.run.app URL so a service redeploy cannot move it. This is a DEFAULT, not a
+// pin: PIVOTA_BACKEND_BASE_URL still overrides it for staging runs.
+//
+// Was `https://web-production-fedb.up.railway.app` until 2026-08-26. Railway was
+// decommissioned on 08-25 and that host now answers 404 to everything, so every
+// scheduled run from 08-25 19:48 UTC onward died in the first fetch.
+//
+// The cron went red; the OUTPUT did not go stale. A run against the live host
+// walks 9,095 feed rows and emits exactly the 8,469 URLs already committed —
+// 462 dead, 8 thin and 156 duplicate-sig merges account for the difference.
+// Rows and URLs are different denominators, so do not read "9,095 vs 8,469" as
+// a freshness gap; this generator writes to a file and exits non-zero WITHOUT
+// writing when a build looks truncated, which is exactly why an outage costs
+// runs rather than served URLs.
+// Nothing caught it because this cron is the ONLY caller that relies on the
+// default — the Vercel runtime sets PIVOTA_BACKEND_BASE_URL, so a dead default
+// is invisible everywhere except here.
 const DEFAULT_CANONICAL_PRODUCTS_BASE_URL = 'https://api.pivota.cc'
-// CI budgets, not serverless budgets: the first request must survive an
-// upstream cold start (>30s observed on the old host), and the whole run can
-// take minutes.
+// CI budgets, not serverless budgets: the first request must survive a
+// backend cold start (>30s observed on Railway; Cloud Run scale-from-zero is
+// the same shape), and the whole run can take minutes.
 const PAGE_TIMEOUT_MS = 60000
 const PAGE_RETRY_DELAYS_MS = [2000, 8000, 20000]
 
@@ -59,7 +76,10 @@ class CanonicalProductsFetchError extends Error {
   }
 }
 
-function getCanonicalProductsBaseUrl() {
+// Exported ONLY so the default can be pinned by a test. It was unexported and
+// untested for its whole life, which is how the Railway host above stayed in it
+// for a day after Railway was turned off.
+export function getCanonicalProductsBaseUrl() {
   const configured = (
     process.env.PIVOTA_BACKEND_BASE_URL ||
     process.env.NEXT_PUBLIC_PIVOTA_BACKEND_BASE_URL ||
