@@ -42,9 +42,21 @@ import {
   staticSitemapEntries,
 } from './sitemap_lib.mjs'
 
-const DEFAULT_CANONICAL_PRODUCTS_BASE_URL = 'https://web-production-fedb.up.railway.app'
+// The prod backend, reached through the load balancer rather than a Cloud Run
+// *.run.app URL so a service redeploy cannot move it. This is a DEFAULT, not a
+// pin: PIVOTA_BACKEND_BASE_URL still overrides it for staging runs.
+//
+// Was `https://web-production-fedb.up.railway.app` until 2026-08-26. Railway was
+// decommissioned on 08-25 and that host now answers 404 to everything, so every
+// scheduled run from 08-25 19:48 UTC onward died in the first fetch and the
+// committed sitemaps froze at 8,469 URLs while the catalog grew past 9,000.
+// Nothing caught it because this cron is the ONLY caller that relies on the
+// default — the Vercel runtime sets PIVOTA_BACKEND_BASE_URL, so a dead default
+// is invisible everywhere except here.
+const DEFAULT_CANONICAL_PRODUCTS_BASE_URL = 'https://api.pivota.cc'
 // CI budgets, not serverless budgets: the first request must survive a
-// Railway idle cold start (>30s observed), and the whole run can take minutes.
+// backend cold start (>30s observed on Railway; Cloud Run scale-from-zero is
+// the same shape), and the whole run can take minutes.
 const PAGE_TIMEOUT_MS = 60000
 const PAGE_RETRY_DELAYS_MS = [2000, 8000, 20000]
 
@@ -57,7 +69,10 @@ class CanonicalProductsFetchError extends Error {
   }
 }
 
-function getCanonicalProductsBaseUrl() {
+// Exported ONLY so the default can be pinned by a test. It was unexported and
+// untested for its whole life, which is how the Railway host above stayed in it
+// for a day after Railway was turned off.
+export function getCanonicalProductsBaseUrl() {
   const configured = (
     process.env.PIVOTA_BACKEND_BASE_URL ||
     process.env.NEXT_PUBLIC_PIVOTA_BACKEND_BASE_URL ||
