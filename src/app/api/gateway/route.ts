@@ -31,7 +31,8 @@ const CHECKOUT_UPSTREAM_BASE = requireUpstreamBase({
   fallback: CHECKOUT_UPSTREAM_FALLBACK,
 });
 
-const REVIEWS_UPSTREAM_FALLBACK = 'https://web-production-fedb.up.railway.app';
+// Was `https://web-production-fedb.up.railway.app`, decommissioned 2026-08-25.
+const REVIEWS_UPSTREAM_FALLBACK = 'https://api.pivota.cc';
 const REVIEWS_UPSTREAM_BASE = requireUpstreamBase({
   routeLabel: 'api/gateway:reviews',
   envVarsTried: [

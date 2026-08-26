@@ -1,25 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server'
 import crypto from 'crypto'
-import { warnIfHardcodedFallbackUsed } from '@/lib/upstreamFallback'
+import { resolveBuyerUpstreamBase } from '@/lib/buyerUpstream'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-const DEFAULT_BUYER_BASE = 'https://web-production-fedb.up.railway.app/buyer/v1'
-
-if (!process.env.BUYER_UPSTREAM_BASE && !process.env.NEXT_PUBLIC_BUYER_BASE) {
-  warnIfHardcodedFallbackUsed({
-    routeLabel: 'api/buyer',
-    envVarsTried: ['BUYER_UPSTREAM_BASE', 'NEXT_PUBLIC_BUYER_BASE'],
-    fallback: DEFAULT_BUYER_BASE,
-  })
-}
+// Resolved once at module init so a deploy with NO buyer/accounts upstream
+// configured fails loud (requireUpstreamBase THROWS under NODE_ENV=production)
+// instead of silently proxying every buyer request to a hardcoded host.
+//
+// This route used to default to `https://web-production-fedb.up.railway.app/buyer/v1`,
+// which was decommissioned 2026-08-25. Because the fallback was silent, prod kept
+// proxying to it and `/api/buyer/orders` answered 404 with the RAILWAY EDGE's error
+// body (`x-railway-fallback: true`) for anyone reading buyer order history.
+const UPSTREAM_BUYER_BASE = resolveBuyerUpstreamBase()
 
 function getUpstreamBuyerBase(): string {
-  const explicit = process.env.BUYER_UPSTREAM_BASE || process.env.NEXT_PUBLIC_BUYER_BASE || DEFAULT_BUYER_BASE
-  return String(explicit || DEFAULT_BUYER_BASE)
-    .trim()
-    .replace(/\/$/, '')
+  return UPSTREAM_BUYER_BASE
 }
 
 const CHECKOUT_UI_KEY = process.env.CHECKOUT_UI_KEY || process.env.PIVOTA_CHECKOUT_UI_KEY || ''

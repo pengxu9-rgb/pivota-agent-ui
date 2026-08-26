@@ -42,9 +42,11 @@ import {
   staticSitemapEntries,
 } from './sitemap_lib.mjs'
 
-const DEFAULT_CANONICAL_PRODUCTS_BASE_URL = 'https://web-production-fedb.up.railway.app'
-// CI budgets, not serverless budgets: the first request must survive a
-// Railway idle cold start (>30s observed), and the whole run can take minutes.
+// Was `https://web-production-fedb.up.railway.app`, decommissioned 2026-08-25.
+const DEFAULT_CANONICAL_PRODUCTS_BASE_URL = 'https://api.pivota.cc'
+// CI budgets, not serverless budgets: the first request must survive an
+// upstream cold start (>30s observed on the old host), and the whole run can
+// take minutes.
 const PAGE_TIMEOUT_MS = 60000
 const PAGE_RETRY_DELAYS_MS = [2000, 8000, 20000]
 
