@@ -5,9 +5,11 @@
 // caller overrides the default and never exercises it. The scheduled sitemap
 // refresh is the sole caller that falls through to it — .github/workflows/
 // sitemaps.yml sets no backend env at all. When Railway was decommissioned on
-// 2026-08-25 the default became a host that answers 404 to everything, every
-// run from 19:48 UTC that day onward failed in the first fetch, and the
-// committed sitemaps froze at 8,469 URLs against a catalog past 9,000.
+// 2026-08-25 the default became a host that answers 404 to everything and every
+// run from 19:48 UTC that day onward failed in the first fetch. The cron went
+// red without the published sitemaps going stale — see the note on the constant
+// in generate_sitemaps.mjs for why 9,095 feed rows and 8,469 URLs are not a
+// freshness gap.
 //
 // So these assertions are deliberately about the CONSTANT, not about the
 // resolution logic: the logic was never wrong.
@@ -41,6 +43,22 @@ describe('getCanonicalProductsBaseUrl', () => {
   it('still lets an explicit override win, so staging runs stay possible', () => {
     vi.stubEnv('PIVOTA_BACKEND_BASE_URL', 'https://staging.example.com/')
     expect(getCanonicalProductsBaseUrl()).toBe('https://staging.example.com')
+  })
+
+  // The NEXT_PUBLIC_ leg is a real fallback, not decoration: deleting it from
+  // the resolver used to leave every case in this file green, so a refactor
+  // could drop it and silently send a configured caller to the default.
+  it('falls back to the NEXT_PUBLIC_ variant when only that one is set', () => {
+    vi.stubEnv('PIVOTA_BACKEND_BASE_URL', '')
+    vi.stubEnv('NEXT_PUBLIC_PIVOTA_BACKEND_BASE_URL', 'https://public.example.com')
+    expect(getCanonicalProductsBaseUrl()).toBe('https://public.example.com')
+  })
+
+  // Order matters when both are set: the server-only var wins.
+  it('prefers PIVOTA_BACKEND_BASE_URL over the NEXT_PUBLIC_ variant', () => {
+    vi.stubEnv('PIVOTA_BACKEND_BASE_URL', 'https://server.example.com')
+    vi.stubEnv('NEXT_PUBLIC_PIVOTA_BACKEND_BASE_URL', 'https://public.example.com')
+    expect(getCanonicalProductsBaseUrl()).toBe('https://server.example.com')
   })
 
   // A non-URL value (someone exporting a bare hostname) must fall back rather

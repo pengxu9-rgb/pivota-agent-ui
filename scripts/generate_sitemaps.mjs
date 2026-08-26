@@ -48,8 +48,15 @@ import {
 //
 // Was `https://web-production-fedb.up.railway.app` until 2026-08-26. Railway was
 // decommissioned on 08-25 and that host now answers 404 to everything, so every
-// scheduled run from 08-25 19:48 UTC onward died in the first fetch and the
-// committed sitemaps froze at 8,469 URLs while the catalog grew past 9,000.
+// scheduled run from 08-25 19:48 UTC onward died in the first fetch.
+//
+// The cron went red; the OUTPUT did not go stale. A run against the live host
+// walks 9,095 feed rows and emits exactly the 8,469 URLs already committed —
+// 462 dead, 8 thin and 156 duplicate-sig merges account for the difference.
+// Rows and URLs are different denominators, so do not read "9,095 vs 8,469" as
+// a freshness gap; this generator writes to a file and exits non-zero WITHOUT
+// writing when a build looks truncated, which is exactly why an outage costs
+// runs rather than served URLs.
 // Nothing caught it because this cron is the ONLY caller that relies on the
 // default — the Vercel runtime sets PIVOTA_BACKEND_BASE_URL, so a dead default
 // is invisible everywhere except here.
