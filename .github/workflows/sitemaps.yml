@@ -5,11 +5,46 @@
 # talks to the backend. See scripts/generate_sitemaps.mjs for the full story.
 #
 # main is protected (PRs only + required `test` check, admins included), so the
-# refresh lands via a short-lived PR: push bot/sitemap-refresh, dispatch the
-# Tests workflow on it (a GITHUB_TOKEN push triggers no workflows, but explicit
-# workflow_dispatch is exempt from that rule and its `test` check run counts
-# for the required check), wait for green, squash-merge. A red test run fails
-# this job red and leaves the PR open for inspection.
+# refresh lands via a short-lived PR: push bot/sitemap-refresh, open the PR,
+# wait for the required check, squash-merge. A red test run fails this job red
+# and leaves the PR open for inspection.
+#
+# ---------------------------------------------------------------------------
+# WHY THIS RUNS ON A BOT TOKEN AND NOT `github.token`
+#
+# A push made with GITHUB_TOKEN triggers no workflows (GitHub's recursion
+# guard), so a bot PR pushed that way never gets a `pull_request`-triggered run
+# of its own and the required `test` check is never satisfied.
+#
+# This workflow previously "solved" that with `gh workflow run test.yml --ref
+# $BRANCH`. That was wrong, and it cost 8 red runs between 2026-08-16 and
+# 2026-08-27. Running is not satisfying. Measured on PR #306 (08-16) and again
+# on PR #315 (08-27): the dispatched check run lands on the PR's exact head sha,
+# concludes `success`, reports `app_id 15368` (github-actions), and is even
+# linked to the PR — and GitHub still refuses the merge with
+#
+#     Required status check "test" is expected.
+#     the base branch policy prohibits the merge
+#
+# while `mergeable: true` / `mergeable_state: blocked` makes it look like a
+# transient. It is not: GitHub does not count a `workflow_dispatch`-produced
+# check run toward a required status check, full stop. The tell is that `test`
+# is absent from the PR's own check rollup even though it is present on the
+# commit.
+#
+# The fix is to make the `pull_request` event actually fire, which means pushing
+# the branch as a real identity: SITEMAP_BOT_TOKEN, a PAT (or GitHub App
+# installation token) with `contents: write` + `pull_requests: write` on this
+# repo. There is deliberately NO fallback to github.token — see the preflight
+# step. A silent fallback would reintroduce exactly this bug invisibly, which is
+# the same shape as the dead-Railway default that broke the fetch leg
+# (scripts/generate_sitemaps.baseurl.test.mjs).
+#
+# The alternatives, for the record: a ruleset with a bypass actor (classic
+# branch protection has none, and `enforce_admins: true` blocks `--admin` too),
+# or a human merging each bot PR — which is what actually happened for #306 and
+# #307, the only two refreshes that ever landed. This bot has never self-merged.
+# ---------------------------------------------------------------------------
 #
 # The generator is deterministic (sorted, no timestamps) and exits non-zero
 # WITHOUT writing when the new build looks truncated (never publish a stub
@@ -31,10 +66,12 @@ on:
         type: boolean
         default: false
 
+# Every git and API write in this job authenticates as SITEMAP_BOT_TOKEN, so
+# GITHUB_TOKEN needs nothing beyond the read the runner already does. Widening
+# these back to `contents: write` / `pull-requests: write` would not help and
+# would only make it possible to reintroduce the GITHUB_TOKEN path by accident.
 permissions:
-  contents: write
-  pull-requests: write # create + merge the refresh PR
-  actions: write # dispatch the Tests workflow onto the PR branch
+  contents: read
 
 concurrency:
   group: sitemaps
@@ -45,8 +82,30 @@ jobs:
     runs-on: ubuntu-latest
     # Generation ~20s + tests <2 min + a 15-min poll budget; the default is 6h.
     timeout-minutes: 30
+    env:
+      # Read once here so the preflight can check it without the `secrets`
+      # context, which is not available in a step-level `if:`.
+      BOT_TOKEN: ${{ secrets.SITEMAP_BOT_TOKEN }}
     steps:
+      # Before checkout, so a missing secret costs 5 seconds and says why,
+      # rather than surfacing as an opaque auth error 3 steps later.
+      - name: Require the bot token
+        run: |
+          if [ -z "$BOT_TOKEN" ]; then
+            echo "::error::secrets.SITEMAP_BOT_TOKEN is not set. This workflow cannot" \
+                 "land its refresh without it: a branch pushed with GITHUB_TOKEN fires no" \
+                 "pull_request event, so main's required 'test' check never runs in the PR" \
+                 "context and the merge is refused. Mint a PAT (or GitHub App installation" \
+                 "token) with contents:write + pull_requests:write on this repo and store it" \
+                 "as SITEMAP_BOT_TOKEN. See the header comment in this file."
+            exit 1
+          fi
       - uses: actions/checkout@v4
+        with:
+          # Persist the BOT token, not GITHUB_TOKEN, as the credential git will
+          # use for the push below. This single line is what makes the
+          # pull_request event fire.
+          token: ${{ secrets.SITEMAP_BOT_TOKEN }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -62,7 +121,7 @@ jobs:
           SITEMAP_FORCE: ${{ inputs.force == true && '1' || '' }}
       - name: Commit, PR, and merge if changed
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.SITEMAP_BOT_TOKEN }}
           BRANCH: bot/sitemap-refresh
         run: |
           FILES="public/sitemap.xml public/sitemap-static.xml public/sitemap-products.xml public/retired-sigs.json"
@@ -77,6 +136,10 @@ jobs:
           git checkout -B "$BRANCH"
           git add $FILES
           git commit -m "chore(seo): refresh generated sitemaps"
+          # Pushed as SITEMAP_BOT_TOKEN. If the PR already exists this fires
+          # `synchronize`; if it does not, `gh pr create` below fires `opened`.
+          # Either way test.yml runs in the pull_request context, which is the
+          # only context whose check run counts for the required check.
           git push -f origin "$BRANCH"
           SHA=$(git rev-parse HEAD)
 
@@ -87,8 +150,6 @@ jobs:
               --body "Automated refresh from the sitemaps cron. Squash-merged automatically once the required \`test\` check is green."
             PR=$(gh pr list --head "$BRANCH" --base main --state open --json number -q '.[0].number')
           fi
-
-          gh workflow run test.yml --ref "$BRANCH"
 
           # Tests observed <2 min; budget 15 min for runner queue.
           CONCLUSION=""
@@ -103,7 +164,18 @@ jobs:
             exit 1
           fi
 
-          gh pr merge "$PR" --squash
+          # A green check on the COMMIT is not the same as a satisfied required
+          # check on the PR — that gap is the whole reason this workflow was red
+          # for eleven days. If the merge is refused, print the PR's own rollup
+          # so the next reader sees the difference immediately instead of
+          # re-deriving it.
+          if ! gh pr merge "$PR" --squash; then
+            echo "::error::merge refused for PR #$PR at $SHA even though the commit's 'test' check is green." >&2
+            gh pr view "$PR" --json mergeStateStatus,statusCheckRollup \
+              -q '"PR rollup: mergeStateStatus=\(.mergeStateStatus) checks=[\([.statusCheckRollup[] | .name // .context] | join(", "))]"' >&2
+            echo "If 'test' is missing from that rollup, the branch was pushed by an identity that fires no pull_request event — i.e. SITEMAP_BOT_TOKEN is unset, expired, or is really GITHUB_TOKEN. See the header comment in this file." >&2
+            exit 1
+          fi
           # Not `--delete-branch`: that also switches/deletes the LOCAL branch,
           # which we are standing on. Remote-only delete.
           git push origin --delete "$BRANCH" || true
