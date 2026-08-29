@@ -179,6 +179,10 @@ function hasCanonicalDisplayPrice(product: ProductResponse): boolean {
   return Number.isFinite(price) && price > 0 && Boolean(String(product?.currency || '').trim());
 }
 
+function gatewayEnforcesCanonicalPriceContract(metadata: Record<string, any>): boolean {
+  return metadata?.price_contract?.canonical_price_or_offer_required === true;
+}
+
 type ApiError = Error & { code?: string; status?: number; detail?: any };
 type AmbiguousProductError = ApiError & {
   code: 'AMBIGUOUS_PRODUCT_ID';
@@ -2568,14 +2572,19 @@ export async function sendMessage(
     { signal: options?.signal },
   );
 
-  // The gateway contract requires a canonical price or seller offer. Keep the
-  // chat surface strict as a rollout guard so an older gateway cannot reintroduce
-  // $0 cards before the server-side contract is deployed everywhere.
-  const products = normalizeUiProductList((data as any).products).filter(hasCanonicalDisplayPrice);
   const metadata =
     data && typeof data === 'object' && data.metadata && typeof (data as any).metadata === 'object'
       ? ((data as any).metadata as Record<string, any>)
       : {};
+  const normalizedProducts = normalizeUiProductList((data as any).products);
+  // Enforce the contract when the gateway declares it. Older gateway instances
+  // can still return useful PDP-linkable cards while they roll forward; keep
+  // those visible with no price label rather than turning a real result set
+  // into an empty chat response. `formatPriceLabel` never renders such cards
+  // as $0.
+  const products = gatewayEnforcesCanonicalPriceContract(metadata)
+    ? normalizedProducts.filter(hasCanonicalDisplayPrice)
+    : normalizedProducts;
   const responsePageRaw = Number((data as any)?.page);
   const responsePageSizeRaw = Number((data as any)?.page_size ?? (data as any)?.pageSize);
   const responseTotalRaw = Number((data as any)?.total);

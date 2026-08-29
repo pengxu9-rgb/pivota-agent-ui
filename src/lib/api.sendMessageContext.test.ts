@@ -107,7 +107,7 @@ describe('sendMessage conversation context', () => {
     expect(result.products[0]).toMatchObject({ price: 1299.5, currency: 'EUR' });
   });
 
-  it('drops a chat card that violates the canonical-price search contract', async () => {
+  it('does not hide useful cards while an older gateway rolls out the price contract', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       jsonResponse({
         products: [
@@ -121,6 +121,30 @@ describe('sendMessage conversation context', () => {
           },
         ],
         metadata: {},
+      }),
+    );
+
+    const { sendMessage } = await import('./api');
+    const result = await sendMessage('unpriced search card');
+
+    expect(result.products).toHaveLength(1);
+    expect(result.products[0]).toMatchObject({ title: 'Unpriced Search Card', price: 0 });
+  });
+
+  it('honors the gateway price contract when it is declared', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      jsonResponse({
+        products: [
+          {
+            product_id: 'unpriced_search_card',
+            merchant_id: 'merchant_1',
+            title: 'Unpriced Search Card',
+            image_url: 'https://example.com/unpriced.png',
+            price: 0,
+            currency: 'USD',
+          },
+        ],
+        metadata: { price_contract: { canonical_price_or_offer_required: true } },
       }),
     );
 
