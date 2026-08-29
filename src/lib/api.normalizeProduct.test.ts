@@ -3,6 +3,65 @@ import { describe, expect, it } from 'vitest';
 import { normalizeProduct } from './api';
 
 describe('normalizeProduct', () => {
+  it('keeps the PDP-style current Money price used by chat search cards', () => {
+    const normalized = normalizeProduct({
+      product_id: 'knight_unicorn_satin_blush',
+      merchant_id: 'merchant_1',
+      title: 'Knight Unicorn Satin Blush',
+      price: { current: { amount: 24, currency: 'USD' } },
+      image_url: 'https://example.com/knight-unicorn.png',
+    } as any);
+
+    expect(normalized.price).toBe(24);
+    expect(normalized.currency).toBe('USD');
+  });
+
+  it('uses a nested variant Money price when the search card has no top-level price', () => {
+    const normalized = normalizeProduct({
+      product_id: 'knight_unicorn_variant',
+      merchant_id: 'merchant_1',
+      title: 'Knight Unicorn Satin Blush',
+      price: 0,
+      variants: [{ id: 'variant_1', price: { current: { amount: 26.5, currency: 'USD' } } }],
+      image_url: 'https://example.com/knight-unicorn.png',
+    } as any);
+
+    expect(normalized.price).toBe(26.5);
+  });
+
+  it('reads alternate compact-search price fields before falling back to zero', () => {
+    const normalized = normalizeProduct({
+      product_id: 'price_amount_search_card',
+      merchant_id: 'merchant_1',
+      title: 'Price Amount Search Card',
+      price: 0,
+      price_amount: '1,299.50',
+      price_currency: 'EUR',
+      image_url: 'https://example.com/price-amount.png',
+    } as any);
+
+    expect(normalized.price).toBe(1299.5);
+    expect(normalized.currency).toBe('EUR');
+  });
+
+  it('uses the preferred priced offer when a compact search card omits its price', () => {
+    const normalized = normalizeProduct({
+      product_id: 'offer_price_search_card',
+      merchant_id: 'merchant_1',
+      title: 'Offer Price Search Card',
+      price: null,
+      best_price_offer_id: 'offer_best',
+      offers: [
+        { offer_id: 'offer_regular', price: { amount: 32, currency: 'USD' } },
+        { offer_id: 'offer_best', price: { current: { amount: 28, currency: 'USD' } } },
+      ],
+      image_url: 'https://example.com/offer-price.png',
+    } as any);
+
+    expect(normalized.price).toBe(28);
+    expect(normalized.currency).toBe('USD');
+  });
+
   it('strips HTML tags from descriptions before product cards consume them', () => {
     const normalized = normalizeProduct({
       product_id: 'ext_1',
