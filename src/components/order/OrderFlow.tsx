@@ -1562,7 +1562,7 @@ function OrderFlowInner({
       setStripePublishableKey('')
       setStripeAccount(null)
       setStripeSelectedMethodType(null)
-      return
+      return { publishableKey: '', stripeAccount: null }
     }
     const resolvedPublishableKey = resolveStripePublishableKey(paymentResponse, action) || ''
     const resolvedStripeAccount = resolveStripeAccount(paymentResponse, action)
@@ -1576,6 +1576,7 @@ function OrderFlowInner({
     setStripePublishableKey(nextPublishableKey)
     setStripeAccount(nextStripeAccount)
     void prewarmStripeRuntime(nextPublishableKey, nextStripeAccount)
+    return { publishableKey: nextPublishableKey, stripeAccount: nextStripeAccount }
   }
 
   const formatAmount = (amount: number) => {
@@ -3193,7 +3194,7 @@ function OrderFlowInner({
         assertSupportedPaymentSurface(paymentResponse, action, detectedPsp)
         setPaymentActionType(action?.type || null)
         setPspUsed(detectedPsp || pspUsed || null)
-        syncStripeRuntime(paymentResponse, action, detectedPsp || pspUsed || null)
+        const stripeRuntime = syncStripeRuntime(paymentResponse, action, detectedPsp || pspUsed || null)
 
         const redirectUrl =
           action?.url ||
@@ -3252,7 +3253,10 @@ function OrderFlowInner({
 
         const isStripePsp = !detectedPsp || detectedPsp === 'stripe'
         if (clientSecret && isStripePsp) {
-          if (!stripePublishableKey) {
+          // syncStripeRuntime above just resolved this from THIS response; the render-scoped
+          // `stripePublishableKey` is still the pre-click value and is empty on the first click
+          // in production. Reading its return value is what makes a first click succeed.
+          if (!stripeRuntime.publishableKey) {
             throw new Error(
               'Stripe public key is missing for this merchant. Reconnect Stripe and try again.',
             )
