@@ -33,9 +33,18 @@
 # commit.
 #
 # The fix is to make the `pull_request` event actually fire, which means pushing
-# the branch as a real identity: SITEMAP_BOT_TOKEN, a PAT (or GitHub App
-# installation token) with `contents: write` + `pull_requests: write` on this
-# repo. There is deliberately NO fallback to github.token — see the preflight
+# the branch as a real identity. That identity is a GitHub App: SITEMAP_APP_ID +
+# SITEMAP_APP_PRIVATE_KEY mint a short-lived installation token, scoped to this
+# repo, needing Contents: Read+Write and Pull requests: Read+Write. The
+# recursion guard that suppresses workflow triggers applies to the default
+# GITHUB_TOKEN only, so an App installation token fires `pull_request` normally.
+#
+# An App PRIVATE KEY is not itself a credential. Pasting the PEM where a token
+# belongs yields `net/http: invalid header field value for "Authorization"`
+# (from the client, before any request leaves), or a checkout that dies on
+# `could not read Username for 'https://github.com'` — both measured here on
+# 2026-08-27. Store the whole PEM, BEGIN/END lines included; the action parses
+# it. There is deliberately NO fallback to github.token — see the preflight
 # step. A silent fallback would reintroduce exactly this bug invisibly, which is
 # the same shape as the dead-Railway default that broke the fetch leg
 # (scripts/generate_sitemaps.baseurl.test.mjs).
@@ -66,7 +75,7 @@ on:
         type: boolean
         default: false
 
-# Every git and API write in this job authenticates as SITEMAP_BOT_TOKEN, so
+# Every git and API write in this job authenticates as the App token, so
 # GITHUB_TOKEN needs nothing beyond the read the runner already does. Widening
 # these back to `contents: write` / `pull-requests: write` would not help and
 # would only make it possible to reintroduce the GITHUB_TOKEN path by accident.
@@ -83,29 +92,45 @@ jobs:
     # Generation ~20s + tests <2 min + a 15-min poll budget; the default is 6h.
     timeout-minutes: 30
     env:
-      # Read once here so the preflight can check it without the `secrets`
+      # Read once here so the preflight can check them without the `secrets`
       # context, which is not available in a step-level `if:`.
-      BOT_TOKEN: ${{ secrets.SITEMAP_BOT_TOKEN }}
+      APP_ID: ${{ secrets.SITEMAP_APP_ID }}
+      APP_PRIVATE_KEY: ${{ secrets.SITEMAP_APP_PRIVATE_KEY }}
     steps:
       # Before checkout, so a missing secret costs 5 seconds and says why,
       # rather than surfacing as an opaque auth error 3 steps later.
-      - name: Require the bot token
+      #
+      # Checks BOTH secrets: an App id alone mints nothing, and a private key
+      # alone has no App to act as. Checking one and assuming the other is how a
+      # half-configured repo produces an error two steps downstream that names
+      # neither secret.
+      - name: Require the App credentials
         run: |
-          if [ -z "$BOT_TOKEN" ]; then
-            echo "::error::secrets.SITEMAP_BOT_TOKEN is not set. This workflow cannot" \
-                 "land its refresh without it: a branch pushed with GITHUB_TOKEN fires no" \
+          MISSING=""
+          [ -z "$APP_ID" ] && MISSING="$MISSING SITEMAP_APP_ID"
+          [ -z "$APP_PRIVATE_KEY" ] && MISSING="$MISSING SITEMAP_APP_PRIVATE_KEY"
+          if [ -n "$MISSING" ]; then
+            echo "::error::missing secret(s):$MISSING. This workflow cannot land its" \
+                 "refresh without them: a branch pushed with GITHUB_TOKEN fires no" \
                  "pull_request event, so main's required 'test' check never runs in the PR" \
-                 "context and the merge is refused. Mint a PAT (or GitHub App installation" \
-                 "token) with contents:write + pull_requests:write on this repo and store it" \
-                 "as SITEMAP_BOT_TOKEN. See the header comment in this file."
+                 "context and the merge is refused. Install the App on this repo with" \
+                 "Contents: Read+Write and Pull requests: Read+Write, then store its numeric" \
+                 "id as SITEMAP_APP_ID and its full PEM private key (BEGIN/END lines" \
+                 "included) as SITEMAP_APP_PRIVATE_KEY. See the header comment in this file."
             exit 1
           fi
+      - name: Mint an installation token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ secrets.SITEMAP_APP_ID }}
+          private-key: ${{ secrets.SITEMAP_APP_PRIVATE_KEY }}
       - uses: actions/checkout@v4
         with:
-          # Persist the BOT token, not GITHUB_TOKEN, as the credential git will
+          # Persist the APP token, not GITHUB_TOKEN, as the credential git will
           # use for the push below. This single line is what makes the
           # pull_request event fire.
-          token: ${{ secrets.SITEMAP_BOT_TOKEN }}
+          token: ${{ steps.app-token.outputs.token }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -121,7 +146,7 @@ jobs:
           SITEMAP_FORCE: ${{ inputs.force == true && '1' || '' }}
       - name: Commit, PR, and merge if changed
         env:
-          GH_TOKEN: ${{ secrets.SITEMAP_BOT_TOKEN }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
           BRANCH: bot/sitemap-refresh
         run: |
           FILES="public/sitemap.xml public/sitemap-static.xml public/sitemap-products.xml public/retired-sigs.json"
@@ -136,7 +161,7 @@ jobs:
           git checkout -B "$BRANCH"
           git add $FILES
           git commit -m "chore(seo): refresh generated sitemaps"
-          # Pushed as SITEMAP_BOT_TOKEN. If the PR already exists this fires
+          # Pushed as the App. If the PR already exists this fires
           # `synchronize`; if it does not, `gh pr create` below fires `opened`.
           # Either way test.yml runs in the pull_request context, which is the
           # only context whose check run counts for the required check.
@@ -173,7 +198,7 @@ jobs:
             echo "::error::merge refused for PR #$PR at $SHA even though the commit's 'test' check is green." >&2
             gh pr view "$PR" --json mergeStateStatus,statusCheckRollup \
               -q '"PR rollup: mergeStateStatus=\(.mergeStateStatus) checks=[\([.statusCheckRollup[] | .name // .context] | join(", "))]"' >&2
-            echo "If 'test' is missing from that rollup, the branch was pushed by an identity that fires no pull_request event — i.e. SITEMAP_BOT_TOKEN is unset, expired, or is really GITHUB_TOKEN. See the header comment in this file." >&2
+            echo "If 'test' is missing from that rollup, the branch was pushed by an identity that fires no pull_request event — i.e. the App is not installed on this repo, or lacks Contents/Pull requests write. See the header comment in this file." >&2
             exit 1
           fi
           # Not `--delete-branch`: that also switches/deletes the LOCAL branch,
