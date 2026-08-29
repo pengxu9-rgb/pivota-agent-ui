@@ -1391,6 +1391,13 @@ function OrderFlowInner({
   const [initialPaymentAction, setInitialPaymentAction] = useState<any>(null)
   const [quote, setQuote] = useState<QuotePreview | null>(null)
   const [selectedDeliveryOption, setSelectedDeliveryOption] = useState<any>(null)
+  // The delivery option the ACTIVE quote was actually priced with. This is NOT the same as
+  // `selectedDeliveryOption`: after a quote returns, we auto-select opts[0] purely so the UI has
+  // something to show (see refreshQuote), and that display-only choice must never leak into
+  // create_order. The backend fingerprints the order request and compares it to the quote's
+  // fingerprint, and `selected_delivery_option` is part of both — so sending an option the quote
+  // was not priced with is a guaranteed QUOTE_MISMATCH on the very first create_order.
+  const quotedDeliveryOptionRef = useRef<any>(null)
   const [quotePending, setQuotePending] = useState(false)
   // PERF: the live quote (Shopify storefront cart) takes ~7s. Prefetch it in the background as soon as the
   // buyer has entered a complete shipping address, so it is already in-flight/ready when they submit —
@@ -1833,6 +1840,9 @@ function OrderFlowInner({
   }, [checkoutToken, step, user?.email, user?.id])
 
   const buildQuoteRequest = (deliveryOptionOverride?: any) => {
+    // Every quote request is built here, and both callers send what they build, so this is the
+    // one place that always knows what the next quote will be priced against.
+    quotedDeliveryOptionRef.current = deliveryOptionOverride || null
     const normalizedCountry = normalizeCountryCode(shipping.country)
     if (!normalizedCountry) {
       throw new Error('Please select a valid country.')
@@ -2113,7 +2123,9 @@ function OrderFlowInner({
       currency: quoteForOrder.currency || currency,
       ...(offerId ? { offer_id: offerId } : {}),
       ...(quoteForOrder?.quote_id ? { quote_id: quoteForOrder.quote_id } : {}),
-      ...(selectedDeliveryOption ? { selected_delivery_option: selectedDeliveryOption } : {}),
+      ...(quotedDeliveryOptionRef.current
+        ? { selected_delivery_option: quotedDeliveryOptionRef.current }
+        : {}),
       metadata: {
         ...(buyerRef ? { buyer_ref: buyerRef } : {}),
         ...(jobId ? { job_id: jobId } : {}),
