@@ -2422,11 +2422,19 @@ function OrderFlowInner({
     router.push(successPath || `/orders/${targetOrderId}?paid=1`)
   }
 
-  const handleStripeConfirmationResult = async (result: {
-    error?: string
-    status?: string
-    paymentIntentId?: string
-  }) => {
+  const handleStripeConfirmationResult = async (
+    result: {
+      error?: string
+      status?: string
+      paymentIntentId?: string
+    },
+    // runPayment can create — or, on the quote-drift path, RE-create — the order inside the very
+    // click that ends here, so `createdOrderId` state is still the pre-click value: either '' (no
+    // order yet) or the id of the order the drift handler just abandoned. Completing that id would
+    // settle the WRONG order. Callers holding a freshly created id must pass it; the express-
+    // checkout caller has no such race and keeps using state.
+    orderIdOverride?: string,
+  ) => {
     if (!result) {
       throw new Error('Payment form is not ready. Please refresh and try again.')
     }
@@ -2435,7 +2443,7 @@ function OrderFlowInner({
       throw new Error('Payment failed. Please check the payment details or try again.')
     }
 
-    const activeOrderId = String(createdOrderId || '').trim()
+    const activeOrderId = String(orderIdOverride || createdOrderId || '').trim()
     if (!activeOrderId) {
       throw new Error('Order is missing. Please refresh and try again.')
     }
@@ -3265,6 +3273,17 @@ function OrderFlowInner({
           if (!stripeReturnUrl) {
             throw new Error('Payment return URL is missing. Please refresh and try again.')
           }
+          // The card form renders only once `stripePublishableKey` is in STATE (see the
+          // <StripePaymentSection> gate). Whenever the guard above had to fall back to the freshly
+          // resolved key, state does NOT hold it yet, <Elements> has not mounted, and the buyer has
+          // never seen a card field — so there is nothing to confirm. Pushing on from here makes
+          // Stripe reject an empty form and reports "check your payment details", blaming the buyer
+          // for our own ordering problem. Surface the form and ask for one more click instead.
+          if (!stripePaymentSectionRef.current) {
+            setIsProcessing(false)
+            toast.message('Payment details are ready — press Pay to complete your order.')
+            return
+          }
           // CRITICAL (money path): confirm the EXACT PaymentIntent the Stripe Element is mounted on.
           // The Element is created with options.clientSecret = stripeClientSecretForRender (the order's
           // create-order PaymentIntent); the buyer's card is collected into THAT PI. If we instead confirm
@@ -3290,6 +3309,7 @@ function OrderFlowInner({
           })
           await handleStripeConfirmationResult(
             stripeResult || { error: 'Payment form is not ready. Please refresh and try again.' },
+            orderId,
           )
           return
         }

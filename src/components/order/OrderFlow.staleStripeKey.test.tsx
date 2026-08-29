@@ -83,7 +83,11 @@ function quotePayload(quoteId: string) {
 // Mirrors the real confirm_payment/submit_payment body observed in production: the buyer's
 // browser owns confirmation, so OrderFlow must route into the Stripe client-confirmation branch
 // rather than settling the order server-side. Getting this shape wrong makes the regression
-// assertion below vacuous.
+// assertions below vacuous.
+//
+// On `public_key`: the production body captured from agent.pivota.cc carried none — the key
+// reaches the client on the create_order response. Both shapes are exercised here because
+// `resolveStripePublishableKey` accepts either, and the guard must hold for both.
 function paymentPendingResponse(clientSecret: string) {
   return {
     status: 'pending',
@@ -102,6 +106,23 @@ function paymentPendingResponse(clientSecret: string) {
       supported_in_shopping_ui: true,
     },
   }
+}
+
+// POSITIVE counterpart to the `not.toHaveBeenCalledWith(MISSING_KEY_MESSAGE)` assertions below.
+// Without this, an unrelated failure ANYWHERE earlier in the click (a throw before the Stripe
+// branch, a bail-out in create_order, a settled-server-side contract) leaves the negative
+// assertion trivially true and the whole file green while the guard it exists to protect never
+// runs. Both messages below are emitted only AFTER the publishable-key guard has passed:
+//   - the ready prompt, when the card form is not mounted yet;
+//   - the confirmation failure, when it is mounted and Stripe rejects the empty/unmocked form.
+function expectClickReachedStripeConfirmation() {
+  const sawReadyPrompt = toastMessageMock.mock.calls.some((call) =>
+    String(call[0] ?? '').includes('press Pay to complete your order'),
+  )
+  const sawConfirmationAttempt = toastErrorMock.mock.calls.some((call) =>
+    String(call[0] ?? '').includes('Payment failed'),
+  )
+  expect(sawReadyPrompt || sawConfirmationAttempt).toBe(true)
 }
 
 function quoteDriftError() {
@@ -139,9 +160,10 @@ function fillShippingForm(container: HTMLElement) {
 // still saw '' and blamed the merchant's Stripe connection.
 describe('OrderFlow first-click Stripe runtime', () => {
   beforeEach(() => {
-    // resetAllMocks, not clearAllMocks: every test here queues a `mockRejectedValueOnce` to make
-    // the payment-step prefetch drift, and clearAllMocks leaves that queue intact — an unconsumed
-    // entry then fires inside the NEXT test and makes these order-dependent.
+    // resetAllMocks rather than clearAllMocks: clearAllMocks leaves any unconsumed
+    // `mockRejectedValueOnce` on the queue, where it would fire inside a LATER test. These tests
+    // each consume exactly one, so both work today — reset is the one that stays correct if a
+    // test is later changed to not reach its drift.
     vi.resetAllMocks()
     getMerchantIdMock.mockReturnValue('merchant_checkout')
     vi.spyOn(globalThis, 'fetch').mockResolvedValue({
@@ -196,16 +218,25 @@ describe('OrderFlow first-click Stripe runtime', () => {
 
     // The delivering assertion. Reverting the guard to read the render-scoped
     // `stripePublishableKey` makes this fail: the buyer is told to reconnect Stripe.
+    await waitFor(() => expectClickReachedStripeConfirmation(), { timeout: 10_000 })
     expect(toastErrorMock).not.toHaveBeenCalledWith(MISSING_KEY_MESSAGE)
     expect(toastErrorMock).not.toHaveBeenCalledWith(expect.stringContaining('Reconnect Stripe'))
+
+    // The key only became known during this click, so <Elements> has not mounted and the buyer
+    // has never seen a card field. The click must end on a neutral prompt and NO error at all —
+    // deleting the not-yet-mounted guard makes this fail, because the flow pushes on to Stripe
+    // with an empty form and reports "Payment failed. Please check the payment details".
+    expect(toastMessageMock).toHaveBeenCalledWith(
+      'Payment details are ready — press Pay to complete your order.',
+    )
+    expect(toastErrorMock).not.toHaveBeenCalled()
   }, 30_000)
 
-  // The production submit-payment body carries NO public_key (verified against agent.pivota.cc):
-  // the key reaches the client on the create_order response, and the pay-time call only echoes the
-  // client_secret. syncStripeRuntime therefore has to fall back to the key it applied moments
-  // earlier IN THIS SAME CLICK. Falling back to render state (the pre-fix behaviour) reads '' and
-  // resurrects the bug, so the fallback must come from the ref.
-  it('keeps the key applied earlier in the same click when the pay response omits it', async () => {
+  // At pay time OrderFlow reuses the create_order payment response when one is available
+  // (`getReusableCreatedOrderPayment`), and in production THAT is the response carrying the
+  // publishable key — the submit-payment body captured from agent.pivota.cc has none. So the key
+  // the guard sees comes from the reused create-order response, not from the pay call.
+  it('takes the key from the reused create-order payment response', async () => {
     previewQuoteMock.mockResolvedValue(quotePayload('quote_drift_3'))
     createOrderMock.mockRejectedValueOnce(quoteDriftError())
     createOrderMock.mockResolvedValue({
@@ -216,9 +247,11 @@ describe('OrderFlow first-click Stripe runtime', () => {
         public_key: 'pk_test_from_create_order',
       },
     })
-    const payResponse = paymentPendingResponse('pi_drift_secret_789') as Record<string, any>
-    delete payResponse.payment_action.public_key
-    processPaymentMock.mockResolvedValue(payResponse)
+    // Deliberately keyless AND deliberately poisoned: if OrderFlow ever stops reusing the
+    // create-order response and calls this instead, the test must fail rather than quietly pass.
+    processPaymentMock.mockImplementation(() => {
+      throw new Error('pay-time processPayment should not be reached when create_order is reusable')
+    })
 
     const { container } = render(
       <OrderFlow
@@ -248,6 +281,7 @@ describe('OrderFlow first-click Stripe runtime', () => {
       },
       { timeout: 10_000 },
     )
+    await waitFor(() => expectClickReachedStripeConfirmation(), { timeout: 10_000 })
     expect(toastErrorMock).not.toHaveBeenCalledWith(MISSING_KEY_MESSAGE)
   }, 30_000)
 
@@ -283,12 +317,7 @@ describe('OrderFlow first-click Stripe runtime', () => {
     // so the ONLY thing that was broken on this click was the guard reading a stale const. The
     // click must therefore reach Stripe confirmation on the mounted element instead of aborting.
     expect(await screen.findByTestId('payment-element', {}, { timeout: 10_000 })).toBeInTheDocument()
-    await waitFor(
-      () => {
-        expect(processPaymentMock).toHaveBeenCalled()
-      },
-      { timeout: 10_000 },
-    )
+    await waitFor(() => expectClickReachedStripeConfirmation(), { timeout: 10_000 })
     expect(toastErrorMock).not.toHaveBeenCalledWith(MISSING_KEY_MESSAGE)
   }, 30_000)
 })
