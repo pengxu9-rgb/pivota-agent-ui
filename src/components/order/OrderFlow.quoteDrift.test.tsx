@@ -2,7 +2,7 @@ import React from 'react'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import OrderFlow from './OrderFlow'
+import OrderFlow, { pickDefaultDeliveryOption } from './OrderFlow'
 
 const previewQuoteMock = vi.fn()
 const createOrderMock = vi.fn()
@@ -67,6 +67,8 @@ const STANDARD_OPTION = {
   amount: 8,
   currency: 'USD',
   estimated_days: '3-5',
+  estimatedCost: { amount: '8.00', currencyCode: 'USD' },
+  delivery_group_id: 'dg_1',
 }
 const EXPRESS_OPTION = {
   id: 'express',
@@ -75,6 +77,8 @@ const EXPRESS_OPTION = {
   amount: 18,
   currency: 'USD',
   estimated_days: '1-2',
+  estimatedCost: { amount: '18.00', currencyCode: 'USD' },
+  delivery_group_id: 'dg_1',
 }
 
 // A fresh quote_id per call, as the backend does. Reusing one makes buildPaymentInitKeyForQuote
@@ -87,7 +91,7 @@ function nextQuotePayload() {
     currency: 'USD',
     pricing: { subtotal: 23, shipping_fee: 8, tax: 0, total: 31 },
     line_items: [{ variant_id: 'var_123', unit_price_effective: 23 }],
-    delivery_options: [STANDARD_OPTION, EXPRESS_OPTION],
+    delivery_options: [EXPRESS_OPTION, STANDARD_OPTION],
   }
 }
 
@@ -178,10 +182,14 @@ describe('OrderFlow quote/order delivery-option alignment', () => {
     // options at all — i.e. trimming `delivery_options` would silently disarm the regression.
     const select = (await screen.findByRole('combobox')) as HTMLSelectElement
     expect(select.options.length).toBe(2)
-    // The <select> value is the index of the option matching `selectedDeliveryOption`, so '0'
-    // proves the display-only auto-select of opts[0] — the exact state whose leak WAS the bug —
-    // really fired before create_order ran.
-    expect(select.value).toBe('0')
+    // The fixture lists Express($18) FIRST, as Shopify's deliveryGroups order does — it is not
+    // sorted by price. The backend priced this quote with the CHEAPEST option, so the UI must be
+    // showing Standard (index 1). Defaulting to options[0] would label the checkout "Express"
+    // while the buyer is charged for, and shipped, Standard.
+    expect(select.value).toBe('1')
+    expect(select.options[Number(select.value)].textContent).toContain('Standard')
+    // Anti-vacuity: proves the auto-select actually ran rather than leaving nothing selected.
+    expect(select.value).not.toBe('')
 
     const quoteReq = previewQuoteMock.mock.calls[0][0] as Record<string, unknown>
     const orderReq = createOrderMock.mock.calls[0][0] as Record<string, unknown>
@@ -208,7 +216,10 @@ describe('OrderFlow quote/order delivery-option alignment', () => {
     // carry it. Simply never sending selected_delivery_option would break checkout in the mirror
     // direction — the quote priced with an option, the order without — and this is what catches it.
     const select = (await screen.findByRole('combobox')) as HTMLSelectElement
-    fireEvent.change(select, { target: { value: '1' } })
+    const expressIdx = String(
+      Array.from(select.options).findIndex((o) => (o.textContent || '').includes('Express')),
+    )
+    fireEvent.change(select, { target: { value: expressIdx } })
 
     await waitFor(() => expect(previewQuoteMock.mock.calls.length).toBeGreaterThanOrEqual(2), {
       timeout: 10_000,
@@ -223,4 +234,23 @@ describe('OrderFlow quote/order delivery-option alignment', () => {
     expect(lastQuoteReq.selected_delivery_option).toEqual(EXPRESS_OPTION)
     expect(lastOrderReq.selected_delivery_option).toEqual(EXPRESS_OPTION)
   }, 30_000)
+
+  it('defaults to the option the backend prices, not to Shopify list order', () => {
+    // Pure-function guard on the rule itself, independent of the component: the backend's
+    // "else pick cheapest" branch sorts on estimatedCost.amount.
+    expect(pickDefaultDeliveryOption([EXPRESS_OPTION, STANDARD_OPTION])).toBe(STANDARD_OPTION)
+    expect(pickDefaultDeliveryOption([STANDARD_OPTION, EXPRESS_OPTION])).toBe(STANDARD_OPTION)
+    // The REAL Shopify option shape carries ONLY estimatedCost.amount — no flat `amount` — so the
+    // rule has to read it. A fixture that also sets `amount` would pass even if that accessor were
+    // dropped, which is exactly the shape the backend sends us.
+    const shopifyExpress = { handle: 'express', estimatedCost: { amount: '18.00', currencyCode: 'USD' } }
+    const shopifyStandard = { handle: 'standard', estimatedCost: { amount: '8.00', currencyCode: 'USD' } }
+    expect(pickDefaultDeliveryOption([shopifyExpress, shopifyStandard])).toBe(shopifyStandard)
+
+    // Ties keep the earlier option, matching Python's stable sorted(...)[0].
+    const tieA = { handle: 'a', estimatedCost: { amount: '5.00' } }
+    const tieB = { handle: 'b', estimatedCost: { amount: '5.00' } }
+    expect(pickDefaultDeliveryOption([tieA, tieB])).toBe(tieA)
+    expect(pickDefaultDeliveryOption([])).toBeNull()
+  })
 })

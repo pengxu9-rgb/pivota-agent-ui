@@ -1299,6 +1299,33 @@ function isRetryableQuoteError(err: any): boolean {
   )
 }
 
+// The backend applies `sorted(options, key=estimatedCost.amount)[0]` — the CHEAPEST — whenever the
+// client sends no selected_delivery_option (services/shopify_storefront_pricing_service.py, the
+// "else pick cheapest" branch). Delivery options reach us in Shopify's deliveryGroups order, which
+// is NOT sorted by price, so defaulting the UI to options[0] can label the checkout with a method
+// the buyer is neither charged for nor shipped. Default to the same option the backend priced.
+export function deliveryOptionCostAmount(opt: any): number {
+  const raw =
+    opt?.estimatedCost?.amount ??
+    opt?.estimated_cost?.amount ??
+    opt?.price ??
+    opt?.amount ??
+    opt?.cost ??
+    opt?.shipping_fee
+  const parsed = Number(raw)
+  return Number.isFinite(parsed) ? parsed : Number.POSITIVE_INFINITY
+}
+
+// Mirrors Python's stable sort: on a tie the earlier option wins, as `sorted(...)[0]` would.
+export function pickDefaultDeliveryOption(options: any[]): any {
+  if (!Array.isArray(options) || options.length === 0) return null
+  let best = options[0]
+  for (let i = 1; i < options.length; i += 1) {
+    if (deliveryOptionCostAmount(options[i]) < deliveryOptionCostAmount(best)) best = options[i]
+  }
+  return best
+}
+
 function isQuoteDrift(err: any): boolean {
   const code = String(err?.code || '').trim().toUpperCase()
   return code === 'QUOTE_EXPIRED' || code === 'QUOTE_MISMATCH'
@@ -1971,7 +1998,7 @@ function OrderFlowInner({
     const opts = Array.isArray(normalized.delivery_options) ? normalized.delivery_options : []
     if (opts.length > 0) {
       if (deliveryOptionOverride) setSelectedDeliveryOption(deliveryOptionOverride)
-      else setSelectedDeliveryOption((prev: any) => prev || opts[0] || null)
+      else setSelectedDeliveryOption((prev: any) => prev || pickDefaultDeliveryOption(opts))
     } else {
       setSelectedDeliveryOption(null)
     }
