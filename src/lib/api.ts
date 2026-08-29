@@ -11,6 +11,7 @@ import { formatDescriptionText } from '@/features/pdp/utils/formatDescriptionTex
 import type { Offer, RecommendationsData } from '@/features/pdp/types'
 import { normalizeDisplayImageUrl } from '@/lib/displayImage'
 import { isExternalAliasOnlyProduct } from '@/lib/productHref'
+import { extractMoneyCurrency, extractPositivePriceAmount } from '@/lib/price'
 import type {
   BookingRequest,
   BookingStatus,
@@ -171,6 +172,11 @@ function normalizeUiProductList(products: unknown): ProductResponse[] {
     }))
     .filter(({ raw, product }) => isUiLinkableProduct(product, raw))
     .map(({ product }) => product);
+}
+
+function hasCanonicalDisplayPrice(product: ProductResponse): boolean {
+  const price = Number(product?.price);
+  return Number.isFinite(price) && price > 0 && Boolean(String(product?.currency || '').trim());
 }
 
 type ApiError = Error & { code?: string; status?: number; detail?: any };
@@ -605,16 +611,28 @@ export function normalizeProduct(
 ): ProductResponse {
   const anyP = p as any;
   const rawPrice = anyP.price;
+  const priceCandidates = [
+    rawPrice,
+    anyP.pricing,
+    anyP.price_amount,
+    anyP.current_price,
+    anyP.sale_price,
+    anyP.min_price,
+    anyP.offer_price,
+  ];
+  // Search cards and PDPs can both carry Money objects, but search results
+  // commonly use the PDP-style `{ current: { amount, currency } }` shape.
+  // Keep one tolerant parser here so a valid nested price never becomes $0
+  // before it reaches the chat card.
+  let priceSource: unknown = rawPrice;
   let normalizedPrice = 0;
-
-  if (typeof rawPrice === 'number') {
-    normalizedPrice = rawPrice;
-  } else if (typeof rawPrice === 'string') {
-    normalizedPrice = Number(rawPrice) || 0;
-  } else if (rawPrice && typeof rawPrice.amount === 'number') {
-    normalizedPrice = rawPrice.amount;
-  } else if (rawPrice && typeof rawPrice.amount === 'string') {
-    normalizedPrice = Number(rawPrice.amount) || 0;
+  for (const candidate of priceCandidates) {
+    const price = extractPositivePriceAmount(candidate);
+    if (price > 0) {
+      normalizedPrice = price;
+      priceSource = candidate;
+      break;
+    }
   }
 
   // Fallback: try variant price when main price is missing/zero
@@ -623,22 +641,45 @@ export function normalizeProduct(
     Array.isArray(anyP.variants) &&
     anyP.variants.length > 0
   ) {
-    const variantWithPrice = anyP.variants.find(
-      (v: any) => typeof v?.price !== 'undefined',
-    );
-    const variantPrice = variantWithPrice?.price;
-    if (typeof variantPrice === 'number') {
-      normalizedPrice = variantPrice;
-    } else if (typeof variantPrice === 'string') {
-      normalizedPrice = Number(variantPrice) || normalizedPrice;
+    for (const variant of anyP.variants) {
+      const variantPrice = extractPositivePriceAmount(
+        variant?.price ?? variant?.pricing ?? variant?.price_amount ?? variant?.current_price,
+      );
+      if (variantPrice > 0) {
+        normalizedPrice = variantPrice;
+        priceSource = variant?.price ?? variant?.pricing ?? variant?.price_amount ?? variant?.current_price;
+        break;
+      }
+    }
+  }
+
+  // A compact search card can omit its canonical price while retaining seller
+  // offers. Use the preferred offer (then the first priced one) instead of
+  // turning an otherwise priced product into $0.
+  if (normalizedPrice <= 0 && Array.isArray(anyP.offers)) {
+    const preferredOfferIds = [anyP.best_price_offer_id, anyP.default_offer_id]
+      .map((value) => String(value || '').trim())
+      .filter(Boolean);
+    const offers = [
+      ...preferredOfferIds.map((id) => anyP.offers.find((offer: any) => String(offer?.offer_id || offer?.id || '').trim() === id)),
+      ...anyP.offers,
+    ].filter((offer, index, list) => Boolean(offer) && list.indexOf(offer) === index);
+    for (const offer of offers) {
+      const offerPrice = offer?.price ?? offer?.pricing ?? offer?.price_amount ?? offer?.current_price;
+      const price = extractPositivePriceAmount(offerPrice);
+      if (price > 0) {
+        normalizedPrice = price;
+        priceSource = offerPrice;
+        break;
+      }
     }
   }
 
   const normalizedCurrency =
     anyP.currency ||
-    rawPrice?.currency ||
-    rawPrice?.currency_code ||
-    'USD';
+    anyP.price_currency ||
+    anyP.priceCurrency ||
+    extractMoneyCurrency(priceSource, 'USD');
 
   const getImageCandidate = (value: unknown): string => {
     if (!value) return '';
@@ -2527,7 +2568,10 @@ export async function sendMessage(
     { signal: options?.signal },
   );
 
-  const products = normalizeUiProductList((data as any).products);
+  // The gateway contract requires a canonical price or seller offer. Keep the
+  // chat surface strict as a rollout guard so an older gateway cannot reintroduce
+  // $0 cards before the server-side contract is deployed everywhere.
+  const products = normalizeUiProductList((data as any).products).filter(hasCanonicalDisplayPrice);
   const metadata =
     data && typeof data === 'object' && data.metadata && typeof (data as any).metadata === 'object'
       ? ((data as any).metadata as Record<string, any>)

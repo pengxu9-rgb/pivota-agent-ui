@@ -151,7 +151,9 @@ function formatMessageTime(id: string): string {
 
 function formatPriceLabel(price: unknown, currency?: string): string {
   const amount = typeof price === 'number' ? price : Number(price);
-  if (!Number.isFinite(amount)) return '';
+  // A zero here means the search response did not provide a usable sell price,
+  // not that the product is free. Do not advertise it as "$0" in chat.
+  if (!Number.isFinite(amount) || amount <= 0) return '';
   const symbol = currency && currency.toUpperCase() !== 'USD' ? currency.toUpperCase() + ' ' : '$';
   return `${symbol}${amount % 1 === 0 ? amount.toFixed(0) : amount.toFixed(2)}`;
 }

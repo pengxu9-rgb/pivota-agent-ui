@@ -55,4 +55,78 @@ describe('sendMessage conversation context', () => {
       { id: '3', role: 'user', content: 'fragrance', timestamp: '2026-05-10T00:01:00Z' },
     ]);
   });
+
+  it('preserves PDP-style Money prices through the chat search result path', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      jsonResponse({
+        products: [
+          {
+            product_id: 'knight_unicorn_satin_blush',
+            merchant_id: 'merchant_1',
+            title: 'Knight Unicorn Satin Blush',
+            image_url: 'https://example.com/knight-unicorn.png',
+            price: { current: { amount: 24, currency: 'USD' } },
+          },
+        ],
+        metadata: {},
+      }),
+    );
+
+    const { sendMessage } = await import('./api');
+    const result = await sendMessage('knight unicorn');
+
+    expect(result.products).toHaveLength(1);
+    expect(result.products[0]).toMatchObject({
+      title: 'Knight Unicorn Satin Blush',
+      price: 24,
+      currency: 'USD',
+    });
+  });
+
+  it('retains alternate compact-search price fields instead of returning $0', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      jsonResponse({
+        products: [
+          {
+            product_id: 'price_amount_search_card',
+            merchant_id: 'merchant_1',
+            title: 'Price Amount Search Card',
+            image_url: 'https://example.com/price-amount.png',
+            price: 0,
+            price_amount: '1,299.50',
+            price_currency: 'EUR',
+          },
+        ],
+        metadata: {},
+      }),
+    );
+
+    const { sendMessage } = await import('./api');
+    const result = await sendMessage('price amount search card');
+
+    expect(result.products[0]).toMatchObject({ price: 1299.5, currency: 'EUR' });
+  });
+
+  it('drops a chat card that violates the canonical-price search contract', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      jsonResponse({
+        products: [
+          {
+            product_id: 'unpriced_search_card',
+            merchant_id: 'merchant_1',
+            title: 'Unpriced Search Card',
+            image_url: 'https://example.com/unpriced.png',
+            price: 0,
+            currency: 'USD',
+          },
+        ],
+        metadata: {},
+      }),
+    );
+
+    const { sendMessage } = await import('./api');
+    const result = await sendMessage('unpriced search card');
+
+    expect(result.products).toEqual([]);
+  });
 });
