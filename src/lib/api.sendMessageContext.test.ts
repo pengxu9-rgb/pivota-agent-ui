@@ -54,6 +54,7 @@ describe('sendMessage conversation context', () => {
       { id: '2', role: 'assistant', content: 'I found Tom Ford fragrance options.' },
       { id: '3', role: 'user', content: 'fragrance', timestamp: '2026-05-10T00:01:00Z' },
     ]);
+    expect(body.payload.search.in_stock_only).toBe(true);
   });
 
   it('preserves PDP-style Money prices through the chat search result path', async () => {
