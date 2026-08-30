@@ -309,9 +309,13 @@ function SuccessContent() {
     let active = true
 
     const runFollowUpPolling = async () => {
-      for (let attempt = 0; attempt < 8; attempt += 1) {
+      for (let attempt = 0; active; attempt += 1) {
+        // Poll quickly while the payment webhook normally settles, then keep a
+        // low-frequency recovery loop running for slower merchant callbacks.
+        // The UI promises automatic recovery, so it must not silently stop.
+        const delayMs = attempt < 8 ? 1200 : 10_000
         await new Promise<void>((resolve) => {
-          window.setTimeout(resolve, 1200)
+          window.setTimeout(resolve, delayMs)
         })
         if (!active) return
 
