@@ -310,4 +310,48 @@ describe('Order success action layout', () => {
     expect(pollOrderStatusUntilSettledMock).toHaveBeenCalledTimes(2);
     expect(screen.getByRole('heading', { name: /order successful/i })).toBeInTheDocument();
   });
+
+  it('continues low-frequency recovery after the fast polling window expires', async () => {
+    vi.useFakeTimers();
+    searchParamsValue = 'orderId=ord_123&finalizing=1';
+    confirmPaymentWithRetryMock.mockResolvedValueOnce({
+      status: 'pending',
+      attempts: 1,
+      paymentStatus: null,
+      lastError: new Error('temporary'),
+    });
+
+    const pendingResult = {
+      status: 'pending' as const,
+      polls: 3,
+      paymentStatus: 'pending',
+      lastError: null,
+    };
+    for (let attempt = 0; attempt < 9; attempt += 1) {
+      pollOrderStatusUntilSettledMock.mockResolvedValueOnce(pendingResult);
+    }
+    pollOrderStatusUntilSettledMock.mockResolvedValueOnce({
+      status: 'confirmed',
+      polls: 1,
+      paymentStatus: 'paid',
+      lastError: null,
+    });
+
+    render(<OrderSuccessPage />);
+    await flushAsyncWork();
+
+    expect(pollOrderStatusUntilSettledMock).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(8 * 1200);
+    await flushAsyncWork();
+
+    expect(pollOrderStatusUntilSettledMock).toHaveBeenCalledTimes(9);
+    expect(screen.getByRole('heading', { name: /confirming payment/i })).toBeInTheDocument();
+
+    await vi.advanceTimersByTimeAsync(10_000);
+    await flushAsyncWork();
+
+    expect(pollOrderStatusUntilSettledMock).toHaveBeenCalledTimes(10);
+    expect(screen.getByRole('heading', { name: /order successful/i })).toBeInTheDocument();
+  });
 });
