@@ -2545,8 +2545,9 @@ export async function sendMessage(
       operation: 'find_products_multi',
       payload: {
         search: {
-          // Cross-merchant search by default; optional explicit merchant scope still supported.
-          in_stock_only: false, // allow showing results even if inventory is zero for demo
+          // Chat recommendations should be immediately actionable. The gateway
+          // still permits unknown inventory, but excludes explicit OOS cards.
+          in_stock_only: true,
           query,
           limit: requestedLimit,
           page: requestedPage,
