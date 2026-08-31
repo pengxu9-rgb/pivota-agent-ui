@@ -179,15 +179,18 @@ export default function CartDrawer() {
                 </div>
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-muted-foreground">Shipping</span>
-                  <span className="font-semibold text-success">FREE</span>
+                  <span className="font-medium text-muted-foreground">Calculated at checkout</span>
                 </div>
                 <div className="h-px bg-border" />
                 <div className="flex items-center justify-between">
-                  <span className="text-lg font-bold">Total</span>
+                  <span className="text-lg font-bold">Estimated total</span>
                   <span className="text-lg font-bold text-primary">
                     ${getTotal().toFixed(2)}
                   </span>
                 </div>
+                <p className="text-xs leading-relaxed text-muted-foreground">
+                  Final shipping is calculated by the merchant after you enter your delivery address.
+                </p>
 
                 <Button
                   variant="gradient"
