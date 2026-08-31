@@ -25,14 +25,32 @@ export const IMAGE_REMOTE_HOSTS = [
   'www.guerlain.com',
   'static.wixstatic.com',
   'images.unsplash.com',
-  // Review media is signed and served by the backend public host.
-  'web-production-fedb.up.railway.app',
-  'pivota-agent-production.up.railway.app',
-  // Pivota-owned equivalents, kept ALONGSIDE the Railway hosts for the migration
-  // window: image URLs already persisted in catalog rows still carry the old host.
+  // Review media and catalog image cache are served from these stable public hosts.
   'api.pivota.cc',
   'gateway.pivota.cc',
 ];
+
+const LEGACY_PIVOTA_IMAGE_HOST_ALIASES = new Map([
+  ['web-production-fedb.up.railway.app', 'api.pivota.cc'],
+  ['pivota-agent-production.up.railway.app', 'gateway.pivota.cc'],
+]);
+
+/**
+ * Catalog rows can retain retired PaaS image URLs long after traffic moves.
+ * Preserve the path and query while swapping only known former Pivota hosts to
+ * their stable public equivalents; never proxy a request back to Railway.
+ */
+export function rewriteLegacyPivotaImageUrl(absoluteUrl) {
+  try {
+    const parsed = new URL(String(absoluteUrl || ''));
+    const replacement = LEGACY_PIVOTA_IMAGE_HOST_ALIASES.get(parsed.hostname.toLowerCase());
+    if (!replacement) return parsed.toString();
+    parsed.hostname = replacement;
+    return parsed.toString();
+  } catch {
+    return String(absoluteUrl || '').trim();
+  }
+}
 
 /**
  * Exact-hostname match only — deliberately NOT a suffix match.

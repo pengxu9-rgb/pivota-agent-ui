@@ -26,7 +26,7 @@ describe('/api/ucp/checkout-sessions', () => {
   });
 
   it('mints offer ids and creates a UCP checkout session for eligible carts', async () => {
-    vi.stubEnv('UCP_WEB_BASE_URL', 'https://ucp.example.com');
+    vi.stubEnv('UCP_WEB_BASE_URL', 'https://gateway.pivota.cc');
     vi.stubEnv('UCP_INTERNAL_OFFER_MINT_KEY', 'internal_key');
 
     const fetchMock = vi
@@ -83,7 +83,7 @@ describe('/api/ucp/checkout-sessions', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
 
     const [mintUrl, mintInit] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(mintUrl).toBe('https://ucp.example.com/internal/ucp/mint-offer');
+    expect(mintUrl).toBe('https://gateway.pivota.cc/internal/ucp/mint-offer');
     expect((mintInit.headers as Record<string, string>)['x-pivota-internal-key']).toBe(
       'internal_key',
     );
@@ -99,7 +99,7 @@ describe('/api/ucp/checkout-sessions', () => {
 
     const [createUrl, createInit] = fetchMock.mock.calls[1] as [string, RequestInit];
     expect(createUrl).toBe(
-      'https://ucp.example.com/ucp/v1/checkout-sessions?return=%2Fproducts%3Fq%3Dkravebeauty',
+      'https://gateway.pivota.cc/ucp/v1/checkout-sessions?return=%2Fproducts%3Fq%3Dkravebeauty',
     );
     expect(JSON.parse(String(createInit.body))).toEqual({
       currency: 'USD',
@@ -159,11 +159,11 @@ describe('/api/ucp/checkout-sessions', () => {
   });
 
   it('uses the default UCP agent profile env when the client does not send one', async () => {
-    vi.stubEnv('UCP_WEB_BASE_URL', 'https://ucp.example.com');
+    vi.stubEnv('UCP_WEB_BASE_URL', 'https://gateway.pivota.cc');
     vi.stubEnv('UCP_INTERNAL_OFFER_MINT_KEY', 'internal_key');
     vi.stubEnv(
       'UCP_AGENT_PROFILE_URL',
-      'https://ucp-web-production-production.up.railway.app/_dev/platform-profile.json',
+      'https://gateway.pivota.cc/.well-known/ucp',
     );
 
     const fetchMock = vi
@@ -206,7 +206,7 @@ describe('/api/ucp/checkout-sessions', () => {
 
     const [, createInit] = fetchMock.mock.calls[1] as [string, RequestInit];
     expect((createInit.headers as Record<string, string>)['UCP-Agent']).toBe(
-      'profile="https://ucp-web-production-production.up.railway.app/_dev/platform-profile.json"',
+      'profile="https://gateway.pivota.cc/.well-known/ucp"',
     );
   });
 

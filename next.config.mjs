@@ -6,12 +6,25 @@ import { IMAGE_REMOTE_HOSTS } from "./src/lib/imageRemoteHosts.mjs";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+function stablePivotaServiceBase(value, fallback) {
+  const normalized = String(value || '').trim().replace(/\/$/, '');
+  if (!normalized) return fallback;
+  try {
+    const host = new URL(normalized).hostname.toLowerCase();
+    if (host === 'localhost' || host === '127.0.0.1' || host === 'pivota.cc' || host.endsWith('.pivota.cc')) {
+      return normalized;
+    }
+  } catch {
+    // Use the known-good gateway default below.
+  }
+  return fallback;
+}
+
 /** @type {import('next').NextConfig} */
-const UCP_WEB_BASE_URL =
-  (process.env.UCP_WEB_BASE_URL || 'https://gateway.pivota.cc').replace(
-    /\/$/,
-    '',
-  )
+const UCP_WEB_BASE_URL = stablePivotaServiceBase(
+  process.env.UCP_WEB_BASE_URL,
+  'https://gateway.pivota.cc',
+)
 // UCP identity cleanup (2026-07-23): /.well-known/ucp now serves the safety-kernel
 // profile from the GATEWAY (merchant_of_record:false, commerce_index_passthrough —
 // the mid-man identity), not the legacy ucp-web creator lane, which was the one
@@ -23,11 +36,10 @@ const UCP_WEB_BASE_URL =
 // (x-service-commit e128a2d58c47), not Railway — so the default now names the gateway
 // instead of a host that no longer resolves. Retiring the creator lane's session
 // RUNTIME (order page) remains a separate decision; this only fixes the fallback.
-const UCP_DISCOVERY_BASE_URL =
-  (process.env.UCP_DISCOVERY_BASE_URL || 'https://gateway.pivota.cc').replace(
-    /\/$/,
-    '',
-  )
+const UCP_DISCOVERY_BASE_URL = stablePivotaServiceBase(
+  process.env.UCP_DISCOVERY_BASE_URL,
+  'https://gateway.pivota.cc',
+)
 const REVIEWS_UPSTREAM_BASE_URL = (
   process.env.NEXT_PUBLIC_REVIEWS_API_URL ||
   process.env.NEXT_PUBLIC_REVIEWS_BACKEND_URL ||

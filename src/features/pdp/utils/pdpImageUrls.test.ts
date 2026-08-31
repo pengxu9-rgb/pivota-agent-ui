@@ -94,16 +94,21 @@ describe('normalizePdpImageUrl', () => {
     ).toBe(false);
   });
 
-  it('bypasses the Next image optimizer for Pivota catalog image cache assets', () => {
+  it('rewrites a retired catalog-image host before deciding to bypass the optimizer', () => {
     expect(
       shouldBypassNextImageOptimizer(
         'https://pivota-agent-production.up.railway.app/catalog-image-cache/4f/4f5867bf9011ada573a9d7ed588a76f63617aa39828d962deeeef0a82d512d92.avif',
       ),
     ).toBe(true);
+    expect(
+      normalizePdpImageUrl(
+        'https://pivota-agent-production.up.railway.app/catalog-image-cache/4f/4f5867bf9011ada573a9d7ed588a76f63617aa39828d962deeeef0a82d512d92.avif',
+      ),
+    ).toBe(
+      'https://gateway.pivota.cc/catalog-image-cache/4f/4f5867bf9011ada573a9d7ed588a76f63617aa39828d962deeeef0a82d512d92.avif',
+    );
   });
 
-  // The Railway case above must KEEP passing: catalog rows persisted before the rename still carry
-  // that host. This pins the Pivota-owned name that newly minted URLs use.
   it('bypasses the optimizer for catalog image cache assets on gateway.pivota.cc', () => {
     expect(
       shouldBypassNextImageOptimizer(

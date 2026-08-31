@@ -33,21 +33,11 @@ const MOVING_HOST = /(?:[\w-]+\.)*(?:railway\.app|run\.app)/;
  */
 const ALLOWLIST: Array<{ file: string; reason: string }> = [
   {
-    file: 'src/lib/returnUrl.ts',
-    reason:
-      'DENYLIST, not a target: safeReturnUrl explicitly rejects *.railway.app so the PaaS ' +
-      'wildcard cannot be used as an open-redirect. Removing these strings weakens security.',
-  },
-  {
     file: 'src/lib/imageRemoteHosts.mjs',
     reason:
-      'next/image optimizer ALLOWLIST for image URLs already persisted in catalog rows that ' +
-      'still carry the old host. Not a proxy target — dropping them changes /_next/image ' +
-      'behaviour for stored URLs, which is a separate migration decision.',
-  },
-  {
-    file: 'src/features/pdp/utils/pdpImageUrls.ts',
-    reason: 'Same persisted-image-URL migration window as src/lib/imageRemoteHosts.mjs.',
+      'rewrite-only keys for image URLs already persisted in catalog rows. The retired hosts ' +
+      'are not optimizer allowlist entries or proxy targets; they are replaced with stable ' +
+      'Pivota-owned hosts before any request is built.',
   },
 ];
 

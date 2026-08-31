@@ -174,6 +174,27 @@ function normalizeUiProductList(products: unknown): ProductResponse[] {
     .map(({ product }) => product);
 }
 
+function isCanonicalSigProduct(product: ProductResponse): boolean {
+  return /^sig[_:]/i.test(
+    String(product.pivota_signature_id || product.product_id || '').trim(),
+  );
+}
+
+function normalizeCanonicalCatalogProductList(products: unknown): ProductResponse[] {
+  return (Array.isArray(products) ? products : [])
+    .map((raw: RealAPIProduct | ProductResponse) => ({ raw, product: normalizeProduct(raw) }))
+    .filter(({ raw, product }) => {
+      if (!isCanonicalSigProduct(product)) return false;
+      if (isExternalAliasOnlyProduct(product as any)) return false;
+      // In the canonical contract, a catalog sig with attached offers is the
+      // serving proof. Do not reclassify it as a legacy seed card merely
+      // because its catalog owner is the external_seed observer merchant.
+      if (Array.isArray((raw as any)?.offers) && (raw as any).offers.length > 0) return true;
+      return !isKnownUnservableProduct(raw, product);
+    })
+    .map(({ product }) => product);
+}
+
 function hasCanonicalDisplayPrice(product: ProductResponse): boolean {
   const price = Number(product?.price);
   return Number.isFinite(price) && price > 0 && Boolean(String(product?.currency || '').trim());
@@ -2540,36 +2561,46 @@ export async function sendMessage(
   const requestedPage = Math.max(1, Math.floor(Number(options?.pagination?.page || 1) || 1));
   const requestedLimit = clampSearchLimit(options?.pagination?.limit, 24);
 
-  const data = await callGateway(
-    {
-      operation: 'find_products_multi',
-      payload: {
-        search: {
-          // Chat recommendations should be immediately actionable. The gateway
-          // still permits unknown inventory, but excludes explicit OOS cards.
-          in_stock_only: true,
-          query,
-          limit: requestedLimit,
-          page: requestedPage,
-          allow_external_seed: true,
-          allow_stale_cache: false,
-          external_seed_strategy: 'unified_relevance',
-          ...(merchantIdOverride
-            ? { merchant_id: merchantIdOverride, search_all_merchants: false }
-            : { search_all_merchants: true }),
-        },
-        user: {
-          // Provide lightweight context to stabilize intent/constraint extraction
-          // across follow-up queries. Session history is diagnostics only; the
-          // Agent binds context from conversation-bound messages.
-          ...(userId ? { id: userId } : {}),
-          ...(recentQueries.length ? { session_recent_queries: recentQueries } : {}),
-          ...(conversationId ? { conversation_id: conversationId } : {}),
-        },
-        ...(conversationMessages.length ? { messages: conversationMessages } : {}),
+  const searchPayload = {
+    operation: 'find_products_multi',
+    payload: {
+      search: {
+        // Product identity is always catalog-level. Internal vs external is an
+        // offer attribute and must never select a separate seed-card lane.
+        in_stock_only: true,
+        query,
+        limit: requestedLimit,
+        page: requestedPage,
+        catalog_entity_mode: 'canonical_sig',
+        catalog_surface: 'agent_api',
+        commerce_surface: 'agent_api',
+        allow_external_seed: false,
+        allow_stale_cache: false,
+        ...(merchantIdOverride
+          ? { merchant_id: merchantIdOverride, search_all_merchants: false }
+          : { search_all_merchants: true }),
       },
-      ...(isPlainObject(options?.metadata) ? { metadata: options?.metadata } : {}),
+      user: {
+        // Provide lightweight context to stabilize intent/constraint extraction
+        // across follow-up queries. Session history is diagnostics only; the
+        // Agent binds context from conversation-bound messages.
+        ...(userId ? { id: userId } : {}),
+        ...(recentQueries.length ? { session_recent_queries: recentQueries } : {}),
+        ...(conversationId ? { conversation_id: conversationId } : {}),
+      },
+      ...(conversationMessages.length ? { messages: conversationMessages } : {}),
     },
+    metadata: {
+      ...(isPlainObject(options?.metadata) ? options.metadata : {}),
+      source: 'shopping_agent',
+      ui_source: 'shopping-agent-ui',
+      catalog_surface: 'agent_api',
+      commerce_surface: 'agent_api',
+    },
+  };
+
+  const data = await callGateway(
+    searchPayload,
     { signal: options?.signal },
   );
 
@@ -2577,7 +2608,7 @@ export async function sendMessage(
     data && typeof data === 'object' && data.metadata && typeof (data as any).metadata === 'object'
       ? ((data as any).metadata as Record<string, any>)
       : {};
-  const normalizedProducts = normalizeUiProductList((data as any).products);
+  const normalizedProducts = normalizeCanonicalCatalogProductList((data as any).products);
   // Enforce the contract when the gateway declares it. Older gateway instances
   // can still return useful PDP-linkable cards while they roll forward; keep
   // those visible with no price label rather than turning a real result set
@@ -2586,6 +2617,7 @@ export async function sendMessage(
   const products = gatewayEnforcesCanonicalPriceContract(metadata)
     ? normalizedProducts.filter(hasCanonicalDisplayPrice)
     : normalizedProducts;
+
   const responsePageRaw = Number((data as any)?.page);
   const responsePageSizeRaw = Number((data as any)?.page_size ?? (data as any)?.pageSize);
   const responseTotalRaw = Number((data as any)?.total);
@@ -3071,9 +3103,11 @@ export async function getAllProducts(
       query: '',
       limit: upstreamLimit,
       page,
-      allow_external_seed: true,
+      catalog_entity_mode: 'canonical_sig',
+      catalog_surface: 'agent_api',
+      commerce_surface: 'agent_api',
+      allow_external_seed: false,
       allow_stale_cache: false,
-      external_seed_strategy: 'unified_relevance',
       ...(merchantId
         ? { merchant_id: merchantId, search_all_merchants: false }
         : { search_all_merchants: true }),

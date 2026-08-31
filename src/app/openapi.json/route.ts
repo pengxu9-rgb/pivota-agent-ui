@@ -44,9 +44,11 @@ export async function GET() {
                           query: 'best sunscreen for oily skin',
                           limit: 5,
                           search_all_merchants: true,
-                          allow_external_seed: true,
+                          catalog_entity_mode: 'canonical_sig',
+                          catalog_surface: 'agent_api',
+                          commerce_surface: 'agent_api',
+                          allow_external_seed: false,
                           allow_stale_cache: false,
-                          external_seed_strategy: 'unified_relevance',
                         },
                       },
                       metadata: {
@@ -156,6 +158,12 @@ export async function GET() {
                     merchant_id: { type: 'string' },
                     search_all_merchants: { type: 'boolean' },
                     allow_external_seed: { type: 'boolean' },
+                    catalog_entity_mode: {
+                      type: 'string',
+                      enum: ['canonical_sig'],
+                      description:
+                        'Returns product-catalog sig entities. Internal and external supply is represented in offers.',
+                    },
                     allow_stale_cache: { type: 'boolean' },
                     external_seed_strategy: { type: 'string' },
                     catalog_surface: { type: 'string' },
