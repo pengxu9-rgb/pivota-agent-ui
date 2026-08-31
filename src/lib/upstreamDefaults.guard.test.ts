@@ -123,3 +123,16 @@ describe('buyer upstream default', () => {
     expect(`${DEFAULT_BUYER_BASE}/orders`).toBe('https://api.pivota.cc/buyer/v1/orders');
   });
 });
+
+describe('operator-facing evaluation endpoints', () => {
+  it('documents only stable Pivota-owned production hosts', () => {
+    const evalScript = fs.readFileSync(
+      path.join(REPO_ROOT, 'scripts/eval_find_products_multi.mjs'),
+      'utf8',
+    );
+
+    expect(evalScript).toContain('https://agent.pivota.cc/api/gateway');
+    expect(evalScript).toContain('https://api.pivota.cc/agent/shop/v1/invoke');
+    expect(evalScript).not.toMatch(/https:\/\/[^\s]+(?:railway\.app|run\.app)/);
+  });
+});

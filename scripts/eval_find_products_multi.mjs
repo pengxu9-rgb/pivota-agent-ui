@@ -14,7 +14,7 @@ import readline from 'node:readline';
  * Env:
  *   EVAL_INVOKE_URL   Required. Examples:
  *     - https://agent.pivota.cc/api/gateway              (recommended; uses UI proxy)
- *     - https://web-production-fedb.up.railway.app/agent/shop/v1/invoke
+ *     - https://api.pivota.cc/agent/shop/v1/invoke       (direct backend)
  *     - http://localhost:3000/agent/shop/v1/invoke
  *   EVAL_AGENT_API_KEY     Optional. Used when hitting invoke directly.
  *   EVAL_CHECKOUT_TOKEN    Optional. Used when hitting invoke directly.
