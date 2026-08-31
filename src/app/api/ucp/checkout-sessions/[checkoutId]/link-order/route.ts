@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { safePivotaServiceUrl } from '@/lib/returnUrl';
 
 type RouteParams = { checkoutId: string };
 
@@ -20,7 +21,7 @@ function _isSameOrigin(req: NextRequest): boolean {
 
 function _getUcpWebBaseUrl(): string | null {
   const base = (process.env.UCP_WEB_BASE_URL || '').trim();
-  return base ? base.replace(/\/$/, '') : null;
+  return safePivotaServiceUrl(base ? base.replace(/\/$/, '') : null);
 }
 
 function _getInternalCheckoutHookKey(): string | null {

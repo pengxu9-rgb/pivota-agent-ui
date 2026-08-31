@@ -35,6 +35,17 @@ describe('normalizeDisplayImageUrl', () => {
     expect(normalizeDisplayImageUrl(`${PROXY}${encodeURIComponent(target)}`)).toBe(target);
   });
 
+  it('rewrites retired Pivota image hosts to their stable public equivalents', () => {
+    expect(
+      normalizeDisplayImageUrl(
+        'https://pivota-agent-production.up.railway.app/catalog-image-cache/a/image.avif?width=800',
+      ),
+    ).toBe('https://gateway.pivota.cc/catalog-image-cache/a/image.avif?width=800');
+    expect(
+      normalizeDisplayImageUrl('https://web-production-fedb.up.railway.app/media/review.png'),
+    ).toBe('https://api.pivota.cc/media/review.png');
+  });
+
   it('is idempotent, so ingest-time and render-time normalization cannot stack proxy hops', () => {
     for (const raw of [
       'https://media.ultainc.com/i/ulta/2609862',

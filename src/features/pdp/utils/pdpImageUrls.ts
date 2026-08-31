@@ -1,3 +1,5 @@
+import { rewriteLegacyPivotaImageUrl } from '@/lib/imageRemoteHosts.mjs';
+
 const IMAGE_PROXY_PATH = '/api/image-proxy';
 const ABSOLUTE_HTTP_URL_RE = /^https?:\/\//i;
 const TOM_FORD_SHOPIFY_FILES_BASE = 'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/';
@@ -33,11 +35,6 @@ const DIRECT_REMOTE_IMAGE_HOSTS = [
   'static.wixstatic.com',
   'wixstatic.com',
   'images.unsplash.com',
-  'web-production-fedb.up.railway.app',
-  'pivota-agent-production.up.railway.app',
-  // Pivota-owned names for the same two services. Kept ALONGSIDE the Railway hosts, not
-  // instead of them: image URLs already persisted in catalog rows still carry the old host,
-  // and an unlisted host fails silently (blank image, no error).
   'api.pivota.cc',
   'gateway.pivota.cc',
 ] as const;
@@ -94,10 +91,7 @@ function isDemandwareImageAsset(parsed: URL): boolean {
 function isPivotaCatalogImageCacheAsset(parsed: URL): boolean {
   const pathname = parsed.pathname.toLowerCase();
   return (
-    // Both hosts serve the same gateway during the migration window. Persisted catalog rows carry
-    // the Railway host; newly minted URLs carry the Pivota-owned one.
     isKnownRemoteHost(parsed.hostname, [
-      'pivota-agent-production.up.railway.app',
       'gateway.pivota.cc',
     ]) && pathname.startsWith('/catalog-image-cache/')
   );
@@ -217,7 +211,7 @@ export function normalizePdpImageUrl(rawUrl: unknown): string | null {
   }
 
   try {
-    const normalized = normalizeImageAssetUrl(new URL(unwrapped));
+    const normalized = normalizeImageAssetUrl(new URL(rewriteLegacyPivotaImageUrl(unwrapped)));
     if (shouldUseDirectPdpImageHost(normalized.hostname)) {
       return normalized.toString();
     }

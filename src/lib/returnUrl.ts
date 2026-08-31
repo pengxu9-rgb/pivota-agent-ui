@@ -106,15 +106,10 @@ export function resolveExternalAgentHomeUrl(entry: string | null | undefined): s
   return null
 }
 
-// A UCP agent-profile URL is NOT a browser redirect target, and the two must not share an allowlist.
-// `safeReturnUrl` governs where a buyer's browser is sent after checkout, so it is deliberately
-// narrow. A profile URL is only ever fetched/advertised server-side as an identity document, and
-// today production legitimately serves it from a Railway host (audit R5 — the UCP profile is itself
-// on infrastructure and should move to a pivota.cc name; until it does, tightening this in step with
-// `safeReturnUrl` would break UCP checkout-session creation).
-//
-// Same shape checks, own host policy, so each can move independently.
-export function safeUcpProfileUrl(input: string | null): string | null {
+// Service and UCP profile URLs are server-side destinations, not browser redirect
+// targets. They must still use a stable Pivota-owned hostname: accepting an old
+// PaaS hostname here can silently revive a retired upstream through an env var.
+export function safePivotaServiceUrl(input: string | null | undefined): string | null {
   if (!input) return null
   const trimmed = input.trim()
   if (!trimmed) return null
@@ -126,12 +121,13 @@ export function safeUcpProfileUrl(input: string | null): string | null {
       host === 'localhost' ||
       host === '127.0.0.1' ||
       host === 'pivota.cc' ||
-      host.endsWith('.pivota.cc') ||
-      // TODO(R5): drop once UCP_AGENT_PROFILE_URL moves off the Railway host.
-      host.endsWith('.railway.app') ||
-      host.endsWith('.up.railway.app')
-    return allowed ? u.toString() : null
+      host.endsWith('.pivota.cc')
+    return allowed ? u.toString().replace(/\/+$/, '') : null
   } catch {
     return null
   }
+}
+
+export function safeUcpProfileUrl(input: string | null): string | null {
+  return safePivotaServiceUrl(input)
 }

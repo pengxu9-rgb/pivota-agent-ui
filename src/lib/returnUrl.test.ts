@@ -4,6 +4,7 @@ import {
   appendCurrentPathAsReturn,
   isExternalAgentEntry,
   resolveExternalAgentHomeUrl,
+  safePivotaServiceUrl,
   safeReturnUrl,
 } from './returnUrl';
 
@@ -14,6 +15,15 @@ describe('safeReturnUrl', () => {
 
   it('rejects disallowed hosts', () => {
     expect(safeReturnUrl('https://evil.example.com/path')).toBeNull();
+  });
+});
+
+describe('safePivotaServiceUrl', () => {
+  it('rejects retired PaaS hosts while allowing stable Pivota service URLs', () => {
+    expect(safePivotaServiceUrl('https://gateway.pivota.cc/ucp/v1')).toBe(
+      'https://gateway.pivota.cc/ucp/v1',
+    );
+    expect(safePivotaServiceUrl('https://ucp-web-production-production.up.railway.app')).toBeNull();
   });
 });
 

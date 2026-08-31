@@ -1,4 +1,4 @@
-import { isAllowlistedImageHost } from '@/lib/imageRemoteHosts.mjs';
+import { isAllowlistedImageHost, rewriteLegacyPivotaImageUrl } from '@/lib/imageRemoteHosts.mjs';
 
 const IMAGE_PROXY_PATH = '/api/image-proxy';
 const ABSOLUTE_HTTP_URL_RE = /^https?:\/\//i;
@@ -65,5 +65,5 @@ export function normalizeDisplayImageUrl(
   if (!isDisplayableImageUrl(unwrapped)) return fallback;
   // Relative paths are same-origin already (`/placeholder.svg`, local assets).
   if (!ABSOLUTE_HTTP_URL_RE.test(unwrapped)) return unwrapped;
-  return proxyIfNotDirectlyOptimizable(unwrapped);
+  return proxyIfNotDirectlyOptimizable(rewriteLegacyPivotaImageUrl(unwrapped));
 }

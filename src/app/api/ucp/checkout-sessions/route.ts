@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { safeReturnUrl, safeUcpProfileUrl } from '@/lib/returnUrl';
+import { safePivotaServiceUrl, safeReturnUrl, safeUcpProfileUrl } from '@/lib/returnUrl';
 
 export const runtime = 'nodejs';
 export const preferredRegion = 'home';
@@ -45,9 +45,9 @@ function normalizeBaseUrl(value: string | null | undefined): string | null {
 
 function getUcpBaseUrl(req: NextRequest): string | null {
   return (
-    normalizeBaseUrl(process.env.UCP_WEB_BASE_URL) ||
-    normalizeBaseUrl(process.env.NEXT_PUBLIC_UCP_WEB_BASE_URL) ||
-    normalizeBaseUrl(req.nextUrl.origin)
+    safePivotaServiceUrl(normalizeBaseUrl(process.env.UCP_WEB_BASE_URL)) ||
+    safePivotaServiceUrl(normalizeBaseUrl(process.env.NEXT_PUBLIC_UCP_WEB_BASE_URL)) ||
+    safePivotaServiceUrl(normalizeBaseUrl(req.nextUrl.origin))
   );
 }
 

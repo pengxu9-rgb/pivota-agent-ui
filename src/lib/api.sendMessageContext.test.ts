@@ -55,6 +55,19 @@ describe('sendMessage conversation context', () => {
       { id: '3', role: 'user', content: 'fragrance', timestamp: '2026-05-10T00:01:00Z' },
     ]);
     expect(body.payload.search.in_stock_only).toBe(true);
+    expect(body.payload.search).toMatchObject({
+      catalog_entity_mode: 'canonical_sig',
+      catalog_surface: 'agent_api',
+      commerce_surface: 'agent_api',
+      allow_external_seed: false,
+    });
+    expect(body.payload.search.external_seed_strategy).toBeUndefined();
+    expect(body.metadata).toMatchObject({
+      source: 'shopping_agent',
+      ui_source: 'shopping-agent-ui',
+      catalog_surface: 'agent_api',
+      commerce_surface: 'agent_api',
+    });
   });
 
   it('preserves PDP-style Money prices through the chat search result path', async () => {
@@ -62,7 +75,7 @@ describe('sendMessage conversation context', () => {
       jsonResponse({
         products: [
           {
-            product_id: 'knight_unicorn_satin_blush',
+            product_id: 'sig_knight_unicorn_satin_blush',
             merchant_id: 'merchant_1',
             title: 'Knight Unicorn Satin Blush',
             image_url: 'https://example.com/knight-unicorn.png',
@@ -89,7 +102,7 @@ describe('sendMessage conversation context', () => {
       jsonResponse({
         products: [
           {
-            product_id: 'price_amount_search_card',
+            product_id: 'sig_price_amount_search_card',
             merchant_id: 'merchant_1',
             title: 'Price Amount Search Card',
             image_url: 'https://example.com/price-amount.png',
@@ -113,7 +126,7 @@ describe('sendMessage conversation context', () => {
       jsonResponse({
         products: [
           {
-            product_id: 'unpriced_search_card',
+            product_id: 'sig_unpriced_search_card',
             merchant_id: 'merchant_1',
             title: 'Unpriced Search Card',
             image_url: 'https://example.com/unpriced.png',
@@ -137,7 +150,7 @@ describe('sendMessage conversation context', () => {
       jsonResponse({
         products: [
           {
-            product_id: 'unpriced_search_card',
+            product_id: 'sig_unpriced_search_card',
             merchant_id: 'merchant_1',
             title: 'Unpriced Search Card',
             image_url: 'https://example.com/unpriced.png',
@@ -153,5 +166,44 @@ describe('sendMessage conversation context', () => {
     const result = await sendMessage('unpriced search card');
 
     expect(result.products).toEqual([]);
+  });
+
+  it('renders only canonical sig entities and never retries through a seed-card lane', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      jsonResponse({
+        products: [
+          {
+            product_id: 'sig_ordinary_niacinamide',
+            pivota_signature_id: 'sig_ordinary_niacinamide',
+            merchant_id: 'external_seed',
+            platform: 'external_seed',
+            title: 'The Ordinary Niacinamide 10% + Zinc 1%',
+            price: 6.5,
+            currency: 'USD',
+            offers: [{ offer_id: 'offer_1', catalog_track: 'external_referral' }],
+          },
+          {
+            product_id: 'ext_ordinary_direct_seed',
+            merchant_id: 'external_seed',
+            title: 'Legacy direct seed card',
+            price: 7.5,
+            currency: 'USD',
+          },
+        ],
+        metadata: { catalog_entity_mode: 'canonical_sig' },
+      }),
+    );
+
+    const { sendMessage } = await import('./api');
+    const result = await sendMessage('ordinary');
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(result.products.map((product) => product.product_id)).toEqual([
+      'sig_ordinary_niacinamide',
+    ]);
+    expect(result.products[0].offers?.[0]).toMatchObject({
+      offer_id: 'offer_1',
+      catalog_track: 'external_referral',
+    });
   });
 });

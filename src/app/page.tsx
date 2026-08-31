@@ -1013,7 +1013,7 @@ function AssistantMessageRow({
           <div className="flex items-start gap-2.5 rounded-xl bg-[#E1F5EE] px-3.5 py-2.5">
             <span aria-hidden="true" className="mt-[5px] h-1.5 w-1.5 flex-shrink-0 rounded-full bg-[#1D9E75]" />
             <p className="text-[12px] leading-[1.5] text-[#0F6E56]">
-              Picked these because they match your search and have the strongest in-stock signal.
+              Picked these because they match your search and have the strongest available offer.
               Tap a card for full details, or use the prompts below to refine.
             </p>
           </div>
