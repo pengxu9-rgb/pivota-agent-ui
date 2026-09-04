@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- feed_health=ok urls=8023 serving_eligible=8023 index_only=0 -->
+<!-- feed_health=ok urls=8014 serving_eligible=8014 index_only=0 -->
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://agent.pivota.cc/products/sig_000348608dab8c172868d835c91b3cf4</loc>
@@ -2899,11 +2899,6 @@
   <url>
     <loc>https://agent.pivota.cc/products/sig_11e982e189b4629e79a65c35b20cdb09</loc>
     <lastmod>2026-08-07T02:24:30.244Z</lastmod>
-    <changefreq>weekly</changefreq>
-  </url>
-  <url>
-    <loc>https://agent.pivota.cc/products/sig_11ed5390d7a58e51263342fc7a9b6cc1</loc>
-    <lastmod>2026-08-07T02:06:40.748Z</lastmod>
     <changefreq>weekly</changefreq>
   </url>
   <url>
@@ -9042,11 +9037,6 @@
     <changefreq>weekly</changefreq>
   </url>
   <url>
-    <loc>https://agent.pivota.cc/products/sig_385e1d74df0f232782253f78d60d0072</loc>
-    <lastmod>2026-05-25T13:34:25.148Z</lastmod>
-    <changefreq>weekly</changefreq>
-  </url>
-  <url>
     <loc>https://agent.pivota.cc/products/sig_38655733496a58c0c932ff8a</loc>
     <lastmod>2026-08-07T02:01:11.878Z</lastmod>
     <changefreq>weekly</changefreq>
@@ -10214,11 +10204,6 @@
   <url>
     <loc>https://agent.pivota.cc/products/sig_3fb2bec3103301a011c45336a5c90f0b</loc>
     <lastmod>2026-08-07T02:00:09.841Z</lastmod>
-    <changefreq>weekly</changefreq>
-  </url>
-  <url>
-    <loc>https://agent.pivota.cc/products/sig_3fb34e6dc12b59e47fd44c28b124c62d</loc>
-    <lastmod>2026-08-07T02:05:48.591Z</lastmod>
     <changefreq>weekly</changefreq>
   </url>
   <url>
@@ -13074,11 +13059,6 @@
   <url>
     <loc>https://agent.pivota.cc/products/sig_51cf0f63885fbb0747e0a2a7dc0711ad</loc>
     <lastmod>2026-08-07T02:30:09.788Z</lastmod>
-    <changefreq>weekly</changefreq>
-  </url>
-  <url>
-    <loc>https://agent.pivota.cc/products/sig_51d80dbbea6292d0a5f16e3fc89b1af9</loc>
-    <lastmod>2026-08-07T02:22:54.311Z</lastmod>
     <changefreq>weekly</changefreq>
   </url>
   <url>
@@ -16879,11 +16859,6 @@
   <url>
     <loc>https://agent.pivota.cc/products/sig_6a275aac16c94d1b873980ba7fe7ccc6</loc>
     <lastmod>2026-08-07T02:00:19.407Z</lastmod>
-    <changefreq>weekly</changefreq>
-  </url>
-  <url>
-    <loc>https://agent.pivota.cc/products/sig_6a28b5bc3a89c5fd24a7c0814d54f094</loc>
-    <lastmod>2026-08-07T02:00:15.200Z</lastmod>
     <changefreq>weekly</changefreq>
   </url>
   <url>
@@ -24697,11 +24672,6 @@
     <changefreq>weekly</changefreq>
   </url>
   <url>
-    <loc>https://agent.pivota.cc/products/sig_9dbc7ca59ff38b99eb155d3af79aed69</loc>
-    <lastmod>2026-08-07T02:11:49.406Z</lastmod>
-    <changefreq>weekly</changefreq>
-  </url>
-  <url>
     <loc>https://agent.pivota.cc/products/sig_9dbf47bc1d2e7e7def597311</loc>
     <lastmod>2026-05-25T13:34:25.148Z</lastmod>
     <changefreq>weekly</changefreq>
@@ -29879,11 +29849,6 @@
   <url>
     <loc>https://agent.pivota.cc/products/sig_bf0557dac7b22bae036aa3b7dde72310</loc>
     <lastmod>2026-08-07T02:33:17.873Z</lastmod>
-    <changefreq>weekly</changefreq>
-  </url>
-  <url>
-    <loc>https://agent.pivota.cc/products/sig_bf0926c0d37660133afe09791ee3eaee</loc>
-    <lastmod>2026-08-07T02:23:06.278Z</lastmod>
     <changefreq>weekly</changefreq>
   </url>
   <url>
@@ -36067,11 +36032,6 @@
     <changefreq>weekly</changefreq>
   </url>
   <url>
-    <loc>https://agent.pivota.cc/products/sig_e7155305c154118044bd3f73d84b827f</loc>
-    <lastmod>2026-08-07T02:12:20.287Z</lastmod>
-    <changefreq>weekly</changefreq>
-  </url>
-  <url>
     <loc>https://agent.pivota.cc/products/sig_e7178cf2f90999cf2cce09f46590f1dc</loc>
     <lastmod>2026-08-07T02:13:53.198Z</lastmod>
     <changefreq>weekly</changefreq>
@@ -38299,11 +38259,6 @@
   <url>
     <loc>https://agent.pivota.cc/products/sig_f4ea9b273b11fdc18de7174ad8a82a7f</loc>
     <lastmod>2026-08-07T02:22:54.311Z</lastmod>
-    <changefreq>weekly</changefreq>
-  </url>
-  <url>
-    <loc>https://agent.pivota.cc/products/sig_f4f239e6e311b7a08438213db6a39c32</loc>
-    <lastmod>2026-08-07T02:11:49.406Z</lastmod>
     <changefreq>weekly</changefreq>
   </url>
   <url>
