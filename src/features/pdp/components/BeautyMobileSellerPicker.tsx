@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import type { Offer, Variant } from '@/features/pdp/types';
 import { resolveOfferPricing } from '@/features/pdp/utils/offerVariantMatching';
 import { cn } from '@/lib/utils';
+import { formatMoney } from '@/features/pdp/utils/formatMoney';
 
 /**
  * Inline multi-seller picker for the Beauty mobile PDP.
@@ -18,19 +19,6 @@ import { cn } from '@/lib/utils';
  * headline; the primary visible card is the *selected* offer (not just the
  * recommended one) so the visible row always matches what Buy Now will use.
  */
-
-function formatMoney(amount: number | null | undefined, currency: string | null | undefined): string {
-  if (amount == null || !Number.isFinite(amount)) return '';
-  try {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: currency || 'USD',
-      maximumFractionDigits: 0,
-    }).format(amount);
-  } catch {
-    return `$${amount.toFixed(0)}`;
-  }
-}
 
 function offerInStock(offer: Offer): boolean {
   if (typeof offer.inventory?.in_stock === 'boolean') return offer.inventory.in_stock;

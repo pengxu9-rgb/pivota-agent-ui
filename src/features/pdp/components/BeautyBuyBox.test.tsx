@@ -19,6 +19,16 @@ afterEach(() => {
 });
 
 describe('Beauty buy-box CTAs', () => {
+  for (const Component of [BeautyDesktopBuyBox, BeautyMobileBuyBar]) {
+    it('preserves cents on external offer CTAs', () => {
+      render(<Component {...baseProps} unitPrice={4.62} isExternalPurchase />);
+      expect(screen.getByRole('button', { name: 'View at retailer · $4.62' })).toBeInTheDocument();
+    });
+    it('includes quantity and shipping without rounding to dollars', () => {
+      render(<Component {...baseProps} unitPrice={4.62} quantity={2} shippingCost={1.25} />);
+      expect(screen.getByRole('button', { name: 'Buy now · $10.49' })).toBeInTheDocument();
+    });
+  }
   it('keeps the internal desktop buy box unchanged', () => {
     render(<BeautyDesktopBuyBox {...baseProps} />);
 

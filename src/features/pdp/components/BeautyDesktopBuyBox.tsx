@@ -2,6 +2,7 @@
 
 import { ExternalLink } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { formatMoney } from '@/features/pdp/utils/formatMoney';
 
 /**
  * Inline buy box for the Beauty desktop PDP.
@@ -40,16 +41,7 @@ export function BeautyDesktopBuyBox({
 }) {
   const itemsSubtotal = Math.max(0, unitPrice) * Math.max(1, quantity);
   const total = itemsSubtotal + Math.max(0, shippingCost || 0);
-  let formattedTotal: string;
-  try {
-    formattedTotal = new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: currency || 'USD',
-      maximumFractionDigits: 0,
-    }).format(total);
-  } catch {
-    formattedTotal = `$${total.toFixed(0)}`;
-  }
+  const formattedTotal = formatMoney(total, currency);
   const retailerLabel = String(externalRetailerLabel || '').trim();
   const externalCtaLabel = `View at ${retailerLabel || 'retailer'}`;
 
