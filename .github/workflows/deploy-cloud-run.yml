@@ -1,0 +1,104 @@
+# Ship every commit on main to Cloud Run `agent-ui` (agent.pivota.cc).
+#
+# agent.pivota.cc moved off Vercel on 2026-09-15, but only the TRAFFIC moved: the image
+# was built by hand once (c1e5a5f) and nothing rebuilt it. The Vercel project stayed
+# Git-connected, so every merge after that — including every sitemaps.yml refresh —
+# built on Vercel, which serves nobody, and never reached the site. By 2026-09-26 prod
+# was 19 commits behind main and served 8,288 sitemap URLs where main had 15,468.
+# This workflow is the half of "merge = ship" that the migration dropped.
+#
+# The gate is upstream: branch protection requires the `test` check (which now also runs
+# `next build`) on every PR, so main only receives commits that built. A failed deploy
+# here leaves the previous revision serving — Cloud Run only shifts traffic to a revision
+# that became Ready.
+#
+# Identity: Workload Identity Federation, provider `github-agent-ui`, whose attribute
+# condition admits ONLY this repository's id on refs/heads/main. It impersonates
+# sa-agent-ui-deploy, which can push to one Artifact Registry repo and deploy one
+# Cloud Run service and nothing else.
+name: Deploy to Cloud Run
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: 'Commit on main to deploy (rollback / redeploy). Empty = the tip of main.'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  id-token: write   # mints the OIDC token WIF exchanges
+
+# Two deploys racing can leave traffic on the older image. Queue, never cancel mid-roll.
+# (GitHub keeps one PENDING run per group, so a burst of merges collapses to the newest —
+# acceptable here: the newest commit contains the skipped ones.)
+concurrency:
+  group: deploy-agent-ui
+  cancel-in-progress: false
+
+env:
+  PROJECT: pivota-prod
+  REGION: us-west1
+  SERVICE: agent-ui
+  REPO: us-west1-docker.pkg.dev/pivota-prod/cloud-run-source-deploy/agent-ui
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Refuse a commit that is not on main
+        run: git merge-base --is-ancestor HEAD origin/main
+
+      - id: meta
+        run: echo "tag=$(git rev-parse --short=7 HEAD)" >> "$GITHUB_OUTPUT"
+
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/371394967380/locations/global/workloadIdentityPools/github-actions/providers/github-agent-ui
+          service_account: sa-agent-ui-deploy@pivota-prod.iam.gserviceaccount.com
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Build and push
+        env:
+          TAG: ${{ steps.meta.outputs.tag }}
+        run: |
+          gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
+          docker build -t "${REPO}:${TAG}" .
+          docker push "${REPO}:${TAG}"
+
+      - name: Deploy
+        env:
+          TAG: ${{ steps.meta.outputs.tag }}
+        # --image only: env vars, secrets, scaling and ingress stay as configured on the
+        # service (they are not in this repo).
+        run: |
+          gcloud run deploy "$SERVICE" --project "$PROJECT" --region "$REGION" \
+            --image "${REPO}:${TAG}" --quiet
+          gcloud run services describe "$SERVICE" --project "$PROJECT" --region "$REGION" \
+            --format='value(status.latestReadyRevisionName,status.traffic[0].percent)'
+
+      # Proves the NEW bytes are what the public host serves, not merely that a revision
+      # exists: the sitemap is a static file from this commit's public/ directory.
+      - name: Verify agent.pivota.cc serves this commit
+        run: |
+          want=$(sha256sum public/sitemap-products.xml | cut -d' ' -f1)
+          for i in $(seq 1 24); do
+            got=$(curl -fsS https://agent.pivota.cc/sitemap-products.xml | sha256sum | cut -d' ' -f1 || true)
+            [ "$got" = "$want" ] && { echo "sitemap matches ($want)"; break; }
+            echo "attempt $i: serving $got, want $want"; sleep 10
+          done
+          [ "$got" = "$want" ] || { echo "::error::agent.pivota.cc does not serve this commit's sitemap"; exit 1; }
+          for path in / /robots.txt /products; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "https://agent.pivota.cc${path}")
+            echo "${path} -> ${code}"; [ "$code" = 200 ] || exit 1
+          done

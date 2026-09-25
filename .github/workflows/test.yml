@@ -10,8 +10,10 @@
 # GITHUB_TOKEN pushes trigger no workflows, so without the dispatch the
 # required check would never run and the bot PR could never merge.
 #
-# Deliberately does NOT run `next build` — Vercel already does that on every PR,
-# and duplicating a multi-minute build here buys nothing.
+# Also runs `next build` since 2026-09-26. It used not to, because Vercel built every
+# PR; agent.pivota.cc now ships from Cloud Run (deploy-cloud-run.yml) and the Vercel
+# project is disconnected from Git, so without this step a PR that fails to build would
+# merge green and only fail at deploy time — leaving every later merge stuck behind it.
 name: Tests
 
 on:
@@ -38,9 +40,9 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
-    # Observed runtime is under 2 minutes. The default is 6 HOURS, which a hung
-    # jsdom waitFor would happily burn.
-    timeout-minutes: 15
+    # Tests alone run under 2 minutes; `next build` adds several. The default is
+    # 6 HOURS, which a hung jsdom waitFor would happily burn.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
@@ -68,3 +70,9 @@ jobs:
       - name: Test
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: npm test
+
+      # The production build, via the Dockerfile's builder stage so its build args
+      # (production values, defaulted there) have exactly one home.
+      - name: Build
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: docker build --target builder .
