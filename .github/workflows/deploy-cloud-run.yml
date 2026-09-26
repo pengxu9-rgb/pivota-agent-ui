@@ -21,10 +21,18 @@ name: Deploy to Cloud Run
 on:
   push:
     branches: [main]
+  # Manual redeploy / ROLLBACK of any commit already on main (full or short sha).
+  #
+  # A rollback does NOT stick: the next push to main deploys main again, and
+  # sitemaps.yml merges a refresh roughly every 6 hours. To hold a rollback, revert
+  # the bad commit on main (that deploys too), or disable sitemaps.yml until fixed.
+  # Also note the concurrency group below keeps ONE pending run: a rollback queued
+  # behind a running deploy can be replaced by a later push, and vice versa. Check
+  # the run list after dispatching.
   workflow_dispatch:
     inputs:
       sha:
-        description: 'Commit on main to deploy (rollback / redeploy). Empty = the tip of main.'
+        description: 'Commit on main to deploy (full or short sha). Empty = the tip of main.'
         required: false
         type: string
 
@@ -50,16 +58,24 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
+      # Check out main in full, then move to the target. Passing a short sha as the
+      # checkout `ref` fails (actions/checkout treats non-40-hex refs as branch names).
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.sha || github.sha }}
           fetch-depth: 0
 
-      - name: Refuse a commit that is not on main
-        run: git merge-base --is-ancestor HEAD origin/main
-
       - id: meta
-        run: echo "tag=$(git rev-parse --short=7 HEAD)" >> "$GITHUB_OUTPUT"
+        name: Resolve the commit to deploy (must be on main)
+        env:
+          WANT: ${{ inputs.sha || github.sha }}
+        run: |
+          sha=$(git rev-parse --verify --quiet "${WANT}^{commit}") \
+            || { echo "::error::${WANT} is not a commit in this repository"; exit 1; }
+          git merge-base --is-ancestor "$sha" origin/main \
+            || { echo "::error::${sha} is not on main"; exit 1; }
+          git checkout --quiet --detach "$sha"
+          echo "sha=${sha}" >> "$GITHUB_OUTPUT"
+          echo "tag=$(git rev-parse --short=7 "$sha")" >> "$GITHUB_OUTPUT"
 
       - uses: google-github-actions/auth@v2
         with:
@@ -68,10 +84,15 @@ jobs:
 
       - uses: google-github-actions/setup-gcloud@v2
 
+      # A tag is a commit, so an image already pushed for it (a rollback, a re-run) is
+      # redeployed as-is instead of rebuilt from different base-image layers.
       - name: Build and push
         env:
           TAG: ${{ steps.meta.outputs.tag }}
         run: |
+          if gcloud artifacts docker images describe "${REPO}:${TAG}" >/dev/null 2>&1; then
+            echo "${REPO}:${TAG} already exists; reusing it"; exit 0
+          fi
           gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
           docker build -t "${REPO}:${TAG}" .
           docker push "${REPO}:${TAG}"
@@ -87,8 +108,30 @@ jobs:
           gcloud run services describe "$SERVICE" --project "$PROJECT" --region "$REGION" \
             --format='value(status.latestReadyRevisionName,status.traffic[0].percent)'
 
-      # Proves the NEW bytes are what the public host serves, not merely that a revision
-      # exists: the sitemap is a static file from this commit's public/ directory.
+      # Proves the service is SERVING this image, not merely that a revision exists.
+      # (The sitemap check below cannot prove this on its own: a code-only commit ships
+      # the same sitemap bytes the previous revision already serves.)
+      - name: Verify Cloud Run serves this image
+        env:
+          TAG: ${{ steps.meta.outputs.tag }}
+        run: |
+          read -r ready created < <(gcloud run services describe "$SERVICE" --project "$PROJECT" \
+            --region "$REGION" --format='value(status.latestReadyRevisionName,status.latestCreatedRevisionName)')
+          [ "$ready" = "$created" ] || { echo "::error::latest revision ${created} is not Ready (serving ${ready})"; exit 1; }
+          # A revision records the image by DIGEST (REPO@sha256:...), not by the tag it was
+          # deployed with, so resolve the tag and compare digests (tags are mutable anyway).
+          want="${REPO}@$(gcloud artifacts docker images describe "${REPO}:${TAG}" \
+            --format='value(image_summary.digest)')"
+          image=$(gcloud run revisions describe "$ready" --project "$PROJECT" --region "$REGION" \
+            --format='value(spec.containers[0].image)')
+          [ "$image" = "$want" ] || { echo "::error::${ready} runs ${image}, want ${want} (${TAG})"; exit 1; }
+          pct=$(gcloud run services describe "$SERVICE" --project "$PROJECT" --region "$REGION" \
+            --format=json | jq --arg r "$ready" '[.status.traffic[] | select(.revisionName == $r) | .percent] | add // 0')
+          [ "$pct" = 100 ] || { echo "::error::${ready} has ${pct}% of traffic, want 100"; exit 1; }
+          echo "${ready} runs ${image} at 100% of traffic"
+
+      # Proves the public host (LB -> NEG -> service) serves this commit's bytes: the
+      # sitemap is a static file from this commit's public/ directory.
       - name: Verify agent.pivota.cc serves this commit
         run: |
           want=$(sha256sum public/sitemap-products.xml | cut -d' ' -f1)
@@ -98,7 +141,12 @@ jobs:
             echo "attempt $i: serving $got, want $want"; sleep 10
           done
           [ "$got" = "$want" ] || { echo "::error::agent.pivota.cc does not serve this commit's sitemap"; exit 1; }
+          # /products is ISR: its first fill on a cold instance can hit a transient gateway
+          # error, so each page gets three tries before the run goes red.
           for path in / /robots.txt /products; do
-            code=$(curl -s -o /dev/null -w '%{http_code}' "https://agent.pivota.cc${path}")
+            for i in 1 2 3; do
+              code=$(curl -s -o /dev/null -w '%{http_code}' "https://agent.pivota.cc${path}")
+              [ "$code" = 200 ] && break; sleep 10
+            done
             echo "${path} -> ${code}"; [ "$code" = 200 ] || exit 1
           done
