@@ -1129,6 +1129,53 @@ describe('PDP permanent-unbuildable vs transient failure semantics', () => {
     expect(notFoundMock).not.toHaveBeenCalled();
   });
 
+  // /products/null was 173 of 212 PDP 500s in the 24h to 2026-09-26. The
+  // gateway answers such an id with a failure the strict allowlist does not
+  // (and must not) recognise, so it classified `degraded` → 500 forever. The
+  // mock reproduces that: without the placeholder guard these reach the
+  // gateway, get a transient-looking error, and the layout does NOT 404.
+  it.each(['null', 'undefined', 'NaN', '[object Object]', 'Null'])(
+    'the LAYOUT 404s the stringified-nullish id %s without asking the gateway',
+    async (id) => {
+      getPdpV2Mock.mockRejectedValue(gatewayError(400, 'INVALID_REQUEST'));
+
+      await expect(
+        ProductDetailLayout({
+          params: Promise.resolve({ id: encodeURIComponent(id) }),
+          children: null,
+        }),
+      ).rejects.toThrow(NOT_FOUND_THROWN);
+
+      expect(notFoundMock).toHaveBeenCalledTimes(1);
+      expect(getPdpV2Mock).not.toHaveBeenCalled();
+    },
+  );
+
+  it('the PAGE 404s /products/null instead of throwing the degraded 500', async () => {
+    getPdpV2Mock.mockRejectedValue(gatewayError(400, 'INVALID_REQUEST'));
+
+    await expect(
+      ProductDetailPage({
+        params: Promise.resolve({ id: 'null' }),
+        searchParams: Promise.resolve({}),
+      }),
+    ).rejects.toThrow(NOT_FOUND_THROWN);
+
+    expect(getPdpV2Mock).not.toHaveBeenCalled();
+  });
+
+  it('still asks the gateway for a real id that merely CONTAINS a placeholder word', async () => {
+    getPdpV2Mock.mockRejectedValue(gatewayError(503, 'UPSTREAM_UNAVAILABLE'));
+
+    const element = await ProductDetailLayout({
+      params: Promise.resolve({ id: 'sig_null0undefined' }),
+      children: null,
+    });
+    expect(element).toBeTruthy();
+    expect(getPdpV2Mock).toHaveBeenCalled();
+    expect(notFoundMock).not.toHaveBeenCalled();
+  });
+
   it('the LAYOUT does NOT 404 a healthy product', async () => {
     getPdpV2Mock.mockResolvedValue({ modules: [] });
     mapPdpV2ToPdpPayloadMock.mockReturnValue(
