@@ -524,6 +524,15 @@ function shouldRetryPdpFetchFailure(err: unknown): boolean {
   return RETRYABLE_ERROR_NAMES.has(String((err as any)?.name || ''));
 }
 
+// What `${value}` / String(value) / encodeURIComponent(value) produce for a
+// missing value. Exact, whole-id matches only: a real id that merely CONTAINS
+// one of these (sig_null…) still goes to the gateway.
+const STRINGIFIED_NULLISH_PRODUCT_IDS = new Set(['null', 'undefined', 'nan', '[object object]']);
+
+function isStringifiedNullishProductId(productId: string): boolean {
+  return STRINGIFIED_NULLISH_PRODUCT_IDS.has(productId.toLowerCase());
+}
+
 async function _fetchPdpForServerRenderUncached(
   productIdInput: string,
   merchantIdInput: string,
@@ -532,6 +541,13 @@ async function _fetchPdpForServerRenderUncached(
   const productId = String(productIdInput || '').trim();
   if (!productId) {
     // No id at all — there is nothing to retry into existence.
+    return { status: 'unbuildable' };
+  }
+  if (isStringifiedNullishProductId(productId)) {
+    // A JS value stringified into the URL, never a product. Asking the gateway
+    // only earned an unrecognized failure → `degraded` → a 500 that crawlers
+    // retry forever: /products/null was 173 of 212 agent.pivota.cc PDP 500s in
+    // the 24h to 2026-09-26 (meta-externalagent re-fetching it every 10 min).
     return { status: 'unbuildable' };
   }
 
