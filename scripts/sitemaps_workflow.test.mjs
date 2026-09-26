@@ -11,6 +11,11 @@
 //   08-16  required check `test` never counts      <- the actual root cause
 //   08-27  same thing, now surfacing at `gh pr merge` instead of at the poll
 //
+// (A fifth disguise on 08-27: the credential was configured as a GitHub App
+// PRIVATE KEY pasted where a token belongs. A PEM is not an Authorization
+// value — it is what you MINT one with — so checkout died on `could not read
+// Username`. Hence the app-token step these tests pin.)
+//
 // The root cause is one sentence: a push made with GITHUB_TOKEN fires no
 // `pull_request` event, so the bot PR never gets a pull_request-context `test`
 // run, so the required check is never satisfied. Dispatching test.yml onto the
@@ -33,7 +38,7 @@ const SITEMAPS_YML = readFileSync(
 )
 const TESTS_YML = readFileSync(path.join(REPO_ROOT, '.github/workflows/test.yml'), 'utf8')
 
-const BOT_TOKEN_EXPR = /\$\{\{\s*secrets\.SITEMAP_BOT_TOKEN\s*\}\}/
+const APP_TOKEN_EXPR = /\$\{\{\s*steps\.app-token\.outputs\.token\s*\}\}/
 
 // Comments in this file talk about github.token constantly, so a naive
 // whole-file grep for it would pass on prose alone. Strip comments first: the
@@ -64,13 +69,32 @@ describe('sitemaps.yml lands its refresh as a real identity', () => {
   // as the credential `git push` will use; without this the push is
   // GITHUB_TOKEN's, no pull_request event fires, and the merge is refused
   // forever. Reverting this one line is the whole 08-16 → 08-27 outage.
-  it('checks out with the bot token so the push fires a pull_request event', () => {
-    expect(checkoutStep(SITEMAPS_YML)).toMatch(BOT_TOKEN_EXPR)
+  it('checks out with the minted App token so the push fires a pull_request event', () => {
+    expect(checkoutStep(SITEMAPS_YML)).toMatch(APP_TOKEN_EXPR)
+  })
+
+  // The step that turns key material into a credential. Without it
+  // `steps.app-token.outputs.token` is empty and checkout falls back to
+  // prompting for a username — the 08-27 failure exactly.
+  it('mints an installation token from the App id and private key', () => {
+    const body = withoutComments(SITEMAPS_YML)
+    expect(body).toMatch(/id:\s*app-token/)
+    expect(body).toMatch(/uses:\s*actions\/create-github-app-token@v\d/)
+    expect(body).toMatch(/app-id:\s*\$\{\{\s*secrets\.SITEMAP_APP_ID\s*\}\}/)
+    expect(body).toMatch(/private-key:\s*\$\{\{\s*secrets\.SITEMAP_APP_PRIVATE_KEY\s*\}\}/)
+  })
+
+  // A PEM is not a credential. If the private key is ever wired straight into
+  // checkout or GH_TOKEN, every request fails with `invalid header field value`
+  // — a failure whose message names neither the key nor the workflow.
+  it('never uses the private key as a credential directly', () => {
+    const body = withoutComments(SITEMAPS_YML)
+    expect(body).not.toMatch(/(?:token|GH_TOKEN):\s*\$\{\{\s*secrets\.SITEMAP_APP_PRIVATE_KEY/)
   })
 
   it('authenticates the PR and merge calls as the bot, not GITHUB_TOKEN', () => {
     const body = withoutComments(SITEMAPS_YML)
-    expect(body).toMatch(new RegExp(`GH_TOKEN:\\s*${BOT_TOKEN_EXPR.source}`))
+    expect(body).toMatch(new RegExp(`GH_TOKEN:\\s*${APP_TOKEN_EXPR.source}`))
     expect(body).not.toMatch(/GH_TOKEN:\s*\$\{\{\s*(github\.token|secrets\.GITHUB_TOKEN)\s*\}\}/)
   })
 
@@ -80,14 +104,19 @@ describe('sitemaps.yml lands its refresh as a real identity', () => {
   // default in generate_sitemaps.baseurl.test.mjs — a silent default IS the bug.
   it('never falls back to GITHUB_TOKEN', () => {
     expect(withoutComments(SITEMAPS_YML)).not.toMatch(
-      /secrets\.SITEMAP_BOT_TOKEN\s*\|\|/,
+      /secrets\.SITEMAP_APP_(?:ID|PRIVATE_KEY)\s*\|\|/,
+    )
+    expect(withoutComments(SITEMAPS_YML)).not.toMatch(
+      /steps\.app-token\.outputs\.token\s*\|\|/,
     )
   })
 
-  it('fails fast and explains itself when the bot token is missing', () => {
+  it('fails fast on EITHER missing secret, not just one', () => {
     const body = withoutComments(SITEMAPS_YML)
-    expect(body).toMatch(/BOT_TOKEN:\s*\$\{\{\s*secrets\.SITEMAP_BOT_TOKEN\s*\}\}/)
-    expect(body).toMatch(/if\s*\[\s*-z\s*"\$BOT_TOKEN"\s*\]/)
+    expect(body).toMatch(/APP_ID:\s*\$\{\{\s*secrets\.SITEMAP_APP_ID\s*\}\}/)
+    expect(body).toMatch(/APP_PRIVATE_KEY:\s*\$\{\{\s*secrets\.SITEMAP_APP_PRIVATE_KEY\s*\}\}/)
+    expect(body).toMatch(/-z\s*"\$APP_ID"/)
+    expect(body).toMatch(/-z\s*"\$APP_PRIVATE_KEY"/)
   })
 
   // The disproven workaround. It RUNS — that is the trap — and it produces a
