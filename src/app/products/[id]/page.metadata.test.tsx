@@ -21,9 +21,11 @@ const getPdpV2Mock = vi.hoisted(() => vi.fn());
 const getPdpV2CachedMock = vi.hoisted(() => vi.fn());
 const mapPdpV2ToPdpPayloadMock = vi.hoisted(() => vi.fn());
 const noStoreMock = vi.hoisted(() => vi.fn());
-const routeIdExistenceMock = vi.hoisted(() => vi.fn(async () => {
-  throw new Error('pdp_route_id_existence_unsettled');
-}));
+const routeIdExistenceMock = vi.hoisted(() =>
+  vi.fn<(args: unknown) => Promise<{ exists: boolean | null }>>(async () => {
+    throw new Error('pdp_route_id_existence_unsettled');
+  }),
+);
 const headersMock = vi.hoisted(() => vi.fn(async () => new Headers({
   'x-forwarded-host': 'agent.pivota.cc',
   'x-forwarded-proto': 'https',
@@ -72,7 +74,7 @@ vi.mock('@/lib/api', () => ({
   },
   // The gateway's pdp_route_id_exists. Defaults to "unknown" (a rejection, as a 503 or an older gateway
   // produces) so every test that does not set it keeps today's degraded-500 behaviour.
-  getPdpRouteIdExistenceCached: (...args: unknown[]) => routeIdExistenceMock(...args),
+  getPdpRouteIdExistenceCached: (args: unknown) => routeIdExistenceMock(args),
 }));
 
 vi.mock('@/features/pdp/adapter/mapPdpV2ToPdpPayload', () => ({
@@ -1772,7 +1774,8 @@ describe('unknown PDP ids: 404 only on a settled "no store holds this id"', () =
     await expect(renderPage('product:sig_1d21e41fb004ec089f4092166ef52d1c')).rejects.toThrow(NOT_FOUND_THROWN);
   });
 
-  it.each([
+  type ExistenceAnswer = () => Promise<{ exists: boolean | null }>;
+  it.each<[string, ExistenceAnswer]>([
     ['a stored id (exists:true — a real product whose lookup failed)', async () => ({ exists: true })],
     ['a synthesized pg: id (exists:null)', async () => ({ exists: null })],
     ['a probe that could not answer', async () => { throw new Error('pdp_route_id_existence_unsettled'); }],
