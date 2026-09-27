@@ -21,6 +21,11 @@ const getPdpV2Mock = vi.hoisted(() => vi.fn());
 const getPdpV2CachedMock = vi.hoisted(() => vi.fn());
 const mapPdpV2ToPdpPayloadMock = vi.hoisted(() => vi.fn());
 const noStoreMock = vi.hoisted(() => vi.fn());
+const routeIdExistenceMock = vi.hoisted(() =>
+  vi.fn<(args: unknown) => Promise<{ exists: boolean | null }>>(async () => {
+    throw new Error('pdp_route_id_existence_unsettled');
+  }),
+);
 const headersMock = vi.hoisted(() => vi.fn(async () => new Headers({
   'x-forwarded-host': 'agent.pivota.cc',
   'x-forwarded-proto': 'https',
@@ -67,6 +72,9 @@ vi.mock('@/lib/api', () => ({
     void cacheTags;
     return getPdpV2Mock(rest);
   },
+  // The gateway's pdp_route_id_exists. Defaults to "unknown" (a rejection, as a 503 or an older gateway
+  // produces) so every test that does not set it keeps today's degraded-500 behaviour.
+  getPdpRouteIdExistenceCached: (args: unknown) => routeIdExistenceMock(args),
 }));
 
 vi.mock('@/features/pdp/adapter/mapPdpV2ToPdpPayload', () => ({
@@ -1696,5 +1704,136 @@ describe('PDP permanent-unbuildable vs transient failure semantics', () => {
 
     expect(searchParamsAwaitTrap.then).not.toHaveBeenCalled();
     expect(headersMock).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * UNKNOWN ids (2026-09-27). Every /products/<id> that names nothing — /products/foo, a mistyped sig, a
+ * mis-emitted `product:sig_…` link — answered HTTP 500, forever: get_pdp_v2 says 400
+ * MISSING_MERCHANT_CONTEXT or a reason-less 404 PRODUCT_NOT_FOUND for it, but it says exactly the same for
+ * a REAL product whose lookup failed, so the classifier (rightly) keeps both `degraded`.
+ *
+ * The gateway's pdp_route_id_exists is the settled signal: one statement over every store a route id can
+ * live in that never catches its own failure. These pin that ONLY its `exists: false` turns such a failure
+ * into a 404, and that every other outcome — present, synthesized, unknown, the probe failing, the probe
+ * switched off, a different failure class, the personalized route — keeps today's behaviour.
+ */
+describe('unknown PDP ids: 404 only on a settled "no store holds this id"', () => {
+  beforeEach(() => {
+    getPdpV2Mock.mockReset();
+    mapPdpV2ToPdpPayloadMock.mockReset();
+    noStoreMock.mockReset();
+    routeIdExistenceMock.mockReset();
+    routeIdExistenceMock.mockImplementation(async () => {
+      throw new Error('pdp_route_id_existence_unsettled');
+    });
+    notFoundMock.mockReset();
+    notFoundMock.mockImplementation(() => {
+      throw new Error(NOT_FOUND_THROWN);
+    });
+    vi.stubEnv('NEXT_PUBLIC_APP_URL', '');
+    vi.stubEnv('VERCEL_URL', '');
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  function gatewayFailure(status: number | undefined, code: string, reason?: string) {
+    const err = new Error(code) as Error & { status?: number; code?: string; detail?: unknown };
+    if (typeof status === 'number') err.status = status;
+    err.code = code;
+    err.detail = { error: code, ...(reason ? { details: { reason } } : {}) };
+    return err;
+  }
+  const unresolved = () => gatewayFailure(400, 'MISSING_MERCHANT_CONTEXT');
+  const reasonlessNotFound = () => gatewayFailure(404, 'PRODUCT_NOT_FOUND');
+
+  const renderLayout = (id: string) =>
+    ProductDetailLayout({ params: Promise.resolve({ id }), children: null });
+  const renderPage = (id: string) =>
+    ProductDetailPage({ params: Promise.resolve({ id }), searchParams: Promise.resolve({}) });
+
+  it.each([
+    ['400 MISSING_MERCHANT_CONTEXT', unresolved],
+    ['reason-less 404 PRODUCT_NOT_FOUND', reasonlessNotFound],
+  ])('%s + exists:false → the LAYOUT 404s, before the shell is flushed', async (_label, failure) => {
+    getPdpV2Mock.mockRejectedValue(failure());
+    routeIdExistenceMock.mockResolvedValue({ exists: false });
+
+    await expect(renderLayout('foo')).rejects.toThrow(NOT_FOUND_THROWN);
+    expect(notFoundMock).toHaveBeenCalledTimes(1);
+    expect(routeIdExistenceMock).toHaveBeenCalledWith(
+      expect.objectContaining({ product_id: 'foo', timeout_ms: 3000, revalidateSeconds: 600 }),
+    );
+  });
+
+  it('the PAGE 404s it too, instead of throwing the degraded 500', async () => {
+    getPdpV2Mock.mockRejectedValue(unresolved());
+    routeIdExistenceMock.mockResolvedValue({ exists: false });
+    await expect(renderPage('product:sig_1d21e41fb004ec089f4092166ef52d1c')).rejects.toThrow(NOT_FOUND_THROWN);
+  });
+
+  type ExistenceAnswer = () => Promise<{ exists: boolean | null }>;
+  it.each<[string, ExistenceAnswer]>([
+    ['a stored id (exists:true — a real product whose lookup failed)', async () => ({ exists: true })],
+    ['a synthesized pg: id (exists:null)', async () => ({ exists: null })],
+    ['a probe that could not answer', async () => { throw new Error('pdp_route_id_existence_unsettled'); }],
+  ])('%s stays the degraded 500 — never a cached 404', async (_label, answer) => {
+    getPdpV2Mock.mockRejectedValue(unresolved());
+    routeIdExistenceMock.mockImplementation(answer);
+
+    const element = await renderLayout('sig_real_but_flapping');
+    expect(element).toBeTruthy();
+    expect(notFoundMock).not.toHaveBeenCalled();
+    await expect(renderPage('sig_real_but_flapping')).rejects.toThrow(PDP_DEGRADED_RENDER_ERROR);
+    expect(notFoundMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['a 5xx', () => gatewayFailure(503, 'UPSTREAM_UNAVAILABLE')],
+    ['a fail-closed serving gate', () => gatewayFailure(404, 'PRODUCT_NOT_SERVABLE', 'serving_eligibility_missing')],
+    ['a PRODUCT_NOT_FOUND carrying an unrecognised reason', () => gatewayFailure(404, 'PRODUCT_NOT_FOUND', 'something_new')],
+    ['MISSING_MERCHANT_CONTEXT on a non-400', () => gatewayFailure(502, 'MISSING_MERCHANT_CONTEXT')],
+    ['an invoke-envelope rejection', () => gatewayFailure(400, 'INVALID_REQUEST')],
+  ])('%s is not an unresolved-id failure: the probe is never asked', async (_label, failure) => {
+    getPdpV2Mock.mockRejectedValue(failure());
+    routeIdExistenceMock.mockResolvedValue({ exists: false });
+
+    await expect(renderPage('sig_other_failure')).rejects.toThrow(PDP_DEGRADED_RENDER_ERROR);
+    expect(routeIdExistenceMock).not.toHaveBeenCalled();
+    expect(notFoundMock).not.toHaveBeenCalled();
+  });
+
+  it('never after the retry: a timeout followed by an unresolved answer stays within the 12s budget', async () => {
+    getPdpV2Mock
+      .mockRejectedValueOnce(gatewayFailure(undefined, 'UPSTREAM_TIMEOUT'))
+      .mockRejectedValueOnce(unresolved());
+    routeIdExistenceMock.mockResolvedValue({ exists: false });
+
+    await expect(renderPage('sig_slow_then_unresolved')).rejects.toThrow(PDP_DEGRADED_RENDER_ERROR);
+    expect(getPdpV2Mock).toHaveBeenCalledTimes(2);
+    expect(routeIdExistenceMock).not.toHaveBeenCalled();
+  });
+
+  it.each(['0', 'false', 'off'])('PDP_ROUTE_ID_EXISTENCE_PROBE=%s switches it off (back to the 500)', async (value) => {
+    vi.stubEnv('PDP_ROUTE_ID_EXISTENCE_PROBE', value);
+    getPdpV2Mock.mockRejectedValue(unresolved());
+    routeIdExistenceMock.mockResolvedValue({ exists: false });
+
+    await expect(renderPage('foo')).rejects.toThrow(PDP_DEGRADED_RENDER_ERROR);
+    expect(routeIdExistenceMock).not.toHaveBeenCalled();
+  });
+
+  it('the personalized alias route never 404s, so it never asks', async () => {
+    getPdpV2Mock.mockRejectedValue(unresolved());
+    routeIdExistenceMock.mockResolvedValue({ exists: false });
+
+    await PersonalizedProductDetailPage({
+      params: Promise.resolve({ id: 'foo' }),
+      searchParams: Promise.resolve({ merchant_id: 'merch_123' }),
+    }).catch(() => undefined);
+    expect(routeIdExistenceMock).not.toHaveBeenCalled();
+    expect(notFoundMock).not.toHaveBeenCalled();
   });
 });
