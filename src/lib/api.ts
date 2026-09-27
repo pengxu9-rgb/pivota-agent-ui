@@ -3418,6 +3418,59 @@ export async function getPdpV2Cached(args: {
   return load();
 }
 
+/**
+ * Does ANY stored record correspond to this PDP route id? — the gateway's `pdp_route_id_exists`
+ * (PIVOTA-Agent src/services/pdpRouteIdExistence.js), asked only after a PDP read failed in a way that
+ * cannot tell "no such product" from "the lookup failed" (see classifyPdpFetchFailure).
+ *
+ * Returns the gateway's answer ONLY when it is a well-formed, settled one: `exists` is exactly true, false
+ * or null (a synthesized id family). Anything else — a 503 because the probe could not answer, a timeout,
+ * an older gateway that does not know the operation, a malformed body — THROWS, so it is never cached and
+ * never read as "absent". The caller treats a throw as "unknown" and keeps the page a 500.
+ *
+ * unstable_cache for the same reason getPdpV2Cached uses it: the canonical PDP route is static/ISR, and a
+ * raw POST during on-demand static generation hard-500s (DYNAMIC_SERVER_USAGE). The answer is cached for a
+ * short window, keyed by the id alone; a rejection is never stored.
+ */
+export const PDP_ROUTE_ID_EXISTENCE_CONTRACT = 'pdp_route_id_existence.v1';
+
+export async function getPdpRouteIdExistenceCached(args: {
+  product_id: string;
+  timeout_ms?: number;
+  gatewayBaseUrl?: string | null;
+  revalidateSeconds?: number;
+}): Promise<{ exists: boolean | null }> {
+  const productId = String(args.product_id || '').trim();
+  if (!productId) throw new Error('product_id is required');
+  const revalidate =
+    typeof args.revalidateSeconds === 'number' && args.revalidateSeconds > 0 ? args.revalidateSeconds : 600;
+  const load = unstable_cache(
+    async () => {
+      const res = await callGatewayWithTimeout<any>(
+        {
+          operation: 'pdp_route_id_exists',
+          payload: { product_ref: { product_id: productId } },
+        },
+        { timeoutMs: args.timeout_ms, gatewayBaseUrl: args.gatewayBaseUrl },
+      );
+      const exists = res?.exists;
+      // The answer must be about THIS id, under the contract this code was written against.
+      if (
+        !res ||
+        res.contract !== PDP_ROUTE_ID_EXISTENCE_CONTRACT ||
+        String(res.product_id || '') !== productId ||
+        !(exists === true || exists === false || exists === null)
+      ) {
+        throw new Error('pdp_route_id_existence_unsettled');
+      }
+      return { exists: exists as boolean | null };
+    },
+    ['pdp_route_id_exists', productId],
+    { revalidate, tags: ['pdp', `pdp:${productId}`] },
+  );
+  return load();
+}
+
 function _inferReviewSubjectFromProduct(product: ProductResponse): {
   merchant_id: string;
   platform: string;

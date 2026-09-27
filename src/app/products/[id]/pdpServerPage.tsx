@@ -15,7 +15,7 @@ import ProductDetailClient from './ProductDetailClient';
 import { buildProductDescription } from './productDescription';
 import { unstable_rethrow } from 'next/navigation';
 import { buildProductJsonLd } from './productJsonLd';
-import { getPdpV2, getPdpV2Cached, getServicesBrowse } from '@/lib/api';
+import { getPdpRouteIdExistenceCached, getPdpV2, getPdpV2Cached, getServicesBrowse } from '@/lib/api';
 import { mapPdpV2ToPdpPayload } from '@/features/pdp/adapter/mapPdpV2ToPdpPayload';
 import type { PDPPayload } from '@/features/pdp/types';
 import { isBeautyProduct } from '@/features/pdp/utils/isBeautyProduct';
@@ -68,6 +68,12 @@ const PDP_SERVER_FETCH_TIMEOUT_MS = 9000;
 // fill that gets killed mid-render is a 504, which is worse than the 500 the
 // retry exists to avoid.
 const PDP_SERVER_RETRY_TIMEOUT_MS = 3000;
+// Budget for the existence probe (see routeIdIsSettledAbsent). It runs ONLY when the first read came back
+// with a definitive 4xx — never after the retry, which only follows a timeout or a network error — so it
+// and the retry are mutually exclusive and the worst case stays 9s + 3s = 12s, as maxDuration assumes.
+const PDP_ROUTE_ID_PROBE_TIMEOUT_MS = 3000;
+// How long a probe answer is reused. Short: it only decides whether a failed read is a 404.
+const PDP_ROUTE_ID_PROBE_REVALIDATE_S = 600;
 
 // The anonymous, crawlable, sitemap-published PDP route ids: Pivota signatures
 // (sig_), content-key canonicals (ck_) for store-less brands, and product groups
@@ -492,6 +498,53 @@ export function classifyPdpFetchFailure(err: unknown): 'unbuildable' | 'degraded
 }
 
 /**
+ * A failed read that cannot tell "no such product" from "the lookup failed".
+ *
+ * get_pdp_v2 answers an unknown id with 400 MISSING_MERCHANT_CONTEXT or a reason-less 404
+ * PRODUCT_NOT_FOUND — but only after lookups that swallow their own failures, so a REAL product whose
+ * lookup timed out gets the very same answer. That is why the classifier keeps both `degraded` (the
+ * blast-radius notes above), and why every unknown id — /products/foo, a mistyped sig, a mis-emitted
+ * `product:sig_…` link — used to 500 forever. These are the failures worth asking the gateway's existence
+ * probe about; nothing else is.
+ */
+function isUnresolvedRouteIdFailure(err: unknown): boolean {
+  const code = String((err as any)?.code || '').trim().toUpperCase();
+  const status = Number((err as any)?.status);
+  if (code === 'MISSING_MERCHANT_CONTEXT' && status === 400) return true;
+  if (code === 'PRODUCT_NOT_FOUND' && status === 404 && !readGatewayFailureReason(err)) return true;
+  return false;
+}
+
+function isRouteIdExistenceProbeEnabled(): boolean {
+  // Kill switch, on by default: PDP_ROUTE_ID_EXISTENCE_PROBE=0|false|off disables it (back to 500).
+  const raw = String(process.env.PDP_ROUTE_ID_EXISTENCE_PROBE ?? '').trim().toLowerCase();
+  return !['0', 'false', 'off', 'no'].includes(raw);
+}
+
+/**
+ * True ONLY when the gateway's pdp_route_id_exists answered `exists: false` — one statement over every
+ * store a route id can live in (catalog_products, product_group_members, external_product_seeds,
+ * pdp_identity_listing, content_canonical_election, products_cache) that completed and matched nothing.
+ * The probe never catches its own query, so a DB error or timeout arrives here as a throw, as does an
+ * older gateway without the operation; every one of those is "unknown", which keeps the honest 500.
+ * `exists: null` (a synthesized pg: id, stored nowhere) is unknown too.
+ */
+async function routeIdIsSettledAbsent(productId: string): Promise<boolean> {
+  try {
+    const { exists } = await getPdpRouteIdExistenceCached({
+      product_id: productId,
+      timeout_ms: PDP_ROUTE_ID_PROBE_TIMEOUT_MS,
+      gatewayBaseUrl: resolveServerGatewayBaseUrl(),
+      revalidateSeconds: PDP_ROUTE_ID_PROBE_REVALIDATE_S,
+    });
+    return exists === false;
+  } catch (err) {
+    unstable_rethrow(err);
+    return false;
+  }
+}
+
+/**
  * Is this failure worth exactly one more attempt?
  *
  * An ALLOWLIST, for the same reason the classifier is one: every retry is a
@@ -576,7 +629,7 @@ async function _fetchPdpForServerRenderUncached(
     timeout_ms: PDP_SERVER_FETCH_TIMEOUT_MS,
     gatewayBaseUrl: resolveServerGatewayBaseUrl(),
   };
-  type Attempt = { outcome: PdpFetchOutcome; retryable: boolean };
+  type Attempt = { outcome: PdpFetchOutcome; retryable: boolean; unresolvedRouteId?: boolean };
 
   const attempt = async (timeoutMs: number): Promise<Attempt> => {
     const args = { ...fetchArgs, timeout_ms: timeoutMs };
@@ -610,6 +663,7 @@ async function _fetchPdpForServerRenderUncached(
       return {
         outcome: { status: classifyPdpFetchFailure(err) },
         retryable: shouldRetryPdpFetchFailure(err),
+        unresolvedRouteId: isUnresolvedRouteIdFailure(err),
       };
     }
   };
@@ -627,7 +681,22 @@ async function _fetchPdpForServerRenderUncached(
   // ISR fill to ~18s — slower than the cold SSR this whole workstream exists
   // to kill. Capped at PDP_SERVER_RETRY_TIMEOUT_MS, worst case stays ~13s and
   // a gateway that is merely slow (rather than briefly down) still fails fast.
-  if (!first.retryable) return first.outcome;
+  if (!first.retryable) {
+    // A definitive "could not resolve this id" on the crawlable static route: ask whether ANY stored
+    // record holds it. Only a settled "no" becomes a 404 (stored by ISR, which is right for an id that
+    // names nothing); anything else stays the degraded 500. The personalized alias route never 404s, so
+    // it never pays for the probe.
+    if (
+      first.outcome.status === 'degraded' &&
+      first.unresolvedRouteId &&
+      cacheable &&
+      isRouteIdExistenceProbeEnabled() &&
+      (await routeIdIsSettledAbsent(productId))
+    ) {
+      return { status: 'unbuildable' };
+    }
+    return first.outcome;
+  }
   return (await attempt(PDP_SERVER_RETRY_TIMEOUT_MS)).outcome;
 }
 
