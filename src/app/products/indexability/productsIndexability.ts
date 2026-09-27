@@ -1,4 +1,5 @@
 import { headers } from 'next/headers';
+import { withBuyerMarket } from '@/lib/buyerMarket';
 import {
   SITEMAP_SEED_PRODUCT_IDS,
   isProductIdSitemapEligible,
@@ -115,13 +116,13 @@ export async function fetchIndexabilityPage(
       // covered in feedback_llm_call_multipliers.md.
       next: { revalidate: INDEXABILITY_REVALIDATE_S, tags: ['indexability'] },
       signal: controller.signal,
-      body: JSON.stringify({
+      body: JSON.stringify(withBuyerMarket({
         operation: 'get_product_entity_index_feed',
         payload: {
           page: safePage,
           limit: INDEXABILITY_PAGE_SIZE,
         },
-      }),
+      })),
     });
 
     if (!res.ok) {
