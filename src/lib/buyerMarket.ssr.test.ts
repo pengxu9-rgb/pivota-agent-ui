@@ -69,8 +69,19 @@ describe('no gateway envelope skips the market', () => {
     fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
       const full = path.join(dir, entry.name);
       if (entry.isDirectory()) return walk(full);
-      return /\.(ts|tsx)$/.test(entry.name) && !/\.test\.(ts|tsx)$/.test(entry.name) ? [full] : [];
+      return /\.(ts|tsx|js|jsx|mjs)$/.test(entry.name) && !/\.test\.(ts|tsx|js|mjs)$/.test(entry.name) ? [full] : [];
     });
+  // Comments removed first, so a wrap or a stamp that survives only in a comment
+  // does not count.
+  const code = (file: string) =>
+    fs
+      .readFileSync(file, 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/(^|[^:'"`])\/\/.*$/gm, '$1');
+  const rel = (file: string) => path.relative(SRC, file).split(path.sep).join('/');
+  // An invoke envelope: an `operation` key (bare or quoted) next to a fetch.
+  const ENVELOPE = /['"]?\boperation['"]?\s*:/;
+  const GATEWAY_BOUND = /(api\/gateway|agent\/shop\/v1\/invoke|InvokeUrl)/;
 
   // Files that POST an invoke envelope themselves, and why each is compliant.
   const EXPECTED: Record<string, string> = {
@@ -79,25 +90,37 @@ describe('no gateway envelope skips the market', () => {
     'app/products/indexability/productsIndexability.ts': 'withBuyerMarket',
     // The proxy forwards the client's envelope verbatim (already stamped). Its one
     // envelope of its own, the PDP reviews overlay, goes to the BACKEND reviews lane
-    // (REVIEWS_UPSTREAM_BASE), not to the gateway.
+    // (REVIEWS_UPSTREAM_BASE), not to the gateway -- pinned below as exactly one.
     'app/api/gateway/route.ts': 'proxy: forwards stamped bodies; own call is backend-bound',
   };
 
   it('every file that sends an operation envelope is a known, compliant sender', () => {
     const senders = walk(SRC)
       .filter((file) => {
-        const text = fs.readFileSync(file, 'utf8');
-        return /fetch\(/.test(text) && /\boperation\s*:\s*['"`]/.test(text) && /(api\/gateway|agent\/shop\/v1\/invoke|InvokeUrl)/.test(text);
+        const text = code(file);
+        return /fetch\(/.test(text) && ENVELOPE.test(text) && GATEWAY_BOUND.test(text);
       })
-      .map((file) => path.relative(SRC, file).split(path.sep).join('/'))
+      .map(rel)
       .sort();
 
     expect(senders).toEqual(Object.keys(EXPECTED).sort());
     for (const file of ['app/brands/[slug]/page.tsx', 'app/products/indexability/productsIndexability.ts']) {
-      expect(fs.readFileSync(path.join(SRC, file), 'utf8'), file).toMatch(/JSON\.stringify\(withBuyerMarket\(\{/);
+      const text = code(path.join(SRC, file));
+      // Every JSON body in these files is wrapped -- not just one of them.
+      const bodies = text.match(/body:\s*JSON\.stringify\(/g) || [];
+      const wrapped = text.match(/body:\s*JSON\.stringify\(withBuyerMarket\(/g) || [];
+      expect(bodies.length, file).toBeGreaterThan(0);
+      expect(wrapped.length, file).toBe(bodies.length);
     }
-    expect(fs.readFileSync(path.join(SRC, 'lib/api.ts'), 'utf8')).toMatch(
-      /market: resolveBuyerMarket\(requestMetadata\.market\)/,
-    );
+    expect(code(path.join(SRC, 'lib/api.ts'))).toMatch(/market: resolveBuyerMarket\(requestMetadata\.market\)/);
+  });
+
+  it('the proxy builds exactly one envelope of its own, and it is the backend reviews overlay', () => {
+    const text = code(path.join(SRC, 'app/api/gateway/route.ts'));
+    // Any envelope literal, whatever its op (digits and dots included: get_pdp_v2, offers.resolve).
+    const own = text.match(/JSON\.stringify\(\{\s*['"]?operation['"]?\s*:/g) || [];
+    expect(own).toHaveLength(1);
+    expect(text).toMatch(/JSON\.stringify\(\{\s*['"]?operation['"]?\s*:\s*['"]get_review_summary['"]/);
+    expect(text).toMatch(/buildShopUpstreamInvokeUrl\(REVIEWS_UPSTREAM_BASE\)/);
   });
 });

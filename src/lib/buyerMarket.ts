@@ -20,26 +20,33 @@
 // replaces this constant; the call sites do not change.
 //
 // What the gateway accepts. Exactly ONE ISO-3166 alpha-2 code the gateway can price
-// (`resolveServingCurrency`: US -> USD). A locale ('en-US') or a list ('US,SG') is
+// (`resolveServingCurrency`: US -> USD). Anything else -- a locale ('en-US'), a list
+// ('US,SG'), or a well-formed code it has no currency for ('UK', 'DE', 'ZZ') -- is
 // read as "a market nothing is priced for" and the search serves NOTHING, so this
-// module never sends either: a caller-supplied value that is not a single ISO-2 code
-// is replaced by the storefront market, never forwarded.
+// module never sends one: a caller-supplied value outside PRICEABLE_MARKETS is
+// replaced by the storefront market, never forwarded.
 
 export const STOREFRONT_MARKET = 'US';
 
-const ISO2 = /^[A-Z]{2}$/;
+// The markets the gateway prices, mirrored from PIVOTA-Agent
+// src/auroraBff/buyerRegion.js `currencyForBuyerRegion` (2026-09-27). A market added
+// there is not sendable from here until it is added here too -- the safe direction:
+// it falls back to the storefront market instead of emptying the page.
+export const PRICEABLE_MARKETS: ReadonlySet<string> = new Set([
+  'AU', 'CA', 'FI', 'FR', 'GB', 'HK', 'HR', 'JP', 'KR', 'SE', 'SG', 'US',
+]);
 
-/** One ISO-2 market, upper-cased, or null. Never a locale, never a list. */
+/** One market the gateway can price, upper-cased, or null. Never a locale, never a list. */
 export function normalizeBuyerMarket(raw: unknown): string | null {
   if (typeof raw !== 'string') return null;
   const code = raw.trim().toUpperCase();
-  return ISO2.test(code) ? code : null;
+  return PRICEABLE_MARKETS.has(code) ? code : null;
 }
 
 /**
  * The market for one gateway call: the caller's own `metadata.market` when it is a
- * single ISO-2 code (a surface that knows better, e.g. a checkout hand-off that
- * carries the buyer's market), else the storefront market.
+ * single market the gateway can price (a surface that knows better, e.g. a checkout
+ * hand-off that carries the buyer's market), else the storefront market.
  */
 export function resolveBuyerMarket(callerMarket?: unknown): string {
   return normalizeBuyerMarket(callerMarket) || STOREFRONT_MARKET;

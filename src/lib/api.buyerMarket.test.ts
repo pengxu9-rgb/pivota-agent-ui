@@ -45,8 +45,10 @@ describe('every gateway call carries metadata.market', () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => jsonResponse(OK_BODY));
     const api = await import('./api');
 
-    // One call per public wrapper family: callGateway and callGatewayWithTimeout,
-    // PDP, search, discovery, similar, resolve, reviews and a checkout-lane op.
+    // One call per gateway-bound wrapper family: callGateway and
+    // callGatewayWithTimeout -- PDP, search, discovery, similar, resolve, detail.
+    // (Reviews and checkout ops share the envelope but the proxy sends them to the
+    // backend, so they prove nothing about the gateway and are not listed.)
     const calls: Array<[string, () => Promise<unknown>]> = [
       ['get_pdp_v2', () => api.getPdpV2({ product_id: 'prod_1', merchant_id: 'merch_1', include: ['offers'] })],
       ['find_products_multi', () => api.sendMessage('moisturizer')],
@@ -55,9 +57,7 @@ describe('every gateway call carries metadata.market', () => {
       ['find_similar_products', () => api.getSimilarProductsMainline({ product_id: 'prod_1' } as any)],
       ['resolve_product_candidates', () => api.resolveProductCandidates({ product_id: 'prod_1' } as any)],
       ['resolve_product_group', () => api.resolveProductGroup({ product_id: 'prod_1' } as any)],
-      ['list_sku_reviews', () =>
-        api.listSkuReviews({ sku: { merchant_id: 'merch_1', platform: 'shopify', platform_product_id: 'p1' } })],
-      ['preview_quote', () => api.previewQuote({ merchant_id: 'merch_1', items: [] } as any)],
+      ['get_product_detail', () => api.getProductDetail('prod_1', 'merch_1')],
     ];
     for (const [, call] of calls) {
       await call().catch(() => undefined);
@@ -90,7 +90,7 @@ describe('every gateway call carries metadata.market', () => {
     for (const body of sentBodies(fetchMock)) expect(body.metadata.market).toBe('US');
   });
 
-  it("a caller's own single ISO-2 market wins; anything else is replaced, never forwarded", async () => {
+  it("a caller's own priceable market wins; anything else is replaced, never forwarded", async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => jsonResponse(OK_BODY));
     const { sendMessage } = await import('./api');
 
@@ -102,6 +102,11 @@ describe('every gateway call carries metadata.market', () => {
       ['en-US', 'US'],
       ['US,SG', 'US'],
       ['USA', 'US'],
+      // Well-formed codes the gateway has no currency for: also a page of nothing.
+      ['UK', 'US'],
+      ['DE', 'US'],
+      ['ZZ', 'US'],
+      ['gb', 'GB'],
       [['US'], 'US'],
       ['', 'US'],
     ];

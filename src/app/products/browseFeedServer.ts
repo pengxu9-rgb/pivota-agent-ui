@@ -26,6 +26,7 @@
  */
 import { unstable_cache } from 'next/cache';
 import { getShoppingDiscoveryFeed, type ProductResponse } from '@/lib/api';
+import { resolveBuyerMarket } from '@/lib/buyerMarket';
 
 export const BROWSE_FEED_REVALIDATE_S = 900;
 // Matches the client's first-page budget (GRID_INITIAL_PAGE_SIZE) so the
@@ -104,7 +105,8 @@ const getBrowseFeedCached = unstable_cache(
       `browse_feed_unavailable_not_cached${lastError ? `: ${String(lastError)}` : ''}`,
     );
   },
-  ['browse-feed-v1'],
+  // The market callGateway stamps on the feed request: the grid is priced for it.
+  ['browse-feed-v1', `market:${resolveBuyerMarket()}`],
   { revalidate: BROWSE_FEED_REVALIDATE_S, tags: ['browse'] },
 );
 
