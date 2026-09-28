@@ -89,20 +89,93 @@ function reapCalls() {
   return fetchMock.mock.calls.filter(([url]) => String(url).includes('/api/reap-checkout'));
 }
 
-describe('PDP: Buy with Reap entry', () => {
-  it('flag OFF: no entry and no /api/reap-checkout request (the PDP is today\'s)', async () => {
-    render(<PdpContainer payload={payload()} mode="generic" onAddToCart={() => {}} onBuyNow={() => {}} />);
-    await screen.findByText('Silky Matte Lip Ink', undefined, { timeout: 2000 }).catch(() => null);
-    await new Promise((r) => setTimeout(r, 30));
+/** The purchase bar: the element holding the quantity stepper and the CTAs. */
+function purchaseBar(): HTMLElement {
+  const dec = screen.getByRole('button', { name: 'Decrease quantity' });
+  return dec.parentElement!.parentElement as HTMLElement;
+}
+
+function renderPdp(p: PDPPayload = payload()) {
+  return render(<PdpContainer payload={p} mode="generic" onAddToCart={() => {}} onBuyNow={() => {}} />);
+}
+
+async function settle() {
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Decrease quantity' })).toBeInTheDocument());
+  await new Promise((r) => setTimeout(r, 30));
+}
+
+describe('PDP purchase bar: Buy with Reap', () => {
+  beforeEach(() => {
+    // The standard shell (the production default) renders the sticky purchase bar.
+    vi.stubEnv('NEXT_PUBLIC_GENERIC_PDP_USE_STANDARD_SHELL', 'true');
+  });
+
+  it('flag OFF: "View at <store>" is the only primary, no Reap CTA, no /api/reap-checkout request', async () => {
+    renderPdp();
+    await settle();
+    const bar = purchaseBar();
+    const buttons = Array.from(bar.querySelectorAll('button')).map((b) => b.getAttribute('aria-label') || b.textContent);
+    expect(buttons).toEqual(['Decrease quantity', 'Increase quantity', 'View at retailer · $16']);
+    expect(screen.queryByTestId('buybar-reap-primary')).toBeNull();
     expect(screen.queryByTestId('reap-entry')).toBeNull();
     expect(reapCalls()).toHaveLength(0);
   });
 
-  it('flag ON + demo merchant: "Buy with Reap" beside the store link', async () => {
+  it('flag ON but merchant not in the demo: the bar is byte-identical to flag OFF', async () => {
+    const off = renderPdp();
+    await settle();
+    const offHtml = purchaseBar().outerHTML;
+    off.unmount();
+
     vi.stubEnv('NEXT_PUBLIC_REAP_CHECKOUT_DEMO', '1');
-    render(<PdpContainer payload={payload()} mode="generic" onAddToCart={() => {}} onBuyNow={() => {}} />);
-    await waitFor(() => expect(screen.getByTestId('reap-entry-button')).toBeInTheDocument());
-    expect(reapCalls()).toHaveLength(1);
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify({ enabled: true, merchants: [{ domain: 'jsmbeauty.sg', market: 'SG' }] }), { status: 200 }),
+    );
+    renderPdp();
+    await settle();
+    await waitFor(() => expect(reapCalls()).toHaveLength(1));
+    await new Promise((r) => setTimeout(r, 30));
+    expect(purchaseBar().outerHTML).toBe(offHtml);
+  });
+
+  it('flag ON + demo merchant: Reap is the primary, to the RIGHT of a secondary store button, inside the bar', async () => {
+    vi.stubEnv('NEXT_PUBLIC_REAP_CHECKOUT_DEMO', '1');
+    renderPdp();
+    const primary = await screen.findByTestId('buybar-reap-primary');
+    const bar = purchaseBar();
+    expect(bar.contains(primary)).toBe(true);
+    const secondary = screen.getByTestId('buybar-store-secondary');
+    const order = Array.from(bar.querySelectorAll('button')).map((b) => b.dataset.testid || b.getAttribute('aria-label'));
+    expect(order).toEqual(['Decrease quantity', 'Increase quantity', 'buybar-store-secondary', 'buybar-reap-primary']);
+    // Primary: filled, shield icon, full price, never shrinks.
+    expect(primary.getAttribute('aria-label')).toBe('Buy with Reap · $16');
+    expect(primary.className).toMatch(/\bshrink-0\b/);
+    expect(primary.className).toMatch(/\bwhitespace-nowrap\b/);
+    expect(primary.querySelector('svg.lucide-shield-check')).not.toBeNull();
+    expect(screen.getByTestId('buybar-reap-price').textContent).toContain('$16');
+    // Secondary: outlined, external-link icon; the one that yields at narrow widths.
+    expect(secondary.className).toMatch(/border-foreground bg-white/);
+    expect(secondary.className).toMatch(/\bmin-w-0\b/);
+    expect(secondary.querySelector('svg.lucide-external-link')).not.toBeNull();
+    // No floating pill any more.
+    expect(screen.queryByTestId('reap-entry')).toBeNull();
+    fireEvent.click(primary);
+    expect(await screen.findByTestId('reap-panel')).toBeInTheDocument();
+  });
+
+  it('narrow widths (< 440px): the secondary reads "Visit store" with no price; the primary keeps its price', async () => {
+    vi.stubEnv('NEXT_PUBLIC_REAP_CHECKOUT_DEMO', '1');
+    renderPdp();
+    const secondary = await screen.findByTestId('buybar-store-secondary');
+    const spans = Array.from(secondary.querySelectorAll(':scope > span'));
+    const narrowVisible = spans.filter((el) => !/(^|\s)hidden(\s|$)/.test(el.className)).map((el) => el.textContent);
+    const wideOnly = spans.filter((el) => /(^|\s)hidden(\s|$)/.test(el.className)).map((el) => el.textContent);
+    expect(narrowVisible).toEqual(['Visit store']);
+    expect(wideOnly.join(' ')).toMatch(/View at retailer.*\$16/);
+    // The primary's price is never behind a breakpoint.
+    const price = screen.getByTestId('buybar-reap-price');
+    expect(price.className).not.toMatch(/(^|\s)hidden(\s|$)/);
+    expect(price.textContent).toContain('$16');
   });
 
   it('opens the checkout for the PDP\'s own sig_ id, not the offer\'s seller-side id', async () => {
@@ -128,8 +201,8 @@ describe('PDP: Buy with Reap entry', () => {
         default_offer_id: 'of_1',
       },
     } as any);
-    render(<PdpContainer payload={p} mode="generic" onAddToCart={() => {}} onBuyNow={() => {}} />);
-    fireEvent.click(await screen.findByTestId('reap-entry-button'));
+    renderPdp(p);
+    fireEvent.click(await screen.findByTestId('buybar-reap-primary'));
     const set = (n: string, v: string) => fireEvent.change(document.querySelector(`input[name="${n}"]`)!, { target: { value: v } });
     set('first_name', 'Ada'); set('last_name', 'L'); set('email', 'a@example.test'); set('phone', '1');
     set('address_line1', '1 St'); set('city', 'SF');

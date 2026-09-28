@@ -120,7 +120,7 @@ import {
   sanitizeIngredientsInciData,
 } from '@/features/pdp/utils/pdpDisplaySanitizers';
 import type { ServiceCardData } from '@/features/services/lib/types';
-import { ReapCheckoutEntry } from '@/components/reapCheckout/ReapCheckoutEntry';
+import { useReapCheckoutEntry } from '@/components/reapCheckout/ReapCheckoutEntry';
 
 function nonEmptyText(value: unknown, fallback: string): string {
   const text = String(value ?? '').trim();
@@ -2409,20 +2409,19 @@ export function PdpContainer({
   const selectedMerchantLabel = selectedOffer ? displayMerchantLabel(selectedOffer) : null;
   const externalRetailerLabel =
     selectedMerchantLabel && selectedMerchantLabel !== 'Seller' ? selectedMerchantLabel : null;
-  // Reap checkout demo entry (renders null unless NEXT_PUBLIC_REAP_CHECKOUT_DEMO is on).
+  // Reap checkout demo (NEXT_PUBLIC_REAP_CHECKOUT_DEMO; off by default). `cta` is null unless "Buy with Reap"
+  // applies to this PDP, and a null `cta` leaves the purchase bar exactly as on main.
   // The item id is the PDP's own product id (the `sig_` the gateway's UCP door reads, PIVOTA-Agent
   // docs/reap-agentic-lane.md §7 step 2b), not the selected offer's seller-side id.
-  const reapCheckoutEntry = (
-    <ReapCheckoutEntry
-      productId={String(payload.product.product_id || '').trim() || effectiveProductId}
-      productTitle={payload.product.title}
-      storeUrl={selectedRedirectUrl}
-      storeLabel={externalRetailerLabel}
-      offer={selectedOffer as unknown as Record<string, unknown> | null}
-      product={payload.product as unknown as Record<string, unknown>}
-      isExternalPurchase={isExternalPurchaseCta}
-    />
-  );
+  const reapEntry = useReapCheckoutEntry({
+    productId: String(payload.product.product_id || '').trim() || effectiveProductId,
+    productTitle: payload.product.title,
+    storeUrl: selectedRedirectUrl,
+    storeLabel: externalRetailerLabel,
+    offer: selectedOffer as unknown as Record<string, unknown> | null,
+    product: payload.product as unknown as Record<string, unknown>,
+    isExternalPurchase: isExternalPurchaseCta,
+  });
   const effectiveShippingEta =
     selectedOffer?.shipping?.eta_days_range || payload.product.shipping?.eta_days_range;
   const effectiveReturns = selectedOffer?.returns || payload.product.returns;
@@ -4270,7 +4269,7 @@ export function PdpContainer({
 
     return (
       <>
-      {reapCheckoutEntry}
+      {reapEntry.sheet}
       <BeautyShell
         brand={payload.product.brand?.name}
         title={payload.product.title}
@@ -4453,6 +4452,7 @@ export function PdpContainer({
         buyNowLabel={actionsByType.buy_now || 'Buy now'}
         isExternalPurchase={isExternalPurchaseCta}
         externalRetailerLabel={externalRetailerLabel}
+        reapCheckout={reapEntry.cta}
         inStock={effectiveIsInStock}
         quantity={resolvedQuantity}
         onQtyChange={(next) => setQuantity(next)}
@@ -4549,7 +4549,7 @@ export function PdpContainer({
 
     return (
       <>
-      {reapCheckoutEntry}
+      {reapEntry.sheet}
       <FashionShell
         brand={payload.product.brand?.name}
         title={payload.product.title}
@@ -4660,6 +4660,7 @@ export function PdpContainer({
         buyNowLabel={actionsByType.buy_now || 'Buy now'}
         isExternalPurchase={isExternalPurchaseCta}
         externalRetailerLabel={externalRetailerLabel}
+        reapCheckout={reapEntry.cta}
         inStock={effectiveIsInStock}
         quantity={resolvedQuantity}
         onQtyChange={(next) => setQuantity(next)}
@@ -4713,7 +4714,7 @@ export function PdpContainer({
 
     return (
       <>
-      {reapCheckoutEntry}
+      {reapEntry.sheet}
       <ElectronicsShell
         brand={payload.product.brand?.name}
         title={payload.product.title}
@@ -4813,6 +4814,7 @@ export function PdpContainer({
         buyNowLabel={actionsByType.buy_now || 'Buy now'}
         isExternalPurchase={isExternalPurchaseCta}
         externalRetailerLabel={externalRetailerLabel}
+        reapCheckout={reapEntry.cta}
         inStock={effectiveIsInStock}
         quantity={resolvedQuantity}
         onQtyChange={(next) => setQuantity(next)}
@@ -4852,7 +4854,7 @@ export function PdpContainer({
     const GenericShell = isGenericDesktop ? GenericPDPDesktop : GenericPDPMobile;
     return (
       <>
-      {reapCheckoutEntry}
+      {reapEntry.sheet}
       <GenericShell
         brand={payload.product.brand?.name}
         title={payload.product.title}
@@ -4952,6 +4954,7 @@ export function PdpContainer({
         buyNowLabel={actionsByType.buy_now || 'Buy now'}
         isExternalPurchase={isExternalPurchaseCta}
         externalRetailerLabel={externalRetailerLabel}
+        reapCheckout={reapEntry.cta}
         inStock={effectiveIsInStock}
         onQtyChange={(next) => setQuantity(next)}
         onAddToCart={() => {
@@ -4991,7 +4994,6 @@ export function PdpContainer({
         isDesktop ? 'pb-0' : 'pb-[calc(120px+env(safe-area-inset-bottom,0px))] lg:pb-0',
       )}
     >
-      {reapCheckoutEntry}
       <div
         className={cn(
           'fixed left-0 right-0 z-50 pointer-events-none transition-colors',

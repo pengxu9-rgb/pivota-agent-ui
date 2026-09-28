@@ -14,7 +14,7 @@ This runbook is for demoing "Buy with Reap" to partners. It covers the Tier B (c
 
 | # | Screen | Shot |
 |---|---|---|
-| 1 | The PDP for a links-out merchant. **"Buy with Reap"** appears beside "View at Judydoll". | `reap-checkout-demo/01-pdp-buy-with-reap.jpg` |
+| 1 | The PDP for a links-out merchant. **"Buy with Reap"** is the primary (filled) button in the purchase bar, to the right of a secondary outlined store button. Below 560 px the store button reads "Visit store" with no price; the Reap price always shows. | `reap-checkout-demo/01-pdp-buy-with-reap.jpg` (390 px), `01b-pdp-buy-with-reap-375.jpg` (375 px) |
 | 2 | A sheet asks for shipping details, an optional **offer code** and a terms checkbox. There is no card field. | `02-form.jpg`, `03-form-filled-offer-code.jpg` |
 | 3 | "Confirming the item and getting your total from the merchant…" takes about 30–45 s. The offer code shows as sent. | `04-preparing-quote.jpg` |
 | 4 | **The quote.** The checkout's own rows: Items, Shipping, Tax (or "Tax included in prices"), **Discount (negative)** and Total. It says "Offer code applied" or "Code not applied". | `05-awaiting-approval-quote.jpg`, `14-awaiting-tax-included-sgd.jpg` |

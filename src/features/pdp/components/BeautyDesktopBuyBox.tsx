@@ -1,6 +1,6 @@
 'use client';
 
-import { ExternalLink } from 'lucide-react';
+import { ExternalLink, ShieldCheck } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatMoney } from '@/features/pdp/utils/formatMoney';
 
@@ -26,6 +26,7 @@ export function BeautyDesktopBuyBox({
   buyNowLabel = 'Buy now',
   isExternalPurchase = false,
   externalRetailerLabel,
+  reapCheckout = null,
 }: {
   unitPrice: number;
   shippingCost?: number;
@@ -38,16 +39,24 @@ export function BeautyDesktopBuyBox({
   buyNowLabel?: string;
   isExternalPurchase?: boolean;
   externalRetailerLabel?: string | null;
+  /**
+   * Reap checkout demo (links-out PDPs only). When set, "Buy with Reap" becomes the primary CTA, to the
+   * RIGHT of a secondary "View at <store>". When null (the default: flags off, or a merchant outside the
+   * demo) this component renders exactly what it rendered before the demo existed.
+   */
+  reapCheckout?: { onOpen: () => void } | null;
 }) {
   const itemsSubtotal = Math.max(0, unitPrice) * Math.max(1, quantity);
   const total = itemsSubtotal + Math.max(0, shippingCost || 0);
   const formattedTotal = formatMoney(total, currency);
   const retailerLabel = String(externalRetailerLabel || '').trim();
   const externalCtaLabel = `View at ${retailerLabel || 'retailer'}`;
+  const reapMode = isExternalPurchase && Boolean(reapCheckout);
 
   return (
     <div className="mt-5 px-[18px]">
-      <div className="flex items-center gap-2.5">
+      {/* Reap mode wraps: the stepper stays on the left, then [store | Buy with Reap] on a full-width row. */}
+      <div className={reapMode ? 'flex flex-wrap items-center gap-2.5' : 'flex items-center gap-2.5'}>
         {/* Qty stepper */}
         <div className="flex flex-shrink-0 items-center overflow-hidden rounded-full border-[1.5px] border-border bg-white">
           <button
@@ -101,6 +110,34 @@ export function BeautyDesktopBuyBox({
         ) : null}
 
         {/* Primary commit CTA */}
+        {reapMode && reapCheckout ? (
+          <div className="flex basis-full items-center gap-2.5">
+            <button
+              type="button"
+              onClick={onBuyNow}
+              disabled={disabled}
+              aria-label={`${externalCtaLabel} · ${formattedTotal}`}
+              data-testid="buybar-store-secondary"
+              className="flex h-[50px] min-w-0 flex-1 items-center justify-center gap-1.5 rounded-full border-[1.5px] border-foreground bg-white px-3 text-[14px] font-semibold text-foreground hover:bg-secondary disabled:opacity-50"
+            >
+              <span className="min-w-0 truncate">{externalCtaLabel}</span>
+              <ExternalLink className="h-4 w-4 shrink-0" aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              onClick={reapCheckout.onOpen}
+              disabled={disabled}
+              aria-label={`Buy with Reap · ${formattedTotal}`}
+              data-testid="buybar-reap-primary"
+              className="flex h-[50px] shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-full px-5 text-[15px] font-semibold text-white shadow-md disabled:opacity-50"
+              style={{ background: 'var(--pv-gradient-primary, linear-gradient(135deg, #534AB7 0%, #7B6FD4 50%, #1D9E75 100%))' }}
+            >
+              <ShieldCheck className="h-4 w-4 shrink-0" aria-hidden="true" />
+              <span>Buy with Reap</span>
+              <span data-testid="buybar-reap-price">· {formattedTotal}</span>
+            </button>
+          </div>
+        ) : (
         <button
           type="button"
           onClick={onBuyNow}
@@ -125,6 +162,7 @@ export function BeautyDesktopBuyBox({
             `${buyNowLabel} · ${formattedTotal}`
           )}
         </button>
+        )}
       </div>
       {disabled ? (
         <div className="mt-2 text-[12px] text-muted-foreground">

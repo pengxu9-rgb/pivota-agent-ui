@@ -164,6 +164,7 @@ export function ElectronicsPDPDesktop(props: ElectronicsPDPMobileProps & {
               buyNowLabel={props.buyNowLabel}
               isExternalPurchase={props.isExternalPurchase}
               externalRetailerLabel={props.externalRetailerLabel}
+              reapCheckout={props.reapCheckout}
               onQtyChange={props.onQtyChange}
               onAddToCart={props.onAddToCart}
               onBuyNow={props.onBuyNow}

@@ -1,6 +1,6 @@
 'use client';
 
-// "Buy with Reap" beside "Visit store" on a links-out PDP — demo only.
+// "Buy with Reap" as the primary CTA of a links-out PDP's purchase bar — demo only.
 //
 // FLAG OFF (NEXT_PUBLIC_REAP_CHECKOUT_DEMO unset, the default): renders null and makes NO request,
 // so the PDP is exactly today's. Flag on: asks /api/reap-checkout/config once per page load (404
@@ -13,8 +13,7 @@
 // available and offers the store. The offer-level check here only hides the entry early when the
 // gateway already rewrote the offer as declined (execution_spec rail `referral` + join_mode
 // `referral_only`, PIVOTA-Agent src/offers/offersPriority.js enrichOfferCommerceMetadata).
-import { useEffect, useState } from 'react';
-import { ShieldCheck } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { ResponsiveSheet } from '@/features/pdp/components/ResponsiveSheet';
 import {
   canonicalMerchantDomain,
@@ -70,7 +69,7 @@ export function resolveMerchantDomain(args: {
   return merchantDomainFromUrl(args.storeUrl);
 }
 
-export function ReapCheckoutEntry(props: {
+export type ReapCheckoutEntryProps = {
   productId: string;
   productTitle: string;
   storeUrl?: string | null;
@@ -78,7 +77,18 @@ export function ReapCheckoutEntry(props: {
   offer?: OfferLike;
   product?: OfferLike;
   isExternalPurchase: boolean;
-}) {
+};
+
+/**
+ * The demo entry as data for the PDP's own purchase bar: `cta` is non-null only when "Buy with Reap"
+ * should be offered (flag on, server switch on, demo merchant, not gate-declined), and `sheet` is the
+ * checkout sheet to render once anywhere in the page. With the flag off, `cta` is null, `sheet` is null
+ * and no request is made — the bar renders exactly what it renders on main.
+ */
+export function useReapCheckoutEntry(props: ReapCheckoutEntryProps): {
+  cta: { onOpen: () => void } | null;
+  sheet: ReactNode;
+} {
   const enabled = isReapCheckoutDemoClientEnabled();
   const [merchants, setMerchants] = useState<DemoMerchant[] | null>(null);
   const [open, setOpen] = useState(false);
@@ -94,29 +104,23 @@ export function ReapCheckoutEntry(props: {
     };
   }, [enabled, props.isExternalPurchase]);
 
-  if (!enabled || !props.isExternalPurchase || !merchants?.length) return null;
-  if (offerIsDeclinedByPurchasabilityGate(props.offer)) return null;
-  const domain = resolveMerchantDomain({ offer: props.offer, product: props.product, storeUrl: props.storeUrl });
-  const merchant = domain ? merchants.find((m) => m.domain === domain) : null;
-  if (!merchant || !props.productId) return null;
+  const onOpen = useCallback(() => setOpen(true), []);
+  const onClose = useCallback(() => setOpen(false), []);
 
-  return (
-    <>
-      <div
-        className="fixed bottom-[calc(96px+env(safe-area-inset-bottom,0px))] right-4 z-40 lg:bottom-8 lg:right-8"
-        data-testid="reap-entry"
-      >
-        <button
-          type="button"
-          onClick={() => setOpen(true)}
-          className="flex h-11 items-center gap-2 rounded-full border border-foreground/10 bg-white px-4 text-sm font-semibold text-foreground shadow-lg"
-          data-testid="reap-entry-button"
-        >
-          <ShieldCheck className="h-4 w-4" aria-hidden />
-          Buy with Reap
-        </button>
-      </div>
-      <ResponsiveSheet open={open} onClose={() => setOpen(false)} title="Checkout" mobileHeight="h-[88vh]">
+  let merchant: DemoMerchant | null = null;
+  if (enabled && props.isExternalPurchase && merchants?.length && props.productId) {
+    if (!offerIsDeclinedByPurchasabilityGate(props.offer)) {
+      const domain = resolveMerchantDomain({ offer: props.offer, product: props.product, storeUrl: props.storeUrl });
+      merchant = (domain && merchants.find((m) => m.domain === domain)) || null;
+    }
+  }
+  const cta = useMemo(() => (merchant ? { onOpen } : null), [merchant, onOpen]);
+  if (!merchant) return { cta: null, sheet: null };
+
+  return {
+    cta,
+    sheet: (
+      <ResponsiveSheet open={open} onClose={onClose} title="Checkout" mobileHeight="h-[88vh]">
         <ReapCheckoutPanel
           productId={props.productId}
           productTitle={props.productTitle}
@@ -126,6 +130,6 @@ export function ReapCheckoutEntry(props: {
           storeLabel={props.storeLabel}
         />
       </ResponsiveSheet>
-    </>
-  );
+    ),
+  };
 }

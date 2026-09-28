@@ -1,7 +1,8 @@
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  ReapCheckoutEntry,
+  type ReapCheckoutEntryProps,
+  useReapCheckoutEntry,
   __resetReapConfigCacheForTests,
   offerIsDeclinedByPurchasabilityGate,
   resolveMerchantDomain,
@@ -23,9 +24,24 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function renderEntry(props: Partial<Parameters<typeof ReapCheckoutEntry>[0]> = {}) {
+// The hook's CTA, rendered the way the PDP purchase bar renders it.
+function Harness(props: ReapCheckoutEntryProps) {
+  const { cta, sheet } = useReapCheckoutEntry(props);
+  return (
+    <>
+      {cta ? (
+        <button type="button" data-testid="reap-entry-button" onClick={cta.onOpen}>
+          Buy with Reap
+        </button>
+      ) : null}
+      {sheet}
+    </>
+  );
+}
+
+function renderEntry(props: Partial<ReapCheckoutEntryProps> = {}) {
   return render(
-    <ReapCheckoutEntry
+    <Harness
       productId="sig_6433c8107859a484fb72d14861e84690"
       productTitle="Silky Matte Lip Ink"
       storeUrl={STORE}
