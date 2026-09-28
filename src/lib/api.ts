@@ -24,6 +24,7 @@ import type {
   SlotChoice,
 } from '@/features/services/lib/types'
 import { getProviderListings } from '@/features/services/lib/types'
+import { resolveBuyerMarket } from '@/lib/buyerMarket'
 
 export type {
   BookingContact,
@@ -1597,6 +1598,9 @@ async function callGateway(body: InvokeBody, options: GatewayCallOptions = {}) {
       ...(evalMerged ? { eval: evalMerged } : {}),
       ui_source: requestMetadata.ui_source || 'shopping-agent-ui',
       source: resolvedSource,
+      // The buyer market, on EVERY call (browser, SSR, direct-to-Agent). Never
+      // `scope.region`: that is the browser language. See src/lib/buyerMarket.ts.
+      market: resolveBuyerMarket(requestMetadata.market),
     },
   };
 
@@ -3388,6 +3392,10 @@ export async function getPdpV2Cached(args: {
     args.subject ? `pg:${args.subject.id}` : '',
     includeKey,
     String(args.serving_eligible_only !== false),
+    // The buyer market the request carries -- the value callGateway stamps for a call
+    // that names none. Offers and prices differ by market, so a cached PDP is only
+    // valid for the market it was built for.
+    `market:${resolveBuyerMarket()}`,
   ];
   const productTag = `pdp:${String(args.product_id || '')}`;
   const load = unstable_cache(

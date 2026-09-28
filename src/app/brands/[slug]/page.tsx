@@ -1,6 +1,7 @@
 import { headers } from 'next/headers';
 import type { BrandDiscoveryFeedResult } from '@/lib/api';
 import { normalizeProduct } from '@/lib/api';
+import { withBuyerMarket } from '@/lib/buyerMarket';
 import { BrandLandingPage } from './BrandLandingPage';
 
 const INITIAL_BRAND_FEED_TIMEOUT_MS = 1500;
@@ -62,7 +63,7 @@ async function fetchInitialBrandFeed(args: {
       },
       cache: 'no-store',
       signal: controller.signal,
-      body: JSON.stringify({
+      body: JSON.stringify(withBuyerMarket({
         operation: 'get_discovery_feed',
         payload: {
           surface: 'browse_products',
@@ -91,7 +92,7 @@ async function fetchInitialBrandFeed(args: {
               }
             : {}),
         },
-      }),
+      })),
     });
 
     if (!res.ok) return null;
