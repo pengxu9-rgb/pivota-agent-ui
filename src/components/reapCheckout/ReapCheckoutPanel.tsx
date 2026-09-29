@@ -139,8 +139,9 @@ const EMPTY_FORM: FormState = {
 
 type Fallback =
   | { kind: 'not_reap'; offerCodeNotApplied: boolean; availableWithConsent: boolean }
-  | { kind: 'seller_mismatch' }
-  | { kind: 'refused'; message: string | null }
+  | { kind: 'seller_mismatch'; cause: 'different_seller' | 'seller_unconfirmed' }
+  | { kind: 'not_available' }
+  | { kind: 'refused' }
   | { kind: 'error'; message: string };
 
 function defaultIdempotencyKey(): string {
@@ -292,7 +293,8 @@ function HandOff({
   if (!url) {
     return (
       <p className="text-sm font-medium text-red-700" data-testid="reap-link-refused">
-        We could not verify the payment link as Reap&apos;s, so we will not open it. Nothing has been charged.
+        We couldn&apos;t verify this payment link as Reap&apos;s, so we won&apos;t open it. Please try again in a
+        moment; if you already approved a payment on Reap, check your email before trying again.
       </p>
     );
   }
@@ -434,7 +436,11 @@ function StatusView({
       {view.phase === 'deadline_passed' ? (
         <div className="space-y-2">
           <p className="text-sm font-semibold">The approval window closed</p>
-          <p className="text-sm text-muted-foreground">Nothing was charged. Confirming the final status…</p>
+          <p className="text-sm text-muted-foreground" data-testid="reap-deadline-passed-copy">
+            {mayHavePaid
+              ? 'Confirming the final status… If you approved on Reap, check your email or card statement before trying again.'
+              : 'Nothing was charged. Confirming the final status…'}
+          </p>
         </div>
       ) : null}
 
@@ -576,6 +582,8 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
   const [restoreAttempt, setRestoreAttempt] = useState(0);
   const [restoreFailed, setRestoreFailed] = useState(false);
   const [restoredGone, setRestoredGone] = useState(false);
+  // The last seller the server verified; a degraded read publishes none, and must not blank it.
+  const [lastSeller, setLastSeller] = useState<string | null>(null);
 
   // Restore an open checkout for this product (sheet re-opened, or the buyer came back from Reap).
   // A failed read is NOT "no checkout": offering the form then would invite a second purchase.
@@ -682,7 +690,9 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
         writeActiveCheckoutId(props.productId, (body.checkout as ReapCheckoutView).id);
         poll.reset(body.checkout as ReapCheckoutView);
       } else if (body?.fallback === 'seller_mismatch') {
-        setFallback({ kind: 'seller_mismatch' });
+        setFallback({ kind: 'seller_mismatch', cause: body.cause === 'different_seller' ? 'different_seller' : 'seller_unconfirmed' });
+      } else if (body?.fallback === 'not_available') {
+        setFallback({ kind: 'not_available' });
       } else if (body?.fallback === 'not_reap') {
         setFallback({
           kind: 'not_reap',
@@ -690,7 +700,7 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
           availableWithConsent: Boolean(body.available_with_consent),
         });
       } else {
-        setFallback({ kind: 'refused', message: body?.message || null });
+        setFallback({ kind: 'refused' });
       }
     } catch {
       setFallback({ kind: 'error', message: 'We could not reach checkout just now. Nothing was charged.' });
@@ -744,6 +754,11 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
     if (poll.notFound && !mayHavePaid) writeActiveCheckoutId(props.productId, null);
   }, [poll.notFound, props.productId, mayHavePaid]);
 
+  const shownSeller = poll.view?.seller?.domain ?? (poll.view ? lastSeller : null);
+  useEffect(() => {
+    if (poll.view?.seller?.domain) setLastSeller(poll.view.seller.domain);
+  }, [poll.view?.seller?.domain]);
+
   const uncertainNow = Boolean(
     ((poll.notFound || restoredGone) && mayHavePaid) || (poll.view && outcomeUncertain(poll.view, mayHavePaid)),
   );
@@ -756,11 +771,15 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
         <div>
           <p className="text-xs uppercase tracking-wide text-muted-foreground">Checkout with Reap</p>
           <p className="text-sm font-semibold text-foreground">{props.productTitle}</p>
-          <p className="text-xs text-muted-foreground" data-testid="reap-quantity">Quantity: {quantity}</p>
-          {poll.view?.seller?.domain ? (
-            // From the gateway's answer, checked by the server — never from the page.
+          {/* The open checkout's own quantity once there is one (a restored checkout may differ from the page). */}
+          <p className="text-xs text-muted-foreground" data-testid="reap-quantity">
+            Quantity: {poll.view?.lineItems[0]?.quantity ?? quantity}
+          </p>
+          {shownSeller ? (
+            // Published by the gateway and checked by the server — never from the page. Kept from the last
+            // good answer when a later (degraded) read publishes none.
             <p className="text-xs text-muted-foreground" data-testid="reap-seller">
-              Sold and shipped by {poll.view.seller.domain}
+              Sold and shipped by {shownSeller}
             </p>
           ) : null}
         </div>
@@ -773,7 +792,11 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
       ) : restoreFailed && !poll.view ? (
         <div className="space-y-2" data-testid="reap-restore-failed">
           <p className="text-sm font-semibold">We couldn&apos;t load your open checkout just now.</p>
-          <p className="text-sm text-muted-foreground">Nothing has been lost or charged.</p>
+          <p className="text-sm text-muted-foreground" data-testid="reap-restore-failed-copy">
+            {mayHavePaid
+              ? 'Nothing has been lost. If you approved a payment on Reap, check your email or card statement before trying again.'
+              : 'Nothing has been lost or charged.'}
+          </p>
           <button
             type="button"
             onClick={() => setRestoreAttempt((n) => n + 1)}
@@ -832,11 +855,20 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
             </>
           ) : fallback.kind === 'seller_mismatch' ? (
             <>
-              <p className="text-sm font-semibold">This item couldn&apos;t be checked out through Reap from this seller.</p>
-              <p className="text-sm text-muted-foreground">Nothing was charged. You can still buy it on the store.</p>
+              <p className="text-sm font-semibold">
+                This item isn&apos;t available here from {props.merchantDomain}.
+              </p>
+              <p className="text-sm text-muted-foreground">Nothing was opened or charged.</p>
             </>
+          ) : fallback.kind === 'not_available' ? (
+            <>
+              <p className="text-sm font-semibold">Checkout through Reap isn&apos;t available for this item right now.</p>
+              <p className="text-sm text-muted-foreground">You can still buy it on the store.</p>
+            </>
+          ) : fallback.kind === 'refused' ? (
+            <p className="text-sm font-semibold">This checkout could not be opened. Nothing was charged.</p>
           ) : (
-            <p className="text-sm font-semibold">{fallback.message || 'This checkout could not be opened.'}</p>
+            <p className="text-sm font-semibold">{fallback.message}</p>
           )}
           <div className="flex flex-wrap gap-2">
             <button
@@ -846,7 +878,21 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
             >
               Back
             </button>
-            {storeLink}
+            {fallback.kind === 'seller_mismatch' ? (
+              // ONLY the seller the buyer was shown, built from OUR config (the configured demo merchant) —
+              // never a gateway link, never the page's redirect link for this item (§5.4).
+              <a
+                href={`https://${props.merchantDomain}/`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex h-10 items-center gap-1 rounded-full border border-border px-4 text-sm font-semibold"
+                data-testid="reap-visit-configured-merchant"
+              >
+                Visit {props.merchantDomain} <ExternalLink className="h-3.5 w-3.5" aria-hidden />
+              </a>
+            ) : (
+              storeLink
+            )}
           </div>
         </div>
       ) : (

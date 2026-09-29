@@ -45,6 +45,11 @@ describe('gateway UCP door client', () => {
         rpcResult({ error: { code: 'OPERATION_NOT_ALLOWED', message: 'm', detail: { reason: 'ucp_reap_update_refused' } } }, true),
       ),
     ).toMatchObject({ kind: 'tool_error', code: 'OPERATION_NOT_ALLOWED', reason: 'ucp_reap_update_refused' });
+    expect(
+      readToolCallBody(
+        rpcResult({ error: { code: 'QUOTE_REQUIRED', message: 'm', detail: { reason: 'ucp_seller_mismatch', cause: 'seller_unconfirmed' } } }, true),
+      ),
+    ).toMatchObject({ kind: 'tool_error', reason: 'ucp_seller_mismatch', cause: 'seller_unconfirmed' });
     expect(readToolCallBody(rpcResult({ error: { code: 'X', details: { reason: 'wrong_key' }, reason: 'also_wrong' } }, true))).toMatchObject({ reason: null });
     expect(readToolCallBody({ jsonrpc: '2.0', id: 1, error: { code: -32603, message: 'Internal error.' } })).toMatchObject({ kind: 'unavailable' });
     const non200 = await callUcpTool({ base: 'http://localhost:1', apiKey: KEY, userToken: 't', tool: 'get_checkout', toolArgs: {}, fetchImpl: (async () => new Response('Cannot POST', { status: 404 })) as unknown as typeof fetch });

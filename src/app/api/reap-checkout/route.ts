@@ -5,11 +5,11 @@
 // `create_checkout`, and answers the browser a READ VIEW of the checkout (lib/reapCheckout/
 // checkoutView.ts) — never the raw body, and never a continue_url that is not Reap's.
 //
-// The SELLER is checked on the gateway's answer, not taken from the browser: the lane buys the row the
-// PDP's `sig_` id resolves to, which can be another seller than the offer shown. A Reap checkout whose
-// product key names a merchant other than the demo merchant's configured id(s) is answered
-// `{ checkout: null, fallback: 'seller_mismatch' }` and its link is never handed out (the purchase the
-// lane opened waits for a buyer who never comes; the backend's sweep expires it; nothing is charged).
+// The SELLER is pinned by the gateway's seller contract (PIVOTA-Agent docs/reap-agentic-lane.md §5.4):
+// the create sends `checkout.reap.expected_merchant_domain` = the configured demo merchant, and the door
+// REFUSES (`ucp_seller_mismatch`) any item that would be sold by another seller or whose seller it cannot
+// confirm — nothing is opened then. On a Reap answer the route re-checks the published
+// `reap.merchant_domain`. The browser gets no gateway link in either case.
 //
 // When the gateway's answer is NOT a Reap checkout (the lane is off, the merchant is not eligible,
 // the purchasability gate declined, the backend refused — the door falls through to its storefront
@@ -21,7 +21,6 @@ import { buildCreateCheckoutArgs, validateReapCreateBody } from '@/lib/reapCheck
 import { mintBuyerToken } from '@/lib/reapCheckout/buyerToken.server';
 import { callUcpTool } from '@/lib/reapCheckout/gatewayClient.server';
 import { readReapCheckout } from '@/lib/reapCheckout/checkoutView';
-import { itemIdOfReapCheckoutId, quantityOfReapCheckoutId, sellerOfReapCheckoutId } from '@/lib/reapCheckout/seller.server';
 import {
   disabledResponse,
   hostProblem,
@@ -29,6 +28,7 @@ import {
   publicView,
   rateLimited,
   readCappedJson,
+  sellerMatches,
   readOrMintBuyerId,
   readServerConfig,
   sameOriginProblem,
@@ -95,6 +95,8 @@ export async function POST(req: NextRequest) {
   const toolArgs = buildCreateCheckoutArgs(validated.input, {
     consentVersion: reapConsentVersion(),
     profileUrl: config.profileUrl,
+    // From server config only: the browser's merchant_domain merely selected this entry.
+    expectedMerchantDomain: merchant.domain,
   });
   const outcome = await callUcpTool({
     base: config.base,
@@ -106,7 +108,21 @@ export async function POST(req: NextRequest) {
 
   if (outcome.kind === 'unavailable') return finish(json({ error: 'gateway_unavailable', detail: outcome.detail }, 502));
   if (outcome.kind === 'tool_error') {
-    return finish(json({ checkout: null, fallback: 'refused', code: outcome.code, reason: outcome.reason, message: outcome.message }));
+    if (outcome.reason === 'ucp_seller_mismatch') {
+      // The gateway refused: this item would be sold by someone else, or its seller cannot be confirmed.
+      // Nothing was opened. The browser gets NO gateway text and NO gateway link — only the cause; the
+      // panel offers "Visit <the configured merchant>" built from our own config.
+      return finish(json({ checkout: null, fallback: 'seller_mismatch', cause: outcome.cause === 'different_seller' ? 'different_seller' : 'seller_unconfirmed' }));
+    }
+    if (outcome.reason === 'ucp_expected_merchant_domain_invalid') {
+      // Our own configured domain was refused: a server config bug, not the buyer's.
+      console.error('[reap-checkout] gateway refused REAP_CHECKOUT_DEMO_MERCHANTS domain as expected_merchant_domain', {
+        domain: merchant.domain,
+      });
+      return finish(json({ checkout: null, fallback: 'not_available' }));
+    }
+    // Any other refusal: generic copy. Gateway text is not forwarded.
+    return finish(json({ checkout: null, fallback: 'refused', code: outcome.code, reason: outcome.reason }));
   }
   const view = readReapCheckout(outcome.checkout);
   if (!view) return finish(json({ error: 'gateway_unavailable', detail: 'not_a_checkout' }, 502));
@@ -121,18 +137,12 @@ export async function POST(req: NextRequest) {
       }),
     );
   }
-  // SELLER + ITEM + QUANTITY BINDING, from the gateway's own answer: the purchase must be for the product
-  // and quantity the buyer asked for (the lane echoes both in the id) AND sold by the demo merchant shown.
-  const seller = sellerOfReapCheckoutId(view.id);
-  const item = itemIdOfReapCheckoutId(view.id);
-  const quantity = quantityOfReapCheckoutId(view.id);
-  if (
-    !seller ||
-    !merchant.merchantIds.includes(seller) ||
-    item !== validated.input.product_id ||
-    quantity !== validated.input.quantity
-  ) {
-    return finish(json({ checkout: null, fallback: 'seller_mismatch' }));
+  // BELT AND BRACES on the gateway's own seller check: the PUBLISHED seller (`reap.merchant_domain`,
+  // www.-folded) must be the configured merchant; a configured merchant id must match a published one
+  // (the gateway omits the id for the shared external-seed placeholder, so an absent id is fine); and the
+  // quote must be for the quantity asked. The checkout id is opaque and is not decoded.
+  if (!sellerMatches(view, merchant) || view.lineItems[0]?.quantity !== validated.input.quantity) {
+    return finish(json({ checkout: null, fallback: 'seller_mismatch', cause: 'seller_unconfirmed' }));
   }
   return finish(json({ checkout: publicView(view, { domain: merchant.domain }) }));
 }

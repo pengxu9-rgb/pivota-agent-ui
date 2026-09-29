@@ -75,17 +75,18 @@ export function canonicalMerchantDomain(raw: unknown): string | null {
 }
 
 export type DemoMerchant = { domain: string; market: string };
-/** Server-side only: the Pivota merchant id(s) the demo will accept as the seller of a Reap purchase. */
+/** Server-side only: optionally, the Pivota catalog merchant id(s) accepted as the seller. */
 export type DemoMerchantConfig = DemoMerchant & { merchantIds: string[] };
 
 const MERCHANT_ID_RE = /^[A-Za-z0-9_.-]{1,80}$/;
 
 /**
- * REAP_CHECKOUT_DEMO_MERCHANTS: comma list of `domain:MARKET:merchant_id[|merchant_id…]`, e.g.
- * `judydoll.com:US:merch_abc`. The merchant id is the `<merchant>` segment of the catalog product key
- * (`prod::<merchant>::shopify::<id>`) of the row the gateway's Reap lane buys; the create route refuses a
- * Reap checkout whose product key names any other seller (see sellerOfReapCheckoutId). An entry without a
- * merchant id is ignored: the demo never offers a purchase it cannot check the seller of.
+ * REAP_CHECKOUT_DEMO_MERCHANTS: comma list of `domain:MARKET[:merchant_id[|merchant_id…]]`, e.g.
+ * `judydoll.com:US` or `judydoll.com:US:merch_abc`. The domain is what the create sends as
+ * `checkout.reap.expected_merchant_domain` (the gateway refuses any other seller) and what the published
+ * `reap.merchant_domain` must fold to. The merchant id is OPTIONAL: when configured AND the gateway
+ * publishes `reap.merchant_id`, they must agree; the gateway omits the id for the shared external-seed
+ * placeholder, so it is never required.
  */
 export function readDemoMerchantConfig(env: NodeJS.ProcessEnv = process.env): DemoMerchantConfig[] {
   const raw = String(env.REAP_CHECKOUT_DEMO_MERCHANTS || '').trim();
@@ -96,11 +97,10 @@ export function readDemoMerchantConfig(env: NodeJS.ProcessEnv = process.env): De
     const [d, m, ids] = part.split(':');
     const domain = canonicalMerchantDomain(d);
     const market = normalizeBuyerMarket(m);
-    const merchantIds = String(ids || '')
-      .split('|')
-      .map((x) => x.trim())
-      .filter((x) => MERCHANT_ID_RE.test(x));
-    if (!domain || !market || !merchantIds.length || seen.has(domain)) continue;
+    const rawIds = String(ids || '').split('|').map((x) => x.trim()).filter(Boolean);
+    const merchantIds = rawIds.filter((x) => MERCHANT_ID_RE.test(x));
+    // A malformed id list is a config error: drop the entry rather than silently widening it.
+    if (!domain || !market || merchantIds.length !== rawIds.length || seen.has(domain)) continue;
     seen.add(domain);
     out.push({ domain, market, merchantIds });
   }

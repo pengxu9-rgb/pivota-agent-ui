@@ -28,7 +28,7 @@ describe('offer code passthrough — exactly as typed', () => {
       const r = validateReapCreateBody(body({ offer_code: code }));
       expect(r.ok, code).toBe(true);
       if (!r.ok) continue;
-      const args = buildCreateCheckoutArgs(r.input, { consentVersion: 'reap-agentic-v1' }) as any;
+      const args = buildCreateCheckoutArgs(r.input, { consentVersion: 'reap-agentic-v1', expectedMerchantDomain: 'judydoll.com' }) as any;
       expect(args.checkout.discounts).toEqual({ codes: [code] });
     }
   });
@@ -38,7 +38,7 @@ describe('offer code passthrough — exactly as typed', () => {
       const r = validateReapCreateBody(body(extra));
       expect(r.ok).toBe(true);
       if (!r.ok) continue;
-      const args = buildCreateCheckoutArgs(r.input, { consentVersion: 'reap-agentic-v1' }) as any;
+      const args = buildCreateCheckoutArgs(r.input, { consentVersion: 'reap-agentic-v1', expectedMerchantDomain: 'judydoll.com' }) as any;
       expect('discounts' in args.checkout).toBe(false);
     }
   });
@@ -73,6 +73,7 @@ describe('validateReapCreateBody', () => {
     const args = buildCreateCheckoutArgs(r.input, {
       consentVersion: 'reap-agentic-v1',
       profileUrl: 'https://agent.pivota.cc/.well-known/ucp-agent',
+      expectedMerchantDomain: 'judydoll.com',
     });
     expect(args).toEqual({
       meta: {
@@ -103,6 +104,7 @@ describe('validateReapCreateBody', () => {
             },
           ],
         },
+        reap: { expected_merchant_domain: 'judydoll.com' },
       },
     });
   });
@@ -111,6 +113,6 @@ describe('validateReapCreateBody', () => {
     const r = validateReapCreateBody(body({ unit_price: 1, price: 1, total: 1 }));
     expect(r.ok).toBe(true);
     if (!r.ok) return;
-    expect(JSON.stringify(buildCreateCheckoutArgs(r.input, { consentVersion: 'v' }))).not.toMatch(/price|amount|total/);
+    expect(JSON.stringify(buildCreateCheckoutArgs(r.input, { consentVersion: 'v', expectedMerchantDomain: 'judydoll.com' }))).not.toMatch(/price|amount|total/);
   });
 });

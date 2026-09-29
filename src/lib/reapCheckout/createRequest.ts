@@ -124,7 +124,7 @@ export function validateReapCreateBody(body: unknown): ValidationResult {
 /** The UCP `create_checkout` arguments. `consentVersion` is sent only because `input.consent` is true. */
 export function buildCreateCheckoutArgs(
   input: ReapCreateInput,
-  opts: { consentVersion: string; profileUrl?: string | null },
+  opts: { consentVersion: string; profileUrl?: string | null; expectedMerchantDomain: string },
 ): Record<string, unknown> {
   const b = input.buyer;
   const destination: Record<string, string> = {
@@ -149,6 +149,9 @@ export function buildCreateCheckoutArgs(
       context: { address_country: b.country },
       fulfillment: { methods: [{ type: 'shipping', destinations: [destination] }] },
       ...(input.offer_code !== undefined ? { discounts: { codes: [input.offer_code] } } : {}),
+      // The seller the buyer was shown, from SERVER config (never the browser): the gateway refuses the
+      // create (`ucp_seller_mismatch`) unless every route would sell from exactly this merchant (§5.4).
+      reap: { expected_merchant_domain: opts.expectedMerchantDomain },
     },
   };
 }

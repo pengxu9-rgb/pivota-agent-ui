@@ -2,13 +2,12 @@
 //
 // Same door, same credentials as create, with the SAME buyer (the signed cookie set on create): the
 // backend answers a purchase only to the buyer that opened it. A browser without a valid cookie gets 404,
-// as does an id that is not a Reap checkout id or whose seller is not a demo merchant.
+// as does an id that is not a Reap checkout id, and an answer whose PUBLISHED seller is not a demo merchant.
 import { NextRequest } from 'next/server';
 import { mintBuyerToken } from '@/lib/reapCheckout/buyerToken.server';
 import { callUcpTool } from '@/lib/reapCheckout/gatewayClient.server';
 import { readReapCheckout } from '@/lib/reapCheckout/checkoutView';
 import { readDemoMerchantConfig } from '@/lib/reapCheckout/config';
-import { sellerOfReapCheckoutId } from '@/lib/reapCheckout/seller.server';
 import {
   disabledResponse,
   hostProblem,
@@ -17,6 +16,7 @@ import {
   rateLimited,
   readBuyerId,
   readServerConfig,
+  sellerMatches,
 } from '@/lib/reapCheckout/routeSupport.server';
 
 export const runtime = 'nodejs';
@@ -39,9 +39,6 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ checkoutId:
   const id = String(checkoutId || '');
   const buyerId = readBuyerId(req, config.token);
   if (!REAP_ID_RE.test(id) || !buyerId) return json({ error: 'not_found' }, 404);
-  const seller = sellerOfReapCheckoutId(id);
-  const merchant = readDemoMerchantConfig().find((m) => seller && m.merchantIds.includes(seller));
-  if (!merchant) return json({ error: 'not_found' }, 404);
   const limited = rateLimited('read', buyerId);
   if (limited) return limited;
 
@@ -66,5 +63,15 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ checkoutId:
   if (!view || !view.isReapCheckout || view.id !== id) {
     return json({ error: 'gateway_unavailable', detail: 'not_this_checkout' }, 502);
   }
+  // The id is opaque, so the seller is read from the answer. A good read publishes `reap.merchant_domain`:
+  // it must be a configured demo merchant, else this is not a demo purchase (404, nothing shown). The
+  // degraded read (`reap.view_unavailable`) publishes no seller by design: answer it WITHOUT a seller, and
+  // the browser keeps the seller from its last good answer.
+  if (!view.publishedSeller.domain) {
+    if (view.viewUnavailable) return json({ checkout: view });
+    return json({ error: 'gateway_unavailable', detail: 'seller_unpublished' }, 502);
+  }
+  const merchant = readDemoMerchantConfig().find((m) => sellerMatches(view, m));
+  if (!merchant) return json({ error: 'not_found' }, 404);
   return json({ checkout: publicView(view, { domain: merchant.domain }) });
 }

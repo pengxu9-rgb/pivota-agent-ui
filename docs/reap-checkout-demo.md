@@ -20,11 +20,9 @@ committed:
    just the Reap poller.
    - Wait until the backend change that lets the worker run an allowlist of jobs is deployed there.
    - Then enable the worker only with an allowlist naming the Reap poller. The operator notes have the exact steps.
-3. **Confirm the demo environment's payment-provider keys are test keys.** Some non-production environments
-   run with restored production data and production third-party credentials. If you cannot confirm the
-   keys are test keys, stop.
-4. **Treat the demo environment's data as production data.** A restored copy holds real buyers' personal
-   data. Don't browse, export or screenshot it.
+3. **Confirm the demo environment's payment-provider keys are test keys** before every demo. If you cannot
+   confirm it, stop.
+4. **Treat the demo environment's data as sensitive.** Don't browse, export or screenshot it.
 5. **The demo environment must have its own database.** Do the check in the operator notes before every
    demo, and stop if it points at production's.
 
@@ -45,6 +43,7 @@ committed:
 | — | **Once the buyer has clicked "Continue to secure payment"** (or approval was seen), ANY non-completed ending — including expired and "approval window lapsed", which the backend infers without asking Reap — says "We couldn't confirm your order. Check your email or card statement before trying again", with **no** retry; "Start as a new buyer" stays a secondary link under that check. | `17-failed-uncertain-no-retry.jpg` |
 | — | The checkout disappeared (404): before a hand-off, "This checkout is no longer available"; after a hand-off, the same "couldn't confirm" answer, and the checkout is remembered. Never a live pay button. | — |
 | — | Reap declined (not eligible, the purchasability gate declined, or the backend refused): "Checkout through Reap isn't available…" and **Visit store**. | `16-not-reap-visit-store.jpg` |
+| — | The item would be sold by a different seller, or its seller can't be confirmed: "This item isn't available here from judydoll.com", and **only** "Visit judydoll.com" (built from our config). Nothing is opened or charged. | `18-seller-mismatch-visit-configured-merchant.jpg` |
 | — | The payment link is not Reap's: it is refused and never opened. | `15-link-not-reap-refused.jpg` |
 
 ## 2. Guarantees and guards built into the code
@@ -52,7 +51,7 @@ committed:
 - **Card data:** the UI never collects card data. It never embeds, iframes or proxies Reap's page.
 - **Payment link:** a link is opened only if it is `https` on `reap.global` or `prava.space` (exact host or dot-suffix), with no userinfo and the default port. It opens in a new tab, `noopener,noreferrer`.
 - **No UI arithmetic:** the UI computes no price, total or discount. The quote rows are the gateway's own, and the PDP quantity is sent in `create_checkout` so the merchant quote prices it.
-- **Seller and item binding:** the purchase is shown only if the gateway's answer is for the product requested **and** sold by the configured demo merchant. Otherwise the link is withheld and nothing is charged.
+- **Seller:** every create sends `checkout.reap.expected_merchant_domain`, the configured merchant, taken from server config and never from the browser. The gateway **refuses** any item that another seller would sell, or whose seller it cannot confirm, and opens nothing. The buyer is then offered only "Visit <that merchant>", built from our config, never a gateway link. On a Reap answer the server re-checks the published `reap.merchant_domain` (with `www.` folded), and it checks the quoted quantity. The checkout id is opaque and is not decoded.
 - **Arming:** every `/api/reap-checkout` route returns 404 unless:
   - both flags are on;
   - it is **not a production build** (`next build`), which never arms, whatever the environment says;
@@ -77,11 +76,11 @@ Set these in the UI checkout, in git-ignored files only:
 | `REAP_CHECKOUT_DEMO_ENABLED` | `1` (server) |
 | `REAP_CHECKOUT_GATEWAY_BASE_URL` | `http://127.0.0.1:<proxy port>`, which must be loopback |
 | `REAP_CHECKOUT_AGENT_API_KEY` | the demo agent's key (`ak_live_<64 hex>`); type it into the file yourself, never paste it anywhere else |
-| `REAP_CHECKOUT_DEMO_MERCHANTS` | `domain:MARKET:merchant_id[,…]` |
+| `REAP_CHECKOUT_DEMO_MERCHANTS` | `domain:MARKET[:merchant_id][,…]` |
 | `REAP_CHECKOUT_TERMS_URL`, `REAP_CHECKOUT_CONSENT_VERSION` | optional; defaults `https://pivota.cc/terms`, `reap-agentic-v1` |
 | `REAP_DEMO_USER_JWT_*` | written by the keygen below |
 
-- **Merchant ids:** the `merchant_id` is the `<merchant>` segment of the catalog product key (`prod::<merchant>::shopify::<id>`) of the row the gateway buys. An entry without one is ignored, so no button shows for that merchant.
+- **Merchants:** the domain is the seller the buyer is shown. It is sent as `checkout.reap.expected_merchant_domain` and must equal the seller the gateway publishes. The optional `merchant_id` is the `<merchant>` segment of the catalog product key. When it is set and the gateway publishes a `reap.merchant_id`, the two must agree. External-seed rows publish no merchant id, so leave it out for them.
 - **Keygen:** `node scripts/reap-demo-keygen.mjs --issuer <issuer from the operator notes>` writes the four `REAP_DEMO_USER_JWT_*` lines to `.env.development.local`.
   - The file is mode 600, and `next dev` loads it, so nothing is sourced into your shell.
   - The script refuses any path git doesn't ignore.
@@ -91,11 +90,11 @@ Set these in the UI checkout, in git-ignored files only:
 ## 4. Run the demo
 
 ```bash
-NODE_OPTIONS=--no-experimental-strip-types npm run dev -- -H 127.0.0.1
+NODE_OPTIONS=--no-experimental-strip-types npm run dev:reap-demo    # = next dev -H 127.0.0.1
 open "http://127.0.0.1:3000/products/<product id>"
 ```
 
-- **Why `-H 127.0.0.1`:** by default `next dev` listens on every interface. On a partner's or a conference
+- **Why `dev:reap-demo` (`-H 127.0.0.1`):** by default `next dev` listens on every interface. On a partner's or a conference
   Wi-Fi, anyone could then reach `/api/reap-checkout` and act as a buyer through your demo agent key.
   Binding to loopback keeps it reachable only from your laptop.
 - **Why `NODE_OPTIONS`:** it works around Node 24 loading `tailwind.config.ts` natively. That affects `main` too.
@@ -118,10 +117,11 @@ gateway rollback: see the operator notes.
 ```bash
 node scripts/reap-mock-gateway.mjs      # 127.0.0.1:8787, answers the gateway lane's own checkout objects
 # .env.local: REAP_CHECKOUT_GATEWAY_BASE_URL=http://127.0.0.1:8787, a dummy ak_live_ key of 64 hex,
-# REAP_CHECKOUT_DEMO_MERCHANTS=judydoll.com:US:merch_judydoll_demo (the mock's fixture seller),
+# REAP_CHECKOUT_DEMO_MERCHANTS=judydoll.com:US (the mock publishes judydoll.com as the seller),
 # and `node scripts/reap-demo-keygen.mjs --issuer urn:example:reap-mock`
 curl 'http://127.0.0.1:8787/__mock/state?next=processing'   # "approved on Reap"
 curl 'http://127.0.0.1:8787/__mock/state?next=completed'
+curl 'http://127.0.0.1:8787/__mock/scenario?create=seller_mismatch'   # the door refuses another seller
 ```
 
 The screenshots in `docs/reap-checkout-demo/` were captured this way.
@@ -132,5 +132,5 @@ The screenshots in `docs/reap-checkout-demo/` were captured this way.
 2. **The backend worker starts every scheduled job** (STOP rule 2).
 3. **Demo products may not enter the lane.** This happens if the product row is an external-seed row, has several variants, or has no fresh Tier B verdict. The UI then shows "not available — Visit store".
 4. **Approval window:** about 5 minutes from the quote, not the 15 that Reap's page shows. The banner says so.
-5. **The seller check reads the gateway's checkout id**, which the gateway documents as opaque. It fails closed if the id doesn't decode. The durable fix is a small gateway change that publishes the seller.
+5. **The seller contract must be live on the gateway.** Without it, the gateway rejects the `checkout.reap` member as an unknown field, and every create fails with the generic "could not be opened" copy.
 6. **The demo buyer-token issuer is a trust anchor.** Keep its private key on your laptop only. Never register it on production, and remove it after the demo.
