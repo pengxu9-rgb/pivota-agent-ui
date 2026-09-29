@@ -132,6 +132,7 @@ export type FashionPDPMobileProps = {
   buyNowLabel?: string;
   isExternalPurchase: boolean;
   externalRetailerLabel?: string | null;
+  reapCheckout?: { onOpen: (quantity: number) => void } | null;
   inStock: boolean;
   quantity: number;
   onQtyChange: (next: number) => void;
@@ -391,6 +392,7 @@ export function FashionPDPMobile(props: FashionPDPMobileProps) {
           buyNowLabel={props.buyNowLabel}
           isExternalPurchase={props.isExternalPurchase}
           externalRetailerLabel={props.externalRetailerLabel}
+          reapCheckout={props.reapCheckout}
           onQtyChange={props.onQtyChange}
           onAddToCart={props.onAddToCart}
           onBuyNow={props.onBuyNow}

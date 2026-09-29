@@ -1,6 +1,6 @@
 'use client';
 
-import { ExternalLink } from 'lucide-react';
+import { ExternalLink, ShieldCheck } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatMoney } from '@/features/pdp/utils/formatMoney';
 
@@ -27,6 +27,7 @@ export function BeautyMobileBuyBar({
   buyNowLabel = 'Buy now',
   isExternalPurchase = false,
   externalRetailerLabel,
+  reapCheckout = null,
 }: {
   unitPrice: number;
   shippingCost?: number;
@@ -39,12 +40,19 @@ export function BeautyMobileBuyBar({
   buyNowLabel?: string;
   isExternalPurchase?: boolean;
   externalRetailerLabel?: string | null;
+  /**
+   * Reap checkout demo (links-out PDPs only). When set, "Checkout with Reap" becomes the primary CTA, to the
+   * RIGHT of a secondary "View at <store>". When null (the default: flags off, or a merchant outside the
+   * demo) this component renders exactly what it rendered before the demo existed.
+   */
+  reapCheckout?: { onOpen: (quantity: number) => void } | null;
 }) {
   const itemsSubtotal = Math.max(0, unitPrice) * Math.max(1, quantity);
   const total = itemsSubtotal + Math.max(0, shippingCost || 0);
   const formattedTotal = formatMoney(total, currency);
   const retailerLabel = String(externalRetailerLabel || '').trim();
   const externalCtaLabel = `View at ${retailerLabel || 'retailer'}`;
+  const reapMode = isExternalPurchase && Boolean(reapCheckout);
 
   return (
     <div
@@ -104,6 +112,40 @@ export function BeautyMobileBuyBar({
       ) : null}
 
       {/* Primary commit CTA */}
+      {reapMode && reapCheckout ? (
+        <>
+          {/* Secondary: the store. "Visit store" below 560px; icon only below 350px (label kept for screen readers). */}
+          <button
+            type="button"
+            onClick={onBuyNow}
+            disabled={disabled}
+            aria-label={externalCtaLabel}
+            data-testid="buybar-store-secondary"
+            className="flex h-11 min-w-0 flex-1 items-center justify-center gap-1 rounded-full border-[1.5px] border-foreground bg-white px-2 text-[13px] font-semibold text-foreground disabled:opacity-50"
+          >
+            <span className="min-w-0 truncate max-[349px]:sr-only min-[560px]:hidden">Visit store</span>
+            <span className="hidden min-w-0 truncate min-[560px]:inline">{externalCtaLabel}</span>
+            <ExternalLink className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          </button>
+          {/* Primary: Reap. NO price here — there is no total until the merchant quotes the buyer's address;
+              the checkout sheet is the only place a total appears. */}
+          <button
+            type="button"
+            onClick={() => reapCheckout.onOpen(quantity)}
+            disabled={disabled}
+            data-testid="buybar-reap-primary"
+            className="flex h-11 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-full px-3 text-[13px] font-semibold text-white shadow-md disabled:opacity-50 min-[440px]:px-4 min-[440px]:text-[14px]"
+            style={{ background: 'var(--pv-gradient-primary, linear-gradient(135deg, #534AB7 0%, #7B6FD4 50%, #1D9E75 100%))' }}
+          >
+            <ShieldCheck className="h-4 w-4 shrink-0" aria-hidden="true" />
+            {/* Two short lines below 440px so the store button keeps room for its label. */}
+            <span className="flex flex-col items-start leading-tight min-[440px]:flex-row min-[440px]:items-center">
+              <span className="whitespace-pre">Checkout </span>
+              <span>with Reap</span>
+            </span>
+          </button>
+        </>
+      ) : (
       <button
         type="button"
         onClick={onBuyNow}
@@ -128,6 +170,7 @@ export function BeautyMobileBuyBar({
           `${buyNowLabel} · ${formattedTotal}`
         )}
       </button>
+      )}
     </div>
   );
 }
