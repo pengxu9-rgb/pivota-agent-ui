@@ -337,6 +337,9 @@ const TERMINAL_COPY: Record<string, { title: string; body: string }> = {
  * Could money have moved? Only once the buyer was handed Reap's page (or this browser saw the approval).
  * Then "nothing was charged" would be a guess, and a one-click retry could buy the item twice.
  */
+/** Phases past the approval step: the buyer approved on Reap, so money may have moved. */
+const PAST_APPROVAL_PHASES: ReadonlySet<string> = new Set(['processing', 'completed']);
+
 export function outcomeUncertain(view: ReapCheckoutView, mayHavePaid: boolean): boolean {
   // Before the buyer was ever handed Reap's page, no ending can have charged them (enrollment_dead,
   // quote_id_missing, a lapsed window never opened, ...): "nothing was charged" is true. After a hand-off
@@ -399,10 +402,15 @@ function StatusView({
       {view.phase === 'preparing' ? (
         <div className="space-y-2">
           <p className="flex items-center gap-2 text-sm font-medium">
-            <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> Confirming the item and getting your total from
-            the merchant…
+            <Loader2 className="h-4 w-4 animate-spin" aria-hidden />{' '}
+            {mayHavePaid
+              ? 'Checking the status of your purchase…'
+              : 'Confirming the item and getting your total from the merchant…'}
           </p>
-          <p className="text-xs text-muted-foreground">This usually takes under a minute. Nothing is charged.</p>
+          {/* After a hand-off (e.g. a degraded read once Reap's page was opened) "nothing is charged" is a guess. */}
+          <p className="text-xs text-muted-foreground" data-testid="reap-preparing-copy">
+            {mayHavePaid ? 'This usually takes under a minute.' : 'This usually takes under a minute. Nothing is charged.'}
+          </p>
           <OfferCodeNote view={view} />
           {view.viewUnavailable ? (
             <p className="text-xs text-amber-700" data-testid="reap-view-unavailable">
@@ -769,18 +777,23 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
   // hand-off it becomes the (honest) mismatch fallback and is forgotten; after one, we cannot say what
   // happened, so it stays and says so.
   const itemMismatch = Boolean(poll.view && !isCheckoutForItem(poll.view, props.productId));
+  // The view's OWN phase counts too: a checkout already past the approval step (processing, completed) may
+  // have charged the buyer even when no flag was stored — and in the commit that first shows it, the
+  // `approved` flag written by the effect above is not yet in `mayHavePaid`.
+  const mismatchMayHavePaid = mayHavePaid || Boolean(poll.view && PAST_APPROVAL_PHASES.has(poll.view.phase));
   useEffect(() => {
-    if (!itemMismatch || mayHavePaid) return;
+    if (!itemMismatch || mismatchMayHavePaid) return;
     writeActiveCheckoutId(props.productId, null);
     poll.reset(null);
     setFallback({ kind: 'seller_mismatch', cause: 'seller_unconfirmed' });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [itemMismatch, mayHavePaid, props.productId]);
+  }, [itemMismatch, mismatchMayHavePaid, props.productId]);
   // A degraded read is never payable here either, whatever the server sent: no link reaches the hand-off.
   const statusView = poll.view && poll.view.viewUnavailable ? { ...poll.view, continueUrl: null } : poll.view;
 
   const uncertainNow = Boolean(
-    ((poll.notFound || restoredGone || itemMismatch) && mayHavePaid) ||
+    ((poll.notFound || restoredGone) && mayHavePaid) ||
+      (itemMismatch && mismatchMayHavePaid) ||
       (poll.view && outcomeUncertain(poll.view, mayHavePaid)),
   );
 
@@ -793,10 +806,13 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
           <p className="text-xs uppercase tracking-wide text-muted-foreground">Checkout with Reap</p>
           <p className="text-sm font-semibold text-foreground">{props.productTitle}</p>
           {/* The open checkout's own quantity once there is one (a restored checkout may differ from the page). */}
-          <p className="text-xs text-muted-foreground" data-testid="reap-quantity">
-            Quantity: {poll.view?.lineItems[0]?.quantity ?? quantity}
-          </p>
-          {shownSeller ? (
+          {/* Another product's checkout: none of ITS details (quantity, seller) are shown as this item's. */}
+          {itemMismatch ? null : (
+            <p className="text-xs text-muted-foreground" data-testid="reap-quantity">
+              Quantity: {poll.view?.lineItems[0]?.quantity ?? quantity}
+            </p>
+          )}
+          {shownSeller && !itemMismatch ? (
             // Published by the gateway and checked by the server — never from the page. Kept from the last
             // good answer when a later (degraded) read publishes none.
             <p className="text-xs text-muted-foreground" data-testid="reap-seller">
@@ -826,7 +842,7 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
             Try again
           </button>
         </div>
-      ) : (poll.notFound || restoredGone || itemMismatch) && mayHavePaid ? (
+      ) : ((poll.notFound || restoredGone) && mayHavePaid) || (itemMismatch && mismatchMayHavePaid) ? (
         // Gone (or no longer this product's) after the buyer was handed Reap's page: we cannot say what
         // happened. No retry, no pay link.
         <div className="space-y-3" data-testid="reap-gone-uncertain">

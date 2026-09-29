@@ -890,4 +890,71 @@ describe('ReapCheckoutPanel', () => {
     expect(document.body.innerHTML).not.toContain('prava.space');
     expect(openWindow).not.toHaveBeenCalled();
   });
+
+  // ---- honest copy follow-ups of #385 ---------------------------------------------------------------------
+
+  it.each([
+    ['processing', processingCheckout],
+    ['completed', completedCheckout],
+  ])('ITEM: a RESTORED %s checkout for another item with NO stored flag says "couldn\'t confirm", keeps the entry, no pay link', async (_l, build) => {
+    const id = viewOf(awaitingApprovalCheckout()).id;
+    window.localStorage.setItem(ACTIVE_KEY, JSON.stringify({ id, at: Date.now() }));
+    const other = verified(build(), { itemId: 'sig_other' });
+    other.lineItems = [{ ...other.lineItems[0], quantity: 3 }];
+    const payButtonSeen = watchForPayButton();
+    renderPanel(vi.fn(async () => jsonResponse({ checkout: other })));
+    const gone = await screen.findByTestId('reap-gone-uncertain');
+    expect(gone.textContent).toMatch(/couldn.t confirm your order/);
+    expect(document.body.textContent).not.toMatch(/Nothing was charged/i);
+    expect(screen.queryByTestId('reap-fallback')).toBeNull();
+    expect(screen.queryByTestId('reap-continue')).toBeNull();
+    expect(payButtonSeen()).toBe(false);
+    // The entry (and the approval record) survive.
+    expect(readActiveCheckoutId(PRODUCT_ID)).toBe(id);
+    expect(screen.getByTestId('reap-new-buyer-caution')).toBeTruthy();
+    // Neutral header: none of the OTHER checkout's details.
+    expect(screen.queryByTestId('reap-seller')).toBeNull();
+    expect(screen.queryByTestId('reap-quantity')).toBeNull();
+    expect(screen.getByTestId('reap-panel').textContent).not.toMatch(/judydoll\.com|Quantity: 3/);
+  });
+
+  it('ITEM accepting: a restored checkout for another item still AT the approval step (no flag) is the mismatch fallback', async () => {
+    const id = viewOf(awaitingApprovalCheckout()).id;
+    window.localStorage.setItem(ACTIVE_KEY, JSON.stringify({ id, at: Date.now() }));
+    renderPanel(vi.fn(async () => jsonResponse({ checkout: verified(awaitingApprovalCheckout(), { itemId: 'sig_other' }) })));
+    expect((await screen.findByTestId('reap-fallback')).dataset.kind).toBe('seller_mismatch');
+    expect(screen.queryByTestId('reap-gone-uncertain')).toBeNull();
+    expect(readActiveCheckoutId(PRODUCT_ID)).toBeNull();
+    // Back on this product's own form: its own quantity line is shown again.
+    expect(screen.getByTestId('reap-quantity').textContent).toBe('Quantity: 1');
+  });
+
+  it('DEGRADED after a hand-off: the preparing copy never says "Nothing is charged"', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const fetchImpl = vi.fn(async (url: string) =>
+      url === '/api/reap-checkout'
+        ? jsonResponse({ checkout: verified(awaitingApprovalCheckout()) })
+        : jsonResponse({ checkout: viewOf(viewUnavailableCheckout()) }),
+    );
+    renderPanel(fetchImpl);
+    await fillAndSubmit();
+    fireEvent.click(await screen.findByTestId('reap-continue'));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(11_000);
+    });
+    await screen.findByTestId('reap-view-unavailable');
+    const status = screen.getByTestId('reap-status');
+    expect(status.dataset.phase).toBe('preparing');
+    expect(status.textContent).not.toMatch(/Nothing is charged/i);
+    expect(status.textContent).not.toMatch(/getting your total/);
+    expect(status.textContent).toMatch(/Checking the status of your purchase/);
+  });
+
+  it('DEGRADED accepting: WITHOUT a hand-off, preparing still says "Nothing is charged"', async () => {
+    renderPanel(scriptedFetch(resolvingCheckout()));
+    await fillAndSubmit();
+    const copy = await screen.findByTestId('reap-preparing-copy');
+    expect(copy.textContent).toMatch(/Nothing is charged/);
+    expect(screen.getByTestId('reap-status').textContent).toMatch(/getting your total/);
+  });
 });
