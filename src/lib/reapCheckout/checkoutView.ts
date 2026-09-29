@@ -65,9 +65,47 @@ export type ReapCheckoutView = {
   terminalReason: string | null;
   viewUnavailable: boolean;
   messages: ReapMessage[];
-  /** Set by the server route from the gateway's answer (never from the browser). */
+  /**
+   * The seller the gateway PUBLISHED for this purchase (PIVOTA-Agent docs/reap-agentic-lane.md §5.4): the
+   * `info` messages `reap.merchant_domain` / `reap.merchant_id` at `$.line_items[0]`, bare values in
+   * `content`. Either may be absent (merchant_id is omitted for the shared external-seed placeholder; the
+   * degraded `reap.view_unavailable` answer carries neither). Never a guess, never from the browser.
+   */
+  publishedSeller: { domain: string | null; merchantId: string | null };
+  /** Set by the server route after it checked `publishedSeller` against its own config. */
   seller?: { domain: string };
 };
+
+const SELLER_PATH = '$.line_items[0]';
+const HOST_RE = /^(?=.{1,253}$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/;
+const MERCHANT_ID_RE = /^[A-Za-z0-9_.:-]{1,120}$/;
+
+/** The gateway's comparison rule: lowercase, then ONE leading `www.` removed. */
+export function foldMerchantHost(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null;
+  const lower = raw.trim().toLowerCase();
+  if (!HOST_RE.test(lower)) return null;
+  return lower.startsWith('www.') ? lower.slice(4) : lower;
+}
+
+export function readPublishedSeller(messages: ReapMessage[]): { domain: string | null; merchantId: string | null } {
+  // Exactly one published value counts; two that disagree are treated as unpublished (fail closed).
+  const only = (code: string): string => {
+    const values = new Set(
+      messages
+        .filter((m) => m.code === code && m.type === 'info' && m.path === SELLER_PATH)
+        .map((m) => m.content ?? ''),
+    );
+    return values.size === 1 ? [...values][0] : '';
+  };
+  const d = only('reap.merchant_domain');
+  const id = only('reap.merchant_id');
+  return {
+    // As published (lowercase, `www.` kept); compare with foldMerchantHost.
+    domain: HOST_RE.test(d) ? d : null,
+    merchantId: MERCHANT_ID_RE.test(id) ? id : null,
+  };
+}
 
 const MESSAGE_TYPES = new Set(['info', 'warning', 'error']);
 const MAX_POLL_SECONDS = 600;
@@ -216,6 +254,7 @@ export function readReapCheckout(raw: unknown): ReapCheckoutView | null {
     offerCode: { code: echoedCode, outcome },
     terminalReason,
     viewUnavailable: codes.has('reap.view_unavailable'),
+    publishedSeller: readPublishedSeller(messages),
     messages,
   };
 }

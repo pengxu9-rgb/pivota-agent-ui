@@ -3,9 +3,12 @@ import { generateKeyPairSync } from 'node:crypto';
 import { NextRequest } from 'next/server';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  DEMO_MERCHANT_ID,
+  PRODUCT_ID,
+  expectedDomainInvalidError,
+  sellerMismatchError,
+  viewUnavailableCheckout,
+  withSeller,
   REAP_ID,
-  REAP_ID_OTHER_SELLER,
   awaitingApprovalCheckout,
   resolvingCheckout,
   rpcResult,
@@ -21,7 +24,7 @@ function arm() {
   vi.stubEnv('REAP_CHECKOUT_DEMO_ENABLED', 'true');
   vi.stubEnv('REAP_CHECKOUT_GATEWAY_BASE_URL', 'http://localhost:8081');
   vi.stubEnv('REAP_CHECKOUT_AGENT_API_KEY', KEY);
-  vi.stubEnv('REAP_CHECKOUT_DEMO_MERCHANTS', `judydoll.com:US:${DEMO_MERCHANT_ID},jsmbeauty.sg:SG:merch_jsm_demo`);
+  vi.stubEnv('REAP_CHECKOUT_DEMO_MERCHANTS', 'judydoll.com:US,jsmbeauty.sg:SG:merch_jsm_demo');
   vi.stubEnv('REAP_DEMO_USER_JWT_PRIVATE_KEY', PEM);
   vi.stubEnv('REAP_DEMO_USER_JWT_KID', 'k1');
   vi.stubEnv('REAP_DEMO_USER_JWT_ISSUER', 'urn:example:reap-demo-test');
@@ -131,7 +134,7 @@ describe('flag off: every /api/reap-checkout route is a 404 and calls nothing', 
 describe('arming guard: both flags on, but not loopback + non-production -> 404 everywhere', () => {
   it.each([
     ['production gateway', { REAP_CHECKOUT_GATEWAY_BASE_URL: 'https://gateway.pivota.cc' }],
-    ['a staging-looking pivota host', { REAP_CHECKOUT_GATEWAY_BASE_URL: 'https://gateway.staging.pivota.cc' }],
+    ['a non-loopback example host', { REAP_CHECKOUT_GATEWAY_BASE_URL: 'https://gateway.example.test' }],
     ['plain http to a non-loopback host', { REAP_CHECKOUT_GATEWAY_BASE_URL: 'http://gateway.pivota.cc' }],
     ['no gateway base', { REAP_CHECKOUT_GATEWAY_BASE_URL: '' }],
   ])('%s', async (_label, env) => {
@@ -142,8 +145,8 @@ describe('arming guard: both flags on, but not loopback + non-production -> 404 
 
   it.each([
     ['loopback base', {}],
-    ['loopback base + the removed override var', { REAP_CHECKOUT_STAGING_GATEWAY_HOST: 'gateway.staging.pivota.cc' }],
-    ['override + matching staging base', { REAP_CHECKOUT_STAGING_GATEWAY_HOST: 'gateway.staging.pivota.cc', REAP_CHECKOUT_GATEWAY_BASE_URL: 'https://gateway.staging.pivota.cc' }],
+    ['loopback base + the removed override var', { REAP_CHECKOUT_STAGING_GATEWAY_HOST: 'gateway.example.test' }],
+    ['override + matching staging base', { REAP_CHECKOUT_STAGING_GATEWAY_HOST: 'gateway.example.test', REAP_CHECKOUT_GATEWAY_BASE_URL: 'https://gateway.example.test' }],
     ['127.0.0.1 base', { REAP_CHECKOUT_GATEWAY_BASE_URL: 'http://127.0.0.1:8081' }],
   ])('NODE_ENV=production NEVER arms, whatever the env (%s)', async (_label, env) => {
     arm();
@@ -202,29 +205,80 @@ describe('POST /api/reap-checkout (armed)', () => {
     expect(rpc.params.arguments.checkout.context).toEqual({ address_country: 'US' });
   });
 
-  it('SELLER CHECK: a Reap checkout for another seller\'s row is refused and its link never handed out', async () => {
+  it('SELLER CONTRACT: create sends checkout.reap.expected_merchant_domain from SERVER config, never the browser\'s spelling', async () => {
     arm();
-    gatewayAnswers({ ...awaitingApprovalCheckout(), id: REAP_ID_OTHER_SELLER });
+    gatewayAnswers(resolvingCheckout());
     const { POST } = await import('./route');
-    const body = await (await POST(createReq())).json();
-    expect(body).toEqual({ checkout: null, fallback: 'seller_mismatch' });
+    // The browser sends "www.JudyDoll.com"; the configured merchant is "judydoll.com".
+    expect((await POST(createReq({ merchant_domain: 'www.JudyDoll.com' }))).status).toBe(200);
+    const rpc = JSON.parse(String((fetchMock.mock.calls[0] as [string, RequestInit])[1].body));
+    expect(rpc.params.arguments.checkout.reap).toEqual({ expected_merchant_domain: 'judydoll.com' });
+  });
+
+  it.each([['different_seller'], ['seller_unconfirmed']] as const)(
+    'SELLER CONTRACT: a ucp_seller_mismatch refusal (%s) answers seller_mismatch with NO gateway text or link',
+    async (cause) => {
+      arm();
+      fetchMock.mockImplementation(async () => new Response(JSON.stringify(rpcResult(sellerMismatchError(cause), true)), { status: 200 }));
+      const { POST } = await import('./route');
+      const body = await (await POST(createReq())).json();
+      expect(body).toEqual({ checkout: null, fallback: 'seller_mismatch', cause });
+      expect(JSON.stringify(body)).not.toMatch(/other\.com|m_other|http/);
+    },
+  );
+
+  it('SELLER CONTRACT: ucp_expected_merchant_domain_invalid is a logged config bug and the generic not-available answer', async () => {
+    arm();
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    fetchMock.mockImplementation(async () => new Response(JSON.stringify(rpcResult(expectedDomainInvalidError(), true)), { status: 200 }));
+    const { POST } = await import('./route');
+    expect(await (await POST(createReq())).json()).toEqual({ checkout: null, fallback: 'not_available' });
+    expect(err).toHaveBeenCalledWith(expect.stringContaining('expected_merchant_domain'), { domain: 'judydoll.com' });
+    err.mockRestore();
+  });
+
+  it('SELLER CONTRACT: the judydoll external-seed answer (reap.merchant_domain only, NO merchant_id) is accepted', async () => {
+    arm();
+    gatewayAnswers(resolvingCheckout());
+    const { POST } = await import('./route');
+    const body = await (await POST(createReq({ product_id: PRODUCT_ID }))).json();
+    expect(body.checkout.publishedSeller).toEqual({ domain: 'judydoll.com', merchantId: null });
+    expect(body.checkout.seller).toEqual({ domain: 'judydoll.com' });
+  });
+
+  it('SELLER CONTRACT: the published host is compared www.-folded and lowercased', async () => {
+    arm();
+    withSeller({ domain: 'www.judydoll.com' }, () => gatewayAnswers(resolvingCheckout()));
+    const { POST } = await import('./route');
+    expect((await (await POST(createReq())).json()).checkout.seller).toEqual({ domain: 'judydoll.com' });
+  });
+
+  it.each([
+    ['another host', { domain: 'www.other.com' }],
+    ['a subdomain (not the same seller)', { domain: 'shop.judydoll.com' }],
+    ['no published seller at all', { domain: null }],
+    ['a configured merchant id that disagrees', { domain: 'jsmbeauty.sg', merchantId: 'm_other' }],
+  ])('SELLER CONTRACT (belt and braces): a Reap answer publishing %s is refused, no link', async (_l, seller) => {
+    arm();
+    withSeller(seller, () => gatewayAnswers(awaitingApprovalCheckout()));
+    const { POST } = await import('./route');
+    const req =
+      seller.domain === 'jsmbeauty.sg'
+        ? createReq({ merchant_domain: 'jsmbeauty.sg', buyer: { ...BUYER, country: 'SG', postal_code: '018956' } })
+        : createReq();
+    const body = await (await POST(req)).json();
+    expect(body).toEqual({ checkout: null, fallback: 'seller_mismatch', cause: 'seller_unconfirmed' });
     expect(JSON.stringify(body)).not.toContain('prava.space');
   });
 
-  it('SELLER CHECK: an id whose snapshot does not decode is "seller unknown" -> refused', async () => {
+  it('SELLER CONTRACT: a configured merchant id that MATCHES the published one is accepted; an absent published id is fine', async () => {
     arm();
-    gatewayAnswers({ ...awaitingApprovalCheckout(), id: 'reap_rp_0123456789abcdef01234567.bm90LWpzb24' });
     const { POST } = await import('./route');
-    expect(await (await POST(createReq())).json()).toEqual({ checkout: null, fallback: 'seller_mismatch' });
-  });
-
-  it('SELLER CHECK: the browser naming a demo merchant does not make another seller acceptable', async () => {
-    arm();
-    // The browser says jsmbeauty.sg (configured id merch_jsm_demo); the lane bought judydoll's row.
-    gatewayAnswers(resolvingCheckout());
-    const { POST } = await import('./route');
-    const res = await POST(createReq({ merchant_domain: 'jsmbeauty.sg', buyer: { ...BUYER, country: 'SG' } }));
-    expect(await res.json()).toEqual({ checkout: null, fallback: 'seller_mismatch' });
+    const sg = () => createReq({ merchant_domain: 'jsmbeauty.sg', buyer: { ...BUYER, country: 'SG', postal_code: '018956' } });
+    withSeller({ domain: 'jsmbeauty.sg', merchantId: 'merch_jsm_demo' }, () => gatewayAnswers(resolvingCheckout()));
+    expect((await (await POST(sg())).json()).checkout.seller).toEqual({ domain: 'jsmbeauty.sg' });
+    withSeller({ domain: 'jsmbeauty.sg' }, () => gatewayAnswers(resolvingCheckout()));
+    expect((await (await POST(sg())).json()).checkout.seller).toEqual({ domain: 'jsmbeauty.sg' });
   });
 
   it('a non-Reap (storefront) answer is a fallback: its continue_url is NOT forwarded', async () => {
@@ -254,12 +308,15 @@ describe('POST /api/reap-checkout (armed)', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('a demo entry without a merchant id is not a demo merchant (its seller could not be checked)', async () => {
+  it('REAP_CHECKOUT_DEMO_MERCHANTS: the merchant id is optional; a malformed id list drops the entry', async () => {
     arm();
-    vi.stubEnv('REAP_CHECKOUT_DEMO_MERCHANTS', 'judydoll.com:US');
-    const { POST } = await import('./route');
-    expect((await POST(createReq())).status).toBe(403);
-    expect(fetchMock).not.toHaveBeenCalled();
+    const { readDemoMerchantConfig } = await import('@/lib/reapCheckout/config');
+    expect(readDemoMerchantConfig({ REAP_CHECKOUT_DEMO_MERCHANTS: 'judydoll.com:US' } as any)).toEqual([
+      { domain: 'judydoll.com', market: 'US', merchantIds: [] },
+    ]);
+    expect(readDemoMerchantConfig({ REAP_CHECKOUT_DEMO_MERCHANTS: 'a.com:US:m_1|m_2,b.com:US:bad id!' } as any)).toEqual([
+      { domain: 'a.com', market: 'US', merchantIds: ['m_1', 'm_2'] },
+    ]);
   });
 
   it('refuses a non-JSON body (cross-site form) before calling anything', async () => {
@@ -385,12 +442,15 @@ describe('POST /api/reap-checkout (armed)', () => {
     expect('response' in out && out.response.status).toBe(413);
   });
 
-  it('QUANTITY BINDING: a Reap checkout for a different quantity than requested is refused', async () => {
+  it('QUANTITY BINDING: a Reap answer quoting a different quantity than requested is refused', async () => {
     arm();
-    gatewayAnswers(resolvingCheckout()); // the fixture id's snapshot says q:1
+    gatewayAnswers(resolvingCheckout()); // line_items[0].quantity is 1
     const { POST } = await import('./route');
-    expect(await (await POST(createReq({ quantity: 2 }))).json()).toEqual({ checkout: null, fallback: 'seller_mismatch' });
-    // And the matching quantity is accepted.
+    expect(await (await POST(createReq({ quantity: 2 }))).json()).toEqual({
+      checkout: null,
+      fallback: 'seller_mismatch',
+      cause: 'seller_unconfirmed',
+    });
     expect((await (await POST(createReq({ quantity: 1 }))).json()).checkout).toBeTruthy();
   });
 
@@ -426,16 +486,6 @@ describe('POST /api/reap-checkout (armed)', () => {
     expect(rateLimited('read', 'rdb_fresh_buyer', now + 600 + 60_000)).toBeNull();
   });
 
-  it('ITEM BINDING: a Reap checkout for a different product than requested is refused', async () => {
-    arm();
-    gatewayAnswers(resolvingCheckout());
-    const { POST } = await import('./route');
-    expect(await (await POST(createReq({ product_id: 'sig_someotherproduct' }))).json()).toEqual({
-      checkout: null,
-      fallback: 'seller_mismatch',
-    });
-  });
-
   it('TOOL ERROR: the reason is read from the door\'s real shape ({error:{code,message,detail:{reason}}})', async () => {
     arm();
     gatewayAnswers(undefined);
@@ -457,12 +507,10 @@ describe('POST /api/reap-checkout (armed)', () => {
       ),
     );
     const { POST } = await import('./route');
-    expect(await (await POST(createReq())).json()).toMatchObject({
-      checkout: null,
-      fallback: 'refused',
-      code: 'QUOTE_REQUIRED',
-      reason: 'ucp_offer_code_invalid',
-    });
+    const body = await (await POST(createReq())).json();
+    expect(body).toEqual({ checkout: null, fallback: 'refused', code: 'QUOTE_REQUIRED', reason: 'ucp_offer_code_invalid' });
+    // Gateway prose is never forwarded to the browser.
+    expect(JSON.stringify(body)).not.toContain('not a valid shape');
   });
 
   it('answers 503 naming the missing setting, never a value', async () => {
@@ -635,13 +683,52 @@ describe('GET /api/reap-checkout/:id (armed)', () => {
     expect(JSON.stringify(await res.json())).not.toContain('prava.space');
   });
 
-  it('an id for another seller is 404 without calling the gateway', async () => {
+  it('GET: an answer PUBLISHING another seller is 404 (not a demo purchase), nothing shown', async () => {
     arm();
     const cookie = await buyerCookie();
     const { GET } = await import('./[checkoutId]/route');
-    const res = await GET(getReq(REAP_ID_OTHER_SELLER, cookie), { params: Promise.resolve({ checkoutId: REAP_ID_OTHER_SELLER }) });
+    withSeller({ domain: 'www.other.com' }, () =>
+      fetchMock.mockResolvedValueOnce(new Response(JSON.stringify(rpcResult(awaitingApprovalCheckout())), { status: 200 })),
+    );
+    const res = await GET(getReq(REAP_ID, cookie), { params: Promise.resolve({ checkoutId: REAP_ID }) });
     expect(res.status).toBe(404);
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(JSON.stringify(await res.json())).not.toContain('prava.space');
+  });
+
+  it('GET: the degraded read publishes no seller -> answered WITHOUT a seller (the browser keeps the last one)', async () => {
+    arm();
+    const cookie = await buyerCookie();
+    const { GET } = await import('./[checkoutId]/route');
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify(rpcResult(viewUnavailableCheckout())), { status: 200 }));
+    const res = await GET(getReq(REAP_ID, cookie), { params: Promise.resolve({ checkoutId: REAP_ID }) });
+    expect(res.status).toBe(200);
+    const view = (await res.json()).checkout;
+    expect(view.viewUnavailable).toBe(true);
+    expect(view.seller).toBeUndefined();
+  });
+
+  it('GET: a degraded read NEVER carries a payment link to the browser, even if the gateway sent one', async () => {
+    arm();
+    const cookie = await buyerCookie();
+    const { GET } = await import('./[checkoutId]/route');
+    const degradedWithLink = { ...(viewUnavailableCheckout() as any), continue_url: 'https://pay.prava.space/checkout/chk_x' };
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify(rpcResult(degradedWithLink)), { status: 200 }));
+    const res = await GET(getReq(REAP_ID, cookie), { params: Promise.resolve({ checkoutId: REAP_ID }) });
+    expect(res.status).toBe(200);
+    const view = (await res.json()).checkout;
+    expect(view.viewUnavailable).toBe(true);
+    expect(view.continueUrl).toBeNull();
+    expect(view.seller).toBeUndefined();
+  });
+
+  it('GET: a good read that publishes NO seller is not shown (502)', async () => {
+    arm();
+    const cookie = await buyerCookie();
+    const { GET } = await import('./[checkoutId]/route');
+    withSeller({ domain: null }, () =>
+      fetchMock.mockResolvedValueOnce(new Response(JSON.stringify(rpcResult(awaitingApprovalCheckout())), { status: 200 })),
+    );
+    expect((await GET(getReq(REAP_ID, cookie), { params: Promise.resolve({ checkoutId: REAP_ID }) })).status).toBe(502);
   });
 
   it('a literal "%" in the (already decoded) id is a clean 404, not a 500', async () => {
@@ -653,17 +740,13 @@ describe('GET /api/reap-checkout/:id (armed)', () => {
     }
   });
 
-  it('accepts the gateway\'s full id length (snapshot up to 1000), refuses beyond', async () => {
+  it('accepts the gateway\'s full id length (opaque tail up to 1000), refuses beyond', async () => {
     arm();
     const cookie = await buyerCookie();
     const { GET } = await import('./[checkoutId]/route');
     const tooLong = `reap_rp_0123456789abcdef01234567.${'A'.repeat(1001)}`;
     expect((await GET(getReq('x', cookie), { params: Promise.resolve({ checkoutId: tooLong }) })).status).toBe(404);
-    const k = `prod::${DEMO_MERCHANT_ID}::shopify::${'9'.repeat(150)}`;
-    const snap = Buffer.from(JSON.stringify({ v: 1, i: `sig_${'x'.repeat(240)}`, k, q: 1, c: 'USD', u: 1600 })).toString('base64url');
-    expect(snap.length).toBeGreaterThan(480);
-    expect(snap.length).toBeLessThanOrEqual(1000);
-    const longId = `reap_rp_0123456789abcdef01234567.${snap}`;
+    const longId = `reap_rp_0123456789abcdef01234567.${'B'.repeat(1000)}`;
     fetchMock.mockResolvedValueOnce(new Response(JSON.stringify(rpcResult({ ...awaitingApprovalCheckout(), id: longId })), { status: 200 }));
     expect((await GET(getReq('x', cookie), { params: Promise.resolve({ checkoutId: longId }) })).status).toBe(200);
   });

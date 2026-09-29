@@ -4,10 +4,10 @@ import 'server-only';
 // signed buyer cookie, the same-origin check, the body cap and the per-buyer rate limit.
 import { createHmac, hkdfSync, timingSafeEqual } from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
-import { isReapCheckoutDemoServerEnabled } from './config';
+import { isReapCheckoutDemoServerEnabled, type DemoMerchantConfig } from './config';
 import { isBuyerId, newBuyerId, readBuyerTokenConfig, type BuyerTokenConfig } from './buyerToken.server';
 import { readAgentApiKey, readGatewayBase } from './gatewayClient.server';
-import type { ReapCheckoutView } from './checkoutView';
+import { foldMerchantHost, type ReapCheckoutView } from './checkoutView';
 
 export type ReapServerConfig = {
   base: string;
@@ -245,6 +245,19 @@ export function rateLimited(kind: 'create' | 'read', buyerId: string, now = Date
   take(kind, buyerId, now);
   take(globalKind, 'all', now);
   return null;
+}
+
+/**
+ * Does the seller the gateway PUBLISHED on a Reap answer match this configured merchant? The domain must be
+ * present and equal after folding (lowercase, one leading `www.`); a configured merchant id must equal a
+ * published one when the gateway publishes it (it omits it for the shared external-seed placeholder).
+ */
+export function sellerMatches(view: ReapCheckoutView, merchant: DemoMerchantConfig): boolean {
+  const published = foldMerchantHost(view.publishedSeller.domain);
+  if (!published || published !== foldMerchantHost(merchant.domain)) return false;
+  const id = view.publishedSeller.merchantId;
+  if (id && merchant.merchantIds.length && !merchant.merchantIds.includes(id)) return false;
+  return true;
 }
 
 /** What the browser receives: the read view, plus the VERIFIED seller (from the gateway's answer). */

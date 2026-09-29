@@ -12,6 +12,7 @@ import {
   needsEnrollmentCheckout,
   processingCheckout,
   resolvingCheckout,
+  viewUnavailableCheckout,
 } from '@/lib/reapCheckout/__fixtures__/checkouts';
 
 const NOW = Date.parse('2026-09-29T10:00:00Z');
@@ -373,13 +374,116 @@ describe('ReapCheckoutPanel', () => {
     expect((await screen.findByTestId('reap-seller')).textContent).toBe('Sold and shipped by judydoll.com');
   });
 
-  it('R1: a seller mismatch is not offered, and says so', async () => {
-    const openWindow = renderPanel(vi.fn(async () => jsonResponse({ checkout: null, fallback: 'seller_mismatch' })));
+  it.each([['different_seller'], ['seller_unconfirmed']])(
+    'SELLER CONTRACT: a seller mismatch (%s) offers ONLY "Visit <configured merchant>", never the page/gateway link',
+    async (cause) => {
+      const openWindow = renderPanel(vi.fn(async () => jsonResponse({ checkout: null, fallback: 'seller_mismatch', cause })));
+      await fillAndSubmit();
+      const fb = await screen.findByTestId('reap-fallback');
+      expect(fb.dataset.kind).toBe('seller_mismatch');
+      expect(fb.textContent).toMatch(/isn.t available here from judydoll\.com/);
+      const visit = screen.getByTestId('reap-visit-configured-merchant');
+      expect(visit.getAttribute('href')).toBe('https://judydoll.com/');
+      expect(visit.getAttribute('rel')).toMatch(/noopener/);
+      expect(visit.textContent).toMatch(/Visit judydoll\.com/);
+      // The page's own redirect link for this item (props.storeUrl) is NOT offered here.
+      expect(screen.queryByTestId('reap-visit-store')).toBeNull();
+      expect(fb.innerHTML).not.toContain('silky-matte-lip-ink');
+      const links = Array.from(fb.querySelectorAll('a')).map((x) => x.getAttribute('href'));
+      expect(links).toEqual(['https://judydoll.com/']);
+      expect(openWindow).not.toHaveBeenCalled();
+    },
+  );
+
+  it('SELLER CONTRACT: not_available (server config bug) shows the generic not-available copy', async () => {
+    renderPanel(vi.fn(async () => jsonResponse({ checkout: null, fallback: 'not_available' })));
     await fillAndSubmit();
     const fb = await screen.findByTestId('reap-fallback');
-    expect(fb.dataset.kind).toBe('seller_mismatch');
-    expect(fb.textContent).toMatch(/Nothing was charged/);
-    expect(openWindow).not.toHaveBeenCalled();
+    expect(fb.dataset.kind).toBe('not_available');
+    expect(fb.textContent).toMatch(/isn.t available for this item right now/);
+  });
+
+  it('a refused create shows generic copy (no gateway prose)', async () => {
+    renderPanel(vi.fn(async () => jsonResponse({ checkout: null, fallback: 'refused', code: 'QUOTE_REQUIRED', reason: 'x' })));
+    await fillAndSubmit();
+    expect((await screen.findByTestId('reap-fallback')).textContent).toMatch(/could not be opened\. Nothing was charged/);
+  });
+
+  it('the seller shown is the server-verified one, KEPT when a degraded read publishes none', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const good = { ...viewOf(awaitingApprovalCheckout()), seller: { domain: 'judydoll.com' } };
+    const degraded = viewOf(viewUnavailableCheckout());
+    const fetchImpl = vi.fn(async (url: string) =>
+      url === '/api/reap-checkout' ? jsonResponse({ checkout: good }) : jsonResponse({ checkout: degraded }),
+    );
+    renderPanel(fetchImpl);
+    await fillAndSubmit();
+    expect((await screen.findByTestId('reap-seller')).textContent).toBe('Sold and shipped by judydoll.com');
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(11_000);
+    });
+    await waitFor(() => expect(screen.getByTestId('reap-view-unavailable')).toBeTruthy());
+    expect(screen.getByTestId('reap-seller').textContent).toBe('Sold and shipped by judydoll.com');
+  });
+
+  it('P2: deadline_passed after a hand-off does NOT say "nothing was charged"', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    renderPanel(scriptedFetch(awaitingApprovalCheckout(), [deadlinePassedCheckout()]));
+    await fillAndSubmit();
+    fireEvent.click(await screen.findByTestId('reap-continue'));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(11_000);
+    });
+    const copy = await screen.findByTestId('reap-deadline-passed-copy');
+    expect(copy.textContent).not.toMatch(/Nothing was charged/);
+    expect(copy.textContent).toMatch(/check your email or card statement/);
+  });
+
+  it('P2: deadline_passed WITHOUT a hand-off keeps "nothing was charged"', async () => {
+    renderPanel(scriptedFetch(deadlinePassedCheckout()));
+    await fillAndSubmit();
+    expect((await screen.findByTestId('reap-deadline-passed-copy')).textContent).toMatch(/Nothing was charged/);
+  });
+
+  it('P2: a failed restore after a hand-off does NOT say "nothing charged"; without one it does', async () => {
+    const id = viewOf(awaitingApprovalCheckout()).id;
+    window.localStorage.setItem('pivota.reapCheckout.active.sig_demo', JSON.stringify({ id, at: Date.now(), handedOff: true }));
+    const first = renderPanel(vi.fn(async () => jsonResponse({ error: 'gateway_unavailable' }, 502)));
+    const copy = await screen.findByTestId('reap-restore-failed-copy');
+    expect(copy.textContent).not.toMatch(/charged\./);
+    expect(copy.textContent).toMatch(/check your email or card statement/);
+    void first;
+    cleanup();
+    window.localStorage.setItem('pivota.reapCheckout.active.sig_demo', JSON.stringify({ id, at: Date.now() }));
+    renderPanel(vi.fn(async () => jsonResponse({ error: 'gateway_unavailable' }, 502)));
+    expect((await screen.findByTestId('reap-restore-failed-copy')).textContent).toBe('Nothing has been lost or charged.');
+  });
+
+  it('P3: the refused-link copy does not claim nothing was charged', async () => {
+    renderPanel(scriptedFetch(awaitingApprovalCheckout({ continueUrl: 'https://evilreap.global/pay' })));
+    await fillAndSubmit();
+    const t = (await screen.findByTestId('reap-link-refused')).textContent || '';
+    expect(t).not.toMatch(/Nothing has been charged/);
+    expect(t).toMatch(/won.t open it/);
+  });
+
+  it('P3: after a restore, the header shows the OPEN checkout\'s quantity, not the page\'s', async () => {
+    const id = viewOf(awaitingApprovalCheckout()).id;
+    window.localStorage.setItem('pivota.reapCheckout.active.sig_demo', JSON.stringify({ id, at: Date.now() }));
+    const view3 = viewOf(awaitingApprovalCheckout());
+    view3.lineItems = [{ ...view3.lineItems[0], quantity: 3 }];
+    render(
+      <ReapCheckoutPanel
+        productId="sig_demo"
+        productTitle="Silky Matte Lip Ink"
+        merchantDomain="judydoll.com"
+        market="US"
+        quantity={1}
+        fetchImpl={vi.fn(async () => jsonResponse({ checkout: view3 })) as unknown as typeof fetch}
+      />,
+    );
+    await screen.findByTestId('reap-continue');
+    expect(screen.getByTestId('reap-quantity').textContent).toBe('Quantity: 3');
   });
 
   it('B1: failed BEFORE approval (approval window lapsed): "nothing charged" + a new checkout is offered', async () => {

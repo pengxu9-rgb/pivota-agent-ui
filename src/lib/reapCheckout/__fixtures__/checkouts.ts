@@ -2,13 +2,66 @@
 // `mapReapPurchaseToCheckout` + ucpCheckoutEscalation.js `buildUcpCheckoutEnvelope`), one per state.
 // Message codes, paths, row types and display texts are the lane's own; used by the tests and by the
 // local mock gateway (scripts/reap-mock-gateway.mjs imports the JSON twin of this file's builder).
-// Ids exactly as the lane encodes them (snapshot {v:1,i,k,q,c,u}); `k` names the seller.
-export const DEMO_MERCHANT_ID = 'merch_judydoll_demo';
+// Ids as the lane mints them. They are OPAQUE to the UI (§5.2): nothing decodes them.
+export const PRODUCT_ID = 'sig_6433c8107859a484fb72d14861e84690';
 export const REAP_ID =
   'reap_rp_0123456789abcdef01234567.eyJ2IjoxLCJpIjoic2lnXzY0MzNjODEwNzg1OWE0ODRmYjcyZDE0ODYxZTg0NjkwIiwiayI6InByb2Q6Om1lcmNoX2p1ZHlkb2xsX2RlbW86OnNob3BpZnk6OjgxMjM0NTY3ODkiLCJxIjoxLCJjIjoiVVNEIiwidSI6MTYwMH0';
-/** The same purchase shape, but the lane bought another seller's row. */
-export const REAP_ID_OTHER_SELLER =
-  'reap_rp_0123456789abcdef01234567.eyJ2IjoxLCJpIjoic2lnXzY0MzNjODEwNzg1OWE0ODRmYjcyZDE0ODYxZTg0NjkwIiwiayI6InByb2Q6Om1lcmNoX290aGVyX3NlbGxlcjo6c2hvcGlmeTo6ODEyMzQ1Njc4OSIsInEiOjEsImMiOiJVU0QiLCJ1IjoxNjAwfQ';
+
+/**
+ * The seller the gateway publishes on a good Reap answer (§5.4): `info` messages at `$.line_items[0]`,
+ * bare values. The DEFAULT is the live judydoll demo row: an external-seed row whose catalog key is the
+ * shared placeholder, so `reap.merchant_id` is OMITTED and only `reap.merchant_domain` is published.
+ */
+export type SellerOpt = { domain?: string | null; merchantId?: string | null };
+const DEFAULT_SELLER: SellerOpt = { domain: 'judydoll.com', merchantId: null };
+let currentSeller: SellerOpt = DEFAULT_SELLER;
+
+function sellerMessages(seller: SellerOpt) {
+  const out: unknown[] = [];
+  if (seller.domain) out.push(info('reap.merchant_domain', seller.domain, '$.line_items[0]'));
+  if (seller.merchantId) out.push(info('reap.merchant_id', seller.merchantId, '$.line_items[0]'));
+  return out;
+}
+
+/** Run `fn` with every fixture built in it publishing `seller` (e.g. `{ domain: 'www.other.com' }`). */
+export function withSeller<T>(seller: SellerOpt, fn: () => T): T {
+  const prev = currentSeller;
+  currentSeller = seller;
+  try {
+    return fn();
+  } finally {
+    currentSeller = prev;
+  }
+}
+
+/** The door's refusal when the item would be sold by someone else (§5.4, byte-shaped like the wire). */
+export function sellerMismatchError(cause: 'different_seller' | 'seller_unconfirmed' = 'different_seller') {
+  return {
+    error: {
+      code: 'QUOTE_REQUIRED',
+      message: 'The item at checkout.line_items[0] is sold by www.other.com, not the expected merchant.',
+      detail: {
+        reason: 'ucp_seller_mismatch',
+        dialect: 'ucp',
+        rejected_field: 'checkout.reap.expected_merchant_domain',
+        cause,
+        ...(cause === 'different_seller'
+          ? { line_item: '$.line_items[0]', merchant_domain: 'www.other.com', merchant_id: 'm_other' }
+          : {}),
+      },
+    },
+  };
+}
+
+export function expectedDomainInvalidError() {
+  return {
+    error: {
+      code: 'QUOTE_REQUIRED',
+      message: 'checkout.reap.expected_merchant_domain must be a bare host.',
+      detail: { reason: 'ucp_expected_merchant_domain_invalid', dialect: 'ucp' },
+    },
+  };
+}
 export const HOSTED_URL = 'https://pay.prava.space/checkout/chk_7f3a';
 
 const LANE = {
@@ -44,7 +97,7 @@ function envelope(o: Opts) {
     line_items: [
       {
         id: 'li_1',
-        item: { id: 'sig_demo', title: 'Silky Matte Lip Ink — 01 Rosy', price: 1600 },
+        item: { id: PRODUCT_ID, title: 'Silky Matte Lip Ink — 01 Rosy', price: 1600 },
         quantity: 1,
         totals: [
           { type: 'subtotal', amount: 1600 },
@@ -58,7 +111,10 @@ function envelope(o: Opts) {
     ],
     links: [{ type: 'terms_of_service', url: 'https://pivota.cc/terms', title: 'Pivota Terms of Service' }],
     expires_at: o.expiresAt ?? '2099-01-01T00:00:00.000Z',
-    messages: o.messages,
+    // Every good Reap answer publishes its seller; the degraded one (reap.view_unavailable) does not.
+    messages: (o.messages as Array<{ code?: string }>).some((m) => m && m.code === 'reap.view_unavailable')
+      ? o.messages
+      : [...sellerMessages(currentSeller), ...o.messages],
     ...(o.discounts ? { discounts: o.discounts } : {}),
   };
 }
@@ -221,4 +277,16 @@ export function rpcResult(value: unknown, isError = false) {
     id: 1,
     result: { content: [{ type: 'text', text: JSON.stringify(value, null, 2) }], ...(isError ? { isError: true } : {}) },
   };
+}
+
+/** The degraded read: the backend view could not be read; the gateway names no seller (§5.4). */
+export function viewUnavailableCheckout() {
+  return envelope({
+    status: 'incomplete',
+    messages: [
+      warning('reap.view_unavailable', "The purchase's current state could not be read just now; nothing has been lost.", '$'),
+      info('reap.poll_after_seconds', '30'),
+      LANE,
+    ],
+  });
 }

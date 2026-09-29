@@ -21,7 +21,7 @@ const DEFAULT_TIMEOUT_MS = 12_000;
 
 export type ToolCallOutcome =
   | { kind: 'checkout'; checkout: unknown }
-  | { kind: 'tool_error'; code: string | null; message: string | null; reason: string | null }
+  | { kind: 'tool_error'; code: string | null; message: string | null; reason: string | null; cause: string | null }
   | { kind: 'unavailable'; status: number | null; detail: string };
 
 /** The gateway base: LOOPBACK only (the local proxy to staging), http or https. Anything else is null. */
@@ -69,6 +69,7 @@ export function readToolCallBody(body: unknown): ToolCallOutcome {
       code: typeof err.code === 'string' ? err.code : null,
       message: typeof err.message === 'string' ? err.message.slice(0, 400) : null,
       reason: typeof detail.reason === 'string' ? detail.reason.slice(0, 80) : null,
+      cause: typeof detail.cause === 'string' ? detail.cause.slice(0, 40) : null,
     };
   }
   return { kind: 'checkout', checkout: parsed };

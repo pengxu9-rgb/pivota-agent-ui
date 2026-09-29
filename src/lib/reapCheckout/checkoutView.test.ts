@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { readReapCheckout } from './checkoutView';
+import { foldMerchantHost, readReapCheckout } from './checkoutView';
 import { formatMinorAmount } from './formatMinor';
 import {
   HOSTED_URL,
@@ -12,6 +12,8 @@ import {
   processingCheckout,
   resolvingCheckout,
   storefrontEscalation,
+  viewUnavailableCheckout,
+  withSeller,
 } from './__fixtures__/checkouts';
 
 describe('readReapCheckout — the gateway Reap lane checkout, per state', () => {
@@ -104,5 +106,53 @@ describe('formatMinorAmount', () => {
     expect(formatMinorAmount(-320, 'USD')).toBe('−$3.20');
     expect(formatMinorAmount(1884, 'JPY')).toBe('¥1,884');
     for (const c of [null, '', 'usd', 'US']) expect(formatMinorAmount(1884, c)).toBe('—');
+  });
+});
+
+describe('the published seller (reap.merchant_domain / reap.merchant_id at $.line_items[0])', () => {
+  it('reads the judydoll external-seed answer: domain only, merchant id absent', () => {
+    expect(readReapCheckout(resolvingCheckout())!.publishedSeller).toEqual({ domain: 'judydoll.com', merchantId: null });
+  });
+
+  it('reads both when published; www. is kept as published and folded only for comparison', () => {
+    const v = withSeller({ domain: 'www.brand.com', merchantId: 'm_brand' }, () => readReapCheckout(awaitingApprovalCheckout()))!;
+    expect(v.publishedSeller).toEqual({ domain: 'www.brand.com', merchantId: 'm_brand' });
+    expect(foldMerchantHost(v.publishedSeller.domain)).toBe('brand.com');
+  });
+
+  it('the degraded read publishes none', () => {
+    expect(readReapCheckout(viewUnavailableCheckout())!.publishedSeller).toEqual({ domain: null, merchantId: null });
+  });
+
+  it('only an info message at exactly $.line_items[0] counts; a malformed host is ignored', () => {
+    const base = withSeller({ domain: null }, () => awaitingApprovalCheckout()) as any;
+    const at = (path: string, content: string, type = 'info') => ({
+      ...base,
+      messages: [{ type, code: 'reap.merchant_domain', path, content, content_type: 'plain' }, ...base.messages],
+    });
+    expect(readReapCheckout(at('$', 'judydoll.com'))!.publishedSeller.domain).toBeNull();
+    expect(readReapCheckout(at('$.line_items[0]', 'judydoll.com', 'warning'))!.publishedSeller.domain).toBeNull();
+    for (const bad of ['https://judydoll.com', 'judydoll', 'JUDYDOLL.COM', 'judydoll.com/x', 'judy doll.com', '']) {
+      expect(readReapCheckout(at('$.line_items[0]', bad))!.publishedSeller.domain, bad).toBeNull();
+    }
+  });
+
+  it('two DIFFERENT published domains count as none (fail closed); the same one twice still counts', () => {
+    const base = withSeller({ domain: null }, () => awaitingApprovalCheckout()) as any;
+    const msg = (content: string) => ({ type: 'info', code: 'reap.merchant_domain', path: '$.line_items[0]', content, content_type: 'plain' });
+    const conflicting = { ...base, messages: [msg('judydoll.com'), msg('other-seller.com'), ...base.messages] };
+    expect(readReapCheckout(conflicting)!.publishedSeller.domain).toBeNull();
+    const reversed = { ...base, messages: [msg('other-seller.com'), msg('judydoll.com'), ...base.messages] };
+    expect(readReapCheckout(reversed)!.publishedSeller.domain).toBeNull();
+    const repeated = { ...base, messages: [msg('judydoll.com'), msg('judydoll.com'), ...base.messages] };
+    expect(readReapCheckout(repeated)!.publishedSeller.domain).toBe('judydoll.com');
+  });
+
+  it('foldMerchantHost: lowercase, ONE leading www. removed, never a URL', () => {
+    expect(foldMerchantHost('WWW.Brand.com')).toBe('brand.com');
+    expect(foldMerchantHost('www.www.brand.com')).toBe('www.brand.com');
+    expect(foldMerchantHost('wwwbrand.com')).toBe('wwwbrand.com');
+    expect(foldMerchantHost('shop.brand.com')).toBe('shop.brand.com');
+    for (const bad of ['https://brand.com', 'brand', 'brand.com:443', '', null, 7]) expect(foldMerchantHost(bad)).toBeNull();
   });
 });
