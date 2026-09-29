@@ -858,7 +858,7 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
               <p className="text-sm font-semibold">
                 This item isn&apos;t available here from {props.merchantDomain}.
               </p>
-              <p className="text-sm text-muted-foreground">Nothing was opened or charged.</p>
+              <p className="text-sm text-muted-foreground">Nothing was charged.</p>
             </>
           ) : fallback.kind === 'not_available' ? (
             <>

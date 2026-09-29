@@ -707,6 +707,20 @@ describe('GET /api/reap-checkout/:id (armed)', () => {
     expect(view.seller).toBeUndefined();
   });
 
+  it('GET: a degraded read NEVER carries a payment link to the browser, even if the gateway sent one', async () => {
+    arm();
+    const cookie = await buyerCookie();
+    const { GET } = await import('./[checkoutId]/route');
+    const degradedWithLink = { ...(viewUnavailableCheckout() as any), continue_url: 'https://pay.prava.space/checkout/chk_x' };
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify(rpcResult(degradedWithLink)), { status: 200 }));
+    const res = await GET(getReq(REAP_ID, cookie), { params: Promise.resolve({ checkoutId: REAP_ID }) });
+    expect(res.status).toBe(200);
+    const view = (await res.json()).checkout;
+    expect(view.viewUnavailable).toBe(true);
+    expect(view.continueUrl).toBeNull();
+    expect(view.seller).toBeUndefined();
+  });
+
   it('GET: a good read that publishes NO seller is not shown (502)', async () => {
     arm();
     const cookie = await buyerCookie();

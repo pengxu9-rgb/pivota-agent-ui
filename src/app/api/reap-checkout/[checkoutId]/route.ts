@@ -68,7 +68,8 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ checkoutId:
   // degraded read (`reap.view_unavailable`) publishes no seller by design: answer it WITHOUT a seller, and
   // the browser keeps the seller from its last good answer.
   if (!view.publishedSeller.domain) {
-    if (view.viewUnavailable) return json({ checkout: view });
+    // A degraded read is never payable on our side, whatever the gateway sends: no link, no seller.
+    if (view.viewUnavailable) return json({ checkout: { ...view, continueUrl: null } });
     return json({ error: 'gateway_unavailable', detail: 'seller_unpublished' }, 502);
   }
   const merchant = readDemoMerchantConfig().find((m) => sellerMatches(view, m));

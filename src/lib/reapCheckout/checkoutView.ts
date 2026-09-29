@@ -89,9 +89,17 @@ export function foldMerchantHost(raw: unknown): string | null {
 }
 
 export function readPublishedSeller(messages: ReapMessage[]): { domain: string | null; merchantId: string | null } {
-  const at = (code: string) => messages.find((m) => m.code === code && m.type === 'info' && m.path === SELLER_PATH);
-  const d = at('reap.merchant_domain')?.content ?? '';
-  const id = at('reap.merchant_id')?.content ?? '';
+  // Exactly one published value counts; two that disagree are treated as unpublished (fail closed).
+  const only = (code: string): string => {
+    const values = new Set(
+      messages
+        .filter((m) => m.code === code && m.type === 'info' && m.path === SELLER_PATH)
+        .map((m) => m.content ?? ''),
+    );
+    return values.size === 1 ? [...values][0] : '';
+  };
+  const d = only('reap.merchant_domain');
+  const id = only('reap.merchant_id');
   return {
     // As published (lowercase, `www.` kept); compare with foldMerchantHost.
     domain: HOST_RE.test(d) ? d : null,

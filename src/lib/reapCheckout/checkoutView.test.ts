@@ -137,6 +137,17 @@ describe('the published seller (reap.merchant_domain / reap.merchant_id at $.lin
     }
   });
 
+  it('two DIFFERENT published domains count as none (fail closed); the same one twice still counts', () => {
+    const base = withSeller({ domain: null }, () => awaitingApprovalCheckout()) as any;
+    const msg = (content: string) => ({ type: 'info', code: 'reap.merchant_domain', path: '$.line_items[0]', content, content_type: 'plain' });
+    const conflicting = { ...base, messages: [msg('judydoll.com'), msg('other-seller.com'), ...base.messages] };
+    expect(readReapCheckout(conflicting)!.publishedSeller.domain).toBeNull();
+    const reversed = { ...base, messages: [msg('other-seller.com'), msg('judydoll.com'), ...base.messages] };
+    expect(readReapCheckout(reversed)!.publishedSeller.domain).toBeNull();
+    const repeated = { ...base, messages: [msg('judydoll.com'), msg('judydoll.com'), ...base.messages] };
+    expect(readReapCheckout(repeated)!.publishedSeller.domain).toBe('judydoll.com');
+  });
+
   it('foldMerchantHost: lowercase, ONE leading www. removed, never a URL', () => {
     expect(foldMerchantHost('WWW.Brand.com')).toBe('brand.com');
     expect(foldMerchantHost('www.www.brand.com')).toBe('www.brand.com');
