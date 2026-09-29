@@ -40,21 +40,28 @@ export function readActiveCheckoutId(productId: string, now = Date.now()): strin
   }
 }
 
-/** Whether this browser saw the buyer approve (a `processing` state) for the open checkout. */
-export function readActiveApproved(productId: string): boolean {
+// Flags kept beside the open checkout's id (shared by every tab of this origin):
+//   handedOff  the buyer clicked "Continue to secure payment" (Reap's page was opened)
+//   approved   this browser saw the purchase `processing` (the buyer approved on Reap)
+// Either one means money MAY have moved, whatever terminal state the backend reports later: its
+// `approval_window_lapsed` is a heuristic (an approval in the last poll interval can get it), and its
+// overdue sweep expires awaiting-approval rows on the server clock without asking Reap.
+type ActiveFlag = 'approved' | 'handedOff';
+
+export function readActiveFlag(productId: string, flag: ActiveFlag): boolean {
   try {
     const v = JSON.parse(window.localStorage.getItem(ACTIVE_KEY_PREFIX + productId) || 'null');
-    return Boolean(v && v.approved === true);
+    return Boolean(v && v[flag] === true);
   } catch {
     return false;
   }
 }
 
-export function markActiveApproved(productId: string) {
+export function markActive(productId: string, flag: ActiveFlag) {
   try {
     const key = ACTIVE_KEY_PREFIX + productId;
     const v = JSON.parse(window.localStorage.getItem(key) || 'null');
-    if (v && typeof v.id === 'string') window.localStorage.setItem(key, JSON.stringify({ ...v, approved: true }));
+    if (v && typeof v.id === 'string') window.localStorage.setItem(key, JSON.stringify({ ...v, [flag]: true }));
   } catch {
     // best effort
   }
@@ -325,15 +332,14 @@ const TERMINAL_COPY: Record<string, { title: string; body: string }> = {
 };
 
 /**
- * Could money have moved? Only when the buyer may have approved on Reap: this browser saw the purchase
- * processing (the buyer approved), or it FAILED for a reason other than "never approved in time" (a failure
- * after approval, or an unknown one). Then "nothing was charged" would be a guess, and a one-click retry
- * could buy the item twice.
+ * Could money have moved? Only once the buyer was handed Reap's page (or this browser saw the approval).
+ * Then "nothing was charged" would be a guess, and a one-click retry could buy the item twice.
  */
-export function outcomeUncertain(view: ReapCheckoutView, sawApproval: boolean): boolean {
-  if (!['failed', 'expired', 'refused'].includes(view.phase)) return false;
-  if (sawApproval) return true;
-  return view.phase === 'failed' && view.terminalReason !== 'approval_window_lapsed';
+export function outcomeUncertain(view: ReapCheckoutView, mayHavePaid: boolean): boolean {
+  // Before the buyer was ever handed Reap's page, no ending can have charged them (enrollment_dead,
+  // quote_id_missing, a lapsed window never opened, ...): "nothing was charged" is true. After a hand-off
+  // or a seen approval, EVERY non-completed ending is uncertain.
+  return mayHavePaid && ['failed', 'expired', 'refused'].includes(view.phase);
 }
 
 function retryHint(reason: string | null): string | null {
@@ -352,9 +358,9 @@ function StatusView({
   gaveUp,
   consecutiveErrors,
   onRefresh,
-  sawApproval,
+  mayHavePaid,
 }: {
-  sawApproval: boolean;
+  mayHavePaid: boolean;
   view: ReapCheckoutView;
   openWindow: (url: string) => void;
   now: () => number;
@@ -457,7 +463,7 @@ function StatusView({
         </div>
       ) : null}
 
-      {['failed', 'expired', 'refused'].includes(view.phase) && outcomeUncertain(view, sawApproval) ? (
+      {['failed', 'expired', 'refused'].includes(view.phase) && outcomeUncertain(view, mayHavePaid) ? (
         <div className="space-y-3" data-testid="reap-terminal-uncertain">
           <p className="text-base font-semibold">We couldn&apos;t confirm your order</p>
           <p className="text-sm text-muted-foreground">
@@ -467,7 +473,7 @@ function StatusView({
         </div>
       ) : null}
 
-      {['failed', 'expired', 'refused'].includes(view.phase) && !outcomeUncertain(view, sawApproval) ? (
+      {['failed', 'expired', 'refused'].includes(view.phase) && !outcomeUncertain(view, mayHavePaid) ? (
         <div className="space-y-3" data-testid="reap-terminal">
           <p className="text-base font-semibold">{TERMINAL_COPY[view.phase].title}</p>
           <p className="text-sm text-muted-foreground">{TERMINAL_COPY[view.phase].body}</p>
@@ -556,11 +562,20 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
   const keyFor = useRef<{ fingerprint: string; key: string } | null>(null);
   const quantity = Math.min(10, Math.max(1, Math.floor(Number(props.quantity) || 1)));
   // Did this browser see the buyer approve on Reap? Decides whether "nothing was charged" can be said.
-  const [sawApproval, setSawApproval] = useState(() => readActiveApproved(props.productId));
+  const [sawApproval, setSawApproval] = useState(() => readActiveFlag(props.productId, 'approved'));
+  const [handedOff, setHandedOff] = useState(() => readActiveFlag(props.productId, 'handedOff'));
+  const mayHavePaid = sawApproval || handedOff;
+  // Every hand-off to Reap's page is recorded BEFORE the page opens.
+  const handOff = (url: string) => {
+    markActive(props.productId, 'handedOff');
+    setHandedOff(true);
+    openWindow(url);
+  };
   const poll = useReapCheckoutPoll(null, { fetchImpl });
   const [restoring, setRestoring] = useState(true);
   const [restoreAttempt, setRestoreAttempt] = useState(0);
   const [restoreFailed, setRestoreFailed] = useState(false);
+  const [restoredGone, setRestoredGone] = useState(false);
 
   // Restore an open checkout for this product (sheet re-opened, or the buyer came back from Reap).
   // A failed read is NOT "no checkout": offering the form then would invite a second purchase.
@@ -576,7 +591,12 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
     void fetchReapCheckout(id, fetchImpl).then((out) => {
       if (!alive) return;
       if ('view' in out) poll.reset(out.view);
-      else if ('notFound' in out) writeActiveCheckoutId(props.productId, null);
+      else if ('notFound' in out) {
+        // Gone. Forget it only if the buyer was never handed Reap's page; otherwise keep it and say we
+        // couldn't confirm (the same rule as a 404 while polling).
+        if (readActiveFlag(props.productId, 'handedOff') || readActiveFlag(props.productId, 'approved')) setRestoredGone(true);
+        else writeActiveCheckoutId(props.productId, null);
+      }
       else setRestoreFailed(true);
       setRestoring(false);
     });
@@ -684,6 +704,8 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
     if (withoutCode) setForm((f) => ({ ...f, offer_code: '' }));
     writeActiveCheckoutId(props.productId, null);
     setSawApproval(false);
+    setHandedOff(false);
+    setRestoredGone(false);
     poll.reset(null);
   };
 
@@ -702,6 +724,8 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
     setFallback(null);
     setFieldError(null);
     setSawApproval(false);
+    setHandedOff(false);
+    setRestoredGone(false);
     setRestoreFailed(false);
     poll.reset(null);
   };
@@ -709,15 +733,20 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
   useEffect(() => {
     if (poll.view?.phase === 'processing') {
       setSawApproval(true);
-      markActiveApproved(props.productId);
+      markActive(props.productId, 'approved');
     }
   }, [poll.view?.phase, props.productId]);
 
   // A 404 while polling (unknown id, another buyer's, the dial turned off): the checkout is gone. Forget it
   // and never leave a live pay button on screen.
   useEffect(() => {
-    if (poll.notFound) writeActiveCheckoutId(props.productId, null);
-  }, [poll.notFound, props.productId]);
+    // Keep the entry (and so the uncertain answer) when money may have moved; forget it otherwise.
+    if (poll.notFound && !mayHavePaid) writeActiveCheckoutId(props.productId, null);
+  }, [poll.notFound, props.productId, mayHavePaid]);
+
+  const uncertainNow = Boolean(
+    ((poll.notFound || restoredGone) && mayHavePaid) || (poll.view && outcomeUncertain(poll.view, mayHavePaid)),
+  );
 
   const errFor = (field: string) => (fieldError && fieldError.field.endsWith(field) ? fieldError.message : null);
 
@@ -753,6 +782,15 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
             Try again
           </button>
         </div>
+      ) : (poll.notFound || restoredGone) && mayHavePaid ? (
+        // Gone after the buyer was handed Reap's page: we cannot say what happened. No retry.
+        <div className="space-y-3" data-testid="reap-gone-uncertain">
+          <p className="text-base font-semibold">We couldn&apos;t confirm your order</p>
+          <p className="text-sm text-muted-foreground">
+            Check your email or card statement before trying again. If you were charged, the merchant&apos;s
+            confirmation email has the details.
+          </p>
+        </div>
       ) : poll.notFound ? (
         <div className="space-y-3" data-testid="reap-gone">
           <p className="text-base font-semibold">This checkout is no longer available</p>
@@ -769,9 +807,9 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
         </div>
       ) : poll.view ? (
         <StatusView
-          sawApproval={sawApproval}
+          mayHavePaid={mayHavePaid}
           view={poll.view}
-          openWindow={openWindow}
+          openWindow={handOff}
           now={now}
           onRestart={restart}
           storeLink={storeLink}
@@ -879,6 +917,12 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
         </form>
       )}
       <div className="border-t border-border pt-3 text-center">
+        {uncertainNow ? (
+          // After an uncertain ending the reset is NOT a way to "try again": the statement check comes first.
+          <p className="mb-1 text-xs text-muted-foreground" data-testid="reap-new-buyer-caution">
+            Handing this device to someone else? Check the statement first — this does not retry the purchase.
+          </p>
+        ) : null}
         <button
           type="button"
           onClick={() => void newBuyer()}

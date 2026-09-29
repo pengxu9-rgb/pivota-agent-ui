@@ -423,11 +423,103 @@ describe('ReapCheckoutPanel', () => {
     expect(screen.queryByTestId('reap-restart')).toBeNull();
   });
 
-  it('B1: failed for an UNKNOWN reason (nothing seen): treated as possibly charged', async () => {
-    renderPanel(scriptedFetch(canceledCheckout('failed')));
+  it.each([
+    ['enrollment_dead', canceledCheckout('failed', 'enrollment_dead')],
+    ['quote_id_missing', canceledCheckout('failed', 'quote_id_missing')],
+    ['an unknown reason', canceledCheckout('failed')],
+    ['expired', canceledCheckout('expired')],
+    ['refused', canceledCheckout('refused', 'price_changed')],
+  ])('R3.1: WITHOUT a hand-off, a %s ending is certain: "nothing was charged" + a new checkout', async (_l, checkout) => {
+    renderPanel(scriptedFetch(checkout));
     await fillAndSubmit();
+    const t = await screen.findByTestId('reap-terminal');
+    expect(t.textContent).toMatch(/Nothing was charged/);
+    expect(screen.getByTestId('reap-restart')).toBeTruthy();
+    expect(screen.queryByTestId('reap-new-buyer-caution')).toBeNull();
+  });
+
+  it.each([
+    ['expired', canceledCheckout('expired')],
+    ['failed / approval_window_lapsed', canceledCheckout('failed', 'approval_window_lapsed')],
+    ['refused', canceledCheckout('refused', 'price_changed')],
+  ])('R3.1: AFTER a hand-off to Reap, even %s is uncertain: no "nothing charged", no retry', async (_l, ending) => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const openWindow = renderPanel(scriptedFetch(awaitingApprovalCheckout(), [ending]));
+    await fillAndSubmit();
+    fireEvent.click(await screen.findByTestId('reap-continue'));
+    expect(openWindow).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(window.localStorage.getItem('pivota.reapCheckout.active.sig_demo')!).handedOff).toBe(true);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(11_000);
+    });
+    const t = await screen.findByTestId('reap-terminal-uncertain');
+    expect(t.textContent).toMatch(/Check your email or card statement before trying again/);
+    expect(document.body.textContent).not.toMatch(/Nothing was charged/);
+    expect(screen.queryByTestId('reap-restart')).toBeNull();
+    // "Start as a new buyer" stays secondary, AFTER the statement check, and says it is not a retry.
+    const reset = screen.getByTestId('reap-new-buyer');
+    const caution = screen.getByTestId('reap-new-buyer-caution');
+    expect(t.compareDocumentPosition(caution) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(caution.compareDocumentPosition(reset) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(caution.textContent).toMatch(/does not retry/);
+    expect(reset.className).not.toMatch(/bg-foreground/);
+  });
+
+  it('U4: an approval seen before a RELOAD still makes a later lapse uncertain (markActive approved)', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const first = renderPanel(scriptedFetch(awaitingApprovalCheckout(), [processingCheckout()]));
+    await fillAndSubmit();
+    await screen.findByTestId('reap-continue');
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(11_000);
+    });
+    await waitFor(() => expect(screen.getByTestId('reap-status').dataset.phase).toBe('processing'));
+    cleanup();
+    void first;
+    // Reload (or the Reap tab coming back to the PDP): only localStorage survives.
+    renderPanel(scriptedFetch(canceledCheckout('failed', 'approval_window_lapsed'), [canceledCheckout('failed', 'approval_window_lapsed')]));
     await screen.findByTestId('reap-terminal-uncertain');
     expect(screen.queryByTestId('reap-restart')).toBeNull();
+  });
+
+  it('R3.1: a hand-off before a RELOAD still makes a later expiry uncertain (the Reap-return tab)', async () => {
+    const openWindow = renderPanel(scriptedFetch(awaitingApprovalCheckout()));
+    await fillAndSubmit();
+    fireEvent.click(await screen.findByTestId('reap-continue'));
+    expect(openWindow).toHaveBeenCalled();
+    cleanup();
+    renderPanel(scriptedFetch(canceledCheckout('expired'), [canceledCheckout('expired')]));
+    await screen.findByTestId('reap-terminal-uncertain');
+  });
+
+  it('R3.4: a 404 while polling AFTER a hand-off keeps the entry and says "couldn\'t confirm", no pay button', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const fetchImpl = vi.fn(async (url: string) =>
+      url === '/api/reap-checkout'
+        ? jsonResponse({ checkout: viewOf(awaitingApprovalCheckout()) })
+        : jsonResponse({ error: 'not_found' }, 404),
+    );
+    renderPanel(fetchImpl);
+    await fillAndSubmit();
+    fireEvent.click(await screen.findByTestId('reap-continue'));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(11_000);
+    });
+    const gone = await screen.findByTestId('reap-gone-uncertain');
+    expect(gone.textContent).toMatch(/We couldn.t confirm your order/);
+    expect(screen.queryByTestId('reap-continue')).toBeNull();
+    expect(screen.queryByText('Back to checkout')).toBeNull();
+    expect(readActiveCheckoutId('sig_demo')).not.toBeNull();
+  });
+
+  it('R3.4: a 404 while polling after an APPROVAL (stored) keeps the entry too', async () => {
+    const id = viewOf(awaitingApprovalCheckout()).id;
+    window.localStorage.setItem('pivota.reapCheckout.active.sig_demo', JSON.stringify({ id, at: Date.now(), approved: true }));
+    renderPanel(vi.fn(async () => jsonResponse({ error: 'not_found' }, 404)));
+    // The restore itself 404s: with money possibly moved, the entry is kept and the answer is uncertain.
+    await screen.findByTestId('reap-gone-uncertain');
+    expect(readActiveCheckoutId('sig_demo')).toBe(id);
+    expect(screen.queryByTestId('reap-form')).toBeNull();
   });
 
   it('B1: approval seen in ANOTHER tab/reload (stored flag) still blocks the one-click retry', async () => {

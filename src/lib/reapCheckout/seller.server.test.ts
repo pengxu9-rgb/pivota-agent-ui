@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest';
-import { itemIdOfReapCheckoutId, productKeyOfReapCheckoutId, sellerOfReapCheckoutId } from './seller.server';
+import { itemIdOfReapCheckoutId, productKeyOfReapCheckoutId, quantityOfReapCheckoutId, sellerOfReapCheckoutId } from './seller.server';
 import { DEMO_MERCHANT_ID, REAP_ID } from './__fixtures__/checkouts';
 
 const enc = (snap: unknown) =>
@@ -13,6 +13,8 @@ describe('seller of a Reap checkout id (the lane\'s v:1 snapshot)', () => {
     expect(sellerOfReapCheckoutId(enc(good))).toBe('merch_a');
     expect(itemIdOfReapCheckoutId(enc(good))).toBe('sig_x');
     expect(productKeyOfReapCheckoutId(enc(good))).toBe('prod::merch_a::shopify::123');
+    expect(quantityOfReapCheckoutId(enc(good))).toBe(1);
+    expect(quantityOfReapCheckoutId(enc({ ...good, q: 3 }))).toBe(3);
   });
 
   it('fails closed on anything but the exact v:1 shape', () => {
@@ -22,6 +24,10 @@ describe('seller of a Reap checkout id (the lane\'s v:1 snapshot)', () => {
       { ...good, k: 'not-a-product-key' },
       { ...good, k: 'prod::::shopify::1' },
       { ...good, i: 7 },
+      { ...good, q: 0 },
+      { ...good, q: '1' },
+      { ...good, q: 1.5 },
+      { v: 1, i: 'sig_x', k: 'prod::merch_a::shopify::123', c: 'USD', u: 100 },
       [good],
     ]) {
       expect(sellerOfReapCheckoutId(enc(snap)), JSON.stringify(snap)).toBeNull();

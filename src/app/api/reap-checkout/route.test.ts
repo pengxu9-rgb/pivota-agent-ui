@@ -385,6 +385,47 @@ describe('POST /api/reap-checkout (armed)', () => {
     expect('response' in out && out.response.status).toBe(413);
   });
 
+  it('QUANTITY BINDING: a Reap checkout for a different quantity than requested is refused', async () => {
+    arm();
+    gatewayAnswers(resolvingCheckout()); // the fixture id's snapshot says q:1
+    const { POST } = await import('./route');
+    expect(await (await POST(createReq({ quantity: 2 }))).json()).toEqual({ checkout: null, fallback: 'seller_mismatch' });
+    // And the matching quantity is accepted.
+    expect((await (await POST(createReq({ quantity: 1 }))).json()).checkout).toBeTruthy();
+  });
+
+  it('R4: a refused first request still carries the new buyer\'s cookie (400, 403, 413, 429)', async () => {
+    arm();
+    gatewayAnswers(resolvingCheckout());
+    const { POST } = await import('./route');
+    const hasCookie = (res: Response) => /pv_reap_demo_buyer=rdb_/.test(res.headers.get('set-cookie') || '');
+    const bad = await POST(createReq({ consent: false }));
+    expect(bad.status).toBe(400);
+    expect(hasCookie(bad)).toBe(true);
+    const scope = await POST(createReq({ merchant_domain: 'nope.example' }));
+    expect(scope.status).toBe(403);
+    expect(hasCookie(scope)).toBe(true);
+    const big = await POST(createReq({}, { body: JSON.stringify({ pad: 'x'.repeat(17 * 1024) }) }));
+    expect(big.status).toBe(413);
+    expect(hasCookie(big)).toBe(true);
+    for (let i = 0; i < 30; i++) await POST(createReq()); // exhaust the global create cap with fresh buyers
+    const limited = await POST(createReq());
+    expect(limited.status).toBe(429);
+    expect(hasCookie(limited)).toBe(true);
+  });
+
+  it('R2: the GLOBAL read cap: the 601st read in a minute across all buyers is 429', async () => {
+    arm();
+    const { rateLimited } = await import('@/lib/reapCheckout/routeSupport.server');
+    const now = 5_000_000;
+    // 600 reads spread over many buyers (each well under the per-buyer 120).
+    for (let i = 0; i < 600; i++) expect(rateLimited('read', `rdb_${i % 10}`, now + i)).toBeNull();
+    const res = rateLimited('read', 'rdb_fresh_buyer', now + 600);
+    expect(res?.status).toBe(429);
+    // A minute later the window has moved on.
+    expect(rateLimited('read', 'rdb_fresh_buyer', now + 600 + 60_000)).toBeNull();
+  });
+
   it('ITEM BINDING: a Reap checkout for a different product than requested is refused', async () => {
     arm();
     gatewayAnswers(resolvingCheckout());

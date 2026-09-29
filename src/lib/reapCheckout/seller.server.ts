@@ -22,7 +22,7 @@ import 'server-only';
 const REAP_ID_RE = /^reap_rp_[0-9a-f]{24}\.([A-Za-z0-9_-]{1,1000})$/;
 const PRODUCT_KEY_RE = /^prod::([A-Za-z0-9_.-]{1,80})::[a-z0-9_]{1,40}::[^\s:]{1,160}$/;
 
-type Snapshot = { productKey: string; itemId: string };
+type Snapshot = { productKey: string; itemId: string; quantity: number };
 
 function snapshotOf(id: unknown): Snapshot | null {
   if (typeof id !== 'string' || id.length > 1100) return null;
@@ -37,12 +37,18 @@ function snapshotOf(id: unknown): Snapshot | null {
   if (!snap || typeof snap !== 'object' || Array.isArray(snap)) return null;
   const s = snap as Record<string, unknown>;
   if (s.v !== 1 || typeof s.k !== 'string' || typeof s.i !== 'string') return null;
-  return PRODUCT_KEY_RE.test(s.k) ? { productKey: s.k, itemId: s.i } : null;
+  if (!Number.isSafeInteger(s.q) || (s.q as number) < 1) return null;
+  return PRODUCT_KEY_RE.test(s.k) ? { productKey: s.k, itemId: s.i, quantity: s.q as number } : null;
 }
 
 /** The item id the lane echoed (the caller's product id the purchase was opened for), or null. */
 export function itemIdOfReapCheckoutId(id: unknown): string | null {
   return snapshotOf(id)?.itemId ?? null;
+}
+
+/** The quantity the lane opened the purchase for, or null. */
+export function quantityOfReapCheckoutId(id: unknown): number | null {
+  return snapshotOf(id)?.quantity ?? null;
 }
 
 export function productKeyOfReapCheckoutId(id: unknown): string | null {

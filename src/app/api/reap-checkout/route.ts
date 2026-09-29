@@ -21,7 +21,7 @@ import { buildCreateCheckoutArgs, validateReapCreateBody } from '@/lib/reapCheck
 import { mintBuyerToken } from '@/lib/reapCheckout/buyerToken.server';
 import { callUcpTool } from '@/lib/reapCheckout/gatewayClient.server';
 import { readReapCheckout } from '@/lib/reapCheckout/checkoutView';
-import { itemIdOfReapCheckoutId, sellerOfReapCheckoutId } from '@/lib/reapCheckout/seller.server';
+import { itemIdOfReapCheckoutId, quantityOfReapCheckoutId, sellerOfReapCheckoutId } from '@/lib/reapCheckout/seller.server';
 import {
   disabledResponse,
   hostProblem,
@@ -121,11 +121,17 @@ export async function POST(req: NextRequest) {
       }),
     );
   }
-  // SELLER + ITEM BINDING, from the gateway's own answer: the purchase must be for the product the buyer
-  // asked for (the lane echoes it in the id) AND sold by the demo merchant the buyer was shown.
+  // SELLER + ITEM + QUANTITY BINDING, from the gateway's own answer: the purchase must be for the product
+  // and quantity the buyer asked for (the lane echoes both in the id) AND sold by the demo merchant shown.
   const seller = sellerOfReapCheckoutId(view.id);
   const item = itemIdOfReapCheckoutId(view.id);
-  if (!seller || !merchant.merchantIds.includes(seller) || item !== validated.input.product_id) {
+  const quantity = quantityOfReapCheckoutId(view.id);
+  if (
+    !seller ||
+    !merchant.merchantIds.includes(seller) ||
+    item !== validated.input.product_id ||
+    quantity !== validated.input.quantity
+  ) {
     return finish(json({ checkout: null, fallback: 'seller_mismatch' }));
   }
   return finish(json({ checkout: publicView(view, { domain: merchant.domain }) }));

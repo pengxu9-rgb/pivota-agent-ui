@@ -41,9 +41,9 @@ committed:
 | 6 | The buyer approves on Reap and comes back; the tab refreshes itself on focus. | — |
 | 7 | "Approved. Reap is placing your order…" | `07-processing.jpg` |
 | 8 | **"Order placed"** with the merchant order reference. | `08-completed-order-reference.jpg` |
-| — | **Before approval**, the other endings are: expired, refused, and failed because the quote window lapsed. Each says "nothing was charged" and offers "Start a new checkout". | `10`–`13` |
-| — | **After approval, or for an unknown reason**, a failure says "We couldn't confirm your order. Check your email or card statement before trying again", with **no** retry button. | `17-failed-uncertain-no-retry.jpg` |
-| — | The checkout disappeared (404): "This checkout is no longer available", with no live pay button. | — |
+| — | **Before the buyer is handed Reap's page**, every other ending (expired, refused, failed — e.g. the quote window lapsed, a dead card enrollment) says "nothing was charged" and offers "Start a new checkout". | `10`–`13` |
+| — | **Once the buyer has clicked "Continue to secure payment"** (or approval was seen), ANY non-completed ending — including expired and "approval window lapsed", which the backend infers without asking Reap — says "We couldn't confirm your order. Check your email or card statement before trying again", with **no** retry; "Start as a new buyer" stays a secondary link under that check. | `17-failed-uncertain-no-retry.jpg` |
+| — | The checkout disappeared (404): before a hand-off, "This checkout is no longer available"; after a hand-off, the same "couldn't confirm" answer, and the checkout is remembered. Never a live pay button. | — |
 | — | Reap declined (not eligible, the purchasability gate declined, or the backend refused): "Checkout through Reap isn't available…" and **Visit store**. | `16-not-reap-visit-store.jpg` |
 | — | The payment link is not Reap's: it is refused and never opened. | `15-link-not-reap-refused.jpg` |
 
