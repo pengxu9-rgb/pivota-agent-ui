@@ -44,6 +44,11 @@ describe('demo buyer token', () => {
     expect(readBuyerTokenConfig({ ...ENV, REAP_DEMO_USER_JWT_PRIVATE_KEY: 'not a key' })).toBeNull();
     const ec = generateKeyPairSync('ec', { namedCurve: 'P-256' }).privateKey.export({ type: 'pkcs8', format: 'pem' }).toString();
     expect(readBuyerTokenConfig({ ...ENV, REAP_DEMO_USER_JWT_PRIVATE_KEY: ec })).toBeNull();
+    // RSA under 2048 bits is refused; 2048 and up are accepted.
+    const small = generateKeyPairSync('rsa', { modulusLength: 1024 }).privateKey.export({ type: 'pkcs8', format: 'pem' }).toString();
+    expect(readBuyerTokenConfig({ ...ENV, REAP_DEMO_USER_JWT_PRIVATE_KEY: small })).toBeNull();
+    const big = generateKeyPairSync('rsa', { modulusLength: 3072 }).privateKey.export({ type: 'pkcs8', format: 'pem' }).toString();
+    expect(readBuyerTokenConfig({ ...ENV, REAP_DEMO_USER_JWT_PRIVATE_KEY: big })).not.toBeNull();
   });
 
   it('accepts a PEM with escaped newlines (single-line env)', () => {

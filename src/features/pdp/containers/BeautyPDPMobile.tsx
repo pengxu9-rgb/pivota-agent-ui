@@ -135,7 +135,7 @@ export type BeautyPDPMobileProps = {
   buyNowLabel?: string;
   isExternalPurchase: boolean;
   externalRetailerLabel?: string | null;
-  reapCheckout?: { onOpen: () => void } | null;
+  reapCheckout?: { onOpen: (quantity: number) => void } | null;
   inStock: boolean;
   quantity: number;
   onQtyChange: (next: number) => void;

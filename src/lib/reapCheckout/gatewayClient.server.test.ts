@@ -38,7 +38,14 @@ describe('gateway UCP door client', () => {
   });
 
   it('reads a tool error, an rpc error, a non-200 and a network failure', async () => {
-    expect(readToolCallBody(rpcResult({ error: { code: 'QUOTE_NOT_FOUND', message: 'x' } }, true))).toMatchObject({ kind: 'tool_error', code: 'QUOTE_NOT_FOUND' });
+    expect(readToolCallBody(rpcResult({ error: { code: 'QUOTE_NOT_FOUND', message: 'x' } }, true))).toMatchObject({ kind: 'tool_error', code: 'QUOTE_NOT_FOUND', reason: null });
+    // The door's real shape: the reason sits in error.detail.reason (toToolError + buyerIntake acp_detail).
+    expect(
+      readToolCallBody(
+        rpcResult({ error: { code: 'OPERATION_NOT_ALLOWED', message: 'm', detail: { reason: 'ucp_reap_update_refused' } } }, true),
+      ),
+    ).toMatchObject({ kind: 'tool_error', code: 'OPERATION_NOT_ALLOWED', reason: 'ucp_reap_update_refused' });
+    expect(readToolCallBody(rpcResult({ error: { code: 'X', details: { reason: 'wrong_key' }, reason: 'also_wrong' } }, true))).toMatchObject({ reason: null });
     expect(readToolCallBody({ jsonrpc: '2.0', id: 1, error: { code: -32603, message: 'Internal error.' } })).toMatchObject({ kind: 'unavailable' });
     const non200 = await callUcpTool({ base: 'http://localhost:1', apiKey: KEY, userToken: 't', tool: 'get_checkout', toolArgs: {}, fetchImpl: (async () => new Response('Cannot POST', { status: 404 })) as unknown as typeof fetch });
     expect(non200).toMatchObject({ kind: 'unavailable', status: 404 });
@@ -50,6 +57,10 @@ describe('gateway UCP door client', () => {
     expect(readGatewayBase({ REAP_CHECKOUT_GATEWAY_BASE_URL: 'http://localhost:8081/' } as any)).toBe('http://localhost:8081');
     expect(readGatewayBase({ REAP_CHECKOUT_GATEWAY_BASE_URL: 'https://gateway-abc-uw.a.run.app' } as any)).toBeNull();
     expect(readGatewayBase({ REAP_CHECKOUT_GATEWAY_BASE_URL: 'https://evil.example' } as any)).toBeNull();
+    // Plain http (or any scheme) is only ever loopback: a Pivota host is not a demo gateway base.
+    expect(readGatewayBase({ REAP_CHECKOUT_GATEWAY_BASE_URL: 'http://gateway.pivota.cc' } as any)).toBeNull();
+    expect(readGatewayBase({ REAP_CHECKOUT_GATEWAY_BASE_URL: 'https://gateway.pivota.cc' } as any)).toBeNull();
+    expect(readGatewayBase({ REAP_CHECKOUT_GATEWAY_BASE_URL: 'http://127.0.0.1:8081' } as any)).toBe('http://127.0.0.1:8081');
     expect(readAgentApiKey({ REAP_CHECKOUT_AGENT_API_KEY: KEY } as any)).toBe(KEY);
     expect(readAgentApiKey({ REAP_CHECKOUT_AGENT_API_KEY: 'sk_test_123' } as any)).toBeNull();
   });

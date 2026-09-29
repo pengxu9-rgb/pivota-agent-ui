@@ -57,6 +57,8 @@ describe('validateReapCreateBody', () => {
     expect(validateReapCreateBody(body({ consent: false }))).toMatchObject({ ok: false, field: 'consent' });
     expect(validateReapCreateBody(body({ buyer: { ...buyer, last_name: '' } }))).toMatchObject({ ok: false, field: 'buyer.last_name' });
     expect(validateReapCreateBody(body({ buyer: { ...buyer, phone: '  ' } }))).toMatchObject({ ok: false, field: 'buyer.phone' });
+    // The gateway's UCP adapter refuses a destination without a postcode, so the form requires it too.
+    expect(validateReapCreateBody(body({ buyer: { ...buyer, postal_code: '' } }))).toMatchObject({ ok: false, field: 'buyer.postal_code' });
     expect(validateReapCreateBody(body({ buyer: { ...buyer, country: 'ZZ' } }))).toMatchObject({ ok: false, field: 'buyer.country' });
     expect(validateReapCreateBody(body({ buyer: { ...buyer, email: 'nope' } }))).toMatchObject({ ok: false, field: 'buyer.email' });
     expect(validateReapCreateBody(body({ quantity: 11 }))).toMatchObject({ ok: false, field: 'quantity' });

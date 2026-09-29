@@ -20,12 +20,11 @@ function arm() {
   vi.stubEnv('NEXT_PUBLIC_REAP_CHECKOUT_DEMO', '1');
   vi.stubEnv('REAP_CHECKOUT_DEMO_ENABLED', 'true');
   vi.stubEnv('REAP_CHECKOUT_GATEWAY_BASE_URL', 'http://localhost:8081');
-  vi.stubEnv('REAP_CHECKOUT_STAGING_GATEWAY_HOST', '');
   vi.stubEnv('REAP_CHECKOUT_AGENT_API_KEY', KEY);
   vi.stubEnv('REAP_CHECKOUT_DEMO_MERCHANTS', `judydoll.com:US:${DEMO_MERCHANT_ID},jsmbeauty.sg:SG:merch_jsm_demo`);
   vi.stubEnv('REAP_DEMO_USER_JWT_PRIVATE_KEY', PEM);
   vi.stubEnv('REAP_DEMO_USER_JWT_KID', 'k1');
-  vi.stubEnv('REAP_DEMO_USER_JWT_ISSUER', 'https://reap-demo.staging.pivota.cc/issuer');
+  vi.stubEnv('REAP_DEMO_USER_JWT_ISSUER', 'urn:example:reap-demo-test');
   vi.stubEnv('REAP_DEMO_USER_JWT_AUDIENCE', 'pivota-ucp');
 }
 
@@ -105,8 +104,8 @@ async function expectAll404() {
   const { POST, GET, CONFIG, JWKS } = await allRoutes();
   expect((await POST(createReq())).status).toBe(404);
   expect((await GET(getReq(REAP_ID), { params: Promise.resolve({ checkoutId: REAP_ID }) })).status).toBe(404);
-  expect((await CONFIG()).status).toBe(404);
-  expect((await JWKS()).status).toBe(404);
+  expect((await CONFIG(getReq('config'))).status).toBe(404);
+  expect((await JWKS(getReq('jwks'))).status).toBe(404);
   expect(fetchMock).not.toHaveBeenCalled();
 }
 
@@ -129,41 +128,55 @@ describe('flag off: every /api/reap-checkout route is a 404 and calls nothing', 
   });
 });
 
-describe('arming guard: both flags on, but not a loopback/staging gateway or a production build -> 404', () => {
+describe('arming guard: both flags on, but not loopback + non-production -> 404 everywhere', () => {
   it.each([
     ['production gateway', { REAP_CHECKOUT_GATEWAY_BASE_URL: 'https://gateway.pivota.cc' }],
-    ['a non-loopback host without the override', { REAP_CHECKOUT_GATEWAY_BASE_URL: 'https://gateway.staging.pivota.cc' }],
-    ['NODE_ENV=production (a next build) even on loopback', { NODE_ENV: 'production' }],
-    ['override naming a production host', { REAP_CHECKOUT_STAGING_GATEWAY_HOST: 'gateway.pivota.cc', REAP_CHECKOUT_GATEWAY_BASE_URL: 'https://gateway.pivota.cc' }],
-    ['override without a staging label', { REAP_CHECKOUT_STAGING_GATEWAY_HOST: 'gw.pivota.cc', REAP_CHECKOUT_GATEWAY_BASE_URL: 'https://gw.pivota.cc' }],
-    ['override host != base host', { REAP_CHECKOUT_STAGING_GATEWAY_HOST: 'gateway.staging.pivota.cc', REAP_CHECKOUT_GATEWAY_BASE_URL: 'https://gateway.pivota.cc' }],
-    ['override over http', { REAP_CHECKOUT_STAGING_GATEWAY_HOST: 'gateway.staging.pivota.cc', REAP_CHECKOUT_GATEWAY_BASE_URL: 'http://gateway.staging.pivota.cc' }],
+    ['a staging-looking pivota host', { REAP_CHECKOUT_GATEWAY_BASE_URL: 'https://gateway.staging.pivota.cc' }],
+    ['plain http to a non-loopback host', { REAP_CHECKOUT_GATEWAY_BASE_URL: 'http://gateway.pivota.cc' }],
+    ['no gateway base', { REAP_CHECKOUT_GATEWAY_BASE_URL: '' }],
   ])('%s', async (_label, env) => {
     arm();
     for (const [k, v] of Object.entries(env)) vi.stubEnv(k, v as string);
     await expectAll404();
   });
 
-  it('the explicit staging override arms (even a production build) against exactly that staging host', async () => {
+  it.each([
+    ['loopback base', {}],
+    ['loopback base + the removed override var', { REAP_CHECKOUT_STAGING_GATEWAY_HOST: 'gateway.staging.pivota.cc' }],
+    ['override + matching staging base', { REAP_CHECKOUT_STAGING_GATEWAY_HOST: 'gateway.staging.pivota.cc', REAP_CHECKOUT_GATEWAY_BASE_URL: 'https://gateway.staging.pivota.cc' }],
+    ['127.0.0.1 base', { REAP_CHECKOUT_GATEWAY_BASE_URL: 'http://127.0.0.1:8081' }],
+  ])('NODE_ENV=production NEVER arms, whatever the env (%s)', async (_label, env) => {
     arm();
     vi.stubEnv('NODE_ENV', 'production');
-    vi.stubEnv('REAP_CHECKOUT_STAGING_GATEWAY_HOST', 'gateway.staging.pivota.cc');
-    vi.stubEnv('REAP_CHECKOUT_GATEWAY_BASE_URL', 'https://gateway.staging.pivota.cc');
-    const { CONFIG } = await allRoutes();
-    expect((await CONFIG()).status).toBe(200);
+    for (const [k, v] of Object.entries(env)) vi.stubEnv(k, v as string);
+    await expectAll404();
   });
 
-  it('loopback + non-production arms; the client sees domain + market only', async () => {
+  it('loopback + non-production arms; the client sees domain + market + the terms, never merchant ids', async () => {
     arm();
     for (const base of ['http://localhost:8081', 'http://127.0.0.1:8081']) {
       vi.stubEnv('REAP_CHECKOUT_GATEWAY_BASE_URL', base);
       vi.resetModules();
       const { CONFIG } = await allRoutes();
-      expect((await (await CONFIG()).json()).merchants).toEqual([
+      const body = await (await CONFIG(getReq('config'))).json();
+      expect(body.merchants).toEqual([
         { domain: 'judydoll.com', market: 'US' },
         { domain: 'jsmbeauty.sg', market: 'SG' },
       ]);
+      expect(body.terms).toEqual({ url: 'https://pivota.cc/terms', version: 'reap-agentic-v1' });
+      expect(JSON.stringify(body)).not.toContain('merch_');
     }
+  });
+
+  it('HOST ALLOWLIST: a non-loopback Host (DNS rebinding) is 404 on every route, nothing called', async () => {
+    arm();
+    const { POST, GET, CONFIG } = await allRoutes();
+    const evil = 'http://evil.example:3000';
+    expect((await POST(createReq({}, { url: `${evil}/api/reap-checkout` }))).status).toBe(404);
+    const g = new NextRequest(`${evil}/api/reap-checkout/${REAP_ID}`, { headers: { host: 'evil.example:3000' } });
+    expect((await GET(g, { params: Promise.resolve({ checkoutId: REAP_ID }) })).status).toBe(404);
+    expect((await CONFIG(new NextRequest(`${evil}/api/reap-checkout/config`, { headers: { host: 'evil.example:3000' } }))).status).toBe(404);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
 
@@ -290,25 +303,125 @@ describe('POST /api/reap-checkout (armed)', () => {
     expect('response' in out && out.response.status).toBe(413);
   });
 
-  it('RATE LIMIT: the 7th create from one signed-in buyer in 10 minutes is 429', async () => {
+  it('RATE LIMIT: the 7th gateway-bound create from one buyer in 10 minutes is 429', async () => {
     arm();
     gatewayAnswers(resolvingCheckout());
     const { POST } = await import('./route');
-    const cookie = cookieFrom(await POST(createReq())); // the create that issued the buyer (counted by address)
-    fetchMock.mockClear();
+    const cookie = cookieFrom(await POST(createReq())); // 1st (mints the buyer; counted)
     const statuses: number[] = [];
-    for (let i = 0; i < 7; i++) statuses.push((await POST(createReq({}, { cookie }))).status);
-    expect(statuses).toEqual([200, 200, 200, 200, 200, 200, 429]);
+    for (let i = 0; i < 6; i++) statuses.push((await POST(createReq({}, { cookie }))).status);
+    expect(statuses).toEqual([200, 200, 200, 200, 200, 429]);
     expect(fetchMock).toHaveBeenCalledTimes(6);
   });
 
-  it('RATE LIMIT: browsers without a buyer are limited by address', async () => {
+  it('RATE LIMIT: refused requests (bad body, wrong merchant) are NOT counted and cannot lock anyone out', async () => {
+    arm();
+    gatewayAnswers(resolvingCheckout());
+    const { POST } = await import('./route');
+    for (let i = 0; i < 20; i++) {
+      expect((await POST(createReq({ consent: false }))).status).toBe(400);
+      expect((await POST(createReq({ merchant_domain: 'nope.example' }))).status).toBe(403);
+    }
+    expect((await POST(createReq())).status).toBe(200);
+  });
+
+  it('RATE LIMIT: X-Forwarded-For is ignored (rotating it neither evades nor spreads the limit)', async () => {
+    arm();
+    gatewayAnswers(resolvingCheckout());
+    const { POST } = await import('./route');
+    const cookie = cookieFrom(await POST(createReq()));
+    const statuses: number[] = [];
+    for (let i = 0; i < 6; i++) {
+      const req = createReq({}, { cookie });
+      req.headers.set('x-forwarded-for', `10.0.0.${i}`);
+      statuses.push((await POST(req)).status);
+    }
+    expect(statuses.at(-1)).toBe(429);
+  });
+
+  it('RATE LIMIT: a GLOBAL cap bounds fresh buyers (cookie-clearing clients): the 31st create in 10 min is 429', async () => {
     arm();
     gatewayAnswers(resolvingCheckout());
     const { POST } = await import('./route');
     const statuses: number[] = [];
-    for (let i = 0; i < 7; i++) statuses.push((await POST(createReq())).status);
-    expect(statuses.at(-1)).toBe(429);
+    for (let i = 0; i < 31; i++) statuses.push((await POST(createReq())).status); // no cookie: a new buyer each time
+    expect(statuses.slice(0, 30).every((s) => s === 200)).toBe(true);
+    expect(statuses[30]).toBe(429);
+  });
+
+  it('RATE LIMIT: the key table evicts the OLDEST keys, never flushes every limit', async () => {
+    arm();
+    const { rateLimited, __bucketKeysForTests } = await import('@/lib/reapCheckout/routeSupport.server');
+    const t0 = 1_000_000;
+    for (let i = 0; i < 6000; i++) expect(rateLimited('read', `rdb_${i}`, t0 + i * 1000)).toBeNull();
+    const keys = __bucketKeysForTests();
+    expect(keys.length).toBeLessThanOrEqual(5000);
+    expect(keys.length).toBeGreaterThan(4000); // not flushed
+    expect(keys).not.toContain('read:rdb_0'); // the oldest went first
+    expect(keys).toContain('read:rdb_5999'); // the newest stayed
+    expect(keys).toContain('read_global:all'); // the global counter, touched on every request, survives
+  });
+
+  it('SEC-FETCH-SITE: a browser saying cross-site or same-site is refused', async () => {
+    arm();
+    const { POST } = await import('./route');
+    for (const site of ['cross-site', 'same-site', 'none']) {
+      const req = createReq();
+      req.headers.set('sec-fetch-site', site);
+      expect((await POST(req)).status).toBe(403);
+    }
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('BODY CAP: a declared Content-Length over the cap is refused before reading', async () => {
+    arm();
+    const { readCappedJson } = await import('@/lib/reapCheckout/routeSupport.server');
+    const req = new NextRequest(`${ORIGIN}/api/reap-checkout`, {
+      method: 'POST',
+      headers: { 'content-length': String(100_000) },
+      body: '{}',
+    });
+    const out = await readCappedJson(req);
+    expect('response' in out && out.response.status).toBe(413);
+  });
+
+  it('ITEM BINDING: a Reap checkout for a different product than requested is refused', async () => {
+    arm();
+    gatewayAnswers(resolvingCheckout());
+    const { POST } = await import('./route');
+    expect(await (await POST(createReq({ product_id: 'sig_someotherproduct' }))).json()).toEqual({
+      checkout: null,
+      fallback: 'seller_mismatch',
+    });
+  });
+
+  it('TOOL ERROR: the reason is read from the door\'s real shape ({error:{code,message,detail:{reason}}})', async () => {
+    arm();
+    gatewayAnswers(undefined);
+    fetchMock.mockImplementation(async () =>
+      new Response(
+        JSON.stringify(
+          rpcResult(
+            {
+              error: {
+                code: 'QUOTE_REQUIRED',
+                message: 'The offer code is not a valid shape.',
+                detail: { reason: 'ucp_offer_code_invalid', fields: ['checkout.discounts'] },
+              },
+            },
+            true,
+          ),
+        ),
+        { status: 200 },
+      ),
+    );
+    const { POST } = await import('./route');
+    expect(await (await POST(createReq())).json()).toMatchObject({
+      checkout: null,
+      fallback: 'refused',
+      code: 'QUOTE_REQUIRED',
+      reason: 'ucp_offer_code_invalid',
+    });
   });
 
   it('answers 503 naming the missing setting, never a value', async () => {
@@ -347,7 +460,7 @@ describe('the buyer cookie', () => {
     arm();
     gatewayAnswers(resolvingCheckout());
     const { POST } = await import('./route');
-    const c = attrs(await POST(createReq({}, { url: 'https://demo.staging.pivota.cc/api/reap-checkout' })));
+    const c = attrs(await POST(createReq({}, { url: 'https://localhost:3000/api/reap-checkout' })));
     expect(c.name).toBe('__Host-pv_reap_demo_buyer');
     expect(c.a.secure).toBe(true);
     expect(c.a.httponly).toBe(true);
@@ -356,7 +469,7 @@ describe('the buyer cookie', () => {
     expect(c.a).not.toHaveProperty('domain');
     expect(c.a).not.toHaveProperty('max-age');
     expect(c.a).not.toHaveProperty('expires');
-    expect(c.value).toMatch(/^rdb_[A-Za-z0-9_-]+\.[A-Za-z0-9_-]{43}$/);
+    expect(c.value).toMatch(/^rdb_[A-Za-z0-9_-]+\.\d{10}\.[A-Za-z0-9_-]{43}$/);
   });
 
   it('plain-http loopback: unprefixed and not Secure (the only exemption), otherwise the same', async () => {
@@ -377,17 +490,59 @@ describe('the buyer cookie', () => {
     const { POST } = await import('./route');
     const loopCookie = cookieFrom(await POST(createReq()));
     const { GET } = await import('./[checkoutId]/route');
-    const req = new NextRequest(`https://demo.staging.pivota.cc/api/reap-checkout/${REAP_ID}`, { headers: { cookie: loopCookie } });
+    const req = new NextRequest(`https://localhost:3000/api/reap-checkout/${REAP_ID}`, { headers: { cookie: loopCookie, host: 'localhost:3000' } });
     fetchMock.mockClear();
     expect((await GET(req, { params: Promise.resolve({ checkoutId: REAP_ID }) })).status).toBe(404);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('a valid MAC moved onto ANOTHER buyer id (or another issue time) is rejected', async () => {
+    arm();
+    gatewayAnswers(resolvingCheckout());
+    const { POST } = await import('./route');
+    const [name, value] = cookieFrom(await POST(createReq())).split('=');
+    const [id, iat, sig] = value.split('.');
+    const otherId = `rdb_${'B'.repeat(32)}`;
+    const { GET } = await import('./[checkoutId]/route');
+    fetchMock.mockClear();
+    for (const forged of [`${otherId}.${iat}.${sig}`, `${id}.${Number(iat) - 1}.${sig}`]) {
+      expect((await GET(getReq(REAP_ID, `${name}=${forged}`), { params: Promise.resolve({ checkoutId: REAP_ID }) })).status).toBe(404);
+    }
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('a buyer cookie older than 4 hours is no buyer (a new one is minted)', async () => {
+    arm();
+    const { signBuyerId, verifySignedBuyerId, BUYER_MAX_AGE_SECONDS } = await import('@/lib/reapCheckout/routeSupport.server');
+    const { readBuyerTokenConfig } = await import('@/lib/reapCheckout/buyerToken.server');
+    const token = readBuyerTokenConfig()!;
+    const id = `rdb_${'C'.repeat(32)}`;
+    const now = 1_900_000_000;
+    expect(BUYER_MAX_AGE_SECONDS).toBe(4 * 3600);
+    expect(verifySignedBuyerId(token, signBuyerId(token, id, now - 3 * 3600), now)).toBe(id);
+    expect(verifySignedBuyerId(token, signBuyerId(token, id, now - 4 * 3600 - 1), now)).toBeNull();
+    expect(verifySignedBuyerId(token, signBuyerId(token, id, now + 3600), now)).toBeNull();
+  });
+
+  it('POST /reset clears the cookie (start as a new buyer), same guards', async () => {
+    arm();
+    const { POST: RESET } = await import('./reset/route');
+    const req = new NextRequest(`${ORIGIN}/api/reap-checkout/reset`, {
+      method: 'POST',
+      headers: { host: 'localhost:3000', origin: ORIGIN, cookie: 'pv_reap_demo_buyer=x' },
+    });
+    const res = await RESET(req);
+    expect(res.status).toBe(200);
+    expect(res.headers.get('set-cookie')).toMatch(/pv_reap_demo_buyer=;.*Max-Age=0/i);
+    const cross = new NextRequest(`${ORIGIN}/api/reap-checkout/reset`, { method: 'POST', headers: { host: 'localhost:3000', origin: 'https://evil.example' } });
+    expect((await RESET(cross)).status).toBe(403);
   });
 
   it('only server-issued buyer ids are accepted: a forged or unsigned cookie is no buyer', async () => {
     arm();
     const { GET } = await import('./[checkoutId]/route');
     const params = { params: Promise.resolve({ checkoutId: REAP_ID }) };
-    for (const forged of [`pv_reap_demo_buyer=rdb_${'A'.repeat(32)}`, `pv_reap_demo_buyer=rdb_${'A'.repeat(32)}.${'x'.repeat(43)}`]) {
+    for (const forged of [`pv_reap_demo_buyer=rdb_${'A'.repeat(32)}`, `pv_reap_demo_buyer=rdb_${'A'.repeat(32)}.1900000000.${'x'.repeat(43)}`]) {
       expect((await GET(getReq(REAP_ID, forged), params)).status).toBe(404);
     }
     expect(fetchMock).not.toHaveBeenCalled();

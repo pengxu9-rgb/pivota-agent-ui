@@ -1,6 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ReapCheckoutPanel, defaultOpenWindow } from './ReapCheckoutPanel';
+import { ReapCheckoutPanel, defaultOpenWindow, readActiveCheckoutId, writeActiveCheckoutId } from './ReapCheckoutPanel';
 import { useEffect, useState } from 'react';
 import { readReapCheckout } from '@/lib/reapCheckout/checkoutView';
 import {
@@ -51,6 +51,7 @@ async function fillAndSubmit(code?: string) {
   set('phone', '+15550100');
   set('address_line1', '900 Brannan St');
   set('city', 'San Francisco');
+  set('postal_code', '94103');
   if (code !== undefined) set('offer_code', code);
   fireEvent.click(document.querySelector('input[name="consent"]')!);
   await act(async () => {
@@ -123,7 +124,10 @@ describe('ReapCheckoutPanel', () => {
     expect(screen.getByTestId('reap-row-discount').textContent).toContain('−$3.20');
     expect(screen.getByTestId('reap-row-total').textContent).toContain('$18.84');
     expect(screen.getByTestId('reap-offer-code').dataset.outcome).toBe('applied');
-    expect(screen.getByTestId('reap-deadline').textContent).toMatch(/about 5 min/);
+    const banner = screen.getByTestId('reap-deadline-banner');
+    expect(banner.getAttribute('role')).toBe('alert');
+    expect(banner.textContent).toMatch(/Approve within 5 minutes/);
+    expect(banner.textContent).toMatch(/Reap's page may show a longer timer/);
     expect(screen.getByTestId('reap-pay-note').textContent).toMatch(/Pivota never sees or stores your card/);
     expect(document.querySelector('iframe')).toBeNull();
     expect(document.querySelector('input[autocomplete^="cc-"]')).toBeNull();
@@ -376,5 +380,137 @@ describe('ReapCheckoutPanel', () => {
     expect(fb.dataset.kind).toBe('seller_mismatch');
     expect(fb.textContent).toMatch(/Nothing was charged/);
     expect(openWindow).not.toHaveBeenCalled();
+  });
+
+  it('B1: failed BEFORE approval (approval window lapsed): "nothing charged" + a new checkout is offered', async () => {
+    renderPanel(scriptedFetch(canceledCheckout('failed', 'approval_window_lapsed')));
+    await fillAndSubmit();
+    const t = await screen.findByTestId('reap-terminal');
+    expect(t.textContent).toMatch(/Nothing was charged/);
+    expect(screen.getByTestId('reap-restart')).toBeTruthy();
+    expect(screen.queryByTestId('reap-terminal-uncertain')).toBeNull();
+  });
+
+  it('B1: failed AFTER the buyer approved (processing seen): no "nothing charged", NO one-click retry', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    renderPanel(scriptedFetch(awaitingApprovalCheckout(), [processingCheckout(), canceledCheckout('failed', 'reap_checkout_failed')]));
+    await fillAndSubmit();
+    await screen.findByTestId('reap-continue');
+    for (let i = 0; i < 3; i++) {
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(10_000);
+      });
+    }
+    const t = await screen.findByTestId('reap-terminal-uncertain');
+    expect(t.textContent).toMatch(/We couldn.t confirm your order/);
+    expect(t.textContent).toMatch(/Check your email or card statement before trying again/);
+    expect(document.body.textContent).not.toMatch(/Nothing was charged/);
+    expect(screen.queryByTestId('reap-restart')).toBeNull();
+    expect(screen.queryByTestId('reap-visit-store')).toBeNull();
+  });
+
+  it('B1: an ending that is normally "nothing charged" (expired) is NOT, once this browser saw the approval', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    renderPanel(scriptedFetch(awaitingApprovalCheckout(), [processingCheckout(), canceledCheckout('expired')]));
+    await fillAndSubmit();
+    await screen.findByTestId('reap-continue');
+    for (let i = 0; i < 3; i++) {
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(10_000);
+      });
+    }
+    await screen.findByTestId('reap-terminal-uncertain');
+    expect(screen.queryByTestId('reap-restart')).toBeNull();
+  });
+
+  it('B1: failed for an UNKNOWN reason (nothing seen): treated as possibly charged', async () => {
+    renderPanel(scriptedFetch(canceledCheckout('failed')));
+    await fillAndSubmit();
+    await screen.findByTestId('reap-terminal-uncertain');
+    expect(screen.queryByTestId('reap-restart')).toBeNull();
+  });
+
+  it('B1: approval seen in ANOTHER tab/reload (stored flag) still blocks the one-click retry', async () => {
+    const id = viewOf(canceledCheckout('failed', 'approval_window_lapsed')).id;
+    window.localStorage.setItem('pivota.reapCheckout.active.sig_demo', JSON.stringify({ id, at: Date.now(), approved: true }));
+    renderPanel(scriptedFetch(canceledCheckout('failed', 'approval_window_lapsed'), [canceledCheckout('failed', 'approval_window_lapsed')]));
+    await screen.findByTestId('reap-terminal-uncertain');
+  });
+
+  it('C6: a 404 while polling clears the checkout: "no longer available", no live pay button', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const fetchImpl = vi.fn(async (url: string) =>
+      url === '/api/reap-checkout'
+        ? jsonResponse({ checkout: viewOf(awaitingApprovalCheckout()) })
+        : jsonResponse({ error: 'not_found' }, 404),
+    );
+    renderPanel(fetchImpl);
+    await fillAndSubmit();
+    await screen.findByTestId('reap-continue');
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(11_000);
+    });
+    expect((await screen.findByTestId('reap-gone')).textContent).toMatch(/This checkout is no longer available/);
+    expect(screen.queryByTestId('reap-continue')).toBeNull();
+    expect(readActiveCheckoutId('sig_demo')).toBeNull();
+  });
+
+  it('C4: the consent names the terms link and the version tag that is recorded', async () => {
+    render(
+      <ReapCheckoutPanel
+        productId="sig_demo"
+        productTitle="Silky Matte Lip Ink"
+        merchantDomain="judydoll.com"
+        market="US"
+        terms={{ url: 'https://pivota.cc/terms', version: 'reap-agentic-v1' }}
+        fetchImpl={vi.fn() as unknown as typeof fetch}
+      />,
+    );
+    const link = await screen.findByTestId('reap-terms-link');
+    expect(link.getAttribute('href')).toBe('https://pivota.cc/terms');
+    expect(link.getAttribute('rel')).toMatch(/noopener/);
+    expect(screen.getByTestId('reap-consent-text').textContent).toMatch(/version reap-agentic-v1/);
+  });
+
+  it('A: the PDP quantity is sent to create_checkout (the quote prices it)', async () => {
+    const fetchImpl = scriptedFetch(resolvingCheckout());
+    render(
+      <ReapCheckoutPanel
+        productId="sig_demo"
+        productTitle="Silky Matte Lip Ink"
+        merchantDomain="judydoll.com"
+        market="US"
+        quantity={3}
+        fetchImpl={fetchImpl as unknown as typeof fetch}
+        newIdempotencyKey={() => 'idem-key-0001'}
+      />,
+    );
+    expect(screen.getByTestId('reap-quantity').textContent).toBe('Quantity: 3');
+    await fillAndSubmit();
+    expect(JSON.parse(String((fetchImpl.mock.calls[0] as unknown as [string, RequestInit])[1].body)).quantity).toBe(3);
+  });
+
+  it('C5: the postcode is required in the form', async () => {
+    renderPanel(vi.fn());
+    expect(document.querySelector('input[name="postal_code"]')!.hasAttribute('required')).toBe(true);
+  });
+
+  it('C2/D2: "Start as a new buyer" resets the server cookie and forgets open checkouts', async () => {
+    writeActiveCheckoutId('sig_other', viewOf(awaitingApprovalCheckout()).id);
+    const fetchImpl = vi.fn(async () => jsonResponse({ ok: true }));
+    renderPanel(fetchImpl);
+    await act(async () => {
+      fireEvent.click(await screen.findByTestId('reap-new-buyer'));
+    });
+    expect(fetchImpl).toHaveBeenCalledWith('/api/reap-checkout/reset', expect.objectContaining({ method: 'POST' }));
+    expect(readActiveCheckoutId('sig_other')).toBeNull();
+  });
+
+  it('D3: the remembered checkout expires after 6 hours, not before', () => {
+    const id = viewOf(awaitingApprovalCheckout()).id;
+    const t = 1_900_000_000_000;
+    writeActiveCheckoutId('sig_ttl', id, t);
+    expect(readActiveCheckoutId('sig_ttl', t + 5.9 * 3600_000)).toBe(id);
+    expect(readActiveCheckoutId('sig_ttl', t + 6 * 3600_000 + 1)).toBeNull();
   });
 });

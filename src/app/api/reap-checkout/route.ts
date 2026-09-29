@@ -15,18 +15,18 @@
 // the purchasability gate declined, the backend refused — the door falls through to its storefront
 // answer by design), the browser gets `{ checkout: null, fallback: 'not_reap' }` and keeps today's
 // "Visit store" path. The storefront answer's own link is NOT forwarded.
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { canonicalMerchantDomain, readDemoMerchantConfig, reapConsentVersion } from '@/lib/reapCheckout/config';
 import { buildCreateCheckoutArgs, validateReapCreateBody } from '@/lib/reapCheckout/createRequest';
 import { mintBuyerToken } from '@/lib/reapCheckout/buyerToken.server';
 import { callUcpTool } from '@/lib/reapCheckout/gatewayClient.server';
 import { readReapCheckout } from '@/lib/reapCheckout/checkoutView';
-import { sellerOfReapCheckoutId } from '@/lib/reapCheckout/seller.server';
+import { itemIdOfReapCheckoutId, sellerOfReapCheckoutId } from '@/lib/reapCheckout/seller.server';
 import {
   disabledResponse,
+  hostProblem,
   json,
   publicView,
-  rateKey,
   rateLimited,
   readCappedJson,
   readOrMintBuyerId,
@@ -41,6 +41,8 @@ export const dynamic = 'force-dynamic';
 export async function POST(req: NextRequest) {
   const off = disabledResponse();
   if (off) return off;
+  const wrongHost = hostProblem(req);
+  if (wrongHost) return wrongHost;
   const cfg = readServerConfig();
   if ('response' in cfg) return cfg.response;
   const { config } = cfg;
@@ -51,34 +53,44 @@ export async function POST(req: NextRequest) {
   if (!/^application\/json\b/i.test(req.headers.get('content-type') || '')) {
     return json({ error: 'unsupported_media_type' }, 415);
   }
+  // The buyer is minted (server-side only) BEFORE anything can be refused, and its cookie rides on every
+  // answer, so a refused first request still leaves the browser with its own buyer.
   const { buyerId, minted } = readOrMintBuyerId(req, config.token);
-  const limited = rateLimited('create', rateKey(req, minted ? null : buyerId));
-  if (limited) return limited;
+  const finish = (res: NextResponse) => {
+    if (minted) setBuyerCookie(res, req, config.token, buyerId);
+    return res;
+  };
 
   const read = await readCappedJson(req);
-  if ('response' in read) return read.response;
+  if ('response' in read) return finish(read.response);
   const body = read.body;
   const validated = validateReapCreateBody(body);
   if (!validated.ok) {
-    return json({ error: 'invalid_request', field: validated.field, message: validated.message }, 400);
+    return finish(json({ error: 'invalid_request', field: validated.field, message: validated.message }, 400));
   }
 
   // DEMO SCOPE: only the merchants Peng listed, and only in the market listed for each.
   const domain = canonicalMerchantDomain((body as Record<string, unknown>)?.merchant_domain);
   const merchant = readDemoMerchantConfig().find((m) => m.domain === domain);
   if (!domain || !merchant) {
-    return json({ error: 'merchant_not_in_demo', message: 'This merchant is not part of the Reap demo.' }, 403);
+    return finish(json({ error: 'merchant_not_in_demo', message: 'This merchant is not part of the Reap demo.' }, 403));
   }
   if (merchant.market !== validated.market) {
-    return json(
-      {
-        error: 'market_not_in_demo',
-        field: 'buyer.country',
-        message: `In this demo, ${merchant.domain} ships to ${merchant.market} only.`,
-      },
-      400,
+    return finish(
+      json(
+        {
+          error: 'market_not_in_demo',
+          field: 'buyer.country',
+          message: `In this demo, ${merchant.domain} ships to ${merchant.market} only.`,
+        },
+        400,
+      ),
     );
   }
+
+  // Only a request that will reach the gateway is counted (per buyer and globally).
+  const limited = rateLimited('create', buyerId);
+  if (limited) return finish(limited);
 
   const toolArgs = buildCreateCheckoutArgs(validated.input, {
     consentVersion: reapConsentVersion(),
@@ -92,31 +104,29 @@ export async function POST(req: NextRequest) {
     toolArgs,
   });
 
-  let res;
-  if (outcome.kind === 'unavailable') {
-    res = json({ error: 'gateway_unavailable', detail: outcome.detail }, 502);
-  } else if (outcome.kind === 'tool_error') {
-    res = json({ checkout: null, fallback: 'refused', code: outcome.code, reason: outcome.reason, message: outcome.message });
-  } else {
-    const view = readReapCheckout(outcome.checkout);
-    if (!view) {
-      res = json({ error: 'gateway_unavailable', detail: 'not_a_checkout' }, 502);
-    } else if (!view.isReapCheckout) {
-      res = json({
+  if (outcome.kind === 'unavailable') return finish(json({ error: 'gateway_unavailable', detail: outcome.detail }, 502));
+  if (outcome.kind === 'tool_error') {
+    return finish(json({ checkout: null, fallback: 'refused', code: outcome.code, reason: outcome.reason, message: outcome.message }));
+  }
+  const view = readReapCheckout(outcome.checkout);
+  if (!view) return finish(json({ error: 'gateway_unavailable', detail: 'not_a_checkout' }, 502));
+  if (!view.isReapCheckout) {
+    return finish(
+      json({
         checkout: null,
         fallback: 'not_reap',
         // What the storefront answer said about the code and the buyer block — nothing else of it.
         offer_code_outcome: view.offerCode.outcome,
         available_with_consent: view.messages.some((m) => m.code === 'reap.available_with_consent'),
-      });
-    } else {
-      const seller = sellerOfReapCheckoutId(view.id);
-      res =
-        seller && merchant.merchantIds.includes(seller)
-          ? json({ checkout: publicView(view, { domain: merchant.domain }) })
-          : json({ checkout: null, fallback: 'seller_mismatch' });
-    }
+      }),
+    );
   }
-  if (minted) setBuyerCookie(res, req, config.token, buyerId);
-  return res;
+  // SELLER + ITEM BINDING, from the gateway's own answer: the purchase must be for the product the buyer
+  // asked for (the lane echoes it in the id) AND sold by the demo merchant the buyer was shown.
+  const seller = sellerOfReapCheckoutId(view.id);
+  const item = itemIdOfReapCheckoutId(view.id);
+  if (!seller || !merchant.merchantIds.includes(seller) || item !== validated.input.product_id) {
+    return finish(json({ checkout: null, fallback: 'seller_mismatch' }));
+  }
+  return finish(json({ checkout: publicView(view, { domain: merchant.domain }) }));
 }

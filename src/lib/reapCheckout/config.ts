@@ -1,6 +1,6 @@
 // THE REAP CHECKOUT DEMO SWITCHES. Both default OFF, and both must be on.
 //
-//   NEXT_PUBLIC_REAP_CHECKOUT_DEMO   client: renders the "Buy with Reap" entry at all. Off = the PDP
+//   NEXT_PUBLIC_REAP_CHECKOUT_DEMO   client: renders the "Checkout with Reap" entry at all. Off = the PDP
 //                                    renders exactly what it renders today and makes no extra request.
 //   REAP_CHECKOUT_DEMO_ENABLED       server: the /api/reap-checkout routes answer at all. Off = 404,
 //                                    whatever a client sends. A client flag is a build-time constant
@@ -30,45 +30,29 @@ export function isReapCheckoutDemoClientEnabled(): boolean {
   return isTruthyFlag(process.env.NEXT_PUBLIC_REAP_CHECKOUT_DEMO);
 }
 
-const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]', '::1']);
-// Hosts that serve production. The staging override can never name one.
-const PRODUCTION_HOSTS = new Set(['pivota.cc', 'gateway.pivota.cc', 'agent.pivota.cc', 'api.pivota.cc', 'www.pivota.cc']);
-
-function hostOf(raw: unknown): { host: string; protocol: string } | null {
-  if (typeof raw !== 'string' || !raw.trim()) return null;
-  try {
-    const url = new URL(raw.trim());
-    return { host: url.hostname.toLowerCase(), protocol: url.protocol };
-  } catch {
-    return null;
-  }
-}
-
-/** An explicitly named STAGING host: a `staging` DNS label, https, never a production host. */
-export function isExplicitStagingHost(host: string): boolean {
-  return !PRODUCTION_HOSTS.has(host) && host.split('.').some((label) => label === 'staging' || label.startsWith('staging-'));
-}
+export const LOOPBACK_HOSTS: ReadonlySet<string> = new Set(['localhost', '127.0.0.1', '[::1]', '::1']);
 
 /**
  * Why the demo must NOT arm in this process, or null when it may. Every /api/reap-checkout route 404s
- * unless this is null, whatever the two flags say:
- *   - the gateway base must be LOOPBACK (the `gcloud run services proxy` to the staging gateway), and
- *     NODE_ENV must not be `production` (so no `next build` output, i.e. no deployed image, ever arms);
- *   - the one override, REAP_CHECKOUT_STAGING_GATEWAY_HOST, lets a deployed STAGING build arm against a
- *     STAGING gateway: the base must be https on exactly that host, and that host must carry a `staging`
- *     label and must not be a production host. It never admits a production host, in any environment.
+ * unless this is null, whatever the two flags say. There is exactly ONE arming path:
+ *   - NODE_ENV is not `production` — so no `next build` output (no deployed image, prod or staging) ever
+ *     arms, whatever else the environment says; and
+ *   - the gateway base is LOOPBACK — the demo reaches its (non-production) gateway through a local
+ *     proxy on localhost, never over the network.
+ * There is no override.
  */
 export function reapDemoArmingProblem(env: NodeJS.ProcessEnv = process.env): string | null {
-  const base = hostOf(env.REAP_CHECKOUT_GATEWAY_BASE_URL);
-  if (!base) return 'gateway_base_missing';
-  const override = String(env.REAP_CHECKOUT_STAGING_GATEWAY_HOST || '').trim().toLowerCase();
-  if (override) {
-    if (!isExplicitStagingHost(override)) return 'override_not_a_staging_host';
-    if (base.host !== override || base.protocol !== 'https:') return 'gateway_base_not_the_staging_override';
-    return null;
-  }
-  if (!LOOPBACK_HOSTS.has(base.host)) return 'gateway_base_not_loopback';
   if (env.NODE_ENV === 'production') return 'production_build';
+  const raw = String(env.REAP_CHECKOUT_GATEWAY_BASE_URL || '').trim();
+  if (!raw) return 'gateway_base_missing';
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return 'gateway_base_invalid';
+  }
+  if (!LOOPBACK_HOSTS.has(url.hostname.toLowerCase())) return 'gateway_base_not_loopback';
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') return 'gateway_base_invalid';
   return null;
 }
 
@@ -138,6 +122,12 @@ export function merchantDomainFromUrl(raw: unknown): string | null {
   } catch {
     return null;
   }
+}
+
+/** The terms the buyer is shown and accepts (the gateway's own terms-of-service link). */
+export function reapTermsUrl(env: NodeJS.ProcessEnv = process.env): string {
+  const raw = String(env.REAP_CHECKOUT_TERMS_URL || '').trim();
+  return /^https:\/\/[^\s]+$/.test(raw) ? raw : 'https://pivota.cc/terms';
 }
 
 /** The tag of the terms the buyer accepts in the demo form. ≤ 32 printable characters. */

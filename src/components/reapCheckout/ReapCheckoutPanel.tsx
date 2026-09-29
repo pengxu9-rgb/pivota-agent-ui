@@ -1,6 +1,6 @@
 'use client';
 
-// The "Buy with Reap" flow for ONE product: buyer details -> quote -> hand-off to Reap's own page ->
+// The "Checkout with Reap" flow for ONE product: buyer details -> quote -> hand-off to Reap's own page ->
 // status. Rendered inside the PDP's ResponsiveSheet by ReapCheckoutEntry.
 //
 // Guards this component keeps (see lib/reapCheckout/*):
@@ -40,6 +40,37 @@ export function readActiveCheckoutId(productId: string, now = Date.now()): strin
   }
 }
 
+/** Whether this browser saw the buyer approve (a `processing` state) for the open checkout. */
+export function readActiveApproved(productId: string): boolean {
+  try {
+    const v = JSON.parse(window.localStorage.getItem(ACTIVE_KEY_PREFIX + productId) || 'null');
+    return Boolean(v && v.approved === true);
+  } catch {
+    return false;
+  }
+}
+
+export function markActiveApproved(productId: string) {
+  try {
+    const key = ACTIVE_KEY_PREFIX + productId;
+    const v = JSON.parse(window.localStorage.getItem(key) || 'null');
+    if (v && typeof v.id === 'string') window.localStorage.setItem(key, JSON.stringify({ ...v, approved: true }));
+  } catch {
+    // best effort
+  }
+}
+
+/** Forget every open checkout this browser remembers ("start as a new buyer"). */
+export function clearAllActiveCheckouts() {
+  try {
+    for (const k of Object.keys(window.localStorage)) {
+      if (k.startsWith(ACTIVE_KEY_PREFIX)) window.localStorage.removeItem(k);
+    }
+  } catch {
+    // storage blocked
+  }
+}
+
 export function writeActiveCheckoutId(productId: string, id: string | null, now = Date.now()) {
   try {
     if (id) window.localStorage.setItem(ACTIVE_KEY_PREFIX + productId, JSON.stringify({ id, at: now }));
@@ -60,6 +91,10 @@ export type ReapCheckoutPanelProps = {
   market: string;
   storeUrl?: string | null;
   storeLabel?: string | null;
+  /** The quantity chosen on the PDP; sent to create_checkout so the merchant's quote prices it. 1..10. */
+  quantity?: number;
+  /** The terms the buyer accepts: shown as a link with its version tag, which is what is recorded. */
+  terms?: { url: string; version: string } | null;
   /** Test seams. */
   fetchImpl?: typeof fetch;
   openWindow?: (url: string) => void;
@@ -206,6 +241,34 @@ function Deadline({ iso, now, verb = 'Approve by' }: { iso: string | null; now: 
   );
 }
 
+/**
+ * The approval deadline, made prominent. It is the merchant quote's TTL (about five minutes from pricing);
+ * Reap's own page may show a longer timer (its page expiry, ~15 min), but after THIS time the purchase fails.
+ */
+export function DeadlineBanner({ iso, now }: { iso: string | null; now: () => number }) {
+  const [, tick] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => tick((n) => n + 1), 15_000);
+    return () => clearInterval(t);
+  }, []);
+  if (!iso) return null;
+  const at = Date.parse(iso);
+  if (!Number.isFinite(at)) return null;
+  const mins = Math.max(0, Math.ceil((at - now()) / 60000));
+  const clock = new Date(at).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  return (
+    <div role="alert" className="rounded-xl border-2 border-amber-500 bg-amber-50 p-3" data-testid="reap-deadline-banner">
+      <p className="text-sm font-semibold text-amber-900">
+        Approve within {mins <= 1 ? '1 minute' : `${mins} minutes`} — by {clock}
+      </p>
+      <p className="mt-1 text-xs text-amber-900">
+        Reap&apos;s page may show a longer timer. This deadline — the merchant&apos;s quote — is the one that counts:
+        after it the purchase fails, nothing is charged, and you would start again.
+      </p>
+    </div>
+  );
+}
+
 const PAY_NOTE =
   'Reap, our payment partner, handles your card on its own secure page. Pivota never sees or stores your card details, and nothing is charged until you approve the total there.';
 
@@ -261,6 +324,18 @@ const TERMINAL_COPY: Record<string, { title: string; body: string }> = {
   },
 };
 
+/**
+ * Could money have moved? Only when the buyer may have approved on Reap: this browser saw the purchase
+ * processing (the buyer approved), or it FAILED for a reason other than "never approved in time" (a failure
+ * after approval, or an unknown one). Then "nothing was charged" would be a guess, and a one-click retry
+ * could buy the item twice.
+ */
+export function outcomeUncertain(view: ReapCheckoutView, sawApproval: boolean): boolean {
+  if (!['failed', 'expired', 'refused'].includes(view.phase)) return false;
+  if (sawApproval) return true;
+  return view.phase === 'failed' && view.terminalReason !== 'approval_window_lapsed';
+}
+
 function retryHint(reason: string | null): string | null {
   if (reason === 'approval_window_lapsed') return 'The total was not approved within the quote window (about five minutes).';
   if (reason === 'offer_code_rejected') return 'The merchant refused the offer code. Try again without it.';
@@ -277,7 +352,9 @@ function StatusView({
   gaveUp,
   consecutiveErrors,
   onRefresh,
+  sawApproval,
 }: {
+  sawApproval: boolean;
   view: ReapCheckoutView;
   openWindow: (url: string) => void;
   now: () => number;
@@ -337,11 +414,11 @@ function StatusView({
 
       {view.phase === 'awaiting_approval' ? (
         <div className="space-y-3">
+          <DeadlineBanner iso={view.approvalDeadline || view.expiresAt} now={now} />
           <p className="text-sm font-medium">Your total is ready. Review and approve it on Reap.</p>
           <QuoteSummary view={view} />
           <OfferCodeNote view={view} />
           <HandOff view={view} openWindow={openWindow} label="Continue to secure payment" />
-          <Deadline iso={view.approvalDeadline || view.expiresAt} now={now} />
           <p className="text-xs text-muted-foreground">
             After approving, come back to this tab — it updates on its own.
           </p>
@@ -380,7 +457,17 @@ function StatusView({
         </div>
       ) : null}
 
-      {['failed', 'expired', 'refused'].includes(view.phase) ? (
+      {['failed', 'expired', 'refused'].includes(view.phase) && outcomeUncertain(view, sawApproval) ? (
+        <div className="space-y-3" data-testid="reap-terminal-uncertain">
+          <p className="text-base font-semibold">We couldn&apos;t confirm your order</p>
+          <p className="text-sm text-muted-foreground">
+            Check your email or card statement before trying again. If you were charged, the merchant&apos;s
+            confirmation email has the details.
+          </p>
+        </div>
+      ) : null}
+
+      {['failed', 'expired', 'refused'].includes(view.phase) && !outcomeUncertain(view, sawApproval) ? (
         <div className="space-y-3" data-testid="reap-terminal">
           <p className="text-base font-semibold">{TERMINAL_COPY[view.phase].title}</p>
           <p className="text-sm text-muted-foreground">{TERMINAL_COPY[view.phase].body}</p>
@@ -467,6 +554,9 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
   // and any change (address, code, product) gets a new key — the backend refuses a reused key on a different
   // body (409 idempotency_conflict) rather than opening the purchase the buyer now asked for.
   const keyFor = useRef<{ fingerprint: string; key: string } | null>(null);
+  const quantity = Math.min(10, Math.max(1, Math.floor(Number(props.quantity) || 1)));
+  // Did this browser see the buyer approve on Reap? Decides whether "nothing was charged" can be said.
+  const [sawApproval, setSawApproval] = useState(() => readActiveApproved(props.productId));
   const poll = useReapCheckoutPoll(null, { fetchImpl });
   const [restoring, setRestoring] = useState(true);
   const [restoreAttempt, setRestoreAttempt] = useState(0);
@@ -531,7 +621,7 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
       const requestBody = {
           product_id: props.productId,
           merchant_domain: props.merchantDomain,
-          quantity: 1,
+          quantity,
           consent: form.consent,
           // EXACTLY as typed; an empty field is "no code".
           ...(form.offer_code !== '' ? { offer_code: form.offer_code } : {}),
@@ -593,8 +683,41 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
     keyFor.current = null;
     if (withoutCode) setForm((f) => ({ ...f, offer_code: '' }));
     writeActiveCheckoutId(props.productId, null);
+    setSawApproval(false);
     poll.reset(null);
   };
+
+  // "Start as a new buyer": the server clears the buyer cookie, the browser forgets its open checkouts,
+  // and the form is emptied — for handing the laptop to the next partner.
+  const newBuyer = async () => {
+    await fetchImpl('/api/reap-checkout/reset', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      credentials: 'same-origin',
+      body: '{}',
+    }).catch(() => null);
+    clearAllActiveCheckouts();
+    keyFor.current = null;
+    setForm(EMPTY_FORM);
+    setFallback(null);
+    setFieldError(null);
+    setSawApproval(false);
+    setRestoreFailed(false);
+    poll.reset(null);
+  };
+
+  useEffect(() => {
+    if (poll.view?.phase === 'processing') {
+      setSawApproval(true);
+      markActiveApproved(props.productId);
+    }
+  }, [poll.view?.phase, props.productId]);
+
+  // A 404 while polling (unknown id, another buyer's, the dial turned off): the checkout is gone. Forget it
+  // and never leave a live pay button on screen.
+  useEffect(() => {
+    if (poll.notFound) writeActiveCheckoutId(props.productId, null);
+  }, [poll.notFound, props.productId]);
 
   const errFor = (field: string) => (fieldError && fieldError.field.endsWith(field) ? fieldError.message : null);
 
@@ -602,8 +725,9 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
     <div className="space-y-4 p-4" data-testid="reap-panel">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-xs uppercase tracking-wide text-muted-foreground">Buy with Reap</p>
+          <p className="text-xs uppercase tracking-wide text-muted-foreground">Checkout with Reap</p>
           <p className="text-sm font-semibold text-foreground">{props.productTitle}</p>
+          <p className="text-xs text-muted-foreground" data-testid="reap-quantity">Quantity: {quantity}</p>
           {poll.view?.seller?.domain ? (
             // From the gateway's answer, checked by the server — never from the page.
             <p className="text-xs text-muted-foreground" data-testid="reap-seller">
@@ -629,8 +753,23 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
             Try again
           </button>
         </div>
+      ) : poll.notFound ? (
+        <div className="space-y-3" data-testid="reap-gone">
+          <p className="text-base font-semibold">This checkout is no longer available</p>
+          <p className="text-sm text-muted-foreground">
+            If you approved a payment on Reap, check your email before trying again.
+          </p>
+          <button
+            type="button"
+            onClick={() => restart(false)}
+            className="h-10 rounded-full border border-border px-4 text-sm font-semibold"
+          >
+            Back to checkout
+          </button>
+        </div>
       ) : poll.view ? (
         <StatusView
+          sawApproval={sawApproval}
           view={poll.view}
           openWindow={openWindow}
           now={now}
@@ -685,7 +824,7 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
           <div className="grid grid-cols-3 gap-2">
             <Field label="City" name="city" value={form.city} onChange={onChange} autoComplete="address-level2" error={errFor('city')} />
             <Field label="State" name="region" value={form.region} onChange={onChange} required={false} autoComplete="address-level1" />
-            <Field label="Postcode" name="postal_code" value={form.postal_code} onChange={onChange} required={false} autoComplete="postal-code" />
+            <Field label="Postcode" name="postal_code" value={form.postal_code} onChange={onChange} autoComplete="postal-code" error={errFor('postal_code')} />
           </div>
           <p className="text-xs text-muted-foreground" data-testid="reap-market">
             Ships to: <span className="font-semibold text-foreground">{props.market}</span>
@@ -708,13 +847,23 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
               onChange={(e) => setForm((f) => ({ ...f, consent: e.target.checked }))}
               className="mt-0.5"
             />
-            <span>
-              I agree to Pivota&apos;s terms for purchases completed through Reap. Reap handles payment on its own page;
-              Pivota never sees my card.
+            <span data-testid="reap-consent-text">
+              I agree to Pivota&apos;s{' '}
+              <a
+                href={props.terms?.url || 'https://pivota.cc/terms'}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline underline-offset-2"
+                data-testid="reap-terms-link"
+              >
+                terms
+              </a>
+              {props.terms?.version ? <> (version {props.terms.version})</> : null} for purchases completed
+              through Reap. Reap handles payment on its own page; Pivota never sees my card.
               {errFor('consent') ? <span className="block text-red-700">{errFor('consent')}</span> : null}
             </span>
           </label>
-          {fieldError && !['first_name', 'last_name', 'email', 'phone', 'address_line1', 'city', 'country', 'offer_code', 'consent'].some((f) => fieldError.field.endsWith(f)) ? (
+          {fieldError && !['first_name', 'last_name', 'email', 'phone', 'address_line1', 'city', 'postal_code', 'country', 'offer_code', 'consent'].some((f) => fieldError.field.endsWith(f)) ? (
             <p className="text-sm text-red-700">{fieldError.message}</p>
           ) : null}
           <button
@@ -729,6 +878,16 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
           <p className="text-center text-xs text-muted-foreground">No card needed here. Nothing is charged yet.</p>
         </form>
       )}
+      <div className="border-t border-border pt-3 text-center">
+        <button
+          type="button"
+          onClick={() => void newBuyer()}
+          className="text-xs text-muted-foreground underline underline-offset-2"
+          data-testid="reap-new-buyer"
+        >
+          Not you? Start as a new buyer
+        </button>
+      </div>
     </div>
   );
 }

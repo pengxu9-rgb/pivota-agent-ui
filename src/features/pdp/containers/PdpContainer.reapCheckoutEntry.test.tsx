@@ -147,12 +147,11 @@ describe('PDP purchase bar: Buy with Reap', () => {
     const secondary = screen.getByTestId('buybar-store-secondary');
     const order = Array.from(bar.querySelectorAll('button')).map((b) => b.dataset.testid || b.getAttribute('aria-label'));
     expect(order).toEqual(['Decrease quantity', 'Increase quantity', 'buybar-store-secondary', 'buybar-reap-primary']);
-    // Primary: filled, shield icon, full price, never shrinks.
-    expect(primary.getAttribute('aria-label')).toBe('Buy with Reap · $16');
+    // Primary: filled, shield icon, "Checkout with Reap", never shrinks — and NO price.
+    expect(primary.textContent?.trim()).toBe('Checkout with Reap');
     expect(primary.className).toMatch(/\bshrink-0\b/);
     expect(primary.className).toMatch(/\bwhitespace-nowrap\b/);
     expect(primary.querySelector('svg.lucide-shield-check')).not.toBeNull();
-    expect(screen.getByTestId('buybar-reap-price').textContent).toContain('$16');
     // Secondary: outlined, external-link icon; the one that yields at narrow widths.
     expect(secondary.className).toMatch(/border-foreground bg-white/);
     expect(secondary.className).toMatch(/\bmin-w-0\b/);
@@ -163,19 +162,32 @@ describe('PDP purchase bar: Buy with Reap', () => {
     expect(await screen.findByTestId('reap-panel')).toBeInTheDocument();
   });
 
-  it('narrow widths (< 440px): the secondary reads "Visit store" with no price; the primary keeps its price', async () => {
+  it('the Reap purchase bar never renders a computed total; the quantity reaches the checkout sheet', async () => {
+    vi.stubEnv('NEXT_PUBLIC_REAP_CHECKOUT_DEMO', '1');
+    renderPdp();
+    await screen.findByTestId('buybar-reap-primary');
+    fireEvent.click(screen.getByRole('button', { name: 'Increase quantity' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Increase quantity' }));
+    const bar = purchaseBar();
+    const text = [bar.textContent || '', ...Array.from(bar.querySelectorAll('[aria-label]')).map((e) => e.getAttribute('aria-label') || '')].join(' ');
+    // 3 x $16 = $48: neither the unit price nor any product of it appears in the Reap bar.
+    expect(text).not.toMatch(/\$|16|48/);
+    fireEvent.click(screen.getByTestId('buybar-reap-primary'));
+    expect((await screen.findByTestId('reap-quantity')).textContent).toBe('Quantity: 3');
+  });
+
+  it('narrow widths: the secondary is "Visit store" (icon-only < 350px), wide shows "View at <store>"; no prices', async () => {
     vi.stubEnv('NEXT_PUBLIC_REAP_CHECKOUT_DEMO', '1');
     renderPdp();
     const secondary = await screen.findByTestId('buybar-store-secondary');
     const spans = Array.from(secondary.querySelectorAll(':scope > span'));
-    const narrowVisible = spans.filter((el) => !/(^|\s)hidden(\s|$)/.test(el.className)).map((el) => el.textContent);
-    const wideOnly = spans.filter((el) => /(^|\s)hidden(\s|$)/.test(el.className)).map((el) => el.textContent);
-    expect(narrowVisible).toEqual(['Visit store']);
-    expect(wideOnly.join(' ')).toMatch(/View at retailer.*\$16/);
-    // The primary's price is never behind a breakpoint.
-    const price = screen.getByTestId('buybar-reap-price');
-    expect(price.className).not.toMatch(/(^|\s)hidden(\s|$)/);
-    expect(price.textContent).toContain('$16');
+    const byLabel = Object.fromEntries(spans.map((el) => [el.textContent, el.className]));
+    expect(byLabel['Visit store']).toMatch(/max-\[349px\]:sr-only/);
+    expect(byLabel['Visit store']).toMatch(/min-\[560px\]:hidden/);
+    expect(byLabel['View at retailer']).toMatch(/(^|\s)hidden(\s|$)/);
+    expect(byLabel['View at retailer']).toMatch(/min-\[560px\]:inline/);
+    expect(secondary.textContent).not.toMatch(/\$/);
+    expect(secondary.getAttribute('aria-label')).toBe('View at retailer');
   });
 
   it('opens the checkout for the PDP\'s own sig_ id, not the offer\'s seller-side id', async () => {
@@ -203,9 +215,10 @@ describe('PDP purchase bar: Buy with Reap', () => {
     } as any);
     renderPdp(p);
     fireEvent.click(await screen.findByTestId('buybar-reap-primary'));
+    await screen.findByTestId('reap-panel');
     const set = (n: string, v: string) => fireEvent.change(document.querySelector(`input[name="${n}"]`)!, { target: { value: v } });
     set('first_name', 'Ada'); set('last_name', 'L'); set('email', 'a@example.test'); set('phone', '1');
-    set('address_line1', '1 St'); set('city', 'SF');
+    set('address_line1', '1 St'); set('city', 'SF'); set('postal_code', '94103');
     fireEvent.click(document.querySelector('input[name="consent"]')!);
     fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ checkout: null, fallback: 'not_reap' }), { status: 200 }));
     fireEvent.click(screen.getByTestId('reap-submit'));

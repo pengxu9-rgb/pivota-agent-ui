@@ -104,7 +104,7 @@ export type GenericPDPMobileProps = {
   buyNowLabel?: string;
   isExternalPurchase: boolean;
   externalRetailerLabel?: string | null;
-  reapCheckout?: { onOpen: () => void } | null;
+  reapCheckout?: { onOpen: (quantity: number) => void } | null;
   inStock: boolean;
   onQtyChange: (next: number) => void;
   onAddToCart: () => void;

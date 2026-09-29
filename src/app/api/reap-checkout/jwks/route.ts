@@ -5,14 +5,17 @@
 // For a local UI against staging, use the inline-JWKS setup in docs/reap-checkout-demo.md instead.
 // Publishes the public half only; 404 when the demo is off or the issuer is not configured.
 import { publicJwks, readBuyerTokenConfig } from '@/lib/reapCheckout/buyerToken.server';
-import { disabledResponse, json } from '@/lib/reapCheckout/routeSupport.server';
+import { NextRequest } from 'next/server';
+import { disabledResponse, hostProblem, json } from '@/lib/reapCheckout/routeSupport.server';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const off = disabledResponse();
   if (off) return off;
+  const wrongHost = hostProblem(req);
+  if (wrongHost) return wrongHost;
   const config = readBuyerTokenConfig();
   if (!config) return json({ error: 'not_found' }, 404);
   return json(publicJwks(config));

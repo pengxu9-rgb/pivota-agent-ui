@@ -1,6 +1,6 @@
 'use client';
 
-// "Buy with Reap" as the primary CTA of a links-out PDP's purchase bar — demo only.
+// "Checkout with Reap" as the primary CTA of a links-out PDP's purchase bar — demo only.
 //
 // FLAG OFF (NEXT_PUBLIC_REAP_CHECKOUT_DEMO unset, the default): renders null and makes NO request,
 // so the PDP is exactly today's. Flag on: asks /api/reap-checkout/config once per page load (404
@@ -13,7 +13,7 @@
 // available and offers the store. The offer-level check here only hides the entry early when the
 // gateway already rewrote the offer as declined (execution_spec rail `referral` + join_mode
 // `referral_only`, PIVOTA-Agent src/offers/offersPriority.js enrichOfferCommerceMetadata).
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { ResponsiveSheet } from '@/features/pdp/components/ResponsiveSheet';
 import {
   canonicalMerchantDomain,
@@ -21,30 +21,38 @@ import {
   merchantDomainFromUrl,
   type DemoMerchant,
 } from '@/lib/reapCheckout/config';
-import { ReapCheckoutPanel } from './ReapCheckoutPanel';
+// Lazy: a PDP only downloads the checkout panel when the demo is on AND the buyer opens it.
+const ReapCheckoutPanel = lazy(() => import('./ReapCheckoutPanel').then((m) => ({ default: m.ReapCheckoutPanel })));
+
+type DemoConfig = { merchants: DemoMerchant[]; terms: { url: string; version: string } | null };
+const EMPTY_CONFIG: DemoConfig = { merchants: [], terms: null };
 
 type OfferLike = Record<string, unknown> | null | undefined;
 
-let configPromise: Promise<DemoMerchant[]> | null = null;
+let configPromise: Promise<DemoConfig> | null = null;
 
 export function __resetReapConfigCacheForTests() {
   configPromise = null;
 }
 
-function loadDemoMerchants(): Promise<DemoMerchant[]> {
+function loadDemoConfig(): Promise<DemoConfig> {
   // Only a SUCCESSFUL answer is cached for the page's life; a failure (network, 5xx) is forgotten, so the
   // next PDP render asks again instead of hiding the entry until a full reload.
   if (!configPromise) {
-    const attempt: Promise<DemoMerchant[]> = fetch('/api/reap-checkout/config', { cache: 'no-store', credentials: 'same-origin' })
+    const attempt: Promise<DemoConfig> = fetch('/api/reap-checkout/config', { cache: 'no-store', credentials: 'same-origin' })
       .then(async (res) => {
-        if (res.status === 404) return []; // the server switch is off: a real answer, cache it
+        if (res.status === 404) return EMPTY_CONFIG; // the server switch is off: a real answer, cache it
         if (!res.ok) throw new Error(`config ${res.status}`);
         const body = await res.json();
-        return Array.isArray(body?.merchants) ? (body.merchants as DemoMerchant[]) : [];
+        const terms =
+          body?.terms && typeof body.terms.url === 'string' && typeof body.terms.version === 'string'
+            ? { url: body.terms.url as string, version: body.terms.version as string }
+            : null;
+        return { merchants: Array.isArray(body?.merchants) ? (body.merchants as DemoMerchant[]) : [], terms };
       })
       .catch(() => {
         if (configPromise === attempt) configPromise = null;
-        return [];
+        return EMPTY_CONFIG;
       });
     configPromise = attempt;
   }
@@ -90,34 +98,42 @@ export type ReapCheckoutEntryProps = {
 };
 
 /**
- * The demo entry as data for the PDP's own purchase bar: `cta` is non-null only when "Buy with Reap"
+ * The demo entry as data for the PDP's own purchase bar: `cta` is non-null only when "Checkout with Reap"
  * should be offered (flag on, server switch on, demo merchant, not gate-declined), and `sheet` is the
  * checkout sheet to render once anywhere in the page. With the flag off, `cta` is null, `sheet` is null
  * and no request is made — the bar renders exactly what it renders on main.
  */
+export type ReapBuyBarCta = { onOpen: (quantity: number) => void };
+
 export function useReapCheckoutEntry(props: ReapCheckoutEntryProps): {
-  cta: { onOpen: () => void } | null;
+  cta: ReapBuyBarCta | null;
   sheet: ReactNode;
 } {
   const enabled = isReapCheckoutDemoClientEnabled();
-  const [merchants, setMerchants] = useState<DemoMerchant[] | null>(null);
+  const [config, setConfig] = useState<DemoConfig | null>(null);
   const [open, setOpen] = useState(false);
+  // The PDP's chosen quantity, captured when the buyer opens checkout; the merchant's quote prices it.
+  const [quantity, setQuantity] = useState(1);
 
   useEffect(() => {
     if (!enabled || !props.isExternalPurchase) return undefined;
     let alive = true;
-    void loadDemoMerchants().then((m) => {
-      if (alive) setMerchants(m);
+    void loadDemoConfig().then((c) => {
+      if (alive) setConfig(c);
     });
     return () => {
       alive = false;
     };
   }, [enabled, props.isExternalPurchase]);
 
-  const onOpen = useCallback(() => setOpen(true), []);
+  const onOpen = useCallback((q: number) => {
+    setQuantity(Math.min(10, Math.max(1, Math.floor(Number(q) || 1))));
+    setOpen(true);
+  }, []);
   const onClose = useCallback(() => setOpen(false), []);
 
   let merchant: DemoMerchant | null = null;
+  const merchants = config?.merchants;
   if (enabled && props.isExternalPurchase && merchants?.length && props.productId) {
     if (!offerIsDeclinedByPurchasabilityGate(props.offer)) {
       const domain = resolveMerchantDomain({ offer: props.offer, product: props.product, storeUrl: props.storeUrl });
@@ -131,14 +147,20 @@ export function useReapCheckoutEntry(props: ReapCheckoutEntryProps): {
     cta,
     sheet: (
       <ResponsiveSheet open={open} onClose={onClose} title="Checkout" mobileHeight="h-[88vh]">
-        <ReapCheckoutPanel
-          productId={props.productId}
-          productTitle={props.productTitle}
-          merchantDomain={merchant.domain}
-          market={merchant.market}
-          storeUrl={props.storeUrl}
-          storeLabel={props.storeLabel}
-        />
+        {open ? (
+          <Suspense fallback={<p className="p-4 text-sm text-muted-foreground">Loading…</p>}>
+            <ReapCheckoutPanel
+              productId={props.productId}
+              productTitle={props.productTitle}
+              merchantDomain={merchant.domain}
+              market={merchant.market}
+              quantity={quantity}
+              terms={config?.terms ?? null}
+              storeUrl={props.storeUrl}
+              storeLabel={props.storeLabel}
+            />
+          </Suspense>
+        ) : null}
       </ResponsiveSheet>
     ),
   };

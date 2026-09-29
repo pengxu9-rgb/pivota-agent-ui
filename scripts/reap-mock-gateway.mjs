@@ -12,7 +12,7 @@
 // any other code "not applied"); then it waits. Drive the rest by hand:
 //   curl 'http://127.0.0.1:8787/__mock/state?next=processing'     (the buyer "approved" on Reap)
 //   curl 'http://127.0.0.1:8787/__mock/state?next=completed'
-//   next = resolving | needs_card | awaiting | processing | completed | failed | expired | refused
+//   next = resolving | needs_card | awaiting | processing | completed | failed | failed_unknown | expired | refused
 //          | deadline_passed | evil_link
 //   curl 'http://127.0.0.1:8787/__mock/scenario?create=not_reap'  (next create answers the storefront)
 //
@@ -53,6 +53,7 @@ function checkoutFor(name) {
     case 'completed': return completedCheckout();
     case 'deadline_passed': return deadlinePassedCheckout();
     case 'failed': return canceledCheckout('failed', 'approval_window_lapsed');
+    case 'failed_unknown': return canceledCheckout('failed');
     case 'expired': return canceledCheckout('expired');
     case 'refused': return canceledCheckout('refused', 'price_changed');
     default: return resolvingCheckout();

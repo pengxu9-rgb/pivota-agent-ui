@@ -51,6 +51,9 @@ export function readBuyerTokenConfig(env: NodeJS.ProcessEnv = process.env): Buye
     return null;
   }
   if (privateKey.asymmetricKeyType !== 'rsa') return null;
+  // RS256 with anything under 2048 bits is not accepted by current verifiers and is not safe to demo with.
+  const bits = privateKey.asymmetricKeyDetails?.modulusLength ?? 0;
+  if (bits < 2048) return null;
   return { privateKey, kid, issuer, audience };
 }
 

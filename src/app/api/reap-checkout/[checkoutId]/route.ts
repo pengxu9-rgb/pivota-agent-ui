@@ -11,9 +11,9 @@ import { readDemoMerchantConfig } from '@/lib/reapCheckout/config';
 import { sellerOfReapCheckoutId } from '@/lib/reapCheckout/seller.server';
 import {
   disabledResponse,
+  hostProblem,
   json,
   publicView,
-  rateKey,
   rateLimited,
   readBuyerId,
   readServerConfig,
@@ -28,6 +28,8 @@ const REAP_ID_RE = /^reap_rp_[0-9a-f]{24}\.[A-Za-z0-9_-]{1,1000}$/;
 export async function GET(req: NextRequest, ctx: { params: Promise<{ checkoutId: string }> }) {
   const off = disabledResponse();
   if (off) return off;
+  const wrongHost = hostProblem(req);
+  if (wrongHost) return wrongHost;
   const cfg = readServerConfig();
   if ('response' in cfg) return cfg.response;
   const { config } = cfg;
@@ -40,7 +42,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ checkoutId:
   const seller = sellerOfReapCheckoutId(id);
   const merchant = readDemoMerchantConfig().find((m) => seller && m.merchantIds.includes(seller));
   if (!merchant) return json({ error: 'not_found' }, 404);
-  const limited = rateLimited('read', rateKey(req, buyerId));
+  const limited = rateLimited('read', buyerId);
   if (limited) return limited;
 
   const outcome = await callUcpTool({

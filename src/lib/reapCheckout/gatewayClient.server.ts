@@ -15,6 +15,7 @@ import 'server-only';
 //   X-Agent-User-JWT              minted per request, see buyerToken.server.ts
 // The gateway forwards both to the backend rail and nothing else.
 import { safePivotaServiceUrl } from '@/lib/returnUrl';
+import { LOOPBACK_HOSTS } from './config';
 
 const DEFAULT_TIMEOUT_MS = 12_000;
 
@@ -23,8 +24,11 @@ export type ToolCallOutcome =
   | { kind: 'tool_error'; code: string | null; message: string | null; reason: string | null }
   | { kind: 'unavailable'; status: number | null; detail: string };
 
+/** The gateway base: LOOPBACK only (the local proxy to staging), http or https. Anything else is null. */
 export function readGatewayBase(env: NodeJS.ProcessEnv = process.env): string | null {
-  return safePivotaServiceUrl(String(env.REAP_CHECKOUT_GATEWAY_BASE_URL || '').trim() || null);
+  const base = safePivotaServiceUrl(String(env.REAP_CHECKOUT_GATEWAY_BASE_URL || '').trim() || null);
+  if (!base) return null;
+  return LOOPBACK_HOSTS.has(new URL(base).hostname.toLowerCase()) ? base : null;
 }
 
 export function readAgentApiKey(env: NodeJS.ProcessEnv = process.env): string | null {
@@ -55,18 +59,16 @@ export function readToolCallBody(body: unknown): ToolCallOutcome {
     return { kind: 'unavailable', status: null, detail: 'unparseable_tool_text' };
   }
   if (result?.isError === true || (isRecord(parsed) && isRecord(parsed.error) && !parsed.id)) {
+    // The door's tool error is `{ error: { code, message, retriable?, detail?: { reason, ... } } }`
+    // (PIVOTA-Agent commerceToolSurface.js toToolError; the reason is buyerIntake's `acp_detail.reason`,
+    // surfaced as `detail`).
     const err = isRecord(parsed) && isRecord(parsed.error) ? parsed.error : {};
-    const details = isRecord(err.details) ? err.details : {};
+    const detail = isRecord(err.detail) ? err.detail : {};
     return {
       kind: 'tool_error',
       code: typeof err.code === 'string' ? err.code : null,
       message: typeof err.message === 'string' ? err.message.slice(0, 400) : null,
-      reason:
-        typeof details.reason === 'string'
-          ? details.reason
-          : typeof err.reason === 'string'
-            ? err.reason
-            : null,
+      reason: typeof detail.reason === 'string' ? detail.reason.slice(0, 80) : null,
     };
   }
   return { kind: 'checkout', checkout: parsed };

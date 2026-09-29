@@ -30,7 +30,7 @@ function Harness(props: ReapCheckoutEntryProps) {
   return (
     <>
       {cta ? (
-        <button type="button" data-testid="reap-entry-button" onClick={cta.onOpen}>
+        <button type="button" data-testid="reap-entry-button" onClick={() => cta.onOpen(1)}>
           Buy with Reap
         </button>
       ) : null}

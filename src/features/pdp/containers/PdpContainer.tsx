@@ -2409,7 +2409,7 @@ export function PdpContainer({
   const selectedMerchantLabel = selectedOffer ? displayMerchantLabel(selectedOffer) : null;
   const externalRetailerLabel =
     selectedMerchantLabel && selectedMerchantLabel !== 'Seller' ? selectedMerchantLabel : null;
-  // Reap checkout demo (NEXT_PUBLIC_REAP_CHECKOUT_DEMO; off by default). `cta` is null unless "Buy with Reap"
+  // Reap checkout demo (NEXT_PUBLIC_REAP_CHECKOUT_DEMO; off by default). `cta` is null unless "Checkout with Reap"
   // applies to this PDP, and a null `cta` leaves the purchase bar exactly as on main.
   // The item id is the PDP's own product id (the `sig_` the gateway's UCP door reads, PIVOTA-Agent
   // docs/reap-agentic-lane.md §7 step 2b), not the selected offer's seller-side id.

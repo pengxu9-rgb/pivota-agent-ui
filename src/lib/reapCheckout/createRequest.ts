@@ -1,4 +1,4 @@
-// The buyer's "Buy with Reap" form -> the UCP `create_checkout` arguments the gateway's Reap lane reads
+// The buyer's "Checkout with Reap" form -> the UCP `create_checkout` arguments the gateway's Reap lane reads
 // (PIVOTA-Agent docs/reap-agentic-lane.md §5.1). Pure: no env, no network, so every rule is testable.
 //
 // What this module does NOT do: price anything, pick a variant, or judge an offer code. The price is
@@ -21,7 +21,8 @@ export type ReapBuyerForm = {
   address_line2?: string;
   city: string;
   region?: string;
-  postal_code?: string;
+  /** Required: the gateway's UCP adapter refuses a shipping destination without one. */
+  postal_code: string;
   country: string;
 };
 
@@ -85,7 +86,7 @@ export function validateReapCreateBody(body: unknown): ValidationResult {
   const b = isRecord(body.buyer) ? body.buyer : null;
   if (!b) return { ok: false, field: 'buyer', message: 'Buyer details are required.' };
   const required: Array<keyof ReapBuyerForm> = [
-    'email', 'first_name', 'last_name', 'phone', 'address_line1', 'city', 'country',
+    'email', 'first_name', 'last_name', 'phone', 'address_line1', 'city', 'postal_code', 'country',
   ];
   const buyer: Partial<ReapBuyerForm> = {};
   for (const key of required) {
@@ -96,7 +97,7 @@ export function validateReapCreateBody(body: unknown): ValidationResult {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(buyer.email!)) {
     return { ok: false, field: 'buyer.email', message: 'Enter a valid email address.' };
   }
-  for (const key of ['address_line2', 'region', 'postal_code'] as const) {
+  for (const key of ['address_line2', 'region'] as const) {
     const v = optionalField(b[key]);
     if (v === null) return { ok: false, field: `buyer.${key}`, message: `${key.replace(/_/g, ' ')} is invalid.` };
     if (v !== undefined) buyer[key] = v;
@@ -132,11 +133,11 @@ export function buildCreateCheckoutArgs(
     phone_number: b.phone,
     street_address: b.address_line1,
     address_locality: b.city,
+    postal_code: b.postal_code,
     address_country: b.country,
   };
   if (b.address_line2) destination.extended_address = b.address_line2;
   if (b.region) destination.address_region = b.region;
-  if (b.postal_code) destination.postal_code = b.postal_code;
   return {
     meta: {
       ...(opts.profileUrl ? { 'ucp-agent': { profile: opts.profileUrl } } : {}),
