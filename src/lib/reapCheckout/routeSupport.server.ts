@@ -250,11 +250,13 @@ export function rateLimited(kind: 'create' | 'read', buyerId: string, now = Date
 /**
  * Does the seller the gateway PUBLISHED on a Reap answer match this configured merchant? The domain must be
  * present and equal after folding (lowercase, one leading `www.`); a configured merchant id must equal a
- * published one when the gateway publishes it (it omits it for the shared external-seed placeholder).
+ * published one when the gateway publishes it (it omits it for the shared external-seed placeholder). A
+ * merchant id published as conflicting or malformed values refuses, like a conflicting domain.
  */
 export function sellerMatches(view: ReapCheckoutView, merchant: DemoMerchantConfig): boolean {
   const published = foldMerchantHost(view.publishedSeller.domain);
   if (!published || published !== foldMerchantHost(merchant.domain)) return false;
+  if (view.publishedSeller.merchantIdUnusable) return false;
   const id = view.publishedSeller.merchantId;
   if (id && merchant.merchantIds.length && !merchant.merchantIds.includes(id)) return false;
   return true;

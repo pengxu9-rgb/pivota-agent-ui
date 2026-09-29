@@ -51,7 +51,7 @@ committed:
 - **Card data:** the UI never collects card data. It never embeds, iframes or proxies Reap's page.
 - **Payment link:** a link is opened only if it is `https` on `reap.global` or `prava.space` (exact host or dot-suffix), with no userinfo and the default port. It opens in a new tab, `noopener,noreferrer`.
 - **No UI arithmetic:** the UI computes no price, total or discount. The quote rows are the gateway's own, and the PDP quantity is sent in `create_checkout` so the merchant quote prices it.
-- **Seller:** every create sends `checkout.reap.expected_merchant_domain`, the configured merchant, taken from server config and never from the browser. The gateway **refuses** any item that another seller would sell, or whose seller it cannot confirm, and opens nothing. The buyer is then offered only "Visit <that merchant>", built from our config, never a gateway link. On a Reap answer the server re-checks the published `reap.merchant_domain` (with `www.` folded), and it checks the quoted quantity. The checkout id is opaque and is not decoded.
+- **Seller:** every create sends `checkout.reap.expected_merchant_domain`, the configured merchant, taken from server config and never from the browser. The gateway **refuses** any item that another seller would sell, or whose seller it cannot confirm, and opens nothing. The buyer is then offered only "Visit <that merchant>", built from our config, never a gateway link. On a Reap answer the server re-checks the published `reap.merchant_domain` (with `www.` folded), and it checks the quoted quantity. The checkout id is opaque and is not decoded. The panel shows a checkout as payable only when its echoed `line_items[0].item.id` is the product it asked for; otherwise the buyer gets the same mismatch copy. A degraded read (`reap.view_unavailable`) never carries a pay link.
 - **Arming:** every `/api/reap-checkout` route returns 404 unless:
   - both flags are on;
   - it is **not a production build** (`next build`), which never arms, whatever the environment says;
@@ -80,7 +80,7 @@ Set these in the UI checkout, in git-ignored files only:
 | `REAP_CHECKOUT_TERMS_URL`, `REAP_CHECKOUT_CONSENT_VERSION` | optional; defaults `https://pivota.cc/terms`, `reap-agentic-v1` |
 | `REAP_DEMO_USER_JWT_*` | written by the keygen below |
 
-- **Merchants:** the domain is the seller the buyer is shown. It is sent as `checkout.reap.expected_merchant_domain` and must equal the seller the gateway publishes. The optional `merchant_id` is the `<merchant>` segment of the catalog product key. When it is set and the gateway publishes a `reap.merchant_id`, the two must agree. External-seed rows publish no merchant id, so leave it out for them.
+- **Merchants:** the domain is the seller the buyer is shown. It is sent as `checkout.reap.expected_merchant_domain` and must equal the seller the gateway publishes. The optional `merchant_id` is the `<merchant>` segment of the catalog product key. When it is set and the gateway publishes a `reap.merchant_id`, the two must agree. A `reap.merchant_id` published as two different values, or malformed, is refused whether or not an id is configured. External-seed rows publish no merchant id, so leave it out for them.
 - **Keygen:** `node scripts/reap-demo-keygen.mjs --issuer <issuer from the operator notes>` writes the four `REAP_DEMO_USER_JWT_*` lines to `.env.development.local`.
   - The file is mode 600, and `next dev` loads it, so nothing is sourced into your shell.
   - The script refuses any path git doesn't ignore.

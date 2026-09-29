@@ -20,7 +20,8 @@
 // Like the real door (PIVOTA-Agent docs/reap-agentic-lane.md §5.4), every good Reap answer publishes the
 // seller as `reap.merchant_domain` at $.line_items[0] (judydoll.com, the external-seed demo row: no
 // `reap.merchant_id`), and a create whose `checkout.reap.expected_merchant_domain` does not fold to that
-// seller is refused `ucp_seller_mismatch`.
+// seller is refused `ucp_seller_mismatch`. Like the lane, every answer echoes the caller's own item id at
+// `line_items[0].item.id` (the panel refuses a checkout that is not for the product it asked for).
 //
 // Requires Node >= 23.6 (imports the TypeScript fixture with native type stripping).
 import http from 'node:http';
@@ -45,6 +46,14 @@ let state = 'resolving';
 let gets = 0;
 let code = null;
 let createScenario = 'reap';
+let itemId = null;
+
+/** The lane echoes the CALLER's item id at line_items[0].item.id (from the checkout id's snapshot). */
+function echoItem(checkout) {
+  if (!itemId || !Array.isArray(checkout?.line_items) || !checkout.line_items[0]?.item) return checkout;
+  const [first, ...rest] = checkout.line_items;
+  return { ...checkout, line_items: [{ ...first, item: { ...first.item, id: itemId } }, ...rest] };
+}
 
 function outcomeFor(c) {
   if (c == null) return undefined;
@@ -102,6 +111,8 @@ const server = http.createServer((req, res) => {
       code = Array.isArray(codes) ? codes[0] : null;
       gets = 0;
       state = 'resolving';
+      const askedItem = args?.checkout?.line_items?.[0]?.item?.id;
+      itemId = typeof askedItem === 'string' && askedItem ? askedItem : null;
       console.log(`[mock] create_checkout item=${args?.checkout?.line_items?.[0]?.item?.id} market=${args?.checkout?.context?.address_country} code=${JSON.stringify(code)} expected_seller=${args?.checkout?.reap?.expected_merchant_domain}`);
       if (createScenario === 'not_reap') return send(res, 200, rpcResult(storefrontEscalation({ codeWarning: code != null })));
       if (createScenario === 'seller_mismatch') return send(res, 200, rpcResult(sellerMismatchError('different_seller'), true));
@@ -110,13 +121,13 @@ const server = http.createServer((req, res) => {
       if (expected !== undefined && fold(expected) !== fold(MOCK_SELLER)) {
         return send(res, 200, rpcResult(sellerMismatchError('different_seller'), true));
       }
-      return send(res, 200, rpcResult(checkoutFor('resolving')));
+      return send(res, 200, rpcResult(echoItem(checkoutFor('resolving'))));
     }
     if (name === 'get_checkout') {
       gets += 1;
       if (state === 'resolving' && gets >= 2) state = 'awaiting';
       console.log(`[mock] get_checkout -> ${state}`);
-      return send(res, 200, rpcResult(checkoutFor(state)));
+      return send(res, 200, rpcResult(echoItem(checkoutFor(state))));
     }
     return send(res, 200, rpcResult({ error: { code: 'OPERATION_NOT_ALLOWED' } }, true));
   });

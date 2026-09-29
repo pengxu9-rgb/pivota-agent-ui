@@ -3,6 +3,7 @@ import { generateKeyPairSync } from 'node:crypto';
 import { NextRequest } from 'next/server';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  HOSTED_URL,
   PRODUCT_ID,
   expectedDomainInvalidError,
   sellerMismatchError,
@@ -242,7 +243,7 @@ describe('POST /api/reap-checkout (armed)', () => {
     gatewayAnswers(resolvingCheckout());
     const { POST } = await import('./route');
     const body = await (await POST(createReq({ product_id: PRODUCT_ID }))).json();
-    expect(body.checkout.publishedSeller).toEqual({ domain: 'judydoll.com', merchantId: null });
+    expect(body.checkout.publishedSeller).toEqual({ domain: 'judydoll.com', merchantId: null, merchantIdUnusable: false });
     expect(body.checkout.seller).toEqual({ domain: 'judydoll.com' });
   });
 
@@ -760,5 +761,99 @@ describe('GET /api/reap-checkout/:id (armed)', () => {
     let last = 0;
     for (let i = 0; i < 121; i++) last = (await GET(getReq(REAP_ID, cookie), params)).status;
     expect(last).toBe(429);
+  });
+});
+
+describe('P3 follow-ups of #384: conflicting merchant ids fail closed; a degraded read never carries a pay link', () => {
+  const idMsg = (content: string) => ({ type: 'info', code: 'reap.merchant_id', path: '$.line_items[0]', content, content_type: 'plain' });
+  const sgReq = () => createReq({ merchant_domain: 'jsmbeauty.sg', buyer: { ...BUYER, country: 'SG', postal_code: '018956' } });
+  /** A Reap answer publishing `domain` plus the given merchant-id messages. */
+  function answerWithIds(domain: string, ids: string[], build: () => unknown = awaitingApprovalCheckout) {
+    const base = withSeller({ domain }, build) as any;
+    return { ...base, messages: [...ids.map(idMsg), ...base.messages] };
+  }
+  async function buyerCookie() {
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify(rpcResult(resolvingCheckout())), { status: 200 }));
+    const { POST } = await import('./route');
+    const cookie = cookieFrom(await POST(createReq()));
+    fetchMock.mockReset();
+    return cookie;
+  }
+
+  it.each([
+    ['conflicting ids, the configured one first', ['merch_jsm_demo', 'm_other']],
+    ['conflicting ids, the configured one second', ['m_other', 'merch_jsm_demo']],
+    ['a malformed id', ['m id']],
+  ])('POST: a merchant with a configured id refuses %s (no link)', async (_l, ids) => {
+    arm();
+    gatewayAnswers(answerWithIds('jsmbeauty.sg', ids));
+    const { POST } = await import('./route');
+    const body = await (await POST(sgReq())).json();
+    expect(body).toEqual({ checkout: null, fallback: 'seller_mismatch', cause: 'seller_unconfirmed' });
+    expect(JSON.stringify(body)).not.toContain('prava.space');
+  });
+
+  it('POST: a domain-only merchant refuses conflicting published ids too (they are not "absent")', async () => {
+    arm();
+    gatewayAnswers(answerWithIds('judydoll.com', ['m_a', 'm_b']));
+    const { POST } = await import('./route');
+    const body = await (await POST(createReq())).json();
+    expect(body).toEqual({ checkout: null, fallback: 'seller_mismatch', cause: 'seller_unconfirmed' });
+  });
+
+  it('POST accepting: the configured id once (or twice) is accepted, and a domain-only merchant still accepts no id', async () => {
+    arm();
+    const { POST } = await import('./route');
+    gatewayAnswers(answerWithIds('jsmbeauty.sg', ['merch_jsm_demo']));
+    expect((await (await POST(sgReq())).json()).checkout.seller).toEqual({ domain: 'jsmbeauty.sg' });
+    gatewayAnswers(answerWithIds('jsmbeauty.sg', ['merch_jsm_demo', 'merch_jsm_demo']));
+    expect((await (await POST(sgReq())).json()).checkout.seller).toEqual({ domain: 'jsmbeauty.sg' });
+    gatewayAnswers(answerWithIds('judydoll.com', []));
+    expect((await (await POST(createReq())).json()).checkout.seller).toEqual({ domain: 'judydoll.com' });
+  });
+
+  it('GET: a good read publishing conflicting merchant ids is not shown (404)', async () => {
+    arm();
+    const cookie = await buyerCookie();
+    const { GET } = await import('./[checkoutId]/route');
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify(rpcResult(answerWithIds('judydoll.com', ['m_a', 'm_b']))), { status: 200 }),
+    );
+    const res = await GET(getReq(REAP_ID, cookie), { params: Promise.resolve({ checkoutId: REAP_ID }) });
+    expect(res.status).toBe(404);
+    expect(JSON.stringify(await res.json())).not.toContain('prava.space');
+  });
+
+  it('GET: a degraded read that DOES publish a configured seller still carries no pay link', async () => {
+    arm();
+    const cookie = await buyerCookie();
+    const { GET } = await import('./[checkoutId]/route');
+    const base = viewUnavailableCheckout() as any;
+    const degraded = {
+      ...base,
+      status: 'requires_escalation',
+      continue_url: 'https://pay.prava.space/checkout/chk_x',
+      messages: [
+        { type: 'info', code: 'reap.merchant_domain', path: '$.line_items[0]', content: 'judydoll.com', content_type: 'plain' },
+        ...base.messages,
+      ],
+    };
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify(rpcResult(degraded)), { status: 200 }));
+    const res = await GET(getReq(REAP_ID, cookie), { params: Promise.resolve({ checkoutId: REAP_ID }) });
+    expect(res.status).toBe(200);
+    const view = (await res.json()).checkout;
+    expect(view.viewUnavailable).toBe(true);
+    expect(view.continueUrl).toBeNull();
+    expect(JSON.stringify(view)).not.toContain('prava.space');
+    expect(view.seller).toEqual({ domain: 'judydoll.com' });
+  });
+
+  it('GET accepting: a GOOD read keeps its vetted pay link', async () => {
+    arm();
+    const cookie = await buyerCookie();
+    const { GET } = await import('./[checkoutId]/route');
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify(rpcResult(awaitingApprovalCheckout())), { status: 200 }));
+    const view = (await (await GET(getReq(REAP_ID, cookie), { params: Promise.resolve({ checkoutId: REAP_ID }) })).json()).checkout;
+    expect(view.continueUrl).toBe(HOSTED_URL);
   });
 });

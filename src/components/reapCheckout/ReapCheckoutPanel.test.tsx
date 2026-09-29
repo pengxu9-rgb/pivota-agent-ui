@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { readReapCheckout } from '@/lib/reapCheckout/checkoutView';
 import {
   HOSTED_URL,
+  PRODUCT_ID,
   awaitingApprovalCheckout,
   canceledCheckout,
   completedCheckout,
@@ -16,6 +17,8 @@ import {
 } from '@/lib/reapCheckout/__fixtures__/checkouts';
 
 const NOW = Date.parse('2026-09-29T10:00:00Z');
+// The fixtures echo PRODUCT_ID at line_items[0].item.id, as the lane echoes the caller's own item id.
+const ACTIVE_KEY = `pivota.reapCheckout.active.${PRODUCT_ID}`;
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
@@ -28,7 +31,7 @@ function viewOf(checkout: unknown) {
 function renderPanel(fetchImpl: ReturnType<typeof vi.fn>, openWindow = vi.fn()) {
   render(
     <ReapCheckoutPanel
-      productId="sig_demo"
+      productId={PRODUCT_ID}
       productTitle="Silky Matte Lip Ink"
       merchantDomain="judydoll.com"
       market="US"
@@ -253,7 +256,7 @@ describe('ReapCheckoutPanel', () => {
   it('restores the open checkout after a reload or in ANOTHER tab (id only, from localStorage)', async () => {
     const id = viewOf(awaitingApprovalCheckout()).id;
     // Written by another tab: localStorage is shared across tabs; sessionStorage (empty here) is not.
-    window.localStorage.setItem('pivota.reapCheckout.active.sig_demo', JSON.stringify({ id, at: Date.now() }));
+    window.localStorage.setItem(ACTIVE_KEY, JSON.stringify({ id, at: Date.now() }));
     const fetchImpl = scriptedFetch(awaitingApprovalCheckout(), [processingCheckout()]);
     renderPanel(fetchImpl);
     await waitFor(() => expect(screen.getByTestId('reap-status').dataset.phase).toBe('processing'));
@@ -271,7 +274,7 @@ describe('ReapCheckoutPanel', () => {
       }, []);
       return (
         <ReapCheckoutPanel
-          productId="sig_demo"
+          productId={PRODUCT_ID}
           productTitle="Silky Matte Lip Ink"
           merchantDomain="judydoll.com"
           market="US"
@@ -303,7 +306,7 @@ describe('ReapCheckoutPanel', () => {
     });
     render(
       <ReapCheckoutPanel
-        productId="sig_demo"
+        productId={PRODUCT_ID}
         productTitle="Silky Matte Lip Ink"
         merchantDomain="judydoll.com"
         market="US"
@@ -342,7 +345,7 @@ describe('ReapCheckoutPanel', () => {
     const fetchImpl = scriptedFetch(awaitingApprovalCheckout());
     render(
       <ReapCheckoutPanel
-        productId="sig_demo"
+        productId={PRODUCT_ID}
         productTitle="Silky Matte Lip Ink"
         merchantDomain="judydoll.com"
         market="US"
@@ -447,14 +450,14 @@ describe('ReapCheckoutPanel', () => {
 
   it('P2: a failed restore after a hand-off does NOT say "nothing charged"; without one it does', async () => {
     const id = viewOf(awaitingApprovalCheckout()).id;
-    window.localStorage.setItem('pivota.reapCheckout.active.sig_demo', JSON.stringify({ id, at: Date.now(), handedOff: true }));
+    window.localStorage.setItem(ACTIVE_KEY, JSON.stringify({ id, at: Date.now(), handedOff: true }));
     const first = renderPanel(vi.fn(async () => jsonResponse({ error: 'gateway_unavailable' }, 502)));
     const copy = await screen.findByTestId('reap-restore-failed-copy');
     expect(copy.textContent).not.toMatch(/charged\./);
     expect(copy.textContent).toMatch(/check your email or card statement/);
     void first;
     cleanup();
-    window.localStorage.setItem('pivota.reapCheckout.active.sig_demo', JSON.stringify({ id, at: Date.now() }));
+    window.localStorage.setItem(ACTIVE_KEY, JSON.stringify({ id, at: Date.now() }));
     renderPanel(vi.fn(async () => jsonResponse({ error: 'gateway_unavailable' }, 502)));
     expect((await screen.findByTestId('reap-restore-failed-copy')).textContent).toBe('Nothing has been lost or charged.');
   });
@@ -469,12 +472,12 @@ describe('ReapCheckoutPanel', () => {
 
   it('P3: after a restore, the header shows the OPEN checkout\'s quantity, not the page\'s', async () => {
     const id = viewOf(awaitingApprovalCheckout()).id;
-    window.localStorage.setItem('pivota.reapCheckout.active.sig_demo', JSON.stringify({ id, at: Date.now() }));
+    window.localStorage.setItem(ACTIVE_KEY, JSON.stringify({ id, at: Date.now() }));
     const view3 = viewOf(awaitingApprovalCheckout());
     view3.lineItems = [{ ...view3.lineItems[0], quantity: 3 }];
     render(
       <ReapCheckoutPanel
-        productId="sig_demo"
+        productId={PRODUCT_ID}
         productTitle="Silky Matte Lip Ink"
         merchantDomain="judydoll.com"
         market="US"
@@ -552,7 +555,7 @@ describe('ReapCheckoutPanel', () => {
     await fillAndSubmit();
     fireEvent.click(await screen.findByTestId('reap-continue'));
     expect(openWindow).toHaveBeenCalledTimes(1);
-    expect(JSON.parse(window.localStorage.getItem('pivota.reapCheckout.active.sig_demo')!).handedOff).toBe(true);
+    expect(JSON.parse(window.localStorage.getItem(ACTIVE_KEY)!).handedOff).toBe(true);
     await act(async () => {
       await vi.advanceTimersByTimeAsync(11_000);
     });
@@ -613,22 +616,22 @@ describe('ReapCheckoutPanel', () => {
     expect(gone.textContent).toMatch(/We couldn.t confirm your order/);
     expect(screen.queryByTestId('reap-continue')).toBeNull();
     expect(screen.queryByText('Back to checkout')).toBeNull();
-    expect(readActiveCheckoutId('sig_demo')).not.toBeNull();
+    expect(readActiveCheckoutId(PRODUCT_ID)).not.toBeNull();
   });
 
   it('R3.4: a 404 while polling after an APPROVAL (stored) keeps the entry too', async () => {
     const id = viewOf(awaitingApprovalCheckout()).id;
-    window.localStorage.setItem('pivota.reapCheckout.active.sig_demo', JSON.stringify({ id, at: Date.now(), approved: true }));
+    window.localStorage.setItem(ACTIVE_KEY, JSON.stringify({ id, at: Date.now(), approved: true }));
     renderPanel(vi.fn(async () => jsonResponse({ error: 'not_found' }, 404)));
     // The restore itself 404s: with money possibly moved, the entry is kept and the answer is uncertain.
     await screen.findByTestId('reap-gone-uncertain');
-    expect(readActiveCheckoutId('sig_demo')).toBe(id);
+    expect(readActiveCheckoutId(PRODUCT_ID)).toBe(id);
     expect(screen.queryByTestId('reap-form')).toBeNull();
   });
 
   it('B1: approval seen in ANOTHER tab/reload (stored flag) still blocks the one-click retry', async () => {
     const id = viewOf(canceledCheckout('failed', 'approval_window_lapsed')).id;
-    window.localStorage.setItem('pivota.reapCheckout.active.sig_demo', JSON.stringify({ id, at: Date.now(), approved: true }));
+    window.localStorage.setItem(ACTIVE_KEY, JSON.stringify({ id, at: Date.now(), approved: true }));
     renderPanel(scriptedFetch(canceledCheckout('failed', 'approval_window_lapsed'), [canceledCheckout('failed', 'approval_window_lapsed')]));
     await screen.findByTestId('reap-terminal-uncertain');
   });
@@ -648,13 +651,13 @@ describe('ReapCheckoutPanel', () => {
     });
     expect((await screen.findByTestId('reap-gone')).textContent).toMatch(/This checkout is no longer available/);
     expect(screen.queryByTestId('reap-continue')).toBeNull();
-    expect(readActiveCheckoutId('sig_demo')).toBeNull();
+    expect(readActiveCheckoutId(PRODUCT_ID)).toBeNull();
   });
 
   it('C4: the consent names the terms link and the version tag that is recorded', async () => {
     render(
       <ReapCheckoutPanel
-        productId="sig_demo"
+        productId={PRODUCT_ID}
         productTitle="Silky Matte Lip Ink"
         merchantDomain="judydoll.com"
         market="US"
@@ -672,7 +675,7 @@ describe('ReapCheckoutPanel', () => {
     const fetchImpl = scriptedFetch(resolvingCheckout());
     render(
       <ReapCheckoutPanel
-        productId="sig_demo"
+        productId={PRODUCT_ID}
         productTitle="Silky Matte Lip Ink"
         merchantDomain="judydoll.com"
         market="US"
@@ -708,5 +711,183 @@ describe('ReapCheckoutPanel', () => {
     writeActiveCheckoutId('sig_ttl', id, t);
     expect(readActiveCheckoutId('sig_ttl', t + 5.9 * 3600_000)).toBe(id);
     expect(readActiveCheckoutId('sig_ttl', t + 6 * 3600_000 + 1)).toBeNull();
+  });
+
+  // ---- P3 follow-ups of #384 ------------------------------------------------------------------------------
+
+  /** A server-verified view of `checkout`, optionally for another item id (or none). */
+  function verified(checkout: unknown, over: { itemId?: string | null; id?: string } = {}) {
+    const v = viewOf(checkout);
+    return {
+      ...v,
+      ...(over.id ? { id: over.id } : {}),
+      lineItems: 'itemId' in over ? [{ ...v.lineItems[0], itemId: over.itemId ?? null }] : v.lineItems,
+      seller: { domain: 'judydoll.com' },
+    };
+  }
+  const OTHER_ID = viewOf(awaitingApprovalCheckout()).id.replace('0123456789abcdef01234567', 'ffffffffffffffffffffffff');
+  /** Records whether a pay button was EVER put in the DOM, even for one commit that a later effect undoes. */
+  function watchForPayButton() {
+    let seen = false;
+    const obs = new MutationObserver((records) => {
+      for (const r of records) {
+        for (const n of Array.from(r.addedNodes)) {
+          if (n instanceof Element && (n.matches('[data-testid="reap-continue"]') || n.querySelector('[data-testid="reap-continue"]'))) seen = true;
+        }
+      }
+    });
+    obs.observe(document.body, { childList: true, subtree: true });
+    return () => {
+      obs.takeRecords();
+      obs.disconnect();
+      return seen;
+    };
+  }
+
+  it.each([
+    ['another product', 'sig_other'],
+    ['a near-miss of this product', `${PRODUCT_ID}x`],
+    ['no echoed item id', null],
+  ])('ITEM: a created checkout for %s is not payable: honest mismatch copy, not remembered', async (_l, itemId) => {
+    const fetchImpl = vi.fn(async (url: string) =>
+      url === '/api/reap-checkout'
+        ? jsonResponse({ checkout: verified(awaitingApprovalCheckout(), { itemId }) })
+        : jsonResponse({ checkout: verified(awaitingApprovalCheckout(), { itemId }) }),
+    );
+    const setItem = vi.spyOn(Storage.prototype, 'setItem');
+    const payButtonSeen = watchForPayButton();
+    const openWindow = renderPanel(fetchImpl);
+    await fillAndSubmit();
+    const fb = await screen.findByTestId('reap-fallback');
+    expect(fb.dataset.kind).toBe('seller_mismatch');
+    expect(fb.textContent).toMatch(/isn.t available here from judydoll\.com/);
+    expect(fb.textContent).toMatch(/Nothing was charged/);
+    // Never remembered, not even for a moment; never shown as payable, not even for one render.
+    expect(setItem.mock.calls.filter(([k]) => k === ACTIVE_KEY)).toEqual([]);
+    setItem.mockRestore();
+    expect(payButtonSeen()).toBe(false);
+    expect(screen.queryByTestId('reap-continue')).toBeNull();
+    expect(screen.queryByTestId('reap-status')).toBeNull();
+    expect(window.localStorage.getItem(ACTIVE_KEY)).toBeNull();
+    expect(fetchImpl.mock.calls.filter(([u]) => String(u).startsWith('/api/reap-checkout/'))).toHaveLength(0);
+    expect(openWindow).not.toHaveBeenCalled();
+  });
+
+  it('ITEM accepting: a created checkout echoing THIS product is payable and remembered', async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse({ checkout: verified(awaitingApprovalCheckout(), { itemId: PRODUCT_ID }) }));
+    const payButtonSeen = watchForPayButton();
+    renderPanel(fetchImpl);
+    await fillAndSubmit();
+    expect(await screen.findByTestId('reap-continue')).toBeTruthy();
+    expect(payButtonSeen()).toBe(true); // the watcher's positive control
+    expect(readActiveCheckoutId(PRODUCT_ID)).toBe(viewOf(awaitingApprovalCheckout()).id);
+  });
+
+  it('ITEM: a poll (before any hand-off) answering another product -> the mismatch copy, forgotten, no pay link', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const fetchImpl = vi.fn(async (url: string) =>
+      url === '/api/reap-checkout'
+        ? jsonResponse({ checkout: verified(resolvingCheckout()) })
+        : jsonResponse({ checkout: verified(awaitingApprovalCheckout(), { itemId: 'sig_other' }) }),
+    );
+    const openWindow = renderPanel(fetchImpl);
+    await fillAndSubmit();
+    await screen.findByTestId('reap-status');
+    expect(readActiveCheckoutId(PRODUCT_ID)).not.toBeNull();
+    const payButtonSeen = watchForPayButton();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(6_000);
+    });
+    const fb = await screen.findByTestId('reap-fallback');
+    expect(payButtonSeen()).toBe(false);
+    expect(fb.dataset.kind).toBe('seller_mismatch');
+    expect(screen.queryByTestId('reap-continue')).toBeNull();
+    expect(readActiveCheckoutId(PRODUCT_ID)).toBeNull();
+    expect(openWindow).not.toHaveBeenCalled();
+  });
+
+  it('ITEM: a RESTORED checkout for another product -> the mismatch copy, forgotten, no pay link', async () => {
+    const id = viewOf(awaitingApprovalCheckout()).id;
+    window.localStorage.setItem(ACTIVE_KEY, JSON.stringify({ id, at: Date.now() }));
+    const payButtonSeen = watchForPayButton();
+    renderPanel(vi.fn(async () => jsonResponse({ checkout: verified(awaitingApprovalCheckout(), { itemId: 'sig_other' }) })));
+    const fb = await screen.findByTestId('reap-fallback');
+    expect(payButtonSeen()).toBe(false);
+    expect(fb.dataset.kind).toBe('seller_mismatch');
+    expect(screen.queryByTestId('reap-continue')).toBeNull();
+    expect(window.localStorage.getItem(ACTIVE_KEY)).toBeNull();
+  });
+
+  it('ITEM: AFTER a hand-off, another product\'s answer says "couldn\'t confirm" (no "nothing charged"), keeps the entry, no pay link', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const fetchImpl = vi.fn(async (url: string) =>
+      url === '/api/reap-checkout'
+        ? jsonResponse({ checkout: verified(awaitingApprovalCheckout()) })
+        : jsonResponse({ checkout: verified(awaitingApprovalCheckout(), { itemId: 'sig_other' }) }),
+    );
+    const openWindow = renderPanel(fetchImpl);
+    await fillAndSubmit();
+    fireEvent.click(await screen.findByTestId('reap-continue'));
+    expect(openWindow).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(11_000);
+    });
+    const gone = await screen.findByTestId('reap-gone-uncertain');
+    expect(gone.textContent).not.toMatch(/Nothing was charged/);
+    expect(screen.queryByTestId('reap-continue')).toBeNull();
+    expect(screen.queryByTestId('reap-fallback')).toBeNull();
+    expect(screen.getByTestId('reap-new-buyer-caution')).toBeTruthy();
+    expect(readActiveCheckoutId(PRODUCT_ID)).not.toBeNull();
+  });
+
+  it('SELLER: a previous checkout\'s verified seller never vouches for a NEW checkout id', async () => {
+    let creates = 0;
+    const fetchImpl = vi.fn(async (url: string) => {
+      if (url === '/api/reap-checkout') {
+        creates += 1;
+        // First: checkout A, verified seller, ends at once. Second: checkout B, answered with NO seller.
+        return creates === 1
+          ? jsonResponse({ checkout: verified(canceledCheckout('failed')) })
+          : jsonResponse({ checkout: { ...viewOf(resolvingCheckout({ id: OTHER_ID })) } });
+      }
+      return jsonResponse({ checkout: { ...viewOf(resolvingCheckout({ id: OTHER_ID })) } });
+    });
+    renderPanel(fetchImpl);
+    await fillAndSubmit();
+    expect((await screen.findByTestId('reap-seller')).textContent).toBe('Sold and shipped by judydoll.com');
+    fireEvent.click(await screen.findByTestId('reap-restart'));
+    await act(async () => {
+      fireEvent.click(await screen.findByTestId('reap-submit'));
+    });
+    await waitFor(() => expect(screen.getByTestId('reap-status').dataset.phase).toBe('preparing'));
+    expect(creates).toBe(2);
+    expect(screen.queryByTestId('reap-seller')).toBeNull();
+  });
+
+  it('DEGRADED: a degraded view never shows a pay link, even one that reached the panel with a link', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const good = verified(awaitingApprovalCheckout());
+    const base = awaitingApprovalCheckout() as any;
+    const degradedWithLink = viewOf({
+      ...base,
+      messages: [
+        { type: 'warning', code: 'reap.view_unavailable', path: '$', content: 'x', content_type: 'plain' },
+        ...base.messages,
+      ],
+    });
+    expect(degradedWithLink).toMatchObject({ viewUnavailable: true, phase: 'awaiting_approval', continueUrl: HOSTED_URL });
+    const fetchImpl = vi.fn(async (url: string) =>
+      url === '/api/reap-checkout' ? jsonResponse({ checkout: good }) : jsonResponse({ checkout: degradedWithLink }),
+    );
+    const openWindow = renderPanel(fetchImpl);
+    await fillAndSubmit();
+    expect(await screen.findByTestId('reap-continue')).toBeTruthy();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(11_000);
+    });
+    await waitFor(() => expect(screen.queryByTestId('reap-continue')).toBeNull());
+    expect(screen.getByTestId('reap-status').dataset.phase).toBe('awaiting_approval');
+    expect(document.body.innerHTML).not.toContain('prava.space');
+    expect(openWindow).not.toHaveBeenCalled();
   });
 });
