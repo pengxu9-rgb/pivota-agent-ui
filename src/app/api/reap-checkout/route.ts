@@ -1,27 +1,37 @@
-// POST /api/reap-checkout — open a Reap checkout for ONE PDP item (demo, behind two flags).
+// POST /api/reap-checkout — open a Reap checkout for ONE PDP item (demo, behind two flags + an arming guard).
 //
 // The browser never talks to the gateway: this route validates the form, adds the two credentials
 // the Reap lane needs (agent key + a buyer token minted here), calls the gateway's UCP door
 // `create_checkout`, and answers the browser a READ VIEW of the checkout (lib/reapCheckout/
 // checkoutView.ts) — never the raw body, and never a continue_url that is not Reap's.
 //
+// The SELLER is checked on the gateway's answer, not taken from the browser: the lane buys the row the
+// PDP's `sig_` id resolves to, which can be another seller than the offer shown. A Reap checkout whose
+// product key names a merchant other than the demo merchant's configured id(s) is answered
+// `{ checkout: null, fallback: 'seller_mismatch' }` and its link is never handed out (the purchase the
+// lane opened waits for a buyer who never comes; the backend's sweep expires it; nothing is charged).
+//
 // When the gateway's answer is NOT a Reap checkout (the lane is off, the merchant is not eligible,
 // the purchasability gate declined, the backend refused — the door falls through to its storefront
 // answer by design), the browser gets `{ checkout: null, fallback: 'not_reap' }` and keeps today's
-// "Visit store" path. The storefront answer's own link is NOT forwarded: the PDP already has the
-// store link, and this route only ever hands out Reap's.
+// "Visit store" path. The storefront answer's own link is NOT forwarded.
 import { NextRequest } from 'next/server';
-import { canonicalMerchantDomain, readDemoMerchants, reapConsentVersion } from '@/lib/reapCheckout/config';
+import { canonicalMerchantDomain, readDemoMerchantConfig, reapConsentVersion } from '@/lib/reapCheckout/config';
 import { buildCreateCheckoutArgs, validateReapCreateBody } from '@/lib/reapCheckout/createRequest';
 import { mintBuyerToken } from '@/lib/reapCheckout/buyerToken.server';
 import { callUcpTool } from '@/lib/reapCheckout/gatewayClient.server';
 import { readReapCheckout } from '@/lib/reapCheckout/checkoutView';
+import { sellerOfReapCheckoutId } from '@/lib/reapCheckout/seller.server';
 import {
   disabledResponse,
   json,
   publicView,
+  rateKey,
+  rateLimited,
+  readCappedJson,
   readOrMintBuyerId,
   readServerConfig,
+  sameOriginProblem,
   setBuyerCookie,
 } from '@/lib/reapCheckout/routeSupport.server';
 
@@ -35,12 +45,19 @@ export async function POST(req: NextRequest) {
   if ('response' in cfg) return cfg.response;
   const { config } = cfg;
 
-  // application/json only: a cross-site HTML form (text/plain, form-encoded) cannot open a purchase on the
-  // buyer cookie, because a JSON content type forces a CORS preflight this route never answers.
+  const crossSite = sameOriginProblem(req);
+  if (crossSite) return crossSite;
+  // application/json only: a JSON content type also forces a CORS preflight this route never answers.
   if (!/^application\/json\b/i.test(req.headers.get('content-type') || '')) {
     return json({ error: 'unsupported_media_type' }, 415);
   }
-  const body = await req.json().catch(() => null);
+  const { buyerId, minted } = readOrMintBuyerId(req, config.token);
+  const limited = rateLimited('create', rateKey(req, minted ? null : buyerId));
+  if (limited) return limited;
+
+  const read = await readCappedJson(req);
+  if ('response' in read) return read.response;
+  const body = read.body;
   const validated = validateReapCreateBody(body);
   if (!validated.ok) {
     return json({ error: 'invalid_request', field: validated.field, message: validated.message }, 400);
@@ -48,7 +65,7 @@ export async function POST(req: NextRequest) {
 
   // DEMO SCOPE: only the merchants Peng listed, and only in the market listed for each.
   const domain = canonicalMerchantDomain((body as Record<string, unknown>)?.merchant_domain);
-  const merchant = readDemoMerchants().find((m) => m.domain === domain);
+  const merchant = readDemoMerchantConfig().find((m) => m.domain === domain);
   if (!domain || !merchant) {
     return json({ error: 'merchant_not_in_demo', message: 'This merchant is not part of the Reap demo.' }, 403);
   }
@@ -63,7 +80,6 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { buyerId, minted } = readOrMintBuyerId(req);
   const toolArgs = buildCreateCheckoutArgs(validated.input, {
     consentVersion: reapConsentVersion(),
     profileUrl: config.profileUrl,
@@ -94,9 +110,13 @@ export async function POST(req: NextRequest) {
         available_with_consent: view.messages.some((m) => m.code === 'reap.available_with_consent'),
       });
     } else {
-      res = json({ checkout: publicView(view) });
+      const seller = sellerOfReapCheckoutId(view.id);
+      res =
+        seller && merchant.merchantIds.includes(seller)
+          ? json({ checkout: publicView(view, { domain: merchant.domain }) })
+          : json({ checkout: null, fallback: 'seller_mismatch' });
     }
   }
-  if (minted) setBuyerCookie(res, req, buyerId);
+  if (minted) setBuyerCookie(res, req, config.token, buyerId);
   return res;
 }

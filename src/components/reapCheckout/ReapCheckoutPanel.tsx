@@ -8,7 +8,7 @@
 //     opened only when vetReapHostedUrl says the link is Reap's (checked on the server AND here)
 //   - no price math: the quote is the checkout's own totals rows, formatted, in the order sent
 //   - the offer code is sent exactly as typed; what it came to is read from the checkout's messages
-import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { ExternalLink, Loader2, Lock, ShieldCheck } from 'lucide-react';
 import type { ReapCheckoutView, ReapTotalRow } from '@/lib/reapCheckout/checkoutView';
 import { vetReapHostedUrl } from '@/lib/reapCheckout/hostedUrl';
@@ -16,28 +16,42 @@ import { formatMinorAmount } from '@/lib/reapCheckout/formatMinor';
 import { MAX_OFFER_CODE_CODE_POINTS } from '@/lib/reapCheckout/createRequest';
 import { fetchReapCheckout, useReapCheckoutPoll } from './useReapCheckoutPoll';
 
-// The open checkout for a product survives the sheet closing and a page reload (the Reap return page
-// sends the buyer back here): only its id is kept, in this tab's sessionStorage — no buyer data.
-const ACTIVE_KEY_PREFIX = 'pivota.reapCheckout.active.';
-const REAP_ID_RE = /^reap_rp_[0-9a-f]{24}\.[A-Za-z0-9_-]{1,480}$/;
+// The open checkout for a product survives the sheet closing, a reload, AND a new tab (the buyer may come
+// back to the PDP from the Reap tab, whose sessionStorage is empty): its id is kept in localStorage, shared
+// by every tab of this origin, for 6 hours. Only the id — no buyer data. Without this, a buyer returning in
+// the Reap tab would see an empty form and could open a second purchase without knowing.
+export const ACTIVE_KEY_PREFIX = 'pivota.reapCheckout.active.';
+const ACTIVE_TTL_MS = 6 * 3600_000;
+const REAP_ID_RE = /^reap_rp_[0-9a-f]{24}\.[A-Za-z0-9_-]{1,1000}$/;
 
-function readActiveCheckoutId(productId: string): string | null {
+export function readActiveCheckoutId(productId: string, now = Date.now()): string | null {
   try {
-    const v = window.sessionStorage.getItem(ACTIVE_KEY_PREFIX + productId);
-    return v && REAP_ID_RE.test(v) ? v : null;
+    const raw = window.localStorage.getItem(ACTIVE_KEY_PREFIX + productId);
+    if (!raw) return null;
+    const v = JSON.parse(raw) as { id?: unknown; at?: unknown };
+    if (typeof v?.id !== 'string' || !REAP_ID_RE.test(v.id) || typeof v.at !== 'number') return null;
+    if (now - v.at > ACTIVE_TTL_MS) {
+      window.localStorage.removeItem(ACTIVE_KEY_PREFIX + productId);
+      return null;
+    }
+    return v.id;
   } catch {
     return null;
   }
 }
 
-function writeActiveCheckoutId(productId: string, id: string | null) {
+export function writeActiveCheckoutId(productId: string, id: string | null, now = Date.now()) {
   try {
-    if (id) window.sessionStorage.setItem(ACTIVE_KEY_PREFIX + productId, id);
-    else window.sessionStorage.removeItem(ACTIVE_KEY_PREFIX + productId);
+    if (id) window.localStorage.setItem(ACTIVE_KEY_PREFIX + productId, JSON.stringify({ id, at: now }));
+    else window.localStorage.removeItem(ACTIVE_KEY_PREFIX + productId);
   } catch {
     // storage blocked: the flow still works, it just does not survive a reload
   }
 }
+
+// A module-level function, so a caller that passes no fetchImpl hands the poll hook the SAME function on
+// every render (a fresh closure per render used to re-arm the poll timer on each parent re-render).
+const defaultFetch: typeof fetch = (...a) => fetch(...a);
 
 export type ReapCheckoutPanelProps = {
   productId: string;
@@ -83,6 +97,7 @@ const EMPTY_FORM: FormState = {
 
 type Fallback =
   | { kind: 'not_reap'; offerCodeNotApplied: boolean; availableWithConsent: boolean }
+  | { kind: 'seller_mismatch' }
   | { kind: 'refused'; message: string | null }
   | { kind: 'error'; message: string };
 
@@ -92,7 +107,7 @@ function defaultIdempotencyKey(): string {
   return `k${Date.now().toString(36)}${Math.random().toString(36).slice(2, 12)}`;
 }
 
-function defaultOpenWindow(url: string) {
+export function defaultOpenWindow(url: string) {
   window.open(url, '_blank', 'noopener,noreferrer');
 }
 
@@ -439,7 +454,7 @@ function Field({
 }
 
 export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
-  const fetchImpl = props.fetchImpl || ((...a: Parameters<typeof fetch>) => fetch(...a));
+  const fetchImpl = props.fetchImpl || defaultFetch;
   const openWindow = props.openWindow || defaultOpenWindow;
   const now = props.now || Date.now;
   const newKey = props.newIdempotencyKey || defaultIdempotencyKey;
@@ -448,7 +463,10 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
   const [submitting, setSubmitting] = useState(false);
   const [fieldError, setFieldError] = useState<{ field: string; message: string } | null>(null);
   const [fallback, setFallback] = useState<Fallback | null>(null);
-  const [idempotencyKey, setIdempotencyKey] = useState<string>(() => newKey());
+  // The idempotency key belongs to ONE request body: a retry of the same body replays the same purchase,
+  // and any change (address, code, product) gets a new key — the backend refuses a reused key on a different
+  // body (409 idempotency_conflict) rather than opening the purchase the buyer now asked for.
+  const keyFor = useRef<{ fingerprint: string; key: string } | null>(null);
   const poll = useReapCheckoutPoll(null, { fetchImpl });
   const [restoring, setRestoring] = useState(true);
   const [restoreAttempt, setRestoreAttempt] = useState(0);
@@ -510,15 +528,10 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
     }
     setSubmitting(true);
     try {
-      const res = await fetchImpl('/api/reap-checkout', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        credentials: 'same-origin',
-        body: JSON.stringify({
+      const requestBody = {
           product_id: props.productId,
           merchant_domain: props.merchantDomain,
           quantity: 1,
-          idempotency_key: idempotencyKey,
           consent: form.consent,
           // EXACTLY as typed; an empty field is "no code".
           ...(form.offer_code !== '' ? { offer_code: form.offer_code } : {}),
@@ -534,7 +547,16 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
             postal_code: form.postal_code,
             country: props.market,
           },
-        }),
+      };
+      const fingerprint = JSON.stringify(requestBody);
+      if (!keyFor.current || keyFor.current.fingerprint !== fingerprint) {
+        keyFor.current = { fingerprint, key: newKey() };
+      }
+      const res = await fetchImpl('/api/reap-checkout', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ ...requestBody, idempotency_key: keyFor.current.key }),
       });
       const body = await res.json().catch(() => null);
       if (res.status === 400 && body?.field) {
@@ -549,6 +571,8 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
       } else if (body?.checkout) {
         writeActiveCheckoutId(props.productId, (body.checkout as ReapCheckoutView).id);
         poll.reset(body.checkout as ReapCheckoutView);
+      } else if (body?.fallback === 'seller_mismatch') {
+        setFallback({ kind: 'seller_mismatch' });
       } else if (body?.fallback === 'not_reap') {
         setFallback({
           kind: 'not_reap',
@@ -566,7 +590,7 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
   }
 
   const restart = (withoutCode: boolean) => {
-    setIdempotencyKey(newKey());
+    keyFor.current = null;
     if (withoutCode) setForm((f) => ({ ...f, offer_code: '' }));
     writeActiveCheckoutId(props.productId, null);
     poll.reset(null);
@@ -580,7 +604,12 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
         <div>
           <p className="text-xs uppercase tracking-wide text-muted-foreground">Buy with Reap</p>
           <p className="text-sm font-semibold text-foreground">{props.productTitle}</p>
-          <p className="text-xs text-muted-foreground">Sold and shipped by {props.merchantDomain}</p>
+          {poll.view?.seller?.domain ? (
+            // From the gateway's answer, checked by the server — never from the page.
+            <p className="text-xs text-muted-foreground" data-testid="reap-seller">
+              Sold and shipped by {poll.view.seller.domain}
+            </p>
+          ) : null}
         </div>
       </div>
 
@@ -623,6 +652,11 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
                 </p>
               ) : null}
               <p className="text-sm text-muted-foreground">You can still buy it on the store.</p>
+            </>
+          ) : fallback.kind === 'seller_mismatch' ? (
+            <>
+              <p className="text-sm font-semibold">This item couldn&apos;t be checked out through Reap from this seller.</p>
+              <p className="text-sm text-muted-foreground">Nothing was charged. You can still buy it on the store.</p>
             </>
           ) : (
             <p className="text-sm font-semibold">{fallback.message || 'This checkout could not be opened.'}</p>

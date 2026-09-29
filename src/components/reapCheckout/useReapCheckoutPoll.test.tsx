@@ -2,7 +2,7 @@ import { act, cleanup, render } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { HIDDEN_PAUSE_MS, nextPollDelayMs, useReapCheckoutPoll } from './useReapCheckoutPoll';
 import { readReapCheckout } from '@/lib/reapCheckout/checkoutView';
-import { awaitingApprovalCheckout, resolvingCheckout } from '@/lib/reapCheckout/__fixtures__/checkouts';
+import { awaitingApprovalCheckout, completedCheckout, resolvingCheckout } from '@/lib/reapCheckout/__fixtures__/checkouts';
 
 afterEach(() => {
   cleanup();
@@ -62,5 +62,21 @@ describe('useReapCheckoutPoll visibility', () => {
     });
     expect(fetchImpl.mock.calls.length).toBe(callsWhilePaused + 1);
     expect(last!.paused).toBe(false);
+  });
+});
+
+function Bare({ view }: { view: ReturnType<typeof readReapCheckout> }) {
+  useReapCheckoutPoll(view, { fetchImpl: vi.fn() as unknown as typeof fetch });
+  return null;
+}
+
+describe('useReapCheckoutPoll scheduling', () => {
+  it('schedules no timer at all for a terminal checkout, and exactly one for a live one', () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] });
+    const done = render(<Bare view={readReapCheckout(completedCheckout())} />);
+    expect(vi.getTimerCount()).toBe(0);
+    done.unmount();
+    render(<Bare view={readReapCheckout(awaitingApprovalCheckout())} />);
+    expect(vi.getTimerCount()).toBe(1);
   });
 });

@@ -1,3 +1,5 @@
+import 'server-only';
+
 // ONE JSON-RPC `tools/call` to the gateway's UCP-dialect commerce door (`POST /ucp/mcp`).
 //
 // Why this door and not `/ucp/v1/checkout-sessions`. The Reap lane lives inside the UCP MCP door's

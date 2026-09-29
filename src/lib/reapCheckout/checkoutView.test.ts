@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { readReapCheckout } from './checkoutView';
+import { formatMinorAmount } from './formatMinor';
 import {
   HOSTED_URL,
   REAP_ID,
@@ -94,5 +95,14 @@ describe('readReapCheckout — the gateway Reap lane checkout, per state', () =>
     for (const bad of [null, 'x', [], {}, { id: 'reap_x' }, { status: 'completed' }]) {
       expect(readReapCheckout(bad)).toBeNull();
     }
+  });
+});
+
+describe('formatMinorAmount', () => {
+  it('formats by the currency\'s own fraction digits, and prints no raw minor units without a currency', () => {
+    expect(formatMinorAmount(1884, 'USD')).toBe('$18.84');
+    expect(formatMinorAmount(-320, 'USD')).toBe('−$3.20');
+    expect(formatMinorAmount(1884, 'JPY')).toBe('¥1,884');
+    for (const c of [null, '', 'usd', 'US']) expect(formatMinorAmount(1884, c)).toBe('—');
   });
 });

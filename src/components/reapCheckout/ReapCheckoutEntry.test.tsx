@@ -95,4 +95,27 @@ describe('ReapCheckoutEntry', () => {
     expect(resolveMerchantDomain({ storeUrl: 'https://api.pivota.cc/r?token=x' })).toBe('api.pivota.cc');
     expect(offerIsDeclinedByPurchasabilityGate({ execution_spec: { rail: 'cart' } })).toBe(false);
   });
+
+  it('a FAILED config fetch is not cached: the next render asks again', async () => {
+    vi.stubEnv('NEXT_PUBLIC_REAP_CHECKOUT_DEMO', '1');
+    fetchMock.mockResolvedValueOnce(new Response('{}', { status: 503 }));
+    const first = renderEntry();
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(first.container.querySelector('[data-testid="reap-entry-button"]')).toBeNull();
+    first.unmount();
+    renderEntry();
+    expect(await screen.findByTestId('reap-entry-button')).toBeTruthy();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('a 404 (server switch off) IS cached: no retry storm', async () => {
+    vi.stubEnv('NEXT_PUBLIC_REAP_CHECKOUT_DEMO', '1');
+    fetchMock.mockResolvedValue(new Response('{"error":"not_found"}', { status: 404 }));
+    renderEntry().unmount();
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    renderEntry();
+    await new Promise((r) => setTimeout(r, 20));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
 });

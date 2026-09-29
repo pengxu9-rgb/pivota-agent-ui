@@ -69,7 +69,9 @@ export function useReapCheckoutPoll(initial: ReapCheckoutView | null, opts: { fe
   const inflight = useRef(false);
   const stateRef = useRef(state);
   stateRef.current = state;
-  const fetchImpl = opts.fetchImpl;
+  // Held in a ref so `tick` is stable: a new fetchImpl identity (a parent re-render) must not re-arm the timer.
+  const fetchRef = useRef(opts.fetchImpl);
+  fetchRef.current = opts.fetchImpl;
 
   const clear = () => {
     if (timer.current) clearTimeout(timer.current);
@@ -89,7 +91,7 @@ export function useReapCheckoutPoll(initial: ReapCheckoutView | null, opts: { fe
       return;
     }
     inflight.current = true;
-    const out = await fetchReapCheckout(id, fetchImpl);
+    const out = await fetchReapCheckout(id, fetchRef.current);
     inflight.current = false;
     setState((s) => {
       if (s.view?.id !== id) return s;
@@ -97,7 +99,7 @@ export function useReapCheckoutPoll(initial: ReapCheckoutView | null, opts: { fe
       if ('notFound' in out) return { ...s, notFound: true };
       return { ...s, consecutiveErrors: s.consecutiveErrors + 1 };
     });
-  }, [fetchImpl]);
+  }, []);
 
   // (Re)schedule after every state change.
   useEffect(() => {

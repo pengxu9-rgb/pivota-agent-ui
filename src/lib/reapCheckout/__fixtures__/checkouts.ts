@@ -2,7 +2,13 @@
 // `mapReapPurchaseToCheckout` + ucpCheckoutEscalation.js `buildUcpCheckoutEnvelope`), one per state.
 // Message codes, paths, row types and display texts are the lane's own; used by the tests and by the
 // local mock gateway (scripts/reap-mock-gateway.mjs imports the JSON twin of this file's builder).
-export const REAP_ID = 'reap_rp_0123456789abcdef01234567.eyJ2IjoxLCJpIjoic2lnX2RlbW8ifQ';
+// Ids exactly as the lane encodes them (snapshot {v:1,i,k,q,c,u}); `k` names the seller.
+export const DEMO_MERCHANT_ID = 'merch_judydoll_demo';
+export const REAP_ID =
+  'reap_rp_0123456789abcdef01234567.eyJ2IjoxLCJpIjoic2lnXzY0MzNjODEwNzg1OWE0ODRmYjcyZDE0ODYxZTg0NjkwIiwiayI6InByb2Q6Om1lcmNoX2p1ZHlkb2xsX2RlbW86OnNob3BpZnk6OjgxMjM0NTY3ODkiLCJxIjoxLCJjIjoiVVNEIiwidSI6MTYwMH0';
+/** The same purchase shape, but the lane bought another seller's row. */
+export const REAP_ID_OTHER_SELLER =
+  'reap_rp_0123456789abcdef01234567.eyJ2IjoxLCJpIjoic2lnXzY0MzNjODEwNzg1OWE0ODRmYjcyZDE0ODYxZTg0NjkwIiwiayI6InByb2Q6Om1lcmNoX290aGVyX3NlbGxlcjo6c2hvcGlmeTo6ODEyMzQ1Njc4OSIsInEiOjEsImMiOiJVU0QiLCJ1IjoxNjAwfQ';
 export const HOSTED_URL = 'https://pay.prava.space/checkout/chk_7f3a';
 
 const LANE = {
@@ -65,8 +71,9 @@ const PRICED_WITH_DISCOUNT = [
   { type: 'total', amount: 1884, display_text: 'Total quoted by the merchant through the payment partner' },
 ];
 
-export function resolvingCheckout(opts: { code?: string } = {}) {
+export function resolvingCheckout(opts: { code?: string; id?: string } = {}) {
   return envelope({
+    ...(opts.id ? { id: opts.id } : {}),
     status: 'incomplete',
     messages: [
       info('reap.resolving', 'Pivota has opened this purchase with the payment partner (Reap) and is confirming the item with the merchant. Nothing is charged. Poll get_checkout for the next step.'),

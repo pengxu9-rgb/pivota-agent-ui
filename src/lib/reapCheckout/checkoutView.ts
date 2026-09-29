@@ -65,6 +65,8 @@ export type ReapCheckoutView = {
   terminalReason: string | null;
   viewUnavailable: boolean;
   messages: ReapMessage[];
+  /** Set by the server route from the gateway's answer (never from the browser). */
+  seller?: { domain: string };
 };
 
 const MESSAGE_TYPES = new Set(['info', 'warning', 'error']);

@@ -1,29 +1,41 @@
 #!/usr/bin/env node
 // Generates the demo buyer-token issuer key pair for the Reap checkout demo.
 //
-//   node scripts/reap-demo-keygen.mjs [--issuer URL] [--audience AUD] [--out .env.reap-demo.local] [--force]
+//   node scripts/reap-demo-keygen.mjs [--issuer URL] [--audience AUD] [--out .env.development.local] [--force]
 //
-// Writes the PRIVATE key (and kid/issuer/audience) to a local env file, mode 0600, which git ignores
-// (`.env*.local`). It is never printed. Prints ONLY public material: the JWKS and the two env values
+// Writes the PRIVATE key (and kid/issuer/audience) to a local env file, mode 0600. The file name must match
+// `.env*.local` AND `git check-ignore` must confirm git ignores that path, or nothing is written. The default,
+// `.env.development.local`, is one `next dev` loads by itself, so the key never has to be sourced into a shell.
+// It is never printed. Prints ONLY public material: the JWKS and the two env values
 // the staging gateway and staging backend need to trust it (docs/reap-checkout-demo.md, step 3).
 //
 // This is a Pivota-side demo signing key, unrelated to Reap's sandbox key. Do not reuse it anywhere else,
 // and never configure its issuer on a production service.
 import { generateKeyPairSync, createPublicKey, randomBytes } from 'node:crypto';
 import { existsSync, writeFileSync, chmodSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import path from 'node:path';
 
 const argv = process.argv.slice(2);
 const arg = (name, fallback) => {
   const i = argv.indexOf(name);
   return i >= 0 && argv[i + 1] ? argv[i + 1] : fallback;
 };
-const issuer = arg('--issuer', 'https://agent.pivota.cc/reap-demo-issuer');
+// A demo-only issuer name on a STAGING label: never a production host's identity.
+const issuer = arg('--issuer', 'https://reap-demo.staging.pivota.cc/issuer');
 const audience = arg('--audience', 'pivota-reap-demo');
-const out = arg('--out', '.env.reap-demo.local');
+const out = arg('--out', '.env.development.local');
 const force = argv.includes('--force');
 
-if (!/\.local$/.test(out)) {
-  console.error(`refusing to write a private key to ${out}: the file name must end in .local (git-ignored)`);
+if (!/^\.env.*\.local$/.test(path.basename(out))) {
+  console.error(`refusing to write a private key to ${out}: the file name must match .env*.local`);
+  process.exit(2);
+}
+// Ask git itself: the path must be inside a work tree AND ignored. Exit 0 = ignored; 1 = not ignored;
+// 128 = not a git work tree. Anything but 0 refuses.
+const ignored = spawnSync('git', ['check-ignore', '-q', '--', out], { cwd: process.cwd(), stdio: 'ignore' });
+if (ignored.status !== 0) {
+  console.error(`refusing to write a private key to ${out}: git does not ignore that path (git check-ignore exit ${ignored.status})`);
   process.exit(2);
 }
 if (existsSync(out) && !force) {

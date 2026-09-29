@@ -36,7 +36,7 @@ This runbook is for demoing "Buy with Reap" to partners. It covers the Tier B (c
 ## 1. How the pieces connect (staging)
 
 ```
-browser ──► UI (npm run dev on your laptop, :3000)
+browser ──► UI (npm run dev -- -H 127.0.0.1 on your laptop, :3000)
               /api/reap-checkout  (server-only env: agent key + demo buyer-token issuer)
               │  JSON-RPC tools/call create_checkout / get_checkout
               ▼
@@ -55,8 +55,22 @@ door every buyer agent uses. **No gateway change is needed.**
 key and an `X-Agent-User-JWT` naming the buyer. Without the token the lane skips silently and the buyer
 gets the storefront answer. The UI has no buyer identity the gateway can verify, so for the demo its
 server signs a short-lived RS256 token:
-- `sub`/`sid` is a random id kept in an HttpOnly cookie, so polls come from the same buyer.
+- `sub`/`sid` is a random id kept in a signed, HttpOnly, session-length cookie, so polls come from the same buyer. Only ids the UI server issued are accepted.
 - There is no PII in the token.
+
+**The seller is checked on the gateway's answer.** The UI sends the PDP's `sig_` id, and the gateway buys
+the row that id resolves to, which can belong to a different seller than the offer the PDP showed. The UI
+server reads the seller from the Reap checkout id that the lane returns: the product key
+`prod::<merchant>::…` sits inside the id's snapshot. If that is not the demo merchant's configured id
+(§3g), the UI server refuses and shows nothing to pay. "Sold and shipped by" comes from that check, not
+from the page.
+
+**The server refuses to arm outside a safe setup.** Every `/api/reap-checkout` route answers 404 unless
+both flags are on and one of these holds:
+- The gateway base is **loopback** (the `gcloud run services proxy`) and `NODE_ENV` is not `production`. `next dev` qualifies; a `next build` never does.
+- `REAP_CHECKOUT_STAGING_GATEWAY_HOST` is set. It must name an https host with a `staging` label (e.g. `gateway.staging.pivota.cc`), that is never a production host, and the base must be exactly that host.
+
+A production gateway can never be armed.
 
 The staging gateway and staging backend are configured to trust that key (step 3).
 
@@ -65,14 +79,26 @@ where both flags stay unset, so the PDP is unchanged there.
 
 ## 2. Pre-flight (read-only checks; do these first)
 
-1. **Which database does staging use?** The backend runbook (`docs/runbooks/reap_agentic_purchase.md`,
-   "Arming it") says prod and staging **share one Postgres** and that the poller claim has no
-   environment filter. `infra/gcp/deploy_backend.sh` says staging holds "a restored copy of production
-   data and production third-party credentials". Confirm which is true today before arming anything.
-   **If shared:**
-   - The eligibility rows and purchases you create land in the prod DB.
-   - Prod's worker sweeps (requeue, expire, fail) run over them.
-   - Prod `REAP_AGENTIC_ENABLED` **must stay unset** for the whole demo. Otherwise prod's poller could claim staging purchases, or the reverse.
+1. **MANDATORY: confirm staging has its own database. STOP if it doesn't.**
+   On 2026-09-29 the coordinator verified separately that staging does **not** share prod's database:
+   - pivota-prod: Cloud SQL `pivota-pg` at 10.25.0.2.
+   - pivota-staging: its own `pivota-pg` at 10.122.0.3 (db-custom-1-3840), with a different database name.
+   - Staging `web` and `worker` read their own project's `DATABASE_URL` secret.
+
+   The backend comments that say the two share one DB are stale (`services/audit_scheduler.py` ~L311-331,
+   `docs/runbooks/reap_agentic_purchase.md:304-306`). Re-check it anyway before each demo, because
+   secrets can be rotated or copied. The commands below compare **host and database name only** and never
+   print credentials:
+   ```bash
+   host_db() {   # prints "<host> <database>" for the latest DATABASE_URL secret of project $1
+     gcloud secrets versions access latest --secret=DATABASE_URL --project "$1" \
+       | python3 -c 'import sys,urllib.parse as u; p=u.urlsplit(sys.stdin.read().strip()); print(p.hostname, p.path.lstrip("/"))'
+   }
+   echo "prod:    $(host_db pivota-prod)"
+   echo "staging: $(host_db pivota-staging)"
+   ```
+   Use the secret name each service actually mounts; check with `gcloud run services describe web --project pivota-staging --format='value(spec.template.spec.containers[0].env)'`, which shows secret *references*, not values.
+   **If the host or the database name match, STOP. Do not arm anything.**
 2. **Code on staging.**
    - Backend `web` and `worker` must carry pivota-backend #2425, #2431 and #2258 (merchant-domain canonicalisation).
    - The gateway must carry PIVOTA-Agent #2323 and #2324.
@@ -106,19 +132,30 @@ Nothing below was applied by the PR. **Never set any of this on `pivota-prod`.**
 
 ```bash
 cd ~/dev/pivota-agent-ui            # on the PR branch
-node scripts/reap-demo-keygen.mjs --issuer https://agent.pivota.cc/reap-demo-issuer --audience pivota-reap-demo
+node scripts/reap-demo-keygen.mjs    # defaults: --issuer https://reap-demo.staging.pivota.cc/issuer --audience pivota-reap-demo
 ```
 
-- This writes the **private** key to `.env.reap-demo.local`, mode 600 and git-ignored. The file is never printed.
+- This writes the **private** key to `.env.development.local` with mode 600.
+  - `next dev` loads that file by itself, so the key never goes into your shell environment.
+  - The script refuses unless the name matches `.env*.local` and `git check-ignore` confirms git ignores the path.
+  - The file is never printed.
+- The default issuer is a demo-only name on a staging label, not a production host.
 - It prints only public material: the JWKS, one object to append to the gateway's `IDENTITY_ISSUERS_JSON`, and three backend values.
 
 ### 3b. The Reap sandbox key: from your env file straight to Secret Manager (never pasted anywhere)
 
 ```bash
-# Prints nothing. Reads the key from your file and pipes it to Secret Manager.
-grep '^REAP_API_KEY=' ~/.config/pivota/reap_sandbox.env | cut -d= -f2- | tr -d '\n' \
-  | gcloud secrets create reap-sandbox-api-key --project pivota-staging --data-file=-
-# (next time: gcloud secrets versions add reap-sandbox-api-key --project pivota-staging --data-file=-)
+# Prints nothing. It reads the key from your file, strips surrounding quotes and CR/LF, fails on an empty
+# match, and pipes the value straight to Secret Manager. It runs in a subshell, so the variable never
+# outlives it.
+(
+  set -eu
+  v=$(sed -n 's/^REAP_API_KEY=//p' ~/.config/pivota/reap_sandbox.env | head -n 1 \
+        | tr -d '\r\n' | sed -e 's/^["'"'"']//' -e 's/["'"'"']$//')
+  [ -n "$v" ] || { echo 'REAP_API_KEY not found (or empty) in the env file; nothing sent' >&2; exit 1; }
+  printf '%s' "$v" | gcloud secrets create reap-sandbox-api-key --project pivota-staging --data-file=-
+  # next time: ... | gcloud secrets versions add reap-sandbox-api-key --project pivota-staging --data-file=-
+)
 ```
 
 Use the variable name your file actually has (the backend's e2e harness reads `REAP_API_KEY`). Do not
@@ -156,6 +193,37 @@ checkout (about 70 s) instead of ending `FAILED`. **It does not answer the real-
 
 The worker is deployed separately from `web`. Nothing leaves `resolving` without it.
 
+> **⚠ `AUDIT_WORKER_ENABLED=true` starts EVERY scheduled job in `services/audit_scheduler.py` on the
+> staging worker, not just the Reap poller.** `_add_job` registers all of them behind that one switch.
+> There is no per-job allowlist: the only per-job controls are the individual flags listed below.
+
+Before flipping it, check which of these are armed in **staging** (`gcloud run services describe worker
+--project pivota-staging`, env names only). The jobs with external side effects are:
+
+| job | external effect | per-job control |
+|---|---|---|
+| `daily_audit_check` (03:00 UTC) | crawls/audits due merchants' live stores | none |
+| `audit_run_worker_tick`, `executor_run_worker_tick`, `verification_run_worker_tick` | run queued audits / executor agents / verifiers: merchant site fetches, LLM calls | none |
+| `store_lifecycle_reconciliation` | probes connected stores' platform APIs (Shopify etc.) and **disconnects** stores it believes are gone | none |
+| `catalog_import_drain_tick`, `catalog_sync_drain_tick` | Shopify catalog imports/syncs against merchants' stores | `CATALOG_IMPORT_DRAIN_ENABLED` / `CATALOG_SYNC_DRAIN_ENABLED` (**on by default**; `=false` stops them) |
+| `catalog_onboard_queue_drain` | autonomous crawls + catalog writes | `CATALOG_ONBOARD_ENABLED` (off by default) |
+| `external_conversion_poll` | polls merchants' Shopify orders | `EXTERNAL_CONVERSION_POLLER_ENABLED` (off by default) |
+| `cafe24_reconciliation` | Cafe24 API reads | `CAFE24_RECONCILIATION_ENABLED` (off by default) |
+| `merchant_order_sync_worker_tick` | **writes to merchants' order systems** (refund sync) for queued rows | none |
+| `merchant_order_create_reconcile` | enqueues merchant-order creates (money path) | its own flag (see the job) |
+| `payment_reconcile_tick` | PSP API calls; **auto-finalizes** payments | `PAYMENT_RECONCILE_SWEEP_ENABLED` (off by default) |
+| `settlement_file_transfer` (monthly, day 10) | **Stripe Connect transfers**; the service gates real transfers to production unless a staging override env is set | the override (make sure it is unset) |
+| `invoice_generation_monthly`, `partner_settlement_monthly` | invoicing / settlement | registered PAUSED |
+| `agent_card_revocation_sweep` | revokes cards at the issuer | `AGENT_CARD_REVOCATION_SWEEP_ENABLED` (off by default) |
+| `official_domain_liveness` | HTTP probes of merchant domains | `OFFICIAL_DOMAIN_LIVENESS_ENABLED` (off by default) |
+| `audit_health_tick`, `audit_stability_canary`, `merchant_order_gap_alert`, `identity_reconcile_sweep` | alerts (and, for the last, catalog auto-apply) | `ENABLE_IDENTITY_RECONCILE_SWEEP` for the last |
+
+Recommendation:
+- Enable only what the demo needs. With no per-job allowlist, the practical options are:
+  - Set the `*_ENABLED=false` kill switches above on the staging worker for the drains that default ON, and make sure the default-off flags stay unset.
+  - Or skip `AUDIT_WORKER_ENABLED` and drive the poller by hand with `POST /admin/scheduler/jobs/reap_agentic_purchase_poll/run-now`. That only works if the job is registered, so this option depends on a small backend change.
+- The smallest backend change is an optional `SCHEDULER_JOB_ALLOWLIST` env read in `_add_job` (register only the listed ids). With that, the staging worker could run `reap_agentic_purchase_poll` alone. It is out of scope here.
+
 ### 3e. Staging gateway (Cloud Run `gateway`, project `pivota-staging`)
 
 | var | value |
@@ -188,22 +256,33 @@ NEXT_PUBLIC_REAP_CHECKOUT_DEMO=1
 REAP_CHECKOUT_DEMO_ENABLED=1
 REAP_CHECKOUT_GATEWAY_BASE_URL=http://localhost:8081      # the gcloud proxy below
 REAP_CHECKOUT_AGENT_API_KEY=ak_live_…                      # from 3f; you paste it into the file yourself
-REAP_CHECKOUT_DEMO_MERCHANTS=judydoll.com:US,jsmbeauty.sg:SG
+REAP_CHECKOUT_DEMO_MERCHANTS=judydoll.com:US:<merchant id>,jsmbeauty.sg:SG:<merchant id>
 # REAP_CHECKOUT_CONSENT_VERSION=reap-agentic-v1            # default
-# plus the four REAP_DEMO_USER_JWT_* lines from .env.reap-demo.local
+# REAP_CHECKOUT_STAGING_GATEWAY_HOST=                      # leave unset for a local demo (see below)
+# The four REAP_DEMO_USER_JWT_* values are already in .env.development.local (3a). Next loads both files.
 ```
 
-`REAP_CHECKOUT_GATEWAY_BASE_URL` only accepts `localhost` or `*.pivota.cc`. The staging gateway's run.app
-URL is IAM-gated, so reach it through the proxy.
+- **Merchant ids.** `<merchant id>` is the `<merchant>` segment of the product key that the step 2.4 check printed (`prod::<merchant>::shopify::<id>`). Use `id1|id2` if one domain has more than one. An entry without a merchant id is ignored, so no button shows for it: the UI never offers a purchase whose seller it cannot check.
+- **Gateway base.** `REAP_CHECKOUT_GATEWAY_BASE_URL` must be loopback, which is the proxy. The staging gateway's run.app URL is IAM-gated anyway.
+- **Staging override.** `REAP_CHECKOUT_STAGING_GATEWAY_HOST` is only for a deployed staging build of the UI that talks to a staging gateway on a `*.staging.*` host. Set it to exactly that host, and set the base to `https://<that host>`. It is never needed for this demo.
 
 ## 4. Run the demo
 
 ```bash
 gcloud run services proxy gateway --project pivota-staging --region us-west1 --port 8081   # terminal 1
-cd ~/dev/pivota-agent-ui && set -a && source .env.reap-demo.local && set +a
-NODE_OPTIONS=--no-experimental-strip-types npm run dev                                       # terminal 2
-open "http://localhost:3000/products/<sig_ from step 2.4>"
+cd ~/dev/pivota-agent-ui
+NODE_OPTIONS=--no-experimental-strip-types npm run dev -- -H 127.0.0.1                        # terminal 2
+open "http://127.0.0.1:3000/products/<sig_ from step 2.4>"
 ```
+
+**Why `-H 127.0.0.1`:** by default `next dev` listens on every interface. On a partner's or a
+conference Wi-Fi, anyone on that network could then reach `/api/reap-checkout` and act as a buyer through
+your staging agent key and demo issuer. Binding to loopback keeps the server reachable only from your
+laptop. Open the page as `127.0.0.1`, not `localhost`, so the Origin/Host check matches exactly.
+
+**Between partners on a shared laptop, clear the buyer.** The buyer is a session cookie plus the open
+checkout's id in the browser's storage. Use a **fresh private/incognito window per partner** and close it
+afterwards. Closing it clears both. In a normal window, clear site data for `127.0.0.1:3000` instead.
 
 `NODE_OPTIONS=--no-experimental-strip-types` works around Node 24 loading `tailwind.config.ts` natively
 (`require is not defined`). This affects `main` too and is not caused by this change.
@@ -220,7 +299,8 @@ screen 4 shows a negative Discount row and "Offer code applied". Any other code 
 ```bash
 node scripts/reap-mock-gateway.mjs      # 127.0.0.1:8787, answers the lane's own checkout objects
 # .env.local: REAP_CHECKOUT_GATEWAY_BASE_URL=http://localhost:8787, a dummy ak_live_ key of 64 hex,
-# and a key from `node scripts/reap-demo-keygen.mjs --out .env.mock.local`
+# REAP_CHECKOUT_DEMO_MERCHANTS=judydoll.com:US:merch_judydoll_demo (the mock's fixture seller),
+# and a key from `node scripts/reap-demo-keygen.mjs` (writes .env.development.local)
 curl 'http://127.0.0.1:8787/__mock/state?next=processing'   # "approved on Reap"
 curl 'http://127.0.0.1:8787/__mock/state?next=completed'
 ```
@@ -237,9 +317,14 @@ The screenshots in `docs/reap-checkout-demo/` were captured this way.
 ## 7. Open risks
 
 1. **Real orders from the sandbox.** Unconfirmed (see the top).
-2. **Shared staging/prod Postgres** (§2.1). Demo rows land in prod's DB, and the pollers have no environment filter.
+2. **Staging's database** (§2.1). Verified separate from prod on 2026-09-29. Re-check before every demo and stop if it matches prod. The worker switch starts every scheduled job, not just the Reap poller (§3d).
 3. **Demo products may not enter the lane** (§2.4). This happens if the PDP row is `external_seed`, has several variants, or has no fresh Tier B verdict. The UI then shows "not available — Visit store", which is correct but not the demo.
 4. **SG pricing** (§2.5). The storefront is US-only. An SG purchase needs an SGD-priced row served for SG.
 5. **Approval window is about 5 minutes** from the quote, not the 15 the hosted page claims. After it lapses the purchase ends `failed / approval_window_lapsed`. The UI shows "Start a new checkout".
-6. **Demo scope is an env list.** `REAP_CHECKOUT_DEMO_MERCHANTS` only decides where the button shows. Eligibility is still the gateway's and backend's.
-7. **The demo buyer-token issuer is a demo trust anchor.** Anyone holding its private key can mint staging buyer tokens for any `sub`. Keep it on your laptop, never configure it on prod, and remove it after the demo.
+6. **The seller check reads the lane's checkout id.** The gateway documents that id as opaque. The UI decodes its versioned snapshot (`v:1`) to find the product key the purchase was opened for, and fails closed if it doesn't decode. The durable fix is a small gateway change:
+   - publish the seller on the Reap checkout (e.g. a `reap.merchant_domain` message);
+   - accept the seller the buyer was shown on create, so the lane skips a mismatch before it opens a purchase.
+
+   On a mismatch today, a purchase is opened, never shown, and expired by the backend sweep. Nothing is charged.
+7. **Demo scope is an env list.** `REAP_CHECKOUT_DEMO_MERCHANTS` only decides where the button shows. Eligibility is still the gateway's and backend's.
+8. **The demo buyer-token issuer is a demo trust anchor.** Anyone holding its private key can mint staging buyer tokens for any `sub`. Keep it on your laptop, never configure it on prod, and remove it after the demo.

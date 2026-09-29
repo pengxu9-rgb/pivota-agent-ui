@@ -8,6 +8,8 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
+      // `server-only` throws outside a react-server bundle; Next resolves it to its empty build there.
+      'server-only': path.resolve(__dirname, './node_modules/server-only/empty.js'),
     },
   },
   test: {

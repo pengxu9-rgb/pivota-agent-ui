@@ -4,7 +4,9 @@
 // checkout objects (src/lib/reapCheckout/__fixtures__/checkouts.ts) and never talks to anything.
 //
 //   node scripts/reap-mock-gateway.mjs            # listens on 127.0.0.1:8787 only
-//   REAP_CHECKOUT_GATEWAY_BASE_URL=http://localhost:8787 (plus the demo env) npm run dev
+//   REAP_CHECKOUT_GATEWAY_BASE_URL=http://localhost:8787 REAP_CHECKOUT_DEMO_MERCHANTS=judydoll.com:US:merch_judydoll_demo
+//     (plus the demo env) npm run dev -- -H 127.0.0.1
+//   The fixture checkouts are sold by `merch_judydoll_demo` (the product key in their ids).
 //
 // Flow: create_checkout -> resolving; the 2nd get_checkout -> awaiting approval (PEACHIE20 applied,
 // any other code "not applied"); then it waits. Drive the rest by hand:

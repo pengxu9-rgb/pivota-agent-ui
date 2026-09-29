@@ -32,11 +32,21 @@ export function __resetReapConfigCacheForTests() {
 }
 
 function loadDemoMerchants(): Promise<DemoMerchant[]> {
+  // Only a SUCCESSFUL answer is cached for the page's life; a failure (network, 5xx) is forgotten, so the
+  // next PDP render asks again instead of hiding the entry until a full reload.
   if (!configPromise) {
-    configPromise = fetch('/api/reap-checkout/config', { cache: 'no-store', credentials: 'same-origin' })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((body) => (Array.isArray(body?.merchants) ? (body.merchants as DemoMerchant[]) : []))
-      .catch(() => []);
+    const attempt: Promise<DemoMerchant[]> = fetch('/api/reap-checkout/config', { cache: 'no-store', credentials: 'same-origin' })
+      .then(async (res) => {
+        if (res.status === 404) return []; // the server switch is off: a real answer, cache it
+        if (!res.ok) throw new Error(`config ${res.status}`);
+        const body = await res.json();
+        return Array.isArray(body?.merchants) ? (body.merchants as DemoMerchant[]) : [];
+      })
+      .catch(() => {
+        if (configPromise === attempt) configPromise = null;
+        return [];
+      });
+    configPromise = attempt;
   }
   return configPromise;
 }

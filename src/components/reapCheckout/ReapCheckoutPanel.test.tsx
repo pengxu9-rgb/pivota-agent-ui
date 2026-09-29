@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ReapCheckoutPanel } from './ReapCheckoutPanel';
+import { ReapCheckoutPanel, defaultOpenWindow } from './ReapCheckoutPanel';
+import { useEffect, useState } from 'react';
 import { readReapCheckout } from '@/lib/reapCheckout/checkoutView';
 import {
   HOSTED_URL,
@@ -69,6 +70,7 @@ function scriptedFetch(created: unknown, polls: unknown[] = []) {
 
 beforeEach(() => {
   window.sessionStorage.clear();
+  window.localStorage.clear();
 });
 afterEach(() => {
   cleanup();
@@ -243,12 +245,136 @@ describe('ReapCheckoutPanel', () => {
     await waitFor(() => expect(screen.getByTestId('reap-status').dataset.phase).toBe('completed'));
   });
 
-  it('restores the open checkout after a reload (id only, from sessionStorage)', async () => {
+  it('restores the open checkout after a reload or in ANOTHER tab (id only, from localStorage)', async () => {
     const id = viewOf(awaitingApprovalCheckout()).id;
-    window.sessionStorage.setItem('pivota.reapCheckout.active.sig_demo', id);
+    // Written by another tab: localStorage is shared across tabs; sessionStorage (empty here) is not.
+    window.localStorage.setItem('pivota.reapCheckout.active.sig_demo', JSON.stringify({ id, at: Date.now() }));
     const fetchImpl = scriptedFetch(awaitingApprovalCheckout(), [processingCheckout()]);
     renderPanel(fetchImpl);
     await waitFor(() => expect(screen.getByTestId('reap-status').dataset.phase).toBe('processing'));
     expect((fetchImpl.mock.calls[0] as unknown as [string])[0]).toBe(`/api/reap-checkout/${encodeURIComponent(id)}`);
+  });
+
+  it('R4: polling keeps firing while the parent re-renders every 2 s with a NEW fetchImpl each time', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const inner = scriptedFetch(resolvingCheckout(), [resolvingCheckout()]); // poll hint: 5 s
+    function Parent() {
+      const [, setN] = useState(0);
+      useEffect(() => {
+        const t = setInterval(() => setN((n) => n + 1), 2_000);
+        return () => clearInterval(t);
+      }, []);
+      return (
+        <ReapCheckoutPanel
+          productId="sig_demo"
+          productTitle="Silky Matte Lip Ink"
+          merchantDomain="judydoll.com"
+          market="US"
+          fetchImpl={((...a: Parameters<typeof fetch>) => inner(...(a as [string]))) as typeof fetch}
+          openWindow={vi.fn()}
+          now={() => NOW}
+          newIdempotencyKey={() => 'idem-key-0001'}
+        />
+      );
+    }
+    render(<Parent />);
+    await fillAndSubmit();
+    await screen.findByTestId('reap-status');
+    const polls = () => inner.mock.calls.filter(([u]) => String(u).startsWith('/api/reap-checkout/')).length;
+    for (let i = 0; i < 12; i++) {
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2_000);
+      });
+    }
+    expect(polls()).toBeGreaterThanOrEqual(3);
+  });
+
+  it('R5: the idempotency key rotates when the body changes (Back, edit, resubmit), and is reused for an identical retry', async () => {
+    let n = 0;
+    const keys: string[] = [];
+    const fetchImpl = vi.fn(async (_u: string, init: RequestInit) => {
+      keys.push(JSON.parse(String(init.body)).idempotency_key);
+      return jsonResponse({ checkout: null, fallback: 'not_reap' });
+    });
+    render(
+      <ReapCheckoutPanel
+        productId="sig_demo"
+        productTitle="Silky Matte Lip Ink"
+        merchantDomain="judydoll.com"
+        market="US"
+        fetchImpl={fetchImpl as unknown as typeof fetch}
+        newIdempotencyKey={() => `key-${++n}`}
+      />,
+    );
+    await fillAndSubmit();
+    await screen.findByTestId('reap-fallback');
+    fireEvent.click(screen.getByText('Back'));
+    // Identical body: the same key (a retry replays, never opens a second purchase).
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('reap-submit'));
+    });
+    await screen.findByTestId('reap-fallback');
+    fireEvent.click(screen.getByText('Back'));
+    fireEvent.change(document.querySelector('input[name="city"]')!, { target: { value: 'Oakland' } });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('reap-submit'));
+    });
+    await screen.findByTestId('reap-fallback');
+    fireEvent.click(screen.getByText('Back'));
+    fireEvent.change(document.querySelector('input[name="offer_code"]')!, { target: { value: 'PEACHIE20' } });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('reap-submit'));
+    });
+    expect(keys).toEqual(['key-1', 'key-1', 'key-2', 'key-3']);
+  });
+
+  it('R7: the default opener is a NEW tab with noopener,noreferrer (never the same window)', async () => {
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null);
+    defaultOpenWindow(HOSTED_URL);
+    expect(open).toHaveBeenCalledWith(HOSTED_URL, '_blank', 'noopener,noreferrer');
+    open.mockClear();
+    // And it is what the panel uses when no opener is injected.
+    const fetchImpl = scriptedFetch(awaitingApprovalCheckout());
+    render(
+      <ReapCheckoutPanel
+        productId="sig_demo"
+        productTitle="Silky Matte Lip Ink"
+        merchantDomain="judydoll.com"
+        market="US"
+        fetchImpl={fetchImpl as unknown as typeof fetch}
+      />,
+    );
+    await fillAndSubmit();
+    fireEvent.click(await screen.findByTestId('reap-continue'));
+    expect(open).toHaveBeenCalledWith(HOSTED_URL, '_blank', 'noopener,noreferrer');
+    open.mockRestore();
+  });
+
+  it('R7: the client re-checks the link even if the server (or a proxy) handed it over', async () => {
+    const forged = { ...viewOf(awaitingApprovalCheckout()), continueUrl: 'https://evil.example/pay' };
+    const fetchImpl = vi.fn(async () => jsonResponse({ checkout: forged }));
+    const openWindow = renderPanel(fetchImpl);
+    await fillAndSubmit();
+    await screen.findByTestId('reap-link-refused');
+    expect(screen.queryByTestId('reap-continue')).toBeNull();
+    expect(openWindow).not.toHaveBeenCalled();
+  });
+
+  it('R1: "Sold and shipped by" comes from the server\'s verified seller, not the page', async () => {
+    const view = { ...viewOf(awaitingApprovalCheckout()), seller: { domain: 'judydoll.com' } };
+    renderPanel(vi.fn(async () => jsonResponse({ checkout: view })));
+    // Before the gateway answers, no seller is claimed (the prop is not trusted for display).
+    expect(screen.queryByTestId('reap-seller')).toBeNull();
+    await fillAndSubmit();
+    expect((await screen.findByTestId('reap-seller')).textContent).toBe('Sold and shipped by judydoll.com');
+  });
+
+  it('R1: a seller mismatch is not offered, and says so', async () => {
+    const openWindow = renderPanel(vi.fn(async () => jsonResponse({ checkout: null, fallback: 'seller_mismatch' })));
+    await fillAndSubmit();
+    const fb = await screen.findByTestId('reap-fallback');
+    expect(fb.dataset.kind).toBe('seller_mismatch');
+    expect(fb.textContent).toMatch(/Nothing was charged/);
+    expect(openWindow).not.toHaveBeenCalled();
   });
 });
