@@ -50,7 +50,8 @@ export type ReapCheckoutView = {
   phase: ReapPhase;
   terminal: boolean;
   currency: string | null;
-  lineItems: Array<{ title: string; quantity: number; unitPriceMinor: number | null }>;
+  /** `itemId` is `line_items[i].item.id` as sent: the lane echoes the caller's own item id there. */
+  lineItems: Array<{ itemId: string | null; title: string; quantity: number; unitPriceMinor: number | null }>;
   totals: ReapTotalRow[];
   taxIncluded: boolean;
   /** Vetted Reap hosted page, or null. */
@@ -70,8 +71,10 @@ export type ReapCheckoutView = {
    * `info` messages `reap.merchant_domain` / `reap.merchant_id` at `$.line_items[0]`, bare values in
    * `content`. Either may be absent (merchant_id is omitted for the shared external-seed placeholder; the
    * degraded `reap.view_unavailable` answer carries neither). Never a guess, never from the browser.
+   * `merchantIdUnusable`: a `reap.merchant_id` WAS published, but not as exactly one well-formed value
+   * (two that disagree, or a malformed one). That is not "absent": the seller check refuses it.
    */
-  publishedSeller: { domain: string | null; merchantId: string | null };
+  publishedSeller: PublishedSeller;
   /** Set by the server route after it checked `publishedSeller` against its own config. */
   seller?: { domain: string };
 };
@@ -88,23 +91,39 @@ export function foldMerchantHost(raw: unknown): string | null {
   return lower.startsWith('www.') ? lower.slice(4) : lower;
 }
 
-export function readPublishedSeller(messages: ReapMessage[]): { domain: string | null; merchantId: string | null } {
+export type PublishedSeller = { domain: string | null; merchantId: string | null; merchantIdUnusable: boolean };
+
+export function readPublishedSeller(messages: ReapMessage[]): PublishedSeller {
   // Exactly one published value counts; two that disagree are treated as unpublished (fail closed).
-  const only = (code: string): string => {
-    const values = new Set(
+  const published = (code: string): string[] => [
+    ...new Set(
       messages
         .filter((m) => m.code === code && m.type === 'info' && m.path === SELLER_PATH)
         .map((m) => m.content ?? ''),
-    );
-    return values.size === 1 ? [...values][0] : '';
-  };
-  const d = only('reap.merchant_domain');
-  const id = only('reap.merchant_id');
+    ),
+  ];
+  const domains = published('reap.merchant_domain');
+  const ids = published('reap.merchant_id');
+  const d = domains.length === 1 ? domains[0] : '';
+  const id = ids.length === 1 && MERCHANT_ID_RE.test(ids[0]) ? ids[0] : null;
   return {
     // As published (lowercase, `www.` kept); compare with foldMerchantHost.
     domain: HOST_RE.test(d) ? d : null,
-    merchantId: MERCHANT_ID_RE.test(id) ? id : null,
+    merchantId: id,
+    // An id is optional, so "none published" is fine; "published, but conflicting or malformed" is not —
+    // it fails closed exactly like a conflicting domain (never read as "no id, skip the check").
+    merchantIdUnusable: ids.length > 0 && id === null,
   };
+}
+
+/**
+ * Is this checkout for the item the caller asked for? The lane echoes the caller's own item id at
+ * `line_items[0].item.id` (on the degraded read too, from the id's snapshot). Anything else — another id,
+ * or none — is not this product's checkout, and is never payable.
+ */
+export function isCheckoutForItem(view: Pick<ReapCheckoutView, 'lineItems'>, itemId: string): boolean {
+  const echoed = view.lineItems[0]?.itemId;
+  return typeof echoed === 'string' && echoed !== '' && echoed === itemId;
 }
 
 const MESSAGE_TYPES = new Set(['info', 'warning', 'error']);
@@ -192,6 +211,7 @@ export function readReapCheckout(raw: unknown): ReapCheckoutView | null {
     ? raw.line_items.filter(isRecord).map((li) => {
         const item = isRecord(li.item) ? li.item : {};
         return {
+          itemId: str(item.id),
           title: str(item.title) || str(item.id) || 'Item',
           quantity: minor(li.quantity) ?? 1,
           unitPriceMinor: minor(item.price),

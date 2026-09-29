@@ -10,7 +10,7 @@
 //   - the offer code is sent exactly as typed; what it came to is read from the checkout's messages
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { ExternalLink, Loader2, Lock, ShieldCheck } from 'lucide-react';
-import type { ReapCheckoutView, ReapTotalRow } from '@/lib/reapCheckout/checkoutView';
+import { isCheckoutForItem, type ReapCheckoutView, type ReapTotalRow } from '@/lib/reapCheckout/checkoutView';
 import { vetReapHostedUrl } from '@/lib/reapCheckout/hostedUrl';
 import { formatMinorAmount } from '@/lib/reapCheckout/formatMinor';
 import { MAX_OFFER_CODE_CODE_POINTS } from '@/lib/reapCheckout/createRequest';
@@ -582,8 +582,9 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
   const [restoreAttempt, setRestoreAttempt] = useState(0);
   const [restoreFailed, setRestoreFailed] = useState(false);
   const [restoredGone, setRestoredGone] = useState(false);
-  // The last seller the server verified; a degraded read publishes none, and must not blank it.
-  const [lastSeller, setLastSeller] = useState<string | null>(null);
+  // The last seller the server verified FOR ONE CHECKOUT ID; a degraded read of that checkout publishes
+  // none, and must not blank it. Keyed by id, so a previous checkout's seller never vouches for a new one.
+  const [lastSeller, setLastSeller] = useState<{ id: string; domain: string } | null>(null);
 
   // Restore an open checkout for this product (sheet re-opened, or the buyer came back from Reap).
   // A failed read is NOT "no checkout": offering the form then would invite a second purchase.
@@ -686,6 +687,10 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
             body?.message ||
             'We could not reach checkout just now. Nothing was charged — please try again in a moment.',
         });
+      } else if (body?.checkout && !isCheckoutForItem(body.checkout as ReapCheckoutView, props.productId)) {
+        // Opened, but not for THIS product: never payable, never remembered (it is never handed off, so the
+        // backend sweeps it uncharged). The buyer gets the honest mismatch copy.
+        setFallback({ kind: 'seller_mismatch', cause: 'seller_unconfirmed' });
       } else if (body?.checkout) {
         writeActiveCheckoutId(props.productId, (body.checkout as ReapCheckoutView).id);
         poll.reset(body.checkout as ReapCheckoutView);
@@ -754,13 +759,29 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
     if (poll.notFound && !mayHavePaid) writeActiveCheckoutId(props.productId, null);
   }, [poll.notFound, props.productId, mayHavePaid]);
 
-  const shownSeller = poll.view?.seller?.domain ?? (poll.view ? lastSeller : null);
+  const shownSeller =
+    poll.view?.seller?.domain ?? (poll.view && lastSeller?.id === poll.view.id ? lastSeller.domain : null);
   useEffect(() => {
-    if (poll.view?.seller?.domain) setLastSeller(poll.view.seller.domain);
-  }, [poll.view?.seller?.domain]);
+    if (poll.view?.seller?.domain) setLastSeller({ id: poll.view.id, domain: poll.view.seller.domain });
+  }, [poll.view?.id, poll.view?.seller?.domain]);
+
+  // A restored or polled checkout whose echoed item is not this product is never payable. Before a
+  // hand-off it becomes the (honest) mismatch fallback and is forgotten; after one, we cannot say what
+  // happened, so it stays and says so.
+  const itemMismatch = Boolean(poll.view && !isCheckoutForItem(poll.view, props.productId));
+  useEffect(() => {
+    if (!itemMismatch || mayHavePaid) return;
+    writeActiveCheckoutId(props.productId, null);
+    poll.reset(null);
+    setFallback({ kind: 'seller_mismatch', cause: 'seller_unconfirmed' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [itemMismatch, mayHavePaid, props.productId]);
+  // A degraded read is never payable here either, whatever the server sent: no link reaches the hand-off.
+  const statusView = poll.view && poll.view.viewUnavailable ? { ...poll.view, continueUrl: null } : poll.view;
 
   const uncertainNow = Boolean(
-    ((poll.notFound || restoredGone) && mayHavePaid) || (poll.view && outcomeUncertain(poll.view, mayHavePaid)),
+    ((poll.notFound || restoredGone || itemMismatch) && mayHavePaid) ||
+      (poll.view && outcomeUncertain(poll.view, mayHavePaid)),
   );
 
   const errFor = (field: string) => (fieldError && fieldError.field.endsWith(field) ? fieldError.message : null);
@@ -805,8 +826,9 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
             Try again
           </button>
         </div>
-      ) : (poll.notFound || restoredGone) && mayHavePaid ? (
-        // Gone after the buyer was handed Reap's page: we cannot say what happened. No retry.
+      ) : (poll.notFound || restoredGone || itemMismatch) && mayHavePaid ? (
+        // Gone (or no longer this product's) after the buyer was handed Reap's page: we cannot say what
+        // happened. No retry, no pay link.
         <div className="space-y-3" data-testid="reap-gone-uncertain">
           <p className="text-base font-semibold">We couldn&apos;t confirm your order</p>
           <p className="text-sm text-muted-foreground">
@@ -828,10 +850,16 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
             Back to checkout
           </button>
         </div>
-      ) : poll.view ? (
+      ) : itemMismatch ? (
+        // Never a StatusView (and so never a pay link) for another product's checkout, not even for the
+        // render before the effect above swaps in the mismatch fallback.
+        <p className="flex items-center gap-2 text-sm text-muted-foreground" data-testid="reap-item-mismatch">
+          <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> Checking…
+        </p>
+      ) : statusView ? (
         <StatusView
           mayHavePaid={mayHavePaid}
-          view={poll.view}
+          view={statusView}
           openWindow={handOff}
           now={now}
           onRestart={restart}

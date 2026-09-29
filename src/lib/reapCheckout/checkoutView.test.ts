@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { foldMerchantHost, readReapCheckout } from './checkoutView';
+import { foldMerchantHost, isCheckoutForItem, readReapCheckout } from './checkoutView';
 import { formatMinorAmount } from './formatMinor';
 import {
   HOSTED_URL,
+  PRODUCT_ID,
   REAP_ID,
   awaitingApprovalCheckout,
   canceledCheckout,
@@ -111,17 +112,17 @@ describe('formatMinorAmount', () => {
 
 describe('the published seller (reap.merchant_domain / reap.merchant_id at $.line_items[0])', () => {
   it('reads the judydoll external-seed answer: domain only, merchant id absent', () => {
-    expect(readReapCheckout(resolvingCheckout())!.publishedSeller).toEqual({ domain: 'judydoll.com', merchantId: null });
+    expect(readReapCheckout(resolvingCheckout())!.publishedSeller).toEqual({ domain: 'judydoll.com', merchantId: null, merchantIdUnusable: false });
   });
 
   it('reads both when published; www. is kept as published and folded only for comparison', () => {
     const v = withSeller({ domain: 'www.brand.com', merchantId: 'm_brand' }, () => readReapCheckout(awaitingApprovalCheckout()))!;
-    expect(v.publishedSeller).toEqual({ domain: 'www.brand.com', merchantId: 'm_brand' });
+    expect(v.publishedSeller).toEqual({ domain: 'www.brand.com', merchantId: 'm_brand', merchantIdUnusable: false });
     expect(foldMerchantHost(v.publishedSeller.domain)).toBe('brand.com');
   });
 
   it('the degraded read publishes none', () => {
-    expect(readReapCheckout(viewUnavailableCheckout())!.publishedSeller).toEqual({ domain: null, merchantId: null });
+    expect(readReapCheckout(viewUnavailableCheckout())!.publishedSeller).toEqual({ domain: null, merchantId: null, merchantIdUnusable: false });
   });
 
   it('only an info message at exactly $.line_items[0] counts; a malformed host is ignored', () => {
@@ -154,5 +155,70 @@ describe('the published seller (reap.merchant_domain / reap.merchant_id at $.lin
     expect(foldMerchantHost('wwwbrand.com')).toBe('wwwbrand.com');
     expect(foldMerchantHost('shop.brand.com')).toBe('shop.brand.com');
     for (const bad of ['https://brand.com', 'brand', 'brand.com:443', '', null, 7]) expect(foldMerchantHost(bad)).toBeNull();
+  });
+});
+
+describe('P3 follow-ups of #384: merchant id conflicts, the echoed item id', () => {
+  const idMsg = (content: string, extra: Record<string, unknown> = {}) => ({
+    type: 'info',
+    code: 'reap.merchant_id',
+    path: '$.line_items[0]',
+    content,
+    content_type: 'plain',
+    ...extra,
+  });
+  const withIds = (...msgs: unknown[]) => {
+    const base = withSeller({ domain: 'jsmbeauty.sg' }, () => awaitingApprovalCheckout()) as any;
+    return readReapCheckout({ ...base, messages: [...msgs, ...base.messages] })!.publishedSeller;
+  };
+
+  it('two DIFFERENT published merchant ids are UNUSABLE (fail closed), in either order — not "absent"', () => {
+    expect(withIds(idMsg('merch_jsm_demo'), idMsg('m_other'))).toEqual({
+      domain: 'jsmbeauty.sg',
+      merchantId: null,
+      merchantIdUnusable: true,
+    });
+    expect(withIds(idMsg('m_other'), idMsg('merch_jsm_demo')).merchantIdUnusable).toBe(true);
+  });
+
+  it('a malformed published merchant id is unusable too (never read as "no id")', () => {
+    for (const bad of ['', 'm id', 'm/x', 'x'.repeat(121)]) {
+      expect(withIds(idMsg(bad)), JSON.stringify(bad)).toMatchObject({ merchantId: null, merchantIdUnusable: true });
+    }
+  });
+
+  it('accepting: none published, one published, or the same one twice', () => {
+    expect(withIds()).toEqual({ domain: 'jsmbeauty.sg', merchantId: null, merchantIdUnusable: false });
+    expect(withIds(idMsg('merch_jsm_demo'))).toEqual({ domain: 'jsmbeauty.sg', merchantId: 'merch_jsm_demo', merchantIdUnusable: false });
+    expect(withIds(idMsg('merch_jsm_demo'), idMsg('merch_jsm_demo')).merchantIdUnusable).toBe(false);
+    // Not published per the contract (wrong path / type): ignored, not unusable.
+    expect(withIds(idMsg('m_other', { path: '$' }), idMsg('m_x', { type: 'warning' }))).toEqual({
+      domain: 'jsmbeauty.sg',
+      merchantId: null,
+      merchantIdUnusable: false,
+    });
+  });
+
+  it('the echoed line_items[0].item.id is read as sent, on a good read and on the degraded one', () => {
+    expect(readReapCheckout(awaitingApprovalCheckout())!.lineItems[0].itemId).toBe(PRODUCT_ID);
+    expect(readReapCheckout(viewUnavailableCheckout())!.lineItems[0].itemId).toBe(PRODUCT_ID);
+  });
+
+  it('isCheckoutForItem: only the exact product asked for', () => {
+    const v = readReapCheckout(awaitingApprovalCheckout())!;
+    expect(isCheckoutForItem(v, PRODUCT_ID)).toBe(true);
+    for (const asked of ['sig_other', PRODUCT_ID.toUpperCase(), `${PRODUCT_ID}x`, PRODUCT_ID.slice(0, -1), ` ${PRODUCT_ID}`, '']) {
+      expect(isCheckoutForItem(v, asked), asked).toBe(false);
+    }
+    const line = (item: unknown) => {
+      const base = awaitingApprovalCheckout() as any;
+      return readReapCheckout({ ...base, line_items: [{ ...base.line_items[0], item }] })!;
+    };
+    // No echoed id (absent, empty, not a string) is never "this product".
+    for (const item of [{ title: 'x', price: 1 }, { id: '', title: 'x' }, { id: 7, title: 'x' }]) {
+      expect(isCheckoutForItem(line(item), PRODUCT_ID), JSON.stringify(item)).toBe(false);
+    }
+    expect(isCheckoutForItem({ lineItems: [] }, PRODUCT_ID)).toBe(false);
+    expect(isCheckoutForItem({ lineItems: [{ itemId: '', title: 'x', quantity: 1, unitPriceMinor: null }] }, '')).toBe(false);
   });
 });

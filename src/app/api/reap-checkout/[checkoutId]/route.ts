@@ -67,12 +67,14 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ checkoutId:
   // it must be a configured demo merchant, else this is not a demo purchase (404, nothing shown). The
   // degraded read (`reap.view_unavailable`) publishes no seller by design: answer it WITHOUT a seller, and
   // the browser keeps the seller from its last good answer.
-  if (!view.publishedSeller.domain) {
-    // A degraded read is never payable on our side, whatever the gateway sends: no link, no seller.
-    if (view.viewUnavailable) return json({ checkout: { ...view, continueUrl: null } });
+  // A degraded read is never payable on our side, whatever the gateway sends — with a published seller or
+  // without one: it never carries a link to the browser.
+  const shown = view.viewUnavailable ? { ...view, continueUrl: null } : view;
+  if (!shown.publishedSeller.domain) {
+    if (shown.viewUnavailable) return json({ checkout: shown });
     return json({ error: 'gateway_unavailable', detail: 'seller_unpublished' }, 502);
   }
-  const merchant = readDemoMerchantConfig().find((m) => sellerMatches(view, m));
+  const merchant = readDemoMerchantConfig().find((m) => sellerMatches(shown, m));
   if (!merchant) return json({ error: 'not_found' }, 404);
-  return json({ checkout: publicView(view, { domain: merchant.domain }) });
+  return json({ checkout: publicView(shown, { domain: merchant.domain }) });
 }
