@@ -957,4 +957,93 @@ describe('ReapCheckoutPanel', () => {
     expect(copy.textContent).toMatch(/Nothing is charged/);
     expect(screen.getByTestId('reap-status').textContent).toMatch(/getting your total/);
   });
+
+  // ---- review of #387: a seen completion is recorded; flags written by ANOTHER tab count --------------------
+
+  it('a restored COMPLETED checkout (another item, no flags) saves `approved`; after a reload a degraded read never says "nothing charged"', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const id = viewOf(awaitingApprovalCheckout()).id;
+    window.localStorage.setItem(ACTIVE_KEY, JSON.stringify({ id, at: Date.now() }));
+    renderPanel(vi.fn(async () => jsonResponse({ checkout: verified(completedCheckout(), { itemId: 'sig_other' }) })));
+    await screen.findByTestId('reap-gone-uncertain');
+    await waitFor(() => expect(JSON.parse(window.localStorage.getItem(ACTIVE_KEY)!).approved).toBe(true));
+    cleanup();
+    // Reload: the next read is degraded (for this item), then one for another item (a mismatch).
+    let reads = 0;
+    renderPanel(
+      vi.fn(async () => {
+        reads += 1;
+        return jsonResponse({
+          checkout: reads === 1 ? viewOf(viewUnavailableCheckout()) : verified(awaitingApprovalCheckout(), { itemId: 'sig_other' }),
+        });
+      }),
+    );
+    await screen.findByTestId('reap-view-unavailable');
+    expect(screen.getByTestId('reap-panel').textContent).not.toMatch(/nothing (is|was) charged/i);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(31_000); // the degraded read's poll hint is 30 s
+    });
+    await screen.findByTestId('reap-gone-uncertain');
+    expect(screen.getByTestId('reap-panel').textContent).not.toMatch(/nothing (is|was) charged/i);
+    expect(readActiveCheckoutId(PRODUCT_ID)).toBe(id);
+  });
+
+  it('a completed checkout for THIS item also records `approved` (accepting: the order screen is unchanged)', async () => {
+    renderPanel(scriptedFetch(completedCheckout()));
+    await fillAndSubmit();
+    await screen.findByTestId('reap-completed');
+    await waitFor(() => expect(JSON.parse(window.localStorage.getItem(ACTIVE_KEY)!).approved).toBe(true));
+  });
+
+  it.each(['handedOff', 'approved'])('ANOTHER TAB wrote %s (no event reached this tab): a later failed read is uncertain, never "nothing charged"', async (flag) => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    renderPanel(scriptedFetch(awaitingApprovalCheckout(), [canceledCheckout('failed', 'approval_window_lapsed')]));
+    await fillAndSubmit();
+    await screen.findByTestId('reap-continue');
+    // Tab A opens Reap (or sees the approval): it writes the shared flag. This tab never clicked.
+    const v = JSON.parse(window.localStorage.getItem(ACTIVE_KEY)!);
+    window.localStorage.setItem(ACTIVE_KEY, JSON.stringify({ ...v, [flag]: true }));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(11_000);
+    });
+    await screen.findByTestId('reap-terminal-uncertain');
+    expect(screen.getByTestId('reap-panel').textContent).not.toMatch(/Nothing was charged/);
+    expect(screen.queryByTestId('reap-restart')).toBeNull();
+  });
+
+  it('ANOTHER TAB: a 404 after its hand-off keeps the entry (never wiped on a stale read)', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const fetchImpl = vi.fn(async (url: string) =>
+      url === '/api/reap-checkout' ? jsonResponse({ checkout: verified(awaitingApprovalCheckout()) }) : jsonResponse({ error: 'not_found' }, 404),
+    );
+    renderPanel(fetchImpl);
+    await fillAndSubmit();
+    await screen.findByTestId('reap-continue');
+    const v = JSON.parse(window.localStorage.getItem(ACTIVE_KEY)!);
+    window.localStorage.setItem(ACTIVE_KEY, JSON.stringify({ ...v, handedOff: true }));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(11_000);
+    });
+    await screen.findByTestId('reap-gone-uncertain');
+    expect(readActiveCheckoutId(PRODUCT_ID)).toBe(v.id);
+  });
+
+  it.each(['handedOff', 'approved'])('ANOTHER TAB: its `storage` event (%s) turns an already-shown "nothing charged" into the uncertain answer at once', async (flag) => {
+    renderPanel(scriptedFetch(canceledCheckout('failed', 'approval_window_lapsed')));
+    await fillAndSubmit();
+    expect((await screen.findByTestId('reap-terminal')).textContent).toMatch(/Nothing was charged/);
+    const v = JSON.parse(window.localStorage.getItem(ACTIVE_KEY)!);
+    window.localStorage.setItem(ACTIVE_KEY, JSON.stringify({ ...v, [flag]: true }));
+    // Another product's key is not this checkout's: it does not re-read (the next render will, anyway).
+    await act(async () => {
+      window.dispatchEvent(new StorageEvent('storage', { key: 'pivota.reapCheckout.active.sig_other' }));
+    });
+    expect(screen.getByTestId('reap-terminal')).toBeTruthy();
+    await act(async () => {
+      window.dispatchEvent(new StorageEvent('storage', { key: ACTIVE_KEY }));
+    });
+    expect(screen.getByTestId('reap-terminal-uncertain')).toBeTruthy();
+    expect(screen.getByTestId('reap-panel').textContent).not.toMatch(/Nothing was charged/);
+    expect(screen.queryByTestId('reap-restart')).toBeNull();
+  });
 });

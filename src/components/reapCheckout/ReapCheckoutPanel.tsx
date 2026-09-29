@@ -333,13 +333,13 @@ const TERMINAL_COPY: Record<string, { title: string; body: string }> = {
   },
 };
 
+/** Phases past the approval step: the buyer approved on Reap, so money may have moved. */
+const PAST_APPROVAL_PHASES: ReadonlySet<string> = new Set(['processing', 'completed']);
+
 /**
  * Could money have moved? Only once the buyer was handed Reap's page (or this browser saw the approval).
  * Then "nothing was charged" would be a guess, and a one-click retry could buy the item twice.
  */
-/** Phases past the approval step: the buyer approved on Reap, so money may have moved. */
-const PAST_APPROVAL_PHASES: ReadonlySet<string> = new Set(['processing', 'completed']);
-
 export function outcomeUncertain(view: ReapCheckoutView, mayHavePaid: boolean): boolean {
   // Before the buyer was ever handed Reap's page, no ending can have charged them (enrollment_dead,
   // quote_id_missing, a lapsed window never opened, ...): "nothing was charged" is true. After a hand-off
@@ -578,7 +578,17 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
   // Did this browser see the buyer approve on Reap? Decides whether "nothing was charged" can be said.
   const [sawApproval, setSawApproval] = useState(() => readActiveFlag(props.productId, 'approved'));
   const [handedOff, setHandedOff] = useState(() => readActiveFlag(props.productId, 'handedOff'));
-  const mayHavePaid = sawApproval || handedOff;
+  // Another tab wrote a flag (it opened Reap, or saw the approval): take it now, not at the next poll.
+  useEffect(() => {
+    const key = ACTIVE_KEY_PREFIX + props.productId;
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== key && e.key !== null) return;
+      if (readActiveFlag(props.productId, 'handedOff')) setHandedOff(true);
+      if (readActiveFlag(props.productId, 'approved')) setSawApproval(true);
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, [props.productId]);
   // Every hand-off to Reap's page is recorded BEFORE the page opens.
   const handOff = (url: string) => {
     markActive(props.productId, 'handedOff');
@@ -586,6 +596,18 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
     openWindow(url);
   };
   const poll = useReapCheckoutPoll(null, { fetchImpl });
+  // Could money have moved? ONE rule, decided here and nowhere else:
+  //   - this tab handed off or saw the approval (state);
+  //   - ANY tab did: the flags are shared, so they are re-read from storage on every render, and no "nothing
+  //     charged" copy and no entry wipe can rest on a stale read (a `storage` event re-renders at once);
+  //   - the view on screen is itself past the approval step (processing, completed) — even before the
+  //     effect below has recorded that, i.e. in the very commit that first shows it.
+  const mayHavePaid =
+    sawApproval ||
+    handedOff ||
+    readActiveFlag(props.productId, 'handedOff') ||
+    readActiveFlag(props.productId, 'approved') ||
+    Boolean(poll.view && PAST_APPROVAL_PHASES.has(poll.view.phase));
   const [restoring, setRestoring] = useState(true);
   const [restoreAttempt, setRestoreAttempt] = useState(0);
   const [restoreFailed, setRestoreFailed] = useState(false);
@@ -753,12 +775,15 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
     poll.reset(null);
   };
 
+  // Seen past the approval step (processing, or already completed): record it, so a later read (a reload, a
+  // degraded answer) never says "nothing was charged".
+  const viewPhase = poll.view?.phase;
   useEffect(() => {
-    if (poll.view?.phase === 'processing') {
+    if (viewPhase && PAST_APPROVAL_PHASES.has(viewPhase)) {
       setSawApproval(true);
       markActive(props.productId, 'approved');
     }
-  }, [poll.view?.phase, props.productId]);
+  }, [viewPhase, props.productId]);
 
   // A 404 while polling (unknown id, another buyer's, the dial turned off): the checkout is gone. Forget it
   // and never leave a live pay button on screen.
@@ -777,23 +802,18 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
   // hand-off it becomes the (honest) mismatch fallback and is forgotten; after one, we cannot say what
   // happened, so it stays and says so.
   const itemMismatch = Boolean(poll.view && !isCheckoutForItem(poll.view, props.productId));
-  // The view's OWN phase counts too: a checkout already past the approval step (processing, completed) may
-  // have charged the buyer even when no flag was stored — and in the commit that first shows it, the
-  // `approved` flag written by the effect above is not yet in `mayHavePaid`.
-  const mismatchMayHavePaid = mayHavePaid || Boolean(poll.view && PAST_APPROVAL_PHASES.has(poll.view.phase));
   useEffect(() => {
-    if (!itemMismatch || mismatchMayHavePaid) return;
+    if (!itemMismatch || mayHavePaid) return;
     writeActiveCheckoutId(props.productId, null);
     poll.reset(null);
     setFallback({ kind: 'seller_mismatch', cause: 'seller_unconfirmed' });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [itemMismatch, mismatchMayHavePaid, props.productId]);
+  }, [itemMismatch, mayHavePaid, props.productId]);
   // A degraded read is never payable here either, whatever the server sent: no link reaches the hand-off.
   const statusView = poll.view && poll.view.viewUnavailable ? { ...poll.view, continueUrl: null } : poll.view;
 
   const uncertainNow = Boolean(
-    ((poll.notFound || restoredGone) && mayHavePaid) ||
-      (itemMismatch && mismatchMayHavePaid) ||
+    ((poll.notFound || restoredGone || itemMismatch) && mayHavePaid) ||
       (poll.view && outcomeUncertain(poll.view, mayHavePaid)),
   );
 
@@ -842,7 +862,7 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
             Try again
           </button>
         </div>
-      ) : ((poll.notFound || restoredGone) && mayHavePaid) || (itemMismatch && mismatchMayHavePaid) ? (
+      ) : (poll.notFound || restoredGone || itemMismatch) && mayHavePaid ? (
         // Gone (or no longer this product's) after the buyer was handed Reap's page: we cannot say what
         // happened. No retry, no pay link.
         <div className="space-y-3" data-testid="reap-gone-uncertain">
