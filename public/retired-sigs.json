@@ -1,5 +1,5 @@
 {
-  "_comment": "981 sig(s) answered HTTP 410 Gone by src/middleware.ts. Admitted when the feed reports terminally_retired=true, or when a previously advertised sig left a FULLY-READ feed. Maintained by scripts/generate_sitemaps.mjs — do not hand-edit.",
+  "_comment": "988 sig(s) answered HTTP 410 Gone by src/middleware.ts. Admitted when the feed reports terminally_retired=true, or when a previously advertised sig left a FULLY-READ feed. Maintained by scripts/generate_sitemaps.mjs — do not hand-edit.",
   "sigs": [
     "sig_090c4800be028de3f353d330d5e8e650",
     "sig_09ee3532142864fcaa5ed4c3a26a1aba",
@@ -981,6 +981,13 @@
     "sig_f99e0b5361a3f8fc9f439415ab683ea1",
     "sig_43069846a13524391be99e90339dabad",
     "sig_7bb24a09f55795b5204510fd2f39d588",
-    "sig_7cd8b84e9457afd8725c929f7de41316"
+    "sig_7cd8b84e9457afd8725c929f7de41316",
+    "sig_01fbf002435aa18fb302a4ae70fc7b07",
+    "sig_29e17e6e282ba7fafe73689542ab8556",
+    "sig_431d8e7ad0901a84f32346bf3777d09d",
+    "sig_65ebe723128b7a91088fa91903d7a982",
+    "sig_7af8543fa47a0f849f5f109b1db3bcf4",
+    "sig_9043ef372410f985df6ae9a88d6d714e",
+    "sig_e9bcbe0424757ff1cfa26b814572df02"
   ]
 }
