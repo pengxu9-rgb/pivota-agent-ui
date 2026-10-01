@@ -9,7 +9,7 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
 const view = (raw: unknown) => readReapCheckout(raw)!;
 const values = { first_name: 'Sandbox', last_name: 'Verifier', email: 'recovery@example.test', phone: '+14155550100', address_line1: '900 Brannan St', city: 'San Francisco', region: 'CA', postal_code: '94103' };
 function mount(fetchImpl: typeof fetch, key = vi.fn(() => 'attempt-key-0001'), opts: { now?: () => number; openWindow?: (url: string) => void } = {}) {
-  return render(<ReapCheckoutPanel productId={PRODUCT_ID} productTitle="Generic title" merchantDomain="judydoll.com" market="US" fetchImpl={fetchImpl} now={opts.now || (() => NOW)} openWindow={opts.openWindow} newIdempotencyKey={key} />);
+  return render(<ReapCheckoutPanel productId={PRODUCT_ID} productTitle="Generic title" merchantDomain="judydoll.com" market="US" storeUrl="https://judydoll.com/products/example" fetchImpl={fetchImpl} now={opts.now || (() => NOW)} openWindow={opts.openWindow} newIdempotencyKey={key} />);
 }
 function fill(container: HTMLElement, over: Partial<typeof values> = {}) {
   for (const [name, value] of Object.entries({ ...values, ...over })) fireEvent.change(container.querySelector(`input[name="${name}"]`)!, { target: { value } });
@@ -73,6 +73,9 @@ describe('durable checkout attempt recovery', () => {
     const fetchImpl = transport(async () => json({ checkout: null, fallback: 'not_reap', attempt_outcome: outcome })); const panel = mount(fetchImpl as typeof fetch);
     await submit(panel.container); expect((await screen.findByTestId('reap-fallback')).textContent).toMatch(/whether this checkout was opened/);
     expect(readAttempt(PRODUCT_ID)?.resolved).toBe(false); expect(screen.getByTestId('reap-new-buyer')).toBeDisabled();
+    expect(screen.getByText('Recover same attempt')).toBeTruthy();
+    expect(screen.queryByTestId('reap-visit-store')).toBeNull();
+    expect(screen.queryByTestId('reap-visit-configured-merchant')).toBeNull();
   });
   it('keeps network exceptions unresolved without claiming nothing charged', async () => {
     const fetchImpl = transport(async () => { throw new Error('network lost'); }); const panel = mount(fetchImpl as typeof fetch);

@@ -1008,9 +1008,9 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
               onClick={() => setFallback(null)}
               className="h-10 rounded-full border border-border px-4 text-sm font-semibold"
             >
-              Back
+              {pendingAttempt ? 'Recover same attempt' : 'Back'}
             </button>
-            {fallback.kind === 'seller_mismatch' ? (
+            {pendingAttempt ? null : fallback.kind === 'seller_mismatch' ? (
               // ONLY the seller the buyer was shown, built from OUR config (the configured demo merchant) —
               // never a gateway link, never the page's redirect link for this item (§5.4).
               <a
