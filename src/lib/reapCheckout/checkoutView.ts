@@ -44,6 +44,7 @@ export type ReapPhase =
 export type OfferCodeOutcome = 'pending' | 'applied' | 'no_discount' | 'not_applied_invalid' | 'not_applied_expired';
 
 export type ReapCheckoutView = {
+  environment?: 'sandbox' | 'live' | 'unknown';
   id: string;
   isReapCheckout: boolean;
   status: string;

@@ -97,6 +97,9 @@ export function validateReapCreateBody(body: unknown): ValidationResult {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(buyer.email!)) {
     return { ok: false, field: 'buyer.email', message: 'Enter a valid email address.' };
   }
+  if (!/^\+[1-9][0-9]{7,14}$/.test(buyer.phone!)) {
+    return { ok: false, field: 'buyer.phone', message: 'Enter a phone number with country code, such as +14155550100.' };
+  }
   for (const key of ['address_line2', 'region'] as const) {
     const v = optionalField(b[key]);
     if (v === null) return { ok: false, field: `buyer.${key}`, message: `${key.replace(/_/g, ' ')} is invalid.` };
@@ -105,6 +108,22 @@ export function validateReapCreateBody(body: unknown): ValidationResult {
   const market = normalizeBuyerMarket(buyer.country);
   if (!market) {
     return { ok: false, field: 'buyer.country', message: 'This country is not a market Pivota can price.' };
+  }
+  if (['US', 'CA', 'AU'].includes(market) && !buyer.region) {
+    return { ok: false, field: 'buyer.region', message: 'State or province is required for this country.' };
+  }
+  const regions: Record<string, RegExp> = {
+    US: /^(?:AL|AK|AZ|AR|CA|CO|CT|DE|DC|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY|AS|GU|MP|PR|VI|AA|AE|AP)$/,
+    CA: /^(?:AB|BC|MB|NB|NL|NS|NT|NU|ON|PE|QC|SK|YT)$/,
+    AU: /^(?:ACT|NSW|NT|QLD|SA|TAS|VIC|WA)$/,
+  };
+  if (regions[market] && !regions[market].test(buyer.region!.toUpperCase())) {
+    return { ok: false, field: 'buyer.region', message: 'Enter a valid state or province code for this country.' };
+  }
+  if (regions[market]) buyer.region = buyer.region!.toUpperCase();
+  const postcodes: Record<string, RegExp> = { US: /^[0-9]{5}(?:-[0-9]{4})?$/, CA: /^[ABCEGHJ-NPRSTVXY][0-9][ABCEGHJ-NPRSTV-Z] ?[0-9][ABCEGHJ-NPRSTV-Z][0-9]$/i, AU: /^[0-9]{4}$/, SG: /^[0-9]{6}$/ };
+  if (postcodes[market] && !postcodes[market].test(buyer.postal_code!)) {
+    return { ok: false, field: 'buyer.postal_code', message: 'Enter a valid postcode for this country.' };
   }
   buyer.country = market;
   return {

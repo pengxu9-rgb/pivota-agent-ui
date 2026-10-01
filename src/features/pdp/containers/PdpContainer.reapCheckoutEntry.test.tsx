@@ -217,9 +217,10 @@ describe('PDP purchase bar: Buy with Reap', () => {
     fireEvent.click(await screen.findByTestId('buybar-reap-primary'));
     await screen.findByTestId('reap-panel');
     const set = (n: string, v: string) => fireEvent.change(document.querySelector(`input[name="${n}"]`)!, { target: { value: v } });
-    set('first_name', 'Ada'); set('last_name', 'L'); set('email', 'a@example.test'); set('phone', '1');
-    set('address_line1', '1 St'); set('city', 'SF'); set('postal_code', '94103');
+    set('first_name', 'Ada'); set('last_name', 'L'); set('email', 'a@example.test'); set('phone', '+14155550100');
+    set('address_line1', '1 St'); set('city', 'SF'); set('region', 'CA'); set('postal_code', '94103');
     fireEvent.click(document.querySelector('input[name="consent"]')!);
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ scope: 'test-buyer-scope' }), { status: 200 }));
     fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ checkout: null, fallback: 'not_reap' }), { status: 200 }));
     fireEvent.click(screen.getByTestId('reap-submit'));
     await waitFor(() => expect(fetchMock.mock.calls.some(([u]) => u === '/api/reap-checkout')).toBe(true));

@@ -11,11 +11,14 @@ afterEach(() => {
 });
 
 describe('nextPollDelayMs', () => {
-  it('follows the checkout hint, clamped to 3..15 s; backs off on errors up to 60 s', () => {
+  it('follows the checkout hint, at least 3 s and honoring server hints; backs off on errors up to 60 s', () => {
     const v5 = readReapCheckout(resolvingCheckout())!; // hint 5
     expect(nextPollDelayMs(v5, 0)).toBe(5_000);
     expect(nextPollDelayMs({ ...v5, pollAfterSeconds: 1 }, 0)).toBe(3_000);
-    expect(nextPollDelayMs({ ...v5, pollAfterSeconds: 60 }, 0)).toBe(15_000);
+    expect(nextPollDelayMs({ ...v5, pollAfterSeconds: 60 }, 0)).toBe(60_000);
+    expect(nextPollDelayMs({ ...v5, pollAfterSeconds: 30 }, 0)).toBe(30_000);
+    expect(nextPollDelayMs({ ...v5, pollAfterSeconds: 30 }, 1)).toBe(30_000);
+    for (const invalid of [NaN, Infinity, -1, 0, 3601]) expect(nextPollDelayMs({ ...v5, pollAfterSeconds: invalid }, 0)).toBe(5_000);
     expect(nextPollDelayMs({ ...v5, pollAfterSeconds: null }, 0)).toBe(5_000);
     expect([1, 2, 3, 4, 5, 9].map((n) => nextPollDelayMs(v5, n))).toEqual([5_000, 10_000, 20_000, 40_000, 60_000, 60_000]);
   });
@@ -79,4 +82,16 @@ describe('useReapCheckoutPoll scheduling', () => {
     render(<Bare view={readReapCheckout(awaitingApprovalCheckout())} />);
     expect(vi.getTimerCount()).toBe(1);
   });
+});
+
+it('does not poll a thirty-second server hint after fifteen seconds', async () => {
+  vi.useFakeTimers();
+  const initial = { ...readReapCheckout(awaitingApprovalCheckout())!, pollAfterSeconds: 30 };
+  const fetchImpl = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ checkout: initial }) }));
+  function ThirtySecondProbe() { useReapCheckoutPoll(initial, { fetchImpl: fetchImpl as unknown as typeof fetch }); return null; }
+  render(<ThirtySecondProbe />);
+  await act(async () => { await vi.advanceTimersByTimeAsync(15_000); });
+  expect(fetchImpl).not.toHaveBeenCalled();
+  await act(async () => { await vi.advanceTimersByTimeAsync(15_000); });
+  expect(fetchImpl).toHaveBeenCalledTimes(1);
 });

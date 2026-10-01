@@ -8,32 +8,28 @@
 //     opened only when vetReapHostedUrl says the link is Reap's (checked on the server AND here)
 //   - no price math: the quote is the checkout's own totals rows, formatted, in the order sent
 //   - the offer code is sent exactly as typed; what it came to is read from the checkout's messages
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import { ExternalLink, Loader2, Lock, ShieldCheck } from 'lucide-react';
 import { isCheckoutForItem, type ReapCheckoutView, type ReapTotalRow } from '@/lib/reapCheckout/checkoutView';
 import { vetReapHostedUrl } from '@/lib/reapCheckout/hostedUrl';
 import { formatMinorAmount } from '@/lib/reapCheckout/formatMinor';
-import { MAX_OFFER_CODE_CODE_POINTS } from '@/lib/reapCheckout/createRequest';
+import { MAX_OFFER_CODE_CODE_POINTS, validateReapCreateBody } from '@/lib/reapCheckout/createRequest';
+import { ATTEMPT_PREFIX, readAttempt, writeAttempt, requestFingerprint, withAttemptLock } from '@/lib/reapCheckout/attempt';
 import { fetchReapCheckout, useReapCheckoutPoll } from './useReapCheckoutPoll';
 
 // The open checkout for a product survives the sheet closing, a reload, AND a new tab (the buyer may come
 // back to the PDP from the Reap tab, whose sessionStorage is empty): its id is kept in localStorage, shared
-// by every tab of this origin, for 6 hours. Only the id — no buyer data. Without this, a buyer returning in
+// by every tab of this origin until an explicit safe reset. Only the id — no buyer data. Without this, a buyer returning in
 // the Reap tab would see an empty form and could open a second purchase without knowing.
 export const ACTIVE_KEY_PREFIX = 'pivota.reapCheckout.active.';
-const ACTIVE_TTL_MS = 6 * 3600_000;
 const REAP_ID_RE = /^reap_rp_[0-9a-f]{24}\.[A-Za-z0-9_-]{1,1000}$/;
 
-export function readActiveCheckoutId(productId: string, now = Date.now()): string | null {
+export function readActiveCheckoutId(productId: string, _now = Date.now()): string | null {
   try {
     const raw = window.localStorage.getItem(ACTIVE_KEY_PREFIX + productId);
     if (!raw) return null;
     const v = JSON.parse(raw) as { id?: unknown; at?: unknown };
     if (typeof v?.id !== 'string' || !REAP_ID_RE.test(v.id) || typeof v.at !== 'number') return null;
-    if (now - v.at > ACTIVE_TTL_MS) {
-      window.localStorage.removeItem(ACTIVE_KEY_PREFIX + productId);
-      return null;
-    }
     return v.id;
   } catch {
     return null;
@@ -57,13 +53,15 @@ export function readActiveFlag(productId: string, flag: ActiveFlag): boolean {
   }
 }
 
-export function markActive(productId: string, flag: ActiveFlag) {
+export function markActive(productId: string, flag: ActiveFlag): boolean {
   try {
     const key = ACTIVE_KEY_PREFIX + productId;
     const v = JSON.parse(window.localStorage.getItem(key) || 'null');
-    if (v && typeof v.id === 'string') window.localStorage.setItem(key, JSON.stringify({ ...v, [flag]: true }));
+    if (!v || typeof v.id !== 'string') return false;
+    window.localStorage.setItem(key, JSON.stringify({ ...v, [flag]: true }));
+    return readActiveFlag(productId, flag);
   } catch {
-    // best effort
+    return false;
   }
 }
 
@@ -71,7 +69,7 @@ export function markActive(productId: string, flag: ActiveFlag) {
 export function clearAllActiveCheckouts() {
   try {
     for (const k of Object.keys(window.localStorage)) {
-      if (k.startsWith(ACTIVE_KEY_PREFIX)) window.localStorage.removeItem(k);
+      if (k.startsWith(ACTIVE_KEY_PREFIX) || k.startsWith(ATTEMPT_PREFIX)) window.localStorage.removeItem(k);
     }
   } catch {
     // storage blocked
@@ -244,7 +242,7 @@ function Deadline({ iso, now, verb = 'Approve by' }: { iso: string | null; now: 
   const left = mins < 1 ? ' (less than a minute left)' : mins <= 60 ? ` (about ${mins} min left)` : '';
   return (
     <p className="text-xs text-muted-foreground" data-testid="reap-deadline">
-      {verb} {clock}{left}. After that this link expires and nothing is charged.
+      {verb} {clock}{left}. After that this link expires. We will confirm the checkout status.
     </p>
   );
 }
@@ -267,11 +265,11 @@ export function DeadlineBanner({ iso, now }: { iso: string | null; now: () => nu
   return (
     <div role="alert" className="rounded-xl border-2 border-amber-500 bg-amber-50 p-3" data-testid="reap-deadline-banner">
       <p className="text-sm font-semibold text-amber-900">
-        Approve within {mins <= 1 ? '1 minute' : `${mins} minutes`} — by {clock}
+        {at <= now() ? 'The approval window closed' : <>Approve within {mins <= 1 ? '1 minute' : `${mins} minutes`} — by {clock}</>}
       </p>
       <p className="mt-1 text-xs text-amber-900">
         Reap&apos;s page may show a longer timer. This deadline — the merchant&apos;s quote — is the one that counts:
-        after it the purchase fails, nothing is charged, and you would start again.
+        after it, do not approve through an old link. We will confirm the final status before you try again.
       </p>
     </div>
   );
@@ -284,12 +282,20 @@ function HandOff({
   view,
   openWindow,
   label,
+  now,
 }: {
   view: ReapCheckoutView;
   openWindow: (url: string) => void;
   label: string;
+  now: () => number;
 }) {
+  const [, tick] = useState(0);
+  useEffect(() => { const timer = setInterval(() => tick((n) => n + 1), 1000); return () => clearInterval(timer); }, []);
+  const deadlines = [view.expiresAt, ...(view.phase === 'awaiting_approval' ? [view.approvalDeadline] : [])]
+    .filter((v): v is string => Boolean(v)).map(Date.parse);
+  const expired = () => !deadlines.length || deadlines.some((deadline) => !Number.isFinite(deadline) || deadline <= now());
   const url = view.continueUrl ? vetReapHostedUrl(view.continueUrl) : null;
+  if (url && expired()) return <p data-testid="reap-link-expired" className="text-sm text-amber-700">{!deadlines.length || deadlines.some((deadline) => !Number.isFinite(deadline)) ? 'We could not confirm this payment link’s deadline.' : 'This payment link expired.'} Checking the final status; do not start another checkout yet.</p>;
   if (!url) {
     return (
       <p className="text-sm font-medium text-red-700" data-testid="reap-link-refused">
@@ -302,7 +308,7 @@ function HandOff({
     <div className="space-y-2">
       <button
         type="button"
-        onClick={() => openWindow(url)}
+        onClick={() => { if (!expired()) openWindow(url); else tick((n) => n + 1); }}
         className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground text-sm font-semibold text-background"
         data-testid="reap-continue"
       >
@@ -414,16 +420,18 @@ function StatusView({
           <OfferCodeNote view={view} />
           {view.viewUnavailable ? (
             <p className="text-xs text-amber-700" data-testid="reap-view-unavailable">
-              Status is temporarily unavailable — still checking. Nothing has been lost.
+              Status is temporarily unavailable — still checking. Do not start another checkout.
             </p>
           ) : null}
         </div>
       ) : null}
 
+      {view.phase === 'unknown' ? <p data-testid="reap-unknown" className="text-sm text-amber-700">Checkout status is unavailable. {mayHavePaid ? 'Payment may have been taken. ' : ''}Do not start another checkout while we confirm this attempt.</p> : null}
       {view.phase === 'needs_card' ? (
         <div className="space-y-3">
           <p className="text-sm font-medium">Add a card on Reap&apos;s secure page to continue.</p>
-          <HandOff view={view} openWindow={openWindow} label="Continue to secure payment" />
+          <QuoteSummary view={view} />
+          <HandOff view={view} openWindow={openWindow} label="Continue to secure payment" now={now} />
           <Deadline iso={view.expiresAt} now={now} verb="Link valid until" />
         </div>
       ) : null}
@@ -434,7 +442,7 @@ function StatusView({
           <p className="text-sm font-medium">Your total is ready. Review and approve it on Reap.</p>
           <QuoteSummary view={view} />
           <OfferCodeNote view={view} />
-          <HandOff view={view} openWindow={openWindow} label="Continue to secure payment" />
+          <HandOff view={view} openWindow={openWindow} label="Continue to secure payment" now={now} />
           <p className="text-xs text-muted-foreground">
             After approving, come back to this tab — it updates on its own.
           </p>
@@ -464,15 +472,15 @@ function StatusView({
 
       {view.phase === 'completed' ? (
         <div className="space-y-3" data-testid="reap-completed">
-          <p className="text-base font-semibold">Order placed</p>
+          <p className="text-base font-semibold">{view.environment === 'live' ? 'Order placed' : view.environment === 'sandbox' ? 'Sandbox checkout completed' : 'Checkout completed — environment unconfirmed'}</p>
           {view.orderReference ? (
             <p className="text-sm">
-              Merchant order reference: <span className="font-mono font-semibold" data-testid="reap-order-ref">{view.orderReference}</span>
+              {view.environment === 'live' ? 'Merchant order reference:' : 'Checkout reference:'} <span className="font-mono font-semibold" data-testid="reap-order-ref">{view.orderReference}</span>
             </p>
           ) : null}
           <QuoteSummary view={view} />
           <p className="text-xs text-muted-foreground">
-            The merchant will email your confirmation and shipping updates. Payment was handled by Reap.
+            {view.environment === 'live' ? 'The merchant will email your confirmation and shipping updates. Payment was handled by Reap.' : view.environment === 'sandbox' ? 'This sandbox result alone does not establish a real merchant order or shipment. Confirm whether this run was simulated.' : 'Environment unconfirmed. This result alone does not establish a real merchant order or shipment.'}
           </p>
         </div>
       ) : null}
@@ -568,12 +576,13 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
 
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [submitting, setSubmitting] = useState(false);
+  const [handoffProblem, setHandoffProblem] = useState<string | null>(null);
+  const [resetProblem, setResetProblem] = useState<string | null>(null);
   const [fieldError, setFieldError] = useState<{ field: string; message: string } | null>(null);
   const [fallback, setFallback] = useState<Fallback | null>(null);
-  // The idempotency key belongs to ONE request body: a retry of the same body replays the same purchase,
-  // and any change (address, code, product) gets a new key — the backend refuses a reused key on a different
-  // body (409 idempotency_conflict) rather than opening the purchase the buyer now asked for.
-  const keyFor = useRef<{ fingerprint: string; key: string } | null>(null);
+  // An unresolved body keeps its key across tabs/reloads. Changed details are refused until its
+  // outcome is known; only an authoritative no-checkout fallback permits a new attempt.
+  const [pendingAttempt, setPendingAttempt] = useState(() => { try { return Boolean(readAttempt(props.productId)?.resolved === false); } catch { return true; } });
   const quantity = Math.min(10, Math.max(1, Math.floor(Number(props.quantity) || 1)));
   // Did this browser see the buyer approve on Reap? Decides whether "nothing was charged" can be said.
   const [sawApproval, setSawApproval] = useState(() => readActiveFlag(props.productId, 'approved'));
@@ -591,7 +600,11 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
   }, [props.productId]);
   // Every hand-off to Reap's page is recorded BEFORE the page opens.
   const handOff = (url: string) => {
-    markActive(props.productId, 'handedOff');
+    if (!markActive(props.productId, 'handedOff')) {
+      setHandoffProblem('We could not save payment recovery in this browser. Do not approve payment until recovery can be saved.');
+      return;
+    }
+    setHandoffProblem(null);
     setHandedOff(true);
     openWindow(url);
   };
@@ -614,6 +627,15 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
   const [restoredGone, setRestoredGone] = useState(false);
   // The last seller the server verified FOR ONE CHECKOUT ID; a degraded read of that checkout publishes
   // none, and must not blank it. Keyed by id, so a previous checkout's seller never vouches for a new one.
+  useEffect(() => {
+    const sync = (event: StorageEvent) => {
+      if (event.key !== null && !event.key.startsWith(ACTIVE_KEY_PREFIX) && !event.key.startsWith(ATTEMPT_PREFIX)) return;
+      try { setPendingAttempt(readAttempt(props.productId)?.resolved === false); } catch { setPendingAttempt(true); }
+      if (event.key === ACTIVE_KEY_PREFIX + props.productId) setRestoreAttempt((n) => n + 1);
+    };
+    window.addEventListener('storage', sync);
+    return () => window.removeEventListener('storage', sync);
+  }, [props.productId]);
   const [lastSeller, setLastSeller] = useState<{ id: string; domain: string } | null>(null);
 
   // Restore an open checkout for this product (sheet re-opened, or the buyer came back from Reap).
@@ -629,13 +651,8 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
     setRestoreFailed(false);
     void fetchReapCheckout(id, fetchImpl).then((out) => {
       if (!alive) return;
-      if ('view' in out) poll.reset(out.view);
-      else if ('notFound' in out) {
-        // Gone. Forget it only if the buyer was never handed Reap's page; otherwise keep it and say we
-        // couldn't confirm (the same rule as a 404 while polling).
-        if (readActiveFlag(props.productId, 'handedOff') || readActiveFlag(props.productId, 'approved')) setRestoredGone(true);
-        else writeActiveCheckoutId(props.productId, null);
-      }
+      if ('view' in out) { setRestoredGone(false); poll.reset(out.view); }
+      else if ('notFound' in out) setRestoredGone(true);
       else setRestoreFailed(true);
       setRestoring(false);
     });
@@ -675,104 +692,158 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
       setFieldError({ field: 'offer_code', message: 'Offer codes are at most 128 characters.' });
       return;
     }
+    if (submitting) return;
     setSubmitting(true);
     try {
-      const requestBody = {
-          product_id: props.productId,
-          merchant_domain: props.merchantDomain,
-          quantity,
-          consent: form.consent,
-          // EXACTLY as typed; an empty field is "no code".
-          ...(form.offer_code !== '' ? { offer_code: form.offer_code } : {}),
-          buyer: {
-            email: form.email,
-            first_name: form.first_name,
-            last_name: form.last_name,
-            phone: form.phone,
-            address_line1: form.address_line1,
-            address_line2: form.address_line2,
-            city: form.city,
-            region: form.region,
-            postal_code: form.postal_code,
-            country: props.market,
-          },
-      };
-      const fingerprint = JSON.stringify(requestBody);
-      if (!keyFor.current || keyFor.current.fingerprint !== fingerprint) {
-        keyFor.current = { fingerprint, key: newKey() };
-      }
-      const res = await fetchImpl('/api/reap-checkout', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        credentials: 'same-origin',
-        body: JSON.stringify({ ...requestBody, idempotency_key: keyFor.current.key }),
+      await withAttemptLock(async () => {
+        const requestBody = {
+            product_id: props.productId,
+            merchant_domain: props.merchantDomain,
+            quantity,
+            consent: form.consent,
+            // EXACTLY as typed; an empty field is "no code".
+            ...(form.offer_code !== '' ? { offer_code: form.offer_code } : {}),
+            buyer: {
+              email: form.email,
+              first_name: form.first_name,
+              last_name: form.last_name,
+              phone: form.phone,
+              address_line1: form.address_line1,
+              address_line2: form.address_line2,
+              city: form.city,
+              region: form.region,
+              postal_code: form.postal_code,
+              country: props.market,
+            },
+        };
+        const validated = validateReapCreateBody({ ...requestBody, idempotency_key: 'validation-only' });
+        if (!validated.ok) { setFieldError({ field: validated.field, message: validated.message }); return; }
+        const normalized = { ...validated.input, merchant_domain: props.merchantDomain };
+        const { idempotency_key: _validationKey, ...payload } = normalized;
+        const existing = readAttempt(props.productId);
+        const active = readActiveCheckoutId(props.productId);
+        const session = await fetchImpl('/api/reap-checkout/session', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: '{}' });
+        const sessionBody = await session.json();
+        if (!session.ok || typeof sessionBody?.scope !== 'string') throw new Error('Buyer session could not be established. Try again without changing the checkout details.');
+        if (existing && existing.scope !== sessionBody.scope) throw new Error('Buyer session changed. Contact support to confirm the previous attempt before starting again.');
+        if (active) { setRestoreAttempt((n) => n + 1); return; }
+        const fingerprint = await requestFingerprint(payload);
+        if (existing && !existing.resolved && (existing.scope !== sessionBody.scope || existing.fingerprint !== fingerprint)) {
+          throw new Error('An earlier checkout attempt is unresolved. Re-enter exactly the same details to recover it. If your buyer session changed, contact support before starting again.');
+        }
+        const attempt = existing && existing.scope === sessionBody.scope && existing.fingerprint === fingerprint
+          ? existing : { fingerprint, key: newKey(), scope: sessionBody.scope, resolved: false };
+        writeAttempt(props.productId, { ...attempt, resolved: false });
+        setPendingAttempt(true);
+        const res = await fetchImpl('/api/reap-checkout', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({ ...payload, idempotency_key: attempt.key, buyer_scope: attempt.scope, recover_only: existing?.resolved === false }),
+        });
+        const body = await res.json().catch(() => null);
+        if (existing?.resolved !== false && ((res.ok && body?.attempt_outcome === 'not_created') || [400, 403, 413, 415, 429].includes(res.status))) {
+          writeAttempt(props.productId, { ...attempt, resolved: true });
+          setPendingAttempt(false);
+        }
+        if (existing?.resolved === false && body?.fallback) {
+          setFallback({ kind: 'error', message: 'This retry was refused, but the earlier checkout outcome is still unknown. Recover the same attempt or contact support before starting again.' });
+        } else if (res.status === 400 && body?.field) {
+          setFieldError({ field: String(body.field), message: String(body.message || 'Please check this field.') });
+        } else if (!res.ok) {
+          setFallback({
+            kind: 'error',
+            message:
+              body?.message ||
+              'We could not confirm the checkout attempt. Re-enter the same details to recover it; do not start another checkout.',
+          });
+        } else if (body?.fallback && body.attempt_outcome !== 'not_created') {
+          setFallback({ kind: 'error', message: 'We could not confirm whether this checkout was opened. Recover the same attempt with the same details before starting again.' });
+        } else if (body?.checkout && !isCheckoutForItem(body.checkout as ReapCheckoutView, props.productId)) {
+          // Opened, but not for THIS product: never payable, never remembered (it is never handed off, so the
+          // backend sweeps it uncharged). The buyer gets the honest mismatch copy.
+          setFallback({ kind: 'seller_mismatch', cause: 'seller_unconfirmed' });
+        } else if (body?.checkout) {
+          writeActiveCheckoutId(props.productId, (body.checkout as ReapCheckoutView).id);
+          if (readActiveCheckoutId(props.productId) === body.checkout.id) {
+            writeAttempt(props.productId, { ...attempt, resolved: true });
+            setPendingAttempt(false);
+          }
+          poll.reset(body.checkout as ReapCheckoutView);
+        } else if (body?.fallback === 'seller_mismatch') {
+          setFallback({ kind: 'seller_mismatch', cause: body.cause === 'different_seller' ? 'different_seller' : 'seller_unconfirmed' });
+        } else if (body?.fallback === 'not_available') {
+          setFallback({ kind: 'not_available' });
+        } else if (body?.fallback === 'not_reap') {
+          setFallback({
+            kind: 'not_reap',
+            offerCodeNotApplied: Boolean(body.offer_code_outcome && String(body.offer_code_outcome).startsWith('not_applied')),
+            availableWithConsent: Boolean(body.available_with_consent),
+          });
+        } else {
+          setFallback({ kind: 'error', message: 'Checkout returned an unreadable result. Recover the same attempt before starting again.' });
+        }
       });
-      const body = await res.json().catch(() => null);
-      if (res.status === 400 && body?.field) {
-        setFieldError({ field: String(body.field), message: String(body.message || 'Please check this field.') });
-      } else if (!res.ok) {
-        setFallback({
-          kind: 'error',
-          message:
-            body?.message ||
-            'We could not reach checkout just now. Nothing was charged — please try again in a moment.',
-        });
-      } else if (body?.checkout && !isCheckoutForItem(body.checkout as ReapCheckoutView, props.productId)) {
-        // Opened, but not for THIS product: never payable, never remembered (it is never handed off, so the
-        // backend sweeps it uncharged). The buyer gets the honest mismatch copy.
-        setFallback({ kind: 'seller_mismatch', cause: 'seller_unconfirmed' });
-      } else if (body?.checkout) {
-        writeActiveCheckoutId(props.productId, (body.checkout as ReapCheckoutView).id);
-        poll.reset(body.checkout as ReapCheckoutView);
-      } else if (body?.fallback === 'seller_mismatch') {
-        setFallback({ kind: 'seller_mismatch', cause: body.cause === 'different_seller' ? 'different_seller' : 'seller_unconfirmed' });
-      } else if (body?.fallback === 'not_available') {
-        setFallback({ kind: 'not_available' });
-      } else if (body?.fallback === 'not_reap') {
-        setFallback({
-          kind: 'not_reap',
-          offerCodeNotApplied: Boolean(body.offer_code_outcome && String(body.offer_code_outcome).startsWith('not_applied')),
-          availableWithConsent: Boolean(body.available_with_consent),
-        });
-      } else {
-        setFallback({ kind: 'refused' });
-      }
-    } catch {
-      setFallback({ kind: 'error', message: 'We could not reach checkout just now. Nothing was charged.' });
+    } catch (error) {
+      setFallback({ kind: 'error', message: error instanceof Error ? error.message : 'We could not confirm the checkout attempt. Re-enter the same details to recover it; do not start another checkout.' });
     } finally {
       setSubmitting(false);
     }
   }
 
   const restart = (withoutCode: boolean) => {
-    keyFor.current = null;
-    if (withoutCode) setForm((f) => ({ ...f, offer_code: '' }));
-    writeActiveCheckoutId(props.productId, null);
-    setSawApproval(false);
-    setHandedOff(false);
-    setRestoredGone(false);
-    poll.reset(null);
+    void withAttemptLock(async () => {
+      // Another tab may have restarted since the terminal view on this tab was rendered.
+      // Never remove its newer attempt or id using this tab's stale terminal result.
+      if (readAttempt(props.productId)?.resolved === false || readActiveCheckoutId(props.productId) !== poll.view?.id) {
+        setResetProblem('Another checkout attempt is active. Confirm its final status before starting again.');
+        setRestoreAttempt((n) => n + 1);
+        return;
+      }
+      localStorage.removeItem(ATTEMPT_PREFIX + props.productId);
+      setPendingAttempt(false);
+      if (withoutCode) setForm((f) => ({ ...f, offer_code: '' }));
+      writeActiveCheckoutId(props.productId, null);
+      setSawApproval(false);
+      setHandedOff(false);
+      setRestoredGone(false);
+      poll.reset(null);
+    }).catch(() => setResetProblem('Checkout recovery could not be cleared safely. Check status before trying again.'));
   };
 
   // "Start as a new buyer": the server clears the buyer cookie, the browser forgets its open checkouts,
   // and the form is emptied — for handing the laptop to the next partner.
   const newBuyer = async () => {
-    await fetchImpl('/api/reap-checkout/reset', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      credentials: 'same-origin',
-      body: '{}',
-    }).catch(() => null);
-    clearAllActiveCheckouts();
-    keyFor.current = null;
-    setForm(EMPTY_FORM);
-    setFallback(null);
-    setFieldError(null);
-    setSawApproval(false);
-    setHandedOff(false);
-    setRestoredGone(false);
-    setRestoreFailed(false);
-    poll.reset(null);
+    if (pendingAttempt || submitting) return;
+    setResetProblem(null);
+    await withAttemptLock(async () => {
+      for (const key of Object.keys(localStorage)) {
+        const unresolvedAttempt = key.startsWith(ATTEMPT_PREFIX) && !readAttempt(key.slice(ATTEMPT_PREFIX.length))?.resolved;
+        const unresolvedCheckout = key.startsWith(ACTIVE_KEY_PREFIX) && JSON.parse(localStorage.getItem(key) || 'null')?.settled !== true;
+        if (unresolvedAttempt || unresolvedCheckout) {
+          setResetProblem('A checkout on this browser is unresolved. Confirm its final status before changing buyer or clearing recovery.');
+          return;
+        }
+      }
+      const resetResult = await fetchImpl('/api/reap-checkout/reset', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        credentials: 'same-origin',
+        body: '{}',
+      }).catch(() => null);
+      if (!resetResult?.ok) { setResetProblem('Buyer reset could not be confirmed. Your checkout recovery was preserved.'); return; }
+      clearAllActiveCheckouts();
+      localStorage.removeItem(ATTEMPT_PREFIX + props.productId);
+      setPendingAttempt(false);
+      setForm(EMPTY_FORM);
+      setFallback(null);
+      setFieldError(null);
+      setSawApproval(false);
+      setHandedOff(false);
+      setRestoredGone(false);
+      setRestoreFailed(false);
+      poll.reset(null);
+    }).catch(() => setResetProblem('Buyer reset could not be confirmed. Your checkout recovery was preserved.'));
   };
 
   // Seen past the approval step (processing, or already completed): record it, so a later read (a reload, a
@@ -785,12 +856,19 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
     }
   }, [viewPhase, props.productId]);
 
-  // A 404 while polling (unknown id, another buyer's, the dial turned off): the checkout is gone. Forget it
-  // and never leave a live pay button on screen.
+  // Only a known completion or a terminal result before handoff permits changing this shared buyer.
   useEffect(() => {
-    // Keep the entry (and so the uncertain answer) when money may have moved; forget it otherwise.
-    if (poll.notFound && !mayHavePaid) writeActiveCheckoutId(props.productId, null);
-  }, [poll.notFound, props.productId, mayHavePaid]);
+    const view = poll.view;
+    if (!view || !(view.phase === 'completed' || (view.terminal && !mayHavePaid))) return;
+    try {
+      const key = ACTIVE_KEY_PREFIX + props.productId;
+      const saved = JSON.parse(localStorage.getItem(key) || 'null');
+      if (saved?.id === view.id) localStorage.setItem(key, JSON.stringify({ ...saved, settled: true }));
+    } catch { /* A failed write leaves reset closed. */ }
+  }, [poll.view, props.productId, mayHavePaid]);
+
+  // A 404 can mean cookie rotation, issuer/rail disabled, or seller scope changed. It does not
+  // establish an unpaid purchase, so keep the recovery record and never offer a fresh attempt.
 
   const shownSeller =
     poll.view?.seller?.domain ?? (poll.view && lastSeller?.id === poll.view.id ? lastSeller.domain : null);
@@ -813,7 +891,7 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
   const statusView = poll.view && poll.view.viewUnavailable ? { ...poll.view, continueUrl: null } : poll.view;
 
   const uncertainNow = Boolean(
-    ((poll.notFound || restoredGone || itemMismatch) && mayHavePaid) ||
+    (poll.notFound || restoredGone || (itemMismatch && mayHavePaid)) ||
       (poll.view && outcomeUncertain(poll.view, mayHavePaid)),
   );
 
@@ -824,7 +902,7 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-xs uppercase tracking-wide text-muted-foreground">Checkout with Reap</p>
-          <p className="text-sm font-semibold text-foreground">{props.productTitle}</p>
+          <p className="text-sm font-semibold text-foreground">{(!itemMismatch && poll.view?.lineItems[0]?.title) || props.productTitle}</p>
           {/* The open checkout's own quantity once there is one (a restored checkout may differ from the page). */}
           {/* Another product's checkout: none of ITS details (quantity, seller) are shown as this item's. */}
           {itemMismatch ? null : (
@@ -842,6 +920,9 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
         </div>
       </div>
 
+      {handoffProblem ? <p role="alert" data-testid="reap-handoff-problem" className="text-sm text-amber-700">{handoffProblem}</p> : null}
+      <p data-testid="reap-environment" className="text-xs text-amber-700">{poll.view?.environment === 'sandbox' ? 'Sandbox test • confirm simulation before assuming any payment or order' : poll.view?.environment === 'live' ? 'Live checkout • real payment when you approve' : 'Demo checkout • payment environment unconfirmed'}</p>
+      {pendingAttempt && !poll.view ? <p data-testid="reap-attempt-pending" className="text-sm text-amber-700">An earlier attempt is unresolved. Re-enter the same buyer and shipping details to recover it. Do not start another purchase.</p> : null}
       {restoring ? (
         <p className="flex items-center gap-2 text-sm text-muted-foreground">
           <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> Loading…
@@ -852,7 +933,7 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
           <p className="text-sm text-muted-foreground" data-testid="reap-restore-failed-copy">
             {mayHavePaid
               ? 'Nothing has been lost. If you approved a payment on Reap, check your email or card statement before trying again.'
-              : 'Nothing has been lost or charged.'}
+              : 'Status is unavailable. Do not start another checkout until this attempt is confirmed.'}
           </p>
           <button
             type="button"
@@ -862,29 +943,16 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
             Try again
           </button>
         </div>
-      ) : (poll.notFound || restoredGone || itemMismatch) && mayHavePaid ? (
+      ) : poll.notFound || restoredGone || (itemMismatch && mayHavePaid) ? (
         // Gone (or no longer this product's) after the buyer was handed Reap's page: we cannot say what
         // happened. No retry, no pay link.
         <div className="space-y-3" data-testid="reap-gone-uncertain">
           <p className="text-base font-semibold">We couldn&apos;t confirm your order</p>
           <p className="text-sm text-muted-foreground">
             Check your email or card statement before trying again. If you were charged, the merchant&apos;s
-            confirmation email has the details.
+            confirmation email may have the details. Contact support if this buyer session can no longer access the checkout.
           </p>
-        </div>
-      ) : poll.notFound ? (
-        <div className="space-y-3" data-testid="reap-gone">
-          <p className="text-base font-semibold">This checkout is no longer available</p>
-          <p className="text-sm text-muted-foreground">
-            If you approved a payment on Reap, check your email before trying again.
-          </p>
-          <button
-            type="button"
-            onClick={() => restart(false)}
-            className="h-10 rounded-full border border-border px-4 text-sm font-semibold"
-          >
-            Back to checkout
-          </button>
+          <button type="button" onClick={() => setRestoreAttempt((n) => n + 1)} className="text-sm underline">Check status now</button>
         </div>
       ) : itemMismatch ? (
         // Never a StatusView (and so never a pay link) for another product's checkout, not even for the
@@ -971,7 +1039,7 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
           <Field label="Apt, suite" name="address_line2" value={form.address_line2} onChange={onChange} required={false} autoComplete="address-line2" />
           <div className="grid grid-cols-3 gap-2">
             <Field label="City" name="city" value={form.city} onChange={onChange} autoComplete="address-level2" error={errFor('city')} />
-            <Field label="State" name="region" value={form.region} onChange={onChange} required={false} autoComplete="address-level1" />
+            <Field label="State" name="region" value={form.region} onChange={onChange} required={['US', 'CA', 'AU'].includes(props.market)} autoComplete="address-level1" error={errFor('region')} />
             <Field label="Postcode" name="postal_code" value={form.postal_code} onChange={onChange} autoComplete="postal-code" error={errFor('postal_code')} />
           </div>
           <p className="text-xs text-muted-foreground" data-testid="reap-market">
@@ -1011,7 +1079,7 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
               {errFor('consent') ? <span className="block text-red-700">{errFor('consent')}</span> : null}
             </span>
           </label>
-          {fieldError && !['first_name', 'last_name', 'email', 'phone', 'address_line1', 'city', 'postal_code', 'country', 'offer_code', 'consent'].some((f) => fieldError.field.endsWith(f)) ? (
+          {fieldError && !['first_name', 'last_name', 'email', 'phone', 'address_line1', 'city', 'postal_code', 'region', 'country', 'offer_code', 'consent'].some((f) => fieldError.field.endsWith(f)) ? (
             <p className="text-sm text-red-700">{fieldError.message}</p>
           ) : null}
           <button
@@ -1023,10 +1091,11 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
             {submitting ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}
             Get my total
           </button>
-          <p className="text-center text-xs text-muted-foreground">No card needed here. Nothing is charged yet.</p>
+          <p className="text-center text-xs text-muted-foreground">{pendingAttempt ? 'Recovering the previous attempt; do not start another checkout.' : 'No card needed here. Nothing is charged yet.'}</p>
         </form>
       )}
       <div className="border-t border-border pt-3 text-center">
+        {resetProblem ? <p role="alert" data-testid="reap-reset-problem" className="mb-2 text-xs text-amber-700">{resetProblem}</p> : null}
         {uncertainNow ? (
           // After an uncertain ending the reset is NOT a way to "try again": the statement check comes first.
           <p className="mb-1 text-xs text-muted-foreground" data-testid="reap-new-buyer-caution">
@@ -1037,6 +1106,7 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
           type="button"
           onClick={() => void newBuyer()}
           className="text-xs text-muted-foreground underline underline-offset-2"
+          disabled={pendingAttempt || submitting}
           data-testid="reap-new-buyer"
         >
           Not you? Start as a new buyer

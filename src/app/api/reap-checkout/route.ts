@@ -22,6 +22,7 @@ import { mintBuyerToken } from '@/lib/reapCheckout/buyerToken.server';
 import { callUcpTool } from '@/lib/reapCheckout/gatewayClient.server';
 import { readReapCheckout } from '@/lib/reapCheckout/checkoutView';
 import {
+  buyerScope,
   disabledResponse,
   hostProblem,
   json,
@@ -57,13 +58,17 @@ export async function POST(req: NextRequest) {
   // answer, so a refused first request still leaves the browser with its own buyer.
   const { buyerId, minted } = readOrMintBuyerId(req, config.token);
   const finish = (res: NextResponse) => {
-    if (minted) setBuyerCookie(res, req, config.token, buyerId);
+    setBuyerCookie(res, req, config.token, buyerId);
     return res;
   };
 
   const read = await readCappedJson(req);
   if ('response' in read) return finish(read.response);
   const body = read.body;
+  if ((body as Record<string, unknown>)?.recover_only !== undefined && typeof (body as Record<string, unknown>).recover_only !== 'boolean') {
+    return finish(json({ error: 'invalid_request', field: 'recover_only', message: 'recover_only must be a boolean.' }, 400));
+  }
+  const recoverOnly = (body as Record<string, unknown>)?.recover_only === true;
   const validated = validateReapCreateBody(body);
   if (!validated.ok) {
     return finish(json({ error: 'invalid_request', field: validated.field, message: validated.message }, 400));
@@ -88,8 +93,14 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Only a request that will reach the gateway is counted (per buyer and globally).
-  const limited = rateLimited('create', buyerId);
+  // The cookie must have been established before the create was dispatched. If it rotated or was
+  // lost, do not replay an old key under a different buyer identity.
+  if (minted || (body as Record<string, unknown>).buyer_scope !== buyerScope(config.token, buyerId)) {
+    return finish(json({ error: 'buyer_session_changed', message: 'Buyer session changed. Check the previous checkout before starting again.' }, 409));
+  }
+
+  // Reads used for recovery are separately capped; create quota must not block lost-id recovery.
+  const limited = rateLimited(recoverOnly ? 'read' : 'create', buyerId);
   if (limited) return finish(limited);
 
   const toolArgs = buildCreateCheckoutArgs(validated.input, {
@@ -102,7 +113,9 @@ export async function POST(req: NextRequest) {
     base: config.base,
     apiKey: config.apiKey,
     userToken: mintBuyerToken(config.token, buyerId),
-    tool: 'create_checkout',
+    // A distinct tool fails closed on older gateways; an optional metadata flag could be ignored
+    // and accidentally open a new purchase after the backend's idempotency replay TTL.
+    tool: recoverOnly ? 'recover_checkout' : 'create_checkout',
     toolArgs,
   });
 
@@ -112,17 +125,17 @@ export async function POST(req: NextRequest) {
       // The gateway refused: this item would be sold by someone else, or its seller cannot be confirmed.
       // Nothing was opened. The browser gets NO gateway text and NO gateway link — only the cause; the
       // panel offers "Visit <the configured merchant>" built from our own config.
-      return finish(json({ checkout: null, fallback: 'seller_mismatch', cause: outcome.cause === 'different_seller' ? 'different_seller' : 'seller_unconfirmed' }));
+      return finish(json({ checkout: null, attempt_outcome: 'not_created', fallback: 'seller_mismatch', cause: outcome.cause === 'different_seller' ? 'different_seller' : 'seller_unconfirmed' }));
     }
     if (outcome.reason === 'ucp_expected_merchant_domain_invalid') {
       // Our own configured domain was refused: a server config bug, not the buyer's.
       console.error('[reap-checkout] gateway refused REAP_CHECKOUT_DEMO_MERCHANTS domain as expected_merchant_domain', {
         domain: merchant.domain,
       });
-      return finish(json({ checkout: null, fallback: 'not_available' }));
+      return finish(json({ checkout: null, attempt_outcome: 'not_created', fallback: 'not_available' }));
     }
     // Any other refusal: generic copy. Gateway text is not forwarded.
-    return finish(json({ checkout: null, fallback: 'refused', code: outcome.code, reason: outcome.reason }));
+    return finish(json({ error: 'checkout_outcome_unknown', code: outcome.code, reason: outcome.reason }, 502));
   }
   const view = readReapCheckout(outcome.checkout);
   if (!view) return finish(json({ error: 'gateway_unavailable', detail: 'not_a_checkout' }, 502));
@@ -130,6 +143,7 @@ export async function POST(req: NextRequest) {
     return finish(
       json({
         checkout: null,
+        attempt_outcome: 'unknown',
         fallback: 'not_reap',
         // What the storefront answer said about the code and the buyer block — nothing else of it.
         offer_code_outcome: view.offerCode.outcome,
@@ -142,7 +156,7 @@ export async function POST(req: NextRequest) {
   // (the gateway omits the id for the shared external-seed placeholder, so an absent id is fine); and the
   // quote must be for the quantity asked. The checkout id is opaque and is not decoded.
   if (!sellerMatches(view, merchant) || view.lineItems[0]?.quantity !== validated.input.quantity) {
-    return finish(json({ checkout: null, fallback: 'seller_mismatch', cause: 'seller_unconfirmed' }));
+    return finish(json({ checkout: null, attempt_outcome: 'unknown', fallback: 'seller_mismatch', cause: 'seller_unconfirmed' }));
   }
   return finish(json({ checkout: publicView(view, { domain: merchant.domain }) }));
 }

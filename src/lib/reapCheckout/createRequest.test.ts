@@ -116,3 +116,19 @@ describe('validateReapCreateBody', () => {
     expect(JSON.stringify(buildCreateCheckoutArgs(r.input, { consentVersion: 'v', expectedMerchantDomain: 'judydoll.com' }))).not.toMatch(/price|amount|total/);
   });
 });
+
+describe('contact and market-specific destination validation', () => {
+  it.each(['123', '14155550100', '+0123456789', '+1415abc0100', '+1234567890123456'])('rejects malformed phone %s', (phone) => {
+    expect(validateReapCreateBody(body({ buyer: { ...buyer, phone } }))).toMatchObject({ ok: false, field: 'buyer.phone' });
+  });
+  it.each(['US', 'CA', 'AU'])('requires a region in %s', (country) => {
+    expect(validateReapCreateBody(body({ buyer: { ...buyer, country, region: '' } }))).toMatchObject({ ok: false, field: 'buyer.region' });
+  });
+  it('validates state/province codes and each supported postcode shape', () => {
+    for (const country of ['US', 'CA', 'AU']) expect(validateReapCreateBody(body({ buyer: { ...buyer, country, region: '123' } }))).toMatchObject({ ok: false, field: 'buyer.region' });
+    expect(validateReapCreateBody(body({ buyer: { ...buyer, country: 'SG', region: '', postal_code: '018956' } })).ok).toBe(true);
+    expect(validateReapCreateBody(body({ buyer: { ...buyer, country: 'SG', region: '', postal_code: '01895' } }))).toMatchObject({ ok: false, field: 'buyer.postal_code' });
+    expect(validateReapCreateBody(body({ buyer: { ...buyer, country: 'CA', region: 'ON', postal_code: 'M5V 3A8' } })).ok).toBe(true);
+    expect(validateReapCreateBody(body({ buyer: { ...buyer, country: 'AU', region: 'NSW', postal_code: '2000' } })).ok).toBe(true);
+  });
+});

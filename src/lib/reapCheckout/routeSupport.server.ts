@@ -102,6 +102,11 @@ export function readBuyerId(req: NextRequest, token: BuyerTokenConfig): string |
   return verifySignedBuyerId(token, req.cookies.get(buyerCookieName(req))?.value);
 }
 
+/** Opaque equality marker only: never accepted as authentication or sent to the gateway. */
+export function buyerScope(token: BuyerTokenConfig, buyerId: string): string {
+  return createHmac('sha256', cookieMacKey(token)).update(`attempt-owner|${buyerId}`).digest('hex');
+}
+
 export function readOrMintBuyerId(req: NextRequest, token: BuyerTokenConfig): { buyerId: string; minted: boolean } {
   const existing = readBuyerId(req, token);
   return existing ? { buyerId: existing, minted: false } : { buyerId: newBuyerId(), minted: true };
@@ -264,5 +269,6 @@ export function sellerMatches(view: ReapCheckoutView, merchant: DemoMerchantConf
 
 /** What the browser receives: the read view, plus the VERIFIED seller (from the gateway's answer). */
 export function publicView(view: ReapCheckoutView, seller: { domain: string }) {
-  return { ...view, seller };
+  const environment = process.env.REAP_CHECKOUT_ENVIRONMENT;
+  return { ...view, seller, environment: environment === 'sandbox' || environment === 'live' ? environment : 'unknown' };
 }
