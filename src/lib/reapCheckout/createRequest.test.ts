@@ -132,3 +132,16 @@ describe('contact and market-specific destination validation', () => {
     expect(validateReapCreateBody(body({ buyer: { ...buyer, country: 'AU', region: 'NSW', postal_code: '2000' } })).ok).toBe(true);
   });
 });
+
+describe('selected variant contract', () => {
+  it.each(['677289689108', '42199434526795'])('preserves selector %s in the UCP vendor extension', (variant_id) => {
+    const result = validateReapCreateBody(body({ variant_id }));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const args = buildCreateCheckoutArgs(result.input, { consentVersion: 'reap-agentic-v1', expectedMerchantDomain: 'kravebeauty.com' }) as any;
+    expect(args.checkout.reap).toEqual({ expected_merchant_domain: 'kravebeauty.com', selected_variant_id: variant_id });
+  });
+  it.each([123, 'x'.repeat(201), 'bad\u0000id'])('rejects an invalid selector', (variant_id) => {
+    expect(validateReapCreateBody(body({ variant_id }))).toMatchObject({ ok: false, field: 'variant_id' });
+  });
+});

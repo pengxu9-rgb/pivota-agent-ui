@@ -28,6 +28,7 @@ export type ReapBuyerForm = {
 
 export type ReapCreateInput = {
   product_id: string;
+  variant_id?: string;
   quantity: number;
   offer_code?: string;
   idempotency_key: string;
@@ -68,6 +69,8 @@ export function validateReapCreateBody(body: unknown): ValidationResult {
   if (!isRecord(body)) return { ok: false, field: 'body', message: 'Request body must be a JSON object.' };
   const productId = field(body.product_id);
   if (!productId) return { ok: false, field: 'product_id', message: 'product_id is required.' };
+  const variantId = optionalField(body.variant_id);
+  if (variantId === null) return { ok: false, field: 'variant_id', message: 'Invalid selected variant.' };
   const quantity = body.quantity === undefined ? 1 : body.quantity;
   if (typeof quantity !== 'number' || !Number.isSafeInteger(quantity) || quantity < 1 || quantity > 10) {
     return { ok: false, field: 'quantity', message: 'quantity must be a whole number from 1 to 10.' };
@@ -131,6 +134,7 @@ export function validateReapCreateBody(body: unknown): ValidationResult {
     market,
     input: {
       product_id: productId,
+      ...(variantId !== undefined ? { variant_id: variantId } : {}),
       quantity,
       ...(offerCode !== undefined ? { offer_code: offerCode } : {}),
       idempotency_key: idem,
@@ -170,7 +174,7 @@ export function buildCreateCheckoutArgs(
       ...(input.offer_code !== undefined ? { discounts: { codes: [input.offer_code] } } : {}),
       // The seller the buyer was shown, from SERVER config (never the browser): the gateway refuses the
       // create (`ucp_seller_mismatch`) unless every route would sell from exactly this merchant (§5.4).
-      reap: { expected_merchant_domain: opts.expectedMerchantDomain },
+      reap: { expected_merchant_domain: opts.expectedMerchantDomain, ...(input.variant_id ? { selected_variant_id: input.variant_id } : {}) },
     },
   };
 }

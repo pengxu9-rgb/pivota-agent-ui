@@ -28,10 +28,11 @@ function viewOf(checkout: unknown) {
   return readReapCheckout(checkout)!;
 }
 
-function renderPanel(fetchImpl: ReturnType<typeof vi.fn>, openWindow = vi.fn()) {
+function renderPanel(fetchImpl: ReturnType<typeof vi.fn>, openWindow = vi.fn(), variantId?: string) {
   render(
     <ReapCheckoutPanel
       productId={PRODUCT_ID}
+      variantId={variantId}
       productTitle="Silky Matte Lip Ink"
       merchantDomain="judydoll.com"
       market="US"
@@ -1051,5 +1052,30 @@ describe('ReapCheckoutPanel', () => {
     expect(screen.getByTestId('reap-terminal-uncertain')).toBeTruthy();
     expect(screen.getByTestId('reap-panel').textContent).not.toMatch(/Nothing was charged/);
     expect(screen.queryByTestId('reap-restart')).toBeNull();
+  });
+});
+
+
+describe('selected variant and legacy recovery', () => {
+  it.each(['677289689108', '42199434526795'])('sends the PDP selector %s', async (variantId) => {
+    const fetchImpl = vi.fn(async (_url: string, _init: RequestInit) => jsonResponse({checkout:null, fallback:'not_available', attempt_outcome:'not_created'}));
+    renderPanel(fetchImpl, vi.fn(), variantId);
+    await fillAndSubmit();
+    await waitFor(() => expect(fetchImpl).toHaveBeenCalled());
+    const request = JSON.parse(String(fetchImpl.mock.calls[0][1].body));
+    expect(request.variant_id).toBe(variantId);
+  });
+  it('recovers a pre-variant unknown attempt without changing its body or key', async () => {
+    const fetchImpl = vi.fn(async (_url: string, _init: RequestInit) => jsonResponse({error:'checkout_outcome_unknown'}, 502));
+    renderPanel(fetchImpl);
+    await fillAndSubmit();
+    await waitFor(() => expect(fetchImpl).toHaveBeenCalledTimes(1));
+    const original = JSON.parse(String(fetchImpl.mock.calls[0][1].body));
+    cleanup();
+    renderPanel(fetchImpl, vi.fn(), '677289689108');
+    await fillAndSubmit();
+    await waitFor(() => expect(fetchImpl).toHaveBeenCalledTimes(2));
+    const recovery = JSON.parse(String(fetchImpl.mock.calls[1][1].body));
+    expect(recovery).toEqual({...original, recover_only:true});
   });
 });

@@ -121,6 +121,12 @@ export async function POST(req: NextRequest) {
 
   if (outcome.kind === 'unavailable') return finish(json({ error: 'gateway_unavailable', detail: outcome.detail }, 502));
   if (outcome.kind === 'tool_error') {
+    if (!recoverOnly && outcome.reason === 'reap_create_paused') {
+      return finish(json({ checkout: null, attempt_outcome: 'not_created', fallback: 'paused' }));
+    }
+    if (!recoverOnly && outcome.reason === 'ucp_reap_variant_not_created') {
+      return finish(json({ checkout: null, attempt_outcome: 'not_created', fallback: 'not_available', message: 'Checkout was not created. The selected variant could not be verified.' }));
+    }
     if (outcome.reason === 'ucp_seller_mismatch') {
       // The gateway refused: this item would be sold by someone else, or its seller cannot be confirmed.
       // Nothing was opened. The browser gets NO gateway text and NO gateway link — only the cause; the

@@ -2414,6 +2414,9 @@ export function PdpContainer({
   // The item id is the PDP's own product id (the `sig_` the gateway's UCP door reads, PIVOTA-Agent
   // docs/reap-agentic-lane.md §7 step 2b), not the selected offer's seller-side id.
   const reapEntry = useReapCheckoutEntry({
+    // Sole-variant rows keep the existing proof-based path, including legacy
+    // catalog SKU spellings. A multi-size product must carry the buyer's choice.
+    variantId: variants.length > 1 ? selectedVariant?.variant_id : undefined,
     productId: String(payload.product.product_id || '').trim() || effectiveProductId,
     productTitle: payload.product.title,
     storeUrl: selectedRedirectUrl,
