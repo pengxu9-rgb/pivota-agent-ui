@@ -92,6 +92,7 @@ const defaultFetch: typeof fetch = (...a) => fetch(...a);
 export type ReapCheckoutPanelProps = {
   productId: string;
   variantId?: string;
+  variantLabel?: string;
   productTitle: string;
   merchantDomain: string;
   market: string;
@@ -919,6 +920,9 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
         <div>
           <p className="text-xs uppercase tracking-wide text-muted-foreground">Checkout with Reap</p>
           <p className="text-sm font-semibold text-foreground">{(!itemMismatch && poll.view?.lineItems[0]?.title) || props.productTitle}</p>
+          {!pendingAttempt && !poll.view && props.variantLabel ? (
+            <p className="text-xs text-muted-foreground">Selected size: {props.variantLabel}</p>
+          ) : null}
           {/* The open checkout's own quantity once there is one (a restored checkout may differ from the page). */}
           {/* Another product's checkout: none of ITS details (quantity, seller) are shown as this item's. */}
           {itemMismatch ? null : (

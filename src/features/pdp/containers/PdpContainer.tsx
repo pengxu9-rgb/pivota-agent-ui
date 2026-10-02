@@ -2417,6 +2417,7 @@ export function PdpContainer({
     // Sole-variant rows keep the existing proof-based path, including legacy
     // catalog SKU spellings. A multi-size product must carry the buyer's choice.
     variantId: variants.length > 1 ? selectedVariant?.variant_id : undefined,
+    variantLabel: variants.length > 1 ? selectedVariant?.title : undefined,
     productId: String(payload.product.product_id || '').trim() || effectiveProductId,
     productTitle: payload.product.title,
     storeUrl: selectedRedirectUrl,

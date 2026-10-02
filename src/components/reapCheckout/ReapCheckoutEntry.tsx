@@ -90,6 +90,7 @@ export function resolveMerchantDomain(args: {
 export type ReapCheckoutEntryProps = {
   productId: string;
   variantId?: string;
+  variantLabel?: string;
   productTitle: string;
   storeUrl?: string | null;
   storeLabel?: string | null;
@@ -153,6 +154,7 @@ export function useReapCheckoutEntry(props: ReapCheckoutEntryProps): {
             <ReapCheckoutPanel
               productId={props.productId}
               variantId={props.variantId}
+              variantLabel={props.variantLabel}
               productTitle={props.productTitle}
               merchantDomain={merchant.domain}
               market={merchant.market}
