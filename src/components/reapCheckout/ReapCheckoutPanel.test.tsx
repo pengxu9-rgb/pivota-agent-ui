@@ -1,3 +1,4 @@
+import { ATTEMPT_PREFIX } from '@/lib/reapCheckout/attempt';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ReapCheckoutPanel, ACTIVE_KEY_PREFIX, defaultOpenWindow, readActiveCheckoutId, writeActiveCheckoutId } from './ReapCheckoutPanel';
@@ -1096,18 +1097,24 @@ describe('selected variant and legacy recovery', () => {
   });
 });
 
-it('recovers the original selected variant and source together after current source changes', async () => {
-  const fetchImpl = vi.fn(async (_url: string, _init: RequestInit) => jsonResponse({ error: 'checkout_outcome_unknown' }, 502));
-  renderPanel(fetchImpl, vi.fn(), 'cart_link', '677289689108');
-  await fillAndSubmit();
-  await waitFor(() => expect(fetchImpl).toHaveBeenCalledTimes(1));
-  const original = JSON.parse(String(fetchImpl.mock.calls[0][1].body));
-  expect(original.item_source).toBe('cart_link');
-  expect(original.variant_id).toBe('677289689108');
-  cleanup();
-  renderPanel(fetchImpl, vi.fn(), 'reap_variant', '677289689108');
+it('prepares and persists canonical selection before one create, then recovers it without preparation after current source and variant changes', async () => {
+  const selection={product_key:'prod::external_seed::external_seed::ext_real',variant_id:'677289689108',variant_key:'prod::external_seed::external_seed::ext_real::sku_hash',merchant_domain:'judydoll.com',market:'US',currency:'USD',unit_price_minor:1399,quantity:1,item_source:'cart_link'};
+  const fetchImpl=vi.fn(async (url:string,_init:RequestInit) => url.endsWith('/prepare') ? jsonResponse({selection}) : jsonResponse({error:'checkout_outcome_unknown'},502));
+  renderPanel(fetchImpl,vi.fn(),'cart_link','677289689108');
   await fillAndSubmit();
   await waitFor(() => expect(fetchImpl).toHaveBeenCalledTimes(2));
-  expect(JSON.parse(String(fetchImpl.mock.calls[1][1].body))).toEqual({ ...original, recover_only: true });
+  expect(fetchImpl.mock.calls[0][0]).toBe('/api/reap-checkout/prepare');
+  const original=JSON.parse(String(fetchImpl.mock.calls[1][1].body));
+  expect(original.selection).toEqual(selection);
+  expect(original.item_source).toBe('cart_link');
+  expect(original.variant_id).toBe('677289689108');
+  expect(JSON.parse(localStorage.getItem(ATTEMPT_PREFIX+PRODUCT_ID)!).selection).toEqual(selection);
+  cleanup();
+  renderPanel(fetchImpl,vi.fn(),'reap_variant','999999999999');
+  await fillAndSubmit();
+  await waitFor(() => expect(fetchImpl).toHaveBeenCalledTimes(3));
+  expect(fetchImpl.mock.calls[2][0]).toBe('/api/reap-checkout');
+  expect(JSON.parse(String(fetchImpl.mock.calls[2][1].body))).toEqual({...original,recover_only:true});
+  expect(fetchImpl.mock.calls.filter(([url])=>url.endsWith('/prepare'))).toHaveLength(1);
   expect(screen.queryByTestId('reap-visit-store')).toBeNull();
 });
