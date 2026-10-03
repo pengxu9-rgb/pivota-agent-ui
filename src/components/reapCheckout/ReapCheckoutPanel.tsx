@@ -1,4 +1,5 @@
 'use client';
+import { readSelection } from '@/lib/reapCheckout/selection';
 
 // The "Checkout with Reap" flow for ONE product: buyer details -> quote -> hand-off to Reap's own page ->
 // status. Rendered inside the PDP's ResponsiveSheet by ReapCheckoutEntry.
@@ -718,13 +719,27 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
         const itemSource = existing ? existing.itemSource : props.itemSource;
         const normalized = { ...validated.input, merchant_domain: props.merchantDomain, ...(itemSource ? { item_source: itemSource } : {}) };
         const { idempotency_key: _validationKey, ...initialPayload } = normalized;
-        let payload = initialPayload;
+        let payload: Omit<import('@/lib/reapCheckout/createRequest').ReapCreateInput,'idempotency_key'> = initialPayload;
         const active = readActiveCheckoutId(props.productId);
         const session = await fetchImpl('/api/reap-checkout/session', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: '{}' });
         const sessionBody = await session.json();
         if (!session.ok || typeof sessionBody?.scope !== 'string') throw new Error('Buyer session could not be established. Try again without changing the checkout details.');
         if (existing && existing.scope !== sessionBody.scope) throw new Error('Buyer session changed. Contact support to confirm the previous attempt before starting again.');
         if (active) { setRestoreAttempt((n) => n + 1); return; }
+        if (existing?.resolved === false && existing.selection) {
+          // Recover the recorded canonical selector even if the current PDP/default/source changed.
+          // No preparation or present catalog/proof/price lookup is permitted for an unresolved attempt.
+          payload = {...payload, item_source:existing.selection.item_source, variant_id:existing.selection.variant_id, selection:existing.selection};
+        } else if (existing?.resolved !== false && payload.variant_id && itemSource !== 'reap_variant') {
+          const prepared=await fetchImpl('/api/reap-checkout/prepare',{method:'POST',credentials:'same-origin',headers:{'content-type':'application/json'},
+            body:JSON.stringify({...payload,item_source:'cart_link',idempotency_key:'selection-read-only',buyer_scope:sessionBody.scope})});
+          const selection=readSelection((await prepared.json().catch(()=>null))?.selection);
+          if (!prepared.ok || !selection || selection.variant_id!==payload.variant_id || selection.quantity!==payload.quantity
+            || selection.market!==props.market || selection.merchant_domain!==props.merchantDomain) {
+            throw new Error('The selected variant could not be confirmed. Checkout was not created.');
+          }
+          payload={...payload,item_source:selection.item_source,selection};
+        }
         let fingerprint = await requestFingerprint(payload);
         // A pending pre-variant attempt must recover its ORIGINAL request, never
         // silently add a selector to a body the provider may already have seen.
@@ -740,7 +755,7 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
           throw new Error('An earlier checkout attempt is unresolved. Re-enter exactly the same details to recover it. If your buyer session changed, contact support before starting again.');
         }
         const attempt = existing && existing.scope === sessionBody.scope && existing.fingerprint === fingerprint
-          ? existing : { fingerprint, key: newKey(), scope: sessionBody.scope, resolved: false, ...(itemSource ? { itemSource } : {}) };
+          ? existing : { fingerprint, key: newKey(), scope: sessionBody.scope, resolved: false, ...(payload.item_source ? { itemSource:payload.item_source } : {}), ...(payload.selection ? {selection:payload.selection} : {}) };
         writeAttempt(props.productId, { ...attempt, resolved: false });
         setPendingAttempt(true);
         const res = await fetchImpl('/api/reap-checkout', {

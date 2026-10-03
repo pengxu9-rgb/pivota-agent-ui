@@ -8,6 +8,7 @@
 // points); an empty field means "no code".
 import { normalizeBuyerMarket } from '@/lib/buyerMarket';
 import type { ReapItemSource } from './config';
+import { readSelection, type ReapSelection } from './selection';
 
 export const MAX_OFFER_CODE_CODE_POINTS = 128;
 const IDEMPOTENCY_KEY_RE = /^[A-Za-z0-9._:-]{8,100}$/;
@@ -31,6 +32,7 @@ export type ReapCreateInput = {
   product_id: string;
   item_source?: ReapItemSource;
   variant_id?: string;
+  selection?: ReapSelection;
   quantity: number;
   offer_code?: string;
   idempotency_key: string;
@@ -76,6 +78,8 @@ export function validateReapCreateBody(body: unknown): ValidationResult {
   }
   const variantId = optionalField(body.variant_id);
   if (variantId === null) return { ok: false, field: 'variant_id', message: 'Invalid selected variant.' };
+  const selection = body.selection === undefined ? undefined : readSelection(body.selection);
+  if (body.selection !== undefined && (!selection || selection.variant_id !== variantId || selection.item_source !== body.item_source)) return { ok:false, field:'selection', message:'Original variant selection is invalid.' };
   const quantity = body.quantity === undefined ? 1 : body.quantity;
   if (typeof quantity !== 'number' || !Number.isSafeInteger(quantity) || quantity < 1 || quantity > 10) {
     return { ok: false, field: 'quantity', message: 'quantity must be a whole number from 1 to 10.' };
@@ -134,6 +138,7 @@ export function validateReapCreateBody(body: unknown): ValidationResult {
     return { ok: false, field: 'buyer.postal_code', message: 'Enter a valid postcode for this country.' };
   }
   buyer.country = market;
+  if (selection && (selection.market !== market || selection.quantity !== quantity)) return {ok:false,field:'selection',message:'Original variant selection does not match this request.'};
   return {
     ok: true,
     market,
@@ -141,6 +146,7 @@ export function validateReapCreateBody(body: unknown): ValidationResult {
       product_id: productId,
       ...(body.item_source !== undefined ? { item_source: body.item_source as ReapItemSource } : {}),
       ...(variantId !== undefined ? { variant_id: variantId } : {}),
+      ...(selection ? {selection} : {}),
       quantity,
       ...(offerCode !== undefined ? { offer_code: offerCode } : {}),
       idempotency_key: idem,
@@ -180,7 +186,7 @@ export function buildCreateCheckoutArgs(
       ...(input.offer_code !== undefined ? { discounts: { codes: [input.offer_code] } } : {}),
       // The seller the buyer was shown, from SERVER config (never the browser): the gateway refuses the
       // create (`ucp_seller_mismatch`) unless every route would sell from exactly this merchant (§5.4).
-      reap: { expected_merchant_domain: opts.expectedMerchantDomain, ...(opts.itemSource ? { item_source: opts.itemSource } : {}), ...(input.variant_id ? { selected_variant_id: input.variant_id } : {}) },
+      reap: { expected_merchant_domain: opts.expectedMerchantDomain, ...(opts.itemSource ? { item_source: opts.itemSource } : {}), ...(input.variant_id ? { selected_variant_id: input.variant_id } : {}), ...(input.selection ? {selection:input.selection} : {}) },
     },
   };
 }
