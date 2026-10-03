@@ -9,8 +9,7 @@
 //
 // The purchasability gate is authoritative at create time inside the gateway's Reap lane (same
 // client, same market source: the shipping country this form sends as `context.address_country`).
-// A decline there makes the create answer a non-Reap checkout, and the panel then says Reap is not
-// available and offers the store. The offer-level check here only hides the entry early when the
+// A decline there stops the selected Reap route; the panel offers no alternate checkout/store link. The offer-level check here only hides the entry early when the
 // gateway already rewrote the offer as declined (execution_spec rail `referral` + join_mode
 // `referral_only`, PIVOTA-Agent src/offers/offersPriority.js enrichOfferCommerceMetadata).
 import { Suspense, lazy, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
@@ -139,7 +138,7 @@ export function useReapCheckoutEntry(props: ReapCheckoutEntryProps): {
   if (enabled && props.isExternalPurchase && merchants?.length && props.productId) {
     if (!offerIsDeclinedByPurchasabilityGate(props.offer)) {
       const domain = resolveMerchantDomain({ offer: props.offer, product: props.product, storeUrl: props.storeUrl });
-      merchant = (domain && merchants.find((m) => m.domain === domain)) || null;
+      merchant = (domain && merchants.find((m) => m.domain === domain && (!m.productIds || m.productIds.includes(props.productId)))) || null;
     }
   }
   const cta = useMemo(() => (merchant ? { onOpen } : null), [merchant, onOpen]);
@@ -158,6 +157,7 @@ export function useReapCheckoutEntry(props: ReapCheckoutEntryProps): {
               productTitle={props.productTitle}
               merchantDomain={merchant.domain}
               market={merchant.market}
+              itemSource={merchant.itemSource}
               quantity={quantity}
               terms={config?.terms ?? null}
               storeUrl={props.storeUrl}

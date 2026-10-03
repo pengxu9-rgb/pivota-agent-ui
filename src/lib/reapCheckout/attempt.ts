@@ -1,13 +1,16 @@
 // Shared across tabs. No buyer/contact/address data is persisted, only a digest and opaque keys.
 // An unresolved attempt never ages into permission to open another purchase.
 export const ATTEMPT_PREFIX = 'pivota.reapCheckout.attempt.';
-export type Attempt = { key: string; fingerprint: string; scope: string; resolved: boolean };
+export type Attempt = { key: string; fingerprint: string; scope: string; resolved: boolean; itemSource?: "reap_variant" | "cart_link" };
 export function readAttempt(productId: string): Attempt | null {
   const raw = localStorage.getItem(ATTEMPT_PREFIX + productId);
   if (!raw) return null;
   const v = JSON.parse(raw);
   if (!v || typeof v.key !== 'string' || !/^[A-Za-z0-9._:-]{8,100}$/.test(v.key) || typeof v.fingerprint !== 'string' || !/^[0-9a-f]{64}$/.test(v.fingerprint) || typeof v.scope !== 'string' || !v.scope || typeof v.resolved !== 'boolean') {
     throw new Error('Checkout recovery data is unreadable. Contact support before starting again.');
+  }
+  if (v.itemSource !== undefined && !['reap_variant', 'cart_link'].includes(v.itemSource)) {
+    throw new Error('Checkout recovery source is unreadable. Contact support before starting again.');
   }
   return v;
 }

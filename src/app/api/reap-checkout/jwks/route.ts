@@ -6,7 +6,7 @@
 // Publishes the public half only; 404 when the demo is off or the issuer is not configured.
 import { publicJwks, readBuyerTokenConfig } from '@/lib/reapCheckout/buyerToken.server';
 import { NextRequest } from 'next/server';
-import { disabledResponse, hostProblem, json } from '@/lib/reapCheckout/routeSupport.server';
+import { disabledResponse, hostProblem, json, readServerConfig } from '@/lib/reapCheckout/routeSupport.server';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -16,6 +16,8 @@ export async function GET(req: NextRequest) {
   if (off) return off;
   const wrongHost = hostProblem(req);
   if (wrongHost) return wrongHost;
+  const cfg = readServerConfig();
+  if ('response' in cfg) return cfg.response;
   const config = readBuyerTokenConfig();
   if (!config) return json({ error: 'not_found' }, 404);
   return json(publicJwks(config));

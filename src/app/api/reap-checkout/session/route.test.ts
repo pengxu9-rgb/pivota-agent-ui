@@ -71,6 +71,29 @@ describe('buyer identity established before create', () => {
   it('keeps a legacy non-Reap gateway answer explicitly uncertain', async () => {
     const buyer = await bootstrap(); fetchMock.mockResolvedValueOnce(new Response(JSON.stringify(rpcResult(storefrontEscalation())), { status: 200 }));
     const response = await CREATE(req('', { ...payload, buyer_scope: buyer.scope }, buyer.cookie));
-    expect(await response.json()).toMatchObject({ fallback: 'not_reap', attempt_outcome: 'unknown' });
+    expect(await response.json()).toMatchObject({ error: 'checkout_outcome_unknown', attempt_outcome: 'unknown' });
   });
+});
+it.each(['create-success','recover-success','invalid-body','seller-scope-refusal','gateway-unknown'])('Absolute buyer lifetime: original four-hour buyer lifetime survives %s activity',async(mode)=>{
+ vi.useFakeTimers({toFake:['Date']});
+ try{
+  const t0=Date.UTC(2026,9,2,0,0,0);vi.setSystemTime(t0);const first=await bootstrap();
+  vi.setSystemTime(t0+(4*3600-60)*1000);
+  const body={...payload,buyer_scope:first.scope,...(mode==='recover-success'?{recover_only:true}:{})};
+  if(mode==='invalid-body')body.buyer={...payload.buyer,phone:'123'};
+  if(mode==='seller-scope-refusal')body.merchant_domain='not-in-demo.invalid';
+  if(mode==='gateway-unknown')fetchMock.mockRejectedValueOnce(new Error('synthetic lost response'));
+  const response=await CREATE(req('',body,first.cookie));
+  expect(response.status).toBe(mode==='invalid-body'?400:mode==='seller-scope-refusal'?403:mode==='gateway-unknown'?502:200);
+  expect(response.headers.get('set-cookie')).toBeNull();
+  if(mode==='recover-success')expect(JSON.parse(String(fetchMock.mock.calls[0][1].body)).params.name).toBe('recover_checkout');
+  const calls=fetchMock.mock.calls.length;
+  vi.setSystemTime(t0+(4*3600+60)*1000);
+  const {readBuyerTokenConfig}=await import('@/lib/reapCheckout/buyerToken.server');
+  const {verifySignedBuyerId}=await import('@/lib/reapCheckout/routeSupport.server');
+  expect(verifySignedBuyerId(readBuyerTokenConfig()!,first.cookie.split('=')[1])).toBeNull();
+  const rotated=await SESSION(req('/session',{},first.cookie));expect((await rotated.json()).scope).not.toBe(first.scope);
+  const expiredRetry=await CREATE(req('',{...payload,buyer_scope:first.scope,recover_only:true},first.cookie));
+  expect(expiredRetry.status).toBe(409);expect(fetchMock).toHaveBeenCalledTimes(calls);
+ }finally{vi.useRealTimers();}
 });
