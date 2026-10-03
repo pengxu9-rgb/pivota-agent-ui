@@ -37,3 +37,11 @@ Shipping source does not activate this pilot. Before enabling its runtime flag, 
 Deploy this initial pilot with a confirmed single serving instance. The existing per-buyer/global request caps are in-process; scaling across instances requires shared counters before widening. A main deployment's Docker image is built with the public entry off. An approved pilot build needs a distinct image identity built with the argument on; do not silently reuse a cached off image or alter an existing commit tag.
 
 After deployment, check the serving image digest, source revision, traffic and pinned public host. Then run the chosen source's full sandbox route through session, one keyed create, enrollment/hosted handoff where approved, owner polling, terminal result and exact recovery. Fault cases must show zero alternate create requests, redirects or store links. Provider simulation is labeled as such and cannot establish a real merchant order.
+
+Current main's selected-variant carrier is retained alongside the explicitly
+configured primary `item_source`. The first create carries both when applicable;
+read-only recovery retains the original selector, source and key. A legacy
+pending request without a selector is recovered without adding today's selector.
+Catalog or variant refusals stop this selected checkout and offer no alternate
+spending link. Only an authoritative pre-dispatch refusal may clear a fresh
+attempt; every recovery tool error leaves the original attempt unresolved.

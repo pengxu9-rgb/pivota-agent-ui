@@ -495,6 +495,30 @@ describe('POST /api/reap-checkout (armed)', () => {
     expect(rateLimited('read', 'rdb_fresh_buyer', now + 600 + 60_000)).toBeNull();
   });
 
+  it.each([false, true])('a paused checkout clears only a fresh attempt (recovery=%s)', async (recover_only) => {
+    arm();
+    fetchMock.mockImplementation(async () => new Response(JSON.stringify(rpcResult({error:{code:'OPERATION_NOT_ALLOWED', detail:{reason:'reap_create_paused'}}}, true)), {status:200}));
+    const { POST } = await import('./route');
+    const res = await POST(createReq({ recover_only }));
+    if (recover_only) expect(res.status).toBe(502);
+    else expect(await res.json()).toMatchObject({attempt_outcome:'not_created',blocked:'paused'});
+  });
+
+  it.each([false, true])('variant pre-dispatch refusal clears only a fresh attempt (recovery=%s)', async (recover_only) => {
+    arm();
+    fetchMock.mockImplementation(async () => new Response(JSON.stringify(rpcResult({error:{code:'QUOTE_REQUIRED', detail:{reason:'ucp_reap_variant_not_created'}}}, true)), {status:200}));
+    const { POST } = await import('./route');
+    const res = await POST(createReq({ recover_only }));
+    const body = await res.json();
+    if (recover_only) {
+      expect(res.status).toBe(502);
+      expect(body.attempt_outcome).toBe('unknown');
+    } else {
+      expect(res.status).toBe(200);
+      expect(body).toMatchObject({attempt_outcome:'not_created',blocked:'not_available'});
+    }
+  });
+
   it('TOOL ERROR: the reason is read from the door\'s real shape ({error:{code,message,detail:{reason}}})', async () => {
     arm();
     gatewayAnswers(undefined);

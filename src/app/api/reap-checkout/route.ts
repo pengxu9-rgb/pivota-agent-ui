@@ -132,6 +132,12 @@ export async function POST(req: NextRequest) {
     // A read-only recovery error cannot establish that the original create made nothing.
     // Keep the owned attempt unresolved regardless of the upstream reason vocabulary.
     if (recoverOnly) return finish(json({ error: 'checkout_outcome_unknown', attempt_outcome: 'unknown' }, 502));
+    if (!recoverOnly && outcome.reason === 'reap_create_paused') {
+      return finish(json({ checkout: null, attempt_outcome: 'not_created', blocked: 'paused' }));
+    }
+    if (!recoverOnly && outcome.reason === 'ucp_reap_variant_not_created') {
+      return finish(json({ checkout: null, attempt_outcome: 'not_created', blocked: 'not_available', message: 'Checkout was not created. The selected variant could not be verified.' }));
+    }
     if (outcome.reason === 'ucp_seller_mismatch') {
       // The gateway refused: this item would be sold by someone else, or its seller cannot be confirmed.
       // Nothing was opened. The browser gets NO gateway text and NO gateway link — only the cause; the

@@ -28,10 +28,11 @@ function viewOf(checkout: unknown) {
   return readReapCheckout(checkout)!;
 }
 
-function renderPanel(fetchImpl: ReturnType<typeof vi.fn>, openWindow = vi.fn(), itemSource?: "reap_variant" | "cart_link") {
+function renderPanel(fetchImpl: ReturnType<typeof vi.fn>, openWindow = vi.fn(), itemSource?: "reap_variant" | "cart_link", variantId?: string) {
   render(
     <ReapCheckoutPanel
       productId={PRODUCT_ID}
+      variantId={variantId}
       productTitle="Silky Matte Lip Ink"
       merchantDomain="judydoll.com"
       market="US"
@@ -1069,4 +1070,44 @@ it('an unresolved attempt preserves its original cart source across a new config
  expect(fetchImpl).toHaveBeenCalledTimes(2);
  const calls=fetchImpl.mock.calls as unknown as [string,RequestInit][];const [first,recovered]=calls.map(([,init])=>JSON.parse(String(init.body)));
  expect(first.item_source).toBe('cart_link');expect(recovered.item_source).toBe('cart_link');expect(recovered.idempotency_key).toBe(first.idempotency_key);expect(recovered.recover_only).toBe(true);expect(screen.queryByTestId('reap-visit-store')).toBeNull();
+});
+
+describe('selected variant and legacy recovery', () => {
+  it.each(['677289689108', '42199434526795'])('sends the PDP selector %s', async (variantId) => {
+    const fetchImpl = vi.fn(async (_url: string, _init: RequestInit) => jsonResponse({checkout:null, fallback:'not_available', attempt_outcome:'not_created'}));
+    renderPanel(fetchImpl, vi.fn(), undefined, variantId);
+    await fillAndSubmit();
+    await waitFor(() => expect(fetchImpl).toHaveBeenCalled());
+    const request = JSON.parse(String(fetchImpl.mock.calls[0][1].body));
+    expect(request.variant_id).toBe(variantId);
+  });
+  it('recovers a pre-variant unknown attempt without changing its body or key', async () => {
+    const fetchImpl = vi.fn(async (_url: string, _init: RequestInit) => jsonResponse({error:'checkout_outcome_unknown'}, 502));
+    renderPanel(fetchImpl);
+    await fillAndSubmit();
+    await waitFor(() => expect(fetchImpl).toHaveBeenCalledTimes(1));
+    const original = JSON.parse(String(fetchImpl.mock.calls[0][1].body));
+    cleanup();
+    renderPanel(fetchImpl, vi.fn(), undefined, '677289689108');
+    await fillAndSubmit();
+    await waitFor(() => expect(fetchImpl).toHaveBeenCalledTimes(2));
+    const recovery = JSON.parse(String(fetchImpl.mock.calls[1][1].body));
+    expect(recovery).toEqual({...original, recover_only:true});
+  });
+});
+
+it('recovers the original selected variant and source together after current source changes', async () => {
+  const fetchImpl = vi.fn(async (_url: string, _init: RequestInit) => jsonResponse({ error: 'checkout_outcome_unknown' }, 502));
+  renderPanel(fetchImpl, vi.fn(), 'cart_link', '677289689108');
+  await fillAndSubmit();
+  await waitFor(() => expect(fetchImpl).toHaveBeenCalledTimes(1));
+  const original = JSON.parse(String(fetchImpl.mock.calls[0][1].body));
+  expect(original.item_source).toBe('cart_link');
+  expect(original.variant_id).toBe('677289689108');
+  cleanup();
+  renderPanel(fetchImpl, vi.fn(), 'reap_variant', '677289689108');
+  await fillAndSubmit();
+  await waitFor(() => expect(fetchImpl).toHaveBeenCalledTimes(2));
+  expect(JSON.parse(String(fetchImpl.mock.calls[1][1].body))).toEqual({ ...original, recover_only: true });
+  expect(screen.queryByTestId('reap-visit-store')).toBeNull();
 });

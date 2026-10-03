@@ -30,6 +30,7 @@ export type ReapBuyerForm = {
 export type ReapCreateInput = {
   product_id: string;
   item_source?: ReapItemSource;
+  variant_id?: string;
   quantity: number;
   offer_code?: string;
   idempotency_key: string;
@@ -73,6 +74,8 @@ export function validateReapCreateBody(body: unknown): ValidationResult {
   if (body.item_source !== undefined && (typeof body.item_source !== 'string' || !['reap_variant', 'cart_link'].includes(body.item_source))) {
     return { ok: false, field: 'item_source', message: 'The selected checkout source is invalid.' };
   }
+  const variantId = optionalField(body.variant_id);
+  if (variantId === null) return { ok: false, field: 'variant_id', message: 'Invalid selected variant.' };
   const quantity = body.quantity === undefined ? 1 : body.quantity;
   if (typeof quantity !== 'number' || !Number.isSafeInteger(quantity) || quantity < 1 || quantity > 10) {
     return { ok: false, field: 'quantity', message: 'quantity must be a whole number from 1 to 10.' };
@@ -137,6 +140,7 @@ export function validateReapCreateBody(body: unknown): ValidationResult {
     input: {
       product_id: productId,
       ...(body.item_source !== undefined ? { item_source: body.item_source as ReapItemSource } : {}),
+      ...(variantId !== undefined ? { variant_id: variantId } : {}),
       quantity,
       ...(offerCode !== undefined ? { offer_code: offerCode } : {}),
       idempotency_key: idem,
@@ -176,7 +180,7 @@ export function buildCreateCheckoutArgs(
       ...(input.offer_code !== undefined ? { discounts: { codes: [input.offer_code] } } : {}),
       // The seller the buyer was shown, from SERVER config (never the browser): the gateway refuses the
       // create (`ucp_seller_mismatch`) unless every route would sell from exactly this merchant (§5.4).
-      reap: { expected_merchant_domain: opts.expectedMerchantDomain, ...(opts.itemSource ? { item_source: opts.itemSource } : {}) },
+      reap: { expected_merchant_domain: opts.expectedMerchantDomain, ...(opts.itemSource ? { item_source: opts.itemSource } : {}), ...(input.variant_id ? { selected_variant_id: input.variant_id } : {}) },
     },
   };
 }

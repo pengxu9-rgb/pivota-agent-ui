@@ -92,6 +92,8 @@ const defaultFetch: typeof fetch = (...a) => fetch(...a);
 export type ReapCheckoutPanelProps = {
   itemSource?: "reap_variant" | "cart_link";
   productId: string;
+  variantId?: string;
+  variantLabel?: string;
   productTitle: string;
   merchantDomain: string;
   market: string;
@@ -140,6 +142,7 @@ type Fallback =
   | { kind: 'not_reap'; offerCodeNotApplied: boolean; availableWithConsent: boolean }
   | { kind: 'seller_mismatch'; cause: 'different_seller' | 'seller_unconfirmed' }
   | { kind: 'not_available' }
+  | { kind: 'paused' }
   | { kind: 'refused' }
   | { kind: 'error'; message: string };
 
@@ -689,6 +692,7 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
       await withAttemptLock(async () => {
         const requestBody = {
             product_id: props.productId,
+            ...(props.variantId ? { variant_id: props.variantId } : {}),
             merchant_domain: props.merchantDomain,
             quantity,
             consent: form.consent,
@@ -713,14 +717,25 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
         // Historical attempts without a stored source preserve their original fingerprint.
         const itemSource = existing ? existing.itemSource : props.itemSource;
         const normalized = { ...validated.input, merchant_domain: props.merchantDomain, ...(itemSource ? { item_source: itemSource } : {}) };
-        const { idempotency_key: _validationKey, ...payload } = normalized;
+        const { idempotency_key: _validationKey, ...initialPayload } = normalized;
+        let payload = initialPayload;
         const active = readActiveCheckoutId(props.productId);
         const session = await fetchImpl('/api/reap-checkout/session', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: '{}' });
         const sessionBody = await session.json();
         if (!session.ok || typeof sessionBody?.scope !== 'string') throw new Error('Buyer session could not be established. Try again without changing the checkout details.');
         if (existing && existing.scope !== sessionBody.scope) throw new Error('Buyer session changed. Contact support to confirm the previous attempt before starting again.');
         if (active) { setRestoreAttempt((n) => n + 1); return; }
-        const fingerprint = await requestFingerprint(payload);
+        let fingerprint = await requestFingerprint(payload);
+        // A pending pre-variant attempt must recover its ORIGINAL request, never
+        // silently add a selector to a body the provider may already have seen.
+        if (existing?.resolved === false && existing.fingerprint !== fingerprint && payload.variant_id) {
+          const { variant_id: _selectedVariant, ...legacyPayload } = payload;
+          const legacyFingerprint = await requestFingerprint(legacyPayload);
+          if (existing.fingerprint === legacyFingerprint) {
+            payload = legacyPayload;
+            fingerprint = legacyFingerprint;
+          }
+        }
         if (existing && !existing.resolved && (existing.scope !== sessionBody.scope || existing.fingerprint !== fingerprint)) {
           throw new Error('An earlier checkout attempt is unresolved. Re-enter exactly the same details to recover it. If your buyer session changed, contact support before starting again.');
         }
@@ -765,6 +780,8 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
           poll.reset(body.checkout as ReapCheckoutView);
         } else if ((body?.blocked || body?.fallback) === 'seller_mismatch') {
           setFallback({ kind: 'seller_mismatch', cause: body.cause === 'different_seller' ? 'different_seller' : 'seller_unconfirmed' });
+        } else if ((body?.blocked || body?.fallback) === 'paused') {
+          setFallback({ kind: 'paused' });
         } else if ((body?.blocked || body?.fallback) === 'not_available') {
           setFallback({ kind: 'not_available' });
         } else if ((body?.blocked || body?.fallback) === 'not_reap') {
@@ -896,6 +913,9 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
         <div>
           <p className="text-xs uppercase tracking-wide text-muted-foreground">Checkout with Reap</p>
           <p className="text-sm font-semibold text-foreground">{(!itemMismatch && poll.view?.lineItems[0]?.title) || props.productTitle}</p>
+          {!pendingAttempt && !poll.view && props.variantLabel ? (
+            <p className="text-xs text-muted-foreground">Selected size: {props.variantLabel}</p>
+          ) : null}
           {/* The open checkout's own quantity once there is one (a restored checkout may differ from the page). */}
           {/* Another product's checkout: none of ITS details (quantity, seller) are shown as this item's. */}
           {itemMismatch ? null : (
@@ -985,6 +1005,8 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
               </p>
               <p className="text-sm text-muted-foreground">Nothing was charged.</p>
             </>
+          ) : fallback.kind === 'paused' ? (
+            <p className="text-sm font-semibold">Sandbox checkout is paused. This checkout was not created.</p>
           ) : fallback.kind === 'not_available' ? (
             <>
               <p className="text-sm font-semibold">Checkout through Reap isn&apos;t available for this item right now.</p>
