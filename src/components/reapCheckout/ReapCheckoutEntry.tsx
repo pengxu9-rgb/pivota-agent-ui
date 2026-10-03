@@ -1,4 +1,5 @@
 'use client';
+import { snapshotDisplayedMoney, type ExpectedMoney } from '@/lib/reapCheckout/expectedMoney';
 
 // "Checkout with Reap" as the primary CTA of a links-out PDP's purchase bar — demo only.
 //
@@ -87,6 +88,8 @@ export function resolveMerchantDomain(args: {
 }
 
 export type ReapCheckoutEntryProps = {
+  unitPriceAmount?: number | null;
+  currency?: string | null;
   productId: string;
   variantId?: string;
   variantLabel?: string;
@@ -115,6 +118,7 @@ export function useReapCheckoutEntry(props: ReapCheckoutEntryProps): {
   const [open, setOpen] = useState(false);
   // The PDP's chosen quantity, captured when the buyer opens checkout; the merchant's quote prices it.
   const [quantity, setQuantity] = useState(1);
+  const [expectedMoney, setExpectedMoney] = useState<ExpectedMoney | null>(null);
 
   useEffect(() => {
     if (!enabled || !props.isExternalPurchase) return undefined;
@@ -128,9 +132,10 @@ export function useReapCheckoutEntry(props: ReapCheckoutEntryProps): {
   }, [enabled, props.isExternalPurchase]);
 
   const onOpen = useCallback((q: number) => {
+    setExpectedMoney(snapshotDisplayedMoney(props.unitPriceAmount, props.currency));
     setQuantity(Math.min(10, Math.max(1, Math.floor(Number(q) || 1))));
     setOpen(true);
-  }, []);
+  }, [props.unitPriceAmount, props.currency]);
   const onClose = useCallback(() => setOpen(false), []);
 
   let merchant: DemoMerchant | null = null;
@@ -151,6 +156,7 @@ export function useReapCheckoutEntry(props: ReapCheckoutEntryProps): {
         {open ? (
           <Suspense fallback={<p className="p-4 text-sm text-muted-foreground">Loading…</p>}>
             <ReapCheckoutPanel
+              expectedMoney={expectedMoney}
               productId={props.productId}
               variantId={props.variantId}
               variantLabel={props.variantLabel}

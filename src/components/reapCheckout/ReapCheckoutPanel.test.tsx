@@ -32,6 +32,7 @@ function viewOf(checkout: unknown) {
 function renderPanel(fetchImpl: ReturnType<typeof vi.fn>, openWindow = vi.fn(), itemSource?: "reap_variant" | "cart_link", variantId?: string) {
   render(
     <ReapCheckoutPanel
+      expectedMoney={{expected_unit_price_minor:1399,expected_currency:"USD"}}
       productId={PRODUCT_ID}
       variantId={variantId}
       productTitle="Silky Matte Lip Ink"
@@ -88,7 +89,7 @@ afterEach(() => {
 });
 
 describe('ReapCheckoutPanel', () => {
-  it('sends the offer code exactly as typed, with consent, the market and no price', async () => {
+  it('sends the offer code exactly as typed, with consent, the market and the original displayed price constraint', async () => {
     const fetchImpl = scriptedFetch(resolvingCheckout({ code: ' PeachIE20 ' }));
     renderPanel(fetchImpl);
     await fillAndSubmit(' PeachIE20 ');
@@ -100,7 +101,9 @@ describe('ReapCheckoutPanel', () => {
     expect(sent.consent).toBe(true);
     expect(sent.buyer.country).toBe('US');
     expect(sent.idempotency_key).toBe('idem-key-0001');
-    expect(JSON.stringify(sent)).not.toMatch(/price|amount|card/i);
+    expect(sent.expected_unit_price_minor).toBe(1399);
+    expect(sent.expected_currency).toBe("USD");
+    expect(JSON.stringify(sent)).not.toMatch(/card/i);
     await screen.findByTestId('reap-status');
     expect(screen.getByTestId('reap-status').dataset.phase).toBe('preparing');
     expect(screen.getByTestId('reap-offer-code').dataset.outcome).toBe('pending');
@@ -281,6 +284,7 @@ describe('ReapCheckoutPanel', () => {
       }, []);
       return (
         <ReapCheckoutPanel
+      expectedMoney={{expected_unit_price_minor:1399,expected_currency:"USD"}}
           productId={PRODUCT_ID}
           productTitle="Silky Matte Lip Ink"
           merchantDomain="judydoll.com"
@@ -313,6 +317,7 @@ describe('ReapCheckoutPanel', () => {
     });
     render(
       <ReapCheckoutPanel
+      expectedMoney={{expected_unit_price_minor:1399,expected_currency:"USD"}}
         productId={PRODUCT_ID}
         productTitle="Silky Matte Lip Ink"
         merchantDomain="judydoll.com"
@@ -353,6 +358,7 @@ describe('ReapCheckoutPanel', () => {
     const fetchImpl = scriptedFetch(awaitingApprovalCheckout());
     render(
       <ReapCheckoutPanel
+      expectedMoney={{expected_unit_price_minor:1399,expected_currency:"USD"}}
         productId={PRODUCT_ID}
         productTitle="Silky Matte Lip Ink"
         merchantDomain="judydoll.com"
@@ -482,6 +488,7 @@ describe('ReapCheckoutPanel', () => {
     view3.lineItems = [{ ...view3.lineItems[0], quantity: 3 }];
     render(
       <ReapCheckoutPanel
+      expectedMoney={{expected_unit_price_minor:1399,expected_currency:"USD"}}
         productId={PRODUCT_ID}
         productTitle="Silky Matte Lip Ink"
         merchantDomain="judydoll.com"
@@ -662,6 +669,7 @@ describe('ReapCheckoutPanel', () => {
   it('C4: the consent names the terms link and the version tag that is recorded', async () => {
     render(
       <ReapCheckoutPanel
+      expectedMoney={{expected_unit_price_minor:1399,expected_currency:"USD"}}
         productId={PRODUCT_ID}
         productTitle="Silky Matte Lip Ink"
         merchantDomain="judydoll.com"
@@ -680,6 +688,7 @@ describe('ReapCheckoutPanel', () => {
     const fetchImpl = scriptedFetch(resolvingCheckout());
     render(
       <ReapCheckoutPanel
+      expectedMoney={{expected_unit_price_minor:1399,expected_currency:"USD"}}
         productId={PRODUCT_ID}
         productTitle="Silky Matte Lip Ink"
         merchantDomain="judydoll.com"
@@ -1117,4 +1126,8 @@ it('prepares and persists canonical selection before one create, then recovers i
   expect(JSON.parse(String(fetchImpl.mock.calls[2][1].body))).toEqual({...original,recover_only:true});
   expect(fetchImpl.mock.calls.filter(([url])=>url.endsWith('/prepare'))).toHaveLength(1);
   expect(screen.queryByTestId('reap-visit-store')).toBeNull();
+});
+
+it('original displayed1399 rejects fresh preparation1499 before saving any key or create request',async()=>{
+ const selection={product_key:'prod::external_seed::external_seed::ext_real',variant_id:'677289689108',variant_key:'prod::external_seed::external_seed::ext_real::sku_hash',merchant_domain:'judydoll.com',market:'US',currency:'USD',unit_price_minor:1499,quantity:1,item_source:'cart_link'};const fetchImpl=vi.fn(async(_url:string,_init:RequestInit)=>jsonResponse({selection}));renderPanel(fetchImpl,vi.fn(),'cart_link',selection.variant_id);await fillAndSubmit();await screen.findByTestId('reap-fallback');expect(fetchImpl).toHaveBeenCalledTimes(1);expect(fetchImpl.mock.calls[0][0]).toBe('/api/reap-checkout/prepare');expect(localStorage.getItem(ATTEMPT_PREFIX+PRODUCT_ID)).toBeNull();expect(screen.queryByTestId('reap-visit-store')).toBeNull();
 });

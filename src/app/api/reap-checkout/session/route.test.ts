@@ -7,7 +7,7 @@ import { POST as CREATE } from '../route';
 import { resolvingCheckout, rpcResult, storefrontEscalation } from '@/lib/reapCheckout/__fixtures__/checkouts';
 const PEM = generateKeyPairSync('rsa', { modulusLength: 2048 }).privateKey.export({ type: 'pkcs8', format: 'pem' }).toString();
 const origin = 'http://localhost:3000';
-const payload = { product_id: 'sig_6433c8107859a484fb72d14861e84690', merchant_domain: 'judydoll.com', quantity: 1, idempotency_key: 'recovery-key-0001', consent: true,
+const payload = { expected_unit_price_minor:1399,expected_currency:"USD", product_id: 'sig_6433c8107859a484fb72d14861e84690', merchant_domain: 'judydoll.com', quantity: 1, idempotency_key: 'recovery-key-0001', consent: true,
   buyer: { email: 'recovery@example.test', first_name: 'Sandbox', last_name: 'Verifier', phone: '+14155550100', address_line1: '900 Brannan St', city: 'San Francisco', region: 'CA', postal_code: '94103', country: 'US' } };
 function req(path: string, body: unknown = {}, cookie?: string, from = origin) {
   return new NextRequest(origin + '/api/reap-checkout' + path, { method: 'POST', headers: { host: 'localhost:3000', origin: from, 'content-type': 'application/json', ...(cookie ? { cookie } : {}) }, body: JSON.stringify(body) });

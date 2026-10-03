@@ -67,6 +67,7 @@ function createReq(
     body:
       opts.body ??
       JSON.stringify({
+        expected_unit_price_minor:1399, expected_currency:'USD',
         product_id: 'sig_6433c8107859a484fb72d14861e84690',
         merchant_domain: 'www.judydoll.com',
         quantity: 1,
@@ -219,7 +220,7 @@ describe('POST /api/reap-checkout (armed)', () => {
     // The browser sends "www.JudyDoll.com"; the configured merchant is "judydoll.com".
     expect((await POST(createReq({ merchant_domain: 'www.JudyDoll.com' }))).status).toBe(200);
     const rpc = JSON.parse(String((fetchMock.mock.calls[0] as [string, RequestInit])[1].body));
-    expect(rpc.params.arguments.checkout.reap).toEqual({ expected_merchant_domain: 'judydoll.com' });
+    expect(rpc.params.arguments.checkout.reap).toEqual({ expected_merchant_domain: 'judydoll.com',expected_unit_price_minor:1399,expected_currency:'USD' });
   });
 
   it.each([['different_seller'], ['seller_unconfirmed']] as const)(
@@ -890,4 +891,10 @@ describe('P3 follow-ups of #384: conflicting merchant ids fail closed; a degrade
     const view = (await (await GET(getReq(REAP_ID, cookie), { params: Promise.resolve({ checkoutId: REAP_ID }) })).json()).checkout;
     expect(view.continueUrl).toBe(HOSTED_URL);
   });
+});
+
+describe('original displayed money at the actual Next handler',()=>{
+ it.each([{expected_unit_price_minor:undefined,expected_currency:undefined},{expected_currency:undefined},{expected_unit_price_minor:null},{expected_unit_price_minor:true},{expected_unit_price_minor:'1399'},{expected_unit_price_minor:1399.1},{expected_unit_price_minor:0},{expected_currency:'usd'}])('invalid or absent new pair refuses without gateway dispatch %j',async extra=>{arm();const {POST}=await allRoutes();const res=await POST(createReq(extra));expect(res.status).toBe(400);expect(fetchMock).not.toHaveBeenCalled();});
+ it('price_changed can resolve only a fresh request, never read-only recovery',async()=>{arm();const {POST}=await allRoutes();fetchMock.mockImplementation(async()=>new Response(JSON.stringify({jsonrpc:'2.0',id:1,result:{isError:true,content:[{type:'text',text:JSON.stringify({error:{code:'QUOTE_REQUIRED',detail:{reason:'ucp_reap_price_not_created'}}})}]}}),{status:200}));const first=await POST(createReq());expect((await first.json()).attempt_outcome).toBe('not_created');const read=await POST(createReq({recover_only:true}));expect(read.status).toBe(502);expect((await read.json()).attempt_outcome).toBe('unknown');});
+ it('legacy recovery keeps an absent original pair absent despite current UI protocol',async()=>{arm();const {POST}=await allRoutes();fetchMock.mockResolvedValue(new Response('{}',{status:502}));await POST(createReq({recover_only:true,expected_unit_price_minor:undefined,expected_currency:undefined}));expect(fetchMock).toHaveBeenCalledTimes(1);const sent=JSON.parse(String(fetchMock.mock.calls[0][1].body));expect(sent.params.name).toBe('recover_checkout');expect(sent.params.arguments.checkout.reap).not.toHaveProperty('expected_unit_price_minor');expect(sent.params.arguments.checkout.reap).not.toHaveProperty('expected_currency');});
 });

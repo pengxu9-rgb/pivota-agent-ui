@@ -1,15 +1,15 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ReapCheckoutPanel, ACTIVE_KEY_PREFIX, writeActiveCheckoutId } from './ReapCheckoutPanel';
-import { ATTEMPT_PREFIX, readAttempt } from '@/lib/reapCheckout/attempt';
+import { ATTEMPT_PREFIX, readAttempt, requestFingerprint } from '@/lib/reapCheckout/attempt';
 import { readReapCheckout } from '@/lib/reapCheckout/checkoutView';
 import { PRODUCT_ID, awaitingApprovalCheckout, completedCheckout, canceledCheckout, needsEnrollmentCheckout, resolvingCheckout } from '@/lib/reapCheckout/__fixtures__/checkouts';
 const NOW = Date.parse('2026-09-29T10:00:00Z');
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status });
 const view = (raw: unknown) => readReapCheckout(raw)!;
 const values = { first_name: 'Sandbox', last_name: 'Verifier', email: 'recovery@example.test', phone: '+14155550100', address_line1: '900 Brannan St', city: 'San Francisco', region: 'CA', postal_code: '94103' };
-function mount(fetchImpl: typeof fetch, key = vi.fn(() => 'attempt-key-0001'), opts: { now?: () => number; openWindow?: (url: string) => void } = {}) {
-  return render(<ReapCheckoutPanel productId={PRODUCT_ID} productTitle="Generic title" merchantDomain="judydoll.com" market="US" storeUrl="https://judydoll.com/products/example" fetchImpl={fetchImpl} now={opts.now || (() => NOW)} openWindow={opts.openWindow} newIdempotencyKey={key} />);
+function mount(fetchImpl: typeof fetch, key = vi.fn(() => 'attempt-key-0001'), opts: { now?: () => number; openWindow?: (url: string) => void; money?: {expected_unit_price_minor:number;expected_currency:string} } = {}) {
+  return render(<ReapCheckoutPanel expectedMoney={opts.money || {expected_unit_price_minor:1399,expected_currency:"USD"}} productId={PRODUCT_ID} productTitle="Generic title" merchantDomain="judydoll.com" market="US" storeUrl="https://judydoll.com/products/example" fetchImpl={fetchImpl} now={opts.now || (() => NOW)} openWindow={opts.openWindow} newIdempotencyKey={key} />);
 }
 function fill(container: HTMLElement, over: Partial<typeof values> = {}) {
   for (const [name, value] of Object.entries({ ...values, ...over })) fireEvent.change(container.querySelector(`input[name="${name}"]`)!, { target: { value } });
@@ -174,4 +174,11 @@ describe('hosted deadline and environment guards', () => {
     expect((await screen.findByTestId('reap-completed')).textContent).toMatch(/Sandbox checkout completed/);
     expect(screen.getByTestId('reap-completed').textContent).not.toMatch(/merchant will email|Order placed/);
   });
+});
+
+it('lost-response recovery restores the persisted original pair after current display money changes',async()=>{
+ const bodies:any[]=[];const fetchImpl=transport(async(init)=>{bodies.push(JSON.parse(String(init.body)));return json({},502);});const first=mount(fetchImpl as typeof fetch);await submit(first.container);await screen.findByTestId('reap-fallback');expect(readAttempt(PRODUCT_ID)?.expectedMoney).toEqual({expected_unit_price_minor:1399,expected_currency:'USD'});first.unmount();const key=vi.fn(()=> 'must-not-mint-new-key');const second=mount(fetchImpl as typeof fetch,key,{money:{expected_unit_price_minor:1499,expected_currency:'EUR'}});await screen.findByTestId('reap-attempt-pending');await submit(second.container);await waitFor(()=>expect(bodies).toHaveLength(2));expect(bodies[1]).toEqual({...bodies[0],recover_only:true});expect(key).not.toHaveBeenCalled();expect(readAttempt(PRODUCT_ID)?.resolved).toBe(false);
+});
+it('legacy sole attempt preserves its original absent money fields instead of borrowing current display',async()=>{
+ const bodies:any[]=[];const fetchImpl=transport(async(init)=>{bodies.push(JSON.parse(String(init.body)));return json({},502);});const first=mount(fetchImpl as typeof fetch);await submit(first.container);await screen.findByTestId('reap-fallback');first.unmount();const {expected_unit_price_minor:_unit,expected_currency:_currency,idempotency_key:_key,buyer_scope:_scope,recover_only:_recover,...oldPayload}=bodies[0];const prior=readAttempt(PRODUCT_ID)!;const {expectedMoney:_money,...oldAttempt}=prior;localStorage.setItem(ATTEMPT_PREFIX+PRODUCT_ID,JSON.stringify({...oldAttempt,fingerprint:await requestFingerprint(oldPayload)}));const second=mount(fetchImpl as typeof fetch,vi.fn(()=> 'must-not-mint'),{money:{expected_unit_price_minor:1499,expected_currency:'EUR'}});await screen.findByTestId('reap-attempt-pending');await submit(second.container);await waitFor(()=>expect(bodies).toHaveLength(2));expect(bodies[1]).not.toHaveProperty('expected_unit_price_minor');expect(bodies[1]).not.toHaveProperty('expected_currency');expect(bodies[1].idempotency_key).toBe(prior.key);expect(bodies[1].recover_only).toBe(true);
 });

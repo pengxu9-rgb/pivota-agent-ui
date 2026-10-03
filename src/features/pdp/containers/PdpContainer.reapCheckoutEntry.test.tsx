@@ -225,6 +225,11 @@ describe('PDP purchase bar: Buy with Reap', () => {
     fireEvent.click(screen.getByTestId('reap-submit'));
     await waitFor(() => expect(fetchMock.mock.calls.some(([u]) => u === '/api/reap-checkout')).toBe(true));
     const create = fetchMock.mock.calls.find(([u]) => u === '/api/reap-checkout')!;
-    expect(JSON.parse(String((create[1] as RequestInit).body)).product_id).toBe('sig_6433c8107859a484fb72d14861e84690');
+    const original=JSON.parse(String((create[1] as RequestInit).body));
+    expect(original.product_id).toBe('sig_6433c8107859a484fb72d14861e84690');
+    expect(original.expected_unit_price_minor).toBe(1600);
+    expect(original.expected_currency).toBe('USD');
+    expect(original).not.toHaveProperty('variant_id');
+    expect(fetchMock.mock.calls.some(([u])=>u==='/api/reap-checkout/prepare')).toBe(false);
   });
 });
