@@ -147,6 +147,7 @@ type Fallback =
   | { kind: 'not_available' }
   | { kind: 'paused' }
   | { kind: 'refused' }
+  | { kind: 'retired'; key: string; scope: string; fingerprint: string; receipt: string }
   | { kind: 'error'; message: string };
 
 function defaultIdempotencyKey(): string {
@@ -637,7 +638,13 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
   useEffect(() => {
     const sync = (event: StorageEvent) => {
       if (event.key !== null && !event.key.startsWith(ACTIVE_KEY_PREFIX) && !event.key.startsWith(ATTEMPT_PREFIX)) return;
-      try { setPendingAttempt(readAttempt(props.productId)?.resolved === false); } catch { setPendingAttempt(true); }
+      try {
+        const current = readAttempt(props.productId);
+        setPendingAttempt(current?.resolved === false);
+        if (current?.retirementReceipt && !readActiveCheckoutId(props.productId)) {
+          setFallback({kind:'retired',key:current.key,scope:current.scope,fingerprint:current.fingerprint,receipt:current.retirementReceipt});
+        }
+      } catch { setPendingAttempt(true); }
       if (event.key === ACTIVE_KEY_PREFIX + props.productId) setRestoreAttempt((n) => n + 1);
     };
     window.addEventListener('storage', sync);
@@ -650,6 +657,10 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
   useEffect(() => {
     const id = readActiveCheckoutId(props.productId);
     if (!id) {
+      try {
+        const attempt = readAttempt(props.productId);
+        if (attempt?.retirementReceipt) setFallback({kind:'retired',key:attempt.key,scope:attempt.scope,fingerprint:attempt.fingerprint,receipt:attempt.retirementReceipt});
+      } catch { setPendingAttempt(true); }
       setRestoring(false);
       return undefined;
     }
@@ -694,6 +705,12 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
     try {
       await withAttemptLock(async () => {
         const existing = readAttempt(props.productId);
+        if (existing?.retirementReceipt) {
+          if (readActiveCheckoutId(props.productId)) { setRestoreAttempt((n) => n + 1); return; }
+          setPendingAttempt(false);
+          setFallback({kind:'retired',key:existing.key,scope:existing.scope,fingerprint:existing.fingerprint,receipt:existing.retirementReceipt});
+          return;
+        }
         // An unresolved legacy attempt keeps price fields absent. Never infer them
         // from its old selection or from a new catalog/displayed amount.
         const originalMoney = existing?.resolved === false ? existing.expectedMoney : props.expectedMoney;
@@ -773,6 +790,16 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
           body: JSON.stringify({ ...payload, idempotency_key: attempt.key, buyer_scope: attempt.scope, recover_only: existing?.resolved === false }),
         });
         const body = await res.json().catch(() => null);
+        if (existing?.resolved === false && res.ok && body?.recovery_status === 'retired' && body?.attempt_outcome === 'not_created'
+          && body?.checkout === null && typeof body?.reconciliation_id === 'string' && /^[a-f0-9]{32}$/.test(body.reconciliation_id)) {
+          const current = readAttempt(props.productId);
+          if (!current || current.key !== attempt.key || current.scope !== attempt.scope || current.fingerprint !== attempt.fingerprint
+            || current.resolved !== false || readActiveCheckoutId(props.productId)) throw new Error('Checkout recovery changed in another tab. Check its status before starting again.');
+          writeAttempt(props.productId, {...current,resolved:true,retirementReceipt:body.reconciliation_id});
+          setPendingAttempt(false);
+          setFallback({kind:'retired',key:current.key,scope:current.scope,fingerprint:current.fingerprint,receipt:body.reconciliation_id});
+          return;
+        }
         if (existing?.resolved !== false && ((res.ok && body?.attempt_outcome === 'not_created') || [400, 403, 413, 415, 429].includes(res.status))) {
           writeAttempt(props.productId, { ...attempt, resolved: true });
           setPendingAttempt(false);
@@ -823,6 +850,22 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
       setSubmitting(false);
     }
   }
+
+  const startAfterRetirement = () => {
+    if (fallback?.kind !== 'retired') return;
+    const closed = fallback;
+    void withAttemptLock(async () => {
+      const current = readAttempt(props.productId);
+      if (!current || !current.resolved || current.key !== closed.key || current.scope !== closed.scope
+        || current.fingerprint !== closed.fingerprint || current.retirementReceipt !== closed.receipt || readActiveCheckoutId(props.productId)) {
+        throw new Error('Checkout recovery changed in another tab. Check its status before starting again.');
+      }
+      localStorage.removeItem(ATTEMPT_PREFIX + props.productId);
+      if (localStorage.getItem(ATTEMPT_PREFIX + props.productId) !== null) throw new Error('Checkout recovery could not be saved.');
+      setPendingAttempt(false);
+      setFallback(null);
+    }).catch((error) => setFallback({kind:'error',message:error instanceof Error ? error.message : 'Checkout recovery could not be saved.'}));
+  };
 
   const restart = (withoutCode: boolean) => {
     void withAttemptLock(async () => {
@@ -1035,6 +1078,8 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
               <p className="text-sm font-semibold">Checkout through Reap isn&apos;t available for this item right now.</p>
               <p className="text-sm text-muted-foreground">This checkout cannot continue. No other checkout route will be opened.</p>
             </>
+          ) : fallback.kind === 'retired' ? (
+            <p className="text-sm font-semibold" data-testid="reap-attempt-retired">The earlier attempt was closed without creating a purchase. You can start a new checkout.</p>
           ) : fallback.kind === 'refused' ? (
             <p className="text-sm font-semibold">This checkout could not be opened. Nothing was charged.</p>
           ) : (
@@ -1043,10 +1088,10 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
-              onClick={() => setFallback(null)}
+              onClick={fallback.kind === 'retired' ? startAfterRetirement : () => setFallback(null)}
               className="h-10 rounded-full border border-border px-4 text-sm font-semibold"
             >
-              {pendingAttempt ? 'Recover same attempt' : 'Back'}
+              {fallback.kind === 'retired' ? 'Start a new checkout' : pendingAttempt ? 'Recover same attempt' : 'Back'}
             </button>
 
           </div>

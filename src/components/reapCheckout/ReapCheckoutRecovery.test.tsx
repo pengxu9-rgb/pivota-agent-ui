@@ -182,3 +182,41 @@ it('lost-response recovery restores the persisted original pair after current di
 it('legacy sole attempt preserves its original absent money fields instead of borrowing current display',async()=>{
  const bodies:any[]=[];const fetchImpl=transport(async(init)=>{bodies.push(JSON.parse(String(init.body)));return json({},502);});const first=mount(fetchImpl as typeof fetch);await submit(first.container);await screen.findByTestId('reap-fallback');first.unmount();const {expected_unit_price_minor:_unit,expected_currency:_currency,idempotency_key:_key,buyer_scope:_scope,recover_only:_recover,...oldPayload}=bodies[0];const prior=readAttempt(PRODUCT_ID)!;const {expectedMoney:_money,...oldAttempt}=prior;localStorage.setItem(ATTEMPT_PREFIX+PRODUCT_ID,JSON.stringify({...oldAttempt,fingerprint:await requestFingerprint(oldPayload)}));const second=mount(fetchImpl as typeof fetch,vi.fn(()=> 'must-not-mint'),{money:{expected_unit_price_minor:1499,expected_currency:'EUR'}});await screen.findByTestId('reap-attempt-pending');await submit(second.container);await waitFor(()=>expect(bodies).toHaveLength(2));expect(bodies[1]).not.toHaveProperty('expected_unit_price_minor');expect(bodies[1]).not.toHaveProperty('expected_currency');expect(bodies[1].idempotency_key).toBe(prior.key);expect(bodies[1].recover_only).toBe(true);
 });
+
+
+describe('confirmed retirement of the original attempt',()=>{
+  const receipt='a'.repeat(32);
+  const closed={checkout:null,attempt_outcome:'not_created',recovery_status:'retired',reconciliation_id:receipt};
+  async function pending(fetchImpl:typeof fetch){const first=mount(fetchImpl);await submit(first.container);await screen.findByTestId('reap-fallback');first.unmount();return mount(fetchImpl,vi.fn(()=> 'new-attempt-key-0002'));}
+  it('saves closure before clearing the warning, restores after reload, then explicitly creates a fresh key',async()=>{
+    const sent:any[]=[];const f=transport(async(init)=>{const b=JSON.parse(String(init.body));sent.push(b);return sent.length===1?json({},502):sent.length===2?json(closed):json({checkout:view(resolvingCheckout())});});
+    const second=await pending(f as typeof fetch);await submit(second.container);
+    await screen.findByTestId('reap-attempt-retired');expect(screen.queryByTestId('reap-attempt-pending')).toBeNull();
+    expect(readAttempt(PRODUCT_ID)).toMatchObject({key:'attempt-key-0001',resolved:true,retirementReceipt:receipt});second.unmount();
+    const third=mount(f as typeof fetch,vi.fn(()=> 'new-attempt-key-0002'));await screen.findByTestId('reap-attempt-retired');
+    await act(async()=>fireEvent.click(screen.getByText('Start a new checkout')));await submit(third.container);await screen.findByTestId('reap-status');
+    expect(sent.map(b=>[b.idempotency_key,b.recover_only])).toEqual([['attempt-key-0001',false],['attempt-key-0001',true],['new-attempt-key-0002',false]]);
+  });
+  it.each([{}, {reconciliation_id:'bad'},{checkout:{id:'ambiguous'}},{attempt_outcome:'unknown'}])('keeps incomplete retirement unresolved %j',async(change)=>{
+    let n=0;const f=transport(async()=>++n===1?json({},502):json({...closed,...change,recovery_status:Object.keys(change).length?'retired':undefined}));
+    const panel=await pending(f as typeof fetch);await submit(panel.container);await screen.findByTestId('reap-fallback');expect(readAttempt(PRODUCT_ID)?.resolved).toBe(false);
+  });
+  it('does not overwrite a newer record when a delayed retirement response arrives',async()=>{
+    let n=0;const f=transport(async()=>{if(++n===1)return json({},502);localStorage.setItem(ATTEMPT_PREFIX+PRODUCT_ID,JSON.stringify({key:'newer-attempt-key',fingerprint:'b'.repeat(64),scope:'buyer-one',resolved:false}));return json(closed);});
+    const panel=await pending(f as typeof fetch);await submit(panel.container);await screen.findByTestId('reap-fallback');expect(readAttempt(PRODUCT_ID)).toMatchObject({key:'newer-attempt-key',resolved:false});
+  });
+  it('a stale Start new checkout button cannot erase a newer attempt',async()=>{
+    let n=0;const f=transport(async()=>++n===1?json({},502):json(closed));const panel=await pending(f as typeof fetch);await submit(panel.container);await screen.findByTestId('reap-attempt-retired');
+    localStorage.setItem(ATTEMPT_PREFIX+PRODUCT_ID,JSON.stringify({key:'newer-attempt-key',fingerprint:'b'.repeat(64),scope:'buyer-one',resolved:false}));
+    await act(async()=>fireEvent.click(screen.getByText('Start a new checkout')));expect(readAttempt(PRODUCT_ID)).toMatchObject({key:'newer-attempt-key',resolved:false});
+  });
+});
+
+
+it('hydrates a closure received from another tab without requiring reload',async()=>{
+  const f=transport(async()=>json({},502));const panel=mount(f as typeof fetch);await submit(panel.container);await screen.findByTestId('reap-fallback');
+  const current=readAttempt(PRODUCT_ID)!;localStorage.setItem(ATTEMPT_PREFIX+PRODUCT_ID,JSON.stringify({...current,resolved:true,retirementReceipt:'a'.repeat(32)}));
+  await act(async()=>window.dispatchEvent(new StorageEvent('storage',{key:ATTEMPT_PREFIX+PRODUCT_ID})));
+  await screen.findByTestId('reap-attempt-retired');expect(screen.queryByTestId('reap-attempt-pending')).toBeNull();
+  await act(async()=>fireEvent.click(screen.getByText('Start a new checkout')));expect(readAttempt(PRODUCT_ID)).toBeNull();
+});

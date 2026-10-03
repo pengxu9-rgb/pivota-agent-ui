@@ -134,6 +134,9 @@ export async function POST(req: NextRequest) {
   if (outcome.kind === 'tool_error') {
     // A read-only recovery error cannot establish that the original create made nothing.
     // Keep the owned attempt unresolved regardless of the upstream reason vocabulary.
+    if (recoverOnly && outcome.code === 'CHECKOUT_ATTEMPT_RETIRED' && outcome.reason === 'ucp_reap_attempt_retired' && outcome.reconciliationId) {
+      return finish(json({checkout:null,attempt_outcome:'not_created',recovery_status:'retired',reconciliation_id:outcome.reconciliationId}));
+    }
     if (recoverOnly) return finish(json({ error: 'checkout_outcome_unknown', attempt_outcome: 'unknown' }, 502));
     if (!recoverOnly && outcome.reason === 'reap_create_paused') {
       return finish(json({ checkout: null, attempt_outcome: 'not_created', blocked: 'paused' }));

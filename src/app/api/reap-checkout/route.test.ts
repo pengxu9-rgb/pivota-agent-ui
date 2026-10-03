@@ -898,3 +898,13 @@ describe('original displayed money at the actual Next handler',()=>{
  it('price_changed can resolve only a fresh request, never read-only recovery',async()=>{arm();const {POST}=await allRoutes();fetchMock.mockImplementation(async()=>new Response(JSON.stringify({jsonrpc:'2.0',id:1,result:{isError:true,content:[{type:'text',text:JSON.stringify({error:{code:'QUOTE_REQUIRED',detail:{reason:'ucp_reap_price_not_created'}}})}]}}),{status:200}));const first=await POST(createReq());expect((await first.json()).attempt_outcome).toBe('not_created');const read=await POST(createReq({recover_only:true}));expect(read.status).toBe(502);expect((await read.json()).attempt_outcome).toBe('unknown');});
  it('legacy recovery keeps an absent original pair absent despite current UI protocol',async()=>{arm();const {POST}=await allRoutes();fetchMock.mockResolvedValue(new Response('{}',{status:502}));await POST(createReq({recover_only:true,expected_unit_price_minor:undefined,expected_currency:undefined}));expect(fetchMock).toHaveBeenCalledTimes(1);const sent=JSON.parse(String(fetchMock.mock.calls[0][1].body));expect(sent.params.name).toBe('recover_checkout');expect(sent.params.arguments.checkout.reap).not.toHaveProperty('expected_unit_price_minor');expect(sent.params.arguments.checkout.reap).not.toHaveProperty('expected_currency');});
 });
+
+
+describe('typed attempt retirement receipt',()=>{
+  it.each([['CHECKOUT_ATTEMPT_RETIRED','ucp_reap_attempt_retired','a'.repeat(32),true],['OTHER','ucp_reap_attempt_retired','a'.repeat(32),false],['CHECKOUT_ATTEMPT_RETIRED','other','a'.repeat(32),false],['CHECKOUT_ATTEMPT_RETIRED','ucp_reap_attempt_retired','bad',false]])('accepts only exact recovery code/reason/receipt %s %s %s',async(code,reason,id,accepted)=>{
+    arm();const {POST}=await allRoutes();fetchMock.mockResolvedValue(new Response(JSON.stringify(rpcResult({error:{code,detail:{reason,reconciliation_id:id}}},true))));
+    const response=await POST(createReq({recover_only:true}));expect(response.status).toBe(accepted?200:502);
+    if(accepted)expect(await response.json()).toEqual({checkout:null,attempt_outcome:'not_created',recovery_status:'retired',reconciliation_id:id});
+  });
+  it('cannot treat the receipt as a fresh create outcome',async()=>{arm();const {POST}=await allRoutes();fetchMock.mockResolvedValue(new Response(JSON.stringify(rpcResult({error:{code:'CHECKOUT_ATTEMPT_RETIRED',detail:{reason:'ucp_reap_attempt_retired',reconciliation_id:'a'.repeat(32)}}},true))));expect((await POST(createReq())).status).toBe(502);});
+});
