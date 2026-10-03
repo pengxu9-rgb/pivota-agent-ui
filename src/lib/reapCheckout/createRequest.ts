@@ -1,7 +1,9 @@
+import { readExpectedMoney, type ExpectedMoney } from './expectedMoney';
 // The buyer's "Checkout with Reap" form -> the UCP `create_checkout` arguments the gateway's Reap lane reads
 // (PIVOTA-Agent docs/reap-agentic-lane.md §5.1). Pure: no env, no network, so every rule is testable.
 //
-// What this module does NOT do: price anything, pick a variant, or judge an offer code. The price is
+// Original expected money constrains what the buyer was shown; it never prices an item,
+// picks a variant or judges an offer code. The authoritative price is
 // the catalog's and the merchant's (the backend's `verify_quote`), and the code is judged by the
 // backend's one offer-code rule. The offer code is forwarded EXACTLY as typed — not trimmed, not
 // case-folded — after only the shape the gateway's own adapter enforces (a string of 1..128 code
@@ -28,7 +30,7 @@ export type ReapBuyerForm = {
   country: string;
 };
 
-export type ReapCreateInput = {
+export type ReapCreateInput = Partial<ExpectedMoney> & {
   product_id: string;
   item_source?: ReapItemSource;
   variant_id?: string;
@@ -71,6 +73,8 @@ export function readOfferCode(value: unknown): string | undefined | null {
 
 export function validateReapCreateBody(body: unknown): ValidationResult {
   if (!isRecord(body)) return { ok: false, field: 'body', message: 'Request body must be a JSON object.' };
+  const expectedMoney = readExpectedMoney(body);
+  if (expectedMoney === null) return {ok:false,field:"expected_unit_price_minor",message:"Original unit price and currency must be supplied together."};
   const productId = field(body.product_id);
   if (!productId) return { ok: false, field: 'product_id', message: 'product_id is required.' };
   if (body.item_source !== undefined && (typeof body.item_source !== 'string' || !['reap_variant', 'cart_link'].includes(body.item_source))) {
@@ -138,11 +142,13 @@ export function validateReapCreateBody(body: unknown): ValidationResult {
     return { ok: false, field: 'buyer.postal_code', message: 'Enter a valid postcode for this country.' };
   }
   buyer.country = market;
+  if (selection && expectedMoney && (selection.unit_price_minor !== expectedMoney.expected_unit_price_minor || selection.currency !== expectedMoney.expected_currency)) return {ok:false,field:"expected_unit_price_minor",message:"The displayed price changed. Checkout was not created."};
   if (selection && (selection.market !== market || selection.quantity !== quantity)) return {ok:false,field:'selection',message:'Original variant selection does not match this request.'};
   return {
     ok: true,
     market,
     input: {
+      ...expectedMoney,
       product_id: productId,
       ...(body.item_source !== undefined ? { item_source: body.item_source as ReapItemSource } : {}),
       ...(variantId !== undefined ? { variant_id: variantId } : {}),
@@ -186,7 +192,7 @@ export function buildCreateCheckoutArgs(
       ...(input.offer_code !== undefined ? { discounts: { codes: [input.offer_code] } } : {}),
       // The seller the buyer was shown, from SERVER config (never the browser): the gateway refuses the
       // create (`ucp_seller_mismatch`) unless every route would sell from exactly this merchant (§5.4).
-      reap: { expected_merchant_domain: opts.expectedMerchantDomain, ...(opts.itemSource ? { item_source: opts.itemSource } : {}), ...(input.variant_id ? { selected_variant_id: input.variant_id } : {}), ...(input.selection ? {selection:input.selection} : {}) },
+      reap: { ...readExpectedMoney(input), expected_merchant_domain: opts.expectedMerchantDomain, ...(opts.itemSource ? { item_source: opts.itemSource } : {}), ...(input.variant_id ? { selected_variant_id: input.variant_id } : {}), ...(input.selection ? {selection:input.selection} : {}) },
     },
   };
 }

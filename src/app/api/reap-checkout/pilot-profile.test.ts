@@ -6,7 +6,7 @@ import { resolvingCheckout, rpcResult, storefrontEscalation } from '@/lib/reapCh
 const ORIGIN='https://reap-pilot.pivota.cc', GATEWAY='https://reap-gateway.pivota.cc';
 const PRODUCT='sig_6433c8107859a484fb72d14861e84690';
 const PEM=generateKeyPairSync('rsa',{modulusLength:2048}).privateKey.export({type:'pkcs8',format:'pem'}).toString();
-const body={product_id:PRODUCT,merchant_domain:'judydoll.com',item_source:'cart_link',quantity:1,idempotency_key:'pilot-source-key-0001',consent:true,buyer:{email:'synthetic@example.test',first_name:'Sandbox',last_name:'Verifier',phone:'+14155550100',address_line1:'900 Brannan St',city:'San Francisco',region:'CA',postal_code:'94103',country:'US'}};
+const body={expected_unit_price_minor:1399,expected_currency:"USD",product_id:PRODUCT,merchant_domain:'judydoll.com',item_source:'cart_link',quantity:1,idempotency_key:'pilot-source-key-0001',consent:true,buyer:{email:'synthetic@example.test',first_name:'Sandbox',last_name:'Verifier',phone:'+14155550100',address_line1:'900 Brannan St',city:'San Francisco',region:'CA',postal_code:'94103',country:'US'}};
 const config={NODE_ENV:'production',NEXT_PUBLIC_REAP_CHECKOUT_DEMO:'1',REAP_CHECKOUT_PROFILE:'pilot',REAP_CHECKOUT_PILOT_ENABLED:'1',REAP_CHECKOUT_PILOT_ORIGIN:ORIGIN,REAP_CHECKOUT_PILOT_GATEWAY_ORIGIN:GATEWAY,REAP_CHECKOUT_GATEWAY_BASE_URL:GATEWAY,REAP_CHECKOUT_AGENT_API_KEY:`ak_live_${'a'.repeat(64)}`,REAP_CHECKOUT_PILOT_ROUTES:JSON.stringify([{domain:'judydoll.com',market:'US',item_source:'cart_link',product_ids:[PRODUCT]}]),REAP_DEMO_USER_JWT_PRIVATE_KEY:PEM,REAP_DEMO_USER_JWT_KID:'pilot-key-1',REAP_DEMO_USER_JWT_ISSUER:ORIGIN+'/reap-checkout',REAP_DEMO_USER_JWT_AUDIENCE:'pivota-ucp'};
 let fetchMock:ReturnType<typeof vi.fn>;
 const req=(path:string,payload:unknown={},cookie?:string,origin=ORIGIN)=>new NextRequest(origin+'/api/reap-checkout'+path,{method:'POST',headers:{host:new URL(origin).host,origin,'content-type':'application/json',...(cookie?{cookie}:{})},body:JSON.stringify(payload)});
@@ -17,7 +17,7 @@ it('public sandbox pilot binds source before first checkout, never retries anoth
  const buyer=await bootstrap();expect(buyer.cookie.startsWith('__Host-')).toBe(true);
  const {POST}=await import('./route');const res=await POST(req('',{...body,buyer_scope:buyer.scope},buyer.cookie));expect(res.status).toBe(200);expect(res.headers.get('set-cookie')).toBeNull();
  expect(fetchMock).toHaveBeenCalledTimes(1);const [url,init]=fetchMock.mock.calls[0] as unknown as [string,RequestInit];expect(url).toBe(GATEWAY+'/ucp/mcp');expect(init.redirect).toBe('error');
- const sent=JSON.parse(String(init.body));expect(sent.params.arguments.checkout.reap).toEqual({expected_merchant_domain:'judydoll.com',item_source:'cart_link'});
+ const sent=JSON.parse(String(init.body));expect(sent.params.arguments.checkout.reap).toEqual({expected_unit_price_minor:1399,expected_currency:'USD',expected_merchant_domain:'judydoll.com',item_source:'cart_link'});
 });
 it('recover-only preserves original selected source when new-create config changes',async()=>{
  const buyer=await bootstrap();vi.stubEnv('REAP_CHECKOUT_PILOT_ROUTES',JSON.stringify([{domain:'judydoll.com',market:'US',item_source:'reap_variant',product_ids:[PRODUCT]}]));
@@ -30,7 +30,7 @@ it.each([
 ])('read-only recovery preserves the original request when current create scope changes %j',async({routes})=>{
  const buyer=await bootstrap();vi.stubEnv('REAP_CHECKOUT_PILOT_ROUTES',JSON.stringify(routes));
  const {POST}=await import('./route');const response=await POST(req('',{...body,buyer_scope:buyer.scope,recover_only:true},buyer.cookie));expect(response.status).toBe(200);expect(response.headers.get('set-cookie')).toBeNull();
- expect(fetchMock).toHaveBeenCalledTimes(1);const sent=JSON.parse(String(fetchMock.mock.calls[0][1].body));expect(sent.params.name).toBe('recover_checkout');expect(sent.params.arguments.checkout.reap).toEqual({expected_merchant_domain:'judydoll.com',item_source:'cart_link'});expect(sent.params.arguments.meta['idempotency-key']).toBe(`pivota-ui-reap:${body.idempotency_key}`);
+ expect(fetchMock).toHaveBeenCalledTimes(1);const sent=JSON.parse(String(fetchMock.mock.calls[0][1].body));expect(sent.params.name).toBe('recover_checkout');expect(sent.params.arguments.checkout.reap).toEqual({expected_unit_price_minor:1399,expected_currency:'USD',expected_merchant_domain:'judydoll.com',item_source:'cart_link'});expect(sent.params.arguments.meta['idempotency-key']).toBe(`pivota-ui-reap:${body.idempotency_key}`);
 });
 it.each([['product',{product_id:'unapproved-product'}],['source',{item_source:'reap_variant'}]])('new creates cannot widen pilot %s',async(_name,extra)=>{
  const buyer=await bootstrap();const {POST}=await import('./route');expect((await POST(req('',{...body,...extra,buyer_scope:buyer.scope},buyer.cookie))).status).toBe(403);expect(fetchMock).not.toHaveBeenCalled();

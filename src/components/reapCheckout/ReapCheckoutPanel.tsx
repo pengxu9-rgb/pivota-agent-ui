@@ -1,4 +1,5 @@
 'use client';
+import { readExpectedMoney, type ExpectedMoney } from '@/lib/reapCheckout/expectedMoney';
 import { readSelection } from '@/lib/reapCheckout/selection';
 
 // The "Checkout with Reap" flow for ONE product: buyer details -> quote -> hand-off to Reap's own page ->
@@ -92,6 +93,7 @@ const defaultFetch: typeof fetch = (...a) => fetch(...a);
 
 export type ReapCheckoutPanelProps = {
   itemSource?: "reap_variant" | "cart_link";
+  expectedMoney?: ExpectedMoney | null;
   productId: string;
   variantId?: string;
   variantLabel?: string;
@@ -691,7 +693,13 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
     setSubmitting(true);
     try {
       await withAttemptLock(async () => {
+        const existing = readAttempt(props.productId);
+        // An unresolved legacy attempt keeps price fields absent. Never infer them
+        // from its old selection or from a new catalog/displayed amount.
+        const originalMoney = existing?.resolved === false ? existing.expectedMoney : props.expectedMoney;
+        if (existing?.resolved !== false && !readExpectedMoney(originalMoney)) throw new Error("The displayed price could not be confirmed. Checkout was not created.");
         const requestBody = {
+            ...originalMoney,
             product_id: props.productId,
             ...(props.variantId ? { variant_id: props.variantId } : {}),
             merchant_domain: props.merchantDomain,
@@ -714,7 +722,6 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
         };
         const validated = validateReapCreateBody({ ...requestBody, idempotency_key: 'validation-only' });
         if (!validated.ok) { setFieldError({ field: validated.field, message: validated.message }); return; }
-        const existing = readAttempt(props.productId);
         // Historical attempts without a stored source preserve their original fingerprint.
         const itemSource = existing ? existing.itemSource : props.itemSource;
         const normalized = { ...validated.input, merchant_domain: props.merchantDomain, ...(itemSource ? { item_source: itemSource } : {}) };
@@ -735,7 +742,8 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
             body:JSON.stringify({...payload,item_source:'cart_link',idempotency_key:'selection-read-only',buyer_scope:sessionBody.scope})});
           const selection=readSelection((await prepared.json().catch(()=>null))?.selection);
           if (!prepared.ok || !selection || selection.variant_id!==payload.variant_id || selection.quantity!==payload.quantity
-            || selection.market!==props.market || selection.merchant_domain!==props.merchantDomain) {
+            || selection.market!==props.market || selection.merchant_domain!==props.merchantDomain
+            || selection.unit_price_minor!==originalMoney?.expected_unit_price_minor || selection.currency!==originalMoney?.expected_currency) {
             throw new Error('The selected variant could not be confirmed. Checkout was not created.');
           }
           payload={...payload,item_source:selection.item_source,selection};
@@ -755,7 +763,7 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
           throw new Error('An earlier checkout attempt is unresolved. Re-enter exactly the same details to recover it. If your buyer session changed, contact support before starting again.');
         }
         const attempt = existing && existing.scope === sessionBody.scope && existing.fingerprint === fingerprint
-          ? existing : { fingerprint, key: newKey(), scope: sessionBody.scope, resolved: false, ...(payload.item_source ? { itemSource:payload.item_source } : {}), ...(payload.selection ? {selection:payload.selection} : {}) };
+          ? existing : { fingerprint, key: newKey(), scope: sessionBody.scope, resolved: false, ...(payload.item_source ? { itemSource:payload.item_source } : {}), ...(payload.selection ? {selection:payload.selection} : {}), ...(originalMoney ? {expectedMoney:originalMoney} : {}) };
         writeAttempt(props.productId, { ...attempt, resolved: false });
         setPendingAttempt(true);
         const res = await fetchImpl('/api/reap-checkout', {

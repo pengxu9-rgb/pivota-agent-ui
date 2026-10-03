@@ -1,3 +1,4 @@
+import { readExpectedMoney } from '@/lib/reapCheckout/expectedMoney';
 // POST /api/reap-checkout — open a Reap checkout for ONE PDP item (demo, behind two flags + an arming guard).
 //
 // The browser never talks to the gateway: this route validates the form, adds the two credentials
@@ -72,6 +73,8 @@ export async function POST(req: NextRequest) {
     return finish(json({ error: 'invalid_request', field: validated.field, message: validated.message }, 400));
   }
 
+  if (!recoverOnly && !readExpectedMoney(validated.input)) return finish(json({error:"invalid_request",field:"expected_unit_price_minor",message:"The original displayed unit price and currency are required.",attempt_outcome:"not_created"},400));
+
   // New creates use the current configured scope. Recovery submits the original domain/market
   // to the owner-bound read-only door; changing new-create scope must not rewrite its fingerprint.
   const domain = canonicalMerchantDomain((body as Record<string, unknown>)?.merchant_domain);
@@ -135,6 +138,7 @@ export async function POST(req: NextRequest) {
     if (!recoverOnly && outcome.reason === 'reap_create_paused') {
       return finish(json({ checkout: null, attempt_outcome: 'not_created', blocked: 'paused' }));
     }
+    if (!recoverOnly && outcome.reason === 'ucp_reap_price_not_created') return finish(json({checkout:null,attempt_outcome:'not_created',blocked:'not_available',message:'The displayed price changed or could not be confirmed. Checkout was not created.'}));
     if (!recoverOnly && outcome.reason === 'ucp_reap_variant_not_created') {
       return finish(json({ checkout: null, attempt_outcome: 'not_created', blocked: 'not_available', message: 'Checkout was not created. The selected variant could not be verified.' }));
     }

@@ -1,0 +1,7 @@
+import {describe,it,expect} from 'vitest';
+import {readExpectedMoney,snapshotDisplayedMoney} from './expectedMoney';
+describe('original displayed money',()=>{
+ it.each([[13.99,'USD',1399],[1399,'JPY',1399],[1.234,'KWD',1234],[13.9900,'USD',1399]])('snapshots %s %s exactly', (amount,currency,minor)=>{expect(snapshotDisplayedMoney(amount,currency)).toEqual({expected_unit_price_minor:minor,expected_currency:currency});});
+ it.each([null,undefined,{},[],true,{expected_unit_price_minor:1399},{expected_currency:'USD'},{expected_unit_price_minor:null,expected_currency:'USD'},{expected_unit_price_minor:true,expected_currency:'USD'},{expected_unit_price_minor:'1399',expected_currency:'USD'},{expected_unit_price_minor:1399.1,expected_currency:'USD'},{expected_unit_price_minor:0,expected_currency:'USD'},{expected_unit_price_minor:9007199254740992,expected_currency:'USD'},{expected_unit_price_minor:1399,expected_currency:'usd'}])('strict pair %j refuses or retains complete omission', value=>{if(value && !Array.isArray(value) && typeof value==='object' && !Object.keys(value).length)expect(readExpectedMoney(value)).toBeUndefined();else expect(readExpectedMoney(value)).toBeNull();});
+ it.each([[13.999,'USD'],[1.5,'JPY'],[Infinity,'USD'],[NaN,'USD'],[0,'USD'],[-1,'USD'],['13.99','USD'],[13.99,'usd'],[13.99,null],[1e21,'USD']])('unrepresentable displayed price %s %s cannot be rounded or guessed', (amount,currency)=>expect(snapshotDisplayedMoney(amount,currency)).toBeNull());
+});
