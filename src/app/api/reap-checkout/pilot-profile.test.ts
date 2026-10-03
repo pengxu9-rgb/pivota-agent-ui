@@ -58,3 +58,8 @@ it('weak RSA key cannot arm public buyer identity',async()=>{
 it.each(['https://different.pivota.cc','http://reap-pilot.pivota.cc','null'])('public pilot refuses Origin %s with a correctly pinned incoming host',async(origin)=>{
  const {POST}=await import('./session/route');const request=req('/session');request.headers.set('origin',origin);const response=await POST(request);expect(response.status).toBe(403);expect(response.headers.get('set-cookie')).toBeNull();expect(fetchMock).not.toHaveBeenCalled();
 });
+it('same-origin loopback bootstrap survives NextURL normalization while cross-scheme remains refused',async()=>{
+ vi.stubEnv('NODE_ENV','development');vi.stubEnv('REAP_CHECKOUT_PROFILE','demo');vi.stubEnv('REAP_CHECKOUT_DEMO_ENABLED','1');vi.stubEnv('REAP_CHECKOUT_GATEWAY_BASE_URL','http://127.0.0.1:8893');
+ const {POST}=await import('./session/route');const local='http://127.0.0.1:3037';const make=(origin:string)=>new NextRequest(local+'/api/reap-checkout/session',{method:'POST',headers:{host:'127.0.0.1:3037',origin,'content-type':'application/json'},body:'{}'});
+ const request=make(local);expect(request.nextUrl.hostname).toBe('localhost');expect((await POST(request)).status).toBe(200);expect((await POST(make('https://127.0.0.1:3037'))).status).toBe(403);expect(fetchMock).not.toHaveBeenCalled();
+});

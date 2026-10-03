@@ -169,7 +169,10 @@ export function sameOriginProblem(req: NextRequest): NextResponse | null {
   if (site && site !== 'same-origin') return json({ error: 'forbidden_origin' }, 403);
   if (!origin || !host) return json({ error: 'forbidden_origin' }, 403);
   try {
-    if (new URL(origin).origin !== req.nextUrl.origin || new URL(origin).host.toLowerCase() !== host.toLowerCase()) return json({ error: 'forbidden_origin' }, 403);
+    const supplied = new URL(origin);
+    // NextURL canonicalizes loopback IP hostnames to localhost. The required Host
+    // header retains the browser's real authority; compare it plus the request scheme.
+    if (supplied.protocol !== req.nextUrl.protocol || supplied.host.toLowerCase() !== host.toLowerCase()) return json({ error: 'forbidden_origin' }, 403);
   } catch {
     return json({ error: 'forbidden_origin' }, 403);
   }
