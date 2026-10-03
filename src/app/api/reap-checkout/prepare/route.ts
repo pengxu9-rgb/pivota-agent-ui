@@ -19,6 +19,8 @@ export async function POST(req: NextRequest) {
   if (body.recover_only !== undefined || body.selection !== undefined) return json({error:'invalid_request'},400);
   const validated = validateReapCreateBody(body);
   if (!validated.ok) return json({error:'invalid_request',field:validated.field},400);
+  // This read-only endpoint accepts only the backend's exact positive numeric selector.
+  if (!validated.input.variant_id || !/^[1-9][0-9]{0,19}$/.test(validated.input.variant_id)) return json({error:'invalid_request',field:'variant_id'},400);
   const domain=canonicalMerchantDomain(body.merchant_domain);
   const merchant=readDemoMerchantConfig().find(m => m.domain===domain);
   if (!merchant || merchant.market!==validated.market || validated.input.item_source!=='cart_link' || !validated.input.variant_id) return json({error:'selection_not_available'},403);
