@@ -116,3 +116,32 @@ describe('validateReapCreateBody', () => {
     expect(JSON.stringify(buildCreateCheckoutArgs(r.input, { consentVersion: 'v', expectedMerchantDomain: 'judydoll.com' }))).not.toMatch(/price|amount|total/);
   });
 });
+
+describe('contact and market-specific destination validation', () => {
+  it.each(['123', '14155550100', '+0123456789', '+1415abc0100', '+1234567890123456'])('rejects malformed phone %s', (phone) => {
+    expect(validateReapCreateBody(body({ buyer: { ...buyer, phone } }))).toMatchObject({ ok: false, field: 'buyer.phone' });
+  });
+  it.each(['US', 'CA', 'AU'])('requires a region in %s', (country) => {
+    expect(validateReapCreateBody(body({ buyer: { ...buyer, country, region: '' } }))).toMatchObject({ ok: false, field: 'buyer.region' });
+  });
+  it('validates state/province codes and each supported postcode shape', () => {
+    for (const country of ['US', 'CA', 'AU']) expect(validateReapCreateBody(body({ buyer: { ...buyer, country, region: '123' } }))).toMatchObject({ ok: false, field: 'buyer.region' });
+    expect(validateReapCreateBody(body({ buyer: { ...buyer, country: 'SG', region: '', postal_code: '018956' } })).ok).toBe(true);
+    expect(validateReapCreateBody(body({ buyer: { ...buyer, country: 'SG', region: '', postal_code: '01895' } }))).toMatchObject({ ok: false, field: 'buyer.postal_code' });
+    expect(validateReapCreateBody(body({ buyer: { ...buyer, country: 'CA', region: 'ON', postal_code: 'M5V 3A8' } })).ok).toBe(true);
+    expect(validateReapCreateBody(body({ buyer: { ...buyer, country: 'AU', region: 'NSW', postal_code: '2000' } })).ok).toBe(true);
+  });
+});
+
+describe('selected variant contract', () => {
+  it.each(['677289689108', '42199434526795'])('preserves selector %s in the UCP vendor extension', (variant_id) => {
+    const result = validateReapCreateBody(body({ variant_id }));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const args = buildCreateCheckoutArgs(result.input, { consentVersion: 'reap-agentic-v1', expectedMerchantDomain: 'kravebeauty.com' }) as any;
+    expect(args.checkout.reap).toEqual({ expected_merchant_domain: 'kravebeauty.com', selected_variant_id: variant_id });
+  });
+  it.each([123, 'x'.repeat(201), 'bad\u0000id'])('rejects an invalid selector', (variant_id) => {
+    expect(validateReapCreateBody(body({ variant_id }))).toMatchObject({ ok: false, field: 'variant_id' });
+  });
+});

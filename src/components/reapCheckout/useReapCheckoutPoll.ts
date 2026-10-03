@@ -2,8 +2,7 @@
 
 // Polls one Reap checkout until it is terminal.
 //
-//   - cadence: the checkout's own `reap.poll_after_seconds` hint, clamped to [3 s, 15 s] so a demo
-//     buyer who just approved on Reap's page sees it within seconds; 5 s when there is no hint
+//   - cadence: the checkout's own `reap.poll_after_seconds` hint, at least 3 seconds; valid hints are honored; 5 s when there is no hint
 //   - errors (gateway 5xx, network): exponential backoff 5 -> 10 -> 20 -> 40 -> 60 s, never terminal
 //     (a transient read failure must not look like a dead purchase — that invites a second one)
 //   - terminal (`completed` / `canceled`): stop
@@ -17,16 +16,15 @@ import type { ReapCheckoutView } from '@/lib/reapCheckout/checkoutView';
 export const HIDDEN_PAUSE_MS = 120_000;
 export const MAX_POLL_MS = 30 * 60_000;
 const MIN_DELAY_MS = 3_000;
-const MAX_HINT_DELAY_MS = 15_000;
 const DEFAULT_DELAY_MS = 5_000;
 const ERROR_BACKOFF_MS = [5_000, 10_000, 20_000, 40_000, 60_000];
 
 export function nextPollDelayMs(view: ReapCheckoutView | null, consecutiveErrors: number): number {
-  if (consecutiveErrors > 0) {
-    return ERROR_BACKOFF_MS[Math.min(consecutiveErrors, ERROR_BACKOFF_MS.length) - 1];
-  }
-  const hint = view?.pollAfterSeconds ? view.pollAfterSeconds * 1000 : DEFAULT_DELAY_MS;
-  return Math.min(MAX_HINT_DELAY_MS, Math.max(MIN_DELAY_MS, hint));
+  const seconds = view?.pollAfterSeconds;
+  const hint = typeof seconds === 'number' && Number.isFinite(seconds) && seconds > 0 && seconds <= 3600
+    ? seconds * 1000 : DEFAULT_DELAY_MS;
+  const backoff = consecutiveErrors > 0 ? ERROR_BACKOFF_MS[Math.min(consecutiveErrors, ERROR_BACKOFF_MS.length) - 1] : 0;
+  return Math.max(MIN_DELAY_MS, hint, backoff);
 }
 
 export type PollState = {

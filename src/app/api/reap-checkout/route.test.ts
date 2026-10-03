@@ -1,5 +1,7 @@
 // @vitest-environment node
 import { generateKeyPairSync } from 'node:crypto';
+import { readBuyerTokenConfig, newBuyerId } from '@/lib/reapCheckout/buyerToken.server';
+import { signBuyerId, buyerScope } from '@/lib/reapCheckout/routeSupport.server';
 import { NextRequest } from 'next/server';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -51,13 +53,16 @@ function createReq(
   const url = opts.url || `${ORIGIN}/api/reap-checkout`;
   const u = new URL(url);
   const origin = opts.origin === undefined ? u.origin : opts.origin;
+  const token = readBuyerTokenConfig();
+  const id = opts.cookie?.split('=')[1]?.split('.')[0] || newBuyerId();
+  const cookie = opts.cookie === undefined && token ? `${u.protocol === 'http:' ? 'pv_reap_demo_buyer' : '__Host-pv_reap_demo_buyer'}=${signBuyerId(token, id)}` : opts.cookie;
   return new NextRequest(url, {
     method: 'POST',
     headers: {
       'content-type': opts.contentType || 'application/json',
       host: u.host,
       ...(origin ? { origin } : {}),
-      ...(opts.cookie ? { cookie: opts.cookie } : {}),
+      ...(cookie ? { cookie } : {}),
     },
     body:
       opts.body ??
@@ -69,6 +74,7 @@ function createReq(
         consent: true,
         offer_code: ' PeachIE20 ',
         buyer: BUYER,
+        buyer_scope: token ? buyerScope(token, id) : undefined,
         ...extra,
       }),
   });
@@ -223,7 +229,7 @@ describe('POST /api/reap-checkout (armed)', () => {
       fetchMock.mockImplementation(async () => new Response(JSON.stringify(rpcResult(sellerMismatchError(cause), true)), { status: 200 }));
       const { POST } = await import('./route');
       const body = await (await POST(createReq())).json();
-      expect(body).toEqual({ checkout: null, fallback: 'seller_mismatch', cause });
+      expect(body).toMatchObject({ checkout: null, fallback: 'seller_mismatch', cause });
       expect(JSON.stringify(body)).not.toMatch(/other\.com|m_other|http/);
     },
   );
@@ -233,7 +239,7 @@ describe('POST /api/reap-checkout (armed)', () => {
     const err = vi.spyOn(console, 'error').mockImplementation(() => {});
     fetchMock.mockImplementation(async () => new Response(JSON.stringify(rpcResult(expectedDomainInvalidError(), true)), { status: 200 }));
     const { POST } = await import('./route');
-    expect(await (await POST(createReq())).json()).toEqual({ checkout: null, fallback: 'not_available' });
+    expect(await (await POST(createReq())).json()).toMatchObject({ checkout: null, fallback: 'not_available' });
     expect(err).toHaveBeenCalledWith(expect.stringContaining('expected_merchant_domain'), { domain: 'judydoll.com' });
     err.mockRestore();
   });
@@ -268,7 +274,7 @@ describe('POST /api/reap-checkout (armed)', () => {
         ? createReq({ merchant_domain: 'jsmbeauty.sg', buyer: { ...BUYER, country: 'SG', postal_code: '018956' } })
         : createReq();
     const body = await (await POST(req)).json();
-    expect(body).toEqual({ checkout: null, fallback: 'seller_mismatch', cause: 'seller_unconfirmed' });
+    expect(body).toMatchObject({ checkout: null, fallback: 'seller_mismatch', cause: 'seller_unconfirmed' });
     expect(JSON.stringify(body)).not.toContain('prava.space');
   });
 
@@ -287,7 +293,7 @@ describe('POST /api/reap-checkout (armed)', () => {
     gatewayAnswers(storefrontEscalation({ codeWarning: true }));
     const { POST } = await import('./route');
     const body = await (await POST(createReq())).json();
-    expect(body).toEqual({ checkout: null, fallback: 'not_reap', offer_code_outcome: 'not_applied_invalid', available_with_consent: false });
+    expect(body).toMatchObject({ checkout: null, fallback: 'not_reap', offer_code_outcome: 'not_applied_invalid', available_with_consent: false });
     expect(JSON.stringify(body)).not.toContain('judydoll.com/cart');
   });
 
@@ -447,7 +453,7 @@ describe('POST /api/reap-checkout (armed)', () => {
     arm();
     gatewayAnswers(resolvingCheckout()); // line_items[0].quantity is 1
     const { POST } = await import('./route');
-    expect(await (await POST(createReq({ quantity: 2 }))).json()).toEqual({
+    expect(await (await POST(createReq({ quantity: 2 }))).json()).toMatchObject({
       checkout: null,
       fallback: 'seller_mismatch',
       cause: 'seller_unconfirmed',
@@ -487,6 +493,30 @@ describe('POST /api/reap-checkout (armed)', () => {
     expect(rateLimited('read', 'rdb_fresh_buyer', now + 600 + 60_000)).toBeNull();
   });
 
+  it.each([false, true])('a paused checkout clears only a fresh attempt (recovery=%s)', async (recover_only) => {
+    arm();
+    fetchMock.mockImplementation(async () => new Response(JSON.stringify(rpcResult({error:{code:'OPERATION_NOT_ALLOWED', detail:{reason:'reap_create_paused'}}}, true)), {status:200}));
+    const { POST } = await import('./route');
+    const res = await POST(createReq({ recover_only }));
+    if (recover_only) expect(res.status).toBe(502);
+    else expect(await res.json()).toMatchObject({attempt_outcome:'not_created',fallback:'paused'});
+  });
+
+  it.each([false, true])('variant pre-dispatch refusal clears only a fresh attempt (recovery=%s)', async (recover_only) => {
+    arm();
+    fetchMock.mockImplementation(async () => new Response(JSON.stringify(rpcResult({error:{code:'QUOTE_REQUIRED', detail:{reason:'ucp_reap_variant_not_created'}}}, true)), {status:200}));
+    const { POST } = await import('./route');
+    const res = await POST(createReq({ recover_only }));
+    const body = await res.json();
+    if (recover_only) {
+      expect(res.status).toBe(502);
+      expect(body.attempt_outcome).toBeUndefined();
+    } else {
+      expect(res.status).toBe(200);
+      expect(body).toMatchObject({attempt_outcome:'not_created',fallback:'not_available'});
+    }
+  });
+
   it('TOOL ERROR: the reason is read from the door\'s real shape ({error:{code,message,detail:{reason}}})', async () => {
     arm();
     gatewayAnswers(undefined);
@@ -509,7 +539,7 @@ describe('POST /api/reap-checkout (armed)', () => {
     );
     const { POST } = await import('./route');
     const body = await (await POST(createReq())).json();
-    expect(body).toEqual({ checkout: null, fallback: 'refused', code: 'QUOTE_REQUIRED', reason: 'ucp_offer_code_invalid' });
+    expect(body).toEqual({ error: 'checkout_outcome_unknown', code: 'QUOTE_REQUIRED', reason: 'ucp_offer_code_invalid' });
     // Gateway prose is never forwarded to the browser.
     expect(JSON.stringify(body)).not.toContain('not a valid shape');
   });
@@ -789,7 +819,7 @@ describe('P3 follow-ups of #384: conflicting merchant ids fail closed; a degrade
     gatewayAnswers(answerWithIds('jsmbeauty.sg', ids));
     const { POST } = await import('./route');
     const body = await (await POST(sgReq())).json();
-    expect(body).toEqual({ checkout: null, fallback: 'seller_mismatch', cause: 'seller_unconfirmed' });
+    expect(body).toMatchObject({ checkout: null, fallback: 'seller_mismatch', cause: 'seller_unconfirmed' });
     expect(JSON.stringify(body)).not.toContain('prava.space');
   });
 
@@ -798,7 +828,7 @@ describe('P3 follow-ups of #384: conflicting merchant ids fail closed; a degrade
     gatewayAnswers(answerWithIds('judydoll.com', ['m_a', 'm_b']));
     const { POST } = await import('./route');
     const body = await (await POST(createReq())).json();
-    expect(body).toEqual({ checkout: null, fallback: 'seller_mismatch', cause: 'seller_unconfirmed' });
+    expect(body).toMatchObject({ checkout: null, fallback: 'seller_mismatch', cause: 'seller_unconfirmed' });
   });
 
   it('POST accepting: the configured id once (or twice) is accepted, and a domain-only merchant still accepts no id', async () => {

@@ -79,7 +79,7 @@ export async function callUcpTool(args: {
   base: string;
   apiKey: string;
   userToken: string;
-  tool: 'create_checkout' | 'get_checkout';
+  tool: 'create_checkout' | 'get_checkout' | 'recover_checkout';
   toolArgs: Record<string, unknown>;
   fetchImpl?: typeof fetch;
   timeoutMs?: number;

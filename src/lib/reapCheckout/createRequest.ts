@@ -28,6 +28,7 @@ export type ReapBuyerForm = {
 
 export type ReapCreateInput = {
   product_id: string;
+  variant_id?: string;
   quantity: number;
   offer_code?: string;
   idempotency_key: string;
@@ -68,6 +69,8 @@ export function validateReapCreateBody(body: unknown): ValidationResult {
   if (!isRecord(body)) return { ok: false, field: 'body', message: 'Request body must be a JSON object.' };
   const productId = field(body.product_id);
   if (!productId) return { ok: false, field: 'product_id', message: 'product_id is required.' };
+  const variantId = optionalField(body.variant_id);
+  if (variantId === null) return { ok: false, field: 'variant_id', message: 'Invalid selected variant.' };
   const quantity = body.quantity === undefined ? 1 : body.quantity;
   if (typeof quantity !== 'number' || !Number.isSafeInteger(quantity) || quantity < 1 || quantity > 10) {
     return { ok: false, field: 'quantity', message: 'quantity must be a whole number from 1 to 10.' };
@@ -97,6 +100,9 @@ export function validateReapCreateBody(body: unknown): ValidationResult {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(buyer.email!)) {
     return { ok: false, field: 'buyer.email', message: 'Enter a valid email address.' };
   }
+  if (!/^\+[1-9][0-9]{7,14}$/.test(buyer.phone!)) {
+    return { ok: false, field: 'buyer.phone', message: 'Enter a phone number with country code, such as +14155550100.' };
+  }
   for (const key of ['address_line2', 'region'] as const) {
     const v = optionalField(b[key]);
     if (v === null) return { ok: false, field: `buyer.${key}`, message: `${key.replace(/_/g, ' ')} is invalid.` };
@@ -106,12 +112,29 @@ export function validateReapCreateBody(body: unknown): ValidationResult {
   if (!market) {
     return { ok: false, field: 'buyer.country', message: 'This country is not a market Pivota can price.' };
   }
+  if (['US', 'CA', 'AU'].includes(market) && !buyer.region) {
+    return { ok: false, field: 'buyer.region', message: 'State or province is required for this country.' };
+  }
+  const regions: Record<string, RegExp> = {
+    US: /^(?:AL|AK|AZ|AR|CA|CO|CT|DE|DC|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY|AS|GU|MP|PR|VI|AA|AE|AP)$/,
+    CA: /^(?:AB|BC|MB|NB|NL|NS|NT|NU|ON|PE|QC|SK|YT)$/,
+    AU: /^(?:ACT|NSW|NT|QLD|SA|TAS|VIC|WA)$/,
+  };
+  if (regions[market] && !regions[market].test(buyer.region!.toUpperCase())) {
+    return { ok: false, field: 'buyer.region', message: 'Enter a valid state or province code for this country.' };
+  }
+  if (regions[market]) buyer.region = buyer.region!.toUpperCase();
+  const postcodes: Record<string, RegExp> = { US: /^[0-9]{5}(?:-[0-9]{4})?$/, CA: /^[ABCEGHJ-NPRSTVXY][0-9][ABCEGHJ-NPRSTV-Z] ?[0-9][ABCEGHJ-NPRSTV-Z][0-9]$/i, AU: /^[0-9]{4}$/, SG: /^[0-9]{6}$/ };
+  if (postcodes[market] && !postcodes[market].test(buyer.postal_code!)) {
+    return { ok: false, field: 'buyer.postal_code', message: 'Enter a valid postcode for this country.' };
+  }
   buyer.country = market;
   return {
     ok: true,
     market,
     input: {
       product_id: productId,
+      ...(variantId !== undefined ? { variant_id: variantId } : {}),
       quantity,
       ...(offerCode !== undefined ? { offer_code: offerCode } : {}),
       idempotency_key: idem,
@@ -151,7 +174,7 @@ export function buildCreateCheckoutArgs(
       ...(input.offer_code !== undefined ? { discounts: { codes: [input.offer_code] } } : {}),
       // The seller the buyer was shown, from SERVER config (never the browser): the gateway refuses the
       // create (`ucp_seller_mismatch`) unless every route would sell from exactly this merchant (§5.4).
-      reap: { expected_merchant_domain: opts.expectedMerchantDomain },
+      reap: { expected_merchant_domain: opts.expectedMerchantDomain, ...(input.variant_id ? { selected_variant_id: input.variant_id } : {}) },
     },
   };
 }

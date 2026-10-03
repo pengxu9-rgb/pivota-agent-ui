@@ -28,3 +28,17 @@ console.error = (...args: Parameters<typeof console.error>) => {
   if (shouldSuppressError(toConsoleText(args))) return;
   originalError(...args);
 };
+
+// jsdom lacks Web Crypto digest and Web Locks. This serial queue models browser locks.
+import { webcrypto } from 'node:crypto';
+if (typeof navigator !== 'undefined') {
+  Object.defineProperty(globalThis, 'crypto', { configurable: true, value: webcrypto });
+  let lock = Promise.resolve();
+  Object.defineProperty(navigator, 'locks', { configurable: true, value: {
+    request: (_name: string, callback: () => Promise<unknown>) => {
+      const result = lock.then(callback);
+      lock = result.then(() => undefined, () => undefined);
+      return result;
+    },
+  } });
+}
