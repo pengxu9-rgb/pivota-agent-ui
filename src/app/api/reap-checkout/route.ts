@@ -129,6 +129,9 @@ export async function POST(req: NextRequest) {
 
   if (outcome.kind === 'unavailable') return finish(json({ error: 'gateway_unavailable', detail: outcome.detail }, 502));
   if (outcome.kind === 'tool_error') {
+    // A read-only recovery error cannot establish that the original create made nothing.
+    // Keep the owned attempt unresolved regardless of the upstream reason vocabulary.
+    if (recoverOnly) return finish(json({ error: 'checkout_outcome_unknown', attempt_outcome: 'unknown' }, 502));
     if (outcome.reason === 'ucp_seller_mismatch') {
       // The gateway refused: this item would be sold by someone else, or its seller cannot be confirmed.
       // Nothing was opened. The browser gets NO gateway text and NO gateway link — only the cause; the
