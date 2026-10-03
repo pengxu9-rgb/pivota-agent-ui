@@ -90,6 +90,7 @@ export function writeActiveCheckoutId(productId: string, id: string | null, now 
 const defaultFetch: typeof fetch = (...a) => fetch(...a);
 
 export type ReapCheckoutPanelProps = {
+  itemSource?: "reap_variant" | "cart_link";
   productId: string;
   productTitle: string;
   merchantDomain: string;
@@ -511,7 +512,7 @@ function StatusView({
             >
               Start a new checkout
             </button>
-            {storeLink}
+
           </div>
         </div>
       ) : null}
@@ -581,7 +582,7 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
   const [fieldError, setFieldError] = useState<{ field: string; message: string } | null>(null);
   const [fallback, setFallback] = useState<Fallback | null>(null);
   // An unresolved body keeps its key across tabs/reloads. Changed details are refused until its
-  // outcome is known; only an authoritative no-checkout fallback permits a new attempt.
+  // outcome is known; only an authoritative no-checkout refusal permits a new attempt.
   const [pendingAttempt, setPendingAttempt] = useState(() => { try { return Boolean(readAttempt(props.productId)?.resolved === false); } catch { return true; } });
   const quantity = Math.min(10, Math.max(1, Math.floor(Number(props.quantity) || 1)));
   // Did this browser see the buyer approve on Reap? Decides whether "nothing was charged" can be said.
@@ -668,17 +669,7 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
 
   const codePoints = useMemo(() => [...form.offer_code].length, [form.offer_code]);
 
-  const storeLink = props.storeUrl ? (
-    <a
-      href={props.storeUrl}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="inline-flex h-10 items-center gap-1 rounded-full border border-border px-4 text-sm font-semibold"
-      data-testid="reap-visit-store"
-    >
-      Visit {props.storeLabel || 'store'} <ExternalLink className="h-3.5 w-3.5" aria-hidden />
-    </a>
-  ) : null;
+  const storeLink = null;
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -718,9 +709,11 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
         };
         const validated = validateReapCreateBody({ ...requestBody, idempotency_key: 'validation-only' });
         if (!validated.ok) { setFieldError({ field: validated.field, message: validated.message }); return; }
-        const normalized = { ...validated.input, merchant_domain: props.merchantDomain };
-        const { idempotency_key: _validationKey, ...payload } = normalized;
         const existing = readAttempt(props.productId);
+        // Historical attempts without a stored source preserve their original fingerprint.
+        const itemSource = existing ? existing.itemSource : props.itemSource;
+        const normalized = { ...validated.input, merchant_domain: props.merchantDomain, ...(itemSource ? { item_source: itemSource } : {}) };
+        const { idempotency_key: _validationKey, ...payload } = normalized;
         const active = readActiveCheckoutId(props.productId);
         const session = await fetchImpl('/api/reap-checkout/session', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: '{}' });
         const sessionBody = await session.json();
@@ -732,7 +725,7 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
           throw new Error('An earlier checkout attempt is unresolved. Re-enter exactly the same details to recover it. If your buyer session changed, contact support before starting again.');
         }
         const attempt = existing && existing.scope === sessionBody.scope && existing.fingerprint === fingerprint
-          ? existing : { fingerprint, key: newKey(), scope: sessionBody.scope, resolved: false };
+          ? existing : { fingerprint, key: newKey(), scope: sessionBody.scope, resolved: false, ...(itemSource ? { itemSource } : {}) };
         writeAttempt(props.productId, { ...attempt, resolved: false });
         setPendingAttempt(true);
         const res = await fetchImpl('/api/reap-checkout', {
@@ -746,7 +739,7 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
           writeAttempt(props.productId, { ...attempt, resolved: true });
           setPendingAttempt(false);
         }
-        if (existing?.resolved === false && body?.fallback) {
+        if (existing?.resolved === false && (body?.blocked || body?.fallback)) {
           setFallback({ kind: 'error', message: 'This retry was refused, but the earlier checkout outcome is still unknown. Recover the same attempt or contact support before starting again.' });
         } else if (res.status === 400 && body?.field) {
           setFieldError({ field: String(body.field), message: String(body.message || 'Please check this field.') });
@@ -757,7 +750,7 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
               body?.message ||
               'We could not confirm the checkout attempt. Re-enter the same details to recover it; do not start another checkout.',
           });
-        } else if (body?.fallback && body.attempt_outcome !== 'not_created') {
+        } else if ((body?.blocked || body?.fallback) && body.attempt_outcome !== 'not_created') {
           setFallback({ kind: 'error', message: 'We could not confirm whether this checkout was opened. Recover the same attempt with the same details before starting again.' });
         } else if (body?.checkout && !isCheckoutForItem(body.checkout as ReapCheckoutView, props.productId)) {
           // Opened, but not for THIS product: never payable, never remembered (it is never handed off, so the
@@ -770,11 +763,11 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
             setPendingAttempt(false);
           }
           poll.reset(body.checkout as ReapCheckoutView);
-        } else if (body?.fallback === 'seller_mismatch') {
+        } else if ((body?.blocked || body?.fallback) === 'seller_mismatch') {
           setFallback({ kind: 'seller_mismatch', cause: body.cause === 'different_seller' ? 'different_seller' : 'seller_unconfirmed' });
-        } else if (body?.fallback === 'not_available') {
+        } else if ((body?.blocked || body?.fallback) === 'not_available') {
           setFallback({ kind: 'not_available' });
-        } else if (body?.fallback === 'not_reap') {
+        } else if ((body?.blocked || body?.fallback) === 'not_reap') {
           setFallback({
             kind: 'not_reap',
             offerCodeNotApplied: Boolean(body.offer_code_outcome && String(body.offer_code_outcome).startsWith('not_applied')),
@@ -983,7 +976,7 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
                   Code not applied.
                 </p>
               ) : null}
-              <p className="text-sm text-muted-foreground">You can still buy it on the store.</p>
+              <p className="text-sm text-muted-foreground">This checkout cannot continue. No other checkout route will be opened.</p>
             </>
           ) : fallback.kind === 'seller_mismatch' ? (
             <>
@@ -995,7 +988,7 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
           ) : fallback.kind === 'not_available' ? (
             <>
               <p className="text-sm font-semibold">Checkout through Reap isn&apos;t available for this item right now.</p>
-              <p className="text-sm text-muted-foreground">You can still buy it on the store.</p>
+              <p className="text-sm text-muted-foreground">This checkout cannot continue. No other checkout route will be opened.</p>
             </>
           ) : fallback.kind === 'refused' ? (
             <p className="text-sm font-semibold">This checkout could not be opened. Nothing was charged.</p>
@@ -1010,21 +1003,7 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
             >
               {pendingAttempt ? 'Recover same attempt' : 'Back'}
             </button>
-            {pendingAttempt ? null : fallback.kind === 'seller_mismatch' ? (
-              // ONLY the seller the buyer was shown, built from OUR config (the configured demo merchant) —
-              // never a gateway link, never the page's redirect link for this item (§5.4).
-              <a
-                href={`https://${props.merchantDomain}/`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex h-10 items-center gap-1 rounded-full border border-border px-4 text-sm font-semibold"
-                data-testid="reap-visit-configured-merchant"
-              >
-                Visit {props.merchantDomain} <ExternalLink className="h-3.5 w-3.5" aria-hidden />
-              </a>
-            ) : (
-              storeLink
-            )}
+
           </div>
         </div>
       ) : (

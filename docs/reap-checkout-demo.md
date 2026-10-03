@@ -1,3 +1,5 @@
+> Current policy: [Hosted sandbox pilot](reap-hosted-pilot.md). The 2026-10-03 primary-route policy supersedes historical store fallback descriptions. The optional hosted profile defaults off; legacy demo remains loopback only.
+
 # Reap checkout demo: runbook
 
 This runbook is for demoing "Checkout with Reap" to partners from a laptop: the Tier B (cart-link) lane,

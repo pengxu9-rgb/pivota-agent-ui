@@ -7,6 +7,7 @@
 // case-folded — after only the shape the gateway's own adapter enforces (a string of 1..128 code
 // points); an empty field means "no code".
 import { normalizeBuyerMarket } from '@/lib/buyerMarket';
+import type { ReapItemSource } from './config';
 
 export const MAX_OFFER_CODE_CODE_POINTS = 128;
 const IDEMPOTENCY_KEY_RE = /^[A-Za-z0-9._:-]{8,100}$/;
@@ -28,6 +29,7 @@ export type ReapBuyerForm = {
 
 export type ReapCreateInput = {
   product_id: string;
+  item_source?: ReapItemSource;
   quantity: number;
   offer_code?: string;
   idempotency_key: string;
@@ -68,6 +70,9 @@ export function validateReapCreateBody(body: unknown): ValidationResult {
   if (!isRecord(body)) return { ok: false, field: 'body', message: 'Request body must be a JSON object.' };
   const productId = field(body.product_id);
   if (!productId) return { ok: false, field: 'product_id', message: 'product_id is required.' };
+  if (body.item_source !== undefined && (typeof body.item_source !== 'string' || !['reap_variant', 'cart_link'].includes(body.item_source))) {
+    return { ok: false, field: 'item_source', message: 'The selected checkout source is invalid.' };
+  }
   const quantity = body.quantity === undefined ? 1 : body.quantity;
   if (typeof quantity !== 'number' || !Number.isSafeInteger(quantity) || quantity < 1 || quantity > 10) {
     return { ok: false, field: 'quantity', message: 'quantity must be a whole number from 1 to 10.' };
@@ -131,6 +136,7 @@ export function validateReapCreateBody(body: unknown): ValidationResult {
     market,
     input: {
       product_id: productId,
+      ...(body.item_source !== undefined ? { item_source: body.item_source as ReapItemSource } : {}),
       quantity,
       ...(offerCode !== undefined ? { offer_code: offerCode } : {}),
       idempotency_key: idem,
@@ -143,7 +149,7 @@ export function validateReapCreateBody(body: unknown): ValidationResult {
 /** The UCP `create_checkout` arguments. `consentVersion` is sent only because `input.consent` is true. */
 export function buildCreateCheckoutArgs(
   input: ReapCreateInput,
-  opts: { consentVersion: string; profileUrl?: string | null; expectedMerchantDomain: string },
+  opts: { consentVersion: string; profileUrl?: string | null; expectedMerchantDomain: string; itemSource?: ReapItemSource },
 ): Record<string, unknown> {
   const b = input.buyer;
   const destination: Record<string, string> = {
@@ -170,7 +176,7 @@ export function buildCreateCheckoutArgs(
       ...(input.offer_code !== undefined ? { discounts: { codes: [input.offer_code] } } : {}),
       // The seller the buyer was shown, from SERVER config (never the browser): the gateway refuses the
       // create (`ucp_seller_mismatch`) unless every route would sell from exactly this merchant (§5.4).
-      reap: { expected_merchant_domain: opts.expectedMerchantDomain },
+      reap: { expected_merchant_domain: opts.expectedMerchantDomain, ...(opts.itemSource ? { item_source: opts.itemSource } : {}) },
     },
   };
 }

@@ -4,7 +4,7 @@ import 'server-only';
 // signed buyer cookie, the same-origin check, the body cap and the per-buyer rate limit.
 import { createHmac, hkdfSync, timingSafeEqual } from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
-import { isReapCheckoutDemoServerEnabled, type DemoMerchantConfig } from './config';
+import { isReapCheckoutDemoServerEnabled, readPilotOrigins, reapCheckoutProfile, type DemoMerchantConfig } from './config';
 import { isBuyerId, newBuyerId, readBuyerTokenConfig, type BuyerTokenConfig } from './buyerToken.server';
 import { readAgentApiKey, readGatewayBase } from './gatewayClient.server';
 import { foldMerchantHost, type ReapCheckoutView } from './checkoutView';
@@ -40,6 +40,13 @@ export function readServerConfig(): { config: ReapServerConfig } | { response: N
   ].filter(Boolean);
   if (!base || !apiKey || !token) {
     return { response: json({ error: 'reap_demo_not_configured', missing }, 503) };
+  }
+  if (reapCheckoutProfile() === 'pilot') {
+    const origins = readPilotOrigins();
+    if (!origins || token.issuer !== `${origins.publicOrigin}/reap-checkout`
+      || !/^[A-Za-z0-9_.-]{1,80}$/.test(token.kid) || !/^[A-Za-z0-9:._/-]{1,200}$/.test(token.audience)) {
+      return { response: json({ error: 'reap_pilot_not_configured' }, 503) };
+    }
   }
   const profile = String(process.env.UCP_AGENT_PROFILE_URL || '').trim();
   return { config: { base, apiKey, token, profileUrl: /^https:\/\//.test(profile) ? profile : null } };
@@ -139,6 +146,11 @@ export function clearBuyerCookie(res: NextResponse, req: NextRequest): void {
  */
 export function hostProblem(req: NextRequest): NextResponse | null {
   const host = (req.headers.get('host') || '').toLowerCase();
+  if (reapCheckoutProfile() === 'pilot') {
+    const origins = readPilotOrigins();
+    return origins && req.nextUrl.origin === origins.publicOrigin && host === new URL(origins.publicOrigin).host
+      ? null : json({ error: 'not_found' }, 404);
+  }
   let hostname = '';
   try {
     hostname = new URL(`http://${host}`).hostname;
@@ -157,7 +169,7 @@ export function sameOriginProblem(req: NextRequest): NextResponse | null {
   if (site && site !== 'same-origin') return json({ error: 'forbidden_origin' }, 403);
   if (!origin || !host) return json({ error: 'forbidden_origin' }, 403);
   try {
-    if (new URL(origin).host.toLowerCase() !== host.toLowerCase()) return json({ error: 'forbidden_origin' }, 403);
+    if (new URL(origin).origin !== req.nextUrl.origin || new URL(origin).host.toLowerCase() !== host.toLowerCase()) return json({ error: 'forbidden_origin' }, 403);
   } catch {
     return json({ error: 'forbidden_origin' }, 403);
   }

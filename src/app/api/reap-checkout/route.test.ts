@@ -229,7 +229,7 @@ describe('POST /api/reap-checkout (armed)', () => {
       fetchMock.mockImplementation(async () => new Response(JSON.stringify(rpcResult(sellerMismatchError(cause), true)), { status: 200 }));
       const { POST } = await import('./route');
       const body = await (await POST(createReq())).json();
-      expect(body).toMatchObject({ checkout: null, fallback: 'seller_mismatch', cause });
+      expect(body).toMatchObject({ checkout: null, blocked: 'seller_mismatch', cause });
       expect(JSON.stringify(body)).not.toMatch(/other\.com|m_other|http/);
     },
   );
@@ -239,7 +239,7 @@ describe('POST /api/reap-checkout (armed)', () => {
     const err = vi.spyOn(console, 'error').mockImplementation(() => {});
     fetchMock.mockImplementation(async () => new Response(JSON.stringify(rpcResult(expectedDomainInvalidError(), true)), { status: 200 }));
     const { POST } = await import('./route');
-    expect(await (await POST(createReq())).json()).toMatchObject({ checkout: null, fallback: 'not_available' });
+    expect(await (await POST(createReq())).json()).toMatchObject({ checkout: null, blocked: 'not_available' });
     expect(err).toHaveBeenCalledWith(expect.stringContaining('expected_merchant_domain'), { domain: 'judydoll.com' });
     err.mockRestore();
   });
@@ -274,7 +274,7 @@ describe('POST /api/reap-checkout (armed)', () => {
         ? createReq({ merchant_domain: 'jsmbeauty.sg', buyer: { ...BUYER, country: 'SG', postal_code: '018956' } })
         : createReq();
     const body = await (await POST(req)).json();
-    expect(body).toMatchObject({ checkout: null, fallback: 'seller_mismatch', cause: 'seller_unconfirmed' });
+    expect(body).toMatchObject({ checkout: null, blocked: 'seller_mismatch', cause: 'seller_unconfirmed' });
     expect(JSON.stringify(body)).not.toContain('prava.space');
   });
 
@@ -293,7 +293,7 @@ describe('POST /api/reap-checkout (armed)', () => {
     gatewayAnswers(storefrontEscalation({ codeWarning: true }));
     const { POST } = await import('./route');
     const body = await (await POST(createReq())).json();
-    expect(body).toMatchObject({ checkout: null, fallback: 'not_reap', offer_code_outcome: 'not_applied_invalid', available_with_consent: false });
+    expect(body).toMatchObject({ error: 'checkout_outcome_unknown', attempt_outcome: 'unknown' });
     expect(JSON.stringify(body)).not.toContain('judydoll.com/cart');
   });
 
@@ -371,7 +371,8 @@ describe('POST /api/reap-checkout (armed)', () => {
     arm();
     gatewayAnswers(resolvingCheckout());
     const { POST } = await import('./route');
-    const cookie = cookieFrom(await POST(createReq())); // 1st (mints the buyer; counted)
+    const first = createReq(); const cookie = first.headers.get('cookie')!;
+    const firstResponse = await POST(first); expect(firstResponse.headers.get('set-cookie')).toBeNull(); // existing buyer; first create counted
     const statuses: number[] = [];
     for (let i = 0; i < 6; i++) statuses.push((await POST(createReq({}, { cookie }))).status);
     expect(statuses).toEqual([200, 200, 200, 200, 200, 429]);
@@ -393,7 +394,8 @@ describe('POST /api/reap-checkout (armed)', () => {
     arm();
     gatewayAnswers(resolvingCheckout());
     const { POST } = await import('./route');
-    const cookie = cookieFrom(await POST(createReq()));
+    const first = createReq(); const cookie = first.headers.get('cookie')!;
+    await POST(first);
     const statuses: number[] = [];
     for (let i = 0; i < 6; i++) {
       const req = createReq({}, { cookie });
@@ -455,30 +457,30 @@ describe('POST /api/reap-checkout (armed)', () => {
     const { POST } = await import('./route');
     expect(await (await POST(createReq({ quantity: 2 }))).json()).toMatchObject({
       checkout: null,
-      fallback: 'seller_mismatch',
+      blocked: 'seller_mismatch',
       cause: 'seller_unconfirmed',
     });
     expect((await (await POST(createReq({ quantity: 1 }))).json()).checkout).toBeTruthy();
   });
 
-  it('R4: a refused first request still carries the new buyer\'s cookie (400, 403, 413, 429)', async () => {
+  it('R4: refused first requests mint an owner; established-owner 429 never renews its cookie', async () => {
     arm();
     gatewayAnswers(resolvingCheckout());
     const { POST } = await import('./route');
     const hasCookie = (res: Response) => /pv_reap_demo_buyer=rdb_/.test(res.headers.get('set-cookie') || '');
-    const bad = await POST(createReq({ consent: false }));
+    const bad = await POST(createReq({ consent: false }, { cookie: '' }));
     expect(bad.status).toBe(400);
     expect(hasCookie(bad)).toBe(true);
-    const scope = await POST(createReq({ merchant_domain: 'nope.example' }));
+    const scope = await POST(createReq({ merchant_domain: 'nope.example' }, { cookie: '' }));
     expect(scope.status).toBe(403);
     expect(hasCookie(scope)).toBe(true);
-    const big = await POST(createReq({}, { body: JSON.stringify({ pad: 'x'.repeat(17 * 1024) }) }));
+    const big = await POST(createReq({}, { body: JSON.stringify({ pad: 'x'.repeat(17 * 1024) }), cookie: '' }));
     expect(big.status).toBe(413);
     expect(hasCookie(big)).toBe(true);
     for (let i = 0; i < 30; i++) await POST(createReq()); // exhaust the global create cap with fresh buyers
     const limited = await POST(createReq());
     expect(limited.status).toBe(429);
-    expect(hasCookie(limited)).toBe(true);
+    expect(hasCookie(limited)).toBe(false);
   });
 
   it('R2: the GLOBAL read cap: the 601st read in a minute across all buyers is 429', async () => {
@@ -556,7 +558,7 @@ describe('the buyer cookie', () => {
     arm();
     gatewayAnswers(resolvingCheckout());
     const { POST } = await import('./route');
-    const c = attrs(await POST(createReq({}, { url: 'https://localhost:3000/api/reap-checkout' })));
+    const c = attrs(await POST(createReq({}, { url: 'https://localhost:3000/api/reap-checkout', cookie: '' })));
     expect(c.name).toBe('__Host-pv_reap_demo_buyer');
     expect(c.a.secure).toBe(true);
     expect(c.a.httponly).toBe(true);
@@ -572,7 +574,7 @@ describe('the buyer cookie', () => {
     arm();
     gatewayAnswers(resolvingCheckout());
     const { POST } = await import('./route');
-    const c = attrs(await POST(createReq()));
+    const c = attrs(await POST(createReq({}, { cookie: '' })));
     expect(c.name).toBe('pv_reap_demo_buyer');
     expect(c.a).not.toHaveProperty('secure');
     expect(c.a.httponly).toBe(true);
@@ -584,7 +586,7 @@ describe('the buyer cookie', () => {
     arm();
     gatewayAnswers(resolvingCheckout());
     const { POST } = await import('./route');
-    const loopCookie = cookieFrom(await POST(createReq()));
+    const first = createReq(); const loopCookie = first.headers.get('cookie')!; await POST(first);
     const { GET } = await import('./[checkoutId]/route');
     const req = new NextRequest(`https://localhost:3000/api/reap-checkout/${REAP_ID}`, { headers: { cookie: loopCookie, host: 'localhost:3000' } });
     fetchMock.mockClear();
@@ -596,7 +598,7 @@ describe('the buyer cookie', () => {
     arm();
     gatewayAnswers(resolvingCheckout());
     const { POST } = await import('./route');
-    const [name, value] = cookieFrom(await POST(createReq())).split('=');
+    const first = createReq(); const [name, value] = first.headers.get('cookie')!.split('='); await POST(first);
     const [id, iat, sig] = value.split('.');
     const otherId = `rdb_${'B'.repeat(32)}`;
     const { GET } = await import('./[checkoutId]/route');
@@ -649,7 +651,8 @@ describe('GET /api/reap-checkout/:id (armed)', () => {
   async function buyerCookie() {
     fetchMock.mockResolvedValueOnce(new Response(JSON.stringify(rpcResult(resolvingCheckout())), { status: 200 }));
     const { POST } = await import('./route');
-    const cookie = cookieFrom(await POST(createReq()));
+    const first = createReq(); const cookie = first.headers.get('cookie')!;
+    await POST(first);
     fetchMock.mockReset();
     return cookie;
   }
@@ -781,7 +784,8 @@ describe('P3 follow-ups of #384: conflicting merchant ids fail closed; a degrade
   async function buyerCookie() {
     fetchMock.mockResolvedValueOnce(new Response(JSON.stringify(rpcResult(resolvingCheckout())), { status: 200 }));
     const { POST } = await import('./route');
-    const cookie = cookieFrom(await POST(createReq()));
+    const first = createReq(); const cookie = first.headers.get('cookie')!;
+    await POST(first);
     fetchMock.mockReset();
     return cookie;
   }
@@ -795,7 +799,7 @@ describe('P3 follow-ups of #384: conflicting merchant ids fail closed; a degrade
     gatewayAnswers(answerWithIds('jsmbeauty.sg', ids));
     const { POST } = await import('./route');
     const body = await (await POST(sgReq())).json();
-    expect(body).toMatchObject({ checkout: null, fallback: 'seller_mismatch', cause: 'seller_unconfirmed' });
+    expect(body).toMatchObject({ checkout: null, blocked: 'seller_mismatch', cause: 'seller_unconfirmed' });
     expect(JSON.stringify(body)).not.toContain('prava.space');
   });
 
@@ -804,7 +808,7 @@ describe('P3 follow-ups of #384: conflicting merchant ids fail closed; a degrade
     gatewayAnswers(answerWithIds('judydoll.com', ['m_a', 'm_b']));
     const { POST } = await import('./route');
     const body = await (await POST(createReq())).json();
-    expect(body).toMatchObject({ checkout: null, fallback: 'seller_mismatch', cause: 'seller_unconfirmed' });
+    expect(body).toMatchObject({ checkout: null, blocked: 'seller_mismatch', cause: 'seller_unconfirmed' });
   });
 
   it('POST accepting: the configured id once (or twice) is accepted, and a domain-only merchant still accepts no id', async () => {

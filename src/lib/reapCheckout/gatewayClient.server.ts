@@ -15,7 +15,7 @@ import 'server-only';
 //   X-Agent-User-JWT              minted per request, see buyerToken.server.ts
 // The gateway forwards both to the backend rail and nothing else.
 import { safePivotaServiceUrl } from '@/lib/returnUrl';
-import { LOOPBACK_HOSTS } from './config';
+import { LOOPBACK_HOSTS, readPilotOrigins, reapCheckoutProfile } from './config';
 
 const DEFAULT_TIMEOUT_MS = 12_000;
 
@@ -26,6 +26,7 @@ export type ToolCallOutcome =
 
 /** The gateway base: LOOPBACK only (the local proxy to staging), http or https. Anything else is null. */
 export function readGatewayBase(env: NodeJS.ProcessEnv = process.env): string | null {
+  if (reapCheckoutProfile(env) === 'pilot') return readPilotOrigins(env)?.gatewayOrigin ?? null;
   const base = safePivotaServiceUrl(String(env.REAP_CHECKOUT_GATEWAY_BASE_URL || '').trim() || null);
   if (!base) return null;
   return LOOPBACK_HOSTS.has(new URL(base).hostname.toLowerCase()) ? base : null;
@@ -103,6 +104,7 @@ export async function callUcpTool(args: {
         params: { name: args.tool, arguments: args.toolArgs },
       }),
       cache: 'no-store',
+      redirect: 'error',
       signal: controller.signal,
     });
     const text = await res.text();
