@@ -6,6 +6,7 @@
  *   30px/700 price, strikethrough compare-at, "SAVE N%" badge in primary/10.
  */
 function fmt(amount: number, currency: string): string {
+  if (!Number.isFinite(amount)) return 'Price unavailable';
   try {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',

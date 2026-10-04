@@ -8,6 +8,7 @@ import { resolveOfferPricing } from '@/features/pdp/utils/offerVariantMatching';
 import { buildSavingsPresentation, getSummaryBadgeItems, type SavingsSummaryBadgeTone } from '@/lib/savingsPresentation';
 
 function formatPrice(amount: number, currency: string) {
+  if (!Number.isFinite(amount)) return 'Price unavailable';
   const n = Number.isFinite(amount) ? amount : 0;
   const c = currency || 'USD';
   try {
@@ -138,16 +139,16 @@ export function OfferSheet({
       <div className="px-4 py-4 space-y-3">
         {sortedOffers.map(({ offer, pricing }) => {
           const isSelected = offer.offer_id === selectedOfferId;
-          const isDefault = defaultOfferId && offer.offer_id === defaultOfferId;
-          const isBestPrice = resolvedBestPriceOfferId && offer.offer_id === resolvedBestPriceOfferId;
+          const isDefault = !pricing.currentMoneyUnavailable && defaultOfferId && offer.offer_id === defaultOfferId;
+          const isBestPrice = !pricing.currentMoneyUnavailable && resolvedBestPriceOfferId && offer.offer_id === resolvedBestPriceOfferId;
           const total =
             typeof pricing.totalAmount === 'number' && Number.isFinite(pricing.totalAmount)
               ? pricing.totalAmount
-              : 0;
+              : pricing.currentMoneyUnavailable ? Number.NaN : 0;
           const itemAmount =
             typeof pricing.itemAmount === 'number' && Number.isFinite(pricing.itemAmount)
               ? pricing.itemAmount
-              : 0;
+              : pricing.currentMoneyUnavailable ? Number.NaN : 0;
           const currency = pricing.currency || offer.price.currency || 'USD';
           const eta = offer.shipping?.eta_days_range;
           const returns = offer.returns;
@@ -165,13 +166,14 @@ export function OfferSheet({
             pricing: { total, currency },
             currency,
           });
-          const savingsBadges = getSummaryBadgeItems(savings, 3);
-          const hasCartValue = savings.cartUnlocks.some((item) => item.status === 'available');
+          const savingsBadges = pricing.currentMoneyUnavailable ? [] : getSummaryBadgeItems(savings, 3);
+          const hasCartValue = !pricing.currentMoneyUnavailable && savings.cartUnlocks.some((item) => item.status === 'available');
 
           return (
             <button
               key={offer.offer_id}
               type="button"
+              disabled={pricing.currentMoneyUnavailable}
               aria-pressed={isSelected}
               className={cn(
                 'w-full rounded-2xl border px-4 py-3 text-left transition-colors',

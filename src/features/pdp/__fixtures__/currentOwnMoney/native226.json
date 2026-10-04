@@ -1,0 +1,638 @@
+{
+  "status": "success",
+  "pdp_version": "2.0",
+  "request_id": "f99bd0f9-ca36-44cb-a164-23b8fc7981cf",
+  "build_id": null,
+  "generated_at": "2026-10-04T00:46:25.602Z",
+  "subject": {
+    "type": "product_group",
+    "id": "sig_synthetic_complete_owned",
+    "canonical_product_ref": {
+      "merchant_id": "merch_obs_25b829cb679502f8",
+      "product_id": "jurlique:5f8af7ebae24cf17",
+      "platform": "external_seed",
+      "product_key": "ext:jurlique-synthetic-final-shared-listing::126534d7",
+      "content_key": "ck_c9af45a29406d47d3677421fb6013467",
+      "source_system": "catalog_enrichment_agent_v1",
+      "pivota_signature_id": "sig_52b4b69105927868d501bc115c2724e7"
+    }
+  },
+  "capabilities": {
+    "client": "shopping-agent-ui",
+    "client_version": null
+  },
+  "modules": [
+    {
+      "type": "canonical",
+      "required": true,
+      "data": {
+        "product_group_id": "sig_synthetic_complete_owned",
+        "sellable_item_group_id": "sig_synthetic_complete_owned",
+        "product_line_id": "pl_synthetic_complete_owned",
+        "review_family_id": "rf_synthetic_complete_owned",
+        "identity_confidence": 1,
+        "match_basis": [],
+        "canonical_scope": "synthetic",
+        "content_canonical_route_id": null,
+        "pdp_schema_profile": "beauty_formula",
+        "pdp_content_source": "self",
+        "offer_source": "group_fused",
+        "commerce_source": "selected_seller_store",
+        "content_review_state": "not_needed",
+        "canonical_product_ref": {
+          "merchant_id": "merch_obs_25b829cb679502f8",
+          "product_id": "jurlique:5f8af7ebae24cf17",
+          "platform": "external_seed",
+          "product_key": "ext:jurlique-synthetic-final-shared-listing::126534d7",
+          "content_key": "ck_c9af45a29406d47d3677421fb6013467",
+          "source_system": "catalog_enrichment_agent_v1",
+          "pivota_signature_id": "sig_52b4b69105927868d501bc115c2724e7"
+        },
+        "entry_product_ref": {
+          "product_id": "jurlique:5f8af7ebae24cf17",
+          "merchant_id": "merch_obs_25b829cb679502f8"
+        },
+        "selected_commerce_ref": {
+          "merchant_id": "merch_obs_25b829cb679502f8",
+          "product_id": "jurlique:5f8af7ebae24cf17"
+        },
+        "content_base_ref": {
+          "merchant_id": "merch_obs_25b829cb679502f8",
+          "product_id": "jurlique:5f8af7ebae24cf17"
+        },
+        "canonical_payload_product_ref": {
+          "merchant_id": "merch_obs_25b829cb679502f8",
+          "product_id": "sig_52b4b69105927868d501bc115c2724e7",
+          "platform": "external"
+        },
+        "pdp_payload": {
+          "schema_version": "1.0.0",
+          "page_type": "product_detail",
+          "pdp_schema_profile": "beauty_formula",
+          "x_template_hint": "beauty",
+          "tracking": {
+            "page_request_id": "pr_6ik15f9pisx_mut3oldt",
+            "entry_point": "agent"
+          },
+          "product": {
+            "product_id": "sig_52b4b69105927868d501bc115c2724e7",
+            "merchant_id": "merch_obs_25b829cb679502f8",
+            "title": "Synthetic Final Shared Listing",
+            "pdp_schema_profile": "beauty_formula",
+            "subtitle": "",
+            "brand": {
+              "name": "Jurlique"
+            },
+            "category_path": [
+              "beauty",
+              "skincare"
+            ],
+            "category_kind": "beauty",
+            "source": "external_seed",
+            "readiness_tier": "serving",
+            "serving_eligible": true,
+            "purchase_route": null,
+            "commerce_mode": null,
+            "checkout_handoff": null,
+            "external_redirect_url": "https://jurlique.com/products/synthetic-final-shared-listing",
+            "url": "https://agent.pivota.cc/products/sig_52b4b69105927868d501bc115c2724e7",
+            "canonical_url": "https://agent.pivota.cc/products/sig_52b4b69105927868d501bc115c2724e7",
+            "destination_url": "https://jurlique.com/products/synthetic-final-shared-listing",
+            "source_url": "https://jurlique.com/products/synthetic-final-shared-listing",
+            "default_variant_id": "47170040267002",
+            "variants": [
+              {
+                "variant_id": "47170040267002",
+                "sku_id": "47170040267002",
+                "title": "50 mL",
+                "options": [
+                  {
+                    "name": "Size",
+                    "value": "50 mL",
+                    "axis_kind": "volume"
+                  }
+                ],
+                "price": {
+                  "current": {
+                    "amount": 49,
+                    "currency": "USD"
+                  }
+                },
+                "availability": {
+                  "in_stock": true
+                },
+                "label_image_url": "",
+                "images": [],
+                "image_urls": [],
+                "axis_kind": "volume",
+                "display_label": "Size: 50 mL",
+                "source_quality_status": "captured"
+              },
+              {
+                "variant_id": "222",
+                "current_own_offer_status": "unavailable",
+                "sku_id": "222",
+                "title": "100 mL",
+                "options": [
+                  {
+                    "name": "Size",
+                    "value": "100 mL",
+                    "axis_kind": "volume"
+                  }
+                ],
+                "availability": {
+                  "in_stock": false,
+                  "available_quantity": 0
+                },
+                "label_image_url": "",
+                "images": [],
+                "image_urls": [],
+                "axis_kind": "volume",
+                "display_label": "Size: 100 mL",
+                "source_quality_status": "captured"
+              }
+            ],
+            "purchase_grain": "variant",
+            "price": {
+              "current": {
+                "amount": 49,
+                "currency": "USD"
+              },
+              "amount": 49,
+              "currency": "USD"
+            },
+            "availability": {
+              "in_stock": true
+            },
+            "description": "",
+            "source_product_id": "jurlique:5f8af7ebae24cf17",
+            "product_key": "ext:jurlique-synthetic-final-shared-listing::126534d7",
+            "catalog_category_path": "beauty/skincare",
+            "category": "skincare",
+            "product_type": "skincare",
+            "category_label_source": "enrichment_agent_v1",
+            "category_confidence": 0.7,
+            "sellable_item_group_id": "sig_52b4b69105927868d501bc115c2724e7",
+            "product_group_id": "sig_synthetic_complete_owned",
+            "pivota_signature_id": "sig_52b4b69105927868d501bc115c2724e7",
+            "signature_id": "sig_52b4b69105927868d501bc115c2724e7",
+            "pivota_canonical_url": "https://agent.pivota.cc/products/sig_52b4b69105927868d501bc115c2724e7",
+            "product_line_id": "pl_synthetic_complete_owned",
+            "review_family_id": "rf_synthetic_complete_owned",
+            "canonical_scope": "synthetic",
+            "offers_count": 1,
+            "offer_count": 1,
+            "has_multiple_offers": false,
+            "default_offer_id": "of:v1:merch_obs_25b829cb679502f8:sig_synthetic_complete_owned:merchant:default",
+            "best_price_offer_id": "of:v1:merch_obs_25b829cb679502f8:sig_synthetic_complete_owned:merchant:default",
+            "price_amount": 49,
+            "currency": "USD",
+            "price_source": "default_offer"
+          },
+          "modules": [
+            {
+              "module_id": "m_variant",
+              "type": "variant_selector",
+              "priority": 95,
+              "data": {
+                "selected_variant_id": "47170040267002",
+                "variants": [
+                  {
+                    "variant_id": "47170040267002",
+                    "sku_id": "47170040267002",
+                    "title": "50 mL",
+                    "display_label": "Size: 50 mL",
+                    "options": [
+                      {
+                        "name": "Size",
+                        "value": "50 mL",
+                        "axis_kind": "volume"
+                      }
+                    ],
+                    "price": {
+                      "current": {
+                        "amount": 49,
+                        "currency": "USD"
+                      }
+                    },
+                    "availability": {
+                      "in_stock": true
+                    },
+                    "axis_kind": "volume",
+                    "source_quality_status": "captured"
+                  },
+                  {
+                    "variant_id": "222",
+                    "sku_id": "222",
+                    "title": "100 mL",
+                    "display_label": "Size: 100 mL",
+                    "options": [
+                      {
+                        "name": "Size",
+                        "value": "100 mL",
+                        "axis_kind": "volume"
+                      }
+                    ],
+                    "current_own_offer_status": "unavailable",
+                    "availability": {
+                      "in_stock": false,
+                      "available_quantity": 0
+                    },
+                    "axis_kind": "volume",
+                    "source_quality_status": "captured"
+                  }
+                ],
+                "options": [
+                  {
+                    "name": "Size",
+                    "axis_kind": "volume",
+                    "values": [
+                      {
+                        "value": "50 mL",
+                        "label": "50 mL",
+                        "variant_ids": [
+                          "47170040267002"
+                        ],
+                        "selected": true
+                      },
+                      {
+                        "value": "100 mL",
+                        "label": "100 mL",
+                        "variant_ids": [
+                          "222"
+                        ],
+                        "selected": false
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              "module_id": "m_price",
+              "type": "price_promo",
+              "priority": 90,
+              "data": {
+                "price": {
+                  "amount": 49,
+                  "currency": "USD"
+                },
+                "promotions": []
+              }
+            }
+          ],
+          "actions": [
+            {
+              "action_type": "add_to_cart",
+              "label": "Add to Cart",
+              "priority": 20,
+              "target": {}
+            },
+            {
+              "action_type": "buy_now",
+              "label": "Buy Now",
+              "priority": 10,
+              "target": {}
+            }
+          ],
+          "quality_signals": {
+            "coverage_by_module": {
+              "variant_selector": 1,
+              "price_promo": 1,
+              "reviews_preview": 1,
+              "buy_box": 1
+            },
+            "parse_confidence": {
+              "size_guide": 0
+            },
+            "fallback_used": {
+              "size_guide": false
+            },
+            "gating": {
+              "buy_box_ok": true,
+              "size_guide_ok": false
+            }
+          },
+          "product_group_id": "sig_synthetic_complete_owned",
+          "sellable_item_group_id": "sig_synthetic_complete_owned",
+          "product_line_id": "pl_synthetic_complete_owned",
+          "review_family_id": "rf_synthetic_complete_owned",
+          "canonical_scope": "synthetic",
+          "offers_count": 1,
+          "offer_count": 1,
+          "has_multiple_offers": false
+        }
+      }
+    },
+    {
+      "type": "variant_selector",
+      "required": false,
+      "data": {
+        "selected_variant_id": "47170040267002",
+        "variants": [
+          {
+            "variant_id": "47170040267002",
+            "sku_id": "47170040267002",
+            "title": "50 mL",
+            "display_label": "Size: 50 mL",
+            "options": [
+              {
+                "name": "Size",
+                "value": "50 mL",
+                "axis_kind": "volume"
+              }
+            ],
+            "price": {
+              "current": {
+                "amount": 49,
+                "currency": "USD"
+              }
+            },
+            "availability": {
+              "in_stock": true
+            },
+            "axis_kind": "volume",
+            "source_quality_status": "captured"
+          },
+          {
+            "variant_id": "222",
+            "sku_id": "222",
+            "title": "100 mL",
+            "display_label": "Size: 100 mL",
+            "options": [
+              {
+                "name": "Size",
+                "value": "100 mL",
+                "axis_kind": "volume"
+              }
+            ],
+            "current_own_offer_status": "unavailable",
+            "availability": {
+              "in_stock": false,
+              "available_quantity": 0
+            },
+            "axis_kind": "volume",
+            "source_quality_status": "captured"
+          }
+        ],
+        "options": [
+          {
+            "name": "Size",
+            "axis_kind": "volume",
+            "values": [
+              {
+                "value": "50 mL",
+                "label": "50 mL",
+                "variant_ids": [
+                  "47170040267002"
+                ],
+                "selected": true
+              },
+              {
+                "value": "100 mL",
+                "label": "100 mL",
+                "variant_ids": [
+                  "222"
+                ],
+                "selected": false
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "type": "offers",
+      "required": false,
+      "data": {
+        "status": "success",
+        "product_group_id": "sig_synthetic_complete_owned",
+        "canonical_product_ref": {
+          "merchant_id": "merch_obs_25b829cb679502f8",
+          "product_id": "jurlique:5f8af7ebae24cf17"
+        },
+        "offers_count": 1,
+        "offers": [
+          {
+            "offer_id": "of:v1:merch_obs_25b829cb679502f8:sig_synthetic_complete_owned:merchant:default",
+            "product_group_id": "sig_synthetic_complete_owned",
+            "product_id": "jurlique:5f8af7ebae24cf17",
+            "merchant_id": "merch_obs_25b829cb679502f8",
+            "merchant_name": "Jurlique",
+            "price": {
+              "amount": 49,
+              "currency": "USD"
+            },
+            "inventory": {
+              "in_stock": true
+            },
+            "variants": [
+              {
+                "variant_id": "47170040267002",
+                "sku_id": "47170040267002",
+                "sku": "47170040267002",
+                "title": "50 mL",
+                "options": [
+                  {
+                    "name": "size",
+                    "value": "50 ml"
+                  }
+                ],
+                "price": {
+                  "current": {
+                    "amount": 49,
+                    "currency": "USD"
+                  }
+                },
+                "availability": {
+                  "in_stock": true
+                }
+              },
+              {
+                "variant_id": "222",
+                "sku_id": "222",
+                "sku": "222",
+                "title": "100 mL",
+                "options": [
+                  {
+                    "name": "size",
+                    "value": "100 ml"
+                  }
+                ],
+                "availability": {
+                  "in_stock": false,
+                  "available_quantity": 0
+                },
+                "current_own_offer_status": "unavailable"
+              }
+            ],
+            "source_url": "https://jurlique.com/products/synthetic-final-shared-listing",
+            "source_kind": "external_seed",
+            "source_tier": "brand",
+            "purchase_route": "affiliate_outbound",
+            "external_redirect_url": "https://jurlique.com/products/synthetic-final-shared-listing",
+            "url": "https://jurlique.com/products/synthetic-final-shared-listing",
+            "action": {
+              "type": "redirect_url",
+              "url": "https://jurlique.com/products/synthetic-final-shared-listing"
+            },
+            "risk_tier": "standard",
+            "commerce_mode": "links_out",
+            "seller_of_record": "merchant",
+            "payment_processor_owner": "merchant",
+            "order_system_of_record": "merchant_store_platform",
+            "checkout_handoff": "redirect",
+            "order_writeback_mode": "merchant_direct",
+            "merchant_checkout_url": "https://jurlique.com/products/synthetic-final-shared-listing",
+            "offer_source": "group_fused",
+            "commerce_source": "selected_seller_store"
+          }
+        ],
+        "default_offer_id": "of:v1:merch_obs_25b829cb679502f8:sig_synthetic_complete_owned:merchant:default",
+        "best_price_offer_id": "of:v1:merch_obs_25b829cb679502f8:sig_synthetic_complete_owned:merchant:default",
+        "offer_source": "group_fused",
+        "commerce_source": "selected_seller_store",
+        "content_review_state": "not_needed"
+      }
+    }
+  ],
+  "warnings": [],
+  "missing": [],
+  "metadata": {
+    "detail_source": null,
+    "pdp_schema_profile": "beauty_formula",
+    "normalized_pdp": {
+      "surface": "pivota_normalized_pdp",
+      "display_name": "Pivota Insights",
+      "insights_available": false,
+      "self_canonical": true,
+      "indexability": "index",
+      "structured_data_mode": "product_snippet",
+      "page_positioning": "editorial_normalized_product_page",
+      "quality_state": "limited",
+      "evidence_profile": null,
+      "truth_layers": {
+        "commerce_truth": "merchant_store_platform",
+        "entity_truth": "pivota_normalized_product_layer",
+        "experience_truth": "pivota_pdp_chat_agent"
+      }
+    },
+    "product_intel_status": "not_requested",
+    "identity_resolution": {
+      "requested_product_id": "sig_52b4b69105927868d501bc115c2724e7",
+      "requested_merchant_id": "external_seed",
+      "resolved_product_id": "jurlique:5f8af7ebae24cf17",
+      "resolved_merchant_id": "merch_obs_25b829cb679502f8",
+      "canonicalization_applied": true,
+      "canonicalization_reason_code": "PIVOTA_SIGNATURE_ID",
+      "entry_precheck_missing": false,
+      "resolution_source": "identity_graph_live"
+    },
+    "identity_graph": {
+      "sellable_item_group_id": "sig_synthetic_complete_owned",
+      "product_line_id": "pl_synthetic_complete_owned",
+      "review_family_id": "rf_synthetic_complete_owned",
+      "identity_confidence": 1,
+      "match_basis": [],
+      "canonical_scope": "synthetic",
+      "pdp_content_source": "self",
+      "offer_source": "group_fused",
+      "commerce_source": "selected_seller_store",
+      "content_review_state": "not_needed"
+    },
+    "pdp_provenance": {
+      "pdp_content_source": "self",
+      "offer_source": "group_fused",
+      "commerce_source": "selected_seller_store",
+      "content_review_state": "not_needed",
+      "content_base_ref": {
+        "merchant_id": "merch_obs_25b829cb679502f8",
+        "product_id": "jurlique:5f8af7ebae24cf17"
+      },
+      "selected_commerce_ref": {
+        "merchant_id": "merch_obs_25b829cb679502f8",
+        "product_id": "jurlique:5f8af7ebae24cf17"
+      },
+      "canonical_payload_product_ref": {
+        "merchant_id": "merch_obs_25b829cb679502f8",
+        "product_id": "sig_52b4b69105927868d501bc115c2724e7",
+        "platform": "external"
+      },
+      "identity_confidence": 1,
+      "match_basis": []
+    },
+    "route_health": {
+      "total_latency_ms": 28,
+      "phases": {
+        "parse_request": 0,
+        "resolve_catalog_signature": 4,
+        "build_external_seed_product": 0,
+        "resolve_variant_to_product": 0,
+        "resolve_subject_group": 0,
+        "resolve_offer_group": 0,
+        "resolve_canonical_catalog_group": 0,
+        "precheck_entry_product": 5,
+        "resolve_group_cached": 0,
+        "serving_eligibility_gate": 0,
+        "fetch_canonical_product": 0,
+        "catalog_identity_hydration": 0,
+        "identity_graph_live": 14,
+        "fetch_optional_modules_parallel": 0,
+        "catalog_pdp_content_hydration": 1,
+        "savings_presentation_hydration": 0,
+        "identity_group_rescue_catalog": 0
+      },
+      "checkpoints_ms": {
+        "phase:parse_request": 0,
+        "phase:resolve_catalog_signature": 4,
+        "phase:build_external_seed_product": 4,
+        "after_build_external_seed_product": 4,
+        "phase:resolve_variant_to_product": 4,
+        "phase:resolve_subject_group": 4,
+        "phase:resolve_offer_group": 4,
+        "phase:resolve_canonical_catalog_group": 4,
+        "phase:precheck_entry_product": 9,
+        "phase:resolve_group_cached": 9,
+        "phase:serving_eligibility_gate": 9,
+        "phase:fetch_canonical_product": 9,
+        "phase:identity_graph_live": 23,
+        "phase:fetch_optional_modules_parallel": 23,
+        "phase:catalog_pdp_content_hydration": 24,
+        "phase:savings_presentation_hydration": 24,
+        "after_savings_hydration": 24,
+        "after_related_services": 24,
+        "phase:identity_group_rescue_catalog": 27,
+        "before_offers_build": 27,
+        "before_response_assembly": 28
+      },
+      "modules": {
+        "offers": 1
+      },
+      "savings_presentation_hydration_mode": "prefetched_only",
+      "product_group_resolve_mode": "not_needed",
+      "product_group_resolve_budget_exceeded": false,
+      "product_group_resolve_budget_ms": 1200,
+      "identity_graph_live_mode": "executed_full_hydration",
+      "requested_product_id": "sig_52b4b69105927868d501bc115c2724e7",
+      "requested_merchant_id": "external_seed",
+      "resolved_product_id": "jurlique:5f8af7ebae24cf17",
+      "resolved_merchant_id": "merch_obs_25b829cb679502f8",
+      "canonicalization_applied": true,
+      "canonicalization_reason_code": "PIVOTA_SIGNATURE_ID",
+      "entry_precheck_missing": false
+    },
+    "module_health": {
+      "severity": "ok",
+      "applied": false,
+      "items": [],
+      "degraded": [],
+      "warnings": [],
+      "info": []
+    },
+    "module_degrade": {
+      "applied": false,
+      "severity": "ok",
+      "modules": []
+    }
+  }
+}

@@ -181,6 +181,7 @@ export interface VariantPrice {
 }
 
 export interface Variant {
+  current_own_offer_status?: 'unavailable';
   variant_id: string;
   sku_id?: string;
   title: string;

@@ -587,7 +587,8 @@ function buildSimilarTargetPath(
 }
 
 function formatPrice(amount: number, currency: string) {
-  const n = Number.isFinite(amount) ? amount : 0;
+  if (!Number.isFinite(amount)) return 'Price unavailable';
+  const n = amount;
   const c = currency || 'USD';
   try {
     return new Intl.NumberFormat('en-US', { style: 'currency', currency: c }).format(n);
@@ -1945,8 +1946,9 @@ export function PdpContainer({
       : typeof (selectedOffer as any)?.in_stock === 'boolean'
         ? Boolean((selectedOffer as any).in_stock)
         : undefined;
-  const effectiveIsInStock =
-    typeof selectedOfferInStock === 'boolean' ? selectedOfferInStock : isInStock;
+  const selectedCurrentMoneyUnavailable = resolveOfferPricing(selectedOffer, selectedVariant).currentMoneyUnavailable;
+  const effectiveIsInStock = !selectedCurrentMoneyUnavailable &&
+    (typeof selectedOfferInStock === 'boolean' ? selectedOfferInStock : isInStock);
   const variantAwareDefaultOfferId = useMemo(() => {
     if (!offers.length) return payload.default_offer_id || internalFirstDefaultOfferId;
     const variantEligibleOffers = offers.filter((offer) => offerSupportsVariant(offer, selectedVariant));
@@ -2369,7 +2371,7 @@ export function PdpContainer({
       : selectedOffer
         ? offerCurrency
         : baseCurrency;
-  const displayPriceAmount = shouldUseOfferVariantPrice
+  const displayPriceAmount = selectedCurrentMoneyUnavailable ? Number.NaN : shouldUseOfferVariantPrice
     ? selectedOfferPositiveTotalPrice ?? basePriceAmount
     : shouldUseOfferTotalPrice
       ? selectedOfferPositiveTotalPrice ?? basePriceAmount
@@ -2416,6 +2418,7 @@ export function PdpContainer({
   // The item id is the PDP's own product id (the `sig_` the gateway's UCP door reads, PIVOTA-Agent
   // docs/reap-agentic-lane.md §7 step 2b), not the selected offer's seller-side id.
   const reapEntry = useReapCheckoutEntry({
+    purchaseUnavailable: selectedCurrentMoneyUnavailable,
     // The own-offer item amount shown before asynchronous checkout preparation,
     // never its shipping total or a newly prepared witness price.
     unitPriceAmount: selectedOffer ? selectedOfferPricing.itemAmount : selectedVariant.price?.current.amount,
@@ -4882,7 +4885,10 @@ export function PdpContainer({
         onOpenViewer={(index) =>
           setMediaViewer({ isOpen: true, mode: 'official', source: 'media_gallery', initialIndex: index })
         }
-        variantSelector={productLineSelector || null}
+        variantSelector={productLineSelector || (selectorVariants.length > 1 ? (
+          <VariantSelector variants={selectorVariants} selectedVariantId={selectedVariant.variant_id}
+            onChange={handleVariantSelect} mode="generic" />
+        ) : null)}
         offers={offers}
         selectedVariant={selectedVariant}
         selectedOfferId={selectedOffer?.offer_id || null}
