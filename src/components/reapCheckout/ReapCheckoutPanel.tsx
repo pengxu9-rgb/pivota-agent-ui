@@ -343,7 +343,7 @@ const TERMINAL_COPY: Record<string, { title: string; body: string }> = {
   },
   refused: {
     title: 'The merchant could not price this order exactly',
-    body: 'Nothing was charged. You can buy it on the store instead, or try again later.',
+    body: 'Nothing was charged. You can start a new checkout or try again later.',
   },
 };
 
@@ -390,7 +390,8 @@ function StatusView({
   consecutiveErrors: number;
   onRefresh: () => void;
 }) {
-  const steps = ['Pricing', 'Approve on Reap', 'Placing order', 'Done'];
+  // Saving a card is not approval: the second step names what the buyer is doing in this phase.
+  const steps = ['Pricing', view.phase === 'needs_card' ? 'Add card' : 'Approve on Reap', 'Placing order', 'Done'];
   const stepIndex =
     view.phase === 'preparing' ? 0
       : view.phase === 'needs_card' || view.phase === 'awaiting_approval' ? 1

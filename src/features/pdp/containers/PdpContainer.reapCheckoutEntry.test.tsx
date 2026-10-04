@@ -55,6 +55,22 @@ function payload(): PDPPayload {
       price: { current: { amount: 16, currency: 'USD' } },
       availability: { in_stock: true, available_quantity: 5 },
     } as any,
+    // A Shopify-mirror offer: the gateway stamps no current_own_offer_status here; the selected
+    // offer's own variant carries the price Reap may freeze as expected money.
+    offers: [
+      {
+        offer_id: 'of_1',
+        product_id: 'ext_0f95730ee5ba05a6b7957ada',
+        merchant_id: 'merch_obs_a25cbba37ef98c52',
+        purchase_route: 'affiliate_outbound',
+        commerce_mode: 'links_out',
+        external_redirect_url: STORE,
+        price: { amount: 16, currency: 'USD' },
+        variants: [{ variant_id: 'V001', title: 'Default', price: { current: { amount: 16, currency: 'USD' } } }],
+      },
+    ],
+    offers_count: 1,
+    default_offer_id: 'of_1',
     modules: [
       { module_id: 'm_media', type: 'media_gallery', priority: 100, data: { items: [{ type: 'image', url: 'https://example.com/hero.jpg' }] } },
       { module_id: 'm_price', type: 'price_promo', priority: 90, data: { price: { amount: 16, currency: 'USD' }, promotions: [] } },
@@ -193,26 +209,8 @@ describe('PDP purchase bar: Buy with Reap', () => {
   it('opens the checkout for the PDP\'s own sig_ id, not the offer\'s seller-side id', async () => {
     vi.stubEnv('NEXT_PUBLIC_REAP_CHECKOUT_DEMO', '1');
     const p = payload();
-    p.modules.push({
-      module_id: 'm_offers',
-      type: 'offers',
-      priority: 50,
-      data: {
-        offers: [
-          {
-            offer_id: 'of_1',
-            product_id: 'ext_0f95730ee5ba05a6b7957ada',
-            merchant_id: 'merch_obs_a25cbba37ef98c52',
-            purchase_route: 'affiliate_outbound',
-            commerce_mode: 'links_out',
-            external_redirect_url: STORE,
-            price: { amount: 16, currency: 'USD' },
-          },
-        ],
-        offers_count: 1,
-        default_offer_id: 'of_1',
-      },
-    } as any);
+    // Sole-variant product whose offer lists no variants: the offer-level price is its own money.
+    delete (p.offers![0] as any).variants;
     renderPdp(p);
     fireEvent.click(await screen.findByTestId('buybar-reap-primary'));
     await screen.findByTestId('reap-panel');
@@ -231,5 +229,96 @@ describe('PDP purchase bar: Buy with Reap', () => {
     expect(original.expected_currency).toBe('USD');
     expect(original).not.toHaveProperty('variant_id');
     expect(fetchMock.mock.calls.some(([u])=>u==='/api/reap-checkout/prepare')).toBe(false);
+  });
+});
+
+/** Two shades of a mirror product; the offer's own variants carry each shade's price, no status flag. */
+function twoShadePayload(offerVariants: Record<string, unknown>[]): PDPPayload {
+  const p = payload();
+  p.product.variants = [
+    { variant_id: 'V001', title: 'Rose', options: [{ name: 'Color', value: 'Rose' }],
+      price: { current: { amount: 16, currency: 'USD' } }, availability: { in_stock: true, available_quantity: 5 } },
+    { variant_id: 'V002', title: 'Plum', options: [{ name: 'Color', value: 'Plum' }],
+      price: { current: { amount: 15, currency: 'USD' } }, availability: { in_stock: true, available_quantity: 5 } },
+  ] as any;
+  (p.offers![0] as any).variants = offerVariants;
+  return p;
+}
+
+const ROSE = { variant_id: 'V001', title: 'Rose', options: { Color: 'Rose' }, price: { current: { amount: 16, currency: 'USD' } } };
+
+async function submitBuyer() {
+  const set = (n: string, v: string) => fireEvent.change(document.querySelector(`input[name="${n}"]`)!, { target: { value: v } });
+  set('first_name', 'Ada'); set('last_name', 'L'); set('email', 'a@example.test'); set('phone', '+14155550100');
+  set('address_line1', '1 St'); set('city', 'SF'); set('region', 'CA'); set('postal_code', '94103');
+  fireEvent.click(document.querySelector('input[name="consent"]')!);
+  fireEvent.click(screen.getByTestId('reap-submit'));
+}
+
+/** The first money-carrying Reap request (prepare or create) the panel sent. */
+async function firstMoneyRequest(): Promise<Record<string, unknown>> {
+  let call: unknown[] | undefined;
+  await waitFor(() => {
+    call = fetchMock.mock.calls.find(([u]) => u === '/api/reap-checkout/prepare' || u === '/api/reap-checkout');
+    expect(call).toBeTruthy();
+  });
+  return JSON.parse(String((call![1] as RequestInit).body));
+}
+
+async function expectNoReapPurchase() {
+  await waitFor(() => expect(reapCalls().some(([u]) => u === '/api/reap-checkout/config')).toBe(true));
+  await new Promise((r) => setTimeout(r, 30));
+  expect(screen.queryByTestId('buybar-reap-primary')).toBeNull();
+  expect(reapCalls().every(([u]) => u === '/api/reap-checkout/config')).toBe(true);
+}
+
+describe('PDP purchase bar: Reap is offered only with the selected offer\'s own current money', () => {
+  beforeEach(() => {
+    vi.stubEnv('NEXT_PUBLIC_GENERIC_PDP_USE_STANDARD_SHELL', 'true');
+    vi.stubEnv('NEXT_PUBLIC_REAP_CHECKOUT_DEMO', '1');
+    window.sessionStorage.clear();
+    window.localStorage.clear();
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url === '/api/reap-checkout/session') return new Response(JSON.stringify({ scope: 'test-buyer-scope' }), { status: 200 });
+      if (url === '/api/reap-checkout/config') {
+        return new Response(JSON.stringify({ enabled: true, merchants: [{ domain: 'judydoll.com', market: 'US' }] }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ checkout: null, fallback: 'not_reap', attempt_outcome: 'not_created' }), { status: 200 });
+    });
+  });
+
+  it('ACCEPT mirror shape: no status flag, offer variant matched by id -> CTA with that variant\'s 13.99', async () => {
+    renderPdp(twoShadePayload([ROSE, { variant_id: 'V002', title: 'Plum', options: { Color: 'Plum' }, price: { current: { amount: 13.99, currency: 'USD' } } }]));
+    await screen.findByTestId('buybar-reap-primary');
+    fireEvent.click(screen.getByRole('button', { name: /Plum/ }));
+    fireEvent.click(await screen.findByTestId('buybar-reap-primary'));
+    await screen.findByTestId('reap-panel');
+    await submitBuyer();
+    expect(await firstMoneyRequest()).toMatchObject({ variant_id: 'V002', expected_unit_price_minor: 1399, expected_currency: 'USD' });
+  });
+
+  it('REFUSE: the matched offer variant has no price -> no Reap, never the offer-level 16', async () => {
+    renderPdp(twoShadePayload([ROSE, { variant_id: 'V002', title: 'Plum', options: { Color: 'Plum' } }]));
+    await screen.findByTestId('buybar-reap-primary');
+    fireEvent.click(screen.getByRole('button', { name: /Plum/ }));
+    await expectNoReapPurchase();
+    // Only the Reap purchase is withdrawn; the store route stays as it is without Reap.
+    expect(screen.getByRole('button', { name: /View at/ })).toBeEnabled();
+  });
+
+  it('REFUSE: the offer variant matches the selected shade only by title -> no Reap', async () => {
+    renderPdp(twoShadePayload([ROSE, { variant_id: 'SHOP_OTHER', title: 'Plum', price: { current: { amount: 13.99, currency: 'USD' } } }]));
+    await screen.findByTestId('buybar-reap-primary');
+    fireEvent.click(screen.getByRole('button', { name: /Plum/ }));
+    await expectNoReapPurchase();
+  });
+
+  it('REFUSE: no selected offer -> the catalog variant price is not purchase money', async () => {
+    const p = payload();
+    delete (p as any).offers;
+    delete (p as any).offers_count;
+    delete (p as any).default_offer_id;
+    renderPdp(p);
+    await expectNoReapPurchase();
   });
 });

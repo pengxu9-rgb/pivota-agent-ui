@@ -186,6 +186,23 @@ describe('ReapCheckoutPanel', () => {
     expect(openWindow).toHaveBeenCalledWith('https://pay.prava.space/enroll/3fa85f64');
   });
 
+  it('card setup marks an "Add card" step, never "Approve on Reap"', async () => {
+    renderPanel(scriptedFetch(needsEnrollmentCheckout()));
+    await fillAndSubmit();
+    await screen.findByTestId('reap-continue');
+    const current = screen.getByRole('list', { name: 'Checkout progress' }).querySelector('[aria-current="step"]');
+    expect(current?.textContent).toBe('Add card');
+    expect(screen.getByRole('list', { name: 'Checkout progress' }).textContent).not.toMatch(/Approve on Reap/);
+  });
+
+  it('the approval phase marks the "Approve on Reap" step', async () => {
+    renderPanel(scriptedFetch(awaitingApprovalCheckout()));
+    await fillAndSubmit();
+    await screen.findByTestId('reap-continue');
+    expect(screen.getByRole('list', { name: 'Checkout progress' }).querySelector('[aria-current="step"]')?.textContent)
+      .toBe('Approve on Reap');
+  });
+
   it.each([
     ['processing', processingCheckout(), /Reap is placing your order/],
     ['deadline_passed', deadlinePassedCheckout(), /approval window closed/],
@@ -215,6 +232,7 @@ describe('ReapCheckoutPanel', () => {
     expect(screen.getByTestId('reap-status').dataset.phase).toBe(phase);
     if (hint) expect(screen.getByTestId('reap-retry-hint').textContent).toMatch(hint);
     expect(terminal.querySelector('[data-testid="reap-visit-store"]')).toBeNull();
+    expect(terminal.textContent).not.toMatch(/store/i);
     fireEvent.click(screen.getByTestId('reap-restart'));
     expect(await screen.findByTestId('reap-form')).toBeTruthy();
   });

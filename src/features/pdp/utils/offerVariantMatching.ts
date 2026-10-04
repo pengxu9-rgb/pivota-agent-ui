@@ -147,12 +147,23 @@ function normalizeAmount(value: unknown): number | null {
   return Number.isFinite(amount) ? amount : null;
 }
 
-export function findMatchingOfferVariant(
+type OfferVariantMatchBasis = 'variant_id' | 'options' | 'title';
+
+function normalizedOfferVariants(
+  offer: Offer | null | undefined,
+  fallbackCurrency: string,
+): Variant[] {
+  const rawVariants = Array.isArray((offer as any)?.variants) ? ((offer as any).variants as unknown[]) : [];
+  return rawVariants
+    .map((variant) => normalizeOfferVariant(variant, fallbackCurrency))
+    .filter(Boolean) as Variant[];
+}
+
+function matchOfferVariant(
   offer: Offer | null | undefined,
   targetVariant: Variant | null | undefined,
-): Variant | null {
-  const rawVariants = Array.isArray((offer as any)?.variants) ? ((offer as any).variants as unknown[]) : [];
-  if (!rawVariants.length || !targetVariant) return null;
+): { variant: Variant; basis: OfferVariantMatchBasis } | null {
+  if (!targetVariant) return null;
 
   const fallbackCurrency =
     String(
@@ -160,15 +171,13 @@ export function findMatchingOfferVariant(
         targetVariant.price?.current.currency ||
         'USD',
     ).trim() || 'USD';
-  const variants = rawVariants
-    .map((variant) => normalizeOfferVariant(variant, fallbackCurrency))
-    .filter(Boolean) as Variant[];
+  const variants = normalizedOfferVariants(offer, fallbackCurrency);
   if (!variants.length) return null;
 
   const targetVariantId = String(targetVariant.variant_id || '').trim();
   if (targetVariantId) {
     const direct = variants.find((variant) => variant.variant_id === targetVariantId);
-    if (direct) return direct;
+    if (direct) return { variant: direct, basis: 'variant_id' };
   }
 
   const targetOptions = buildNormalizedOptionMap(targetVariant.options);
@@ -176,16 +185,23 @@ export function findMatchingOfferVariant(
     const optionMatch = variants.find((variant) =>
       optionMapsEqual(buildNormalizedOptionMap(variant.options), targetOptions),
     );
-    if (optionMatch) return optionMatch;
+    if (optionMatch) return { variant: optionMatch, basis: 'options' };
   }
 
   const targetTitle = normalizeText(targetVariant.title);
   if (targetTitle) {
     const titleMatch = variants.find((variant) => normalizeText(variant.title) === targetTitle);
-    if (titleMatch) return titleMatch;
+    if (titleMatch) return { variant: titleMatch, basis: 'title' };
   }
 
   return null;
+}
+
+export function findMatchingOfferVariant(
+  offer: Offer | null | undefined,
+  targetVariant: Variant | null | undefined,
+): Variant | null {
+  return matchOfferVariant(offer, targetVariant)?.variant ?? null;
 }
 
 export function resolveOfferPricing(
@@ -221,4 +237,64 @@ export function resolveOfferPricing(
     totalAmount: itemAmount == null ? null : itemAmount + shippingAmount,
     currency: fallbackCurrency,
   };
+}
+
+export type ReapPurchaseMoney =
+  | { available: true; unitPriceAmount: number; currency: string }
+  | {
+      available: false;
+      reason:
+        | 'no_selected_offer'
+        | 'current_money_unavailable'
+        | 'matched_by_title_only'
+        | 'no_matched_offer_variant'
+        | 'matched_variant_unpriced'
+        | 'offer_price_ambiguous'
+        | 'no_positive_offer_price';
+    };
+
+function positiveAmount(value: unknown): number | null {
+  const amount = normalizeAmount(value);
+  return amount != null && amount > 0 ? amount : null;
+}
+
+/**
+ * The money a Reap purchase may freeze as the buyer's expected original price: the selected
+ * offer's own current price for the selected variant, never a fallback. A multi-variant product
+ * needs the offer variant matched by id or options with a positive price of its own; a sole-variant
+ * product may use the offer-level price only when that offer lists at most one variant. A title-only
+ * match, an offer-level price borrowed across sizes, or a catalog/seed price with no selected offer
+ * is not purchase money, whether or not the gateway stamped `current_own_offer_status`.
+ */
+export function resolveReapPurchaseMoney(
+  offer: Offer | null | undefined,
+  targetVariant: Variant | null | undefined,
+  productVariantCount: number,
+): ReapPurchaseMoney {
+  if (!offer) return { available: false, reason: 'no_selected_offer' };
+  if (resolveOfferPricing(offer, targetVariant).currentMoneyUnavailable) {
+    return { available: false, reason: 'current_money_unavailable' };
+  }
+  const offerCurrency = String(offer.price?.currency || '').trim();
+  const match = matchOfferVariant(offer, targetVariant);
+  if (match?.basis === 'title') return { available: false, reason: 'matched_by_title_only' };
+  if (match) {
+    const amount = positiveAmount(match.variant.price?.current.amount);
+    if (amount != null) {
+      return {
+        available: true,
+        unitPriceAmount: amount,
+        currency: match.variant.price?.current.currency || offerCurrency || 'USD',
+      };
+    }
+    if (productVariantCount > 1) return { available: false, reason: 'matched_variant_unpriced' };
+  } else if (productVariantCount > 1) {
+    return { available: false, reason: 'no_matched_offer_variant' };
+  }
+  // Counted raw: an entry this reader cannot normalize is still a variant the offer price may not be.
+  const offerVariantCount = Array.isArray((offer as any).variants) ? ((offer as any).variants as unknown[]).length : 0;
+  if (offerVariantCount > 1) return { available: false, reason: 'offer_price_ambiguous' };
+  const offerAmount = positiveAmount(offer.price?.amount);
+  if (offerAmount == null) return { available: false, reason: 'no_positive_offer_price' };
+  return { available: true, unitPriceAmount: offerAmount, currency: offerCurrency || 'USD' };
 }
