@@ -2,6 +2,9 @@
 
 import type { ReactNode } from 'react';
 import type { ProductIntelData } from '@/features/pdp/types';
+import { displayableBestForLabels, isDisplayableProductIntelData, productIntelEvidenceLabel, projectPublicProductIntel } from '@/features/pdp/utils/publicProductIntel';
+
+export { isDisplayableProductIntelData } from '@/features/pdp/utils/publicProductIntel';
 
 function normalizeWhitespace(value: unknown): string {
   return String(value || '').replace(/\s+/g, ' ').trim();
@@ -135,157 +138,9 @@ function isLowSignalSellerHighlight(headline: unknown, body: unknown, evidencePr
   );
 }
 
-function isGenericInsightText(value: unknown): boolean {
-  const text = normalizeWhitespace(value).toLowerCase();
-  if (!text) return false;
-  return [
-    /\bpresented through merchant product data\b/,
-    /\blisting[-\s]?grounded\b/,
-    /\bdefines? the product around the title\b/,
-    /\bfocused on .* within a .* routine\b/,
-    /\banchors? the product\b/,
-    /\bdaytime uv step\b/,
-    /\bdaytime skin-?care routines?\b/,
-    /\bgeneral .* routine\b/,
-    /\bproduct data\b.*\broutine\b/,
-    /\broutine context\b/,
-  ].some((pattern) => pattern.test(text));
-}
-
-function hasProductSpecificInsightText(value: unknown): boolean {
-  const text = normalizeWhitespace(value).toLowerCase();
-  if (!text) return false;
-  return [
-    /\bspf\s*\d+\b/,
-    /\bzinc oxide\b/,
-    /\btinted\b/,
-    /\bshade\b/,
-    /\bmineral\b/,
-    /\bcoverage\b/,
-    /\bfinish\b/,
-    /\bretinol\b/,
-    /\bvitamin\s*c\b/,
-    /\bascorb(?:ic|yl)\b/,
-    /\bhyaluronic\s+acid\b/,
-    /\bniacinamide\b/,
-    /\bceramide\b/,
-    /\bpeptide\b/,
-    /\bsuccinic\s+acid\b/,
-    /\bsalicylic\s+acid\b/,
-    /\bglycolic\s+acid\b/,
-    /\blactic\s+acid\b/,
-    /\baha\b/,
-    /\bbha\b/,
-    /\bpha\b/,
-    /\bexfoliat(?:e|ing|ion)\b/,
-    /\bcongestion[-\s]?prone\b/,
-    /\bcleansing\s+treatment\b/,
-    /\balcohol denat\b/,
-    /\bbutyloctyl salicylate\b/,
-    /\b1,2-hexanediol\b/,
-    /\bclinical\b/,
-    /\bsebum\b/,
-    /\brice[-\s]?infused\b/,
-  ].some((pattern) => pattern.test(text));
-}
-
-function isHumanReviewedProductIntelData(data: ProductIntelData | null | undefined): boolean {
-  const provenance = data?.provenance || {};
-  const qualityGate = provenance.gemini_quality_gate || {};
-  const fieldSources = provenance.field_sources || {};
-  const sourceVersion = normalizeWhitespace(data?.freshness?.source_version || data?.product_intel_core?.freshness?.source_version);
-  const reviewStatus = normalizeWhitespace(provenance.review_status).toLowerCase();
-  const reviewDecision = normalizeWhitespace(provenance.review_decision).toLowerCase();
-  const generator = normalizeWhitespace(provenance.generator).toLowerCase();
-  const reviewerKind = normalizeWhitespace(provenance.reviewer_kind).toLowerCase();
-  const selectedStrategy = normalizeWhitespace(provenance.selection_strategy).toLowerCase();
-  const hasHumanField = Object.values(fieldSources).some(
-    (value) => normalizeWhitespace(value).toLowerCase() === 'human_standard',
-  );
-
-  if (sourceVersion === 'pilot_selected:strict_human_reviewed') return true;
-  if (generator === 'strict_human_manual_rewrite') return true;
-  if (hasHumanField && qualityGate.human_standard_rewrite === true) return true;
-  return (
-    reviewerKind === 'human' &&
-    reviewStatus === 'completed' &&
-    ['pass', 'rewrite'].includes(reviewDecision) &&
-    selectedStrategy.includes('strict_human')
-  );
-}
-
-function isAssistantReviewedSellerGroundedProductIntelData(data: ProductIntelData | null | undefined): boolean {
-  const provenance = data?.provenance || {};
-  const reviewStatus = normalizeWhitespace(provenance.review_status).toLowerCase();
-  const reviewDecision = normalizeWhitespace(provenance.review_decision).toLowerCase();
-  const reviewerKind = normalizeWhitespace(provenance.reviewer_kind).toLowerCase();
-  const selectedStrategy = normalizeWhitespace(provenance.selection_strategy).toLowerCase();
-  const evidenceProfile = normalizeWhitespace(
-    data?.product_intel_core?.evidence_profile || (data as any)?.evidence_profile || (provenance as any).evidence_profile,
-  ).toLowerCase();
-
-  return (
-    reviewerKind === 'assistant' &&
-    reviewStatus === 'completed' &&
-    ['pass', 'rewrite', 'seller_only_fallback'].includes(reviewDecision) &&
-    selectedStrategy === 'curated_override' &&
-    ['seller_only', 'seller_plus_formula'].includes(evidenceProfile)
-  );
-}
-
-function isGenericBestForLabel(value: unknown): boolean {
-  const text = normalizeWhitespace(value).toLowerCase();
-  if (!text) return true;
-  if (/\bshoppers?\b/.test(text)) return true;
-  return /^(daily use|everyday use|daytime wear|daily uv protection|general use|all skin types?)$/.test(text);
-}
-
-function displayableBestForLabels(items: Array<any> | null | undefined): string[] {
-  if (!Array.isArray(items)) return [];
-  return items
-    .map((item) => normalizeWhitespace(item?.label || item?.tag))
-    .filter((item) => item && !isGenericBestForLabel(item))
-    .slice(0, 3);
-}
-
-export function isDisplayableProductIntelData(data: ProductIntelData | null | undefined): boolean {
-  const core = data?.product_intel_core;
-  if (!core) return false;
-  const qualityState = String(core.quality_state || data?.quality_state || data?.normalized_pdp?.quality_state || '')
-    .trim()
-    .toLowerCase();
-  if (qualityState === 'blocked') return false;
-
-  const whyText = Array.isArray(core.why_it_stands_out)
-    ? core.why_it_stands_out.map((item) => `${item?.headline || ''} ${item?.body || ''}`).join(' ')
-    : '';
-  const bestForText = displayableBestForLabels(core.best_for).join(' ');
-  const primaryText = [
-    core.what_it_is?.headline,
-    core.what_it_is?.body,
-    bestForText,
-    core.routine_fit?.step,
-    ...(Array.isArray(core.routine_fit?.pairing_notes) ? core.routine_fit.pairing_notes : []),
-  ].join(' ');
-  const combined = [primaryText, whyText].join(' ');
-
-  if (!normalizeWhitespace(combined)) return false;
-  if (isHumanReviewedProductIntelData(data)) return true;
-  if (isAssistantReviewedSellerGroundedProductIntelData(data) && hasProductSpecificInsightText(combined)) return true;
-  if (isGenericInsightText(primaryText) && !hasProductSpecificInsightText(combined)) return false;
-  return false;
-}
-
 function nonEmptyList(values: Array<unknown> | null | undefined): string[] {
   if (!Array.isArray(values)) return [];
   return values.map((value) => normalizeWhitespace(value)).filter(Boolean);
-}
-
-function evidenceLabel(profile?: string): string {
-  const key = String(profile || '').trim().toLowerCase();
-  if (key === 'seller_only') return 'Based on product and brand information';
-  if (key === 'community_supported') return 'Includes product, review, and market signals';
-  return 'Based on product data';
 }
 
 function normalizeHighlightHeadline(value: unknown): string {
@@ -304,7 +159,8 @@ function SectionLabel({ children }: { children: ReactNode }) {
   );
 }
 
-export function PivotaInsightsSection({ data }: { data: ProductIntelData }) {
+export function PivotaInsightsSection({ data: sourceData }: { data: ProductIntelData }) {
+  const data = projectPublicProductIntel(sourceData);
   const core = data.product_intel_core;
   if (!core) return null;
   if (!isDisplayableProductIntelData(data)) return null;
@@ -363,7 +219,7 @@ export function PivotaInsightsSection({ data }: { data: ProductIntelData }) {
         <div>
           <div>
             <h2 className="text-base font-semibold text-foreground">{data.display_name || 'Pivota Insights'}</h2>
-            <p className="mt-1 text-xs text-muted-foreground">{evidenceLabel(evidenceProfile)}</p>
+            <p className="mt-1 text-xs text-muted-foreground">{productIntelEvidenceLabel(evidenceProfile, communityAvailable)}</p>
           </div>
         </div>
 

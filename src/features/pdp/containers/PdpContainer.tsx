@@ -71,6 +71,7 @@ import { GenericSizeHelper } from '@/features/pdp/sections/GenericSizeHelper';
 import { GenericSizeGuide } from '@/features/pdp/sections/GenericSizeGuide';
 import { GenericDetailsSection } from '@/features/pdp/sections/GenericDetailsSection';
 import { PivotaInsightsSection, isDisplayableProductIntelData } from '@/features/pdp/sections/PivotaInsightsSection';
+import { productIntelEvidenceLabel, projectPublicProductIntel } from '@/features/pdp/utils/publicProductIntel';
 import { OfferSheet } from '@/features/pdp/offers/OfferSheet';
 import { WaysToSave } from '@/features/pdp/components/WaysToSave';
 import { ModuleShell } from '@/features/pdp/components/ModuleShell';
@@ -1797,7 +1798,8 @@ export function PdpContainer({
 
   const media = getModuleData<MediaGalleryData>(payload, 'media_gallery');
   const pricePromo = getModuleData<PricePromoData>(payload, 'price_promo');
-  const productIntel = getModuleData<ProductIntelData>(payload, 'product_intel');
+  const rawProductIntel = getModuleData<ProductIntelData>(payload, 'product_intel');
+  const productIntel = rawProductIntel ? projectPublicProductIntel(rawProductIntel) : null;
   const productFacts = getModuleData<ProductFactsData>(payload, 'product_facts');
   const productOverview = getModuleData<ProductDetailsData>(payload, 'product_overview');
   const supplementalDetails = getModuleData<ProductDetailsData>(payload, 'supplemental_details');
@@ -4165,12 +4167,13 @@ export function PdpContainer({
   if (isBeautyMobile || isBeautyDesktop) {
     const intelCore = (productIntel as any)?.product_intel_core;
     const intelCommunity = (productIntel as any)?.community_signals;
-    const beautyInsights: BeautyInsightsData | null = intelCore
+    const beautyInsights: BeautyInsightsData | null = hasInsights && intelCore
       ? {
           displayName: productIntel?.display_name || 'Pivota Insights',
-          evidenceLabel:
-            (productIntel as any)?.evidence_label ||
-            'Includes product, review, and market signals',
+          evidenceLabel: productIntelEvidenceLabel(
+            intelCore.evidence_profile || productIntel?.evidence_profile || productIntel?.normalized_pdp?.evidence_profile,
+            intelCommunity?.status === 'available',
+          ),
           whatItIs: intelCore.what_it_is
             ? {
                 headline: intelCore.what_it_is.headline ?? intelCore.what_it_is.summary ?? null,

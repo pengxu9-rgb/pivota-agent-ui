@@ -1,3 +1,4 @@
+import { projectPublicInsightsPayload } from '@/features/pdp/utils/publicProductIntel';
 import type { GetPdpV2Response } from '@/lib/api';
 import type {
   ActiveIngredientsData,
@@ -710,5 +711,5 @@ export function mapPdpV2ToPdpPayload(response: GetPdpV2Response): PDPPayload | n
     } as Module);
   }
 
-  return next;
+  return projectPublicInsightsPayload(next);
 }

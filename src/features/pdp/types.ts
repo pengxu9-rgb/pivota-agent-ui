@@ -377,6 +377,7 @@ export interface ProductIntelWatchout {
 }
 
 export interface ProductIntelCoreData {
+  public_claims?: Array<{ claim_text?: string; source_ref?: string; concern?: string; source_refs?: string[] }>;
   what_it_is?: ProductIntelNarrative;
   best_for?: ProductIntelBestForItem[];
   why_it_stands_out?: ProductIntelHighlight[];
@@ -420,6 +421,9 @@ export interface CommunitySignalsData {
 }
 
 export interface ProductIntelData {
+  /** Gateway-reviewed eligibility; false always withholds public Insights. */
+  public_display_eligible?: boolean;
+  public_ready?: boolean;
   contract_version?: string;
   display_name?: string;
   provenance?: {
