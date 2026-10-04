@@ -222,3 +222,43 @@ describe('P3 follow-ups of #384: merchant id conflicts, the echoed item id', () 
     expect(isCheckoutForItem({ lineItems: [{ itemId: '', title: 'x', quantity: 1, unitPriceMinor: null }] }, '')).toBe(false);
   });
 });
+
+describe('authoritative dispatch and contact re-entry messages', () => {
+  const message = (code: string, content: string) => ({ type: 'info', code, content, path: '$.status' });
+  const checkout = (messages: unknown[], status = 'incomplete') => readReapCheckout({ id: 'reap_test', status, messages })!;
+  it.each([[], [message('reap.checkout_dispatch_state', 'invalid')], [message('reap.checkout_dispatch_state', 'not_dispatched'), message('reap.checkout_dispatch_state', 'dispatched')], [{ ...message('reap.checkout_dispatch_state', 'not_dispatched'), path: '$' }]].map((messages) => ({ messages })))('missing/malformed/conflicting evidence is unknown: %j', ({ messages }) => {
+    expect(checkout(messages).checkoutDispatchState).toBe('unknown');
+    expect(checkout(messages).contactReentryRequired).toBe(false);
+  });
+  it.each(['not_dispatched', 'dispatch_started', 'dispatched', 'unknown'])('preserves explicit state %s', (state) => {
+    const view = checkout([message('reap.checkout_dispatch_state', state), message('reap.contact_reentry_required', 'true')]);
+    expect(view.checkoutDispatchState).toBe(state);
+    expect(view.contactReentryRequired).toBe(state === 'not_dispatched');
+  });
+  it.each(['canceled', 'completed'])('terminal %s cannot become contact re-entry', (status) => {
+    expect(checkout([message('reap.checkout_dispatch_state', 'not_dispatched'), message('reap.contact_reentry_required', 'true')], status).contactReentryRequired).toBe(false);
+  });
+  it('conflicting contact flags fail closed', () => {
+    expect(checkout([message('reap.checkout_dispatch_state', 'not_dispatched'), message('reap.contact_reentry_required', 'true'), message('reap.contact_reentry_required', 'false')]).contactReentryRequired).toBe(false);
+  });
+});
+
+it('a typed gateway review warning disables contact reentry without inventing approval or dispatch', () => {
+  const raw = { id: 'reap_test', status: 'incomplete', messages: [
+    { type: 'info', code: 'reap.checkout_dispatch_state', content: 'not_dispatched', path: '$.status' },
+    { type: 'info', code: 'reap.contact_reentry_required', content: 'true', path: '$.status' },
+    { type: 'warning', code: 'reap.checkout_requires_review', content: 'fixed review notice', path: '$.status' },
+  ] };
+  const view = readReapCheckout(raw)!;
+  expect(view.reviewRequired).toBe(true); expect(view.contactReentryRequired).toBe(false);
+  expect(view.checkoutDispatchState).toBe('not_dispatched'); expect(view.phase).toBe('preparing');
+});
+it.each([
+  { type: 'info', code: 'reap.checkout_requires_review', path: '$.status' },
+  { type: 'warning', code: 'reap.checkout_requires_review', path: '$.provider' },
+  { type: 'warning', code: 'arbitrary_provider_code', path: '$.status' },
+])('unrecognized provider-shaped message is not review or approval authority: %j', (message) => {
+  const view = readReapCheckout({ id: 'reap_test', status: 'incomplete', messages: [{ ...message, content: 'approved' }] })!;
+  expect(view.reviewRequired).toBe(false); expect(view.phase).toBe('preparing');
+  expect(view.checkoutDispatchState).toBe('unknown');
+});

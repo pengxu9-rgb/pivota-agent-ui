@@ -1,3 +1,4 @@
+import { persistCheckoutEvidence } from '@/lib/reapCheckout/recoveryMarkers';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ReapCheckoutPanel, ACTIVE_KEY_PREFIX, writeActiveCheckoutId } from './ReapCheckoutPanel';
@@ -83,6 +84,7 @@ describe('durable checkout attempt recovery', () => {
     expect(screen.getByTestId('reap-panel').textContent).not.toMatch(/nothing (?:was|is) charged/i);
   });
   it('does not create when buyer bootstrap fails', async () => {
+    persistCheckoutEvidence('different-product', view(completedCheckout()).id, 'completed');
     const fetchImpl = vi.fn(async () => json({}, 503)); const panel = mount(fetchImpl as typeof fetch); await submit(panel.container); await screen.findByTestId('reap-fallback');
     expect(fetchImpl).toHaveBeenCalledTimes(1); expect(readAttempt(PRODUCT_ID)).toBeNull();
   });
@@ -135,6 +137,7 @@ describe('durable checkout attempt recovery', () => {
   });
   it('retains completed recovery records if the reset request fails', async () => {
     localStorage.setItem(ACTIVE_KEY_PREFIX + 'different-product', JSON.stringify({ id: view(completedCheckout()).id, at: NOW, settled: true }));
+    persistCheckoutEvidence('different-product', view(completedCheckout()).id, 'completed');
     const fetchImpl = vi.fn(async () => json({}, 503)); mount(fetchImpl as typeof fetch);
     await act(async () => { fireEvent.click(screen.getByTestId('reap-new-buyer')); });
     expect(fetchImpl).toHaveBeenCalledTimes(1);
@@ -156,7 +159,7 @@ describe('hosted deadline and environment guards', () => {
     const openWindow = vi.fn(); mount(vi.fn(async () => json({ checkout })) as typeof fetch, undefined, { openWindow });
     const button = await screen.findByTestId('reap-continue');
     vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('storage blocked'); });
-    fireEvent.click(button); expect(openWindow).not.toHaveBeenCalled(); expect(screen.getByTestId('reap-handoff-problem')).toBeTruthy();
+    await act(async () => { fireEvent.click(button); }); expect(openWindow).not.toHaveBeenCalled(); expect(screen.getByTestId('reap-handoff-problem')).toBeTruthy();
   });
   it('checks expiry again at click before the render timer fires', async () => {
     let current = NOW; const checkout = view(awaitingApprovalCheckout({ deadline: '2026-09-29T10:01:00Z' }));

@@ -95,3 +95,19 @@ it('does not poll a thirty-second server hint after fifteen seconds', async () =
   await act(async () => { await vi.advanceTimersByTimeAsync(15_000); });
   expect(fetchImpl).toHaveBeenCalledTimes(1);
 });
+
+it('a late same-id response or reset never resurrects a terminal checkout', async () => {
+  vi.useFakeTimers();
+  let resolve!: (value: unknown) => void;
+  const fetchImpl = vi.fn(() => new Promise((done) => { resolve = done; }));
+  let last!: ReturnType<typeof useReapCheckoutPoll>;
+  render(<Probe fetchImpl={fetchImpl as unknown as typeof fetch} onState={(s) => { last = s; }} />);
+  await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
+  const terminal = readReapCheckout(completedCheckout())!;
+  await act(async () => { last.reset(terminal); });
+  await act(async () => { resolve({ ok: true, status: 200, json: async () => ({ checkout: readReapCheckout(resolvingCheckout()) }) }); });
+  expect(last.view?.phase).toBe('completed');
+  await act(async () => { last.reset(readReapCheckout(resolvingCheckout())!); });
+  expect(last.view?.phase).toBe('completed');
+  expect(vi.getTimerCount()).toBe(0);
+});

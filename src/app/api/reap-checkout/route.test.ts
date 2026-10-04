@@ -908,3 +908,58 @@ describe('typed attempt retirement receipt',()=>{
   });
   it('cannot treat the receipt as a fresh create outcome',async()=>{arm();const {POST}=await allRoutes();fetchMock.mockResolvedValue(new Response(JSON.stringify(rpcResult({error:{code:'CHECKOUT_ATTEMPT_RETIRED',detail:{reason:'ucp_reap_attempt_retired',reconciliation_id:'a'.repeat(32)}}},true))));expect((await POST(createReq())).status).toBe(502);});
 });
+
+describe('same-purchase contact continuation endpoint', () => {
+  const context = () => ({ params: Promise.resolve({ checkoutId: REAP_ID }) });
+  it('uses only resume_checkout with the same original envelope plus exact checkout_id', async () => {
+    arm(); gatewayAnswers(resolvingCheckout());
+    const { POST: create } = await import('./route');
+    await create(createReq());
+    const original = JSON.parse(String(fetchMock.mock.calls[0][1].body)).params.arguments;
+    fetchMock.mockClear(); gatewayAnswers(awaitingApprovalCheckout());
+    const { POST } = await import('./[checkoutId]/resume/route');
+    const response = await POST(createReq(), context());
+    expect(response.status).toBe(200); expect((await response.json()).checkout.id).toBe(REAP_ID);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const rpc = JSON.parse(String(fetchMock.mock.calls[0][1].body));
+    expect(rpc.params.name).toBe('resume_checkout');
+    expect(rpc.params.arguments).toEqual({ ...original, checkout_id: REAP_ID });
+    expect(response.headers.get('set-cookie')).toBeNull();
+  });
+  it.each(['missing', 'rotated'])('a %s buyer cookie never resumes or mints a replacement', async (kind) => {
+    arm(); const { POST } = await import('./[checkoutId]/resume/route');
+    const response = await POST(createReq({ buyer_scope: 'wrong-owner' }, kind === 'missing' ? { cookie: '' } : {}), context());
+    expect(response.status).toBe(409); expect(fetchMock).not.toHaveBeenCalled();
+    expect(response.headers.get('set-cookie')).toBeNull();
+  });
+  it.each([undefined, 'https://evil.example'])('missing/cross-site origin %s cannot continue', async (origin) => {
+    arm(); const { POST } = await import('./[checkoutId]/resume/route');
+    expect((await POST(createReq({}, { origin: origin ?? null }), context())).status).toBe(403);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+  it('refuses invalid checkout ids before an upstream call', async () => {
+    arm(); const { POST } = await import('./[checkoutId]/resume/route');
+    expect((await POST(createReq(), { params: Promise.resolve({ checkoutId: 'wrong-id' }) })).status).toBe(404);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+  it.each(['timeout', 'legacy-tool', 'retired', 'different-id', 'different-item', 'different-seller'])('%s never permits create or replacement', async (kind) => {
+    arm(); const { POST } = await import('./[checkoutId]/resume/route');
+    if (kind === 'timeout') fetchMock.mockRejectedValue(new Error('unavailable'));
+    else if (kind === 'legacy-tool' || kind === 'retired') gatewayAnswers({ error: { code: kind === 'retired' ? 'CHECKOUT_ATTEMPT_RETIRED' : 'UNKNOWN_TOOL', detail: { reason: 'ucp_reap_attempt_retired', reconciliation_id: 'a'.repeat(32) } } });
+    else {
+      const view = awaitingApprovalCheckout();
+      if (kind === 'different-id') view.id = REAP_ID.replace('0123456789abcdef01234567', 'fedcba9876543210fedcba98');
+      if (kind === 'different-item') view.line_items[0].item.id = 'other-product';
+      if (kind === 'different-seller') view.messages = view.messages.map((m: any) => m.code === 'reap.merchant_domain' ? { ...m, content: 'other.example' } : m);
+      gatewayAnswers(view);
+    }
+    const response = await POST(createReq(), context());
+    expect(response.status).toBe(502); expect(await response.json()).toEqual({ error: 'continuation_outcome_unknown', attempt_outcome: 'unknown' });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1].body)).params.name).toBe('resume_checkout');
+  });
+  it('flags off prevent continuation too', async () => {
+    const { POST } = await import('./[checkoutId]/resume/route');
+    expect((await POST(createReq(), context())).status).toBe(404); expect(fetchMock).not.toHaveBeenCalled();
+  });
+});

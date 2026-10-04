@@ -44,6 +44,9 @@ export type ReapPhase =
 export type OfferCodeOutcome = 'pending' | 'applied' | 'no_discount' | 'not_applied_invalid' | 'not_applied_expired';
 
 export type ReapCheckoutView = {
+  checkoutDispatchState: 'not_dispatched' | 'dispatch_started' | 'dispatched' | 'unknown';
+  contactReentryRequired: boolean;
+  reviewRequired: boolean;
   environment?: 'sandbox' | 'live' | 'unknown';
   id: string;
   isReapCheckout: boolean;
@@ -256,7 +259,20 @@ export function readReapCheckout(raw: unknown): ReapCheckoutView | null {
     outcome = 'not_applied_invalid';
   }
 
+  // Only a single well-formed authoritative value counts. Absence is never no-dispatch proof.
+  const dispatchMessages = messages.filter((m) => m.code === 'reap.checkout_dispatch_state');
+  const dispatchValues = [...new Set(dispatchMessages.map((m) => m.content))];
+  const dispatch = dispatchValues.length === 1 && dispatchMessages.every((m) => m.type === 'info' && m.path === '$.status') &&
+    ['not_dispatched', 'dispatch_started', 'dispatched'].includes(dispatchValues[0]) ? dispatchValues[0] : 'unknown';
+  const reviewRequired = messages.some((m) => m.code === 'reap.checkout_requires_review' && m.type === 'warning' && m.path === '$.status');
+  const contactMessages = messages.filter((m) => m.code === 'reap.contact_reentry_required');
+  const contactReentryRequired = !reviewRequired && !['completed', 'canceled'].includes(status) && dispatch === 'not_dispatched' &&
+    contactMessages.length > 0 && contactMessages.every((m) => m.type === 'info' && m.path === '$.status' && m.content === 'true');
+
   return {
+    checkoutDispatchState: dispatch as ReapCheckoutView['checkoutDispatchState'],
+    contactReentryRequired,
+    reviewRequired,
     id,
     isReapCheckout,
     status,
