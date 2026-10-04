@@ -1,0 +1,734 @@
+{
+  "source": "local_integrated_route_with_public_receipt_inputs_and_control_variant_money",
+  "status": 200,
+  "headers": {
+    "x-powered-by": "Express",
+    "vary": "Origin, Access-Control-Request-Headers, Access-Control-Request-Method",
+    "access-control-allow-methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
+    "access-control-allow-headers": "Content-Type, Authorization, X-Api-Key, X-Agent-Api-Key, X-Checkout-Token, X-Aurora-Uid, X-Aurora-Lang, X-Trace-Id, X-Brief-Id, X-Lang, X-Session-Id",
+    "x-aurora-build": "started-2026-10-04T11:07:22.814Z",
+    "x-service-name": "pivota-agent-gateway",
+    "x-gateway-request-id": "7b7dd692-5b8b-4793-8251-1571c2a5777a",
+    "cache-control": "private, no-store",
+    "content-type": "application/json; charset=utf-8",
+    "content-length": "16783",
+    "etag": "W/\"418f-OzkqEVPikLsvlEclM67uvS1l2xU\"",
+    "date": "Sun, 04 Oct 2026 11:07:22 GMT",
+    "connection": "close"
+  },
+  "body": {
+    "status": "success",
+    "pdp_version": "2.0",
+    "request_id": "7b7dd692-5b8b-4793-8251-1571c2a5777a",
+    "build_id": null,
+    "generated_at": "2026-10-04T11:07:22.956Z",
+    "subject": {
+      "type": "product_group",
+      "id": "sig_6bb6c7ae7b7e71e838aefb564c60371a",
+      "canonical_product_ref": {
+        "merchant_id": "merch_obs_0531e02c57f00f5b",
+        "product_id": "moogoo:484391fddf3260cb",
+        "platform": "external_seed",
+        "product_key": "fixture::sig_6bb6c7ae7b7e71e838aefb564c60371a",
+        "content_key": "fixture-content::sig_6bb6c7ae7b7e71e838aefb564c60371a",
+        "source_system": "catalog_enrichment_agent_v1",
+        "pivota_signature_id": "sig_6bb6c7ae7b7e71e838aefb564c60371a"
+      }
+    },
+    "capabilities": {
+      "client": "shopping-agent-ui",
+      "client_version": null
+    },
+    "modules": [
+      {
+        "type": "canonical",
+        "required": true,
+        "data": {
+          "product_group_id": "sig_6bb6c7ae7b7e71e838aefb564c60371a",
+          "sellable_item_group_id": "sig_6bb6c7ae7b7e71e838aefb564c60371a",
+          "product_line_id": null,
+          "review_family_id": null,
+          "identity_confidence": null,
+          "match_basis": [],
+          "canonical_scope": null,
+          "content_canonical_route_id": null,
+          "pdp_schema_profile": "beauty_formula",
+          "pdp_content_source": "self",
+          "offer_source": "multi_offer_blocked",
+          "commerce_source": "selected_seller_store",
+          "content_review_state": "not_needed",
+          "canonical_product_ref": {
+            "merchant_id": "merch_obs_0531e02c57f00f5b",
+            "product_id": "moogoo:484391fddf3260cb",
+            "platform": "external_seed",
+            "product_key": "fixture::sig_6bb6c7ae7b7e71e838aefb564c60371a",
+            "content_key": "fixture-content::sig_6bb6c7ae7b7e71e838aefb564c60371a",
+            "source_system": "catalog_enrichment_agent_v1",
+            "pivota_signature_id": "sig_6bb6c7ae7b7e71e838aefb564c60371a"
+          },
+          "entry_product_ref": {
+            "product_id": "moogoo:484391fddf3260cb",
+            "merchant_id": "merch_obs_0531e02c57f00f5b"
+          },
+          "selected_commerce_ref": {
+            "merchant_id": "merch_obs_0531e02c57f00f5b",
+            "product_id": "moogoo:484391fddf3260cb"
+          },
+          "content_base_ref": {
+            "merchant_id": "merch_obs_0531e02c57f00f5b",
+            "product_id": "moogoo:484391fddf3260cb",
+            "platform": "external_seed",
+            "product_key": "fixture::sig_6bb6c7ae7b7e71e838aefb564c60371a",
+            "content_key": "fixture-content::sig_6bb6c7ae7b7e71e838aefb564c60371a",
+            "source_system": "catalog_enrichment_agent_v1",
+            "pivota_signature_id": "sig_6bb6c7ae7b7e71e838aefb564c60371a"
+          },
+          "canonical_payload_product_ref": {
+            "merchant_id": "merch_obs_0531e02c57f00f5b",
+            "product_id": "sig_6bb6c7ae7b7e71e838aefb564c60371a",
+            "platform": "external"
+          },
+          "pdp_payload": {
+            "schema_version": "1.0.0",
+            "page_type": "product_detail",
+            "pdp_schema_profile": "beauty_formula",
+            "x_template_hint": "beauty",
+            "tracking": {
+              "page_request_id": "pr_gk0okfqgvrc_mutpv5c7",
+              "entry_point": "agent"
+            },
+            "product": {
+              "product_id": "sig_6bb6c7ae7b7e71e838aefb564c60371a",
+              "merchant_id": "merch_obs_0531e02c57f00f5b",
+              "title": "Full Cream Moisturizer",
+              "pdp_schema_profile": "beauty_formula",
+              "subtitle": "",
+              "brand": {
+                "name": "MooGoo"
+              },
+              "category_path": [
+                "Moisturizer"
+              ],
+              "category_kind": "beauty",
+              "image_url": "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-120g-2.jpg?v=1784778943",
+              "image_urls": [
+                "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-120g-2.jpg?v=1784778943"
+              ],
+              "images": [
+                "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-120g-2.jpg?v=1784778943"
+              ],
+              "source": "external_seed",
+              "readiness_tier": null,
+              "serving_eligible": true,
+              "purchase_route": null,
+              "commerce_mode": null,
+              "checkout_handoff": null,
+              "external_redirect_url": "https://merchant.example.test/products/read-only",
+              "url": "https://agent.pivota.cc/products/sig_6bb6c7ae7b7e71e838aefb564c60371a",
+              "canonical_url": "https://agent.pivota.cc/products/sig_6bb6c7ae7b7e71e838aefb564c60371a",
+              "destination_url": "https://merchant.example.test/products/read-only",
+              "source_url": "https://merchant.example.test/products/read-only",
+              "default_variant_id": "111",
+              "variants": [
+                {
+                  "variant_id": "111",
+                  "sku_id": "111",
+                  "title": "120 g",
+                  "options": [
+                    {
+                      "name": "Size",
+                      "value": "120 g",
+                      "axis_kind": "volume"
+                    }
+                  ],
+                  "price": {
+                    "current": {
+                      "amount": 19.95,
+                      "currency": "USD"
+                    }
+                  },
+                  "availability": {
+                    "in_stock": true
+                  },
+                  "image_url": "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-120g-2.jpg?v=1784778943",
+                  "label_image_url": "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-120g-2.jpg?v=1784778943",
+                  "swatch_image_url": "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-120g-2.jpg?v=1784778943",
+                  "images": [
+                    "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-120g-2.jpg?v=1784778943"
+                  ],
+                  "image_urls": [
+                    "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-120g-2.jpg?v=1784778943"
+                  ],
+                  "axis_kind": "volume",
+                  "display_label": "Size: 120 g",
+                  "source_quality_status": "captured"
+                }
+              ],
+              "purchase_grain": "variant",
+              "price": {
+                "current": {
+                  "amount": 19.95,
+                  "currency": "USD"
+                }
+              },
+              "availability": {
+                "in_stock": true
+              },
+              "description": "MooGoo Full Cream Moisturizer is a natural face and body moisturizer designed to hydrate and revitalise dry skin. Suitable for all ages and skin types.",
+              "source_product_id": "moogoo:484391fddf3260cb",
+              "product_key": "fixture::sig_6bb6c7ae7b7e71e838aefb564c60371a",
+              "sellable_item_group_id": "sig_6bb6c7ae7b7e71e838aefb564c60371a",
+              "product_group_id": "sig_6bb6c7ae7b7e71e838aefb564c60371a",
+              "pivota_signature_id": "sig_6bb6c7ae7b7e71e838aefb564c60371a",
+              "signature_id": "sig_6bb6c7ae7b7e71e838aefb564c60371a",
+              "pivota_canonical_url": "https://agent.pivota.cc/products/sig_6bb6c7ae7b7e71e838aefb564c60371a",
+              "offers_count": 0,
+              "offer_count": 0,
+              "has_multiple_offers": false
+            },
+            "modules": [
+              {
+                "module_id": "m_media",
+                "type": "media_gallery",
+                "priority": 100,
+                "data": {
+                  "items": [
+                    {
+                      "type": "image",
+                      "url": "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-120g-2.jpg?v=1784778943",
+                      "alt_text": "Full Cream Moisturizer",
+                      "role": "official_product",
+                      "provenance": {
+                        "source_type": "merchant_product",
+                        "scope": "exact_item",
+                        "product_id": "sig_6bb6c7ae7b7e71e838aefb564c60371a",
+                        "merchant_id": "merch_obs_0531e02c57f00f5b",
+                        "source_url": "https://merchant.example.test/products/read-only"
+                      }
+                    }
+                  ],
+                  "entry_points": {
+                    "submit_photo": {
+                      "action_type": "open_embed",
+                      "label": "Add a photo",
+                      "target": {
+                        "embed_intent_type": "buyer_media_submission",
+                        "resolve_params": {
+                          "product_id": "sig_6bb6c7ae7b7e71e838aefb564c60371a",
+                          "merchant_id": "merch_obs_0531e02c57f00f5b",
+                          "content_type": "photo"
+                        }
+                      }
+                    },
+                    "submit_video": {
+                      "action_type": "open_embed",
+                      "label": "Add a video",
+                      "target": {
+                        "embed_intent_type": "buyer_media_submission",
+                        "resolve_params": {
+                          "product_id": "sig_6bb6c7ae7b7e71e838aefb564c60371a",
+                          "merchant_id": "merch_obs_0531e02c57f00f5b",
+                          "content_type": "video"
+                        }
+                      }
+                    }
+                  },
+                  "contribution_policy": {
+                    "submissions_open": true,
+                    "publish_visibility": "employee_approved_only",
+                    "employee_review_required": true,
+                    "moderation_owner": "pivota_employee",
+                    "accepted_content_types": [
+                      "photo",
+                      "video"
+                    ]
+                  }
+                }
+              },
+              {
+                "module_id": "m_variant",
+                "type": "variant_selector",
+                "priority": 95,
+                "data": {
+                  "selected_variant_id": "111",
+                  "variants": [
+                    {
+                      "variant_id": "111",
+                      "sku_id": "111",
+                      "title": "120 g",
+                      "display_label": "Size: 120 g",
+                      "options": [
+                        {
+                          "name": "Size",
+                          "value": "120 g",
+                          "axis_kind": "volume"
+                        }
+                      ],
+                      "price": {
+                        "current": {
+                          "amount": 19.95,
+                          "currency": "USD"
+                        }
+                      },
+                      "availability": {
+                        "in_stock": true
+                      },
+                      "image_url": "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-120g-2.jpg?v=1784778943",
+                      "label_image_url": "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-120g-2.jpg?v=1784778943",
+                      "swatch_image_url": "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-120g-2.jpg?v=1784778943",
+                      "axis_kind": "volume",
+                      "source_quality_status": "captured"
+                    }
+                  ],
+                  "options": [
+                    {
+                      "name": "Size",
+                      "axis_kind": "volume",
+                      "values": [
+                        {
+                          "value": "120 g",
+                          "label": "120 g",
+                          "variant_ids": [
+                            "111"
+                          ],
+                          "selected": true,
+                          "swatch_image_url": "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-120g-2.jpg?v=1784778943",
+                          "label_image_url": "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-120g-2.jpg?v=1784778943"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              },
+              {
+                "module_id": "m_price",
+                "type": "price_promo",
+                "priority": 90,
+                "data": {
+                  "price": {
+                    "amount": 19.95,
+                    "currency": "USD"
+                  },
+                  "promotions": []
+                }
+              },
+              {
+                "module_id": "m_product_overview",
+                "type": "product_overview",
+                "priority": 70,
+                "data": {
+                  "sections": [
+                    {
+                      "heading": "Description",
+                      "content_type": "text",
+                      "content": "MooGoo Full Cream Moisturizer is a natural face and body moisturizer designed to hydrate and revitalise dry skin. Suitable for all ages and skin types.",
+                      "collapsed_by_default": false
+                    }
+                  ]
+                }
+              }
+            ],
+            "actions": [
+              {
+                "action_type": "add_to_cart",
+                "label": "Add to Cart",
+                "priority": 20,
+                "target": {}
+              },
+              {
+                "action_type": "buy_now",
+                "label": "Buy Now",
+                "priority": 10,
+                "target": {}
+              }
+            ],
+            "quality_signals": {
+              "coverage_by_module": {
+                "media_gallery": 1,
+                "variant_selector": 1,
+                "price_promo": 1,
+                "product_overview": 1,
+                "buy_box": 1
+              },
+              "parse_confidence": {
+                "size_guide": 0
+              },
+              "fallback_used": {
+                "size_guide": false
+              },
+              "gating": {
+                "buy_box_ok": true,
+                "size_guide_ok": false
+              }
+            },
+            "x_content_module_states": {
+              "ingredients_inci": {
+                "state": "absent"
+              },
+              "active_ingredients": {
+                "state": "absent"
+              },
+              "how_to_use": {
+                "state": "absent"
+              },
+              "product_overview": {
+                "state": "ready"
+              },
+              "supplemental_details": {
+                "state": "absent"
+              },
+              "materials": {
+                "state": "absent"
+              },
+              "product_specs": {
+                "state": "absent"
+              },
+              "size_fit": {
+                "state": "absent"
+              },
+              "care_instructions": {
+                "state": "absent"
+              },
+              "usage_safety": {
+                "state": "absent"
+              },
+              "product_facts": {
+                "state": "absent"
+              },
+              "reviews_preview": {
+                "state": "absent"
+              }
+            },
+            "product_group_id": "sig_6bb6c7ae7b7e71e838aefb564c60371a",
+            "sellable_item_group_id": "sig_6bb6c7ae7b7e71e838aefb564c60371a",
+            "offers_count": 0,
+            "offer_count": 0,
+            "has_multiple_offers": false,
+            "commerce": {
+              "state": "ready",
+              "read_only": false,
+              "purchase_eligible": true,
+              "reason_code": "CURRENT_OWN_OFFER_VERIFIED",
+              "product_ref": {
+                "merchant_id": "merch_obs_0531e02c57f00f5b",
+                "product_id": "moogoo:484391fddf3260cb"
+              },
+              "selected_variant_id": "111",
+              "verified_variants": [
+                {
+                  "variant_id": "111",
+                  "amount": 19.95,
+                  "currency": "USD"
+                }
+              ],
+              "verified_at": "2026-10-04T11:07:22.941Z",
+              "expires_at": "2026-10-04T11:08:22.941Z"
+            }
+          },
+          "commerce": {
+            "state": "ready",
+            "read_only": false,
+            "purchase_eligible": true,
+            "reason_code": "CURRENT_OWN_OFFER_VERIFIED",
+            "product_ref": {
+              "merchant_id": "merch_obs_0531e02c57f00f5b",
+              "product_id": "moogoo:484391fddf3260cb"
+            },
+            "selected_variant_id": "111",
+            "verified_variants": [
+              {
+                "variant_id": "111",
+                "amount": 19.95,
+                "currency": "USD"
+              }
+            ],
+            "verified_at": "2026-10-04T11:07:22.941Z",
+            "expires_at": "2026-10-04T11:08:22.941Z"
+          }
+        }
+      },
+      {
+        "type": "variant_selector",
+        "required": false,
+        "data": {
+          "selected_variant_id": "111",
+          "variants": [
+            {
+              "variant_id": "111",
+              "sku_id": "111",
+              "title": "120 g",
+              "display_label": "Size: 120 g",
+              "options": [
+                {
+                  "name": "Size",
+                  "value": "120 g",
+                  "axis_kind": "volume"
+                }
+              ],
+              "price": {
+                "current": {
+                  "amount": 19.95,
+                  "currency": "USD"
+                }
+              },
+              "availability": {
+                "in_stock": true
+              },
+              "image_url": "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-120g-2.jpg?v=1784778943",
+              "label_image_url": "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-120g-2.jpg?v=1784778943",
+              "swatch_image_url": "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-120g-2.jpg?v=1784778943",
+              "axis_kind": "volume",
+              "source_quality_status": "captured"
+            }
+          ],
+          "options": [
+            {
+              "name": "Size",
+              "axis_kind": "volume",
+              "values": [
+                {
+                  "value": "120 g",
+                  "label": "120 g",
+                  "variant_ids": [
+                    "111"
+                  ],
+                  "selected": true,
+                  "swatch_image_url": "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-120g-2.jpg?v=1784778943",
+                  "label_image_url": "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-120g-2.jpg?v=1784778943"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "type": "offers",
+        "required": false,
+        "data": {
+          "status": "blocked",
+          "product_group_id": "sig_6bb6c7ae7b7e71e838aefb564c60371a",
+          "canonical_product_ref": {
+            "merchant_id": "merch_obs_0531e02c57f00f5b",
+            "product_id": "moogoo:484391fddf3260cb",
+            "platform": "external_seed",
+            "product_key": "fixture::sig_6bb6c7ae7b7e71e838aefb564c60371a",
+            "content_key": "fixture-content::sig_6bb6c7ae7b7e71e838aefb564c60371a",
+            "source_system": "catalog_enrichment_agent_v1",
+            "pivota_signature_id": "sig_6bb6c7ae7b7e71e838aefb564c60371a"
+          },
+          "offers_count": 0,
+          "offers": [],
+          "default_offer_id": null,
+          "best_price_offer_id": null,
+          "quality_state": "multi_offer_blocked",
+          "offer_source": "multi_offer_blocked",
+          "reason_codes": [
+            "identity_group_members_missing"
+          ],
+          "commerce_source": "selected_seller_store",
+          "content_review_state": "not_needed"
+        }
+      },
+      {
+        "type": "ingredients_inci",
+        "required": false,
+        "data": null,
+        "reason": "unavailable"
+      },
+      {
+        "type": "product_overview",
+        "required": false,
+        "data": {
+          "sections": [
+            {
+              "heading": "Description",
+              "content_type": "text",
+              "content": "MooGoo Full Cream Moisturizer is a natural face and body moisturizer designed to hydrate and revitalise dry skin. Suitable for all ages and skin types.",
+              "collapsed_by_default": false
+            }
+          ]
+        }
+      }
+    ],
+    "warnings": [],
+    "missing": [
+      {
+        "type": "ingredients_inci",
+        "reason": "unavailable"
+      }
+    ],
+    "metadata": {
+      "detail_source": null,
+      "pdp_schema_profile": "beauty_formula",
+      "normalized_pdp": {
+        "surface": "pivota_normalized_pdp",
+        "display_name": "Pivota Insights",
+        "insights_available": false,
+        "self_canonical": true,
+        "indexability": "index",
+        "structured_data_mode": "product_snippet",
+        "page_positioning": "editorial_normalized_product_page",
+        "quality_state": "limited",
+        "evidence_profile": null,
+        "truth_layers": {
+          "commerce_truth": "merchant_store_platform",
+          "entity_truth": "pivota_normalized_product_layer",
+          "experience_truth": "pivota_pdp_chat_agent"
+        }
+      },
+      "product_intel_status": "not_requested",
+      "identity_resolution": {
+        "requested_product_id": "sig_6bb6c7ae7b7e71e838aefb564c60371a",
+        "requested_merchant_id": null,
+        "resolved_product_id": "moogoo:484391fddf3260cb",
+        "resolved_merchant_id": "merch_obs_0531e02c57f00f5b",
+        "canonicalization_applied": true,
+        "canonicalization_reason_code": "PIVOTA_SIGNATURE_ID",
+        "entry_precheck_missing": false,
+        "resolution_source": "catalog_products_signature_exact"
+      },
+      "identity_graph": null,
+      "pdp_provenance": {
+        "pdp_content_source": "self",
+        "offer_source": "multi_offer_blocked",
+        "commerce_source": "selected_seller_store",
+        "content_review_state": "not_needed",
+        "content_base_ref": {
+          "merchant_id": "merch_obs_0531e02c57f00f5b",
+          "product_id": "moogoo:484391fddf3260cb",
+          "platform": "external_seed",
+          "product_key": "fixture::sig_6bb6c7ae7b7e71e838aefb564c60371a",
+          "content_key": "fixture-content::sig_6bb6c7ae7b7e71e838aefb564c60371a",
+          "source_system": "catalog_enrichment_agent_v1",
+          "pivota_signature_id": "sig_6bb6c7ae7b7e71e838aefb564c60371a"
+        },
+        "selected_commerce_ref": {
+          "merchant_id": "merch_obs_0531e02c57f00f5b",
+          "product_id": "moogoo:484391fddf3260cb"
+        },
+        "canonical_payload_product_ref": {
+          "merchant_id": "merch_obs_0531e02c57f00f5b",
+          "product_id": "sig_6bb6c7ae7b7e71e838aefb564c60371a",
+          "platform": "external"
+        },
+        "identity_confidence": null,
+        "match_basis": []
+      },
+      "route_health": {
+        "total_latency_ms": 52,
+        "phases": {
+          "parse_request": 1,
+          "resolve_catalog_signature": 1,
+          "build_external_seed_product": 0,
+          "resolve_variant_to_product": 0,
+          "resolve_subject_group": 0,
+          "resolve_offer_group": 0,
+          "resolve_canonical_catalog_group": 0,
+          "precheck_entry_product": 29,
+          "resolve_group_cached": 0,
+          "serving_eligibility_gate": 1,
+          "fetch_canonical_product": 0,
+          "catalog_identity_hydration": 0,
+          "identity_graph_live": 0,
+          "fetch_optional_modules_parallel": 0,
+          "catalog_pdp_content_hydration": 1,
+          "reviewed_ingredient_authority": 1,
+          "savings_presentation_hydration": 0,
+          "identity_group_rescue_catalog": 0
+        },
+        "checkpoints_ms": {
+          "phase:parse_request": 1,
+          "phase:resolve_catalog_signature": 2,
+          "phase:build_external_seed_product": 3,
+          "after_build_external_seed_product": 3,
+          "phase:resolve_variant_to_product": 3,
+          "phase:resolve_subject_group": 3,
+          "phase:resolve_offer_group": 3,
+          "phase:resolve_canonical_catalog_group": 3,
+          "phase:precheck_entry_product": 32,
+          "phase:resolve_group_cached": 32,
+          "phase:serving_eligibility_gate": 33,
+          "phase:fetch_canonical_product": 33,
+          "phase:identity_graph_live": 33,
+          "phase:fetch_optional_modules_parallel": 34,
+          "phase:catalog_pdp_content_hydration": 35,
+          "phase:reviewed_ingredient_authority": 36,
+          "phase:savings_presentation_hydration": 36,
+          "after_savings_hydration": 36,
+          "after_related_services": 36,
+          "phase:identity_group_rescue_catalog": 50,
+          "before_response_assembly": 52
+        },
+        "modules": {
+          "offers": 0
+        },
+        "savings_presentation_hydration_mode": "prefetched_only",
+        "product_group_resolve_mode": "not_needed",
+        "product_group_resolve_budget_exceeded": false,
+        "product_group_resolve_budget_ms": 1200,
+        "identity_graph_live_mode": "executed_full_hydration",
+        "requested_product_id": "sig_6bb6c7ae7b7e71e838aefb564c60371a",
+        "requested_merchant_id": null,
+        "resolved_product_id": "moogoo:484391fddf3260cb",
+        "resolved_merchant_id": "merch_obs_0531e02c57f00f5b",
+        "canonicalization_applied": true,
+        "canonicalization_reason_code": "PIVOTA_SIGNATURE_ID",
+        "entry_precheck_missing": false
+      },
+      "module_health": {
+        "severity": "warning",
+        "applied": false,
+        "items": [
+          {
+            "type": "ingredients_inci",
+            "reason": "unavailable",
+            "required": false,
+            "severity": "warning"
+          }
+        ],
+        "degraded": [],
+        "warnings": [
+          {
+            "type": "ingredients_inci",
+            "reason": "unavailable",
+            "required": false,
+            "severity": "warning"
+          }
+        ],
+        "info": []
+      },
+      "module_degrade": {
+        "applied": false,
+        "severity": "warning",
+        "modules": [
+          {
+            "type": "ingredients_inci",
+            "reason": "unavailable",
+            "required": false,
+            "severity": "warning"
+          }
+        ]
+      },
+      "commerce": {
+        "state": "ready",
+        "read_only": false,
+        "purchase_eligible": true,
+        "reason_code": "CURRENT_OWN_OFFER_VERIFIED",
+        "product_ref": {
+          "merchant_id": "merch_obs_0531e02c57f00f5b",
+          "product_id": "moogoo:484391fddf3260cb"
+        },
+        "selected_variant_id": "111",
+        "verified_variants": [
+          {
+            "variant_id": "111",
+            "amount": 19.95,
+            "currency": "USD"
+          }
+        ],
+        "verified_at": "2026-10-04T11:07:22.941Z",
+        "expires_at": "2026-10-04T11:08:22.941Z"
+      }
+    }
+  }
+}

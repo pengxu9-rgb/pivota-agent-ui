@@ -134,6 +134,7 @@ export type FashionPDPMobileProps = {
   brandHref?: string | null;
   // buy bar
   buyNowLabel?: string;
+  purchaseUnavailableMessage?: string;
   isExternalPurchase: boolean;
   externalRetailerLabel?: string | null;
   reapCheckout?: { onOpen: (quantity: number) => void } | null;
@@ -397,6 +398,7 @@ export function FashionPDPMobile(props: FashionPDPMobileProps) {
           currency={props.currency}
           quantity={props.quantity}
           disabled={!props.inStock}
+              purchaseUnavailableMessage={props.purchaseUnavailableMessage}
           buyNowLabel={props.buyNowLabel}
           isExternalPurchase={props.isExternalPurchase}
           externalRetailerLabel={props.externalRetailerLabel}

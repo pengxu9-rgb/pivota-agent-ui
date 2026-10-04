@@ -1,3 +1,4 @@
+import { matchesPdpRequestIdentity, type PdpRequestIdentity, enforceReadOnlyPdp, hasReadOnlyPdpSignal, isValidReadOnlyPdpResponse, isValidVerifiedPdpResponse } from '../utils/commerceAvailability';
 import { normalizeReviewAvailability } from '../state/reviewAvailability';
 import { projectPublicInsightsPayload } from '@/features/pdp/utils/publicProductIntel';
 import type { GetPdpV2Response } from '@/lib/api';
@@ -386,8 +387,10 @@ function normalizeOfferDisplayName(offer: unknown): any {
   };
 }
 
-export function mapPdpV2ToPdpPayload(response: GetPdpV2Response): PDPPayload | null {
+export function mapPdpV2ToPdpPayload(response: GetPdpV2Response, expected?: PdpRequestIdentity): PDPPayload | null {
   if (!response || typeof response !== 'object') return null;
+  if (expected && !matchesPdpRequestIdentity(response, expected)) return null;
+  if (hasReadOnlyPdpSignal(response) && !isValidReadOnlyPdpResponse(response) && !isValidVerifiedPdpResponse(response)) return null;
 
   const canonical = getModule(response, 'canonical');
   const canonicalData = isRecord(canonical?.data) ? canonical.data : null;
@@ -397,6 +400,7 @@ export function mapPdpV2ToPdpPayload(response: GetPdpV2Response): PDPPayload | n
   const base = pdpPayloadRaw as unknown as PDPPayload;
   let next: PDPPayload = ensureMediaGalleryFromCanonicalProductImages(normalizePdpPayloadImages({
     ...base,
+    ...((response as any).metadata?.commerce_verification === 'refresh_required' ? { commerce_verification: 'refresh_required' as const } : {}),
     product: { ...(base.product as any) },
     modules: sanitizeCanonicalModules(base.modules),
     actions: Array.isArray(base.actions) ? [...base.actions] : [],
@@ -721,5 +725,5 @@ export function mapPdpV2ToPdpPayload(response: GetPdpV2Response): PDPPayload | n
       ...(evidence.source_observed_at ? { captured_at: evidence.source_observed_at } : {}),
     } };
   });
-  return projectPublicInsightsPayload(next);
+  return projectPublicInsightsPayload(enforceReadOnlyPdp(next));
 }

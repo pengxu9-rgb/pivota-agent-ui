@@ -617,6 +617,7 @@ async function _fetchPdpForServerRenderUncached(
   // non-canonical ids — both are anonymous there) and never for personalized ones.
   const cacheable = typeof revalidateSeconds === 'number' && revalidateSeconds > 0;
   const fetchArgs = {
+    allow_read_only: true,
     product_id: productId,
     ...(routeIsProductGroup
       ? { subject: { type: 'product_group' as const, id: productId } }
@@ -638,7 +639,7 @@ async function _fetchPdpForServerRenderUncached(
       const v2 = cacheable
         ? await getPdpV2Cached({ ...args, revalidateSeconds })
         : await getPdpV2(args);
-      const initialPayload = mapPdpV2ToPdpPayload(v2);
+      const initialPayload = mapPdpV2ToPdpPayload(v2, args);
       if (initialPayload?.product) {
         return {
           outcome: {

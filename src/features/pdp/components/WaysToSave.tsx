@@ -1,5 +1,6 @@
 'use client';
 
+import { isPurchaseUnavailable } from '../utils/commerceAvailability';
 import type { Offer, Product, Variant } from '@/features/pdp/types';
 import { buildSavingsPresentation, type SavingsPresentationItem } from '@/lib/savingsPresentation';
 
@@ -112,6 +113,7 @@ export function WaysToSave({
   selectedVariant?: Variant | null;
   quantity?: number | null;
 }) {
+  if (isPurchaseUnavailable(product) || isPurchaseUnavailable(selectedVariant)) return null;
   const productSelectedCommerceRef = (product as any).selected_commerce_ref || (product as any).selectedCommerceRef;
   const productCommerceMerchantId = String(
     productSelectedCommerceRef?.merchant_id ||

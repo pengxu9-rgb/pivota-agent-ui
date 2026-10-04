@@ -1,6 +1,8 @@
 import { getPdpV2, type GetPdpV2Response, type ProductResponse } from '@/lib/api';
 import { type DecisionProduct, type DecisionReport, type ShoppingBrief, productKey } from './model';
 import { reviewedIngredientEvidence } from './reviewedEvidence';
+import { canonicalEvidenceRef } from '@/lib/canonicalEvidenceRef';
+import { hasReadOnlyPdpSignal, isFreshVerifiedCommerce, isValidReadOnlyPdpResponse, isValidVerifiedPdpResponse } from '@/features/pdp/utils/commerceAvailability';
 import { isAffirmativeFragranceFreeClaim, isFreshObservation, MAX_EVIDENCE_AGE_MS, summarizeDecisionItems } from './evidenceFreshness';
 
 const string = (value: unknown): string => typeof value === 'string' ? value.trim() : '';
@@ -97,18 +99,41 @@ function canonicalPayload(result: GetPdpV2Response | undefined, product: Product
   const canonical = record(outer.find((m) => m.type === 'canonical')?.data);
   const payload = record(canonical.pdp_payload || response.pdp_payload || (response.product ? response : undefined));
   const p = record(payload.product);
-  // Keep IDs paired with their own seller. An ID from entry_product_ref for
-  // another merchant cannot borrow the payload seller to validate foreign facts.
   const seller = string(p.merchant_id);
-  const payloadRefs = [p.product_id, p.pivota_signature_id, p.source_product_id]
-    .filter((id) => typeof id === 'string').map((id) => ({ product_id: id, merchant_id: seller }));
-  const matches = payloadRefs.some((ref) => ref.product_id === product.product_id && Boolean(ref.merchant_id) && (!product.merchant_id || ref.merchant_id === product.merchant_id));
+  const tupleMatches = (ref: any, id: string, merchant: string) => Boolean(id && merchant && string(ref?.product_id) === id && string(ref?.merchant_id) === merchant);
+  // Keep the existing seller-bound path. No reference can lend its product ID
+  // to another reference's merchant to manufacture a matching tuple.
+  const matches = [p.product_id, p.pivota_signature_id, p.source_product_id].some((id) => id === product.product_id && seller && (!product.merchant_id || seller === product.merchant_id));
   const declaredRefs = [canonical.entry_product_ref, canonical.canonical_payload_product_ref].map(record);
   const contradictoryRef = Boolean(product.merchant_id) && declaredRefs.some((ref) => ref.product_id === product.product_id && ref.merchant_id && ref.merchant_id !== product.merchant_id);
-  const responseAvailable = !response.status || ['success', 'ok'].includes(string(response.status).toLowerCase());
-  const valid = matches && !contradictoryRef && responseAvailable;
+  const exactSeller = matches && !contradictoryRef;
 
-  return { valid, contentStates: valid ? record(payload.x_content_module_states) : {}, product: valid ? p : {}, modules: valid ? [...outer.filter((m) => m.type !== 'canonical'), ...array(payload.modules)] : [] };
+  // A search card advertises canonical content separately from its offer seller.
+  // Accept content only through the gateway's exact signature-resolution receipt;
+  // this never certifies the card seller's price, stock or selected variant.
+  const advertised = canonicalEvidenceRef(product);
+  const resolution = record(response.metadata?.identity_resolution);
+  const resolvedId = string(resolution.resolved_product_id);
+  const resolvedMerchant = string(resolution.resolved_merchant_id);
+  const signatureContent = Boolean(advertised &&
+    resolution.requested_product_id === advertised.product_id && !resolution.requested_merchant_id &&
+    resolution.canonicalization_reason_code === 'PIVOTA_SIGNATURE_ID' && resolution.resolution_source === 'catalog_products_signature_exact' &&
+    p.product_id === advertised.product_id && p.pivota_signature_id === advertised.product_id &&
+    p.source_product_id === resolvedId && seller === resolvedMerchant &&
+    canonical.pdp_content_source === 'self' &&
+    canonical.canonical_product_ref?.pivota_signature_id === advertised.product_id &&
+    tupleMatches(canonical.canonical_product_ref, resolvedId, resolvedMerchant) &&
+    tupleMatches(canonical.entry_product_ref, resolvedId, resolvedMerchant) &&
+    tupleMatches(canonical.canonical_payload_product_ref, advertised.product_id, resolvedMerchant));
+  const responseAvailable = !response.status || ['success', 'ok'].includes(string(response.status).toLowerCase());
+  const readOnly = isValidReadOnlyPdpResponse(result);
+  const valid = (exactSeller || signatureContent) && responseAvailable && (!hasReadOnlyPdpSignal(result) || readOnly || isValidVerifiedPdpResponse(result));
+  return {
+    valid, ownCommerce: valid && exactSeller, readOnly: valid && readOnly,
+    commerceReady: valid && response.metadata?.commerce_verification !== 'refresh_required' && isValidVerifiedPdpResponse(result) && isFreshVerifiedCommerce(response.metadata?.commerce), signatureContent: valid && signatureContent,
+    contentStates: valid ? record(payload.x_content_module_states) : {},
+    product: valid ? p : {}, modules: valid ? [...outer.filter((m) => m.type !== 'canonical'), ...array(payload.modules)] : [],
+  };
 }
 
 export function evaluateProduct(product: ProductResponse, result: GetPdpV2Response | undefined, brief: ShoppingBrief, now = new Date()): DecisionProduct {
@@ -146,7 +171,9 @@ export function evaluateProduct(product: ProductResponse, result: GetPdpV2Respon
   const consistent = new Set(allIngredientFields.map(normalizeIngredients)).size <= 1;
   const ingredientUrl = safeSourceUrl(ingredientData.source_url || ingredientState.source_url) || sourceUrl;
   if (rawIngredients && ingredientUrl) sources.push({ label: 'Catalog ingredient source', url: ingredientUrl, observedAt: observed || undefined, ...(!ingredientAvailable || !isFreshObservation(observed, now) ? { stale: true } : {}) });
-  const reviewed = reviewedIngredientEvidence.find((e) => e.productId === product.product_id && e.merchantId === product.merchant_id && (!sourceUrl || sourceUrl === e.url));
+  const reviewedMerchant = canonical.signatureContent ? string(p.merchant_id) : product.merchant_id;
+  const reviewedSourceUrl = canonical.signatureContent ? safeSourceUrl(p.source_url) : sourceUrl;
+  const reviewed = reviewedIngredientEvidence.find((e) => e.productId === product.product_id && e.merchantId === reviewedMerchant && (!reviewedSourceUrl || reviewedSourceUrl === e.url));
   const reviewedStale = reviewed ? now.getTime() >= new Date(reviewed.recheckAfter).getTime() : false;
   if (reviewed) sources.push({ label: reviewed.excerptOnly ? 'Reviewed retailer ingredient excerpt' : 'Reviewed retailer ingredient panel', url: reviewed.url, observedAt: reviewed.observedAt, stale: reviewedStale });
   // All representations must agree. A clean raw_text cannot hide Parfum in items,
@@ -172,20 +199,26 @@ export function evaluateProduct(product: ProductResponse, result: GetPdpV2Respon
   if (reviewedStale) ingredientEvidence += ' The reviewed retailer observation is older than 30 days and needs rechecking; the earlier conflict is not assumed resolved.';
   if (brief.fragranceFree && fragrance === 'unverified') missing.push('Verified fragrance-free claim with complete, dated ingredient evidence');
 
-  const variants = array(p.variants);
-  const variantId = string(product.variant_id || product.product_ref?.variant_id || p.default_variant_id);
+  const advertised = canonicalEvidenceRef(product);
+  const unverifiedOffer = canonical.readOnly || Boolean(advertised && (!canonical.ownCommerce || !canonical.commerceReady));
+  const commerceProduct = canonical.ownCommerce && !unverifiedOffer ? p : {};
+  const variants = array(commerceProduct.variants);
+  const variantId = string(product.variant_id || product.product_ref?.variant_id || commerceProduct.default_variant_id);
   const variant = variants.find((v) => string(v.variant_id || v.id) === variantId);
   const priceObject = record(record(variant?.price).current || variant?.price);
-  const variantUnavailable = variant?.current_own_offer_status === 'unavailable';
-  const unresolvedVariant = Boolean(variantId && !variant);
-  const zeroInventory = [p.availability?.available_quantity, variant?.availability?.available_quantity, variant?.available_quantity].some((quantity) => typeof quantity === 'number' && quantity <= 0);
-  const outOfStock = product.in_stock === false || p.in_stock === false || p.availability?.in_stock === false || variant?.availability?.in_stock === false || variant?.in_stock === false || zeroInventory;
-  // An exact requested/default variant must resolve its own current money.
-  // Neither listing money nor a sibling variant may fill an absent match.
-  const exactAmount = variantUnavailable || unresolvedVariant ? undefined : variant ? priceObject.amount : product.price;
-  const exactCurrency = variantUnavailable || unresolvedVariant ? undefined : variant ? priceObject.currency : product.currency;
-  const price = variantUnavailable || unresolvedVariant ? 'Price unavailable for this variant' : money(exactAmount, exactCurrency);
+  const variantUnavailable = !unverifiedOffer && variant?.current_own_offer_status === 'unavailable';
+  const unresolvedVariant = !unverifiedOffer && Boolean(variantId && !variant);
+  const zeroInventory = [commerceProduct.availability?.available_quantity, variant?.availability?.available_quantity, variant?.available_quantity].some((quantity) => typeof quantity === 'number' && quantity <= 0);
+  const outOfStock = product.in_stock === false || commerceProduct.in_stock === false || commerceProduct.availability?.in_stock === false || variant?.availability?.in_stock === false || variant?.in_stock === false || zeroInventory;
+  // Catalog observations may still help discovery, but are never substituted for
+  // current seller money or for an unresolved explicitly selected variant.
+  const exactAmount = variantUnavailable || unresolvedVariant || (unverifiedOffer && variantId) ? undefined : variant ? priceObject.amount : product.price;
+  const exactCurrency = variantUnavailable || unresolvedVariant || (unverifiedOffer && variantId) ? undefined : variant ? priceObject.currency : product.currency;
+  const listedMoney = money(exactAmount, exactCurrency);
+  const price = unverifiedOffer ? (listedMoney === 'Price or currency not provided' ? 'Current seller price unavailable' : `Catalog listed ${listedMoney}; current seller price unverified`)
+    : variantUnavailable || unresolvedVariant ? 'Price unavailable for this variant' : listedMoney;
   if (variantUnavailable || unresolvedVariant) missing.push('A current sellable offer for this exact variant');
+  if (unverifiedOffer) missing.push('Verified current price and purchase availability for the displayed seller');
   const size = string(variant?.title) || string(product.attributes?.size) || product.title.match(/\b\d+(?:\.\d+)?\s*(?:ml|g|oz|fl\s*oz|l)\b/i)?.[0] || 'Size not provided';
   const retailer = string(product.merchant_name) || (sourceUrl ? new URL(sourceUrl).hostname : 'Retailer not provided');
   if (size === 'Size not provided') missing.push('Size of the displayed offer');
@@ -195,8 +228,8 @@ export function evaluateProduct(product: ProductResponse, result: GetPdpV2Respon
     const price = record(record(v.price).current || v.price);
     return `${string(v.title) || 'Unnamed variant'}: ${v.current_own_offer_status === 'unavailable' ? 'Price unavailable for this variant' : money(price.amount, price.currency)} (variant ${string(v.variant_id || v.id) || 'unavailable'})`;
   });
-  const tradeoffs: string[] = [];
-  let eligibility: DecisionProduct['eligibility'] = outOfStock || unresolvedVariant || variantUnavailable || (brief.fragranceFree && fragrance === 'conflict') ? 'rejected' : (brief.fragranceFree && fragrance !== 'verified') || price === 'Price or currency not provided' ? 'unverified' : 'candidate';
+  const tradeoffs: string[] = unverifiedOffer ? [canonical.valid ? 'Product evidence is available for comparison; current purchase availability for this seller is unverified.' : 'Current product evidence and purchase availability for this seller are unverified.'] : [];
+  let eligibility: DecisionProduct['eligibility'] = outOfStock || unresolvedVariant || variantUnavailable || (brief.fragranceFree && fragrance === 'conflict') ? 'rejected' : unverifiedOffer || (brief.fragranceFree && fragrance !== 'verified') || price === 'Price or currency not provided' ? 'unverified' : 'candidate';
   if (outOfStock) tradeoffs.push('Rejected for this brief: the product or exact variant is out of stock.');
   if (unresolvedVariant) tradeoffs.push('Rejected for this brief: the exact variant could not be resolved with its own price.');
   if (variantUnavailable) tradeoffs.push('Rejected for this brief: a current price for this exact variant is unavailable.');
@@ -210,8 +243,13 @@ export function evaluateProduct(product: ProductResponse, result: GetPdpV2Respon
     } else if (typeof amount === 'number' && amount > 0) {
       const withinBudget = brief.budget.exclusive ? amount < brief.budget.amount : amount <= brief.budget.amount;
       if (!withinBudget) eligibility = 'rejected';
-      tradeoffs.push(withinBudget ? 'Listed item price is within budget; shipping and tax are not included.' : 'Rejected for this brief: listed item price does not meet your budget.');
+      tradeoffs.push(withinBudget ? (unverifiedOffer ? 'The catalog-listed price is within budget; a current purchasable offer has not been verified.' : 'Listed item price is within budget; shipping and tax are not included.') : 'Rejected for this brief: listed item price does not meet your budget.');
     }
+  }
+  const unverifiedSearch = Array.isArray(product.search_unverified_constraints) ? product.search_unverified_constraints : [];
+  if (unverifiedSearch.length) {
+    if (eligibility !== 'rejected') eligibility = 'unverified';
+    for (const constraint of unverifiedSearch) missing.push(`Source verification of search requirements: ${constraint}`);
   }
   if (sourceUrl && !sources.some((source) => source.url === sourceUrl)) sources.push({ label: 'Retailer product page', url: sourceUrl });
   return { product, eligibility, fragrance, ...(verification ? { verification } : {}), ingredientEvidence, sources, size, price, retailer, variantId: variantId || undefined, alternatives, tradeoffs, missing };
@@ -220,7 +258,7 @@ export function evaluateProduct(product: ProductResponse, result: GetPdpV2Respon
 export async function buildDecisionReport(products: ProductResponse[], brief: ShoppingBrief, compared: boolean, readPdp: typeof getPdpV2 = getPdpV2): Promise<DecisionReport> {
   const items = await Promise.all(products.map(async (product) => {
     try {
-      const result = await readPdp({ product_id: product.product_id, merchant_id: product.merchant_id, include: ['ingredients_inci', 'active_ingredients', 'product_overview', 'offers', 'variant_selector'], timeout_ms: 12000 });
+      const result = await readPdp({ product_id: product.product_id, merchant_id: product.merchant_id, allow_read_only: true, canonical_evidence_ref: canonicalEvidenceRef(product), include: ['ingredients_inci', 'active_ingredients', 'product_overview', 'offers', 'variant_selector'], timeout_ms: 12000 });
       return evaluateProduct(product, result, brief);
     } catch { return evaluateProduct(product, undefined, brief); }
   }));

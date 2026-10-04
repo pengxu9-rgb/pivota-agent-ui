@@ -183,7 +183,7 @@ describe('product page metadata', () => {
     expect(getPdpV2Mock.mock.calls[0]?.[0]).not.toHaveProperty('merchant_id');
     expect(searchParamsAwaitTrap.then).not.toHaveBeenCalled();
     expect(headersMock).not.toHaveBeenCalled();
-    expect(mapPdpV2ToPdpPayloadMock).toHaveBeenCalledWith(v2Response);
+    expect(mapPdpV2ToPdpPayloadMock).toHaveBeenCalledWith(v2Response, expect.objectContaining({ product_id: 'sig_7ad40676c42fb9c96e2a8136', allow_read_only: true }));
     // Phase 1a fixes: canonical link, robots index/follow, supported og:type, og:url.
     // Product-specific search/LLM indexing is covered by server-rendered JSON-LD.
     expect((metadata.alternates as any)?.canonical).toBe(

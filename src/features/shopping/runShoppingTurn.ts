@@ -34,6 +34,10 @@ export async function runShoppingTurn(
     const searchQuery = queryForBrief(brief);
     searchResult = await dependencies.search(searchQuery, undefined, { ...options, pagination: { page: 1, limit: 12 } });
     products = Array.isArray(searchResult.products) ? searchResult.products : [];
+    const unverified = Array.isArray(searchResult.metadata?.unverified_constraints)
+      ? [...new Set(searchResult.metadata.unverified_constraints.filter((value: unknown): value is string => typeof value === 'string' && Boolean(value.trim())).map((value: string) => value.trim().slice(0, 240)))].slice(0, 16) as string[]
+      : [];
+    if (unverified.length) products = products.map((product) => ({ ...product, search_unverified_constraints: unverified }));
     products = products.filter((product, index) => products.findIndex((other) => productKey(other) === productKey(product)) === index);
     if (!products.length) return {
       message: { id, role: 'assistant', kind: searchResult.strict_empty ? 'error' : 'reply', content: searchResult.reply || 'No reliable catalog results were returned. Your brief is saved; try again or change the requirements.' },

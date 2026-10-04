@@ -1,4 +1,33 @@
+export interface ReadOnlyCommerce {
+  state: 'unavailable';
+  read_only: true;
+  purchase_eligible: false;
+  reason_code: 'CURRENT_OWN_OFFER_UNAVAILABLE';
+}
+
+export interface VerifiedCommerce {
+  state: 'ready';
+  read_only: false;
+  purchase_eligible: true;
+  reason_code: 'CURRENT_OWN_OFFER_VERIFIED';
+  product_ref: { merchant_id: string; product_id: string };
+  selected_variant_id: string;
+  verified_at: string;
+  expires_at: string;
+  verified_variants: Array<{ variant_id: string; amount: number; currency: string }>;
+}
+
+export interface PendingCommerce {
+  state: 'unverified';
+  read_only: true;
+  purchase_eligible: false;
+  reason_code: 'CURRENT_OFFER_REFRESH_REQUIRED';
+}
+
 export interface PDPPayload {
+  commerce?: ReadOnlyCommerce | VerifiedCommerce | PendingCommerce;
+  commerce_verification?: 'refresh_required' | 'failed';
+  quality_signals?: { coverage_by_module?: Record<string, number>; gating?: Record<string, boolean>; [key: string]: unknown };
   schema_version: string;
   page_type: string;
   tracking: PageTracking;
@@ -91,7 +120,10 @@ export interface ElectronicsMeta {
 }
 
 export interface Product {
+  purchase_eligible?: boolean;
+  current_own_offer_status?: 'unavailable';
   product_id: string;
+  source_product_id?: string;
   title: string;
   pdp_schema_profile?: 'beauty_formula' | 'beauty_tool' | 'generic_merch' | 'generic_product' | string;
   category_kind?: ProductCategoryKind;
@@ -122,7 +154,7 @@ export interface Product {
   product_line_option_name?: string;
   product_line_options?: ProductLineOption[];
   price?: VariantPrice;
-  availability?: { in_stock: boolean; available_quantity?: number };
+  availability?: { in_stock?: boolean; available_quantity?: number };
   shipping?: { eta_days_range?: number[] };
   returns?: { return_window_days?: number; free_returns?: boolean };
   description?: string;
@@ -185,6 +217,7 @@ export interface VariantPrice {
 }
 
 export interface Variant {
+  purchase_eligible?: boolean;
   current_own_offer_status?: 'unavailable';
   variant_id: string;
   sku_id?: string;
@@ -201,7 +234,7 @@ export interface Variant {
     undertone?: string;
   };
   price?: VariantPrice;
-  availability?: { in_stock: boolean; available_quantity?: number };
+  availability?: { in_stock?: boolean; available_quantity?: number };
   image_url?: string;
   label_image_url?: string;
   swatch_image_url?: string;

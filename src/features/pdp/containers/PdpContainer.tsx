@@ -40,6 +40,7 @@ import {
   type ProductResponse,
   type UgcCapabilities,
 } from '@/lib/api';
+import { enforceReadOnlyPdp, isVerifiedCommerce, hasVerifiedSelectedCommerce, isPurchaseUnavailable, isReadOnlyCommerce, restrictPdpCommerce } from '@/features/pdp/utils/commerceAvailability';
 import { mapPdpV2ToPdpPayload } from '@/features/pdp/adapter/mapPdpV2ToPdpPayload';
 import { isBeautyProduct } from '@/features/pdp/utils/isBeautyProduct';
 import {
@@ -1001,6 +1002,8 @@ function buildSimilarDetailFromPdpPayload(nextPayload: PDPPayload | null): Produ
     variant_id: payloadProduct.default_variant_id,
     raw_detail: {
       ...productAny,
+      ...(nextPayload.commerce ? { commerce: nextPayload.commerce } : {}),
+      ...(nextPayload.commerce_verification ? { commerce_verification: nextPayload.commerce_verification } : {}),
       ...(payloadProduct.default_variant_id
         ? { default_variant_id: payloadProduct.default_variant_id }
         : {}),
@@ -1021,12 +1024,14 @@ async function fetchSimilarPdpDetail(args: {
 
   try {
     const exactPdp = await getPdpV2({
+      allow_read_only: true,
+      cache_bypass: true,
       product_id: productId,
       merchant_id: merchantId,
       include: ['offers', 'variant_selector'],
       timeout_ms: args.timeout_ms,
     });
-    return buildSimilarDetailFromPdpPayload(mapPdpV2ToPdpPayload(exactPdp));
+    return buildSimilarDetailFromPdpPayload(mapPdpV2ToPdpPayload(exactPdp, { product_id: productId, merchant_id: merchantId }));
   } catch {
     return null;
   }
@@ -1604,7 +1609,23 @@ export function PdpContainer({
   ugcCapabilities?: UgcCapabilities | null;
   services?: ServiceCardData[] | null;
 }) {
-  const [payload, setPayload] = useState(initialPayload);
+  const [loadedPayload, setPayload] = useState(initialPayload);
+  const [commerceClock, setCommerceClock] = useState(0);
+  useEffect(() => {
+    if (!isVerifiedCommerce(loadedPayload.commerce)) return;
+    const expires = Date.parse(loadedPayload.commerce.expires_at);
+    const timer = window.setTimeout(() => setCommerceClock((value) => value + 1), Math.max(0, expires - Date.now()) + 1);
+    return () => window.clearTimeout(timer);
+  }, [loadedPayload]);
+  const payload = useMemo(() => enforceReadOnlyPdp(loadedPayload), [loadedPayload, commerceClock]);
+  const commerceUnavailable = isReadOnlyCommerce(payload.commerce) || isPurchaseUnavailable(payload.product);
+  const basePurchaseUnavailableMessage = payload.commerce_verification === 'failed'
+    ? 'Current price and purchase availability could not be verified'
+    : isReadOnlyCommerce(payload.commerce)
+      ? 'Current price and purchase unavailable'
+      : payload.commerce_verification === 'refresh_required'
+        ? 'Checking current price and purchase availability'
+        : commerceUnavailable ? 'Current price and purchase unavailable' : undefined;
   const [selectedVariantId, setSelectedVariantId] = useState(
     initialPayload.product.default_variant_id || initialPayload.product.variants?.[0]?.variant_id,
   );
@@ -1768,7 +1789,7 @@ export function PdpContainer({
     return Math.max(0, Math.floor(qty));
   }, [payload.product.availability?.available_quantity, selectedVariant?.availability?.available_quantity]);
 
-  const stockEstimateLabel = isInStock
+  const stockEstimateLabel = !commerceUnavailable && isInStock
     ? availableQuantity != null && availableQuantity <= 5
       ? 'Low stock'
       : 'In stock'
@@ -1947,7 +1968,9 @@ export function PdpContainer({
       : typeof (selectedOffer as any)?.in_stock === 'boolean'
         ? Boolean((selectedOffer as any).in_stock)
         : undefined;
-  const selectedCurrentMoneyUnavailable = resolveOfferPricing(selectedOffer, selectedVariant).currentMoneyUnavailable;
+  const selectionProofMatches = hasVerifiedSelectedCommerce(payload, selectedVariant, { offer: selectedOffer });
+  const purchaseUnavailableMessage = basePurchaseUnavailableMessage || (!selectionProofMatches ? 'Current price and purchase availability for this selection are unverified' : undefined);
+  const selectedCurrentMoneyUnavailable = !selectionProofMatches || commerceUnavailable || isPurchaseUnavailable(selectedVariant) || resolveOfferPricing(selectedOffer, selectedVariant).currentMoneyUnavailable;
   const effectiveIsInStock = !selectedCurrentMoneyUnavailable &&
     (typeof selectedOfferInStock === 'boolean' ? selectedOfferInStock : isInStock);
   const variantAwareDefaultOfferId = useMemo(() => {
@@ -2427,6 +2450,7 @@ export function PdpContainer({
     [selectedOffer, selectedVariant, variants.length],
   );
   const reapEntry = useReapCheckoutEntry({
+    canOpenCheckout: () => hasVerifiedSelectedCommerce(payload, selectedVariant, { merchantId: effectiveMerchantId, productId: effectiveProductId, offer: selectedOffer }),
     purchaseUnavailable: selectedCurrentMoneyUnavailable || !reapPurchaseMoney.available,
     unitPriceAmount: reapPurchaseMoney.available ? reapPurchaseMoney.unitPriceAmount : null,
     currency: reapPurchaseMoney.available ? reapPurchaseMoney.currency : null,
@@ -3019,7 +3043,7 @@ export function PdpContainer({
     async (item: RecommendationsData['items'][number]) => {
       const key = buildRecommendationProductKey(item);
       const cached = similarDetailCache[key];
-      if (cached) return cached;
+      if (cached && !(cached.raw_detail as any)?.commerce) return cached;
       if (!item.merchant_id) return null;
       const detail = await fetchSimilarPdpDetail({
         product_id: item.product_id,
@@ -3029,6 +3053,7 @@ export function PdpContainer({
       if (!detail) return null;
 
       setSimilarDetailCache((prev) => ({ ...prev, [key]: detail }));
+      if (isPurchaseUnavailable(detail) || isPurchaseUnavailable(detail.raw_detail)) return detail;
       const resolvedVariants = buildProductVariants(detail, detail.raw_detail);
       const normalized = normalizeRecommendationItems(
         [
@@ -3059,7 +3084,16 @@ export function PdpContainer({
       variant: Variant;
       entrySurface: 'card_cta' | 'variant_sheet';
     }) => {
+      if (isPurchaseUnavailable(detail) || isPurchaseUnavailable(detail.raw_detail) || isPurchaseUnavailable(variant)) {
+        navigateToSimilarPdp(item);
+        return false;
+      }
       const preferredOffer = resolveSimilarOfferForVariant(detail, variant);
+      const detailProduct = detail.raw_detail as any;
+      if (detailProduct?.commerce && !hasVerifiedSelectedCommerce({ product: detailProduct, commerce: detailProduct.commerce, commerce_verification: detailProduct.commerce_verification }, variant, { offer: preferredOffer })) {
+        navigateToSimilarPdp(item);
+        return false;
+      }
       const searchParams =
         typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : new URLSearchParams();
       const target = resolveCheckoutTarget({
@@ -3118,6 +3152,10 @@ export function PdpContainer({
         const raw = detail.raw_detail as Record<string, unknown> | undefined;
         if (!confirmRetailerHandoff({ product_id: detail.product_id, merchant_id: detail.merchant_id,
           variants: Array.isArray(raw?.variants) ? raw.variants : detail.variants }, variant, preferredOffer)) return false;
+        if (detailProduct?.commerce && !hasVerifiedSelectedCommerce({ product: detailProduct, commerce: detailProduct.commerce, commerce_verification: detailProduct.commerce_verification }, variant, { offer: preferredOffer })) {
+          navigateToSimilarPdp(item);
+          return false;
+        }
         toast.success(target.notice);
         window.open(target.url, '_blank', 'noopener,noreferrer');
         return;
@@ -3142,7 +3180,7 @@ export function PdpContainer({
 
       try {
         const detail = await ensureSimilarDetail(item);
-        if (!detail) {
+        if (!detail || isPurchaseUnavailable(detail) || isPurchaseUnavailable(detail.raw_detail)) {
           navigateToSimilarPdp(item);
           return;
         }
@@ -3493,7 +3531,7 @@ export function PdpContainer({
       const cacheKey = buildProductLinePayloadCacheKey(productId, merchantId);
       if (cacheKey) {
         const cachedPayload = productLinePayloadCacheRef.current.get(cacheKey);
-        if (cachedPayload) {
+        if (cachedPayload && !cachedPayload.commerce && !cachedPayload.commerce_verification) {
           return Promise.resolve(cachedPayload);
         }
         const inflightRequest = productLinePayloadInflightRef.current.get(cacheKey);
@@ -3504,13 +3542,15 @@ export function PdpContainer({
 
       let requestPromise: Promise<PDPPayload | null>;
       requestPromise = getPdpV2({
+        allow_read_only: true,
         product_id: productId,
         ...(merchantId ? { merchant_id: merchantId } : {}),
+        cache_bypass: true,
         include: [...PRODUCT_LINE_SWITCH_INCLUDE],
         timeout_ms: timeoutMs,
       })
         .then((response) => {
-          const mappedPayload = mapPdpV2ToPdpPayload(response);
+          const mappedPayload = mapPdpV2ToPdpPayload(response, { product_id: productId, merchant_id: merchantId });
           if (!mappedPayload) return null;
           const nextPayload = stripProductLineAsyncModules(mappedPayload);
           if (cacheKey) {
@@ -3544,6 +3584,7 @@ export function PdpContainer({
       if (productLinePrefetchInflightRef.current.has(cacheKey)) return;
 
       const requestPromise = getPdpV2({
+        allow_read_only: true,
         product_id: productId,
         ...(merchantId ? { merchant_id: merchantId } : {}),
         include: [...PRODUCT_LINE_PREFETCH_INCLUDE],
@@ -3568,19 +3609,20 @@ export function PdpContainer({
       const cacheKey = buildProductLinePayloadCacheKey(productId, merchantId);
 
       void getPdpV2({
+        allow_read_only: true,
         product_id: productId,
         ...(merchantId ? { merchant_id: merchantId } : {}),
         include: ['reviews_preview'],
         timeout_ms: PRODUCT_LINE_REVIEWS_TIMEOUT_MS,
       })
         .then((response) => {
-          const mapped = mapPdpV2ToPdpPayload(response);
+          const mapped = mapPdpV2ToPdpPayload(response, { product_id: productId, merchant_id: merchantId });
           setPayload((current) => {
             if (productLineSwitchRequestRef.current !== requestId) return current;
             if (String(current.product.product_id || '').trim() !== productId) return current;
             const currentMerchantId = String(current.product.merchant_id || '').trim();
             if (merchantId && currentMerchantId && currentMerchantId !== merchantId) return current;
-            const merged = mergeProductLineReviewsPayload(current, mapped);
+            const merged = restrictPdpCommerce(mergeProductLineReviewsPayload(current, mapped), mapped);
             if (cacheKey) productLinePayloadCacheRef.current.set(cacheKey, merged);
             return merged;
           });
@@ -3599,19 +3641,20 @@ export function PdpContainer({
         });
 
       void getPdpV2({
+        allow_read_only: true,
         product_id: productId,
         ...(merchantId ? { merchant_id: merchantId } : {}),
         include: ['similar'],
         timeout_ms: PRODUCT_LINE_SIMILAR_TIMEOUT_MS,
       })
         .then((response) => {
-          const mapped = mapPdpV2ToPdpPayload(response);
+          const mapped = mapPdpV2ToPdpPayload(response, { product_id: productId, merchant_id: merchantId });
           setPayload((current) => {
             if (productLineSwitchRequestRef.current !== requestId) return current;
             if (String(current.product.product_id || '').trim() !== productId) return current;
             const currentMerchantId = String(current.product.merchant_id || '').trim();
             if (merchantId && currentMerchantId && currentMerchantId !== merchantId) return current;
-            const merged = mergeProductLineSimilarPayload(current, mapped);
+            const merged = restrictPdpCommerce(mergeProductLineSimilarPayload(current, mapped), mapped);
             if (cacheKey) productLinePayloadCacheRef.current.set(cacheKey, merged);
             return merged;
           });
@@ -3787,7 +3830,7 @@ export function PdpContainer({
           ? productLinePayloadCacheRef.current.get(cacheKey) || null
           : null;
 
-        if (cachedPayload) {
+        if (cachedPayload && !cachedPayload.commerce && !cachedPayload.commerce_verification) {
           setPayload(cachedPayload);
           if (typeof window !== 'undefined') {
             window.history.replaceState(window.history.state, '', targetPath);
@@ -3805,7 +3848,8 @@ export function PdpContainer({
 
         productLineSwitchPendingRef.current = true;
         setPendingProductLineProductId(nextProductId);
-        setPayload((current) => withSelectedProductLineOption(current, option));
+        setPayload((current) => withSelectedProductLineOption(current.commerce
+          ? enforceReadOnlyPdp({ ...current, commerce_verification: 'refresh_required' }) : current, option));
 
         try {
           const nextPayload = await ensureProductLineCorePayload({
@@ -4482,10 +4526,12 @@ export function PdpContainer({
         isExternalPurchase={isExternalPurchaseCta}
         externalRetailerLabel={externalRetailerLabel}
         reapCheckout={reapEntry.cta}
+        purchaseUnavailableMessage={purchaseUnavailableMessage}
         inStock={effectiveIsInStock}
         quantity={resolvedQuantity}
         onQtyChange={(next) => setQuantity(next)}
         onAddToCart={() => {
+          if (selectedCurrentMoneyUnavailable || !hasVerifiedSelectedCommerce(payload, selectedVariant, { merchantId: effectiveMerchantId, productId: effectiveProductId, offer: selectedOffer })) return;
           pdpTracking.track('pdp_action_click', { action_type: 'add_to_cart', variant_id: selectedVariant.variant_id });
           dispatchPdpAction('add_to_cart', {
             variant: selectedVariant,
@@ -4497,6 +4543,7 @@ export function PdpContainer({
           });
         }}
         onBuyNow={() => {
+          if (selectedCurrentMoneyUnavailable || !hasVerifiedSelectedCommerce(payload, selectedVariant, { merchantId: effectiveMerchantId, productId: effectiveProductId, offer: selectedOffer })) return;
           pdpTracking.track('pdp_action_click', { action_type: 'buy_now', variant_id: selectedVariant.variant_id });
           dispatchPdpAction('buy_now', {
             variant: selectedVariant,
@@ -4693,10 +4740,12 @@ export function PdpContainer({
         isExternalPurchase={isExternalPurchaseCta}
         externalRetailerLabel={externalRetailerLabel}
         reapCheckout={reapEntry.cta}
+        purchaseUnavailableMessage={purchaseUnavailableMessage}
         inStock={effectiveIsInStock}
         quantity={resolvedQuantity}
         onQtyChange={(next) => setQuantity(next)}
         onAddToCart={() => {
+          if (selectedCurrentMoneyUnavailable || !hasVerifiedSelectedCommerce(payload, selectedVariant, { merchantId: effectiveMerchantId, productId: effectiveProductId, offer: selectedOffer })) return;
           pdpTracking.track('pdp_action_click', { action_type: 'add_to_cart', variant_id: selectedVariant.variant_id });
           dispatchPdpAction('add_to_cart', {
             variant: selectedVariant,
@@ -4708,6 +4757,7 @@ export function PdpContainer({
           });
         }}
         onBuyNow={() => {
+          if (selectedCurrentMoneyUnavailable || !hasVerifiedSelectedCommerce(payload, selectedVariant, { merchantId: effectiveMerchantId, productId: effectiveProductId, offer: selectedOffer })) return;
           pdpTracking.track('pdp_action_click', { action_type: 'buy_now', variant_id: selectedVariant.variant_id });
           dispatchPdpAction('buy_now', {
             variant: selectedVariant,
@@ -4850,10 +4900,12 @@ export function PdpContainer({
         isExternalPurchase={isExternalPurchaseCta}
         externalRetailerLabel={externalRetailerLabel}
         reapCheckout={reapEntry.cta}
+        purchaseUnavailableMessage={purchaseUnavailableMessage}
         inStock={effectiveIsInStock}
         quantity={resolvedQuantity}
         onQtyChange={(next) => setQuantity(next)}
         onAddToCart={() => {
+          if (selectedCurrentMoneyUnavailable || !hasVerifiedSelectedCommerce(payload, selectedVariant, { merchantId: effectiveMerchantId, productId: effectiveProductId, offer: selectedOffer })) return;
           pdpTracking.track('pdp_action_click', { action_type: 'add_to_cart', variant_id: selectedVariant.variant_id });
           dispatchPdpAction('add_to_cart', {
             variant: selectedVariant,
@@ -4865,6 +4917,7 @@ export function PdpContainer({
           });
         }}
         onBuyNow={() => {
+          if (selectedCurrentMoneyUnavailable || !hasVerifiedSelectedCommerce(payload, selectedVariant, { merchantId: effectiveMerchantId, productId: effectiveProductId, offer: selectedOffer })) return;
           pdpTracking.track('pdp_action_click', { action_type: 'buy_now', variant_id: selectedVariant.variant_id });
           dispatchPdpAction('buy_now', {
             variant: selectedVariant,
@@ -4996,9 +5049,11 @@ export function PdpContainer({
         isExternalPurchase={isExternalPurchaseCta}
         externalRetailerLabel={externalRetailerLabel}
         reapCheckout={reapEntry.cta}
+        purchaseUnavailableMessage={purchaseUnavailableMessage}
         inStock={effectiveIsInStock}
         onQtyChange={(next) => setQuantity(next)}
         onAddToCart={() => {
+          if (selectedCurrentMoneyUnavailable || !hasVerifiedSelectedCommerce(payload, selectedVariant, { merchantId: effectiveMerchantId, productId: effectiveProductId, offer: selectedOffer })) return;
           pdpTracking.track('pdp_action_click', { action_type: 'add_to_cart', variant_id: selectedVariant.variant_id });
           dispatchPdpAction('add_to_cart', {
             variant: selectedVariant,
@@ -5010,6 +5065,7 @@ export function PdpContainer({
           });
         }}
         onBuyNow={() => {
+          if (selectedCurrentMoneyUnavailable || !hasVerifiedSelectedCommerce(payload, selectedVariant, { merchantId: effectiveMerchantId, productId: effectiveProductId, offer: selectedOffer })) return;
           pdpTracking.track('pdp_action_click', { action_type: 'buy_now', variant_id: selectedVariant.variant_id });
           dispatchPdpAction('buy_now', {
             variant: selectedVariant,
@@ -5146,8 +5202,9 @@ export function PdpContainer({
             <div className="lg:pt-3">
             <div className="px-2.5 py-1 sm:px-3 lg:px-0">
               <div className="flex items-baseline gap-2 flex-wrap">
+                {purchaseUnavailableMessage ? <p role="status">{purchaseUnavailableMessage}</p> : null}
                 <span className="text-[26px] font-semibold text-foreground leading-none lg:text-[30px]">{formatPrice(displayPriceAmount, displayCurrency)}</span>
-                {!isInStock ? (
+                {!commerceUnavailable && !isInStock ? (
                   <span className="rounded-full border border-red-200 bg-red-50 px-2 py-0.5 text-[10px] font-medium text-red-700">
                     Out of stock
                   </span>
@@ -5457,7 +5514,8 @@ export function PdpContainer({
                     className="flex-1 h-11 rounded-full font-semibold text-sm"
                     disabled={!effectiveIsInStock}
                     onClick={() => {
-                      pdpTracking.track('pdp_action_click', { action_type: 'add_to_cart', variant_id: selectedVariant.variant_id });
+                      if (selectedCurrentMoneyUnavailable || !hasVerifiedSelectedCommerce(payload, selectedVariant, { merchantId: effectiveMerchantId, productId: effectiveProductId, offer: selectedOffer })) return;
+          pdpTracking.track('pdp_action_click', { action_type: 'add_to_cart', variant_id: selectedVariant.variant_id });
                       dispatchPdpAction('add_to_cart', {
                         variant: selectedVariant,
                         quantity: resolvedQuantity,
@@ -5474,7 +5532,8 @@ export function PdpContainer({
                     className="flex-[1.5] h-11 rounded-full bg-primary hover:bg-primary/90 font-semibold text-sm"
                     disabled={!effectiveIsInStock}
                     onClick={() => {
-                      pdpTracking.track('pdp_action_click', { action_type: 'buy_now', variant_id: selectedVariant.variant_id });
+                      if (selectedCurrentMoneyUnavailable || !hasVerifiedSelectedCommerce(payload, selectedVariant, { merchantId: effectiveMerchantId, productId: effectiveProductId, offer: selectedOffer })) return;
+          pdpTracking.track('pdp_action_click', { action_type: 'buy_now', variant_id: selectedVariant.variant_id });
                       dispatchPdpAction('buy_now', {
                         variant: selectedVariant,
                         quantity: resolvedQuantity,
@@ -5938,7 +5997,8 @@ export function PdpContainer({
                         className="flex-1 h-10 rounded-full font-semibold text-sm"
                         disabled={!effectiveIsInStock}
                         onClick={() => {
-                          pdpTracking.track('pdp_action_click', { action_type: 'add_to_cart', variant_id: selectedVariant.variant_id });
+                          if (selectedCurrentMoneyUnavailable || !hasVerifiedSelectedCommerce(payload, selectedVariant, { merchantId: effectiveMerchantId, productId: effectiveProductId, offer: selectedOffer })) return;
+          pdpTracking.track('pdp_action_click', { action_type: 'add_to_cart', variant_id: selectedVariant.variant_id });
                           dispatchPdpAction('add_to_cart', {
                             variant: selectedVariant,
                             quantity: resolvedQuantity,
@@ -5955,7 +6015,8 @@ export function PdpContainer({
                         className="flex-[1.5] h-10 rounded-full bg-primary hover:bg-primary/90 font-semibold text-sm"
                         disabled={!effectiveIsInStock}
                         onClick={() => {
-                          pdpTracking.track('pdp_action_click', { action_type: 'buy_now', variant_id: selectedVariant.variant_id });
+                          if (selectedCurrentMoneyUnavailable || !hasVerifiedSelectedCommerce(payload, selectedVariant, { merchantId: effectiveMerchantId, productId: effectiveProductId, offer: selectedOffer })) return;
+          pdpTracking.track('pdp_action_click', { action_type: 'buy_now', variant_id: selectedVariant.variant_id });
                           dispatchPdpAction('buy_now', {
                             variant: selectedVariant,
                             quantity: resolvedQuantity,
