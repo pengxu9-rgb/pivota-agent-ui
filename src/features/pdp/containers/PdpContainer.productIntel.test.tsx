@@ -7,7 +7,11 @@ import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { PdpContainer } from './PdpContainer';
-import type { PDPPayload } from '@/features/pdp/types';
+import type { PDPPayload, ProductIntelData } from '@/features/pdp/types';
+import judydollPublic from '@/features/pdp/utils/fixtures/judydoll.public.json';
+
+const viewport = vi.hoisted(() => ({ desktop: false }));
+vi.mock('@/features/pdp/hooks/useIsDesktop', () => ({ useIsDesktop: () => viewport.desktop }));
 
 vi.mock('next/image', () => ({
   default: (
@@ -156,6 +160,55 @@ const payload: PDPPayload = {
     { action_type: 'buy_now', label: 'Buy Now', priority: 10, target: {} },
   ],
 };
+
+describe('legacy Beauty Insights public-copy defense', () => {
+  afterEach(() => { cleanup(); viewport.desktop = false; });
+
+  it('accepts reviewed gateway eligibility while removing legacy evaluation copy before Beauty mapping', () => {
+    const input: PDPPayload = {
+      ...payload,
+      modules: payload.modules.map((module) => module.type !== 'product_intel' ? module : {
+        ...module,
+        data: {
+          ...judydollPublic,
+          product_intel_core: {
+            ...judydollPublic.product_intel_core,
+            why_it_stands_out: [{ headline: 'Lip finish cues are specific', body: 'Reviewed lip cues identify finish before the shopper leaves Pivota.' }],
+          },
+        },
+      }),
+    };
+    const { container } = render(<PdpContainer payload={input} mode="beauty" onAddToCart={() => {}} onBuyNow={() => {}} />);
+    expect(container.textContent).toContain('Silky Matte Lip Ink');
+    expect(container.textContent).toContain('Color appearance can shift with lip tone');
+    expect(container.textContent).not.toMatch(/Reviewed lip cues|Lip finish cues are specific|before the shopper leaves Pivota/);
+  });
+
+  describe.each([false, true])('eligibility at desktop=%s', (desktop) => {
+    it.each(['false', 'blocked_top', 'blocked_core', 'blocked_normalized', 'unreviewed'])('withholds %s Insights in the Beauty shell', (kind) => {
+      viewport.desktop = desktop;
+      const data: ProductIntelData = JSON.parse(JSON.stringify(judydollPublic));
+      data.product_intel_core!.what_it_is!.body = 'WITHHELD_BEAUTY_INSIGHTS_SENTINEL';
+      if (kind === 'false') data.public_display_eligible = false;
+      if (kind === 'blocked_top') data.quality_state = 'blocked';
+      if (kind === 'blocked_core') data.product_intel_core!.quality_state = 'blocked';
+      if (kind === 'blocked_normalized') data.normalized_pdp = { quality_state: 'blocked' };
+      if (kind === 'unreviewed') delete data.public_display_eligible;
+      const input = { ...payload, modules: payload.modules.map((module) => module.type !== 'product_intel' ? module : { ...module, data }) };
+      const { container } = render(<PdpContainer payload={input} mode="beauty" onAddToCart={() => {}} onBuyNow={() => {}} />);
+      expect(container.textContent).not.toContain('WITHHELD_BEAUTY_INSIGHTS_SENTINEL');
+    });
+
+    it('uses a seller-only evidence label without claiming review or market support', () => {
+      viewport.desktop = desktop;
+      const data = { ...judydollPublic, evidence_profile: 'seller_only', product_intel_core: { ...judydollPublic.product_intel_core, evidence_profile: 'seller_only' } };
+      const input = { ...payload, modules: payload.modules.map((module) => module.type !== 'product_intel' ? module : { ...module, data }) };
+      const { container } = render(<PdpContainer payload={input} mode="beauty" onAddToCart={() => {}} onBuyNow={() => {}} />);
+      expect(container.textContent).toContain('Based on product and brand information');
+      expect(container.textContent).not.toContain('Includes product, review, and market signals');
+    });
+  });
+});
 
 describe('PdpContainer product intel section', () => {
   afterEach(() => {

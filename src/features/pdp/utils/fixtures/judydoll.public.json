@@ -1,0 +1,61 @@
+{
+  "contract_version": "pivota.product_intel.v1",
+  "display_name": "Pivota Insights",
+  "public_display_eligible": true,
+  "canonical_product_ref": {},
+  "product_group_id": null,
+  "quality_state": "reviewed",
+  "evidence_profile": "official_pdp_reviewed_line",
+  "freshness": {
+    "generated_at": "2026-05-27T00:04:53.277Z"
+  },
+  "product_intel_core": {
+    "display_name": "Pivota Insights",
+    "quality_state": "reviewed",
+    "evidence_profile": "official_pdp_reviewed_line",
+    "what_it_is": {
+      "headline": "Lip color",
+      "body": "Silky Matte Lip Ink is a lip color from Judydoll. 48H Long-Lasting Color: Bold, lightweight color that stays put all day."
+    },
+    "why_it_stands_out": [],
+    "best_for": [
+      {
+        "tag": "color_payoff",
+        "label": "color payoff",
+        "confidence": "moderate"
+      },
+      {
+        "tag": "lip_comfort",
+        "label": "lip comfort",
+        "confidence": "moderate"
+      },
+      {
+        "tag": "matte_finish",
+        "label": "matte finish",
+        "confidence": "moderate"
+      }
+    ],
+    "watchouts": [
+      {
+        "type": "shade_fit",
+        "label": "Color appearance can shift with lip tone, lighting, and paired liner.",
+        "severity": "low"
+      }
+    ],
+    "routine_fit": {
+      "step": "lip color",
+      "am_pm": [
+        "as_needed"
+      ],
+      "pairing_notes": [
+        "Step 1: Start from the center of your lips and apply outward Step 2: Wait 20 to 30 seconds for formula to set a transfer-proof film Tips: Use angled tip to trace your lip line,"
+      ]
+    }
+  },
+  "texture_finish": {},
+  "community_signals": {
+    "status": "unavailable",
+    "confidence": "low"
+  },
+  "external_highlight_signals": []
+}

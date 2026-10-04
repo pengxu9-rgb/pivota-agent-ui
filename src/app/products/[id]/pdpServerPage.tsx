@@ -17,6 +17,7 @@ import { unstable_rethrow } from 'next/navigation';
 import { buildProductJsonLd } from './productJsonLd';
 import { getPdpRouteIdExistenceCached, getPdpV2, getPdpV2Cached, getServicesBrowse } from '@/lib/api';
 import { mapPdpV2ToPdpPayload } from '@/features/pdp/adapter/mapPdpV2ToPdpPayload';
+import { projectPublicInsightsPayload } from '@/features/pdp/utils/publicProductIntel';
 import type { PDPPayload } from '@/features/pdp/types';
 import { isBeautyProduct } from '@/features/pdp/utils/isBeautyProduct';
 import { getProviderListings, type ServiceCardData } from '@/features/services/lib/types';
@@ -925,7 +926,10 @@ export async function buildCanonicalPdpJsonLd(
   // is no product to describe, and the PAGE still owns that decision (it
   // throws, yielding a 5xx rather than a cached 404).
   if (outcome.status !== 'ok') return null;
-  const renderData = outcome.data;
+  const renderData = {
+    ...outcome.data,
+    initialPayload: projectPublicInsightsPayload(outcome.data.initialPayload),
+  };
 
   try {
     return buildProductJsonLd(
@@ -987,7 +991,10 @@ export async function renderPdpPage(props: PdpRouteProps, mode: PdpRouteMode) {
     notFound();
   }
 
-  const renderData = outcome.status === 'ok' ? outcome.data : null;
+  const renderData = outcome.status === 'ok' ? {
+    ...outcome.data,
+    initialPayload: projectPublicInsightsPayload(outcome.data.initialPayload),
+  } : null;
   if (!renderData) {
     // See PDP_DEGRADED_RENDER_ERROR doc above: on the static/ISR route a 200
     // shell would be STORED for `revalidate` seconds, so the render must fail

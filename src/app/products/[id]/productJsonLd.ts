@@ -815,8 +815,10 @@ function _buildGroundedClaimProperties(
   productIntelModule?: Record<string, any> | null,
 ): Array<Record<string, any>> {
   const mod = _asRecord(productIntelModule);
-  if (!mod || mod.public_ready !== true) return [];
+  if (!mod || mod.public_ready !== true || mod.public_display_eligible === false) return [];
   const core = _asRecord(mod.product_intel_core);
+  if ([mod.quality_state, core?.quality_state, _asRecord(mod.normalized_pdp)?.quality_state]
+    .some((state) => typeof state === 'string' && state.trim().toLowerCase() === 'blocked')) return [];
   const claims = Array.isArray(core?.public_claims) ? core.public_claims : [];
   const props: Array<Record<string, any>> = [];
   for (const claim of claims) {
