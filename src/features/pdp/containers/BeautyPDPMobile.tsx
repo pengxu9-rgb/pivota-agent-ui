@@ -208,7 +208,9 @@ export function BeautyPDPMobile(props: BeautyPDPMobileProps) {
   // Post-scroll breadcrumb: "brand · $price · title". Format the price the
   // same way BeautyPriceRow does so the two surfaces never disagree.
   let priceLabel: string | null = null;
-  try {
+  if (!Number.isFinite(props.price)) {
+    priceLabel = 'Price unavailable';
+  } else try {
     priceLabel = new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: props.currency || 'USD',

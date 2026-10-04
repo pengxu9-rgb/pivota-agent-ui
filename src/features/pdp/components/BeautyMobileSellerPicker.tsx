@@ -20,7 +20,9 @@ import { formatMoney } from '@/features/pdp/utils/formatMoney';
  * recommended one) so the visible row always matches what Buy Now will use.
  */
 
-function offerInStock(offer: Offer): boolean {
+function offerInStock(offer: Offer, selectedVariant: Variant | null): boolean {
+  const pricing = resolveOfferPricing(offer, selectedVariant);
+  if (pricing.currentMoneyUnavailable) return false;
   if (typeof offer.inventory?.in_stock === 'boolean') return offer.inventory.in_stock;
   const fallback = (offer as any).in_stock;
   if (typeof fallback === 'boolean') return fallback;
@@ -74,6 +76,7 @@ export function displayMerchantLabel(offer: Offer): string {
 
 function rowPrice(offer: Offer, selectedVariant: Variant | null) {
   const pricing = resolveOfferPricing(offer, selectedVariant ?? null);
+  if (pricing.currentMoneyUnavailable) return 'Price unavailable';
   const amount =
     typeof pricing.totalAmount === 'number' && Number.isFinite(pricing.totalAmount)
       ? pricing.totalAmount
@@ -164,13 +167,13 @@ export function BeautyMobileSellerPicker({
     if (!offers.length) return -1;
     if (bestPriceOfferId) {
       const idx = offers.findIndex((o) => o.offer_id === bestPriceOfferId);
-      if (idx >= 0) return idx;
+      if (idx >= 0 && offerInStock(offers[idx], selectedVariant)) return idx;
     }
     let bestIdx = -1;
     let bestPrice = Number.POSITIVE_INFINITY;
     for (let i = 0; i < offers.length; i += 1) {
       const o = offers[i];
-      if (!offerInStock(o)) continue;
+      if (!offerInStock(o, selectedVariant)) continue;
       const pricing = resolveOfferPricing(o, selectedVariant ?? null);
       const amount =
         typeof pricing.totalAmount === 'number' && Number.isFinite(pricing.totalAmount)
@@ -196,7 +199,7 @@ export function BeautyMobileSellerPicker({
   const primary = primaryIdx >= 0 ? offers[primaryIdx] : recommendedOffer;
   const primaryEffectiveIdx = primaryIdx >= 0 ? primaryIdx : recommendedIdx;
   const others = offers.filter((_, i) => i !== primaryEffectiveIdx);
-  const inStockCount = offers.reduce((acc, o) => acc + (offerInStock(o) ? 1 : 0), 0);
+  const inStockCount = offers.reduce((acc, o) => acc + (offerInStock(o, selectedVariant) ? 1 : 0), 0);
 
   return (
     <section className="mx-4 mt-3.5">
@@ -214,8 +217,8 @@ export function BeautyMobileSellerPicker({
           offer={primary}
           selectedVariant={selectedVariant}
           selected={effectiveSelectedId === primary.offer_id}
-          tag={offerTag(primary, bestPriceOfferId, primaryMerchantId)}
-          inStock={offerInStock(primary)}
+          tag={offerInStock(primary, selectedVariant) ? offerTag(primary, bestPriceOfferId, primaryMerchantId) : null}
+          inStock={offerInStock(primary, selectedVariant)}
           onClick={() => onSelect(primary.offer_id)}
         />
         {/*
@@ -234,8 +237,8 @@ export function BeautyMobileSellerPicker({
                 offer={offer}
                 selectedVariant={selectedVariant}
                 selected={effectiveSelectedId === offer.offer_id}
-                tag={offerTag(offer, bestPriceOfferId, primaryMerchantId)}
-                inStock={offerInStock(offer)}
+                tag={offerInStock(offer, selectedVariant) ? offerTag(offer, bestPriceOfferId, primaryMerchantId) : null}
+                inStock={offerInStock(offer, selectedVariant)}
                 onClick={() => onSelect(offer.offer_id)}
               />
             ))}

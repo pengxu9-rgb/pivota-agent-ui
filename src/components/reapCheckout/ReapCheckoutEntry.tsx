@@ -88,6 +88,7 @@ export function resolveMerchantDomain(args: {
 }
 
 export type ReapCheckoutEntryProps = {
+  purchaseUnavailable?: boolean;
   unitPriceAmount?: number | null;
   currency?: string | null;
   productId: string;
@@ -132,10 +133,11 @@ export function useReapCheckoutEntry(props: ReapCheckoutEntryProps): {
   }, [enabled, props.isExternalPurchase]);
 
   const onOpen = useCallback((q: number) => {
+    if (props.purchaseUnavailable) return;
     setExpectedMoney(snapshotDisplayedMoney(props.unitPriceAmount, props.currency));
     setQuantity(Math.min(10, Math.max(1, Math.floor(Number(q) || 1))));
     setOpen(true);
-  }, [props.unitPriceAmount, props.currency]);
+  }, [props.unitPriceAmount, props.currency, props.purchaseUnavailable]);
   const onClose = useCallback(() => setOpen(false), []);
 
   let merchant: DemoMerchant | null = null;
@@ -146,7 +148,8 @@ export function useReapCheckoutEntry(props: ReapCheckoutEntryProps): {
       merchant = (domain && merchants.find((m) => m.domain === domain && (!m.productIds || m.productIds.includes(props.productId)))) || null;
     }
   }
-  const cta = useMemo(() => (merchant ? { onOpen } : null), [merchant, onOpen]);
+  const cta = useMemo(() => (merchant && !props.purchaseUnavailable ? { onOpen } : null),
+    [merchant, onOpen, props.purchaseUnavailable]);
   if (!merchant) return { cta: null, sheet: null };
 
   return {

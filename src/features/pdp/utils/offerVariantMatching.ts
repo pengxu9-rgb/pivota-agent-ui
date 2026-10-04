@@ -104,10 +104,12 @@ function normalizeOfferVariant(raw: unknown, fallbackCurrency: string): Variant 
     String(typed.title || typed.variant_title || typed.variantTitle || '').trim() ||
     (options?.map((entry) => entry.value).join(' / ') || '') ||
     variantId;
-  const price = normalizeVariantPrice(typed, fallbackCurrency);
+  const moneyUnavailable = typed.current_own_offer_status === 'unavailable';
+  const price = moneyUnavailable ? undefined : normalizeVariantPrice(typed, fallbackCurrency);
   const availability = normalizeVariantAvailability(typed);
   return {
     variant_id: variantId,
+    ...(moneyUnavailable ? { current_own_offer_status: 'unavailable' as const } : {}),
     ...(String(typed.sku_id || typed.skuId || typed.sku || '').trim()
       ? {
           sku_id: String(typed.sku_id || typed.skuId || typed.sku).trim(),
@@ -195,8 +197,11 @@ export function resolveOfferPricing(
   shippingAmount: number;
   totalAmount: number | null;
   currency: string;
+  currentMoneyUnavailable: boolean;
 } {
   const matchedVariant = findMatchingOfferVariant(offer, targetVariant);
+  const currentMoneyUnavailable = targetVariant?.current_own_offer_status === 'unavailable' ||
+    matchedVariant?.current_own_offer_status === 'unavailable';
   const fallbackCurrency =
     String(
       matchedVariant?.price?.current.currency ||
@@ -204,12 +209,13 @@ export function resolveOfferPricing(
         targetVariant?.price?.current.currency ||
         'USD',
     ).trim() || 'USD';
-  const itemAmount =
+  const itemAmount = currentMoneyUnavailable ? null :
     normalizeAmount(matchedVariant?.price?.current.amount) ??
     normalizeAmount(offer?.price?.amount);
   const shippingAmount = normalizeAmount(offer?.shipping?.cost?.amount) ?? 0;
   return {
     matchedVariant,
+    currentMoneyUnavailable,
     itemAmount,
     shippingAmount,
     totalAmount: itemAmount == null ? null : itemAmount + shippingAmount,
