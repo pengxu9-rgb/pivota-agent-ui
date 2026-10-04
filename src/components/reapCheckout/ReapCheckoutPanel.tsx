@@ -39,7 +39,7 @@ export function readActiveCheckoutId(productId: string, _now = Date.now()): stri
 }
 
 // Flags kept beside the open checkout's id (shared by every tab of this origin):
-//   handedOff  the buyer clicked "Continue to secure payment" (Reap's page was opened)
+//   handedOff  the buyer opened a Reap card-setup or order-approval page
 //   approved   this browser saw the purchase `processing` (the buyer approved on Reap)
 // Either one means money MAY have moved, whatever terminal state the backend reports later: its
 // `approval_window_lapsed` is a heuristic (an approval in the last poll interval can get it), and its
@@ -438,8 +438,9 @@ function StatusView({
       {view.phase === 'needs_card' ? (
         <div className="space-y-3">
           <p className="text-sm font-medium">Add a card on Reap&apos;s secure page to continue.</p>
+          <p className="text-sm text-muted-foreground">Saving a card does not approve this order. After saving it, return to this tab. We will check the card status and show a separate step to approve your order total.</p>
           <QuoteSummary view={view} />
-          <HandOff view={view} openWindow={openWindow} label="Continue to secure payment" now={now} />
+          <HandOff view={view} openWindow={openWindow} label="Add card securely" now={now} />
           <Deadline iso={view.expiresAt} now={now} verb="Link valid until" />
         </div>
       ) : null}
@@ -450,7 +451,7 @@ function StatusView({
           <p className="text-sm font-medium">Your total is ready. Review and approve it on Reap.</p>
           <QuoteSummary view={view} />
           <OfferCodeNote view={view} />
-          <HandOff view={view} openWindow={openWindow} label="Continue to secure payment" now={now} />
+          <HandOff view={view} openWindow={openWindow} label="Review and approve order" now={now} />
           <p className="text-xs text-muted-foreground">
             After approving, come back to this tab — it updates on its own.
           </p>
