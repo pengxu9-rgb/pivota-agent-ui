@@ -23,6 +23,8 @@ import { GenericPDPContainer } from '@/features/pdp/containers/GenericPDPContain
 import { FashionPDPContainer } from '@/features/pdp/containers/FashionPDPContainer';
 import { ElectronicsPDPContainer } from '@/features/pdp/containers/ElectronicsPDPContainer';
 import { ProductDetailLoading } from '@/features/pdp/components/ProductDetailLoading';
+import { confirmRetailerHandoff } from '@/features/pdp/utils/retailerHandoff';
+import { PDP_CONTENT_INCLUDE, CONTENT_MODULE_LABELS, contentIdentityKey, initialContentModuleStates, completedContentModuleStates, mergeContentPdpPayload, sameContentIdentity, type ContentModuleType } from '@/features/pdp/state/contentHydration';
 import type { PDPPayload, Variant } from '@/features/pdp/types';
 import { pdpTracking } from '@/features/pdp/tracking';
 import { findMatchingOfferVariant } from '@/features/pdp/utils/offerVariantMatching';
@@ -79,16 +81,6 @@ const PDP_CORE_ONLY_INCLUDE = [
   'product_overview',
 ] as const;
 const PDP_INITIAL_INCLUDE = [...PDP_CORE_ONLY_INCLUDE, 'reviews_preview'] as const;
-const PDP_CONTENT_INCLUDE = [
-  'product_intel',
-  'active_ingredients',
-  'ingredients_inci',
-  'how_to_use',
-  'product_overview',
-  'product_facts',
-  'supplemental_details',
-  'reviews_preview',
-] as const;
 const PDP_CONTENT_MODULE_TYPES = new Set<string>(PDP_CONTENT_INCLUDE);
 const PDP_SIMILAR_INCLUDE = ['similar'] as const;
 const PDP_V2_CONTENT_TIMEOUT_MS = 15000;
@@ -531,32 +523,6 @@ function mergeSimilarPdpPayload(
   };
 }
 
-function mergeContentPdpPayload(current: PDPPayload, incoming: PDPPayload | null): PDPPayload {
-  const incomingContentModules = Array.isArray(incoming?.modules)
-    ? incoming.modules.filter((pdpModule) => PDP_CONTENT_MODULE_TYPES.has(String(pdpModule?.type || '').trim()))
-    : [];
-  if (incomingContentModules.length === 0) return current;
-
-  const incomingTypes = new Set(
-    incomingContentModules.map((pdpModule) => String(pdpModule?.type || '').trim()),
-  );
-  const baseModules = current.modules.filter((pdpModule) => {
-    const type = String(pdpModule?.type || '').trim();
-    return !incomingTypes.has(type);
-  });
-  const hasReviewsModule = incomingTypes.has('reviews_preview');
-
-  return {
-    ...current,
-    modules: [...baseModules, ...incomingContentModules],
-    ...(hasReviewsModule ? { x_reviews_state: 'ready' as const } : {}),
-    x_source_locks: {
-      ...(current.x_source_locks || {}),
-      ...(hasReviewsModule ? { reviews: true } : {}),
-    },
-  };
-}
-
 function mapSellerCandidatesFromResolveCandidates(
   resolved: Awaited<ReturnType<typeof resolveProductCandidates>>,
 ): ProductResponse[] {
@@ -676,9 +642,10 @@ export default function ProductDetailPage({ params, initialPayload, serviceRecom
   const inferredMerchantId = inferCanonicalPdpMerchantId(id, merchantIdParam);
   const routeIsProductGroup = isProductGroupRouteId(id);
   const routeIsPivotaSignature = isPivotaSignatureRouteId(id);
-  const currentPdpProductId = String(pdpPayload?.product?.product_id || '').trim();
-  const currentPdpProductGroupId = String(pdpPayload?.product_group_id || '').trim();
-  const hasHydratedProductIntel = hasModuleType(pdpPayload, 'product_intel');
+  const currentContentIdentity = contentIdentityKey(pdpPayload);
+  const contentPayloadRef = useRef(pdpPayload);
+  contentPayloadRef.current = pdpPayload;
+  const [contentRetryKey, setContentRetryKey] = useState(0);
   const clearSimilarDeferredRetryTimer = useCallback(() => {
     if (similarDeferredRetryTimerRef.current) {
       clearTimeout(similarDeferredRetryTimerRef.current);
@@ -830,72 +797,61 @@ export default function ProductDetailPage({ params, initialPayload, serviceRecom
   ]);
 
   useEffect(() => {
-    const productId = currentPdpProductId;
-    if (!productId) return;
-    if (hasHydratedProductIntel) return;
-    const explicitMerchantId = inferredMerchantId ? String(inferredMerchantId).trim() : null;
-    const productGroupId = currentPdpProductGroupId;
-    const autoLoadKey = [id, productId, explicitMerchantId || '', productGroupId].join('::');
+    const snapshot = contentPayloadRef.current;
+    if (!snapshot?.product?.product_id) return;
+    const identity = contentIdentityKey(snapshot);
+    const autoLoadKey = [id, identity, contentRetryKey].join('::');
     if (contentAutoLoadKeyRef.current === autoLoadKey) return;
     contentAutoLoadKeyRef.current = autoLoadKey;
-
+    const states = initialContentModuleStates(snapshot);
+    // One ready module never blocks other modules. A retry targets only unresolved content.
+    const requested = PDP_CONTENT_INCLUDE.filter((type) =>
+      ['not_fetched', 'unavailable', 'error'].includes(states[type]));
+    if (!requested.length) return;
+    const explicitMerchantId = inferredMerchantId ? String(inferredMerchantId).trim() : null;
     let cancelled = false;
     const startedAt = Date.now();
-
+    setPdpPayload((current) => current && contentIdentityKey(current) === identity ? {
+      ...current, x_content_module_states: { ...current.x_content_module_states,
+        ...Object.fromEntries(requested.map((type) => {
+          const evidence = current.x_content_module_states?.[type];
+          return [type, evidence && typeof evidence === 'object' ? { ...evidence, state: 'loading' as const } : 'loading' as const];
+        })) },
+    } : current);
     (async () => {
       try {
         const v2 = await getPdpV2({
           product_id: id,
-          ...(routeIsProductGroup
-            ? { subject: { type: 'product_group' as const, id } }
-            : explicitMerchantId
-              ? { merchant_id: explicitMerchantId }
-              : {}),
-          include: [...PDP_CONTENT_INCLUDE],
-          timeout_ms: PDP_V2_CONTENT_TIMEOUT_MS,
+          ...(routeIsProductGroup ? { subject: { type: 'product_group' as const, id } }
+            : explicitMerchantId ? { merchant_id: explicitMerchantId } : {}),
+          include: [...requested], timeout_ms: PDP_V2_CONTENT_TIMEOUT_MS,
         });
         if (cancelled) return;
         const assembled = mapPdpV2ToPdpPayload(v2);
+        if (!sameContentIdentity(snapshot, assembled)) throw new Error('Content identity mismatch');
+        const resultStates = completedContentModuleStates(requested, assembled, v2);
         setPdpPayload((current) => {
-          if (!current) return current;
-          if (String(current.product?.product_id || '').trim() !== productId) return current;
-          const nextPayload = mergeContentPdpPayload(current, assembled);
-          moduleSourceLocksRef.current = {
-            ...moduleSourceLocksRef.current,
-            reviews: hasModule(nextPayload, 'reviews_preview'),
-          };
+          if (!current || contentIdentityKey(current) !== identity) return current;
+          const nextPayload = mergeContentPdpPayload(current, assembled, requested, resultStates);
+          moduleSourceLocksRef.current = { ...moduleSourceLocksRef.current,
+            reviews: hasModule(nextPayload, 'reviews_preview') };
           return nextPayload;
         });
-        pdpTracking.track('pdp_module_ready', {
-          module: 'pdp_content',
-          source: 'get_pdp_v2_content',
-          latency_ms: Date.now() - startedAt,
-          has_content: hasAnyModuleType(assembled, PDP_CONTENT_MODULE_TYPES),
-          has_reviews_module: hasModule(assembled, 'reviews_preview'),
-        });
+        pdpTracking.track('pdp_module_ready', { module: 'pdp_content', source: 'get_pdp_v2_content',
+          latency_ms: Date.now() - startedAt, has_content: hasAnyModuleType(assembled, PDP_CONTENT_MODULE_TYPES) });
       } catch (contentErr) {
         if (cancelled) return;
-        pdpTracking.track('pdp_module_error', {
-          module: 'pdp_content',
-          source: 'get_pdp_v2_content',
-          latency_ms: Date.now() - startedAt,
-          error_code: readApiErrorCode(contentErr) || null,
-          error_message: (contentErr as Error)?.message || null,
-        });
+        setPdpPayload((current) => current && contentIdentityKey(current) === identity ? {
+          ...current, x_content_module_states: { ...current.x_content_module_states,
+            ...Object.fromEntries(requested.map((type) => [type, 'error' as const])) },
+        } : current);
+        pdpTracking.track('pdp_module_error', { module: 'pdp_content', source: 'get_pdp_v2_content',
+          latency_ms: Date.now() - startedAt, error_code: readApiErrorCode(contentErr) || null });
       }
     })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    id,
-    currentPdpProductGroupId,
-    currentPdpProductId,
-    hasHydratedProductIntel,
-    inferredMerchantId,
-    routeIsProductGroup,
-  ]);
+    return () => { cancelled = true; };
+    // State-only updates do not cancel their own request; an identity change does.
+  }, [id, currentContentIdentity, contentRetryKey, inferredMerchantId, routeIsProductGroup]);
 
   useEffect(() => {
     if (loading && !error && !pdpPayload) return;
@@ -1300,6 +1256,7 @@ export default function ProductDetailPage({ params, initialPayload, serviceRecom
 
       if (isExternal) {
         if (redirectUrl) {
+          if (!confirmRetailerHandoff(pdpPayload.product, variant, offer)) return;
           toast.success(buildExternalRedirectNotice(redirectUrl));
           window.open(redirectUrl, '_blank', 'noopener,noreferrer');
           return;
@@ -1428,6 +1385,7 @@ export default function ProductDetailPage({ params, initialPayload, serviceRecom
 
       if (isExternal) {
         if (redirectUrl) {
+          if (!confirmRetailerHandoff(pdpPayload.product, variant, offer)) return;
           toast.success(buildExternalRedirectNotice(redirectUrl));
           window.open(redirectUrl, '_blank', 'noopener,noreferrer');
           return;
@@ -1659,6 +1617,14 @@ export default function ProductDetailPage({ params, initialPayload, serviceRecom
   return (
     <div className="min-h-screen bg-background">
       <main className="px-0 py-0">
+        {Object.entries(initialContentModuleStates(pdpPayload)).some(([, state]) => ['error', 'unavailable'].includes(state)) ? (
+          <div role="status" className="mx-auto max-w-6xl px-4 py-2 text-xs text-muted-foreground">
+            Some product information is unavailable: {Object.entries(initialContentModuleStates(pdpPayload))
+              .filter(([, state]) => ['error', 'unavailable'].includes(state))
+              .map(([type]) => CONTENT_MODULE_LABELS[type as ContentModuleType]).join(', ')}.
+            <button type="button" className="ml-2 underline" onClick={() => setContentRetryKey((key) => key + 1)}>Retry product information</button>
+          </div>
+        ) : null}
         <Container
           payload={pdpPayload}
           onAddToCart={handleAddToCart}

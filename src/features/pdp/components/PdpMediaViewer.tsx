@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Image from 'next/image';
 import { ChevronLeft, ChevronRight, Grid3X3, Play, X } from 'lucide-react';
+import { publicEvidenceUrl, publicEvidenceTimestamp } from '../utils/publicEvidence';
+import { dedupeCustomerMedia, customerMediaSourceLabel } from '../state/customerMedia';
 import type { MediaItem } from '@/features/pdp/types';
 import { shouldBypassNextImageOptimizer } from '@/features/pdp/utils/pdpImageUrls';
 import { cn } from '@/lib/utils';
@@ -23,7 +25,7 @@ export function PdpMediaViewer({
   isOpen,
   initialIndex,
   officialItems,
-  ugcItems,
+  ugcItems: suppliedUgcItems,
   defaultMode,
   onClose,
   onSwipe,
@@ -52,6 +54,7 @@ export function PdpMediaViewer({
   officialSource?: string;
   ugcSource?: string;
 }) {
+  const ugcItems = useMemo(() => dedupeCustomerMedia(suppliedUgcItems), [suppliedUgcItems]);
   const [mode, setMode] = useState<ViewerMode>(defaultMode);
   const [officialIndex, setOfficialIndex] = useState(0);
   const [ugcIndex, setUgcIndex] = useState(0);
@@ -441,7 +444,7 @@ export function PdpMediaViewer({
                   )}
                   onClick={() => setMode('ugc')}
                 >
-                  Buyer Show
+                  Customer photos
                 </button>
               </div>
 
@@ -475,6 +478,12 @@ export function PdpMediaViewer({
           </div>
         ) : null}
 
+        {chromeVisible && mode === 'ugc' && activeItems[activeIndex] ? (
+          <div className="absolute bottom-5 left-4 right-4 z-[3] text-center text-xs text-white">
+            <span>{customerMediaSourceLabel(activeItems[activeIndex])}{publicEvidenceTimestamp(activeItems[activeIndex].provenance?.source_observed_at) ? ` · observed ${publicEvidenceTimestamp(activeItems[activeIndex].provenance?.source_observed_at)!.slice(0, 10)}` : ''}</span>
+            {publicEvidenceUrl(activeItems[activeIndex].provenance?.source_url) ? <a className="ml-2 underline" target="_blank" rel="noopener noreferrer" href={publicEvidenceUrl(activeItems[activeIndex].provenance?.source_url)}>Source</a> : null}
+          </div>
+        ) : null}
         {showGrid ? (
           <>
             <button
@@ -486,7 +495,7 @@ export function PdpMediaViewer({
             <div className="absolute bottom-0 left-0 right-0 z-[5] h-[62vh] rounded-t-2xl border border-white/10 bg-zinc-950/95 px-4 pb-4 pt-3">
               <div className="mb-3 flex items-center justify-between">
                 <div className="text-sm font-semibold">
-                  {mode === 'official' ? 'Official media' : 'Buyer media'} ({activeItems.length})
+                  {mode === 'official' ? 'Official media' : 'Customer review media'} ({activeItems.length})
                 </div>
                 <button
                   type="button"

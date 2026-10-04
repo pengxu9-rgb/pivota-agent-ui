@@ -1,3 +1,5 @@
+import { publicEvidenceUrl, publicEvidenceTimestamp } from './publicEvidence';
+import { publicMediaProvenance } from '../state/customerMedia';
 import type { PDPPayload, ProductIntelCoreData, ProductIntelData } from '@/features/pdp/types';
 
 export function productIntelEvidenceLabel(profile?: string, communityAvailable = false): string {
@@ -118,16 +120,19 @@ export function projectPublicInsightsPayload(payload: PDPPayload): PDPPayload {
   const projectStateDictionary = (name: string, value: unknown): unknown => {
     if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
     const states = name === 'x_module_states' ? moduleStates : contentStates;
-    const recognizedState = (state: unknown): state is string => typeof state === 'string' && states.has(state);
+    const normalizeState = (state: unknown): unknown => name === 'x_content_module_states' && typeof state === 'string' ? ({ absent: 'not_fetched', missing: 'unavailable', blocked: 'withheld' } as Record<string, string>)[state.toLowerCase()] || state.toLowerCase() : state;
+    const recognizedState = (state: unknown): state is string => typeof normalizeState(state) === 'string' && states.has(normalizeState(state) as string);
     return Object.fromEntries(Object.entries(value).flatMap<[string, unknown]>(([moduleName, state]) => {
       if (name === 'x_source_locks') return typeof state === 'boolean' ? [[moduleName, state]] : [];
       if (name === 'x_height_spec') return typeof state === 'number' && Number.isFinite(state) ? [[moduleName, state]] : [];
-      if (recognizedState(state)) return [[moduleName, state]];
+      if (recognizedState(state)) return [[moduleName, normalizeState(state)]];
       if (!state || typeof state !== 'object' || Array.isArray(state)) return [];
       // Backward-compatible structured readiness; arbitrary dossiers are omitted.
       const fields = Object.fromEntries(Object.entries(state).filter(([key, item]) =>
-        (key === 'state' || key === 'status') && recognizedState(item),
-      ));
+        ((key === 'state' || key === 'status') && recognizedState(item)) ||
+        (key === 'source_url' && Boolean(publicEvidenceUrl(item))) ||
+        (key === 'source_observed_at' && Boolean(publicEvidenceTimestamp(item))),
+      ).map(([key, item]) => [key, key === 'state' || key === 'status' ? normalizeState(item) : item]));
       return Object.keys(fields).length ? [[moduleName, fields]] : [];
     }));
   };
@@ -141,8 +146,10 @@ export function projectPublicInsightsPayload(payload: PDPPayload): PDPPayload {
       return items.every((item, index) => item === value[index]) ? value : items;
     }
     const entries = Object.entries(value);
-    const kept = entries.filter(([key]) => !privateAliases.has(key))
-      .map(([key, item]) => [key, stateDictionaries.has(key) ? projectStateDictionary(key, item) : stripNestedAliases(item)] as const);
+    const media = value as Record<string, unknown>;
+    const isMedia = ['image', 'video'].includes(String(media.type)) && typeof media.url === 'string' && ['customer_review', 'official_product'].includes(String(media.role));
+    const kept = entries.filter(([key]) => !privateAliases.has(key) || (key === 'provenance' && isMedia))
+      .map(([key, item]) => [key, key === 'provenance' && isMedia ? publicMediaProvenance(item) : stateDictionaries.has(key) ? projectStateDictionary(key, item) : stripNestedAliases(item)] as const);
     return kept.length === entries.length && kept.every(([, item], index) => item === entries[index][1])
       ? value : Object.fromEntries(kept);
   };

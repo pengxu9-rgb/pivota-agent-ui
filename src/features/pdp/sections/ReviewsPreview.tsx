@@ -41,7 +41,7 @@ export function ReviewsPreview({
   onWriteReview?: () => void;
   onSeeAll?: () => void;
 }) {
-  const hasSummary = data.review_count > 0 && data.rating > 0;
+  const hasSummary = typeof data.review_count === 'number' && data.review_count > 0 && typeof data.rating === 'number' && data.rating > 0;
 
   return (
     <div className="rounded-2xl bg-card border border-border p-4">
@@ -56,9 +56,9 @@ export function ReviewsPreview({
       {hasSummary ? (
         <>
           <div className="mt-3 flex items-center gap-3">
-            <div className="text-3xl font-bold">{data.rating.toFixed(1)}</div>
+            <div className="text-3xl font-bold">{data.rating?.toFixed(1)}</div>
             <div>
-              <StarRating value={(data.rating / data.scale) * 5} />
+              <StarRating value={((data.rating || 0) / data.scale) * 5} />
               <div className="mt-1 text-xs text-muted-foreground">{data.review_count} reviews</div>
             </div>
           </div>
@@ -78,7 +78,7 @@ export function ReviewsPreview({
         </>
       ) : (
         <div className="mt-3 text-sm text-muted-foreground">
-          No reviews yet. Be the first to share your thoughts.
+          {data.review_count == null ? 'Review information is unavailable. This does not mean the retailer has no reviews.' : 'No reviews available here yet.'}
         </div>
       )}
       {onSeeAll ? (

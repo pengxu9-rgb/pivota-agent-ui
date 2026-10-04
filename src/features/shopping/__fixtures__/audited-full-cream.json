@@ -1,0 +1,275 @@
+{
+  "status": "success",
+  "modules": [
+    {
+      "type": "canonical",
+      "data": {
+        "pdp_payload": {
+          "product": {
+            "product_id": "sig_6bb6c7ae7b7e71e838aefb564c60371a",
+            "merchant_id": "merch_obs_0531e02c57f00f5b",
+            "title": "Full Cream Moisturizer",
+            "source_url": "https://moogoousa.com/products/full-cream-moisturizer",
+            "destination_url": "https://moogoousa.com/products/full-cream-moisturizer",
+            "default_variant_id": "45890202206515",
+            "variants": [
+              {
+                "variant_id": "45890202206515",
+                "sku_id": "1636",
+                "title": "120 g",
+                "options": [
+                  {
+                    "name": "Size",
+                    "value": "120 g",
+                    "axis_kind": "volume"
+                  }
+                ],
+                "price": {
+                  "current": {
+                    "amount": 11.9,
+                    "currency": "USD"
+                  }
+                },
+                "availability": {
+                  "in_stock": true
+                },
+                "image_url": "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-120g-2_9fc7ba93-da17-4c5d-9bf8-ddc573ba63e5.jpg",
+                "label_image_url": "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-120g-2_9fc7ba93-da17-4c5d-9bf8-ddc573ba63e5.jpg",
+                "swatch_image_url": "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-120g-2_9fc7ba93-da17-4c5d-9bf8-ddc573ba63e5.jpg",
+                "images": [
+                  "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-120g-2_9fc7ba93-da17-4c5d-9bf8-ddc573ba63e5.jpg?v=1784778982"
+                ],
+                "image_urls": [
+                  "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-120g-2_9fc7ba93-da17-4c5d-9bf8-ddc573ba63e5.jpg?v=1784778982"
+                ],
+                "axis_kind": "volume",
+                "display_label": "Size: 120 g",
+                "source_quality_status": "captured"
+              },
+              {
+                "variant_id": "45890202239283",
+                "sku_id": "1425",
+                "title": "200 g",
+                "options": [
+                  {
+                    "name": "Size",
+                    "value": "200 g",
+                    "axis_kind": "volume"
+                  }
+                ],
+                "price": {
+                  "current": {
+                    "amount": 14.9,
+                    "currency": "USD"
+                  }
+                },
+                "availability": {
+                  "in_stock": true
+                },
+                "image_url": "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-200g-1.jpg",
+                "label_image_url": "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-200g-1.jpg",
+                "swatch_image_url": "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-200g-1.jpg",
+                "images": [
+                  "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-200g-1.jpg?v=1784778998"
+                ],
+                "image_urls": [
+                  "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-200g-1.jpg?v=1784778998"
+                ],
+                "axis_kind": "volume",
+                "display_label": "Size: 200 g",
+                "source_quality_status": "captured"
+              },
+              {
+                "variant_id": "45890202272051",
+                "sku_id": "2741",
+                "title": "500 g",
+                "options": [
+                  {
+                    "name": "Size",
+                    "value": "500 g",
+                    "axis_kind": "volume"
+                  }
+                ],
+                "price": {
+                  "current": {
+                    "amount": 28.9,
+                    "currency": "USD"
+                  }
+                },
+                "availability": {
+                  "in_stock": true
+                },
+                "image_url": "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-500g-1.jpg",
+                "label_image_url": "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-500g-1.jpg",
+                "swatch_image_url": "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-500g-1.jpg",
+                "images": [
+                  "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-500g-1.jpg?v=1784779011"
+                ],
+                "image_urls": [
+                  "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-500g-1.jpg?v=1784779011"
+                ],
+                "axis_kind": "volume",
+                "display_label": "Size: 500 g",
+                "source_quality_status": "captured"
+              }
+            ],
+            "price": {
+              "current": {
+                "amount": 11.9,
+                "currency": "USD"
+              }
+            }
+          },
+          "modules": [
+            {
+              "module_id": "variant_selector",
+              "type": "variant_selector",
+              "priority": 35,
+              "title": "Variants",
+              "data": {
+                "selected_variant_id": "45890202206515",
+                "variants": [
+                  {
+                    "variant_id": "45890202206515",
+                    "sku_id": "1636",
+                    "title": "120 g",
+                    "display_label": "Size: 120 g",
+                    "options": [
+                      {
+                        "name": "Size",
+                        "value": "120 g",
+                        "axis_kind": "volume"
+                      }
+                    ],
+                    "price": {
+                      "current": {
+                        "amount": 11.9,
+                        "currency": "USD"
+                      }
+                    },
+                    "availability": {
+                      "in_stock": true
+                    },
+                    "image_url": "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-120g-2_9fc7ba93-da17-4c5d-9bf8-ddc573ba63e5.jpg?v=1784778982",
+                    "label_image_url": "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-120g-2_9fc7ba93-da17-4c5d-9bf8-ddc573ba63e5.jpg?v=1784778982",
+                    "swatch_image_url": "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-120g-2_9fc7ba93-da17-4c5d-9bf8-ddc573ba63e5.jpg?v=1784778982",
+                    "axis_kind": "volume",
+                    "source_quality_status": "captured"
+                  },
+                  {
+                    "variant_id": "45890202239283",
+                    "sku_id": "1425",
+                    "title": "200 g",
+                    "display_label": "Size: 200 g",
+                    "options": [
+                      {
+                        "name": "Size",
+                        "value": "200 g",
+                        "axis_kind": "volume"
+                      }
+                    ],
+                    "price": {
+                      "current": {
+                        "amount": 14.9,
+                        "currency": "USD"
+                      }
+                    },
+                    "availability": {
+                      "in_stock": true
+                    },
+                    "image_url": "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-200g-1.jpg?v=1784778998",
+                    "label_image_url": "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-200g-1.jpg?v=1784778998",
+                    "swatch_image_url": "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-200g-1.jpg?v=1784778998",
+                    "axis_kind": "volume",
+                    "source_quality_status": "captured"
+                  },
+                  {
+                    "variant_id": "45890202272051",
+                    "sku_id": "2741",
+                    "title": "500 g",
+                    "display_label": "Size: 500 g",
+                    "options": [
+                      {
+                        "name": "Size",
+                        "value": "500 g",
+                        "axis_kind": "volume"
+                      }
+                    ],
+                    "price": {
+                      "current": {
+                        "amount": 28.9,
+                        "currency": "USD"
+                      }
+                    },
+                    "availability": {
+                      "in_stock": true
+                    },
+                    "image_url": "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-500g-1.jpg?v=1784779011",
+                    "label_image_url": "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-500g-1.jpg?v=1784779011",
+                    "swatch_image_url": "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-500g-1.jpg?v=1784779011",
+                    "axis_kind": "volume",
+                    "source_quality_status": "captured"
+                  }
+                ],
+                "options": [
+                  {
+                    "name": "Size",
+                    "axis_kind": "volume",
+                    "values": [
+                      {
+                        "value": "120 g",
+                        "label": "120 g",
+                        "variant_ids": [
+                          "45890202206515"
+                        ],
+                        "selected": true,
+                        "swatch_image_url": "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-120g-2_9fc7ba93-da17-4c5d-9bf8-ddc573ba63e5.jpg?v=1784778982",
+                        "label_image_url": "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-120g-2_9fc7ba93-da17-4c5d-9bf8-ddc573ba63e5.jpg?v=1784778982"
+                      },
+                      {
+                        "value": "200 g",
+                        "label": "200 g",
+                        "variant_ids": [
+                          "45890202239283"
+                        ],
+                        "selected": false,
+                        "swatch_image_url": "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-200g-1.jpg?v=1784778998",
+                        "label_image_url": "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-200g-1.jpg?v=1784778998"
+                      },
+                      {
+                        "value": "500 g",
+                        "label": "500 g",
+                        "variant_ids": [
+                          "45890202272051"
+                        ],
+                        "selected": false,
+                        "swatch_image_url": "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-500g-1.jpg?v=1784779011",
+                        "label_image_url": "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-500g-1.jpg?v=1784779011"
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              "module_id": "product_overview",
+              "type": "product_overview",
+              "priority": 45,
+              "title": "Product Overview",
+              "data": {
+                "sections": [
+                  {
+                    "heading": "Description",
+                    "content_type": "text",
+                    "content": "A Rich, Hydrating Cream For Dry, Thirsty Skin",
+                    "collapsed_by_default": false
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

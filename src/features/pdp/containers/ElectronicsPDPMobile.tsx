@@ -1,5 +1,6 @@
 'use client';
 
+import type { MediaItem } from '../types';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Offer, Variant } from '@/features/pdp/types';
 import { BeautyMobileGallery } from '@/features/pdp/components/BeautyMobileGallery';
@@ -49,6 +50,9 @@ export type ElectronicsPDPMobileProps = {
   subtitle?: string | null;
   rating?: number | null;
   reviewCount?: number | null;
+  reviewScope?: string;
+  reviewScopes?: import('../components/ReviewScopeSelector').ReviewScopeOption[];
+  onSelectReviewScope?: (id: string) => void;
   basePrice: number;                                  // pre-config price
   compareAt?: number | null;
   discountPct?: number | null;
@@ -91,7 +95,7 @@ export type ElectronicsPDPMobileProps = {
   // social proof
   recentPurchases?: BeautyPurchase[] | null;
   recentPurchasesTotal?: string | number | null;
-  customerPhotos?: string[] | null;
+  customerPhotos?: MediaItem[] | null;
   customerPhotosTotal?: string | number | null;
   onUgcViewAll?: () => void;
   onUgcShare?: () => void;
@@ -234,6 +238,7 @@ export function ElectronicsPDPMobile(props: ElectronicsPDPMobileProps) {
             subtitle={props.subtitle}
             rating={props.rating}
             reviewCount={props.reviewCount}
+              reviewScope={props.reviewScope}
             onSeeReviews={() => goToTab('reviews')}
           />
           <BeautyPriceRow
@@ -336,12 +341,15 @@ export function ElectronicsPDPMobile(props: ElectronicsPDPMobileProps) {
         <div ref={reviewsRef} className="mt-2.5">
           <BeautyAccordion
             title="Reviews"
-            count={props.reviewCount ?? props.reviews?.length ?? 0}
+            count={props.reviewCount}
             defaultOpen
           >
             <BeautyReviewsPreview
-              rating={props.rating ?? 0}
-              reviewCount={props.reviewCount ?? props.reviews?.length ?? 0}
+              rating={props.rating}
+              reviewCount={props.reviewCount}
+              reviewScope={props.reviewScope}
+              reviewScopes={props.reviewScopes}
+              onSelectReviewScope={props.onSelectReviewScope}
               reviews={props.reviews ?? []}
               onWriteReview={props.onWriteReview}
               onSeeAll={props.onSeeAllReviews}

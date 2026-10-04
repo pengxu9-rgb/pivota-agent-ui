@@ -31,6 +31,8 @@ export function ActiveIngredientsSection({ data }: { data: ActiveIngredientsData
         <PdpSourceBadge
           sourceOrigin={data.source_origin}
           sourceQualityStatus={data.source_quality_status}
+          sourceUrl={data.source_url}
+          capturedAt={data.captured_at}
         />
       </div>
       <p className="mt-1 text-xs text-muted-foreground">

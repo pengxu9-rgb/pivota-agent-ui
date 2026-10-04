@@ -18,9 +18,9 @@ const officialItems = [
 ];
 
 const ugcItems = [
-  { type: 'image' as const, url: 'https://example.com/u-1.jpg' },
-  { type: 'image' as const, url: 'https://example.com/u-2.jpg' },
-  { type: 'image' as const, url: 'https://example.com/u-3.jpg' },
+  { role: 'customer_review', provenance: { source_type: 'customer_review', review_id: 'r1', verification_status: 'review_linked', moderation_status: 'active', scope: 'exact_item', product_id: 'p1', merchant_id: 'm1' }, type: 'image' as const, url: 'https://example.com/u-1.jpg' },
+  { role: 'customer_review', provenance: { source_type: 'customer_review', review_id: 'r1', verification_status: 'review_linked', moderation_status: 'active', scope: 'exact_item', product_id: 'p1', merchant_id: 'm1' }, type: 'image' as const, url: 'https://example.com/u-2.jpg' },
+  { role: 'customer_review', provenance: { source_type: 'customer_review', review_id: 'r1', verification_status: 'review_linked', moderation_status: 'active', scope: 'exact_item', product_id: 'p1', merchant_id: 'm1' }, type: 'image' as const, url: 'https://example.com/u-3.jpg' },
 ];
 
 function renderViewer(
@@ -135,7 +135,7 @@ describe('PdpMediaViewer', () => {
 
   it('switches mode and applies keyboard navigation for ugc', () => {
     renderViewer({ defaultMode: 'official', initialIndex: 0 });
-    fireEvent.click(screen.getByRole('button', { name: 'Buyer Show' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Customer photos' }));
     fireEvent.keyDown(window, { key: 'ArrowDown' });
 
     expect(screen.getByTestId('viewer-counter')).toHaveTextContent('2/3');

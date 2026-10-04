@@ -86,6 +86,9 @@ import { GenericPDPDesktop } from '@/features/pdp/containers/GenericPDPDesktop';
 import { BeautyVariantSelector } from '@/features/pdp/components/BeautyVariantSelector';
 import { displayMerchantLabel } from '@/features/pdp/components/BeautyMobileSellerPicker';
 import type { BeautyInsightsData } from '@/features/pdp/components/BeautyPivotaInsights';
+import { confirmRetailerHandoff } from '@/features/pdp/utils/retailerHandoff';
+import { normalizeReviewAvailability } from '@/features/pdp/state/reviewAvailability';
+import { customerMediaSubject, sanitizeReviewMedia, selectCustomerMedia } from '@/features/pdp/state/customerMedia';
 import { DEFAULT_UGC_SNAPSHOT, lockFirstUgcSource, mergeUgcItems } from '@/features/pdp/state/freezePolicy';
 import { getStableGalleryItems, resolveHeroMediaUrl } from '@/features/pdp/state/heroMedia';
 import { buildPdpViewModel } from '@/features/pdp/state/viewModel';
@@ -493,8 +496,9 @@ function mergeProductLineReviewsPayload(current: PDPPayload, incoming: PDPPayloa
     title: 'Reviews',
     data: {
       scale: 5,
-      rating: 0,
-      review_count: 0,
+      rating: null,
+      review_count: null,
+      status: 'unavailable',
       preview_items: [],
     },
   };
@@ -698,16 +702,12 @@ function resolveDefaultReviewScope(reviews: ReviewsPreviewData | null): string |
 }
 
 function buildReviewScopeLabel(scopeId: string | null, reviews: ReviewsPreviewData): string | undefined {
-  if (scopeId === 'exact_item') {
-    const count = Number(reviews.exact_item_review_count || reviews.review_count || 0) || 0;
-    return `Based on exact-item reviews (${count})`;
-  }
-  if (scopeId === 'product_line') {
-    const count =
-      Number(reviews.product_line_review_count || reviews.review_count || 0) || 0;
-    return `Based on product-line reviews (${count})`;
-  }
-  return reviews.scope_label;
+  const label = scopeId === 'exact_item' ? 'Exact-item reviews' : scopeId === 'product_line' ? 'Product-line reviews' : undefined;
+  if (!label) return reviews.scope_label;
+  const scoped = scopeId ? reviews.scoped_summaries?.[scopeId] : undefined;
+  const count = scoped ? scoped.review_count : scopeId === 'exact_item'
+    ? reviews.exact_item_review_count ?? reviews.review_count : reviews.product_line_review_count ?? reviews.review_count;
+  return typeof count === 'number' ? `Based on ${scopeId === 'exact_item' ? 'exact-item' : 'product-line'} reviews (${count})` : `${label} · review count unavailable`;
 }
 
 const SYNTHETIC_REVIEW_SOURCE_RE =
@@ -732,11 +732,11 @@ function isEstimatedOnlyReviewsPreview(reviews: ReviewsPreviewData | null): bool
 
 function getPublicReviewsPreview(reviews: ReviewsPreviewData | null): ReviewsPreviewData | null {
   if (!reviews || isEstimatedOnlyReviewsPreview(reviews)) return null;
-  return reviews;
+  return normalizeReviewAvailability(reviews);
 }
 
 function getPublicReviewRating(reviews: ReviewsPreviewData | null): number | null {
-  if (!reviews || reviews.review_count <= 0 || reviews.rating <= 0) return null;
+  if (!reviews || typeof reviews.review_count !== 'number' || reviews.review_count <= 0 || typeof reviews.rating !== 'number' || reviews.rating <= 0) return null;
   return (reviews.rating / (reviews.scale || 5)) * 5;
 }
 
@@ -1846,7 +1846,8 @@ export function PdpContainer({
     [details],
   );
   const reviews = getModuleData<ReviewsPreviewData>(payload, 'reviews_preview');
-  const publicReviews = getPublicReviewsPreview(reviews);
+  const candidateReviews = useMemo(() => getPublicReviewsPreview(reviews), [reviews]);
+  const publicReviews = useMemo(() => candidateReviews ? sanitizeReviewMedia(candidateReviews, customerMediaSubject(payload)) : null, [candidateReviews, payload]);
   const publicReviewRating = getPublicReviewRating(publicReviews);
   const publicReviewItems = mapReviewPreviewItems(publicReviews);
   const brandNameForCard = String(publicReviews?.brand_card?.name || payload.product.brand?.name || '').trim();
@@ -2454,16 +2455,11 @@ export function PdpContainer({
 
   const normalizedReviewUgc = useMemo(
     () =>
-      (publicReviews?.preview_items?.flatMap((item) => item.media || []) || []).filter(
-        (item) => item?.url,
-      ),
-    [publicReviews?.preview_items],
+      selectCustomerMedia(publicReviews, customerMediaSubject(payload)),
+    [publicReviews, payload],
   );
-  // Keep gallery visible by falling back to product gallery media when UGC is sparse.
-  const normalizedMediaUgc = useMemo(
-    () => (media?.items || []).filter((item) => item?.url),
-    [media?.items],
-  );
+  // Official gallery assets never become customer evidence, even when previews are empty.
+  const normalizedMediaUgc = useMemo<MediaItem[]>(() => [], []);
 
   useEffect(() => {
     setUgcSnapshot(DEFAULT_UGC_SNAPSHOT);
@@ -3117,6 +3113,11 @@ export function PdpContainer({
         return;
       }
       if (target.kind === 'external') {
+        // Use original canonical variant money, before display normalization can
+        // add a fallback currency or price to the quick-action sheet.
+        const raw = detail.raw_detail as Record<string, unknown> | undefined;
+        if (!confirmRetailerHandoff({ product_id: detail.product_id, merchant_id: detail.merchant_id,
+          variants: Array.isArray(raw?.variants) ? raw.variants : detail.variants }, variant, preferredOffer)) return false;
         toast.success(target.notice);
         window.open(target.url, '_blank', 'noopener,noreferrer');
         return;
@@ -3983,11 +3984,16 @@ export function PdpContainer({
         ? publicReviews.tabs.map((tab) => ({
             ...tab,
             default: tab.id === activeScopeId,
+            ...(scopedSummaries?.[tab.id] ? { count: scopedSummaries[tab.id].review_count ?? undefined } : {}),
           }))
         : publicReviews.tabs,
       questions: mergedQuestions,
     } as ReviewsPreviewData;
   }, [defaultReviewScope, mergedQuestions, publicReviews, selectedReviewScope]);
+
+  const displayReviews = reviewsForRender || publicReviews;
+  const displayReviewRating = getPublicReviewRating(displayReviews);
+  const displayReviewItems = mapReviewPreviewItems(displayReviews);
 
   const canUploadMedia = true;
   const canWriteReview = true;
@@ -4294,8 +4300,11 @@ export function PdpContainer({
         brand={payload.product.brand?.name}
         title={payload.product.title}
         subtitle={payload.product.subtitle}
-        rating={publicReviewRating}
-        reviewCount={publicReviews?.review_count}
+        rating={displayReviewRating}
+        reviewCount={displayReviews?.review_count}
+        reviewScope={displayReviews?.aggregation_scope}
+        reviewScopes={displayReviews?.tabs}
+        onSelectReviewScope={setSelectedReviewScope}
         price={displayPriceAmount}
         compareAt={compareAmount}
         discountPct={discountPercent}
@@ -4345,8 +4354,8 @@ export function PdpContainer({
           time: rp.time_label || '',
         }))}
         recentPurchasesTotal={recentPurchases.length || null}
-        customerPhotos={ugcItems.map((u) => u.url).filter(Boolean)}
-        customerPhotosTotal={ugcItems.length || null}
+        customerPhotos={ugcItems}
+        customerPhotosTotal={null}
         onUgcViewAll={() =>
           openViewer({ mode: 'ugc', source: ugcSnapshot.source || 'unknown', index: 0 })
         }
@@ -4355,7 +4364,7 @@ export function PdpContainer({
           openViewer({ mode: 'ugc', source: ugcSnapshot.source || 'unknown', index, trackThumbnail: true })
         }
         insights={beautyInsights}
-        reviews={publicReviewItems}
+        reviews={displayReviewItems}
         onSeeAllReviews={onSeeAllReviews}
         onWriteReview={handleWriteReview}
         questions={mergedQuestions}
@@ -4574,8 +4583,11 @@ export function PdpContainer({
         brand={payload.product.brand?.name}
         title={payload.product.title}
         subtitle={payload.product.subtitle}
-        rating={publicReviewRating}
-        reviewCount={publicReviews?.review_count}
+        rating={displayReviewRating}
+        reviewCount={displayReviews?.review_count}
+        reviewScope={displayReviews?.aggregation_scope}
+        reviewScopes={displayReviews?.tabs}
+        onSelectReviewScope={setSelectedReviewScope}
         price={displayPriceAmount}
         compareAt={compareAmount}
         discountPct={discountPercent}
@@ -4630,8 +4642,8 @@ export function PdpContainer({
           time: rp.time_label || '',
         }))}
         recentPurchasesTotal={recentPurchases.length || null}
-        customerPhotos={ugcItems.map((u) => u.url).filter(Boolean)}
-        customerPhotosTotal={ugcItems.length || null}
+        customerPhotos={ugcItems}
+        customerPhotosTotal={null}
         onUgcViewAll={() =>
           openViewer({ mode: 'ugc', source: ugcSnapshot.source || 'unknown', index: 0 })
         }
@@ -4641,7 +4653,7 @@ export function PdpContainer({
         }
         insights={null}
         pairings={fashionMeta?.styling_pairings ?? null}
-        reviews={publicReviewItems}
+        reviews={displayReviewItems}
         onWriteReview={handleWriteReview}
         onSeeAllReviews={onSeeAllReviews}
         questions={mergedQuestions}
@@ -4739,8 +4751,11 @@ export function PdpContainer({
         brand={payload.product.brand?.name}
         title={payload.product.title}
         subtitle={payload.product.subtitle}
-        rating={publicReviewRating}
-        reviewCount={publicReviews?.review_count}
+        rating={displayReviewRating}
+        reviewCount={displayReviews?.review_count}
+        reviewScope={displayReviews?.aggregation_scope}
+        reviewScopes={displayReviews?.tabs}
+        onSelectReviewScope={setSelectedReviewScope}
         basePrice={displayPriceAmount}
         compareAt={compareAmount}
         discountPct={discountPercent}
@@ -4786,8 +4801,8 @@ export function PdpContainer({
           time: rp.time_label || '',
         }))}
         recentPurchasesTotal={recentPurchases.length || null}
-        customerPhotos={ugcItems.map((u) => u.url).filter(Boolean)}
-        customerPhotosTotal={ugcItems.length || null}
+        customerPhotos={ugcItems}
+        customerPhotosTotal={null}
         onUgcViewAll={() =>
           openViewer({ mode: 'ugc', source: ugcSnapshot.source || 'unknown', index: 0 })
         }
@@ -4795,7 +4810,7 @@ export function PdpContainer({
         onUgcPhotoClick={(index) =>
           openViewer({ mode: 'ugc', source: ugcSnapshot.source || 'unknown', index, trackThumbnail: true })
         }
-        reviews={publicReviewItems}
+        reviews={displayReviewItems}
         onWriteReview={handleWriteReview}
         onSeeAllReviews={onSeeAllReviews}
         questions={mergedQuestions}
@@ -4879,8 +4894,11 @@ export function PdpContainer({
         brand={payload.product.brand?.name}
         title={payload.product.title}
         subtitle={payload.product.subtitle}
-        rating={publicReviewRating}
-        reviewCount={publicReviews?.review_count}
+        rating={displayReviewRating}
+        reviewCount={displayReviews?.review_count}
+        reviewScope={displayReviews?.aggregation_scope}
+        reviewScopes={displayReviews?.tabs}
+        onSelectReviewScope={setSelectedReviewScope}
         price={displayPriceAmount}
         compareAt={compareAmount}
         discountPct={discountPercent}
@@ -4920,8 +4938,8 @@ export function PdpContainer({
           time: rp.time_label || '',
         }))}
         recentPurchasesTotal={recentPurchases.length || null}
-        customerPhotos={ugcItems.map((u) => u.url).filter(Boolean)}
-        customerPhotosTotal={ugcItems.length || null}
+        customerPhotos={ugcItems}
+        customerPhotosTotal={null}
         onUgcViewAll={() =>
           openViewer({ mode: 'ugc', source: ugcSnapshot.source || 'unknown', index: 0 })
         }
@@ -4937,7 +4955,7 @@ export function PdpContainer({
             merchant_id: item.merchant_id || null,
           });
         }}
-        reviews={publicReviewItems}
+        reviews={displayReviewItems}
         onSeeAllReviews={onSeeAllReviews}
         onWriteReview={handleWriteReview}
         questions={mergedQuestions}
@@ -5182,14 +5200,14 @@ export function PdpContainer({
                 </div>
               ) : null}
 
-              {publicReviews?.review_count ? (
+              {displayReviews?.review_count ? (
                 <button
                   className="mt-1 flex items-center gap-1.5"
                   onClick={() => handleTabChange('reviews')}
                 >
-                  <StarRating value={(publicReviews.rating / publicReviews.scale) * 5} />
-                  <span className="text-xs font-medium">{publicReviews.rating.toFixed(1)}</span>
-                  <span className="text-xs text-muted-foreground">({publicReviews.review_count})</span>
+                  <StarRating value={displayReviewRating || 0} />
+                  <span className="text-xs font-medium">{displayReviews.rating?.toFixed(1)}</span>
+                  <span className="text-xs text-muted-foreground">({displayReviews.review_count})</span>
                 </button>
               ) : null}
 
@@ -6037,9 +6055,10 @@ export function PdpContainer({
             detail: similarQuickActionDetail,
             variant: similarQuickActionSelectedVariant,
             entrySurface: 'variant_sheet',
+          }).then((completed) => {
+            if (completed !== false) setSimilarQuickActionSheetOpen(false);
           }).finally(() => {
             setSimilarQuickActionSubmitting(false);
-            setSimilarQuickActionSheetOpen(false);
           });
         }}
       />
