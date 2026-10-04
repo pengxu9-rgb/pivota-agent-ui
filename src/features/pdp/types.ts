@@ -26,12 +26,15 @@ export interface PDPPayload {
   x_offers_state?: 'loading' | 'ready' | 'error';
   x_reviews_state?: 'loading' | 'ready' | 'error';
   x_recommendations_state?: 'loading' | 'ready' | 'error';
+  x_content_module_states?: Partial<Record<string, PdpContentState | { state?: PdpContentState; status?: PdpContentState; source_url?: string; source_observed_at?: string }>>;
   x_module_states?: Partial<Record<PdpModuleStateKey, PdpModuleState>>;
   x_source_locks?: Partial<Record<PdpSourceLockKey, boolean>>;
   x_height_spec?: Partial<Record<PdpModuleStateKey, number>>;
   modules: Module[];
   actions: GlobalAction[];
 }
+
+export type PdpContentState = 'not_fetched' | 'loading' | 'ready' | 'empty' | 'unavailable' | 'error' | 'withheld' | 'not_applicable';
 
 export type PdpModuleState = 'ABSENT' | 'LOADING' | 'READY' | 'EMPTY' | 'ERROR';
 export type PdpModuleStateKey =
@@ -113,6 +116,7 @@ export interface Product {
     price_label?: string;
   }>;
   size_guide?: SizeGuide;
+  selected_variant_id?: string;
   default_variant_id: string;
   variants: Variant[];
   product_line_option_name?: string;
@@ -324,7 +328,25 @@ export interface MediaGalleryData {
   preview_items?: MediaItem[];
 }
 
+/** Public, bounded asset origin. Review linkage is not a verified-purchase claim. */
+export interface MediaProvenance {
+  source_record_id?: string;
+  source_observed_at?: string;
+  source_type?: 'customer_review' | 'merchant_product' | string;
+  review_id?: string;
+  verification_status?: string;
+  moderation_status?: string;
+  scope?: 'exact_item' | 'product_line' | string;
+  product_id?: string;
+  merchant_id?: string;
+  review_family_id?: string;
+  source_url?: string;
+  captured_at?: string;
+}
+
 export interface MediaItem {
+  role?: 'customer_review' | 'official_product' | string;
+  provenance?: MediaProvenance;
   type: 'image' | 'video';
   url: string;
   source?: string;
@@ -488,6 +510,8 @@ export interface StructuredTextItem {
 }
 
 export interface ActiveIngredientsData {
+  source_url?: string;
+  captured_at?: string;
   title?: string;
   items?: Array<string | StructuredTextItem>;
   raw_text?: string;
@@ -496,6 +520,8 @@ export interface ActiveIngredientsData {
 }
 
 export interface IngredientsInciData {
+  source_url?: string;
+  captured_at?: string;
   title?: string;
   items?: Array<string | StructuredTextItem>;
   raw_text?: string;
@@ -504,6 +530,8 @@ export interface IngredientsInciData {
 }
 
 export interface HowToUseData {
+  source_url?: string;
+  captured_at?: string;
   title?: string;
   steps?: string[];
   raw_text?: string;
@@ -511,6 +539,7 @@ export interface HowToUseData {
   media_urls?: string[];
   media?: MediaItem[];
   source_origin?: string;
+  source_quality_status?: string;
 }
 
 export interface DetailSection {
@@ -537,8 +566,9 @@ export interface QuestionDisplayContract {
 
 export interface ReviewsPreviewData {
   scale: number;
-  rating: number;
-  review_count: number;
+  rating: number | null;
+  review_count: number | null;
+  availability_state?: 'ready' | 'empty' | 'unavailable' | 'error' | string;
   status?: string;
   source?: string;
   source_origin?: string;
@@ -600,8 +630,10 @@ export interface ReviewsPreviewData {
     string,
     {
       scale: number;
-      rating: number;
-      review_count: number;
+      rating: number | null;
+      review_count: number | null;
+      availability_state?: string;
+      status?: string;
       scope_label?: string;
       star_distribution?: Array<{
         stars: number;
@@ -652,6 +684,9 @@ export interface RecommendationsData {
   metadata?: {
     has_more?: boolean;
     similar_status?: string;
+    relationship_graph_read_status?: 'ready' | 'empty' | 'unavailable' | 'not_attempted' | 'unknown';
+    relationship_graph_read_reason?: 'no_eligible_edges' | 'no_database' | 'schema_unavailable' | 'no_anchor_refs' | 'disabled' | 'read_failed' | null;
+    edge_count_semantics?: 'returned_eligible_edges';
     similar_confidence?: 'high' | 'medium' | 'low' | string;
     low_confidence?: boolean;
     low_confidence_reason_codes?: string[];

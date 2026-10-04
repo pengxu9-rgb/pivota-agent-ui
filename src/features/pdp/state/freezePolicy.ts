@@ -1,3 +1,4 @@
+import { dedupeCustomerMedia } from './customerMedia';
 import type { MediaItem, Module } from '../types';
 
 export interface ModuleSourceLocks {
@@ -85,18 +86,11 @@ export function lockFirstUgcSource(args: {
   mediaItems: MediaItem[];
 }): UgcSourceSnapshot {
   if (args.current.locked) return args.current;
-  if (Array.isArray(args.reviewsItems) && args.reviewsItems.length > 0) {
+  if (dedupeCustomerMedia(args.reviewsItems || []).length > 0) {
     return {
       locked: true,
       source: 'reviews',
-      items: [...args.reviewsItems],
-    };
-  }
-  if (Array.isArray(args.mediaItems) && args.mediaItems.length > 0) {
-    return {
-      locked: true,
-      source: 'media',
-      items: [...args.mediaItems],
+      items: dedupeCustomerMedia(args.reviewsItems),
     };
   }
   return args.current;
@@ -108,26 +102,13 @@ function mediaItemKey(item: MediaItem): string {
   return `${type}|${url}`;
 }
 
-function dedupeMediaItems(items: MediaItem[]): MediaItem[] {
-  const out: MediaItem[] = [];
-  const seen = new Set<string>();
-  for (const item of items) {
-    if (!item?.url) continue;
-    const key = mediaItemKey(item);
-    if (!key || seen.has(key)) continue;
-    seen.add(key);
-    out.push(item);
-  }
-  return out;
-}
-
 export function mergeUgcItems(args: {
   reviewsItems: MediaItem[];
   mediaItems: MediaItem[];
   priorityCount?: number;
 }): MediaItem[] {
-  const reviews = dedupeMediaItems(Array.isArray(args.reviewsItems) ? args.reviewsItems : []);
-  const media = dedupeMediaItems(Array.isArray(args.mediaItems) ? args.mediaItems : []);
+  const reviews = dedupeCustomerMedia(Array.isArray(args.reviewsItems) ? args.reviewsItems : []);
+  const media: MediaItem[] = []; // Product gallery is never buyer media.
   const priorityCount = Math.max(1, Math.floor(args.priorityCount ?? UGC_PREVIEW_PRIORITY_COUNT));
 
   const head: MediaItem[] = [];

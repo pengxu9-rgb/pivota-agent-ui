@@ -10,22 +10,14 @@
  * strip (read first, act second — handoff §3f).
  *
  * Renders unconditionally so a shopper on a freshly-launched product can
- * still post the first photo — the strip collapses to just the +N tile +
- * the "Add your picture" outline button when no photos exist yet.
+ * still post the first photo. An empty collection shows an explicit empty
+ * state and the "Add your picture" action, without a fake count or filler.
  */
 
-const TILE = 90;
+import type { MediaItem } from '../types';
+import { dedupeCustomerMedia, customerMediaSourceLabel } from '../state/customerMedia';
 
-function asCount(value: string | number | null | undefined, fallback: number): number {
-  if (typeof value === 'number' && Number.isFinite(value)) return value;
-  if (typeof value === 'string') {
-    const trimmed = value.trim();
-    if (!trimmed) return fallback;
-    const n = Number(trimmed);
-    if (Number.isFinite(n)) return n;
-  }
-  return fallback;
-}
+const TILE = 90;
 
 export function BeautyCustomerPhotos({
   photos,
@@ -35,16 +27,18 @@ export function BeautyCustomerPhotos({
   onPhotoClick,
   addLabel = 'Add your picture',
 }: {
-  photos: string[];
+  photos: MediaItem[];
   totalLabel?: string | number | null;
   onViewAll?: () => void;
   onShare?: () => void;
   onPhotoClick?: (index: number) => void;
   addLabel?: string;
 }) {
-  const tiles = photos?.slice(0, 8) ?? [];
-  const total = asCount(totalLabel, tiles.length);
-  const overflow = Math.max(0, total - tiles.length);
+  const available = dedupeCustomerMedia(photos || []);
+  const tiles = available.slice(0, 8);
+  const parsedTotal = totalLabel == null ? null : Number(totalLabel);
+  const total = parsedTotal != null && Number.isInteger(parsedTotal) && parsedTotal >= available.length ? parsedTotal : null;
+  const overflow = Math.max(0, available.length - tiles.length);
 
   return (
     <section className="mt-3.5">
@@ -53,11 +47,11 @@ export function BeautyCustomerPhotos({
           <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
             Customer photos
           </span>
-          {total > 0 ? (
-            <span className="text-[11px] font-medium text-muted-foreground tabular-nums">· {total}</span>
+          {available.length > 0 ? (
+            <span className="text-[11px] font-medium text-muted-foreground tabular-nums">· {total == null ? `${available.length} available` : total}</span>
           ) : null}
         </div>
-        <span className="text-[11px] font-medium text-muted-foreground">swipe →</span>
+        {tiles.length > 1 ? <span className="text-[11px] font-medium text-muted-foreground">swipe →</span> : null}
       </div>
 
       <div
@@ -67,53 +61,45 @@ export function BeautyCustomerPhotos({
           WebkitOverflowScrolling: 'touch',
         }}
       >
-        {tiles.map((src, i) => (
+        {tiles.map((item, i) => (
           <button
-            key={`${src}-${i}`}
+            key={`${item.url}-${i}`}
             type="button"
             onClick={() => onPhotoClick?.(i)}
-            aria-label={`Customer photo ${i + 1}`}
+            aria-label={`${customerMediaSourceLabel(item)} ${i + 1}`}
+            data-media-role={item.role || item.source_kind}
             className="relative flex-shrink-0 overflow-hidden rounded-md bg-[var(--paper-muted,#F4F4F2)]"
             style={{ width: TILE, height: TILE, scrollSnapAlign: 'start' }}
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={src} alt="" loading="lazy" className="h-full w-full object-cover" />
+            {item.type === 'video' ? (
+              <video src={item.url} poster={item.thumbnail_url} muted preload="metadata" className="h-full w-full object-cover" />
+            ) : <img src={item.thumbnail_url || item.url} alt={item.alt_text || ''} loading="lazy" className="h-full w-full object-cover" />}
           </button>
         ))}
-        {overflow > 0 || tiles.length === 0 ? (
+        {overflow > 0 ? (
           <button
             type="button"
-            onClick={onViewAll || onShare}
-            aria-label={overflow > 0 ? `View all ${total} photos` : addLabel}
+            onClick={onViewAll}
+            aria-label={`View ${available.length} available customer photos`}
             className="flex flex-shrink-0 flex-col items-center justify-center gap-1 rounded-md border border-dashed border-border bg-[var(--paper,#FAFAF8)] text-muted-foreground"
             style={{ width: TILE, height: TILE, scrollSnapAlign: 'start' }}
           >
-            {overflow > 0 ? (
-              <>
-                <div className="text-[18px] font-light leading-none tabular-nums">+{overflow}</div>
-                <div className="text-[10px] font-semibold tracking-[0.02em]">View all</div>
-              </>
-            ) : (
-              <>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <line x1="12" y1="5" x2="12" y2="19" />
-                  <line x1="5" y1="12" x2="19" y2="12" />
-                </svg>
-                <div className="text-[10px] font-semibold tracking-[0.02em]">Add yours</div>
-              </>
-            )}
+            <div className="text-[18px] font-light leading-none tabular-nums">+{overflow}</div>
+            <div className="text-[10px] font-semibold tracking-[0.02em]">View all</div>
           </button>
         ) : null}
       </div>
 
+      {!available.length ? <p className="px-4 text-[13px] text-muted-foreground">No customer photos available yet.</p> : null}
       <div className="mt-2.5 flex gap-2 px-4">
-        {onViewAll ? (
+        {onViewAll && available.length > 0 ? (
           <button
             type="button"
             onClick={onViewAll}
             className="flex-1 rounded-lg border border-border bg-white px-3 py-2.5 text-[12px] font-semibold text-foreground"
           >
-            See all {total > 0 ? `${total} photos` : 'photos'}
+            View {available.length} available {available.length === 1 ? 'photo' : 'photos'}
           </button>
         ) : null}
         {onShare ? (

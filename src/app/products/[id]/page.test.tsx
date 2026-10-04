@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import ProductDetailPage from './ProductDetailClient';
+import auditedMooGoo from '@/features/pdp/__fixtures__/auditedLive/moogoo-fullcream-ssr-pdp.json';
 
 const pushMock = vi.fn();
 const replaceMock = vi.fn();
@@ -33,6 +34,7 @@ const contentPdpInclude = [
   'product_facts',
   'supplemental_details',
   'reviews_preview',
+  'materials', 'product_specs', 'size_fit', 'care_instructions', 'usage_safety',
 ];
 const similarPdpInclude = ['similar'];
 
@@ -245,6 +247,8 @@ function KeyedProductDetailPage({
 }
 
 const canonicalPayload = {
+  // Explicitly completed non-applicable modules; intel alone is not a refresh gate.
+  x_content_module_states: Object.fromEntries(contentPdpInclude.filter((type) => !['product_intel', 'reviews_preview'].includes(type)).map((type) => [type, 'not_applicable'])),
   schema_version: '1.0.0',
   page_type: 'product_detail',
   tracking: {
@@ -305,6 +309,7 @@ const canonicalLoadingPayload = {
 
 const canonicalCorePayload = {
   ...canonicalPayload,
+  x_content_module_states: {},
   modules: canonicalPayload.modules.filter((module) => module.type === 'recommendations'),
 } as const;
 
@@ -315,6 +320,7 @@ const canonicalReadyMissingSimilarPayload = {
 
 const canonicalBackfillLoadingPayload = {
   ...canonicalPayload,
+  x_content_module_states: {},
   modules: [],
   x_reviews_state: 'loading',
   x_recommendations_state: 'loading',
@@ -656,6 +662,7 @@ describe('ProductDetailPage canonical PDP loading', () => {
   it('keeps content hydration alive while similar enters loading state', async () => {
     const initialPayload = {
       ...canonicalPayload,
+      x_content_module_states: {},
       modules: [],
       x_reviews_state: 'loading',
       x_recommendations_state: 'ready',
@@ -1405,4 +1412,56 @@ describe('ProductDetailPage canonical PDP loading', () => {
 
     expect(getPdpV2Mock).toHaveBeenCalledTimes(1);
   });
+  it('requires an explicit reselection notice for audited 500 g and honors cancel before opening retailer', async () => {
+    searchParamsValue = 'pdp=generic';
+    const initial = structuredClone(auditedMooGoo) as any;
+    const selected = initial.product.variants.find((item: any) => item.variant_id === '45890202272051');
+    initial.product.variants = [selected, ...initial.product.variants.filter((item: any) => item !== selected)];
+    initial.product.default_variant_id = selected.variant_id;
+    initial.x_content_module_states = Object.fromEntries(contentPdpInclude.map((type) => [type, 'not_applicable']));
+    initial.modules.push({ module_id: 'similar', type: 'recommendations', data: { items: [] } });
+    const open = vi.spyOn(window, 'open').mockReturnValue(null);
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    renderPage(initial.product.product_id, initial);
+    fireEvent.click(screen.getByRole('button', { name: 'Buy Now' }));
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('45890202272051'));
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('USD 28.90'));
+    expect(open).not.toHaveBeenCalled();
+    confirm.mockReturnValue(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Buy Now' }));
+    expect(confirm).toHaveBeenCalledTimes(2);
+    expect(open).toHaveBeenCalledWith('https://moogoousa.com/products/full-cream-moisturizer', '_blank', 'noopener,noreferrer');
+    expect(addItemMock).not.toHaveBeenCalled();
+    expect(pushMock).not.toHaveBeenCalled();
+  });
+
+  it('hydrates a missing review independently of an already-present product intel module and exposes retry after error', async () => {
+    const initial = { ...canonicalPayload, modules: canonicalPayload.modules.filter((module) => module.type !== 'reviews_preview') };
+    getPdpV2Mock.mockRejectedValueOnce(new Error('provider failure')).mockResolvedValueOnce({ kind: 'retry' });
+    mapPdpV2ToPdpPayloadMock.mockReturnValue(canonicalPayload);
+    renderPage('prod_1', initial);
+    await screen.findByRole('button', { name: 'Retry product information' });
+    expect(getPdpV2Mock).toHaveBeenNthCalledWith(1, expect.objectContaining({ include: ['reviews_preview'] }));
+    fireEvent.click(screen.getByRole('button', { name: 'Retry product information' }));
+    await waitFor(() => expect(screen.getByTestId('reviews-count')).toHaveTextContent('12'));
+    expect(getPdpV2Mock).toHaveBeenCalledTimes(2);
+  });
+
+  it('drops a late content response after same-product seller navigation', async () => {
+    const initial = { ...canonicalPayload, modules: canonicalPayload.modules.filter((module) => module.type !== 'reviews_preview') };
+    let resolveOld!: (value: any) => void;
+    getPdpV2Mock.mockReturnValue(new Promise((resolve) => { resolveOld = resolve; }));
+    const { rerender } = renderPage('prod_1', initial);
+    await waitFor(() => expect(getPdpV2Mock).toHaveBeenCalledTimes(1));
+    const next = { ...canonicalPayload, product: { ...canonicalPayload.product, merchant_id: 'new_seller', title: 'New seller item' },
+      modules: canonicalPayload.modules.map((module) => module.type === 'reviews_preview' ? { ...module, data: { scale: 5, rating: 4, review_count: 22, preview_items: [] } } : module) };
+    rerender(<ProductDetailPage params={{ id: 'prod_1' } as any} initialPayload={next as any} />);
+    await waitFor(() => expect(screen.getByTestId('merchant-id')).toHaveTextContent('new_seller'));
+    resolveOld({ kind: 'old-content' });
+    await waitFor(() => expect(screen.getByTestId('reviews-count')).toHaveTextContent('22'));
+    expect(screen.getByTestId('generic-pdp')).toHaveTextContent('New seller item');
+    expect(screen.queryByRole('button', { name: 'Retry product information' })).not.toBeInTheDocument();
+  });
+
 });

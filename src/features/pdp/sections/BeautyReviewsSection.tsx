@@ -78,7 +78,7 @@ export function BeautyReviewsSection({
   askQuestionEnabled = true,
   openQuestionsLabel = 'View all',
   emptyCopy = 'No reviews yet. Be the first to share your thoughts - your review appears here after Pivota review.',
-  summaryOnlyCopy = 'A verified review summary is available, but written review snippets are not available yet.',
+  summaryOnlyCopy = 'A review summary is available, but written review snippets are not available yet.',
 }: {
   data: ReviewsPreviewData;
   onSelectScope?: (scopeId: string) => void;
@@ -101,9 +101,10 @@ export function BeautyReviewsSection({
   /** Copy used when a source-backed aggregate exists but no review snippets are available. */
   summaryOnlyCopy?: string;
 }) {
+  if (data.review_count == null) emptyCopy = 'Review information is unavailable. This does not mean the retailer has no reviews.';
   const isEmpty = !data.review_count || data.review_count === 0;
-  const hasSummary = data.review_count > 0 && data.rating > 0;
-  const ratingValue = data.scale ? (data.rating / data.scale) * 5 : 0;
+  const hasSummary = typeof data.review_count === 'number' && data.review_count > 0 && typeof data.rating === 'number' && data.rating > 0;
+  const ratingValue = data.scale ? ((data.rating || 0) / data.scale) * 5 : 0;
   const distribution = data.star_distribution
     ?.map((item) => {
       const raw =
@@ -129,7 +130,7 @@ export function BeautyReviewsSection({
     <div className="py-4">
       <div className="mx-2.5 rounded-2xl border border-border bg-card p-3 sm:mx-3">
         <div className="flex items-center justify-between mb-2">
-          <h3 className="text-sm font-semibold">Reviews ({data.review_count})</h3>
+          <h3 className="text-sm font-semibold">Reviews{data.review_count == null ? '' : ` (${data.review_count})`}</h3>
           {/* CTA only shown in header when there are reviews — empty-state
               tile below has its own prominent "Write a review" button. */}
           {!isEmpty && onWriteReview ? (
@@ -151,7 +152,7 @@ export function BeautyReviewsSection({
           <p className="mb-2 text-[11px] text-muted-foreground">{data.scope_label}</p>
         ) : null}
 
-        {scopeTabs.length && !isEmpty ? (
+        {scopeTabs.length ? (
           <div className="mb-3 flex flex-wrap gap-2">
             {scopeTabs.map((tab) => (
               <button

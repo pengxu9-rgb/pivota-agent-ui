@@ -1,0 +1,617 @@
+{
+  "schema_version": "1.0.0",
+  "page_type": "product_detail",
+  "pdp_schema_profile": "beauty_formula",
+  "x_template_hint": "beauty",
+  "tracking": {
+    "page_request_id": "pr_jrdfxrgoiof_mutb6xul",
+    "entry_point": "agent"
+  },
+  "product": {
+    "product_id": "sig_6bb6c7ae7b7e71e838aefb564c60371a",
+    "merchant_id": "merch_obs_0531e02c57f00f5b",
+    "title": "Full Cream Moisturizer",
+    "pdp_schema_profile": "beauty_formula",
+    "subtitle": "",
+    "brand": {
+      "name": "MooGoo"
+    },
+    "category_path": [
+      "beauty",
+      "skincare",
+      "moisturize",
+      "cream"
+    ],
+    "category_kind": "beauty",
+    "image_url": "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-120g-2_9fc7ba93-da17-4c5d-9bf8-ddc573ba63e5.jpg",
+    "image_urls": [
+      "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-120g-2_9fc7ba93-da17-4c5d-9bf8-ddc573ba63e5.jpg?v=1784778982",
+      "https://moogoousa.com/cdn/shop/files/MG-FullCream-120g-2_9fc7ba93-da17-4c5d-9bf8-ddc573ba63e5_1081x.jpg?v=1784778982",
+      "https://moogoousa.com/cdn/shop/files/MG-FullCream-120g-2.jpg?v=1784778943",
+      "https://moogoousa.com/cdn/shop/files/MG-FullCream-120g-2_810x.jpg?v=1784778943",
+      "https://moogoousa.com/cdn/shop/files/MG-FullCream-120g-2_1152x.jpg?v=1784778943",
+      "https://moogoousa.com/cdn/shop/files/MG-FullCream-120g-2_1576x.jpg?v=1784778943",
+      "https://moogoousa.com/cdn/shop/files/MG-FullCream-120g-2_1984x.jpg?v=1784778943",
+      "https://moogoousa.com/cdn/shop/files/MG-FullCream-120g-2_2420x.jpg?v=1784778943",
+      "https://moogoousa.com/cdn/shop/files/MG-FullCream-120g-2_953x.jpg?v=1784778943",
+      "https://moogoousa.com/cdn/shop/files/MG-FullCream-120g-2_1906x.jpg?v=1784778943",
+      "https://moogoousa.com/cdn/shop/files/MG-Moisturisers-FullCream-120g-TheHerd-6_810x.gif?v=1752196278",
+      "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-200g-1.jpg?v=1784778998",
+      "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-500g-1.jpg?v=1784779011"
+    ],
+    "images": [
+      "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-120g-2_9fc7ba93-da17-4c5d-9bf8-ddc573ba63e5.jpg",
+      "/api/image-proxy?url=https%3A%2F%2Fmoogoousa.com%2Fcdn%2Fshop%2Ffiles%2FMG-FullCream-120g-2_9fc7ba93-da17-4c5d-9bf8-ddc573ba63e5_1081x.jpg",
+      "/api/image-proxy?url=https%3A%2F%2Fmoogoousa.com%2Fcdn%2Fshop%2Ffiles%2FMG-FullCream-120g-2.jpg",
+      "/api/image-proxy?url=https%3A%2F%2Fmoogoousa.com%2Fcdn%2Fshop%2Ffiles%2FMG-FullCream-120g-2_810x.jpg",
+      "/api/image-proxy?url=https%3A%2F%2Fmoogoousa.com%2Fcdn%2Fshop%2Ffiles%2FMG-FullCream-120g-2_1152x.jpg",
+      "/api/image-proxy?url=https%3A%2F%2Fmoogoousa.com%2Fcdn%2Fshop%2Ffiles%2FMG-FullCream-120g-2_1576x.jpg",
+      "/api/image-proxy?url=https%3A%2F%2Fmoogoousa.com%2Fcdn%2Fshop%2Ffiles%2FMG-FullCream-120g-2_1984x.jpg",
+      "/api/image-proxy?url=https%3A%2F%2Fmoogoousa.com%2Fcdn%2Fshop%2Ffiles%2FMG-FullCream-120g-2_2420x.jpg",
+      "/api/image-proxy?url=https%3A%2F%2Fmoogoousa.com%2Fcdn%2Fshop%2Ffiles%2FMG-FullCream-120g-2_953x.jpg",
+      "/api/image-proxy?url=https%3A%2F%2Fmoogoousa.com%2Fcdn%2Fshop%2Ffiles%2FMG-FullCream-120g-2_1906x.jpg",
+      "/api/image-proxy?url=https%3A%2F%2Fmoogoousa.com%2Fcdn%2Fshop%2Ffiles%2FMG-Moisturisers-FullCream-120g-TheHerd-6_810x.gif",
+      "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-200g-1.jpg",
+      "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-500g-1.jpg"
+    ],
+    "source": "external_seed",
+    "readiness_tier": null,
+    "serving_eligible": true,
+    "purchase_route": null,
+    "commerce_mode": null,
+    "checkout_handoff": null,
+    "external_redirect_url": "https://moogoousa.com/products/full-cream-moisturizer",
+    "url": "https://agent.pivota.cc/products/sig_6bb6c7ae7b7e71e838aefb564c60371a",
+    "canonical_url": "https://agent.pivota.cc/products/sig_6bb6c7ae7b7e71e838aefb564c60371a",
+    "destination_url": "https://moogoousa.com/products/full-cream-moisturizer",
+    "source_url": "https://moogoousa.com/products/full-cream-moisturizer",
+    "default_variant_id": "45890202206515",
+    "variants": [
+      {
+        "variant_id": "45890202206515",
+        "sku_id": "1636",
+        "title": "120 g",
+        "options": [
+          {
+            "name": "Size",
+            "value": "120 g",
+            "axis_kind": "volume"
+          }
+        ],
+        "price": {
+          "current": {
+            "amount": 11.9,
+            "currency": "USD"
+          }
+        },
+        "availability": {
+          "in_stock": true
+        },
+        "image_url": "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-120g-2_9fc7ba93-da17-4c5d-9bf8-ddc573ba63e5.jpg",
+        "label_image_url": "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-120g-2_9fc7ba93-da17-4c5d-9bf8-ddc573ba63e5.jpg",
+        "swatch_image_url": "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-120g-2_9fc7ba93-da17-4c5d-9bf8-ddc573ba63e5.jpg",
+        "images": [
+          "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-120g-2_9fc7ba93-da17-4c5d-9bf8-ddc573ba63e5.jpg?v=1784778982"
+        ],
+        "image_urls": [
+          "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-120g-2_9fc7ba93-da17-4c5d-9bf8-ddc573ba63e5.jpg?v=1784778982"
+        ],
+        "axis_kind": "volume",
+        "display_label": "Size: 120 g",
+        "source_quality_status": "captured"
+      },
+      {
+        "variant_id": "45890202239283",
+        "sku_id": "1425",
+        "title": "200 g",
+        "options": [
+          {
+            "name": "Size",
+            "value": "200 g",
+            "axis_kind": "volume"
+          }
+        ],
+        "price": {
+          "current": {
+            "amount": 14.9,
+            "currency": "USD"
+          }
+        },
+        "availability": {
+          "in_stock": true
+        },
+        "image_url": "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-200g-1.jpg",
+        "label_image_url": "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-200g-1.jpg",
+        "swatch_image_url": "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-200g-1.jpg",
+        "images": [
+          "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-200g-1.jpg?v=1784778998"
+        ],
+        "image_urls": [
+          "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-200g-1.jpg?v=1784778998"
+        ],
+        "axis_kind": "volume",
+        "display_label": "Size: 200 g",
+        "source_quality_status": "captured"
+      },
+      {
+        "variant_id": "45890202272051",
+        "sku_id": "2741",
+        "title": "500 g",
+        "options": [
+          {
+            "name": "Size",
+            "value": "500 g",
+            "axis_kind": "volume"
+          }
+        ],
+        "price": {
+          "current": {
+            "amount": 28.9,
+            "currency": "USD"
+          }
+        },
+        "availability": {
+          "in_stock": true
+        },
+        "image_url": "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-500g-1.jpg",
+        "label_image_url": "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-500g-1.jpg",
+        "swatch_image_url": "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-500g-1.jpg",
+        "images": [
+          "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-500g-1.jpg?v=1784779011"
+        ],
+        "image_urls": [
+          "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-500g-1.jpg?v=1784779011"
+        ],
+        "axis_kind": "volume",
+        "display_label": "Size: 500 g",
+        "source_quality_status": "captured"
+      }
+    ],
+    "purchase_grain": "variant",
+    "price": {
+      "current": {
+        "amount": 11.9,
+        "currency": "USD"
+      }
+    },
+    "availability": {
+      "in_stock": true
+    },
+    "description": "A Rich, Hydrating Cream For Dry, Thirsty Skin",
+    "source_product_id": "moogoo:484391fddf3260cb",
+    "product_key": "ext:moogoo-full-cream-moisturizer::61709ce3",
+    "catalog_category_path": "beauty/skincare/moisturize/cream",
+    "category": "cream",
+    "product_type": "cream",
+    "category_label_source": "enrichment_agent_v1",
+    "category_confidence": 0.9,
+    "sellable_item_group_id": "sig_6bb6c7ae7b7e71e838aefb564c60371a",
+    "product_group_id": "sig_6bb6c7ae7b7e71e838aefb564c60371a",
+    "pivota_signature_id": "sig_6bb6c7ae7b7e71e838aefb564c60371a",
+    "signature_id": "sig_6bb6c7ae7b7e71e838aefb564c60371a",
+    "pivota_canonical_url": "https://agent.pivota.cc/products/sig_6bb6c7ae7b7e71e838aefb564c60371a",
+    "offers_count": 0,
+    "offer_count": 0,
+    "has_multiple_offers": false
+  },
+  "modules": [
+    {
+      "module_id": "m_media",
+      "type": "media_gallery",
+      "priority": 100,
+      "data": {
+        "items": [
+          {
+            "type": "image",
+            "url": "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-120g-2_9fc7ba93-da17-4c5d-9bf8-ddc573ba63e5.jpg",
+            "alt_text": "Full Cream Moisturizer"
+          },
+          {
+            "type": "image",
+            "url": "/api/image-proxy?url=https%3A%2F%2Fmoogoousa.com%2Fcdn%2Fshop%2Ffiles%2FMG-FullCream-120g-2_9fc7ba93-da17-4c5d-9bf8-ddc573ba63e5_1081x.jpg",
+            "alt_text": "Full Cream Moisturizer"
+          },
+          {
+            "type": "image",
+            "url": "/api/image-proxy?url=https%3A%2F%2Fmoogoousa.com%2Fcdn%2Fshop%2Ffiles%2FMG-FullCream-120g-2.jpg",
+            "alt_text": "Full Cream Moisturizer"
+          },
+          {
+            "type": "image",
+            "url": "/api/image-proxy?url=https%3A%2F%2Fmoogoousa.com%2Fcdn%2Fshop%2Ffiles%2FMG-FullCream-120g-2_810x.jpg",
+            "alt_text": "Full Cream Moisturizer"
+          },
+          {
+            "type": "image",
+            "url": "/api/image-proxy?url=https%3A%2F%2Fmoogoousa.com%2Fcdn%2Fshop%2Ffiles%2FMG-FullCream-120g-2_1152x.jpg",
+            "alt_text": "Full Cream Moisturizer"
+          },
+          {
+            "type": "image",
+            "url": "/api/image-proxy?url=https%3A%2F%2Fmoogoousa.com%2Fcdn%2Fshop%2Ffiles%2FMG-FullCream-120g-2_1576x.jpg",
+            "alt_text": "Full Cream Moisturizer"
+          },
+          {
+            "type": "image",
+            "url": "/api/image-proxy?url=https%3A%2F%2Fmoogoousa.com%2Fcdn%2Fshop%2Ffiles%2FMG-FullCream-120g-2_1984x.jpg",
+            "alt_text": "Full Cream Moisturizer"
+          },
+          {
+            "type": "image",
+            "url": "/api/image-proxy?url=https%3A%2F%2Fmoogoousa.com%2Fcdn%2Fshop%2Ffiles%2FMG-FullCream-120g-2_2420x.jpg",
+            "alt_text": "Full Cream Moisturizer"
+          },
+          {
+            "type": "image",
+            "url": "/api/image-proxy?url=https%3A%2F%2Fmoogoousa.com%2Fcdn%2Fshop%2Ffiles%2FMG-FullCream-120g-2_953x.jpg",
+            "alt_text": "Full Cream Moisturizer"
+          },
+          {
+            "type": "image",
+            "url": "/api/image-proxy?url=https%3A%2F%2Fmoogoousa.com%2Fcdn%2Fshop%2Ffiles%2FMG-FullCream-120g-2_1906x.jpg",
+            "alt_text": "Full Cream Moisturizer"
+          },
+          {
+            "type": "image",
+            "url": "/api/image-proxy?url=https%3A%2F%2Fmoogoousa.com%2Fcdn%2Fshop%2Ffiles%2FMG-Moisturisers-FullCream-120g-TheHerd-6_810x.gif",
+            "alt_text": "Full Cream Moisturizer"
+          },
+          {
+            "type": "image",
+            "url": "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-200g-1.jpg",
+            "alt_text": "Full Cream Moisturizer"
+          },
+          {
+            "type": "image",
+            "url": "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-500g-1.jpg",
+            "alt_text": "Full Cream Moisturizer"
+          }
+        ],
+        "entry_points": {
+          "submit_photo": {
+            "action_type": "open_embed",
+            "label": "Add a photo",
+            "target": {
+              "embed_intent_type": "buyer_media_submission",
+              "resolve_params": {
+                "product_id": "sig_6bb6c7ae7b7e71e838aefb564c60371a",
+                "merchant_id": "merch_obs_0531e02c57f00f5b",
+                "content_type": "photo"
+              }
+            }
+          },
+          "submit_video": {
+            "action_type": "open_embed",
+            "label": "Add a video",
+            "target": {
+              "embed_intent_type": "buyer_media_submission",
+              "resolve_params": {
+                "product_id": "sig_6bb6c7ae7b7e71e838aefb564c60371a",
+                "merchant_id": "merch_obs_0531e02c57f00f5b",
+                "content_type": "video"
+              }
+            }
+          }
+        },
+        "contribution_policy": {
+          "submissions_open": true,
+          "publish_visibility": "employee_approved_only",
+          "employee_review_required": true,
+          "moderation_owner": "pivota_employee",
+          "accepted_content_types": [
+            "photo",
+            "video"
+          ]
+        }
+      }
+    },
+    {
+      "module_id": "m_price",
+      "type": "price_promo",
+      "priority": 90,
+      "data": {
+        "price": {
+          "amount": 11.9,
+          "currency": "USD"
+        },
+        "promotions": []
+      }
+    },
+    {
+      "module_id": "variant_selector",
+      "type": "variant_selector",
+      "priority": 35,
+      "title": "Variants",
+      "data": {
+        "selected_variant_id": "45890202206515",
+        "variants": [
+          {
+            "variant_id": "45890202206515",
+            "sku_id": "1636",
+            "title": "120 g",
+            "display_label": "Size: 120 g",
+            "options": [
+              {
+                "name": "Size",
+                "value": "120 g",
+                "axis_kind": "volume"
+              }
+            ],
+            "price": {
+              "current": {
+                "amount": 11.9,
+                "currency": "USD"
+              }
+            },
+            "availability": {
+              "in_stock": true
+            },
+            "image_url": "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-120g-2_9fc7ba93-da17-4c5d-9bf8-ddc573ba63e5.jpg?v=1784778982",
+            "label_image_url": "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-120g-2_9fc7ba93-da17-4c5d-9bf8-ddc573ba63e5.jpg?v=1784778982",
+            "swatch_image_url": "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-120g-2_9fc7ba93-da17-4c5d-9bf8-ddc573ba63e5.jpg?v=1784778982",
+            "axis_kind": "volume",
+            "source_quality_status": "captured"
+          },
+          {
+            "variant_id": "45890202239283",
+            "sku_id": "1425",
+            "title": "200 g",
+            "display_label": "Size: 200 g",
+            "options": [
+              {
+                "name": "Size",
+                "value": "200 g",
+                "axis_kind": "volume"
+              }
+            ],
+            "price": {
+              "current": {
+                "amount": 14.9,
+                "currency": "USD"
+              }
+            },
+            "availability": {
+              "in_stock": true
+            },
+            "image_url": "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-200g-1.jpg?v=1784778998",
+            "label_image_url": "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-200g-1.jpg?v=1784778998",
+            "swatch_image_url": "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-200g-1.jpg?v=1784778998",
+            "axis_kind": "volume",
+            "source_quality_status": "captured"
+          },
+          {
+            "variant_id": "45890202272051",
+            "sku_id": "2741",
+            "title": "500 g",
+            "display_label": "Size: 500 g",
+            "options": [
+              {
+                "name": "Size",
+                "value": "500 g",
+                "axis_kind": "volume"
+              }
+            ],
+            "price": {
+              "current": {
+                "amount": 28.9,
+                "currency": "USD"
+              }
+            },
+            "availability": {
+              "in_stock": true
+            },
+            "image_url": "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-500g-1.jpg?v=1784779011",
+            "label_image_url": "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-500g-1.jpg?v=1784779011",
+            "swatch_image_url": "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-500g-1.jpg?v=1784779011",
+            "axis_kind": "volume",
+            "source_quality_status": "captured"
+          }
+        ],
+        "options": [
+          {
+            "name": "Size",
+            "axis_kind": "volume",
+            "values": [
+              {
+                "value": "120 g",
+                "label": "120 g",
+                "variant_ids": [
+                  "45890202206515"
+                ],
+                "selected": true,
+                "swatch_image_url": "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-120g-2_9fc7ba93-da17-4c5d-9bf8-ddc573ba63e5.jpg?v=1784778982",
+                "label_image_url": "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-120g-2_9fc7ba93-da17-4c5d-9bf8-ddc573ba63e5.jpg?v=1784778982"
+              },
+              {
+                "value": "200 g",
+                "label": "200 g",
+                "variant_ids": [
+                  "45890202239283"
+                ],
+                "selected": false,
+                "swatch_image_url": "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-200g-1.jpg?v=1784778998",
+                "label_image_url": "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-200g-1.jpg?v=1784778998"
+              },
+              {
+                "value": "500 g",
+                "label": "500 g",
+                "variant_ids": [
+                  "45890202272051"
+                ],
+                "selected": false,
+                "swatch_image_url": "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-500g-1.jpg?v=1784779011",
+                "label_image_url": "https://cdn.shopify.com/s/files/1/0781/2346/7059/files/MG-FullCream-500g-1.jpg?v=1784779011"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "module_id": "product_overview",
+      "type": "product_overview",
+      "priority": 45,
+      "title": "Product Overview",
+      "data": {
+        "sections": [
+          {
+            "heading": "Description",
+            "content_type": "text",
+            "content": "A Rich, Hydrating Cream For Dry, Thirsty Skin",
+            "collapsed_by_default": false
+          }
+        ]
+      }
+    },
+    {
+      "module_id": "reviews_preview",
+      "type": "reviews_preview",
+      "priority": 50,
+      "title": "Reviews",
+      "data": {
+        "scale": 5,
+        "rating": 0,
+        "review_count": 0,
+        "status": "no_issues_found",
+        "brand_card": {
+          "name": "MooGoo"
+        },
+        "preview_items": [],
+        "entry_points": {
+          "open_reviews": {
+            "action_type": "open_embed",
+            "label": "See all reviews",
+            "target": {
+              "embed_intent_type": "reviews_read",
+              "resolve_params": {
+                "product_id": "sig_6bb6c7ae7b7e71e838aefb564c60371a",
+                "merchant_id": "merch_obs_0531e02c57f00f5b"
+              }
+            }
+          },
+          "write_review": {
+            "action_type": "open_embed",
+            "label": "Write a review",
+            "target": {
+              "embed_intent_type": "buyer_review_submission",
+              "resolve_params": {
+                "product_id": "sig_6bb6c7ae7b7e71e838aefb564c60371a",
+                "merchant_id": "merch_obs_0531e02c57f00f5b",
+                "content_type": "review"
+              }
+            }
+          },
+          "ask_question": {
+            "action_type": "open_embed",
+            "label": "Ask a question",
+            "target": {
+              "embed_intent_type": "buyer_question_submission",
+              "resolve_params": {
+                "product_id": "sig_6bb6c7ae7b7e71e838aefb564c60371a",
+                "merchant_id": "merch_obs_0531e02c57f00f5b",
+                "content_type": "question"
+              }
+            }
+          },
+          "submit_photo": {
+            "action_type": "open_embed",
+            "label": "Add a photo",
+            "target": {
+              "embed_intent_type": "buyer_media_submission",
+              "resolve_params": {
+                "product_id": "sig_6bb6c7ae7b7e71e838aefb564c60371a",
+                "merchant_id": "merch_obs_0531e02c57f00f5b",
+                "content_type": "photo"
+              }
+            }
+          }
+        },
+        "contribution_policy": {
+          "submissions_open": true,
+          "publish_visibility": "employee_approved_only",
+          "employee_review_required": true,
+          "moderation_owner": "pivota_employee",
+          "accepted_content_types": [
+            "review",
+            "question",
+            "photo",
+            "video"
+          ]
+        }
+      }
+    }
+  ],
+  "actions": [
+    {
+      "action_type": "add_to_cart",
+      "label": "Add to Cart",
+      "priority": 20,
+      "target": {}
+    },
+    {
+      "action_type": "buy_now",
+      "label": "Buy Now",
+      "priority": 10,
+      "target": {}
+    }
+  ],
+  "quality_signals": {
+    "coverage_by_module": {
+      "media_gallery": 1,
+      "variant_selector": 1,
+      "price_promo": 1,
+      "product_overview": 1,
+      "reviews_preview": 1,
+      "buy_box": 1
+    },
+    "parse_confidence": {
+      "size_guide": 0
+    },
+    "fallback_used": {
+      "size_guide": false
+    },
+    "gating": {
+      "buy_box_ok": true,
+      "size_guide_ok": false
+    }
+  },
+  "product_group_id": "sig_6bb6c7ae7b7e71e838aefb564c60371a",
+  "sellable_item_group_id": "sig_6bb6c7ae7b7e71e838aefb564c60371a",
+  "offers_count": 0,
+  "offer_count": 0,
+  "has_multiple_offers": false,
+  "identity_confidence": 0,
+  "match_basis": [],
+  "pdp_content_source": "self",
+  "offer_source": "multi_offer_blocked",
+  "commerce_source": "selected_seller_store",
+  "content_review_state": "not_needed",
+  "canonical_product_ref": {
+    "merchant_id": "merch_obs_0531e02c57f00f5b",
+    "product_id": "moogoo:484391fddf3260cb",
+    "platform": "external_seed",
+    "product_key": "ext:moogoo-full-cream-moisturizer::61709ce3",
+    "content_key": "ck_01b408f9e3730b4ea3f0107a2ebbc30f",
+    "source_system": "catalog_enrichment_agent_v1",
+    "pivota_signature_id": "sig_6bb6c7ae7b7e71e838aefb564c60371a"
+  },
+  "selected_commerce_ref": {
+    "merchant_id": "merch_obs_0531e02c57f00f5b",
+    "product_id": "moogoo:484391fddf3260cb"
+  },
+  "content_base_ref": {
+    "merchant_id": "merch_obs_0531e02c57f00f5b",
+    "product_id": "moogoo:484391fddf3260cb",
+    "platform": "external_seed",
+    "product_key": "ext:moogoo-full-cream-moisturizer::61709ce3",
+    "content_key": "ck_01b408f9e3730b4ea3f0107a2ebbc30f",
+    "source_system": "catalog_enrichment_agent_v1",
+    "pivota_signature_id": "sig_6bb6c7ae7b7e71e838aefb564c60371a"
+  },
+  "canonical_payload_product_ref": {
+    "merchant_id": "merch_obs_0531e02c57f00f5b",
+    "product_id": "sig_6bb6c7ae7b7e71e838aefb564c60371a",
+    "platform": "external"
+  },
+  "offers": []
+}

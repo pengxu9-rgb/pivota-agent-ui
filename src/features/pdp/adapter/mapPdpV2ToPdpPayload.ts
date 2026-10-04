@@ -1,3 +1,4 @@
+import { normalizeReviewAvailability } from '../state/reviewAvailability';
 import { projectPublicInsightsPayload } from '@/features/pdp/utils/publicProductIntel';
 import type { GetPdpV2Response } from '@/lib/api';
 import type {
@@ -118,7 +119,7 @@ function normalizeReviewsModule(module: Module): Module {
   const previewItems = Array.isArray(module.data.preview_items) ? module.data.preview_items : [];
   const scopedSummaries =
     isRecord(module.data.scoped_summaries) ? module.data.scoped_summaries : null;
-  if (!previewItems.length && !scopedSummaries) return module;
+  if (!previewItems.length && !scopedSummaries) return { ...module, data: normalizeReviewAvailability(module.data as ReviewsPreviewData) };
 
   const normalizedScopedSummaries = scopedSummaries
     ? Object.entries(scopedSummaries).reduce<Record<string, unknown>>((acc, [key, value]) => {
@@ -139,11 +140,11 @@ function normalizeReviewsModule(module: Module): Module {
 
   return {
     ...module,
-    data: {
+    data: normalizeReviewAvailability({
       ...module.data,
       ...(previewItems.length ? { preview_items: normalizePreviewItems(previewItems) } : {}),
       ...(normalizedScopedSummaries ? { scoped_summaries: normalizedScopedSummaries } : {}),
-    },
+    } as ReviewsPreviewData),
   };
 }
 
@@ -678,8 +679,9 @@ export function mapPdpV2ToPdpPayload(response: GetPdpV2Response): PDPPayload | n
       title: 'Reviews',
       data: {
         scale: 5,
-        rating: 0,
-        review_count: 0,
+        rating: null,
+        review_count: null,
+        status: 'unavailable',
       },
     });
   }
@@ -711,5 +713,13 @@ export function mapPdpV2ToPdpPayload(response: GetPdpV2Response): PDPPayload | n
     } as Module);
   }
 
+  next.modules = next.modules.map((module) => {
+    const evidence = next.x_content_module_states?.[module.type];
+    if (!evidence || typeof evidence !== 'object' || !module.data || typeof module.data !== 'object') return module;
+    return { ...module, data: { ...module.data,
+      ...(evidence.source_url ? { source_url: evidence.source_url } : {}),
+      ...(evidence.source_observed_at ? { captured_at: evidence.source_observed_at } : {}),
+    } };
+  });
   return projectPublicInsightsPayload(next);
 }

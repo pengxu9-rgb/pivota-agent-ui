@@ -1,5 +1,6 @@
 'use client';
 
+import { PdpSourceBadge } from './PdpSourceBadge';
 import Image from 'next/image';
 import type {
   ActiveIngredientsData,
@@ -125,6 +126,10 @@ export function BeautyDetailsSection({
         </div>
       ) : null}
 
+      {showProductHeader ? <div className="mx-2.5 my-2 sm:mx-3"><PdpSourceBadge
+        sourceOrigin={product.source_url || product.destination_url ? 'pdp_section' : undefined}
+        sourceUrl={product.source_url || product.destination_url}
+      /></div> : null}
       <div className="mx-2.5 space-y-3 sm:mx-3">
         {!suppressOverview ? (
           <OverviewSection

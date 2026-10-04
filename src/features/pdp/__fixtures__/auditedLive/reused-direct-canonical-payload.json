@@ -1,0 +1,541 @@
+{
+  "schema_version": "1.0.0",
+  "page_type": "product_detail",
+  "pdp_schema_profile": "beauty_formula",
+  "x_template_hint": "beauty",
+  "tracking": {
+    "page_request_id": "pr_w01pn2mg7a_mutbck8z",
+    "entry_point": "agent"
+  },
+  "product": {
+    "product_id": "sig_b8c6c2ef7bc6125cc49cde9ffcf6ccb4",
+    "merchant_id": "merch_obs_d12f5a29a32d66ca",
+    "title": "Renewing Rich Beauty Cream",
+    "pdp_schema_profile": "beauty_formula",
+    "subtitle": "",
+    "brand": {
+      "name": "Then I Met You"
+    },
+    "category_path": [
+      "beauty",
+      "skincare",
+      "moisturize",
+      "cream"
+    ],
+    "category_kind": "beauty",
+    "image_url": "https://thenimetyou.com/cdn/shop/files/timy_pdp_rrbc_1x1_becc713c-da46-4924-81ac-7aa8e6b06442.png?v=1789422227",
+    "image_urls": [
+      "https://thenimetyou.com/cdn/shop/files/timy_pdp_rrbc_1x1_becc713c-da46-4924-81ac-7aa8e6b06442.png?v=1789422227",
+      "https://thenimetyou.com/cdn/shop/files/Our_Story.png?v=1784805787",
+      "https://thenimetyou.com/cdn/shop/files/timy_find_us_in_store_1.jpg?v=1789493183",
+      "https://thenimetyou.com/cdn/shop/files/TIMY_1x1_PDP_RRBC_Claims_1.jpg?v=1789422228",
+      "https://thenimetyou.com/cdn/shop/files/TIMY_1x1_PDP_RRBC_B-A.jpg?v=1789422228",
+      "https://cdn.shopify.com/s/files/1/0023/6584/9655/files/RenewingRichBeautyCreamGinseng_c197198b-e47a-42ec-afd0-14a5aad27edb.jpg?v=1734030127",
+      "https://cdn.shopify.com/s/files/1/0023/6584/9655/files/PDP-Image-Then-I-Met-You-Renewing-Rich-Beauty-Cream-Claims.jpg?v=1734030127",
+      "https://cdn.shopify.com/s/files/1/0023/6584/9655/files/Untitled_design_13.png?v=1734030127",
+      "https://cdn.shopify.com/s/files/1/0023/6584/9655/files/PDP-Image-Then-I-Met-You-Renewing-Rich-Beauty-Cream-Travel-Size-Mini.png?v=1734030127"
+    ],
+    "images": [
+      "https://thenimetyou.com/cdn/shop/files/timy_pdp_rrbc_1x1_becc713c-da46-4924-81ac-7aa8e6b06442.png?v=1789422227",
+      "https://thenimetyou.com/cdn/shop/files/Our_Story.png?v=1784805787",
+      "https://thenimetyou.com/cdn/shop/files/timy_find_us_in_store_1.jpg?v=1789493183",
+      "https://thenimetyou.com/cdn/shop/files/TIMY_1x1_PDP_RRBC_Claims_1.jpg?v=1789422228",
+      "https://thenimetyou.com/cdn/shop/files/TIMY_1x1_PDP_RRBC_B-A.jpg?v=1789422228",
+      "https://cdn.shopify.com/s/files/1/0023/6584/9655/files/RenewingRichBeautyCreamGinseng_c197198b-e47a-42ec-afd0-14a5aad27edb.jpg?v=1734030127",
+      "https://cdn.shopify.com/s/files/1/0023/6584/9655/files/PDP-Image-Then-I-Met-You-Renewing-Rich-Beauty-Cream-Claims.jpg?v=1734030127",
+      "https://cdn.shopify.com/s/files/1/0023/6584/9655/files/Untitled_design_13.png?v=1734030127",
+      "https://cdn.shopify.com/s/files/1/0023/6584/9655/files/PDP-Image-Then-I-Met-You-Renewing-Rich-Beauty-Cream-Travel-Size-Mini.png?v=1734030127"
+    ],
+    "source": "external_seed",
+    "readiness_tier": null,
+    "serving_eligible": true,
+    "purchase_route": null,
+    "commerce_mode": null,
+    "checkout_handoff": null,
+    "external_redirect_url": "https://thenimetyou.com/products/renewing-rich-beauty-cream",
+    "url": "https://agent.pivota.cc/products/sig_b8c6c2ef7bc6125cc49cde9ffcf6ccb4",
+    "canonical_url": "https://agent.pivota.cc/products/sig_b8c6c2ef7bc6125cc49cde9ffcf6ccb4",
+    "destination_url": "https://thenimetyou.com/products/renewing-rich-beauty-cream",
+    "source_url": "https://thenimetyou.com/products/renewing-rich-beauty-cream",
+    "default_variant_id": "41925924913241",
+    "variants": [
+      {
+        "variant_id": "41925924880473",
+        "sku_id": "TMY121085",
+        "title": "50 mL",
+        "options": [
+          {
+            "name": "Size",
+            "value": "50 mL",
+            "axis_kind": "volume"
+          }
+        ],
+        "price": {
+          "current": {
+            "amount": 60,
+            "currency": "USD"
+          }
+        },
+        "availability": {
+          "in_stock": true
+        },
+        "image_url": "https://thenimetyou.com/cdn/shop/files/timy_pdp_rrbc_1x1_becc713c-da46-4924-81ac-7aa8e6b06442.png?v=1789422227",
+        "label_image_url": "https://cdn.shopify.com/s/files/1/0023/6584/9655/files/PDP-Image_Then-I-Met-You_Renewing-Rich-Beauty-Cream_No_Badge.jpg?v=1734030127",
+        "swatch_image_url": "https://cdn.shopify.com/s/files/1/0023/6584/9655/files/PDP-Image_Then-I-Met-You_Renewing-Rich-Beauty-Cream_No_Badge.jpg?v=1734030127",
+        "images": [
+          "https://thenimetyou.com/cdn/shop/files/timy_pdp_rrbc_1x1_becc713c-da46-4924-81ac-7aa8e6b06442.png?v=1789422227"
+        ],
+        "image_urls": [
+          "https://thenimetyou.com/cdn/shop/files/timy_pdp_rrbc_1x1_becc713c-da46-4924-81ac-7aa8e6b06442.png?v=1789422227"
+        ],
+        "axis_kind": "volume",
+        "display_label": "Size: 50 mL",
+        "source_quality_status": "captured"
+      },
+      {
+        "variant_id": "41925924913241",
+        "sku_id": "TMY991190",
+        "title": "15 mL",
+        "options": [
+          {
+            "name": "Size",
+            "value": "15 mL",
+            "axis_kind": "volume"
+          }
+        ],
+        "price": {
+          "current": {
+            "amount": 20,
+            "currency": "USD"
+          }
+        },
+        "availability": {
+          "in_stock": true
+        },
+        "image_url": "https://cdn.shopify.com/s/files/1/0023/6584/9655/files/PDP-Image-Then-I-Met-You-Renewing-Rich-Beauty-Cream-Travel-Size-Mini.png?v=1734030127",
+        "label_image_url": "https://cdn.shopify.com/s/files/1/0023/6584/9655/files/PDP-Image-Then-I-Met-You-Renewing-Rich-Beauty-Cream-Travel-Size-Mini.png?v=1734030127",
+        "swatch_image_url": "https://cdn.shopify.com/s/files/1/0023/6584/9655/files/PDP-Image-Then-I-Met-You-Renewing-Rich-Beauty-Cream-Travel-Size-Mini.png?v=1734030127",
+        "images": [
+          "https://cdn.shopify.com/s/files/1/0023/6584/9655/files/PDP-Image-Then-I-Met-You-Renewing-Rich-Beauty-Cream-Travel-Size-Mini.png?v=1734030127"
+        ],
+        "image_urls": [
+          "https://cdn.shopify.com/s/files/1/0023/6584/9655/files/PDP-Image-Then-I-Met-You-Renewing-Rich-Beauty-Cream-Travel-Size-Mini.png?v=1734030127"
+        ],
+        "axis_kind": "volume",
+        "display_label": "Size: 15 mL",
+        "source_quality_status": "captured"
+      }
+    ],
+    "purchase_grain": "variant",
+    "price": {
+      "current": {
+        "amount": 20,
+        "currency": "USD"
+      }
+    },
+    "availability": {
+      "in_stock": true
+    },
+    "description": "A rich and silky cream containing our proprietary Quad Ginseng Complex delivers a powerful blend of antioxidants and leaves skin smooth, soft and plump with moisture. Baobab, squalane and hyaluronic acid cocoon the face with lasting hydration that absorbs quickly, quenching skin in a dreamy, creamy, dewy glow. For best results, use on damp skin and apply using our Glow Deeper 9 Point Facial massage technique. To maximize the hydrating benefits of the cream, use after exfoliating with the Rosé Resurfacing Facial Mask to seal in moisture and soothe the skin. Select Awards & Honors: Winner of the 2022 Popsugar Beauty Awards Best Moisturizer Winner of the 2022 Soko Glam Best of K-Beauty ® Rising Star Award for Best Texture 50 mL / 1.69 fl oz",
+    "source_product_id": "ext_78459078c41984b4f03eb5f5",
+    "product_key": "prod::external_seed::external_seed::ext_78459078c41984b4f03eb5f5",
+    "catalog_category_path": "beauty/skincare/moisturize/cream",
+    "category": "Face Cream",
+    "product_type": "Face Cream",
+    "category_label_source": "taxonomy_reconciler_v1",
+    "category_confidence": 0.85,
+    "product_line_id": "pl_eb22116f1f1a3a5aee470acf",
+    "review_family_id": "rf_eb22116f1f1a3a5aee470acf",
+    "sellable_item_group_id": "sig_530102944c37e47134fa0d00",
+    "product_group_id": "sig_530102944c37e47134fa0d00",
+    "pivota_signature_id": "sig_b8c6c2ef7bc6125cc49cde9ffcf6ccb4",
+    "signature_id": "sig_b8c6c2ef7bc6125cc49cde9ffcf6ccb4",
+    "pivota_canonical_url": "https://agent.pivota.cc/products/sig_b8c6c2ef7bc6125cc49cde9ffcf6ccb4",
+    "canonical_scope": "synthetic"
+  },
+  "modules": [
+    {
+      "module_id": "m_media",
+      "type": "media_gallery",
+      "priority": 100,
+      "data": {
+        "items": [
+          {
+            "type": "image",
+            "url": "https://thenimetyou.com/cdn/shop/files/timy_pdp_rrbc_1x1_becc713c-da46-4924-81ac-7aa8e6b06442.png?v=1789422227",
+            "alt_text": "Renewing Rich Beauty Cream"
+          },
+          {
+            "type": "image",
+            "url": "https://thenimetyou.com/cdn/shop/files/Our_Story.png?v=1784805787",
+            "alt_text": "Renewing Rich Beauty Cream"
+          },
+          {
+            "type": "image",
+            "url": "https://thenimetyou.com/cdn/shop/files/timy_find_us_in_store_1.jpg?v=1789493183",
+            "alt_text": "Renewing Rich Beauty Cream"
+          },
+          {
+            "type": "image",
+            "url": "https://thenimetyou.com/cdn/shop/files/TIMY_1x1_PDP_RRBC_Claims_1.jpg?v=1789422228",
+            "alt_text": "Renewing Rich Beauty Cream"
+          },
+          {
+            "type": "image",
+            "url": "https://thenimetyou.com/cdn/shop/files/TIMY_1x1_PDP_RRBC_B-A.jpg?v=1789422228",
+            "alt_text": "Renewing Rich Beauty Cream"
+          },
+          {
+            "type": "image",
+            "url": "https://cdn.shopify.com/s/files/1/0023/6584/9655/files/RenewingRichBeautyCreamGinseng_c197198b-e47a-42ec-afd0-14a5aad27edb.jpg?v=1734030127",
+            "alt_text": "Renewing Rich Beauty Cream"
+          },
+          {
+            "type": "image",
+            "url": "https://cdn.shopify.com/s/files/1/0023/6584/9655/files/PDP-Image-Then-I-Met-You-Renewing-Rich-Beauty-Cream-Claims.jpg?v=1734030127",
+            "alt_text": "Renewing Rich Beauty Cream"
+          },
+          {
+            "type": "image",
+            "url": "https://cdn.shopify.com/s/files/1/0023/6584/9655/files/Untitled_design_13.png?v=1734030127",
+            "alt_text": "Renewing Rich Beauty Cream"
+          },
+          {
+            "type": "image",
+            "url": "https://cdn.shopify.com/s/files/1/0023/6584/9655/files/PDP-Image-Then-I-Met-You-Renewing-Rich-Beauty-Cream-Travel-Size-Mini.png?v=1734030127",
+            "alt_text": "Renewing Rich Beauty Cream"
+          }
+        ],
+        "gallery_scope": "exact_item",
+        "preview_scope": "product_line",
+        "entry_points": {
+          "submit_photo": {
+            "action_type": "open_embed",
+            "label": "Add a photo",
+            "target": {
+              "embed_intent_type": "buyer_media_submission",
+              "resolve_params": {
+                "product_id": "sig_b8c6c2ef7bc6125cc49cde9ffcf6ccb4",
+                "merchant_id": "merch_obs_d12f5a29a32d66ca",
+                "content_type": "photo"
+              }
+            }
+          },
+          "submit_video": {
+            "action_type": "open_embed",
+            "label": "Add a video",
+            "target": {
+              "embed_intent_type": "buyer_media_submission",
+              "resolve_params": {
+                "product_id": "sig_b8c6c2ef7bc6125cc49cde9ffcf6ccb4",
+                "merchant_id": "merch_obs_d12f5a29a32d66ca",
+                "content_type": "video"
+              }
+            }
+          }
+        },
+        "contribution_policy": {
+          "submissions_open": true,
+          "publish_visibility": "employee_approved_only",
+          "employee_review_required": true,
+          "moderation_owner": "pivota_employee",
+          "accepted_content_types": [
+            "photo",
+            "video"
+          ]
+        }
+      }
+    },
+    {
+      "module_id": "m_variant",
+      "type": "variant_selector",
+      "priority": 95,
+      "data": {
+        "selected_variant_id": "41925924913241",
+        "variants": [
+          {
+            "variant_id": "41925924880473",
+            "sku_id": "TMY121085",
+            "title": "50 mL",
+            "display_label": "Size: 50 mL",
+            "options": [
+              {
+                "name": "Size",
+                "value": "50 mL",
+                "axis_kind": "volume"
+              }
+            ],
+            "price": {
+              "current": {
+                "amount": 60,
+                "currency": "USD"
+              }
+            },
+            "availability": {
+              "in_stock": true
+            },
+            "image_url": "https://thenimetyou.com/cdn/shop/files/timy_pdp_rrbc_1x1_becc713c-da46-4924-81ac-7aa8e6b06442.png?v=1789422227",
+            "label_image_url": "https://cdn.shopify.com/s/files/1/0023/6584/9655/files/PDP-Image_Then-I-Met-You_Renewing-Rich-Beauty-Cream_No_Badge.jpg?v=1734030127",
+            "swatch_image_url": "https://cdn.shopify.com/s/files/1/0023/6584/9655/files/PDP-Image_Then-I-Met-You_Renewing-Rich-Beauty-Cream_No_Badge.jpg?v=1734030127",
+            "axis_kind": "volume",
+            "source_quality_status": "captured"
+          },
+          {
+            "variant_id": "41925924913241",
+            "sku_id": "TMY991190",
+            "title": "15 mL",
+            "display_label": "Size: 15 mL",
+            "options": [
+              {
+                "name": "Size",
+                "value": "15 mL",
+                "axis_kind": "volume"
+              }
+            ],
+            "price": {
+              "current": {
+                "amount": 20,
+                "currency": "USD"
+              }
+            },
+            "availability": {
+              "in_stock": true
+            },
+            "image_url": "https://cdn.shopify.com/s/files/1/0023/6584/9655/files/PDP-Image-Then-I-Met-You-Renewing-Rich-Beauty-Cream-Travel-Size-Mini.png?v=1734030127",
+            "label_image_url": "https://cdn.shopify.com/s/files/1/0023/6584/9655/files/PDP-Image-Then-I-Met-You-Renewing-Rich-Beauty-Cream-Travel-Size-Mini.png?v=1734030127",
+            "swatch_image_url": "https://cdn.shopify.com/s/files/1/0023/6584/9655/files/PDP-Image-Then-I-Met-You-Renewing-Rich-Beauty-Cream-Travel-Size-Mini.png?v=1734030127",
+            "axis_kind": "volume",
+            "source_quality_status": "captured"
+          }
+        ],
+        "options": [
+          {
+            "name": "Size",
+            "axis_kind": "volume",
+            "values": [
+              {
+                "value": "50 mL",
+                "label": "50 mL",
+                "variant_ids": [
+                  "41925924880473"
+                ],
+                "selected": false,
+                "swatch_image_url": "https://cdn.shopify.com/s/files/1/0023/6584/9655/files/PDP-Image_Then-I-Met-You_Renewing-Rich-Beauty-Cream_No_Badge.jpg?v=1734030127",
+                "label_image_url": "https://cdn.shopify.com/s/files/1/0023/6584/9655/files/PDP-Image_Then-I-Met-You_Renewing-Rich-Beauty-Cream_No_Badge.jpg?v=1734030127"
+              },
+              {
+                "value": "15 mL",
+                "label": "15 mL",
+                "variant_ids": [
+                  "41925924913241"
+                ],
+                "selected": true,
+                "swatch_image_url": "https://cdn.shopify.com/s/files/1/0023/6584/9655/files/PDP-Image-Then-I-Met-You-Renewing-Rich-Beauty-Cream-Travel-Size-Mini.png?v=1734030127",
+                "label_image_url": "https://cdn.shopify.com/s/files/1/0023/6584/9655/files/PDP-Image-Then-I-Met-You-Renewing-Rich-Beauty-Cream-Travel-Size-Mini.png?v=1734030127"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "module_id": "m_price",
+      "type": "price_promo",
+      "priority": 90,
+      "data": {
+        "price": {
+          "amount": 20,
+          "currency": "USD"
+        },
+        "promotions": []
+      }
+    },
+    {
+      "module_id": "m_product_overview",
+      "type": "product_overview",
+      "priority": 70,
+      "data": {
+        "sections": [
+          {
+            "heading": "Description",
+            "content_type": "text",
+            "content": "A rich and silky cream containing our proprietary Quad Ginseng Complex delivers a powerful blend of antioxidants and leaves skin smooth, soft and plump with moisture. Baobab, squalane and hyaluronic acid cocoon the face with lasting hydration that absorbs quickly, quenching skin in a dreamy, creamy, dewy glow. For best results, use on damp skin and apply using our Glow Deeper 9 Point Facial massage technique. To maximize the hydrating benefits of the cream, use after exfoliating with the Rosé Resurfacing Facial Mask to seal in moisture and soothe the skin. Select Awards & Honors: Winner of the 2022 Popsugar Beauty Awards Best Moisturizer Winner of the 2022 Soko Glam Best of K-Beauty ® Rising Star Award for Best Texture 50 mL / 1.69 fl oz",
+            "collapsed_by_default": false,
+            "media_urls": [
+              "https://thenimetyou.com/cdn/shop/files/Build_Your_Routine_4d752823-68a0-4ff5-8186-f167137103e2.png?v=1784804700"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "module_id": "m_supplemental_details",
+      "type": "supplemental_details",
+      "priority": 69,
+      "data": {
+        "sections": [
+          {
+            "heading": "Product Type",
+            "content_type": "text",
+            "content": "Facial Moisturizer",
+            "collapsed_by_default": true
+          },
+          {
+            "heading": "Category",
+            "content_type": "text",
+            "content": "Moisturizer",
+            "collapsed_by_default": true
+          }
+        ]
+      }
+    },
+    {
+      "module_id": "m_active_ingredients",
+      "type": "active_ingredients",
+      "priority": 82,
+      "data": {
+        "title": "Active Ingredients",
+        "items": [
+          "Ceramide NP",
+          "Niacinamide",
+          "Hyaluronic acid",
+          "Squalane",
+          "Centella asiatica"
+        ],
+        "source_origin": "product_active_array",
+        "source_quality_status": "authoritative"
+      }
+    },
+    {
+      "module_id": "m_ingredients_inci",
+      "type": "ingredients_inci",
+      "priority": 81,
+      "data": {
+        "title": "Ingredients (INCI)",
+        "items": [
+          "WATER/AQUA/EAU",
+          "PROPANEDIOL",
+          "CETYL ETHYLHEXANOATE",
+          "SQUALANE",
+          "BUTYLENE GLYCOL",
+          "POLYGLYCERYL-6 STEARATE",
+          "1,2-HEXANEDIOL",
+          "GLYCERIN",
+          "CETEARYL ALCOHOL",
+          "NIACINAMIDE",
+          "PALMITIC ACID",
+          "STEARIC ACID",
+          "ADANSONIA DIGITATA (BAOBAB) SEED OIL",
+          "GLYCERYL STEARATE",
+          "VINYL DIMETHICONE",
+          "PANAX GINSENG SEED OIL",
+          "PANAX GINSENG ROOT EXTRACT",
+          "PANAX GINSENG ROOT WATER",
+          "HYDROLYZED GINSENG SAPONINS",
+          "LACTOBACILLUS/RICE FERMENT",
+          "HYALURONIC ACID",
+          "HYDROLYZED HYALURONIC ACID",
+          "BUTYROSPERMUM PARKII (SHEA) BUTTER",
+          "CENTELLA ASIATICA EXTRACT",
+          "CERAMIDE AS",
+          "CERAMIDE NS",
+          "CERAMIDE AP",
+          "CERAMIDE NP",
+          "EUCALYPTUS GLOBULUS LEAF EXTRACT",
+          "ASIATIC ACID",
+          "ASIATICOSIDE",
+          "PHYTOSPHINGOSINE",
+          "MADECASSIC ACID",
+          "CERAMIDE EOP",
+          "TOCOPHEROL",
+          "ADENOSINE",
+          "TOCOPHERYL ACETATE",
+          "SODIUM ACRYLATE/SODIUM ACRYLOYLDIMETHYL TAURATE COPOLYMER",
+          "CARBOMER",
+          "ISOHEXADECANE",
+          "TROMETHAMINE",
+          "POLYGLYCERYL-6 BEHENATE",
+          "POLYSORBATE 80",
+          "ETHYLHEXYLGLYCERIN",
+          "SORBITAN OLEATE",
+          "CAPRYLIC/CAPRIC TRIGLYCERIDE",
+          "THEOBROMA CACAO (COCOA) SEED EXTRACT",
+          "DISODIUM EDTA",
+          "SODIUM HYALURONATE",
+          "PHELLINUS LINTEUS EXTRACT",
+          "HYDROGENATED LECITHIN",
+          "DEXTRIN",
+          "CHOLESTEROL",
+          "PELARGONIUM GRAVEOLENS FLOWER OIL",
+          "CITRONELLOL",
+          "GERANIOL",
+          "morning and night"
+        ],
+        "raw_text": "WATER/AQUA/EAU, PROPANEDIOL, CETYL ETHYLHEXANOATE, SQUALANE, BUTYLENE GLYCOL, POLYGLYCERYL-6 STEARATE, 1,2-HEXANEDIOL, GLYCERIN, CETEARYL ALCOHOL, NIACINAMIDE, PALMITIC ACID, STEARIC ACID, ADANSONIA DIGITATA (BAOBAB) SEED OIL, GLYCERYL STEARATE, VINYL DIMETHICONE, PANAX GINSENG SEED OIL, PANAX GINSENG ROOT EXTRACT, PANAX GINSENG ROOT WATER, HYDROLYZED GINSENG SAPONINS, LACTOBACILLUS/RICE FERMENT, HYALURONIC ACID, HYDROLYZED HYALURONIC ACID, BUTYROSPERMUM PARKII (SHEA) BUTTER, CENTELLA ASIATICA EXTRACT, CERAMIDE AS, CERAMIDE NS, CERAMIDE AP, CERAMIDE NP, EUCALYPTUS GLOBULUS LEAF EXTRACT, ASIATIC ACID, ASIATICOSIDE, PHYTOSPHINGOSINE, MADECASSIC ACID, CERAMIDE EOP, TOCOPHEROL, ADENOSINE, TOCOPHERYL ACETATE, SODIUM ACRYLATE/SODIUM ACRYLOYLDIMETHYL TAURATE COPOLYMER, CARBOMER, ISOHEXADECANE, TROMETHAMINE, POLYGLYCERYL-6 BEHENATE, POLYSORBATE 80, ETHYLHEXYLGLYCERIN, SORBITAN OLEATE, CAPRYLIC/CAPRIC TRIGLYCERIDE, THEOBROMA CACAO (COCOA) SEED EXTRACT, DISODIUM EDTA, SODIUM HYALURONATE, PHELLINUS LINTEUS EXTRACT, HYDROGENATED LECITHIN, DEXTRIN, CHOLESTEROL, PELARGONIUM GRAVEOLENS FLOWER OIL, CITRONELLOL, GERANIOL, LINALOOL HOW TO USE Apply a layer onto your face and neck using your fingertips or spatula. Use twice daily, morning and night.",
+        "source_origin": "pdp_section",
+        "source_quality_status": "authoritative"
+      }
+    },
+    {
+      "module_id": "m_how_to_use",
+      "type": "how_to_use",
+      "priority": 80,
+      "data": {
+        "title": "How to use",
+        "raw_text": "For best results, use on damp skin and apply using the Glow Deeper 9 Point Facial massage technique. To maximize the hydrating benefits of the cream, use after exfoliating with the Rose Resurfacing Facial Mask to seal in moisture.",
+        "steps": [
+          "For best results, use on damp skin and apply using the Glow Deeper 9 Point Facial massage technique.",
+          "To maximize the hydrating benefits of the cream, use after exfoliating with the Rose Resurfacing Facial Mask to seal in moisture."
+        ],
+        "source_origin": "reviewed_source_backed_pdp_content_patch",
+        "source_quality_status": "high",
+        "image_urls": [
+          "https://thenimetyou.com/cdn/shop/files/PDP-Image-Then-I-Met-You-Renewing-Rich-Beauty-Cream-Step-5-Moisturize-Routine.jpg?v=1734030127"
+        ]
+      }
+    }
+  ],
+  "actions": [
+    {
+      "action_type": "add_to_cart",
+      "label": "Add to Cart",
+      "priority": 20,
+      "target": {}
+    },
+    {
+      "action_type": "buy_now",
+      "label": "Buy Now",
+      "priority": 10,
+      "target": {}
+    }
+  ],
+  "quality_signals": {
+    "coverage_by_module": {
+      "media_gallery": 1,
+      "variant_selector": 1,
+      "price_promo": 1,
+      "product_overview": 1,
+      "supplemental_details": 1,
+      "active_ingredients": 1,
+      "ingredients_inci": 1,
+      "how_to_use": 1,
+      "reviews_preview": 1,
+      "buy_box": 1
+    },
+    "parse_confidence": {
+      "size_guide": 0
+    },
+    "fallback_used": {
+      "size_guide": false
+    },
+    "gating": {
+      "buy_box_ok": true,
+      "size_guide_ok": false
+    }
+  },
+  "product_group_id": "sig_530102944c37e47134fa0d00",
+  "sellable_item_group_id": "sig_530102944c37e47134fa0d00",
+  "product_line_id": "pl_eb22116f1f1a3a5aee470acf",
+  "review_family_id": "rf_eb22116f1f1a3a5aee470acf",
+  "canonical_scope": "synthetic"
+}
