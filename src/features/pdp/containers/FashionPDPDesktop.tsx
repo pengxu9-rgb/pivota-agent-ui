@@ -105,6 +105,7 @@ export function FashionPDPDesktop(props: FashionPDPMobileProps) {
               subtitle={props.subtitle}
               rating={props.rating}
               reviewCount={props.reviewCount}
+              reviewScope={props.reviewScope}
               onSeeReviews={scrollToReviews}
             />
             <BeautyPriceRow
@@ -199,12 +200,15 @@ export function FashionPDPDesktop(props: FashionPDPMobileProps) {
             <div ref={reviewsAnchorRef} className="mt-8 scroll-mt-20">
               <BeautyAccordion
                 title="Reviews"
-                count={props.reviewCount ?? props.reviews?.length ?? 0}
+                count={props.reviewCount}
                 defaultOpen
               >
                 <BeautyReviewsPreview
-                  rating={props.rating ?? 0}
-                  reviewCount={props.reviewCount ?? props.reviews?.length ?? 0}
+                  rating={props.rating}
+                  reviewCount={props.reviewCount}
+              reviewScope={props.reviewScope}
+              reviewScopes={props.reviewScopes}
+              onSelectReviewScope={props.onSelectReviewScope}
                   reviews={props.reviews ?? []}
                   onWriteReview={props.onWriteReview}
                   onSeeAll={props.onSeeAllReviews}

@@ -654,4 +654,58 @@ describe('PdpContainer recommendations interactions', () => {
       }),
     );
   });
+  // Independent reviewer cases, reproduced against this revision.
+  it('adversarial: similar external selection must warn before losing variant', async () => {
+    const confirmSpy=vi.spyOn(window,'confirm').mockReturnValue(false);
+    getPdpV2Mock.mockResolvedValue(buildQuickActionPdpV2Response({
+      product_id:'prod_1',merchant_id:'external_seed',title:'Product 1',source:'external_seed',
+      destination_url:'https://moogoousa.com/products/full-cream-moisturizer',
+      variants:[
+        {variant_id:'45890202206515',title:'120 g',options:[{name:'Size',value:'120 g'}],price:{current:{amount:11.9,currency:'USD'}},availability:{in_stock:true}},
+        {variant_id:'45890202272051',title:'500 g',options:[{name:'Size',value:'500 g'}],price:{current:{amount:28.9,currency:'USD'}},availability:{in_stock:true}}
+      ]
+    }));
+    render(<PdpContainer payload={buildPayload({items:buildSimilar(1,'external_seed')})} mode="generic" onAddToCart={()=>{}} onBuyNow={()=>{}}/>);
+    fireEvent.click(screen.getByRole('button',{name:/open product 1/i}));
+    await waitFor(()=>expect(screen.getByRole('button',{name:/500 g/i})).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button',{name:/500 g/i}));
+    fireEvent.click(screen.getByRole('button',{name:/^open$/i}));
+    await waitFor(()=>expect(windowOpenMock.mock.calls.length+confirmSpy.mock.calls.length).toBeGreaterThan(0));
+    console.log('ACTUAL_SIMILAR_HANDOFF',JSON.stringify({confirm:confirmSpy.mock.calls,open:windowOpenMock.mock.calls}));
+    expect(confirmSpy).toHaveBeenCalledTimes(1);
+    expect(confirmSpy).toHaveBeenCalledWith(expect.stringContaining('500 g'));
+    expect(windowOpenMock).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.getByRole('button', { name: /^open$/i })).not.toBeDisabled());
+    confirmSpy.mockReturnValue(true);
+    fireEvent.click(screen.getByRole('button', { name: /^open$/i }));
+    await waitFor(() => expect(windowOpenMock).toHaveBeenCalledWith('https://moogoousa.com/products/full-cream-moisturizer', '_blank', 'noopener,noreferrer'));
+    expect(confirmSpy).toHaveBeenCalledTimes(2);
+    expect(confirmSpy).toHaveBeenLastCalledWith(expect.stringContaining('USD 28.90'));
+    confirmSpy.mockRestore();
+  });
+
+  it('adversarial: unknown exact review scope stays unknown', () => {
+    const payload=buildPayload();payload.x_reviews_state='ready';
+    payload.modules.push({module_id:'reviews',type:'reviews_preview',priority:50,data:{
+      scale:5,rating:4.7,review_count:20,availability_state:'ready',aggregation_scope:'exact_item',exact_item_review_count:0,product_line_review_count:20,
+      tabs:[{id:'product_line',label:'Product line',count:20},{id:'exact_item',label:'Exact item',count:0,default:true}],
+      scoped_summaries:{exact_item:{scale:5,review_count:0,rating:0,availability_state:'unavailable',preview_items:[]},product_line:{scale:5,review_count:20,rating:4.7,availability_state:'ready',preview_items:[]}}
+    }} as any);
+    render(<PdpContainer payload={payload} mode="generic" onAddToCart={()=>{}} onBuyNow={()=>{}}/>);
+    console.log('ACTUAL_UNKNOWN_REVIEW',JSON.stringify({zero:!!screen.queryByText('Reviews (0)'),empty:!!screen.queryByText(/No reviews yet. Be the first to share your thoughts/i),canSelectFamily:!!screen.queryByRole('button',{name:/Product line/i})}));
+    expect(screen.getByText(/Review information is unavailable/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Product line/ }));
+    expect(screen.queryByText(/Review information is unavailable/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Product line/ })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(screen.getByRole('button', { name: /Exact item/ }));
+    expect(screen.getByText(/Review information is unavailable/)).toBeInTheDocument();
+  });
+  it('adversarial: exact media cross-pair rejected in rendered customer section', () => {
+    const payload=buildPayload();payload.x_reviews_state='ready';
+    payload.content_base_ref={product_id:'foreignProduct',merchant_id:'foreignMerchant'};
+    payload.modules.push({module_id:'reviews',type:'reviews_preview',priority:50,data:{scale:5,rating:5,review_count:1,availability_state:'ready',preview_items:[{review_id:'r',rating:5,text_snippet:'Hi',media:[{type:'image',url:'https://example.com/wrong-pair.jpg',role:'customer_review',provenance:{source_type:'customer_review',verification_status:'review_linked',moderation_status:'active',scope:'exact_item',review_id:'r',merchant_id:payload.product.merchant_id,product_id:'foreignProduct'}}]}]}} as any);
+    render(<PdpContainer payload={payload} mode="beauty" onAddToCart={()=>{}} onBuyNow={()=>{}}/>);
+    console.log('ACTUAL_CROSS_PAIR',screen.queryAllByRole('button',{name:/Customer review photo/}).map(el=>el.getAttribute('aria-label')));
+    expect(screen.queryByRole('button',{name:/Customer review photo/})).not.toBeInTheDocument();
+  });
 });

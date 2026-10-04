@@ -6,8 +6,6 @@ import {
   Camera,
   Heart,
   Menu,
-  Mic,
-  Search,
   Send,
   ShoppingBag,
 } from 'lucide-react';
@@ -43,6 +41,10 @@ import {
 } from '@/lib/photoAnalysis';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { DecisionComparison } from '@/components/chat/DecisionComparison';
+import { deriveBrief, queryForBrief, contextualSuggestions, productKey, type ShoppingBrief } from '@/features/shopping/model';
+import { runShoppingTurn } from '@/features/shopping/runShoppingTurn';
+import { buildDecisionReport } from '@/features/shopping/decision';
 
 const CHAT_RAIL_INITIAL_PAGE_SIZE = 12;
 const CHAT_RAIL_PAGE_STEP = 12;
@@ -50,49 +52,8 @@ const NO_GROWTH_STOP_THRESHOLD = 2;
 const DAILY_PICKS_REQUEST_LIMIT = 10;
 const DAILY_PICKS_DISPLAY_LIMIT = 5;
 
-/** Mono-uppercase prompts that sit just above the composer. Tapping a chip
- *  primes the input (no auto-send) per the handoff. */
-const COMPOSER_CHIP_PROMPTS: string[] = [
-  'Refine fit',
-  'Show alternates',
-  'Budget under $200',
-  'Pair with sandals',
-];
-
-/** Default follow-up prompts after an AI rec set. Plain strings — the
- *  editorial chip language drops the legacy icons + tones. */
-const FOLLOWUP_PROMPTS: string[] = [
-  'Budget options',
-  'Other colors',
-  'Size guide',
-  'Outfit ideas',
-];
-
-const CHIP_STOPWORDS = new Set([
-  'a','an','the','and','or','for','to','of','with','in','on','show','me','some','any','please',
-  'find','i','want','need','like','can','you','give','get','my','this','that','these','those',
-]);
-
-function deriveChipsFromQuery(query: string): string[] {
-  const tokens = query
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
-    .split(/\s+/)
-    .map((t) => t.trim())
-    .filter((t) => t.length >= 3 && !CHIP_STOPWORDS.has(t));
-  const seen = new Set<string>();
-  const unique: string[] = [];
-  for (const t of tokens) {
-    if (seen.has(t)) continue;
-    seen.add(t);
-    unique.push(t);
-    if (unique.length >= 5) break;
-  }
-  return unique.map((label) => label.charAt(0).toUpperCase() + label.slice(1));
-}
-
 function buildProductKey(product: ProductResponse): string {
-  return `${String(product?.merchant_id || '').trim()}::${String(product?.product_id || '').trim()}`;
+  return productKey(product);
 }
 
 function mergeUniqueProducts(current: ProductResponse[], incoming: ProductResponse[]) {
@@ -104,25 +65,6 @@ function mergeUniqueProducts(current: ProductResponse[], incoming: ProductRespon
     merged: Array.from(map.values()),
     added: map.size - before,
   };
-}
-
-function buildStrictEmptyHint(metadata: Record<string, any>): string | null {
-  const reason =
-    String(
-      metadata?.strict_empty_reason ||
-        metadata?.route_health?.fallback_reason ||
-        metadata?.proxy_search_fallback?.reason ||
-        '',
-    )
-      .trim()
-      .toLowerCase();
-  if (!reason) return null;
-  if (reason.includes('timeout')) return 'Search timed out; try a shorter query or add a brand keyword.';
-  if (reason.includes('cache') || reason.includes('no_candidates')) {
-    return 'No strong catalog match; add category + budget + brand for better recall.';
-  }
-  if (reason.includes('irrelevant')) return 'Results were filtered as off-topic; try a more specific shopping request.';
-  return `No reliable matches (${reason}).`;
 }
 
 function friendlyName(user: { email?: string | null; name?: string | null } | null | undefined): string {
@@ -141,11 +83,9 @@ function formatDayStamp(date: Date): string {
   return `${day} ${month}`.toLowerCase();
 }
 
-function formatMessageTime(id: string): string {
-  // Message ids in this app are millisecond timestamps. Fall back to "now"
-  // if the id isn't parseable.
-  const numeric = Number(String(id).match(/^\d+/)?.[0] || '');
-  const date = Number.isFinite(numeric) && numeric > 0 ? new Date(numeric) : new Date();
+function formatMessageTime(timestamp: Date | string): string {
+  const parsed = new Date(timestamp);
+  const date = Number.isFinite(parsed.getTime()) ? parsed : new Date();
   return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: false });
 }
 
@@ -236,28 +176,33 @@ export default function HomePage() {
 }
 
 function HomePageApp() {
-  const router = useRouter();
-  const [input, setInput] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(false); // Mobile: closed by default
-  const [loading, setLoading] = useState(false);
-  const [photoUploading, setPhotoUploading] = useState(false);
   const [hotDeals, setHotDeals] = useState<ProductResponse[]>([]);
   const [hotDealsStatus, setHotDealsStatus] = useState<'loading' | 'ready' | 'empty' | 'error'>('loading');
   const [recentViews, setRecentViews] = useState<DiscoveryRecentView[]>([]);
   const [recentViewsReady, setRecentViewsReady] = useState(false);
-  const [queryChips, setQueryChips] = useState<string[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
 
-  const { messages, addMessage, updateMessage, conversations, resetForGuest } = useChatStore();
-  const { items, addItem, open } = useCartStore();
+  const { messages, conversations, resetForGuest, tasks, draftTask, currentConversationId, beginRequest, completeRequest, updateTask, updateMessageForConversation, toggleSaved } = useChatStore();
+  const task = (currentConversationId && tasks[currentConversationId]) || draftTask;
+  const input = task.draft;
+  const setInput = (draft: string) => updateTask({ draft });
+  const { items, open } = useCartStore();
   const { user } = useAuthStore();
   const { ownerEmail, setOwnerEmail } = useChatStore();
 
   const itemCount = items.reduce((acc, item) => acc + item.quantity, 0);
   const hasUserMessages = messages.some((msg) => msg.role === 'user');
   const photoUploadEnabled = isShoppingSkinPhotoUploadBetaEnabled();
-  const composerBusy = loading || photoUploading;
+  const composerBusy = task.request?.status === 'pending';
+  const suggestions = contextualSuggestions(task.brief, task.displayedProducts.length > 0);
+  const queryChips = [
+    ...(task.brief.category ? [{ key: 'category', label: task.brief.category }] : []),
+    ...(task.brief.fragranceFree ? [{ key: 'fragranceFree', label: 'Fragrance-free required' }] : []),
+    ...(task.brief.budget ? [{ key: 'budget', label: `${task.brief.budget.exclusive ? 'Under' : 'Up to'} ${task.brief.budget.currency} ${task.brief.budget.amount}` }] : []),
+    ...(task.brief.requestedCount ? [{ key: 'requestedCount', label: `${task.brief.requestedCount} options` }] : []),
+  ];
   const greetingName = friendlyName(user);
   const todayStamp = useMemo(() => formatDayStamp(new Date()), []);
 
@@ -349,20 +294,16 @@ function HomePageApp() {
     }
   }, [user, ownerEmail, resetForGuest, setOwnerEmail, conversations.length]);
 
-  const handleSend = async () => {
-    if (!input.trim() || composerBusy) return;
-
-    const userMessage = {
-      id: Date.now().toString(),
-      role: 'user' as const,
-      content: input,
-    };
-
-    addMessage(userMessage);
-    setQueryChips(deriveChipsFromQuery(input.trim()));
-    setInput('');
-    setLoading(true);
-
+  const handleSend = async (override?: string, editedBrief?: ShoppingBrief) => {
+    const query = (override ?? input).trim();
+    const current = useChatStore.getState();
+    if (!query || composerBusy || (current.currentConversationId && current.tasks[current.currentConversationId]?.request?.status === 'pending')) return;
+    const brief = editedBrief || deriveBrief(query, task.brief);
+    const taskSnapshot = task;
+    const identity = beginRequest(query, brief);
+    updateTask({ draft: '' }, identity.conversationId);
+    const conversationState = useChatStore.getState();
+    const requestMessages = conversationState.conversations.find((c) => c.id === identity.conversationId)?.messages || [];
     try {
       // Optional eval metadata for offline/AA-B testing runs (best-effort).
       let evalMetadata: Record<string, any> | undefined;
@@ -406,61 +347,32 @@ function HomePageApp() {
         // ignore
       }
 
-      const userQuery = input.trim();
-      const conversationState = useChatStore.getState();
-      const searchResult = await sendMessage(
-        input,
-        undefined,
-        {
-          ...(evalMetadata ? { metadata: evalMetadata } : {}),
-          pagination: { page: 1, limit: CHAT_RAIL_INITIAL_PAGE_SIZE },
-          userId: user?.id || null,
-          conversationId: conversationState.currentConversationId,
-          conversationMessages: conversationState.messages,
-        },
-      );
-      const products = Array.isArray(searchResult?.products) ? searchResult.products : [];
-      const fallbackReply = searchResult?.reply;
-      const metadata =
-        searchResult?.metadata && typeof searchResult.metadata === 'object'
-          ? (searchResult.metadata as Record<string, any>)
-          : {};
-      const strictEmptyHint = searchResult?.strict_empty ? buildStrictEmptyHint(metadata) : null;
-
-      const assistantMessage = {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant' as const,
-        content:
-          products.length > 0
-            ? `I edited ${products.length} ${products.length === 1 ? 'piece' : 'pieces'} for you.`
-            : [fallbackReply || "I couldn't find anything matching that just yet.", strictEmptyHint]
-                .filter(Boolean)
-                .join('\n'),
-        products,
-        recommendation_paging:
-          products.length > 0
-            ? {
-                query: userQuery,
-                page: searchResult.page_info?.page || 1,
-                limit: CHAT_RAIL_INITIAL_PAGE_SIZE,
-                hasMore: Boolean(searchResult.page_info?.has_more),
-                isLoadingMore: false,
-                noGrowthCount: 0,
-              }
-            : undefined,
-      };
-
-      addMessage(assistantMessage);
+      const response = await runShoppingTurn(query, taskSnapshot, brief, {
+        ...(evalMetadata ? { metadata: evalMetadata } : {}),
+        userId: user?.id || null,
+        conversationId: identity.conversationId,
+        conversationMessages: requestMessages,
+      });
+      completeRequest(identity, response.message, response.taskPatch);
     } catch (error) {
       console.error('Search error:', error);
-      addMessage({
-        id: (Date.now() + 1).toString(),
-        role: 'assistant',
-        content: 'Sorry, there was an error reaching the catalog. Please try again.',
+      completeRequest(identity, {
+        id: `error-${identity.requestId}`,
+        role: 'assistant', kind: 'error',
+        content: 'There was an error reaching the catalog. Your brief and earlier products are saved. Try again.',
       });
-    } finally {
-      setLoading(false);
     }
+  };
+
+  const removeConstraint = (key: string) => {
+    if (composerBusy) return;
+    const brief = { ...task.brief, [key]: undefined };
+    if (key === 'category') brief.intent = '';
+    updateTask({ brief });
+    // The next request is regenerated from the edited brief, so a removed
+    // requirement is absent from both the visible chips and the actual query.
+    const removed = key === 'fragranceFree' ? 'fragrance-free requirement' : key === 'budget' ? 'budget' : key === 'requestedCount' ? 'number of options limit' : 'category requirement';
+    void handleSend(`Remove the ${removed}. ${queryForBrief(brief)}`, brief);
   };
 
   const handleSkinPhotoUploadClick = () => {
@@ -496,8 +408,7 @@ function HomePageApp() {
       content:
         language === 'CN' ? `已上传皮肤照片:${file.name}` : `Uploaded skin photo: ${file.name}`,
     };
-    addMessage(userMessage);
-    setPhotoUploading(true);
+    const identity = beginRequest(userMessage.content, task.brief);
 
     try {
       const result = await analyzeSkinPhotoFile(file, {
@@ -505,7 +416,7 @@ function HomePageApp() {
         userId: user?.id || null,
         sourceAgent: 'shopping_agent',
       });
-      addMessage({
+      completeRequest(identity, {
         id: `photo-a-${Date.now()}`,
         role: 'assistant',
         content: result.assistantText,
@@ -519,16 +430,15 @@ function HomePageApp() {
       }
     } catch (error) {
       console.error('Skin photo analysis error:', error);
-      addMessage({
+      completeRequest(identity, {
         id: `photo-a-error-${Date.now()}`,
+        kind: 'error',
         role: 'assistant',
         content:
           language === 'CN'
             ? '照片分析暂时不可用。请稍后重试,或直接用文字描述肤况。'
             : 'Photo analysis is temporarily unavailable. Try again later or describe your skin in text.',
       });
-    } finally {
-      setPhotoUploading(false);
     }
   };
 
@@ -541,21 +451,28 @@ function HomePageApp() {
       const paging = target.recommendation_paging;
       if (!paging || paging.isLoadingMore || !paging.hasMore || !paging.query) return;
 
-      updateMessage(messageId, {
+      const origin = useChatStore.getState();
+      const conversationId = origin.currentConversationId;
+      const ownerEpoch = origin.ownerEpoch;
+      const originatingRequestId = conversationId ? origin.tasks[conversationId]?.request?.id : undefined;
+      if (!conversationId) return;
+      const patchMessage = (patch: Parameters<typeof updateMessageForConversation>[2]) => {
+        if (useChatStore.getState().ownerEpoch === ownerEpoch && useChatStore.getState().tasks[conversationId]?.request?.id === originatingRequestId) updateMessageForConversation(conversationId, messageId, patch);
+      };
+      patchMessage({
         recommendation_paging: { ...paging, isLoadingMore: true },
       });
 
       try {
         const nextPage = paging.page + 1;
-        const conversationState = useChatStore.getState();
         const result = await sendMessage(paging.query, undefined, {
           pagination: {
             page: nextPage,
             limit: Math.max(CHAT_RAIL_PAGE_STEP, Number(paging.limit || CHAT_RAIL_INITIAL_PAGE_SIZE)),
           },
           userId: user?.id || null,
-          conversationId: conversationState.currentConversationId,
-          conversationMessages: conversationState.messages,
+          conversationId,
+          conversationMessages: origin.messages,
         });
 
         const incoming = Array.isArray(result?.products) ? result.products : [];
@@ -565,8 +482,11 @@ function HomePageApp() {
         const hasMore =
           Boolean(result?.page_info?.has_more) && noGrowthCount < NO_GROWTH_STOP_THRESHOLD;
 
-        updateMessage(messageId, {
-          products: merged,
+        const decision = await buildDecisionReport(merged, origin.tasks[conversationId]?.brief || { intent: '' }, false);
+        const eligible = decision.items.filter((item) => item.eligibility !== 'rejected');
+        patchMessage({
+          decision: { ...decision, items: eligible },
+          products: eligible.map((item) => item.product),
           recommendation_paging: {
             ...paging,
             page: nextPage,
@@ -577,54 +497,23 @@ function HomePageApp() {
         });
       } catch (error) {
         console.error('Load more recommendations error:', error);
-        toast.error('Failed to load more recommendations');
-        updateMessage(messageId, {
+        patchMessage({
+          content: `${target.content}\nMore results could not be loaded. You can retry below.`,
           recommendation_paging: { ...paging, isLoadingMore: false },
         });
+      } finally {
+        const latest = useChatStore.getState();
+        if (latest.ownerEpoch === ownerEpoch && latest.tasks[conversationId]?.request?.id !== originatingRequestId) {
+          updateMessageForConversation(conversationId, messageId, { recommendation_paging: { ...paging, isLoadingMore: false } });
+        }
       }
     },
-    [messages, updateMessage, user?.id],
+    [messages, updateMessageForConversation, user?.id],
   );
 
-  const handleAddToCart = useCallback(
-    (product: any) => {
-      const defaultVariant =
-        Array.isArray(product?.variants) && product.variants.length > 0
-          ? product.variants[0]
-          : null;
-      const variantId =
-        String(
-          product?.variant_id ||
-            defaultVariant?.variant_id ||
-            defaultVariant?.id ||
-            product?.product_ref?.variant_id ||
-            product?.product_ref?.sku_id ||
-            product?.sku_id ||
-            '',
-        ).trim() || String(product.product_id);
-      const sku =
-        String(
-          defaultVariant?.sku || defaultVariant?.sku_id || product?.sku || product?.sku_id || '',
-        ).trim() || undefined;
-      const cartItemId = product?.merchant_id
-        ? `${product.merchant_id}:${variantId}`
-        : variantId;
-      addItem({
-        id: cartItemId,
-        product_id: product.product_id,
-        variant_id: variantId,
-        sku,
-        title: product.title,
-        price: product.price,
-        currency: product.currency,
-        imageUrl: normalizeDisplayImageUrl(product.image_url, '/placeholder.svg'),
-        merchant_id: product.merchant_id,
-        quantity: 1,
-      });
-      toast.success(`Added to bag — ${product.title}`);
-    },
-    [addItem],
-  );
+  const handleSave = useCallback((product: ProductResponse) => {
+    toggleSaved(product);
+  }, [toggleSaved]);
 
   return (
     <div className="flex h-screen w-full bg-white text-foreground overflow-x-hidden">
@@ -657,13 +546,6 @@ function HomePageApp() {
             ) : null}
             <button
               type="button"
-              aria-label="Search"
-              className="flex h-9 w-9 items-center justify-center rounded-full text-foreground transition-opacity active:opacity-60"
-            >
-              <Search size={18} strokeWidth={1.5} />
-            </button>
-            <button
-              type="button"
               aria-label="Open bag"
               onClick={open}
               className="relative flex h-9 w-9 items-center justify-center rounded-full text-foreground transition-opacity active:opacity-60"
@@ -685,11 +567,13 @@ function HomePageApp() {
         {queryChips.length > 0 ? (
           <div className="flex-shrink-0 border-b border-border bg-white">
             <div className="-mx-1 flex gap-1.5 overflow-x-auto px-3 py-2">
-              {queryChips.map((label, i) => (
+              {queryChips.map(({ key, label }) => (
                 <button
-                  key={`${label}-${i}`}
+                  key={key}
                   type="button"
-                  onClick={() => setQueryChips((prev) => prev.filter((_, idx) => idx !== i))}
+                  onClick={() => removeConstraint(key)}
+                  disabled={composerBusy}
+                  aria-label={`Remove ${label} and search again`}
                   className="flex-shrink-0 rounded-full border border-[#534AB7]/20 bg-[#EEEDFE] px-3 py-1 text-[11px] font-medium text-[#534AB7] transition-opacity active:opacity-70"
                 >
                   {label} ×
@@ -698,6 +582,9 @@ function HomePageApp() {
             </div>
           </div>
         ) : null}
+
+        {task.savedProducts.length ? <div className="border-b border-border px-4 py-2 text-xs"><details><summary className="cursor-pointer font-medium">Saved in this task ({task.savedProducts.length})</summary><ul className="mt-2 space-y-2">{task.savedProducts.map((product) => <li key={productKey(product)}><Link href={buildProductHrefForProduct(product)} className="text-[#534AB7] underline">{product.title}</Link><button type="button" onClick={() => toggleSaved(product)} className="ml-3" aria-label={`Remove ${product.title} from saved`}>Remove</button></li>)}</ul></details></div> : null}
+        {task.request && ['error', 'interrupted'].includes(task.request.status) ? <div className="px-4 py-2"><button type="button" onClick={() => void handleSend(task.request?.query)} className="text-sm text-[#534AB7] underline">Retry last request</button></div> : null}
 
         {/* Scrollable body — greeting + today's edit on empty state,
             conversation thread once the user has spoken. */}
@@ -713,7 +600,9 @@ function HomePageApp() {
             ) : (
               <ConversationThread
                 messages={messages}
-                onAddToCart={handleAddToCart}
+                onSave={handleSave}
+                savedProducts={task.savedProducts}
+                suggestions={suggestions}
                 onLoadMore={handleLoadMoreMessageProducts}
                 onFollowUp={(prompt) => setInput(prompt)}
                 composerBusy={composerBusy}
@@ -728,7 +617,7 @@ function HomePageApp() {
           <div className="mx-auto w-full max-w-[720px] px-4 pb-4 pt-2 lg:px-8">
             {/* Chip rail above composer */}
             <div className="-mx-2 mb-2 flex gap-1.5 overflow-x-auto px-2 pb-1">
-              {COMPOSER_CHIP_PROMPTS.map((prompt) => (
+              {suggestions.map((prompt) => (
                 <button
                   key={prompt}
                   type="button"
@@ -772,20 +661,14 @@ function HomePageApp() {
                     void handleSend();
                   }
                 }}
+                aria-label="Shopping request"
                 placeholder="Tell Pivota what you're looking for…"
                 className="flex-1 bg-transparent py-1.5 text-[14px] text-foreground outline-none placeholder:text-muted-foreground"
                 disabled={composerBusy}
               />
               <button
                 type="button"
-                className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-foreground"
-                aria-label="Voice input"
-              >
-                <Mic size={16} strokeWidth={1.6} />
-              </button>
-              <button
-                type="button"
-                onClick={handleSend}
+                onClick={() => void handleSend()}
                 disabled={composerBusy || !input.trim()}
                 className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-white transition-opacity disabled:opacity-30"
                 style={{ background: 'linear-gradient(135deg, #534AB7 0%, #7B6FD4 50%, #1D9E75 100%)' }}
@@ -884,13 +767,17 @@ function EditorialGreeting({
 
 function ConversationThread({
   messages,
-  onAddToCart,
+  onSave,
+  savedProducts,
+  suggestions,
   onLoadMore,
   onFollowUp,
   composerBusy,
 }: {
   messages: ReturnType<typeof useChatStore.getState>['messages'];
-  onAddToCart: (product: any) => void;
+  onSave: (product: ProductResponse) => void;
+  savedProducts: ProductResponse[];
+  suggestions: string[];
   onLoadMore: (messageId: string) => void;
   onFollowUp: (prompt: string) => void;
   composerBusy: boolean;
@@ -905,7 +792,9 @@ function ConversationThread({
             <AssistantMessageRow
               key={message.id}
               message={message}
-              onAddToCart={onAddToCart}
+              onSave={onSave}
+              savedProducts={savedProducts}
+              suggestions={suggestions}
               onLoadMore={onLoadMore}
               onFollowUp={onFollowUp}
             />
@@ -938,19 +827,23 @@ function UserMessageRow({ content }: { content: string }) {
 
 function AssistantMessageRow({
   message,
-  onAddToCart,
+  onSave,
+  savedProducts,
+  suggestions,
   onLoadMore,
   onFollowUp,
 }: {
   message: ReturnType<typeof useChatStore.getState>['messages'][number];
-  onAddToCart: (product: any) => void;
+  onSave: (product: ProductResponse) => void;
+  savedProducts: ProductResponse[];
+  suggestions: string[];
   onLoadMore: (messageId: string) => void;
   onFollowUp: (prompt: string) => void;
 }) {
   const router = useRouter();
   const products = Array.isArray(message.products) ? message.products : [];
   const paging = message.recommendation_paging;
-  const time = formatMessageTime(message.id);
+  const time = formatMessageTime(message.timestamp);
 
   return (
     <motion.div
@@ -976,7 +869,11 @@ function AssistantMessageRow({
         <p className="text-[14px] leading-relaxed whitespace-pre-line text-foreground">{message.content}</p>
       ) : null}
 
-      {products.length > 0 ? (
+      {message.decision ? <DecisionComparison report={message.decision} onSave={onSave} savedProducts={savedProducts} /> : null}
+
+      {message.decision && paging?.hasMore ? <button type="button" onClick={() => onLoadMore(message.id)} disabled={Boolean(paging.isLoadingMore)} className="rounded-full border border-border px-4 py-2 text-sm disabled:opacity-50">{paging.isLoadingMore ? 'Loading more…' : 'Load more candidates'}</button> : null}
+
+      {products.length > 0 && !message.decision ? (
         <>
           <div className="grid grid-cols-2 gap-4 sm:gap-5">
             {products.map((product) => {
@@ -1000,7 +897,8 @@ function AssistantMessageRow({
                     brand={product.brand || null}
                     title={product.title}
                     priceLabel={formatPriceLabel(product.price, product.currency)}
-                    onSave={() => onAddToCart(product)}
+                    onSave={() => onSave(product)}
+                    saved={savedProducts.some((saved) => productKey(saved) === productKey(product))}
                     aspect="4/5"
                     font="sans"
                   />
@@ -1009,17 +907,8 @@ function AssistantMessageRow({
             })}
           </div>
 
-          {/* Brand insight block */}
-          <div className="flex items-start gap-2.5 rounded-xl bg-[#E1F5EE] px-3.5 py-2.5">
-            <span aria-hidden="true" className="mt-[5px] h-1.5 w-1.5 flex-shrink-0 rounded-full bg-[#1D9E75]" />
-            <p className="text-[12px] leading-[1.5] text-[#0F6E56]">
-              Picked these because they match your search and have the strongest available offer.
-              Tap a card for full details, or use the prompts below to refine.
-            </p>
-          </div>
-
           <div className="-mx-2 flex gap-1.5 overflow-x-auto px-2 pb-1">
-            {FOLLOWUP_PROMPTS.map((prompt) => (
+            {suggestions.map((prompt) => (
               <button
                 key={prompt}
                 type="button"

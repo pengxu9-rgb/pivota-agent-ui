@@ -1,0 +1,468 @@
+{
+  "status": "success",
+  "modules": [
+    {
+      "type": "canonical",
+      "data": {
+        "pdp_payload": {
+          "schema_version": "1.0.0",
+          "page_type": "product_detail",
+          "pdp_schema_profile": "beauty_formula",
+          "x_template_hint": "beauty",
+          "tracking": {
+            "page_request_id": "pr_dmqmfx4c9os_mutcs2xr",
+            "entry_point": "agent"
+          },
+          "product": {
+            "product_id": "sig_fixture_provenance",
+            "merchant_id": "m_fixture",
+            "title": "Contract fixture moisturizer",
+            "pdp_schema_profile": "beauty_formula",
+            "subtitle": "",
+            "category_path": [
+              "Beauty"
+            ],
+            "category_kind": "beauty",
+            "image_url": "https://merchant.example/official.jpg",
+            "image_urls": [
+              "https://merchant.example/official.jpg"
+            ],
+            "images": [
+              "https://merchant.example/official.jpg"
+            ],
+            "readiness_tier": null,
+            "serving_eligible": false,
+            "purchase_route": null,
+            "commerce_mode": null,
+            "checkout_handoff": null,
+            "source_url": "https://merchant.example/products/cream",
+            "default_variant_id": "sig_fixture_provenance",
+            "variants": [
+              {
+                "variant_id": "sig_fixture_provenance",
+                "sku_id": "sig_fixture_provenance",
+                "title": "Default",
+                "options": [],
+                "price": {
+                  "current": {
+                    "amount": 12,
+                    "currency": "USD"
+                  }
+                },
+                "availability": {},
+                "image_url": "https://merchant.example/official.jpg"
+              }
+            ],
+            "purchase_grain": "product",
+            "price": {
+              "current": {
+                "amount": 12,
+                "currency": "USD"
+              }
+            },
+            "availability": {},
+            "description": ""
+          },
+          "modules": [
+            {
+              "module_id": "m_media",
+              "type": "media_gallery",
+              "priority": 100,
+              "data": {
+                "items": [
+                  {
+                    "type": "image",
+                    "url": "https://merchant.example/official.jpg",
+                    "alt_text": "Contract fixture moisturizer",
+                    "role": "official_product",
+                    "provenance": {
+                      "source_type": "merchant_product",
+                      "scope": "exact_item",
+                      "product_id": "sig_fixture_provenance",
+                      "merchant_id": "m_fixture",
+                      "source_url": "https://merchant.example/products/cream"
+                    }
+                  }
+                ],
+                "entry_points": {
+                  "submit_photo": {
+                    "action_type": "open_embed",
+                    "label": "Add a photo",
+                    "target": {
+                      "embed_intent_type": "buyer_media_submission",
+                      "resolve_params": {
+                        "product_id": "sig_fixture_provenance",
+                        "merchant_id": "m_fixture",
+                        "content_type": "photo"
+                      }
+                    }
+                  },
+                  "submit_video": {
+                    "action_type": "open_embed",
+                    "label": "Add a video",
+                    "target": {
+                      "embed_intent_type": "buyer_media_submission",
+                      "resolve_params": {
+                        "product_id": "sig_fixture_provenance",
+                        "merchant_id": "m_fixture",
+                        "content_type": "video"
+                      }
+                    }
+                  }
+                },
+                "contribution_policy": {
+                  "submissions_open": true,
+                  "publish_visibility": "employee_approved_only",
+                  "employee_review_required": true,
+                  "moderation_owner": "pivota_employee",
+                  "accepted_content_types": [
+                    "photo",
+                    "video"
+                  ]
+                }
+              }
+            },
+            {
+              "module_id": "m_price",
+              "type": "price_promo",
+              "priority": 90,
+              "data": {
+                "price": {
+                  "amount": 12,
+                  "currency": "USD"
+                },
+                "promotions": []
+              }
+            },
+            {
+              "module_id": "m_reviews",
+              "type": "reviews_preview",
+              "priority": 50,
+              "data": {
+                "scale": 5,
+                "rating": 5,
+                "review_count": 1,
+                "availability_state": "ready",
+                "preview_items": [
+                  {
+                    "review_id": "123",
+                    "rating": 5,
+                    "text_snippet": "Fixture review",
+                    "media": [
+                      {
+                        "type": "image",
+                        "url": "https://reviews.example/buyer.jpg",
+                        "role": "customer_review",
+                        "provenance": {
+                          "source_type": "customer_review",
+                          "review_id": "123",
+                          "merchant_id": "m_fixture",
+                          "verification_status": "review_linked",
+                          "moderation_status": "active",
+                          "scope": "exact_item",
+                          "product_id": "sig_fixture_provenance",
+                          "source_record_id": "asset123"
+                        }
+                      }
+                    ]
+                  }
+                ],
+                "entry_points": {
+                  "open_reviews": {
+                    "action_type": "open_embed",
+                    "label": "See all reviews",
+                    "target": {
+                      "embed_intent_type": "reviews_read",
+                      "resolve_params": {
+                        "product_id": "sig_fixture_provenance",
+                        "merchant_id": "m_fixture"
+                      }
+                    }
+                  },
+                  "write_review": {
+                    "action_type": "open_embed",
+                    "label": "Write a review",
+                    "target": {
+                      "embed_intent_type": "buyer_review_submission",
+                      "resolve_params": {
+                        "product_id": "sig_fixture_provenance",
+                        "merchant_id": "m_fixture",
+                        "content_type": "review"
+                      }
+                    }
+                  },
+                  "ask_question": {
+                    "action_type": "open_embed",
+                    "label": "Ask a question",
+                    "target": {
+                      "embed_intent_type": "buyer_question_submission",
+                      "resolve_params": {
+                        "product_id": "sig_fixture_provenance",
+                        "merchant_id": "m_fixture",
+                        "content_type": "question"
+                      }
+                    }
+                  },
+                  "submit_photo": {
+                    "action_type": "open_embed",
+                    "label": "Add a photo",
+                    "target": {
+                      "embed_intent_type": "buyer_media_submission",
+                      "resolve_params": {
+                        "product_id": "sig_fixture_provenance",
+                        "merchant_id": "m_fixture",
+                        "content_type": "photo"
+                      }
+                    }
+                  }
+                },
+                "contribution_policy": {
+                  "submissions_open": true,
+                  "publish_visibility": "employee_approved_only",
+                  "employee_review_required": true,
+                  "moderation_owner": "pivota_employee",
+                  "accepted_content_types": [
+                    "review",
+                    "question",
+                    "photo",
+                    "video"
+                  ]
+                }
+              }
+            }
+          ],
+          "actions": [
+            {
+              "action_type": "add_to_cart",
+              "label": "Add to Cart",
+              "priority": 20,
+              "target": {}
+            },
+            {
+              "action_type": "buy_now",
+              "label": "Buy Now",
+              "priority": 10,
+              "target": {}
+            }
+          ],
+          "quality_signals": {
+            "coverage_by_module": {
+              "media_gallery": 1,
+              "price_promo": 1,
+              "reviews_preview": 1,
+              "buy_box": 1
+            },
+            "parse_confidence": {
+              "size_guide": 0
+            },
+            "fallback_used": {
+              "size_guide": false
+            },
+            "gating": {
+              "buy_box_ok": true,
+              "size_guide_ok": false
+            }
+          },
+          "x_content_module_states": {
+            "ingredients_inci": {
+              "state": "absent"
+            },
+            "active_ingredients": {
+              "state": "absent"
+            },
+            "how_to_use": {
+              "state": "absent"
+            },
+            "product_overview": {
+              "state": "absent"
+            },
+            "supplemental_details": {
+              "state": "absent"
+            },
+            "materials": {
+              "state": "absent"
+            },
+            "product_specs": {
+              "state": "absent"
+            },
+            "size_fit": {
+              "state": "absent"
+            },
+            "care_instructions": {
+              "state": "absent"
+            },
+            "usage_safety": {
+              "state": "absent"
+            },
+            "product_facts": {
+              "state": "absent"
+            },
+            "reviews_preview": {
+              "state": "ready"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "media_gallery",
+      "data": {
+        "items": [
+          {
+            "type": "image",
+            "url": "https://merchant.example/official.jpg",
+            "alt_text": "Contract fixture moisturizer",
+            "role": "official_product",
+            "provenance": {
+              "source_type": "merchant_product",
+              "scope": "exact_item",
+              "product_id": "sig_fixture_provenance",
+              "merchant_id": "m_fixture",
+              "source_url": "https://merchant.example/products/cream"
+            }
+          }
+        ],
+        "entry_points": {
+          "submit_photo": {
+            "action_type": "open_embed",
+            "label": "Add a photo",
+            "target": {
+              "embed_intent_type": "buyer_media_submission",
+              "resolve_params": {
+                "product_id": "sig_fixture_provenance",
+                "merchant_id": "m_fixture",
+                "content_type": "photo"
+              }
+            }
+          },
+          "submit_video": {
+            "action_type": "open_embed",
+            "label": "Add a video",
+            "target": {
+              "embed_intent_type": "buyer_media_submission",
+              "resolve_params": {
+                "product_id": "sig_fixture_provenance",
+                "merchant_id": "m_fixture",
+                "content_type": "video"
+              }
+            }
+          }
+        },
+        "contribution_policy": {
+          "submissions_open": true,
+          "publish_visibility": "employee_approved_only",
+          "employee_review_required": true,
+          "moderation_owner": "pivota_employee",
+          "accepted_content_types": [
+            "photo",
+            "video"
+          ]
+        }
+      }
+    },
+    {
+      "type": "price_promo",
+      "data": {
+        "price": {
+          "amount": 12,
+          "currency": "USD"
+        },
+        "promotions": []
+      }
+    },
+    {
+      "type": "reviews_preview",
+      "data": {
+        "scale": 5,
+        "rating": 5,
+        "review_count": 1,
+        "availability_state": "ready",
+        "preview_items": [
+          {
+            "review_id": "123",
+            "rating": 5,
+            "text_snippet": "Fixture review",
+            "media": [
+              {
+                "type": "image",
+                "url": "https://reviews.example/buyer.jpg",
+                "role": "customer_review",
+                "provenance": {
+                  "source_type": "customer_review",
+                  "review_id": "123",
+                  "merchant_id": "m_fixture",
+                  "verification_status": "review_linked",
+                  "moderation_status": "active",
+                  "scope": "exact_item",
+                  "product_id": "sig_fixture_provenance",
+                  "source_record_id": "asset123"
+                }
+              }
+            ]
+          }
+        ],
+        "entry_points": {
+          "open_reviews": {
+            "action_type": "open_embed",
+            "label": "See all reviews",
+            "target": {
+              "embed_intent_type": "reviews_read",
+              "resolve_params": {
+                "product_id": "sig_fixture_provenance",
+                "merchant_id": "m_fixture"
+              }
+            }
+          },
+          "write_review": {
+            "action_type": "open_embed",
+            "label": "Write a review",
+            "target": {
+              "embed_intent_type": "buyer_review_submission",
+              "resolve_params": {
+                "product_id": "sig_fixture_provenance",
+                "merchant_id": "m_fixture",
+                "content_type": "review"
+              }
+            }
+          },
+          "ask_question": {
+            "action_type": "open_embed",
+            "label": "Ask a question",
+            "target": {
+              "embed_intent_type": "buyer_question_submission",
+              "resolve_params": {
+                "product_id": "sig_fixture_provenance",
+                "merchant_id": "m_fixture",
+                "content_type": "question"
+              }
+            }
+          },
+          "submit_photo": {
+            "action_type": "open_embed",
+            "label": "Add a photo",
+            "target": {
+              "embed_intent_type": "buyer_media_submission",
+              "resolve_params": {
+                "product_id": "sig_fixture_provenance",
+                "merchant_id": "m_fixture",
+                "content_type": "photo"
+              }
+            }
+          }
+        },
+        "contribution_policy": {
+          "submissions_open": true,
+          "publish_visibility": "employee_approved_only",
+          "employee_review_required": true,
+          "moderation_owner": "pivota_employee",
+          "accepted_content_types": [
+            "review",
+            "question",
+            "photo",
+            "video"
+          ]
+        }
+      }
+    }
+  ]
+}

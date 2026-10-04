@@ -18,11 +18,17 @@ export function buildSimilarMainlineStatus(
     };
   }
 
-  if (similarStatus === 'empty' || similarStatus === 'unavailable' || similarStatus === 'underfilled') {
-    if (itemCount > 0) return null;
-    return {
-      title: 'No related products yet',
-      body: 'Related products are not available for this item right now.',
+  if (itemCount > 0) return null;
+  const graphStatus = metadata?.relationship_graph_read_status || 'unknown';
+  if (graphStatus === 'empty' || graphStatus === 'unavailable' || graphStatus === 'not_attempted' ||
+    ['empty', 'unavailable', 'underfilled'].includes(similarStatus)) {
+    const checkedEmpty = graphStatus === 'empty' || (graphStatus === 'ready' && similarStatus === 'empty');
+    return checkedEmpty ? {
+      title: 'No related products found',
+      body: 'No matching related products were found for this item.',
+    } : {
+      title: 'Related products are unavailable',
+      body: 'Related product information is unavailable right now. Please try again.',
     };
   }
 

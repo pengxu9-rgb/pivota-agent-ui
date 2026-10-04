@@ -11,7 +11,7 @@ export function HowToUseSection({ data }: { data: HowToUseData }) {
     <div className="border-t border-muted/60 px-2.5 py-5 sm:px-3">
       <div className="flex items-center justify-between gap-3">
         <h3 className="text-sm font-semibold">{data.title || 'How to use'}</h3>
-        <PdpSourceBadge sourceOrigin={data.source_origin} />
+        <PdpSourceBadge sourceOrigin={data.source_origin} sourceQualityStatus={data.source_quality_status} sourceUrl={data.source_url} capturedAt={data.captured_at} />
       </div>
       {steps.length ? (
         <ol className="mt-3 space-y-2">

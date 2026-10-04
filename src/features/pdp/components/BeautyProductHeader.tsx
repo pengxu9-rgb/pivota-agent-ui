@@ -11,9 +11,11 @@
  * more info sits above the fold on first paint (owner request).
  */
 
-function Star() {
+import { reviewScopeText } from '../utils/reviewScope';
+
+function Star({ filled }: { filled: boolean }) {
   return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style={{ opacity: filled ? 1 : 0.2 }} aria-hidden="true">
       <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
     </svg>
   );
@@ -25,6 +27,7 @@ export function BeautyProductHeader({
   subtitle,
   rating,
   reviewCount,
+  reviewScope,
   onSeeReviews,
 }: {
   brand?: string | null;
@@ -32,6 +35,7 @@ export function BeautyProductHeader({
   subtitle?: string | null;
   rating?: number | null;
   reviewCount?: number | null;
+  reviewScope?: string;
   onSeeReviews?: () => void;
 }) {
   return (
@@ -52,7 +56,7 @@ export function BeautyProductHeader({
         <div className="mt-2 flex items-center gap-2">
           <div className="flex gap-px text-[hsl(var(--gold))]">
             {[1, 2, 3, 4, 5].map((n) => (
-              <Star key={n} />
+              <Star key={n} filled={n <= rating} />
             ))}
           </div>
           <span className="text-[13px] font-semibold text-foreground">{rating.toFixed(1)}</span>
@@ -70,6 +74,7 @@ export function BeautyProductHeader({
           ) : null}
         </div>
       ) : null}
+      {reviewCount != null && reviewCount > 0 ? <p className="mt-1 text-[11px] text-muted-foreground">{reviewScopeText(reviewScope)}</p> : null}
     </div>
   );
 }

@@ -1600,6 +1600,7 @@ describe('PdpContainer structured PDP modules', () => {
         scale: 5,
         rating: 0,
         review_count: 0,
+        availability_state: 'empty',
       },
     } as any);
 

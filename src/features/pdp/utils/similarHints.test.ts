@@ -37,7 +37,7 @@ describe('buildSimilarMainlineStatus', () => {
     });
   });
 
-  it('uses settled empty copy for empty or unavailable post-core recommendations', () => {
+  it('does not describe unavailable or legacy unknown graph reads as an empty result', () => {
     expect(
       buildSimilarMainlineStatus({
         similar_status: 'unavailable',
@@ -45,8 +45,8 @@ describe('buildSimilarMainlineStatus', () => {
         underfill: 36,
       }),
     ).toEqual({
-      title: 'No related products yet',
-      body: 'Related products are not available for this item right now.',
+      title: 'Related products are unavailable',
+      body: 'Related product information is unavailable right now. Please try again.',
     });
   });
 
@@ -62,4 +62,11 @@ describe('buildSimilarMainlineStatus', () => {
       ),
     ).toBeNull();
   });
+  it('distinguishes a successful empty graph read from schema-unavailable', () => {
+    expect(buildSimilarMainlineStatus({ similar_status: 'empty', relationship_graph_read_status: 'empty', relationship_graph_read_reason: 'no_eligible_edges' })?.title).toBe('No related products found');
+    expect(buildSimilarMainlineStatus({ similar_status: 'empty', relationship_graph_read_status: 'unavailable', relationship_graph_read_reason: 'schema_unavailable' })?.title).toBe('Related products are unavailable');
+    expect(buildSimilarMainlineStatus({ similar_status: 'deferred', relationship_graph_read_status: 'not_attempted' })?.title).toBe('Recommendations are updating');
+    expect(buildSimilarMainlineStatus({ relationship_graph_read_status: 'unavailable' }, { itemCount: 2 })).toBeNull();
+  });
+
 });

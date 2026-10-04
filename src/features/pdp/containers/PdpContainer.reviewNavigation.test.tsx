@@ -293,7 +293,7 @@ describe('PdpContainer review navigation context', () => {
       />,
     );
 
-    expect(screen.getByText(/verified review summary is available/i)).toBeTruthy();
+    expect(screen.getByText(/review summary is available/i)).toBeTruthy();
     expect(screen.queryByText(/No reviews yet/i)).toBeNull();
   });
 

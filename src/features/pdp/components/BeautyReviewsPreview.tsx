@@ -14,6 +14,9 @@
  * then review cards, then a bordered "See all N reviews" button.
  */
 
+import { ReviewScopeSelector, type ReviewScopeOption } from './ReviewScopeSelector';
+import { reviewScopeText } from '../utils/reviewScope';
+
 export type BeautyReviewItem = {
   name: string;
   rating: number;
@@ -47,13 +50,19 @@ function Sparkle() {
 export function BeautyReviewsPreview({
   rating,
   reviewCount,
+  reviewScope,
+  reviewScopes,
+  onSelectReviewScope,
   reviews,
-  emptyCopy = 'No reviews yet. Be the first to share your shade + skin notes - your review appears here after Pivota review.',
+  emptyCopy = 'No reviews available here yet. Your review appears after Pivota review.',
   onWriteReview,
   onSeeAll,
 }: {
-  rating: number;
-  reviewCount: number;
+  rating?: number | null;
+  reviewCount?: number | null;
+  reviewScope?: string;
+  reviewScopes?: ReviewScopeOption[];
+  onSelectReviewScope?: (id: string) => void;
   reviews: BeautyReviewItem[];
   /** Copy shown in the empty-state body when reviews list is empty. */
   emptyCopy?: string;
@@ -67,15 +76,17 @@ export function BeautyReviewsPreview({
   // "Write a review" button as the populated-state primary action.
   if (!reviews?.length) {
     const resolvedEmptyCopy =
-      reviewCount > 0
-        ? 'A verified review summary is available, but written review snippets are not available yet.'
+      reviewCount == null ? 'Review information is unavailable. This does not mean the retailer has no reviews.' : reviewCount > 0
+        ? 'A review summary is available, but written review snippets are not available yet.'
         : emptyCopy;
     return (
+      <>
+      <ReviewScopeSelector scopes={reviewScopes} onSelect={onSelectReviewScope} />
       <div className="flex items-center gap-3 rounded-xl border border-border bg-background px-3.5 py-3">
         <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
           <Sparkle />
         </div>
-        <p className="flex-1 text-[13px] leading-relaxed text-foreground">{resolvedEmptyCopy}</p>
+        <p className="flex-1 text-[13px] leading-relaxed text-foreground">{resolvedEmptyCopy}{reviewCount != null && reviewCount > 0 ? <span className="mt-1 block text-xs text-muted-foreground">{reviewScopeText(reviewScope)}</span> : null}</p>
         {onWriteReview ? (
           <button
             type="button"
@@ -86,6 +97,7 @@ export function BeautyReviewsPreview({
           </button>
         ) : null}
       </div>
+      </>
     );
   }
 
@@ -95,18 +107,20 @@ export function BeautyReviewsPreview({
   // social proof first, then choose to contribute.
   return (
     <div className="flex flex-col gap-3">
+      <ReviewScopeSelector scopes={reviewScopes} onSelect={onSelectReviewScope} />
       <div className="flex items-center gap-3 border-b border-border pb-3 pt-2">
         <div className="font-serif text-[40px] font-semibold leading-none text-foreground">
-          {rating.toFixed(1)}
+          {typeof rating === 'number' && rating > 0 ? rating.toFixed(1) : '—'}
         </div>
         <div className="flex-1">
           <div className="mb-1 flex gap-px text-[hsl(var(--gold))]">
             {[1, 2, 3, 4, 5].map((n) => (
-              <Star key={n} />
+              <Star key={n} filled={typeof rating === 'number' && n <= rating} />
             ))}
           </div>
           <div className="text-[11px] text-muted-foreground">
-            {reviewCount.toLocaleString()} customer reviews
+            {reviewCount == null ? 'Review count unavailable' : `${reviewCount.toLocaleString()} customer reviews`}
+            <span className="block">{reviewScopeText(reviewScope)}</span>
           </div>
         </div>
       </div>
@@ -138,7 +152,7 @@ export function BeautyReviewsPreview({
               onClick={onSeeAll}
               className="flex-1 rounded-lg border border-border bg-transparent px-3 py-2.5 text-[13px] font-semibold text-foreground"
             >
-              See all {reviewCount.toLocaleString()} reviews
+              See all{reviewCount == null ? '' : ` ${reviewCount.toLocaleString()}`} reviews
             </button>
           ) : null}
           {onWriteReview ? (
