@@ -17,6 +17,9 @@ export const HIDDEN_PAUSE_MS = 120_000;
 export const MAX_POLL_MS = 30 * 60_000;
 const MIN_DELAY_MS = 3_000;
 const DEFAULT_DELAY_MS = 5_000;
+let checkoutReadGeneration = 0;
+export function latestCheckoutReadGeneration(): number { return checkoutReadGeneration; }
+
 const ERROR_BACKOFF_MS = [5_000, 10_000, 20_000, 40_000, 60_000];
 
 export function nextPollDelayMs(view: ReapCheckoutView | null, consecutiveErrors: number): number {
@@ -28,6 +31,7 @@ export function nextPollDelayMs(view: ReapCheckoutView | null, consecutiveErrors
 }
 
 export type PollState = {
+  viewReadGeneration: number;
   view: ReapCheckoutView | null;
   consecutiveErrors: number;
   paused: boolean;
@@ -38,7 +42,8 @@ export type PollState = {
 export async function fetchReapCheckout(
   id: string,
   fetchImpl: typeof fetch = fetch,
-): Promise<{ view: ReapCheckoutView } | { notFound: true } | { error: true }> {
+): Promise<{ view: ReapCheckoutView; readGeneration: number } | { notFound: true } | { error: true }> {
+  const readGeneration = ++checkoutReadGeneration;
   try {
     const res = await fetchImpl(`/api/reap-checkout/${encodeURIComponent(id)}`, {
       cache: 'no-store',
@@ -47,7 +52,7 @@ export async function fetchReapCheckout(
     if (res.status === 404) return { notFound: true };
     if (!res.ok) return { error: true };
     const body = await res.json().catch(() => null);
-    return body?.checkout ? { view: body.checkout as ReapCheckoutView } : { error: true };
+    return body?.checkout?.id === id ? { view: body.checkout as ReapCheckoutView, readGeneration } : { error: true };
   } catch {
     return { error: true };
   }
@@ -56,6 +61,7 @@ export async function fetchReapCheckout(
 export function useReapCheckoutPoll(initial: ReapCheckoutView | null, opts: { fetchImpl?: typeof fetch } = {}) {
   const [state, setState] = useState<PollState>({
     view: initial,
+    viewReadGeneration: 0,
     consecutiveErrors: 0,
     paused: false,
     gaveUp: false,
@@ -92,8 +98,8 @@ export function useReapCheckoutPoll(initial: ReapCheckoutView | null, opts: { fe
     const out = await fetchReapCheckout(id, fetchRef.current);
     inflight.current = false;
     setState((s) => {
-      if (s.view?.id !== id) return s;
-      if ('view' in out) return { ...s, view: out.view, consecutiveErrors: 0, paused: false };
+      if (s.view?.id !== id || s.view.terminal) return s;
+      if ('view' in out) return { ...s, view: out.view, viewReadGeneration: out.readGeneration, consecutiveErrors: 0, paused: false };
       if ('notFound' in out) return { ...s, notFound: true };
       return { ...s, consecutiveErrors: s.consecutiveErrors + 1 };
     });
@@ -141,10 +147,18 @@ export function useReapCheckoutPoll(initial: ReapCheckoutView | null, opts: { fe
     void tick();
   }, [tick]);
 
-  const reset = useCallback((view: ReapCheckoutView | null) => {
+  const reset = useCallback((view: ReapCheckoutView | null, readGeneration = 0) => {
     startedAt.current = Date.now();
     hiddenSince.current = null;
-    setState({ view, consecutiveErrors: 0, paused: false, gaveUp: false, notFound: false });
+    setState((current) => {
+      if (view && current.view?.id === view.id && current.view.terminal) {
+        // An explicit fresh owner reconciliation can update evidence for the SAME terminal
+        // phase. It cannot revive the checkout or replace its immutable terminal outcome.
+        return readGeneration > current.viewReadGeneration && view.terminal && view.phase === current.view.phase
+          ? { ...current, view, viewReadGeneration: readGeneration, consecutiveErrors: 0 } : current;
+      }
+      return { view, viewReadGeneration: readGeneration, consecutiveErrors: 0, paused: false, gaveUp: false, notFound: false };
+    });
   }, []);
 
   return { ...state, refreshNow, reset };

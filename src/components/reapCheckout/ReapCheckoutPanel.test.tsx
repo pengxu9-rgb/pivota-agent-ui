@@ -1,7 +1,9 @@
+import acceptedCreate from '@/lib/reapCheckout/__fixtures__/acceptedCreate.json';
+import { persistCheckoutEvidence } from '@/lib/reapCheckout/recoveryMarkers';
 import { ATTEMPT_PREFIX } from '@/lib/reapCheckout/attempt';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ReapCheckoutPanel, ACTIVE_KEY_PREFIX, defaultOpenWindow, readActiveCheckoutId, writeActiveCheckoutId } from './ReapCheckoutPanel';
+import { ReapCheckoutPanel, ACTIVE_KEY_PREFIX, defaultOpenWindow, readActiveCheckoutId, writeActiveCheckoutId, readActiveFlag } from './ReapCheckoutPanel';
 import { useEffect, useState } from 'react';
 import { readReapCheckout } from '@/lib/reapCheckout/checkoutView';
 import {
@@ -145,7 +147,7 @@ describe('ReapCheckoutPanel', () => {
     expect(screen.getByTestId('reap-pay-note').textContent).toMatch(/Pivota never sees or stores your card/);
     expect(document.querySelector('iframe')).toBeNull();
     expect(document.querySelector('input[autocomplete^="cc-"]')).toBeNull();
-    fireEvent.click(screen.getByTestId('reap-continue'));
+    await act(async () => { fireEvent.click(screen.getByTestId('reap-continue')); });
     expect(openWindow).toHaveBeenCalledWith(HOSTED_URL);
   });
 
@@ -182,7 +184,8 @@ describe('ReapCheckoutPanel', () => {
   it('needs a card: hand-off to Reap\'s card page', async () => {
     const openWindow = renderPanel(scriptedFetch(needsEnrollmentCheckout()));
     await fillAndSubmit();
-    fireEvent.click(await screen.findByTestId('reap-continue'));
+    await screen.findByTestId('reap-continue');
+    await act(async () => { fireEvent.click(screen.getByTestId('reap-continue')); });
     expect(openWindow).toHaveBeenCalledWith('https://pay.prava.space/enroll/3fa85f64');
   });
 
@@ -385,7 +388,8 @@ describe('ReapCheckoutPanel', () => {
       />,
     );
     await fillAndSubmit();
-    fireEvent.click(await screen.findByTestId('reap-continue'));
+    await screen.findByTestId('reap-continue');
+    await act(async () => { fireEvent.click(screen.getByTestId('reap-continue')); });
     expect(open).toHaveBeenCalledWith(HOSTED_URL, '_blank', 'noopener,noreferrer');
     open.mockRestore();
   });
@@ -462,7 +466,8 @@ describe('ReapCheckoutPanel', () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     renderPanel(scriptedFetch(awaitingApprovalCheckout(), [deadlinePassedCheckout()]));
     await fillAndSubmit();
-    fireEvent.click(await screen.findByTestId('reap-continue'));
+    await screen.findByTestId('reap-continue');
+    await act(async () => { fireEvent.click(screen.getByTestId('reap-continue')); });
     await act(async () => {
       await vi.advanceTimersByTimeAsync(11_000);
     });
@@ -486,6 +491,7 @@ describe('ReapCheckoutPanel', () => {
     expect(copy.textContent).toMatch(/check your email or card statement/);
     void first;
     cleanup();
+    window.localStorage.clear();
     window.localStorage.setItem(ACTIVE_KEY, JSON.stringify({ id, at: Date.now() }));
     renderPanel(vi.fn(async () => jsonResponse({ error: 'gateway_unavailable' }, 502)));
     expect((await screen.findByTestId('reap-restore-failed-copy')).textContent).toMatch(/Do not start another checkout/);
@@ -583,9 +589,10 @@ describe('ReapCheckoutPanel', () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const openWindow = renderPanel(scriptedFetch(awaitingApprovalCheckout(), [ending]));
     await fillAndSubmit();
-    fireEvent.click(await screen.findByTestId('reap-continue'));
+    await screen.findByTestId('reap-continue');
+    await act(async () => { fireEvent.click(screen.getByTestId('reap-continue')); });
     expect(openWindow).toHaveBeenCalledTimes(1);
-    expect(JSON.parse(window.localStorage.getItem(ACTIVE_KEY)!).handedOff).toBe(true);
+    expect(readActiveFlag(PRODUCT_ID, 'approvalOpened')).toBe(true);
     await act(async () => {
       await vi.advanceTimersByTimeAsync(11_000);
     });
@@ -622,7 +629,8 @@ describe('ReapCheckoutPanel', () => {
   it('R3.1: a hand-off before a RELOAD still makes a later expiry uncertain (the Reap-return tab)', async () => {
     const openWindow = renderPanel(scriptedFetch(awaitingApprovalCheckout()));
     await fillAndSubmit();
-    fireEvent.click(await screen.findByTestId('reap-continue'));
+    await screen.findByTestId('reap-continue');
+    await act(async () => { fireEvent.click(screen.getByTestId('reap-continue')); });
     expect(openWindow).toHaveBeenCalled();
     cleanup();
     renderPanel(scriptedFetch(canceledCheckout('expired'), [canceledCheckout('expired')]));
@@ -638,7 +646,8 @@ describe('ReapCheckoutPanel', () => {
     );
     renderPanel(fetchImpl);
     await fillAndSubmit();
-    fireEvent.click(await screen.findByTestId('reap-continue'));
+    await screen.findByTestId('reap-continue');
+    await act(async () => { fireEvent.click(screen.getByTestId('reap-continue')); });
     await act(async () => {
       await vi.advanceTimersByTimeAsync(11_000);
     });
@@ -729,6 +738,7 @@ describe('ReapCheckoutPanel', () => {
 
   it('C2/D2: "Start as a new buyer" resets the server cookie and forgets open checkouts', async () => {
     localStorage.setItem(ACTIVE_KEY_PREFIX + 'sig_other', JSON.stringify({ id: viewOf(completedCheckout()).id, at: Date.now(), settled: true }));
+    persistCheckoutEvidence('sig_other', viewOf(completedCheckout()).id, 'completed');
     const fetchImpl = vi.fn(async () => jsonResponse({ ok: true }));
     renderPanel(fetchImpl);
     await act(async () => {
@@ -860,7 +870,8 @@ describe('ReapCheckoutPanel', () => {
     );
     const openWindow = renderPanel(fetchImpl);
     await fillAndSubmit();
-    fireEvent.click(await screen.findByTestId('reap-continue'));
+    await screen.findByTestId('reap-continue');
+    await act(async () => { fireEvent.click(screen.getByTestId('reap-continue')); });
     expect(openWindow).toHaveBeenCalledTimes(1);
     await act(async () => {
       await vi.advanceTimersByTimeAsync(11_000);
@@ -971,7 +982,8 @@ describe('ReapCheckoutPanel', () => {
     );
     renderPanel(fetchImpl);
     await fillAndSubmit();
-    fireEvent.click(await screen.findByTestId('reap-continue'));
+    await screen.findByTestId('reap-continue');
+    await act(async () => { fireEvent.click(screen.getByTestId('reap-continue')); });
     await act(async () => {
       await vi.advanceTimersByTimeAsync(11_000);
     });
@@ -999,7 +1011,7 @@ describe('ReapCheckoutPanel', () => {
     window.localStorage.setItem(ACTIVE_KEY, JSON.stringify({ id, at: Date.now() }));
     renderPanel(vi.fn(async () => jsonResponse({ checkout: verified(completedCheckout(), { itemId: 'sig_other' }) })));
     await screen.findByTestId('reap-gone-uncertain');
-    await waitFor(() => expect(JSON.parse(window.localStorage.getItem(ACTIVE_KEY)!).approved).toBe(true));
+    await waitFor(() => expect(readActiveFlag(PRODUCT_ID, 'approved')).toBe(true));
     cleanup();
     // Reload: the next read is degraded (for this item), then one for another item (a mismatch).
     let reads = 0;
@@ -1025,7 +1037,7 @@ describe('ReapCheckoutPanel', () => {
     renderPanel(scriptedFetch(completedCheckout()));
     await fillAndSubmit();
     await screen.findByTestId('reap-completed');
-    await waitFor(() => expect(JSON.parse(window.localStorage.getItem(ACTIVE_KEY)!).approved).toBe(true));
+    await waitFor(() => expect(readActiveFlag(PRODUCT_ID, 'approved')).toBe(true));
   });
 
   it.each(['handedOff', 'approved'])('ANOTHER TAB wrote %s (no event reached this tab): a later failed read is uncertain, never "nothing charged"', async (flag) => {
@@ -1148,4 +1160,301 @@ it('prepares and persists canonical selection before one create, then recovers i
 
 it('original displayed1399 rejects fresh preparation1499 before saving any key or create request',async()=>{
  const selection={product_key:'prod::external_seed::external_seed::ext_real',variant_id:'677289689108',variant_key:'prod::external_seed::external_seed::ext_real::sku_hash',merchant_domain:'judydoll.com',market:'US',currency:'USD',unit_price_minor:1499,quantity:1,item_source:'cart_link'};const fetchImpl=vi.fn(async(_url:string,_init:RequestInit)=>jsonResponse({selection}));renderPanel(fetchImpl,vi.fn(),'cart_link',selection.variant_id);await fillAndSubmit();await screen.findByTestId('reap-fallback');expect(fetchImpl).toHaveBeenCalledTimes(1);expect(fetchImpl.mock.calls[0][0]).toBe('/api/reap-checkout/prepare');expect(localStorage.getItem(ATTEMPT_PREFIX+PRODUCT_ID)).toBeNull();expect(screen.queryByTestId('reap-visit-store')).toBeNull();
+});
+
+describe('stage-safe enrollment continuation', () => {
+  const paused = () => ({ ...viewOf(resolvingCheckout()), contactReentryRequired: true });
+  it('enrollment handoff survives reload without becoming payment approval', async () => {
+    const openWindow = renderPanel(scriptedFetch(needsEnrollmentCheckout()));
+    await fillAndSubmit(); await screen.findByTestId('reap-continue');
+    expect(screen.getByTestId('reap-continue')).toHaveTextContent('Add card securely');
+    expect(screen.getByTestId('reap-panel')).toHaveTextContent('Saving a card does not approve this order');
+    await act(async () => { fireEvent.click(screen.getByTestId('reap-continue')); });
+    expect(openWindow).toHaveBeenCalledTimes(1);
+    expect(readActiveFlag(PRODUCT_ID, 'enrollmentOpened')).toBe(true);
+    expect(readActiveFlag(PRODUCT_ID, 'approvalOpened')).toBe(false);
+    expect(readActiveFlag(PRODUCT_ID, 'handedOff')).toBe(false);
+    cleanup();
+    renderPanel(vi.fn(async () => jsonResponse({ checkout: paused() })));
+    expect(await screen.findByTestId('reap-contact-reentry')).toBeTruthy();
+    expect(screen.queryByTestId('reap-terminal-uncertain')).toBeNull();
+  });
+  it('resumes only the original checkout/body/key and keeps the separate order approval step', async () => {
+    const first = scriptedFetch(needsEnrollmentCheckout());
+    renderPanel(first); await fillAndSubmit('SAVE'); await screen.findByTestId('reap-status');
+    const original = JSON.parse(String((first.mock.calls[0] as unknown as [string, RequestInit])[1].body));
+    const id = readActiveCheckoutId(PRODUCT_ID)!;
+    cleanup();
+    const resumed = vi.fn(async (url: string) => jsonResponse({ checkout: url.endsWith('/resume') ? viewOf(awaitingApprovalCheckout()) : paused() }));
+    renderPanel(resumed); await screen.findByTestId('reap-contact-reentry');
+    await fillAndSubmit('SAVE');
+    expect(await screen.findByTestId('reap-continue')).toHaveTextContent('Review and approve order');
+    const calls = resumed.mock.calls as unknown as [string, RequestInit][];
+    expect(calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(1);
+    expect(calls[1][0]).toBe(`/api/reap-checkout/${encodeURIComponent(id)}/resume`);
+    const { recover_only: _recovery, ...body } = original;
+    expect(JSON.parse(String(calls[1][1].body))).toEqual(body);
+    expect(readActiveCheckoutId(PRODUCT_ID)).toBe(id);
+    expect(JSON.stringify(Object.values(localStorage))).not.toMatch(/ada@example|Lovelace|Brannan/);
+  });
+  it('changed re-entry details cannot prepare, mint a key, or resume', async () => {
+    renderPanel(scriptedFetch(needsEnrollmentCheckout())); await fillAndSubmit('OLD'); await screen.findByTestId('reap-status'); cleanup();
+    const fetchImpl = vi.fn(async () => jsonResponse({ checkout: paused() }));
+    renderPanel(fetchImpl); await screen.findByTestId('reap-contact-reentry'); await fillAndSubmit('NEW');
+    expect(await screen.findByTestId('reap-fallback')).toHaveTextContent('Re-enter exactly the same details');
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+  it.each(['unknown', 'dispatch_started', 'dispatched'])('a terminal %s cannot restart even with only enrollment evidence', async (state) => {
+    const checkout = { ...viewOf(canceledCheckout('expired')), checkoutDispatchState: state };
+    writeActiveCheckoutId(PRODUCT_ID, checkout.id);
+    persistCheckoutEvidence(PRODUCT_ID, checkout.id, 'enrollmentOpened');
+    renderPanel(vi.fn(async () => jsonResponse({ checkout })));
+    await screen.findByTestId('reap-terminal-uncertain');
+    expect(screen.queryByTestId('reap-restart')).toBeNull();
+    expect(screen.queryByTestId('reap-form')).toBeNull();
+  });
+  it('unknown dispatch evidence cannot later downgrade to no-dispatch through reload', async () => {
+    const id = viewOf(resolvingCheckout()).id; writeActiveCheckoutId(PRODUCT_ID, id);
+    renderPanel(vi.fn(async () => jsonResponse({ checkout: { ...viewOf(resolvingCheckout()), checkoutDispatchState: 'unknown' } })));
+    await screen.findByTestId('reap-status'); cleanup();
+    renderPanel(vi.fn(async () => jsonResponse({ checkout: viewOf(canceledCheckout('expired')) })));
+    await screen.findByTestId('reap-terminal-uncertain'); expect(screen.queryByTestId('reap-restart')).toBeNull();
+  });
+  it('stale restart re-reads approval evidence even when no storage event arrived', async () => {
+    renderPanel(scriptedFetch(canceledCheckout('expired'))); await fillAndSubmit();
+    const restart = await screen.findByTestId('reap-restart');
+    const id = readActiveCheckoutId(PRODUCT_ID)!; persistCheckoutEvidence(PRODUCT_ID, id, 'approvalOpened');
+    await act(async () => { fireEvent.click(restart); });
+    expect(readActiveCheckoutId(PRODUCT_ID)).toBe(id); expect(screen.queryByTestId('reap-form')).toBeNull();
+  });
+  it('stale handoff cannot mark or open a replacement checkout id', async () => {
+    const open = renderPanel(scriptedFetch(needsEnrollmentCheckout())); await fillAndSubmit();
+    const button = await screen.findByTestId('reap-continue');
+    const id = readActiveCheckoutId(PRODUCT_ID)!;
+    const other = id.replace('0123456789abcdef01234567', 'fedcba9876543210fedcba98');
+    localStorage.setItem(ACTIVE_KEY, JSON.stringify({ id: other, at: NOW }));
+    await act(async () => { fireEvent.click(button); });
+    expect(open).not.toHaveBeenCalled(); expect(readActiveFlag(PRODUCT_ID, 'enrollmentOpened', other)).toBe(false);
+  });
+});
+
+it('lost same-purchase continuation reply preserves the id/key and never falls back to create', async () => {
+  renderPanel(scriptedFetch(needsEnrollmentCheckout())); await fillAndSubmit(); await screen.findByTestId('reap-status'); cleanup();
+  const active = localStorage.getItem(ACTIVE_KEY);
+  const attempt = localStorage.getItem(ATTEMPT_PREFIX + PRODUCT_ID);
+  const fetchImpl = vi.fn(async (url: string) => url.endsWith('/resume') ? jsonResponse({}, 502) : jsonResponse({ checkout: { ...viewOf(resolvingCheckout()), contactReentryRequired: true } }));
+  renderPanel(fetchImpl); await screen.findByTestId('reap-contact-reentry'); await fillAndSubmit();
+  expect(await screen.findByTestId('reap-handoff-problem')).toHaveTextContent('do not start another purchase');
+  expect(screen.queryByTestId('reap-contact-reentry')).toBeNull();
+  expect(readActiveFlag(PRODUCT_ID, 'continuationPending')).toBe(true);
+  expect(readActiveFlag(PRODUCT_ID, 'dispatchRisk')).toBe(false);
+  expect(localStorage.getItem(ACTIVE_KEY)).toBe(active); expect(localStorage.getItem(ATTEMPT_PREFIX + PRODUCT_ID)).toBe(attempt);
+  expect(fetchImpl.mock.calls.some(([url]) => url === '/api/reap-checkout' || url.endsWith('/prepare'))).toBe(false);
+  await act(async () => { window.dispatchEvent(new Event('focus')); });
+  expect(await screen.findByTestId('reap-contact-reentry')).toBeTruthy();
+  expect(readActiveFlag(PRODUCT_ID, 'continuationPending')).toBe(false);
+  expect(readActiveFlag(PRODUCT_ID, 'dispatchRisk')).toBe(false);
+  expect(localStorage.getItem(ATTEMPT_PREFIX + PRODUCT_ID)).toBe(attempt);
+});
+
+it('a stale marker/id swap cannot let new-buyer reset erase an earlier approval', async () => {
+  const id = viewOf(canceledCheckout('expired')).id;
+  writeActiveCheckoutId(PRODUCT_ID, id); persistCheckoutEvidence(PRODUCT_ID, id, 'approvalOpened');
+  const other = id.replace('0123456789abcdef01234567', 'fedcba9876543210fedcba98');
+  localStorage.setItem(ACTIVE_KEY, JSON.stringify({ id: other, at: NOW, settled: true }));
+  persistCheckoutEvidence(PRODUCT_ID, other, 'completed');
+  const fetchImpl = vi.fn(async (_url: string) => jsonResponse({ checkout: { ...viewOf(completedCheckout()), id: other } }));
+  renderPanel(fetchImpl); await screen.findByTestId('reap-completed');
+  await act(async () => { fireEvent.click(screen.getByTestId('reap-new-buyer')); });
+  expect(fetchImpl.mock.calls.some(([url]) => url.endsWith('/reset'))).toBe(false);
+  expect(readActiveFlag(PRODUCT_ID, 'approvalOpened', id)).toBe(true);
+});
+
+it('an owner GET started before resume cannot clear the lost-reply gate when it arrives afterward', async () => {
+  renderPanel(scriptedFetch(needsEnrollmentCheckout())); await fillAndSubmit(); await screen.findByTestId('reap-status'); cleanup();
+  const paused = () => ({ ...viewOf(resolvingCheckout()), contactReentryRequired: true });
+  let reads = 0;
+  let resolveEarlierRead!: (response: Response) => void;
+  const fetchImpl = vi.fn(async (url: string) => {
+    if (url.endsWith('/resume')) return jsonResponse({}, 502);
+    reads += 1;
+    if (reads === 2) return new Promise<Response>((resolve) => { resolveEarlierRead = resolve; });
+    return jsonResponse({ checkout: paused() });
+  });
+  renderPanel(fetchImpl); await screen.findByTestId('reap-contact-reentry');
+  await act(async () => { window.dispatchEvent(new Event('focus')); });
+  expect(reads).toBe(2);
+  await fillAndSubmit();
+  await screen.findByTestId('reap-handoff-problem');
+  expect(readActiveFlag(PRODUCT_ID, 'continuationPending')).toBe(true);
+  await act(async () => { resolveEarlierRead(jsonResponse({ checkout: paused() })); });
+  expect(readActiveFlag(PRODUCT_ID, 'continuationPending')).toBe(true);
+  expect(screen.queryByTestId('reap-contact-reentry')).toBeNull();
+  await act(async () => { window.dispatchEvent(new Event('focus')); });
+  expect(reads).toBe(3);
+  expect(await screen.findByTestId('reap-contact-reentry')).toBeTruthy();
+  expect(readActiveFlag(PRODUCT_ID, 'continuationPending')).toBe(false);
+});
+
+// Independent adversarial review: a lost resume reply is not payment evidence.
+it('review: fresh terminal no-dispatch after lost resume resolves only the pending marker', async () => {
+  renderPanel(scriptedFetch(needsEnrollmentCheckout())); await fillAndSubmit(); await screen.findByTestId('reap-status'); cleanup();
+  let terminal = false;
+  const paused = { ...viewOf(resolvingCheckout()), contactReentryRequired: true };
+  const fetchImpl = vi.fn(async (url: string) => url.endsWith('/resume') ? jsonResponse({}, 502) : jsonResponse({ checkout: terminal ? viewOf(canceledCheckout('failed','enrollment_dead')) : paused }));
+  renderPanel(fetchImpl); await screen.findByTestId('reap-contact-reentry'); await fillAndSubmit();
+  await screen.findByTestId('reap-handoff-problem');
+  expect(readActiveFlag(PRODUCT_ID,'approvalOpened')).toBe(false);
+  expect(readActiveFlag(PRODUCT_ID,'dispatchRisk')).toBe(false);
+  terminal = true;
+  await act(async () => { window.dispatchEvent(new Event('focus')); });
+  expect(readActiveFlag(PRODUCT_ID,'continuationPending')).toBe(false);
+  expect(await screen.findByTestId('reap-restart')).toBeTruthy();
+});
+
+it('review: resume response cannot resurrect a terminal view read while request is in flight', async () => {
+  renderPanel(scriptedFetch(needsEnrollmentCheckout())); await fillAndSubmit(); await screen.findByTestId('reap-status'); cleanup();
+  let reads = 0; let reply!: (r: Response) => void;
+  const fetchImpl = vi.fn(async (url: string) => {
+    if (url.endsWith('/resume')) return new Promise<Response>(resolve => { reply = resolve; });
+    reads += 1;
+    return jsonResponse({checkout: reads === 1 ? {...viewOf(resolvingCheckout()),contactReentryRequired:true} : viewOf(canceledCheckout('expired'))});
+  });
+  renderPanel(fetchImpl); await screen.findByTestId('reap-contact-reentry');
+  await fillAndSubmit();
+  await act(async () => { window.dispatchEvent(new Event('focus')); });
+  await screen.findByTestId('reap-terminal-uncertain');
+  await act(async () => { reply(jsonResponse({checkout: viewOf(awaitingApprovalCheckout())})); });
+  expect(screen.queryByTestId('reap-continue')).toBeNull();
+  expect(screen.queryByTestId('reap-contact-reentry')).toBeNull();
+  expect(screen.getByTestId('reap-status').getAttribute('data-phase')).toBe('expired');
+});
+
+
+it.each(['approvalOpened', 'approved', 'handedOff', 'dispatchRisk'] as const)('fresh terminal no-dispatch settles only transient pending, preserving %s evidence', async (risk) => {
+  const terminal = viewOf(canceledCheckout('failed', 'enrollment_dead'));
+  writeActiveCheckoutId(PRODUCT_ID, terminal.id);
+  persistCheckoutEvidence(PRODUCT_ID, terminal.id, 'continuationPending');
+  if (risk === 'handedOff') localStorage.setItem(ACTIVE_KEY, JSON.stringify({ id: terminal.id, at: NOW, handedOff: true }));
+  else persistCheckoutEvidence(PRODUCT_ID, terminal.id, risk);
+  const fetchImpl = vi.fn(async (_url: string) => jsonResponse({ checkout: terminal }));
+  renderPanel(fetchImpl);
+  await screen.findByTestId('reap-terminal-uncertain');
+  expect(readActiveFlag(PRODUCT_ID, 'continuationPending')).toBe(false);
+  expect(readActiveFlag(PRODUCT_ID, risk)).toBe(true);
+  expect(screen.queryByTestId('reap-restart')).toBeNull();
+  expect(screen.queryByTestId('reap-contact-reentry')).toBeNull();
+  expect(screen.getByTestId('reap-status')).toHaveAttribute('data-phase', 'failed');
+  await act(async () => { fireEvent.click(screen.getByTestId('reap-new-buyer')); });
+  expect(fetchImpl.mock.calls.some(([url]) => url.endsWith('/reset'))).toBe(false);
+  expect(readActiveCheckoutId(PRODUCT_ID)).toBe(terminal.id);
+});
+
+it('review: terminal no-dispatch read while resume is pending still settles after its lost reply', async () => {
+  renderPanel(scriptedFetch(needsEnrollmentCheckout())); await fillAndSubmit(); await screen.findByTestId('reap-status'); cleanup();
+  let reads = 0; let reply!: (r: Response) => void;
+  const fetchImpl = vi.fn(async (url: string) => {
+    if (url.endsWith('/resume')) return new Promise<Response>(resolve => { reply = resolve; });
+    reads += 1;
+    return jsonResponse({checkout: reads === 1 ? {...viewOf(resolvingCheckout()),contactReentryRequired:true} : viewOf(canceledCheckout('failed','enrollment_dead'))});
+  });
+  renderPanel(fetchImpl); await screen.findByTestId('reap-contact-reentry'); await fillAndSubmit();
+  await waitFor(() => expect(fetchImpl.mock.calls.some(([url]) => url.endsWith('/resume'))).toBe(true));
+  await act(async () => { window.dispatchEvent(new Event('focus')); });
+  await screen.findByTestId('reap-terminal-uncertain');
+  await act(async () => { reply(jsonResponse({},502)); });
+  await act(async () => { window.dispatchEvent(new Event('focus')); });
+  expect(readActiveFlag(PRODUCT_ID,'continuationPending')).toBe(false);
+  expect(await screen.findByTestId('reap-restart')).toBeTruthy();
+});
+
+
+it.each([
+  ['quoting', 'dispatch_started', 'checkout_dispatch_unresolved'],
+  ['awaiting_approval', 'dispatched', 'checkout_unresolvable:3:checkout_no_hosted_action'],
+])('owner %s + %s + %s projects status-only review without approval claim', async (_state, dispatchState, _error) => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  // Exact additive gateway projection for these owner views: incomplete, no link,
+  // fixed review warning, explicit dispatch state, and retained polling hint.
+  const raw = resolvingCheckout();
+  raw.messages = raw.messages.filter((m: any) => m.code !== 'reap.checkout_dispatch_state');
+  raw.messages.push({ type: 'info', code: 'reap.checkout_dispatch_state', path: '$.status', content: dispatchState });
+  raw.messages.push({ type: 'warning', code: 'reap.checkout_requires_review', path: '$.status', content: 'This checkout needs review before it can continue. Check its status or contact support; do not start another checkout or approve an old link.' });
+  const checkout = viewOf(raw);
+  writeActiveCheckoutId(PRODUCT_ID, checkout.id);
+  const fetchImpl = vi.fn(async (_url: string) => jsonResponse({ checkout }));
+  const open = renderPanel(fetchImpl);
+  const review = await screen.findByTestId('reap-review-required');
+  expect(review).toHaveTextContent('Contact support');
+  expect(screen.queryByTestId('reap-preparing-copy')).toBeNull();
+  expect(screen.queryByTestId('reap-continue')).toBeNull();
+  expect(screen.queryByTestId('reap-contact-reentry')).toBeNull();
+  expect(screen.queryByTestId('reap-restart')).toBeNull();
+  expect(screen.getByTestId('reap-status').textContent).not.toMatch(/Nothing (is|was) charged|Approved\.|placing your order|Your total is ready/i);
+  expect(open).not.toHaveBeenCalled();
+  await act(async () => { await vi.advanceTimersByTimeAsync(6000); });
+  expect(fetchImpl.mock.calls.length).toBeGreaterThanOrEqual(2);
+  const count = fetchImpl.mock.calls.length;
+  await act(async () => { fireEvent.click(screen.getByTestId('reap-refresh')); });
+  expect(fetchImpl.mock.calls.length).toBeGreaterThan(count);
+});
+
+
+it('a pre-dispatch terminal read stays gated until explicit fresh owner reconciliation', async () => {
+  renderPanel(scriptedFetch(needsEnrollmentCheckout())); await fillAndSubmit(); await screen.findByTestId('reap-status'); cleanup();
+  let reads = 0;
+  let earlier!: (response: Response) => void;
+  const fetchImpl = vi.fn(async (url: string) => {
+    if (url.endsWith('/resume')) return jsonResponse({}, 502);
+    reads += 1;
+    if (reads === 1) return jsonResponse({checkout:{...viewOf(resolvingCheckout()),contactReentryRequired:true}});
+    if (reads === 2) return new Promise<Response>((resolve) => { earlier = resolve; });
+    return jsonResponse({checkout:viewOf(canceledCheckout('failed','enrollment_dead'))});
+  });
+  renderPanel(fetchImpl); await screen.findByTestId('reap-contact-reentry');
+  await act(async () => { window.dispatchEvent(new Event('focus')); });
+  await fillAndSubmit(); await screen.findByTestId('reap-handoff-problem');
+  await act(async () => { earlier(jsonResponse({checkout:viewOf(canceledCheckout('failed','enrollment_dead'))})); });
+  await screen.findByTestId('reap-terminal-uncertain');
+  expect(readActiveFlag(PRODUCT_ID,'continuationPending')).toBe(true);
+  expect(screen.queryByTestId('reap-restart')).toBeNull();
+  await act(async () => { fireEvent.click(screen.getByTestId('reap-refresh')); });
+  expect(readActiveFlag(PRODUCT_ID,'continuationPending')).toBe(false);
+  expect(await screen.findByTestId('reap-terminal')).toBeTruthy();
+  expect(screen.queryByTestId('reap-contact-reentry')).toBeNull();
+  expect(screen.getByTestId('reap-status')).toHaveAttribute('data-phase','failed');
+});
+
+
+it('real gateway accepted202 wire does not latch risk and permits original-attempt contact resume', async () => {
+  const productId = acceptedCreate.line_items[0].item.id;
+  const created = readReapCheckout(acceptedCreate)!;
+  expect(created.checkoutDispatchState).toBe('not_dispatched');
+  const mount = (fetchImpl: ReturnType<typeof vi.fn>) => render(
+    <ReapCheckoutPanel productId={productId} productTitle="Standard Eau de Parfum"
+      merchantDomain="www.brand.example" market="US" expectedMoney={{expected_unit_price_minor:4250,expected_currency:'USD'}}
+      storeUrl="https://www.brand.example/products/standard-edp" storeLabel="Brand"
+      fetchImpl={((url: string, init: RequestInit) => url === '/api/reap-checkout/session'
+        ? Promise.resolve(jsonResponse({scope:'test-buyer-scope'}))
+        : (fetchImpl as unknown as typeof fetch)(url,init)) as typeof fetch}
+      now={() => NOW} newIdempotencyKey={() => 'accepted-wire-original-key'} openWindow={vi.fn()} />
+  );
+  const first = vi.fn(async () => jsonResponse({checkout:created}));
+  mount(first); await fillAndSubmit(); await screen.findByTestId('reap-status');
+  expect(readActiveCheckoutId(productId)).toBe(acceptedCreate.id);
+  expect(readActiveFlag(productId,'dispatchRisk')).toBe(false);
+  const original = JSON.parse(String((first.mock.calls[0] as unknown as [string,RequestInit])[1].body));
+  cleanup();
+  const resumed = vi.fn(async (url: string) => jsonResponse({checkout: url.endsWith('/resume')
+    ? created : {...created, contactReentryRequired:true}}));
+  mount(resumed); await screen.findByTestId('reap-contact-reentry');
+  expect(readActiveFlag(productId,'dispatchRisk')).toBe(false);
+  await fillAndSubmit(); await screen.findByTestId('reap-status');
+  const posts = (resumed.mock.calls as unknown as [string,RequestInit][]).filter(([,init])=>init?.method==='POST');
+  expect(posts).toHaveLength(1);
+  expect(posts[0][0]).toBe(`/api/reap-checkout/${encodeURIComponent(acceptedCreate.id)}/resume`);
+  const {recover_only: _recoveryOnly, ...originalBody} = original;
+  expect(JSON.parse(String(posts[0][1].body))).toEqual(originalBody);
+  expect(readActiveCheckoutId(productId)).toBe(acceptedCreate.id);
+  expect(readActiveFlag(productId,'dispatchRisk')).toBe(false);
 });

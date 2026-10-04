@@ -113,8 +113,8 @@ function envelope(o: Opts) {
     expires_at: o.expiresAt ?? '2099-01-01T00:00:00.000Z',
     // Every good Reap answer publishes its seller; the degraded one (reap.view_unavailable) does not.
     messages: (o.messages as Array<{ code?: string }>).some((m) => m && m.code === 'reap.view_unavailable')
-      ? o.messages
-      : [...sellerMessages(currentSeller), ...o.messages],
+      ? [...o.messages, info('reap.checkout_dispatch_state', 'unknown')]
+      : [...sellerMessages(currentSeller), info('reap.checkout_dispatch_state', ['complete_in_progress', 'completed'].includes(o.status) ? 'dispatched' : 'not_dispatched'), ...o.messages],
     ...(o.discounts ? { discounts: o.discounts } : {}),
   };
 }
