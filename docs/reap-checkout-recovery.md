@@ -1,6 +1,6 @@
 # Reap checkout recovery and release gates
 
-This release is based on main `9692375782dcce55b0654fbbe2b0c5b9bcaef841`, including merged PR401 card-setup versus order-approval wording. The item-id, seller-conflict, degraded-view and past-approval/cross-tab safeguards from merged PRs #385 and #387 remain in place.
+This release is based on main `65735c4295c2b5d0b93d9ed169751fde3decb35c`, including merged PR403 selected-offer money guards and PR401 card-setup versus order-approval wording. The item-id, seller-conflict, degraded-view and past-approval/cross-tab safeguards from merged PRs #385 and #387 remain in place.
 
 ## Recovery contract
 

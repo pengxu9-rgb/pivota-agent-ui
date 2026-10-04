@@ -158,6 +158,25 @@ describe('native canonical own-money consumer boundary', () => {
     expect(fetchMock.mock.calls.some(([url]) => url === '/api/reap-checkout')).toBe(false);
   });
 
+  it('deploy skew: unpriced 100 mL without any status marker never borrows the offer-level 49 for Reap', async () => {
+    // Model of a gateway that does not stamp current_own_offer_status: the 100 mL row is simply unpriced.
+    const p = nativePayload();
+    const second = p.product.variants.find(v => v.variant_id === '222')!;
+    delete second.current_own_offer_status;
+    second.availability = { in_stock: true };
+    const offerVariant = p.offers![0].variants!.find(v => v.variant_id === '222')!;
+    delete offerVariant.current_own_offer_status;
+    offerVariant.availability = { in_stock: true };
+    expect(resolveOfferPricing(p.offers![0], second).itemAmount).toBe(49); // the fallback this guards against
+    renderPdp(p);
+    await screen.findByTestId('buybar-reap-primary');
+    fireEvent.click(screen.getByRole('button', { name: /100 mL/i }));
+    await waitFor(() => expect(screen.queryByTestId('buybar-reap-primary')).toBeNull());
+    expect(reapCalls().every(([url]) => url === '/api/reap-checkout/config')).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: /50 mL/i }));
+    expect(await screen.findByTestId('buybar-reap-primary')).toBeInTheDocument();
+  });
+
   it('explicit product-line selector retains precedence over generic native variants', async () => {
     const p = nativePayload();
     p.product.product_line_option_name = 'Listing';

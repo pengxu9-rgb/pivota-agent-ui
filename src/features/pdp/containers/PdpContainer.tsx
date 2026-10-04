@@ -92,7 +92,7 @@ import { customerMediaSubject, sanitizeReviewMedia, selectCustomerMedia } from '
 import { DEFAULT_UGC_SNAPSHOT, lockFirstUgcSource, mergeUgcItems } from '@/features/pdp/state/freezePolicy';
 import { getStableGalleryItems, resolveHeroMediaUrl } from '@/features/pdp/state/heroMedia';
 import { buildPdpViewModel } from '@/features/pdp/state/viewModel';
-import { resolveOfferPricing } from '@/features/pdp/utils/offerVariantMatching';
+import { resolveOfferPricing, resolveReapPurchaseMoney } from '@/features/pdp/utils/offerVariantMatching';
 import { buildBrandHref } from '@/lib/brandRoute';
 import {
   buildProductHref,
@@ -2418,14 +2418,18 @@ export function PdpContainer({
   // applies to this PDP, and a null `cta` leaves the purchase bar exactly as on main.
   // The item id is the PDP's own product id (the `sig_` the gateway's UCP door reads, PIVOTA-Agent
   // docs/reap-agentic-lane.md §7 step 2b), not the selected offer's seller-side id.
+  // The selected offer's own current item money for the selected variant, never its shipping total, a
+  // newly prepared witness price, a title-only match, an offer-level price borrowed across sizes, or a
+  // catalog/seed price with no selected offer. Without it Reap is not offered, whether or not the gateway
+  // stamped current_own_offer_status (deploy skew must not reopen the CTA).
+  const reapPurchaseMoney = useMemo(
+    () => resolveReapPurchaseMoney(selectedOffer, selectedVariant, variants.length),
+    [selectedOffer, selectedVariant, variants.length],
+  );
   const reapEntry = useReapCheckoutEntry({
-    purchaseUnavailable: selectedCurrentMoneyUnavailable,
-    // The own-offer item amount shown before asynchronous checkout preparation,
-    // never its shipping total or a newly prepared witness price.
-    unitPriceAmount: selectedOffer ? selectedOfferPricing.itemAmount : selectedVariant.price?.current.amount,
-    currency: selectedOffer
-      ? selectedOfferPricing.matchedVariant?.price?.current.currency ?? selectedOffer.price?.currency
-      : selectedVariant.price?.current.currency,
+    purchaseUnavailable: selectedCurrentMoneyUnavailable || !reapPurchaseMoney.available,
+    unitPriceAmount: reapPurchaseMoney.available ? reapPurchaseMoney.unitPriceAmount : null,
+    currency: reapPurchaseMoney.available ? reapPurchaseMoney.currency : null,
     // Sole-variant rows keep the existing proof-based path, including legacy
     // catalog SKU spellings. A multi-size product must carry the buyer's choice.
     variantId: variants.length > 1 ? selectedVariant?.variant_id : undefined,
