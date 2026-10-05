@@ -11,15 +11,15 @@ import verifiedNumericVariant from '@/features/pdp/__fixtures__/canonicalOfferLi
 import verifiedFullCream from '@/features/pdp/__fixtures__/canonicalOfferLive20261004/fullcream-verified-current-own-offer.json';
 import verifiedTwoVariants from '@/features/pdp/__fixtures__/canonicalOfferLive20261004/fullcream-variant-proof-true.json';
 import verifiedFirstVariant from '@/features/pdp/__fixtures__/canonicalOfferLive20261004/fullcream-variant-proof-false.json';
-import { hasVerifiedSelectedCommerce } from '@/features/pdp/utils/commerceAvailability';
+import { hasVerifiedSelectedCommerce, refreshPdpCommerce, stampPdpResponseCommerce } from '@/features/pdp/utils/commerceAvailability';
 import fullCream from '@/features/pdp/__fixtures__/canonicalOfferLive20261004/sig_6bb6c7ae7b7e71e838aefb564c60371a.json';
 import missha from '@/features/pdp/__fixtures__/canonicalOfferLive20261004/sig_7dbc9be45ef987752f80014d6abaac30.json';
 import beePollen from '@/features/pdp/__fixtures__/canonicalOfferLive20261004/sig_6bf0fddcae29af92f2556dd0e2687196.json';
 import { isValidVerifiedPdpResponse } from '@/features/pdp/utils/commerceAvailability';
 import { mapPdpV2ToPdpPayload } from '@/features/pdp/adapter/mapPdpV2ToPdpPayload';
-import { PdpContainer } from '@/features/pdp/containers/PdpContainer';
+import { COMMERCE_REFRESH_LEAD_MS, COMMERCE_REFRESH_RETRY_LEAD_MS, PdpContainer } from '@/features/pdp/containers/PdpContainer';
 import { renderPdpPage, PDP_DEGRADED_RENDER_ERROR } from './pdpServerPage';
-import ProductDetailClient from './ProductDetailClient';
+import ProductDetailClient, { dispatchedForPagePayload } from './ProductDetailClient';
 import { buildProductJsonLd } from './productJsonLd';
 
 const state = vi.hoisted(() => ({ id: '', desktop: false }));
@@ -55,7 +55,8 @@ const body = (receipt: any = fullCream) => {
       proof.expires_at = new Date(instant + 60000).toISOString();
     }
   }
-  return response;
+  // These bodies stand in for the browser's getPdpV2 read, which stamps arrival.
+  return stampPdpResponseCommerce(response, instant);
 };
 const canonical = (response: any) => response.modules.find((module: any) => module.type === 'canonical').data;
 const payload = (receipt = fullCream) => mapPdpV2ToPdpPayload(body(receipt))!;
@@ -308,19 +309,34 @@ it.each(['missing', 'malformed', 'inverted', 'overlong', 'disagreement'])(
     expect(mapPdpV2ToPdpPayload(response)).toBeNull();
   });
 
-it.each([-60001, 60001])('keeps useful evidence without purchase when verification time is displaced %sms', (offset) => {
+it.each([-600000, 600000])('a just-received proof stays usable when the device clock is %sms off the server', (offset) => {
+  // The window is timed on this browser from arrival, so device clock offset
+  // cannot reject a current proof or stretch a stale one.
   const response = body(verifiedFullCream), data = canonical(response);
   const displaced = Date.now() + offset;
   for (const proof of [response.metadata.commerce, data.commerce, data.pdp_payload.commerce]) {
     proof.verified_at = new Date(displaced).toISOString();
     proof.expires_at = new Date(displaced + 60000).toISOString();
   }
-  const p = mapPdpV2ToPdpPayload(response)!;
+  const p = mapPdpV2ToPdpPayload(stampPdpResponseCommerce(response, Date.now()))!;
+  expect(hasVerifiedSelectedCommerce(p, p.product.variants[0])).toBe(true);
+});
+
+it('keeps useful evidence without purchase once a proof is a minute past its arrival', () => {
+  const p = mapPdpV2ToPdpPayload(stampPdpResponseCommerce(body(verifiedFullCream), Date.now() - 60001))!;
   expect(p.product.title).toBe('Full Cream Moisturizer');
   expect(hasVerifiedSelectedCommerce(p, p.product.variants[0])).toBe(false);
   render(<PdpContainer payload={p} mode="beauty" onBuyNow={api.cart} onAddToCart={api.cart} />);
   expectNoPurchases();
   expect(document.body.textContent).not.toContain('$19.95');
+});
+
+it('a server-rendered proof that was never received by this browser waits for a browser read', () => {
+  const response = body(verifiedFullCream), data = canonical(response);
+  for (const proof of [response.metadata.commerce, data.commerce, data.pdp_payload.commerce]) delete proof.client_received_at;
+  const p = mapPdpV2ToPdpPayload(response)!;
+  expect(p.commerce_verification).toBe('refresh_required');
+  expect(hasVerifiedSelectedCommerce(p, p.product.variants[0])).toBe(false);
 });
 
 it('rechecks expiry at dispatch even when a suspended tab did not fire its timer', () => {
@@ -432,4 +448,90 @@ it.each([false, true])('Reap admission checks current proof and preserves an alr
     expect(screen.queryByTestId('proof-reap-panel')).toBeNull();
   }
   expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).includes('/prepare'))).toBe(false);
+});
+
+
+// --- 2026-10-05 review: an open page keeps a current proof -----------------
+
+describe('verified price proof is re-read before it lapses', () => {
+  afterEach(() => { vi.useRealTimers(); });
+  const buyControl = () => screen.queryByRole('button', { name: /view at retailer/i });
+
+  it('asks the page to re-read shortly before expiry, and once more if that read did not land', async () => {
+    vi.useFakeTimers();
+    const due = vi.fn();
+    render(<PdpContainer payload={payload(verifiedFullCream as any)} mode="beauty" onBuyNow={api.cart} onAddToCart={api.cart} onCommerceRefreshDue={due} />);
+    await act(async () => { await vi.advanceTimersByTimeAsync(60000 - COMMERCE_REFRESH_LEAD_MS - 100); });
+    expect(due).not.toHaveBeenCalled();
+    await act(async () => { await vi.advanceTimersByTimeAsync(200); });
+    expect(due).toHaveBeenCalledTimes(1);
+    await act(async () => { await vi.advanceTimersByTimeAsync(COMMERCE_REFRESH_LEAD_MS - COMMERCE_REFRESH_RETRY_LEAD_MS); });
+    expect(due).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps Buy enabled on a page open for several minutes', async () => {
+    vi.useFakeTimers();
+    // Every browser read is a new DB verification at the current instant.
+    api.get.mockImplementation(async () => body(verifiedFullCream));
+    render(<ProductDetailClient params={Promise.resolve({ id: state.id })} initialPayload={payload(verifiedFullCream as any)} />);
+    await act(async () => { await vi.advanceTimersByTimeAsync(10); });
+    expect(buyControl()).toBeEnabled();
+    for (let minute = 1; minute <= 4; minute += 1) {
+      await act(async () => { await vi.advanceTimersByTimeAsync(60000); });
+      expect(buyControl()).toBeEnabled();
+      expect(screen.queryByText('Current price and purchase availability could not be verified')).toBeNull();
+    }
+    expect(api.get.mock.calls.some(([args]) => args.cache_bypass === true && args.allow_read_only === true)).toBe(true);
+  });
+
+  it('lets the proof lapse when the re-read fails', async () => {
+    vi.useFakeTimers();
+    api.get.mockImplementation(async (args: any) => {
+      if (args.cache_bypass) throw new Error('offline');
+      return body(verifiedFullCream);
+    });
+    render(<ProductDetailClient params={Promise.resolve({ id: state.id })} initialPayload={payload(verifiedFullCream as any)} />);
+    await act(async () => { await vi.advanceTimersByTimeAsync(10); });
+    expect(buyControl()).toBeEnabled();
+    await act(async () => { await vi.advanceTimersByTimeAsync(60001); });
+    expect(screen.getByText('Current price and purchase availability could not be verified')).toBeInTheDocument();
+    expectNoPurchases();
+  });
+
+  it('revokes Buy when the re-read finds the listing has no current own offer', async () => {
+    vi.useFakeTimers();
+    api.get.mockImplementation(async (args: any) => args.cache_bypass ? body(fullCream) : body(verifiedFullCream));
+    render(<ProductDetailClient params={Promise.resolve({ id: state.id })} initialPayload={payload(verifiedFullCream as any)} />);
+    await act(async () => { await vi.advanceTimersByTimeAsync(60000 - COMMERCE_REFRESH_LEAD_MS + 10); });
+    expect(screen.getByText('Current price and purchase unavailable')).toBeInTheDocument();
+    expectNoPurchases();
+  });
+});
+
+describe('refreshPdpCommerce', () => {
+  it('replaces money and keeps content the page already loaded', () => {
+    const current = payload(verifiedFullCream as any);
+    const withReviews = { ...current, modules: [...current.modules, { module_id: 'r', type: 'reviews_preview', priority: 1, data: { kept: true } } as any] };
+    const fresh = payload(verifiedFullCream as any);
+    const next = refreshPdpCommerce(withReviews, fresh);
+    expect(next.commerce).toBe(fresh.commerce);
+    expect(next.modules.find((m) => m.type === 'reviews_preview')?.data).toEqual({ kept: true });
+  });
+
+  it('ignores a reply for another product or seller, and an unverified reply', () => {
+    const current = payload(verifiedFullCream as any);
+    const other = payload(verifiedFullCream as any);
+    other.product = { ...other.product, merchant_id: 'unrelated_seller' };
+    expect(refreshPdpCommerce(current, other)).toBe(current);
+    expect(refreshPdpCommerce(current, null)).toBe(current);
+    const pending = { ...payload(verifiedFullCream as any), commerce_verification: 'refresh_required' as const };
+    expect(refreshPdpCommerce(current, pending)).toBe(current);
+  });
+});
+
+it('a product-line option the container verified is not re-checked against the page product', () => {
+  const page = payload(verifiedFullCream as any);
+  expect(dispatchedForPagePayload(page, page.product.product_id)).toBe(true);
+  expect(dispatchedForPagePayload(page, undefined)).toBe(true);
+  expect(dispatchedForPagePayload(page, 'sig_00000000000000000000000000000000')).toBe(false);
 });

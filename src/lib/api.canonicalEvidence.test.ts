@@ -7,6 +7,7 @@ import { getPdpV2, getPdpV2Cached, normalizeProduct, sendMessage } from './api';
 import { deriveBrief, newShoppingTask } from '@/features/shopping/model';
 import { runShoppingTurn } from '@/features/shopping/runShoppingTurn';
 import { evaluateProduct } from '@/features/shopping/decision';
+import { stampPdpResponseCommerce } from '@/features/pdp/utils/commerceAvailability';
 
 const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status, headers: { 'Content-Type': 'application/json' } });
 const cards = live.catalog.body.products;
@@ -141,13 +142,16 @@ it('a fresh exact-seller proof remains usable, while cached or other-seller copi
   }
   const canonical = response.modules.find((m: any) => m.type === 'canonical').data;
   const ownProduct = normalizeProduct(canonical.pdp_payload.product);
-  const current = evaluateProduct(ownProduct, response, deriveBrief('Find moisturizer under $30'));
+  // The browser getPdpV2 read stamps arrival; an unstamped copy certifies nothing.
+  expect(evaluateProduct(ownProduct, response, deriveBrief('Find moisturizer under $30')).eligibility).toBe('unverified');
+  const received = stampPdpResponseCommerce(response, Date.now());
+  const current = evaluateProduct(ownProduct, received, deriveBrief('Find moisturizer under $30'));
   expect(current.price).toBe('USD 19.95'); // Explicit mocked positive control, not live money.
   expect(current.eligibility).toBe('candidate');
-  const cached = clone(response); cached.metadata.commerce_verification = 'refresh_required';
+  const cached = clone(received); cached.metadata.commerce_verification = 'refresh_required';
   expect(evaluateProduct(ownProduct, cached, deriveBrief('Find moisturizer under $30')).eligibility).toBe('unverified');
   const advertisedSeller = normalizeProduct(live.additional_catalog_card as any);
-  const other = evaluateProduct(advertisedSeller, response, deriveBrief('Find moisturizer under $30'));
+  const other = evaluateProduct(advertisedSeller, received, deriveBrief('Find moisturizer under $30'));
   expect(other.eligibility).toBe('unverified');
   expect(other.price).not.toBe('USD 19.95');
 });

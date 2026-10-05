@@ -15,6 +15,8 @@ export interface VerifiedCommerce {
   verified_at: string;
   expires_at: string;
   verified_variants: Array<{ variant_id: string; amount: number; currency: string }>;
+  /** Browser clock (ms) when this proof arrived; set only by the browser read. */
+  client_received_at?: number;
 }
 
 export interface PendingCommerce {

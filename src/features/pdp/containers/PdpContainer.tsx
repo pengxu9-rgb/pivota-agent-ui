@@ -40,7 +40,7 @@ import {
   type ProductResponse,
   type UgcCapabilities,
 } from '@/lib/api';
-import { enforceReadOnlyPdp, isVerifiedCommerce, hasVerifiedSelectedCommerce, isPurchaseUnavailable, isReadOnlyCommerce, restrictPdpCommerce } from '@/features/pdp/utils/commerceAvailability';
+import { enforceReadOnlyPdp, hasVerifiedSelectedCommerce, isPurchaseUnavailable, isReadOnlyCommerce, isVerifiedCommerce, refreshPdpCommerce, restrictPdpCommerce, verifiedCommerceExpiresAt } from '@/features/pdp/utils/commerceAvailability';
 import { mapPdpV2ToPdpPayload } from '@/features/pdp/adapter/mapPdpV2ToPdpPayload';
 import { isBeautyProduct } from '@/features/pdp/utils/isBeautyProduct';
 import {
@@ -646,6 +646,11 @@ const PRODUCT_LINE_SWITCH_INCLUDE = [
 const PRODUCT_LINE_PREFETCH_LIMIT = 2;
 const PRODUCT_LINE_PREFETCH_CONCURRENCY = 1;
 const PRODUCT_LINE_PREFETCH_TIMEOUT_MS = 8000;
+// A verified price is current for about a minute. Re-read it this long before
+// it lapses, and once more nearer the end if that read fails.
+export const COMMERCE_REFRESH_LEAD_MS = 15000;
+export const COMMERCE_REFRESH_RETRY_LEAD_MS = 5000;
+const COMMERCE_REFRESH_TIMEOUT_MS = 6000;
 const PRODUCT_LINE_REVIEWS_TIMEOUT_MS = 4200;
 const PRODUCT_LINE_SIMILAR_TIMEOUT_MS = 10000;
 const LOW_CONFIDENCE_ACTIVE_INGREDIENT_BEAUTY_HINT_RE =
@@ -1583,6 +1588,7 @@ export function PdpContainer({
   onWriteReview,
   onSeeAllReviews,
   onRetrySimilar,
+  onCommerceRefreshDue,
   ugcCapabilities,
   services,
 }: {
@@ -1606,14 +1612,71 @@ export function PdpContainer({
   onWriteReview?: () => void;
   onSeeAllReviews?: () => void;
   onRetrySimilar?: () => void;
+  /** Re-read the page's own product with the page's exact request; its result arrives as a new `payload`. */
+  onCommerceRefreshDue?: () => void;
   ugcCapabilities?: UgcCapabilities | null;
   services?: ServiceCardData[] | null;
 }) {
   const [loadedPayload, setPayload] = useState(initialPayload);
+  const loadedPayloadRef = useRef(loadedPayload);
+  loadedPayloadRef.current = loadedPayload;
+  const commerceRefreshInflightRef = useRef(false);
+  const initialProductId = String(initialPayload.product.product_id || '').trim();
+  const refreshDisplayedCommerce = useCallback(async () => {
+    const displayed = loadedPayloadRef.current;
+    if (commerceRefreshInflightRef.current || !isVerifiedCommerce(displayed.commerce)) return;
+    const productId = String(displayed.product.product_id || '').trim();
+    if (!productId) return;
+    // The page's own product is re-read by the page, so a product-line choice
+    // made here is never replaced by a refresh of the page's product.
+    if (productId === initialProductId) {
+      onCommerceRefreshDue?.();
+      return;
+    }
+    const merchantId = String(displayed.product.merchant_id || '').trim() || null;
+    commerceRefreshInflightRef.current = true;
+    try {
+      const response = await getPdpV2({
+        allow_read_only: true,
+        product_id: productId,
+        ...(merchantId ? { merchant_id: merchantId } : {}),
+        cache_bypass: true,
+        include: ['offers', 'variant_selector'],
+        timeout_ms: COMMERCE_REFRESH_TIMEOUT_MS,
+      });
+      const fresh = mapPdpV2ToPdpPayload(response, { product_id: productId, merchant_id: merchantId });
+      setPayload((current) => refreshPdpCommerce(current, fresh));
+    } catch {
+      // The proof lapses and the buy box says it could not be verified.
+    } finally {
+      commerceRefreshInflightRef.current = false;
+    }
+  }, [initialProductId, onCommerceRefreshDue]);
+  useEffect(() => {
+    const expires = verifiedCommerceExpiresAt(loadedPayload.commerce);
+    if (expires === null) return;
+    const due = () => {
+      if (document.visibilityState !== 'hidden') void refreshDisplayedCommerce();
+    };
+    // A successful re-read changes loadedPayload and clears the retry.
+    const timers = [COMMERCE_REFRESH_LEAD_MS, COMMERCE_REFRESH_RETRY_LEAD_MS]
+      .map((lead) => window.setTimeout(due, Math.max(0, expires - lead - Date.now())));
+    // A suspended tab misses its timers; check again when it is shown.
+    const onVisible = () => {
+      if (document.visibilityState === 'visible' && Date.now() >= expires - COMMERCE_REFRESH_LEAD_MS) {
+        void refreshDisplayedCommerce();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      timers.forEach((timer) => window.clearTimeout(timer));
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [loadedPayload, refreshDisplayedCommerce]);
   const [commerceClock, setCommerceClock] = useState(0);
   useEffect(() => {
-    if (!isVerifiedCommerce(loadedPayload.commerce)) return;
-    const expires = Date.parse(loadedPayload.commerce.expires_at);
+    const expires = verifiedCommerceExpiresAt(loadedPayload.commerce);
+    if (expires === null) return;
     const timer = window.setTimeout(() => setCommerceClock((value) => value + 1), Math.max(0, expires - Date.now()) + 1);
     return () => window.clearTimeout(timer);
   }, [loadedPayload]);

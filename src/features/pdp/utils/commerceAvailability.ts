@@ -24,8 +24,49 @@ function validVerificationWindow(commerce: Record<string, any>): boolean {
     Number.isFinite(observed) && Number.isFinite(expires) && expires > observed && expires - observed <= 60000;
 }
 
+/**
+ * The proof's lifetime is measured on this browser's clock from when the reply
+ * arrived, never by comparing the server's timestamps with Date.now(): a device
+ * clock a few seconds slow would otherwise reject every proof on first render,
+ * and one a minute fast would never accept one. Only `getPdpV2` in the browser
+ * stamps `client_received_at`; an unstamped proof (server render, cache) is not
+ * yet current here and needs a browser read.
+ */
+export function stampVerifiedCommerce<T>(value: T, receivedAt: number): T {
+  return isVerifiedCommerce(value) ? { ...value, client_received_at: receivedAt } : value;
+}
+
+/** Stamp all three envelopes of a get_pdp_v2 reply with one receipt time. */
+export function stampPdpResponseCommerce<T>(response: T, receivedAt: number): T {
+  const source = record(response);
+  if (!source) return response;
+  return {
+    ...source,
+    ...(source.metadata ? { metadata: { ...source.metadata, commerce: stampVerifiedCommerce(source.metadata.commerce, receivedAt) } } : {}),
+    ...(Array.isArray(source.modules) ? { modules: source.modules.map((module: any) => {
+      if (module?.type !== 'canonical' || !record(module.data)) return module;
+      const data = module.data;
+      return { ...module, data: {
+        ...data,
+        ...(data.commerce ? { commerce: stampVerifiedCommerce(data.commerce, receivedAt) } : {}),
+        ...(record(data.pdp_payload) ? { pdp_payload: { ...data.pdp_payload, commerce: stampVerifiedCommerce(data.pdp_payload.commerce, receivedAt) } } : {}),
+      } };
+    }) } : {}),
+  } as T;
+}
+
+/** Browser-clock instant this proof stops authorizing purchase, or null if it was never received here. */
+export function verifiedCommerceExpiresAt(value: unknown): number | null {
+  if (!isVerifiedCommerce(value)) return null;
+  const receivedAt = (value as VerifiedCommerce & { client_received_at?: unknown }).client_received_at;
+  if (typeof receivedAt !== 'number' || !Number.isFinite(receivedAt)) return null;
+  return receivedAt + (Date.parse(value.expires_at) - Date.parse(value.verified_at));
+}
+
 export function isFreshVerifiedCommerce(value: unknown, now = Date.now()): value is VerifiedCommerce {
-  return isVerifiedCommerce(value) && Date.parse(value.verified_at) <= now && now < Date.parse(value.expires_at);
+  const expiresAt = verifiedCommerceExpiresAt(value);
+  const receivedAt = (value as { client_received_at?: number } | null)?.client_received_at;
+  return expiresAt !== null && typeof receivedAt === 'number' && receivedAt <= now && now < expiresAt;
 }
 
 export function isVerifiedCommerce(value: unknown): value is VerifiedCommerce {
@@ -125,13 +166,16 @@ function stripPurchaseFields<T extends Record<string, any>>(value: T): T {
 }
 
 /** Preserve evidence but discard stale commerce merged by an older cache or caller. */
-export function enforceReadOnlyPdp(payload: PDPPayload): PDPPayload {
+export function enforceReadOnlyPdp(payload: PDPPayload, now = Date.now()): PDPPayload {
   const readOnly = isReadOnlyCommerce(payload.commerce);
-  const expired = isVerifiedCommerce(payload.commerce) && !isFreshVerifiedCommerce(payload.commerce);
-  if (!readOnly && !payload.commerce_verification && !expired) return payload;
+  // Never received by this browser (server render): check, don't fail.
+  const unreceived = isVerifiedCommerce(payload.commerce) && verifiedCommerceExpiresAt(payload.commerce) === null;
+  const expired = isVerifiedCommerce(payload.commerce) && !unreceived && !isFreshVerifiedCommerce(payload.commerce, now);
+  if (!readOnly && !payload.commerce_verification && !expired && !unreceived) return payload;
   return {
     ...payload,
-    ...(expired && !payload.commerce_verification ? { commerce_verification: 'failed' as const } : {}),
+    ...(!payload.commerce_verification && (expired || unreceived)
+      ? { commerce_verification: unreceived ? 'refresh_required' as const : 'failed' as const } : {}),
     ...(!readOnly ? { commerce: { state: 'unverified' as const, read_only: true as const,
       purchase_eligible: false as const, reason_code: 'CURRENT_OFFER_REFRESH_REQUIRED' as const } } : {}),
     ...(payload.quality_signals ? { quality_signals: { ...payload.quality_signals,
@@ -162,6 +206,47 @@ export function restrictPdpCommerce(current: PDPPayload, incoming: PDPPayload | 
   return enforceReadOnlyPdp({ ...current, commerce: incoming.commerce });
 }
 
+/**
+ * Apply a fresh browser read of the same product to an open page. A current
+ * proof replaces the selected listing's money, variants and offers while the
+ * content the page already loaded (reviews, similar, details) is kept. A
+ * read-only reply revokes purchase. Anything else leaves the page unchanged,
+ * so a failed re-read lets the old proof lapse rather than extending it.
+ */
+export function refreshPdpCommerce(current: PDPPayload, fresh: PDPPayload | null, now = Date.now()): PDPPayload {
+  if (!fresh || fresh.product.product_id !== current.product.product_id ||
+      fresh.product.merchant_id !== current.product.merchant_id) return current;
+  if (isReadOnlyCommerce(fresh.commerce)) return restrictPdpCommerce(current, fresh);
+  if (fresh.commerce_verification || !isFreshVerifiedCommerce(fresh.commerce, now)) return current;
+  const freshProduct = fresh.product as Record<string, any>;
+  const commerceProductFields = ['price', 'variants', 'availability', 'default_variant_id', 'selected_variant_id',
+    'purchase_eligible', 'commerce_mode', 'current_own_offer_status', '_pivota_offers'];
+  const product: Record<string, any> = { ...current.product };
+  for (const field of commerceProductFields) {
+    if (field in freshProduct) product[field] = freshProduct[field];
+    else delete product[field];
+  }
+  const commerceModules = new Set(['price_promo', 'variant_selector']);
+  const freshModules = new Map(fresh.modules.filter((module) => commerceModules.has(module.type)).map((module) => [module.type, module]));
+  const modules = current.modules
+    .filter((module) => !commerceModules.has(module.type) || freshModules.has(module.type))
+    .map((module) => freshModules.get(module.type) || module);
+  for (const [type, module] of freshModules) if (!modules.some((item) => item.type === type)) modules.push(module);
+  return {
+    ...current,
+    commerce: fresh.commerce,
+    commerce_verification: undefined,
+    ...(fresh.quality_signals ? { quality_signals: fresh.quality_signals } : {}),
+    product: product as PDPPayload['product'],
+    offers: fresh.offers,
+    offers_count: fresh.offers_count,
+    default_offer_id: fresh.default_offer_id,
+    best_price_offer_id: fresh.best_price_offer_id,
+    x_offers_state: fresh.x_offers_state ?? current.x_offers_state,
+    actions: fresh.actions,
+    modules,
+  };
+}
 
 /** A receipt for one seller/variant never authorizes a later different selection. */
 export function hasVerifiedSelectedCommerce(payload: Pick<PDPPayload, 'product' | 'commerce' | 'commerce_verification'>, variant: any,

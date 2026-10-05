@@ -1,7 +1,7 @@
 // Centralized API helpers for calling the Pivota Agent Gateway and Accounts API
 // All UI components should import functions from here instead of using fetch directly.
 import { unstable_cache } from 'next/cache'
-import { hasReadOnlyPdpSignal, matchesPdpRequestIdentity } from '@/features/pdp/utils/commerceAvailability'
+import { hasReadOnlyPdpSignal, matchesPdpRequestIdentity, stampPdpResponseCommerce } from '@/features/pdp/utils/commerceAvailability'
 import { canonicalEvidenceRef, isCanonicalEvidenceRequest, type CanonicalEvidenceRef } from '@/lib/canonicalEvidenceRef'
 import {
   getCheckoutContextFromBrowser,
@@ -3356,7 +3356,11 @@ export async function getPdpV2(args: {
     merchant_id: evidenceUnscoped ? null : args.merchant_id })) {
     throw new Error('PDP response identity did not match the requested product and seller');
   }
-  return data as GetPdpV2Response;
+  // A purchase proof is timed on the shopper's clock from arrival. Server
+  // renders leave it unstamped, so the browser re-reads before enabling Buy.
+  return (typeof window !== 'undefined'
+    ? stampPdpResponseCommerce(data, Date.now())
+    : data) as GetPdpV2Response;
 }
 
 /**

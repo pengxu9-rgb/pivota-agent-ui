@@ -22,6 +22,7 @@ export function ElectronicsPDPContainer({
   onWriteReview,
   onSeeAllReviews,
   onRetrySimilar,
+  onCommerceRefreshDue,
   ugcCapabilities,
   services,
 }: {
@@ -43,6 +44,7 @@ export function ElectronicsPDPContainer({
   onWriteReview?: () => void;
   onSeeAllReviews?: () => void;
   onRetrySimilar?: () => void;
+  onCommerceRefreshDue?: () => void;
   ugcCapabilities?: UgcCapabilities | null;
   services?: ServiceCardData[] | null;
 }) {
@@ -55,6 +57,7 @@ export function ElectronicsPDPContainer({
       onWriteReview={onWriteReview}
       onSeeAllReviews={onSeeAllReviews}
       onRetrySimilar={onRetrySimilar}
+      onCommerceRefreshDue={onCommerceRefreshDue}
       ugcCapabilities={ugcCapabilities}
       services={services}
     />

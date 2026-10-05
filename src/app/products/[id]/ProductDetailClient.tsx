@@ -16,7 +16,7 @@ import {
   type ProductResponse,
   type UgcCapabilities,
 } from '@/lib/api';
-import { hasVerifiedSelectedCommerce, isPurchaseUnavailable, isReadOnlyCommerce, isVerifiedCommerce, restrictPdpCommerce } from '@/features/pdp/utils/commerceAvailability';
+import { hasVerifiedSelectedCommerce, isPurchaseUnavailable, isReadOnlyCommerce, isVerifiedCommerce, refreshPdpCommerce, restrictPdpCommerce } from '@/features/pdp/utils/commerceAvailability';
 import { mapPdpV2ToPdpPayload } from '@/features/pdp/adapter/mapPdpV2ToPdpPayload';
 import { isBeautyProduct } from '@/features/pdp/utils/isBeautyProduct';
 import { BeautyPDPContainer } from '@/features/pdp/containers/BeautyPDPContainer';
@@ -598,6 +598,14 @@ function shouldRetryWithCoreOnlyPdp(err: unknown): boolean {
   const message = String((err as Error)?.message || '').toLowerCase();
   return message.includes('timed out') || message.includes('timeout') || message.includes('temporarily unavailable');
 }
+// PdpContainer verifies the payload it is displaying before it dispatches. After
+// a product-line switch that is a different product, which this page's payload
+// and its proof do not describe, so only the container's check applies to it.
+export function dispatchedForPagePayload(payload: PDPPayload, productId?: string): boolean {
+  const id = String(productId || '').trim();
+  return !id || id === payload.product.product_id || id === (payload.product as { source_product_id?: string }).source_product_id;
+}
+
 export default function ProductDetailPage({ params, initialPayload, serviceRecommendations = null, initialSearch = '' }: Props) {
   const { id: rawId } = use(params);
   // Next.js dynamic params arrive URL-encoded (e.g. `ulta%3Ahash`); gateway
@@ -1135,6 +1143,36 @@ export default function ProductDetailPage({ params, initialPayload, serviceRecom
     };
   }, [clearSimilarDeferredRetryTimer, hasInitialPayload, requiresCommerceRefresh, id, inferredMerchantId, merchantIdParam, reloadKey, routeIsProductGroup]);
 
+  // The container asks shortly before this page's price proof lapses. Re-read
+  // with the page's exact request; a failed read leaves the proof to lapse.
+  const commerceRefreshInflightRef = useRef(false);
+  const handleCommerceRefreshDue = useCallback(() => {
+    if (commerceRefreshInflightRef.current) return;
+    commerceRefreshInflightRef.current = true;
+    const explicitMerchantId = inferredMerchantId ? String(inferredMerchantId).trim() : null;
+    const identity = { product_id: id, ...(routeIsProductGroup ? { subject: { type: 'product_group' as const, id } } : { merchant_id: explicitMerchantId }) };
+    void getPdpV2({
+      allow_read_only: true,
+      product_id: id,
+      ...(routeIsProductGroup
+        ? { subject: { type: 'product_group' as const, id } }
+        : explicitMerchantId
+          ? { merchant_id: explicitMerchantId }
+          : {}),
+      cache_bypass: true,
+      include: ['offers', 'variant_selector'],
+      timeout_ms: PDP_V2_CORE_ONLY_RETRY_TIMEOUT_MS,
+    })
+      .then((v2) => {
+        const fresh = mapPdpV2ToPdpPayload(v2, identity);
+        setPdpPayload((current) => (current ? refreshPdpCommerce(current, fresh) : current));
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        commerceRefreshInflightRef.current = false;
+      });
+  }, [id, inferredMerchantId, routeIsProductGroup]);
+
   useEffect(() => {
     let cancelled = false;
     const productId = String(pdpPayload?.product?.product_id || '').trim();
@@ -1225,7 +1263,9 @@ export default function ProductDetailPage({ params, initialPayload, serviceRecom
     product_id?: string;
     offer_id?: string;
   }) => {
-    if (!pdpPayload || isReadOnlyCommerce(pdpPayload.commerce) || isPurchaseUnavailable(pdpPayload.product) || isPurchaseUnavailable(variant)) return;
+    if (!pdpPayload || isPurchaseUnavailable(variant)) return;
+    const pageDispatch = dispatchedForPagePayload(pdpPayload, product_id);
+    if (pageDispatch && (isReadOnlyCommerce(pdpPayload.commerce) || isPurchaseUnavailable(pdpPayload.product))) return;
     void (async () => {
       const resolvedMerchantId =
         String(merchant_id || pdpPayload.product.merchant_id || '').trim();
@@ -1244,7 +1284,7 @@ export default function ProductDetailPage({ params, initialPayload, serviceRecom
         offer_id && offers.length
           ? offers.find((o) => String(o?.offer_id || o?.offerId || '').trim() === String(offer_id))
           : null;
-      if (!hasVerifiedSelectedCommerce(pdpPayload, variant, { merchantId: resolvedMerchantId, productId: resolvedProductId, offer })) {
+      if (pageDispatch && !hasVerifiedSelectedCommerce(pdpPayload, variant, { merchantId: resolvedMerchantId, productId: resolvedProductId, offer })) {
         toast.error('Current price and purchase availability for this selection are unverified.');
         return;
       }
@@ -1277,7 +1317,7 @@ export default function ProductDetailPage({ params, initialPayload, serviceRecom
       if (isExternal) {
         if (redirectUrl) {
           if (!confirmRetailerHandoff(pdpPayload.product, variant, offer)) return;
-          if (!hasVerifiedSelectedCommerce(pdpPayload, variant, { merchantId: resolvedMerchantId, productId: resolvedProductId, offer })) {
+          if (pageDispatch && !hasVerifiedSelectedCommerce(pdpPayload, variant, { merchantId: resolvedMerchantId, productId: resolvedProductId, offer })) {
             toast.error('Current price and purchase availability for this selection are unverified.');
             return;
           }
@@ -1366,7 +1406,9 @@ export default function ProductDetailPage({ params, initialPayload, serviceRecom
     product_id?: string;
     offer_id?: string;
   }) => {
-    if (!pdpPayload || isReadOnlyCommerce(pdpPayload.commerce) || isPurchaseUnavailable(pdpPayload.product) || isPurchaseUnavailable(variant)) return;
+    if (!pdpPayload || isPurchaseUnavailable(variant)) return;
+    const pageDispatch = dispatchedForPagePayload(pdpPayload, product_id);
+    if (pageDispatch && (isReadOnlyCommerce(pdpPayload.commerce) || isPurchaseUnavailable(pdpPayload.product))) return;
     void (async () => {
       const resolvedMerchantId =
         String(merchant_id || pdpPayload.product.merchant_id || '').trim();
@@ -1381,7 +1423,7 @@ export default function ProductDetailPage({ params, initialPayload, serviceRecom
           ? offers.find((o) => String(o?.offer_id || o?.offerId || '').trim() === String(offer_id))
           : null;
 
-      if (!hasVerifiedSelectedCommerce(pdpPayload, variant, { merchantId: resolvedMerchantId, productId: resolvedProductId, offer })) {
+      if (pageDispatch && !hasVerifiedSelectedCommerce(pdpPayload, variant, { merchantId: resolvedMerchantId, productId: resolvedProductId, offer })) {
         toast.error('Current price and purchase availability for this selection are unverified.');
         return;
       }
@@ -1414,7 +1456,7 @@ export default function ProductDetailPage({ params, initialPayload, serviceRecom
       if (isExternal) {
         if (redirectUrl) {
           if (!confirmRetailerHandoff(pdpPayload.product, variant, offer)) return;
-          if (!hasVerifiedSelectedCommerce(pdpPayload, variant, { merchantId: resolvedMerchantId, productId: resolvedProductId, offer })) {
+          if (pageDispatch && !hasVerifiedSelectedCommerce(pdpPayload, variant, { merchantId: resolvedMerchantId, productId: resolvedProductId, offer })) {
             toast.error('Current price and purchase availability for this selection are unverified.');
             return;
           }
@@ -1663,6 +1705,7 @@ export default function ProductDetailPage({ params, initialPayload, serviceRecom
           onBuyNow={handleBuyNow}
           onWriteReview={handleWriteReview}
           onRetrySimilar={handleRetrySimilar}
+          onCommerceRefreshDue={handleCommerceRefreshDue}
           ugcCapabilities={ugcCapabilities}
           services={resolvedMode === 'beauty' ? serviceRecommendations : null}
         />
