@@ -214,9 +214,13 @@ export function resolveOfferPricing(
   totalAmount: number | null;
   currency: string;
   currentMoneyUnavailable: boolean;
+  /** The gateway could not verify this seller's current price on a verified page. */
+  priceUnverified: boolean;
 } {
   const matchedVariant = findMatchingOfferVariant(offer, targetVariant);
-  const currentMoneyUnavailable = targetVariant?.current_own_offer_status === 'unavailable' ||
+  const priceUnverified = offer?.price_verification === 'unverified';
+  const currentMoneyUnavailable = priceUnverified || offer?.current_own_offer_status === 'unavailable' ||
+    targetVariant?.current_own_offer_status === 'unavailable' ||
     matchedVariant?.current_own_offer_status === 'unavailable';
   const fallbackCurrency =
     String(
@@ -232,6 +236,7 @@ export function resolveOfferPricing(
   return {
     matchedVariant,
     currentMoneyUnavailable,
+    priceUnverified,
     itemAmount,
     shippingAmount,
     totalAmount: itemAmount == null ? null : itemAmount + shippingAmount,

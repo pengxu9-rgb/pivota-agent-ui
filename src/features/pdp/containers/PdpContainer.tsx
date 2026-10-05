@@ -2033,7 +2033,13 @@ export function PdpContainer({
         : undefined;
   const selectionProofMatches = hasVerifiedSelectedCommerce(payload, selectedVariant, { offer: selectedOffer });
   const purchaseUnavailableMessage = basePurchaseUnavailableMessage || (!selectionProofMatches ? 'Current price and purchase availability for this selection are unverified' : undefined);
-  const selectedCurrentMoneyUnavailable = !selectionProofMatches || commerceUnavailable || isPurchaseUnavailable(selectedVariant) || resolveOfferPricing(selectedOffer, selectedVariant).currentMoneyUnavailable;
+  // Another verified seller can sell a size the page seller cannot; its own offer variant decides.
+  const selectedOfferIsOtherSeller = Boolean(selectedOffer &&
+    (selectedOffer.merchant_id !== payload.product.merchant_id ||
+      ![payload.product.product_id, payload.product.source_product_id].includes(String(selectedOffer.product_id || ''))));
+  const selectedCurrentMoneyUnavailable = !selectionProofMatches || commerceUnavailable ||
+    (!selectedOfferIsOtherSeller && isPurchaseUnavailable(selectedVariant)) ||
+    resolveOfferPricing(selectedOffer, selectedOfferIsOtherSeller ? null : selectedVariant).currentMoneyUnavailable;
   const effectiveIsInStock = !selectedCurrentMoneyUnavailable &&
     (typeof selectedOfferInStock === 'boolean' ? selectedOfferInStock : isInStock);
   const variantAwareDefaultOfferId = useMemo(() => {

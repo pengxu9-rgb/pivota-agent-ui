@@ -5,6 +5,15 @@ export interface ReadOnlyCommerce {
   reason_code: 'CURRENT_OWN_OFFER_UNAVAILABLE';
 }
 
+export interface VerifiedSellerOffer {
+  offer_id: string;
+  merchant_id: string;
+  product_id: string;
+  variant_id: string;
+  amount: number;
+  currency: string;
+}
+
 export interface VerifiedCommerce {
   state: 'ready';
   read_only: false;
@@ -17,6 +26,8 @@ export interface VerifiedCommerce {
   verified_variants: Array<{ variant_id: string; amount: number; currency: string }>;
   /** Browser clock (ms) when this proof arrived; set only by the browser read. */
   client_received_at?: number;
+  /** Other sellers' offers whose current price the gateway verified, as served. */
+  verified_offers?: VerifiedSellerOffer[];
 }
 
 export interface PendingCommerce {
@@ -255,6 +266,9 @@ export interface Price {
 
 export interface Offer {
   offer_id: string;
+  /** Set on a verified page: whether the gateway verified this seller's current price. */
+  price_verification?: 'verified' | 'unverified';
+  current_own_offer_status?: 'unavailable';
   product_group_id?: string;
   product_id?: string;
   merchant_id: string;

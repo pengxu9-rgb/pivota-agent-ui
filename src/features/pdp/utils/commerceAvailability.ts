@@ -80,7 +80,21 @@ export function isVerifiedCommerce(value: unknown): value is VerifiedCommerce {
     Array.isArray(commerce.verified_variants) && commerce.verified_variants.length > 0 && commerce.verified_variants.length <= 100 &&
     commerce.verified_variants.every((entry: any) => typeof entry?.variant_id === 'string' && entry.variant_id.trim() &&
       typeof entry.amount === 'number' && Number.isFinite(entry.amount) && entry.amount > 0 && /^[A-Z]{3}$/.test(entry.currency)) &&
-    new Set(commerce.verified_variants.map((entry: any) => entry.variant_id)).size === commerce.verified_variants.length;
+    new Set(commerce.verified_variants.map((entry: any) => entry.variant_id)).size === commerce.verified_variants.length &&
+    isValidVerifiedOffers(commerce.verified_offers);
+}
+
+function isValidVerifiedOffers(value: unknown): boolean {
+  if (value === undefined) return true;
+  if (!Array.isArray(value) || value.length > 200) return false;
+  const keys = new Set<string>();
+  for (const entry of value) {
+    if (!['offer_id', 'merchant_id', 'product_id', 'variant_id'].every((field) => typeof entry?.[field] === 'string' && entry[field].trim()) ||
+        typeof entry.amount !== 'number' || !Number.isFinite(entry.amount) || entry.amount <= 0 ||
+        typeof entry.currency !== 'string' || !/^[A-Z]{3}$/.test(entry.currency)) return false;
+    keys.add([entry.offer_id, entry.merchant_id, entry.product_id, entry.variant_id].join('\u0000'));
+  }
+  return keys.size === value.length;
 }
 
 /** Fail closed for purchase actions even if a stale/partial payload is passed directly. */
@@ -121,7 +135,8 @@ export function isValidVerifiedPdpResponse(response: unknown): boolean {
   if (!proofs.every((item) => item.product_ref.merchant_id === proof.product_ref.merchant_id &&
       item.product_ref.product_id === proof.product_ref.product_id && item.selected_variant_id === proof.selected_variant_id &&
       item.verified_at === proof.verified_at && item.expires_at === proof.expires_at &&
-      JSON.stringify(item.verified_variants) === JSON.stringify(proof.verified_variants))) return false;
+      JSON.stringify(item.verified_variants) === JSON.stringify(proof.verified_variants) &&
+      JSON.stringify(item.verified_offers || []) === JSON.stringify(proof.verified_offers || []))) return false;
   const selectedRef = record(canonical?.selected_commerce_ref);
   if (!selectedRef || selectedRef.merchant_id !== proof.product_ref.merchant_id ||
       selectedRef.product_id !== proof.product_ref.product_id || product.merchant_id !== proof.product_ref.merchant_id ||
@@ -253,8 +268,12 @@ export function hasVerifiedSelectedCommerce(payload: Pick<PDPPayload, 'product' 
   selected: { merchantId?: string | null; productId?: string | null; offer?: any } = {}): boolean {
   if (!payload.commerce) return !payload.commerce_verification; // Existing legacy path retains its own gates.
   const proof = payload.commerce;
-  if (payload.commerce_verification || !isFreshVerifiedCommerce(proof) || isPurchaseUnavailable(payload.product) ||
-      isPurchaseUnavailable(variant) || variant?.availability?.in_stock === false || variant?.in_stock === false) return false;
+  if (payload.commerce_verification || !isFreshVerifiedCommerce(proof) || isPurchaseUnavailable(payload.product)) return false;
+  // Another seller's offer has its own verified money; the page seller's variant state does not decide it.
+  if (selected.offer && isOtherSellerOffer(selected.offer, proof, payload.product)) {
+    return hasVerifiedSellerOffer(proof, variant, selected.offer, selected);
+  }
+  if (isPurchaseUnavailable(variant) || variant?.availability?.in_stock === false || variant?.in_stock === false) return false;
   const product = payload.product;
   const seller = selected.merchantId || selected.offer?.merchant_id || product.merchant_id;
   const productId = selected.productId || selected.offer?.product_id || product.source_product_id || product.product_id;
@@ -293,6 +312,47 @@ export function hasVerifiedSelectedCommerce(payload: Pick<PDPPayload, 'product' 
     if (typeof offerMoney?.amount !== 'number' || offerMoney.currency !== entry.currency || offerMoney.amount !== entry.amount) return false;
   }
   return true;
+}
+
+function isOtherSellerOffer(offer: any, proof: VerifiedCommerce, product: any): boolean {
+  return String(offer?.merchant_id || '') !== proof.product_ref.merchant_id ||
+    ![proof.product_ref.product_id, product?.product_id].includes(String(offer?.product_id || ''));
+}
+
+/**
+ * A different seller's offer is buyable only as the gateway certified it in `verified_offers`: the
+ * same offer, seller and listing, the offer variant that exactly matches the shopper's selected
+ * options, and exactly the money shown. An unverified or out-of-stock offer never is.
+ */
+function hasVerifiedSellerOffer(proof: VerifiedCommerce, variant: any, offer: any,
+  selected: { merchantId?: string | null; productId?: string | null }): boolean {
+  if ((selected.merchantId && selected.merchantId !== offer.merchant_id) ||
+      (selected.productId && selected.productId !== offer.product_id)) return false;
+  if (offer.price_verification !== 'verified' || isPurchaseUnavailable(offer) ||
+      offer.inventory?.in_stock === false || offer.in_stock === false) return false;
+  const rows = Array.isArray(offer.variants) ? offer.variants : [];
+  let variantId: string;
+  let money: any;
+  if (rows.length) {
+    const target = exactOptions(variant?.options);
+    if (!target) return false;
+    const matches = rows.filter((row: any) => {
+      const options = exactOptions(row?.options);
+      return options && JSON.stringify(options) === JSON.stringify(target);
+    });
+    if (matches.length !== 1) return false;
+    const own = matches[0];
+    if (isPurchaseUnavailable(own) || own.availability?.in_stock === false || own.in_stock === false) return false;
+    variantId = String(own.variant_id || '');
+    money = own.price?.current;
+  } else {
+    variantId = String(offer.selected_variant_id || offer.variant_id || offer.product_id || '');
+    money = offer.price;
+  }
+  const entry = (proof.verified_offers || []).find((item) => item.offer_id === offer.offer_id &&
+    item.merchant_id === offer.merchant_id && item.product_id === offer.product_id && item.variant_id === variantId);
+  return Boolean(entry && variantId && typeof money?.amount === 'number' && money.amount === entry.amount &&
+    money.currency === entry.currency);
 }
 
 function exactOptions(value: unknown): Array<[string, string]> | null {

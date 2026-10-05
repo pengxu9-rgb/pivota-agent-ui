@@ -239,10 +239,12 @@ export function OfferSheet({
                 </div>
 
                 <div className="text-right shrink-0">
-                  <div className="text-sm font-semibold">{formatPrice(total, currency)}</div>
-                  <div className="mt-1 text-[11px] text-muted-foreground">
-                    Item: {formatPrice(itemAmount, currency)}
-                  </div>
+                  <div className="text-sm font-semibold">{pricing.priceUnverified ? 'Price not verified' : formatPrice(total, currency)}</div>
+                  {pricing.priceUnverified ? null : (
+                    <div className="mt-1 text-[11px] text-muted-foreground">
+                      Item: {formatPrice(itemAmount, currency)}
+                    </div>
+                  )}
                 </div>
               </div>
             </button>
