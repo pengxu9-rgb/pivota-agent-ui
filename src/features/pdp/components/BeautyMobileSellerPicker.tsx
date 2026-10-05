@@ -76,6 +76,7 @@ export function displayMerchantLabel(offer: Offer): string {
 
 function rowPrice(offer: Offer, selectedVariant: Variant | null) {
   const pricing = resolveOfferPricing(offer, selectedVariant ?? null);
+  if (pricing.priceUnverified) return 'Price not verified';
   if (pricing.currentMoneyUnavailable) return 'Price unavailable';
   const amount =
     typeof pricing.totalAmount === 'number' && Number.isFinite(pricing.totalAmount)
