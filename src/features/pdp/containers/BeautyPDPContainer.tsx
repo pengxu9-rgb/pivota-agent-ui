@@ -12,6 +12,7 @@ export function BeautyPDPContainer({
   onWriteReview,
   onSeeAllReviews,
   onRetrySimilar,
+  onCommerceRefreshDue,
   ugcCapabilities,
   services,
 }: {
@@ -33,6 +34,7 @@ export function BeautyPDPContainer({
   onWriteReview?: () => void;
   onSeeAllReviews?: () => void;
   onRetrySimilar?: () => void;
+  onCommerceRefreshDue?: () => void;
   ugcCapabilities?: UgcCapabilities | null;
   services?: ServiceCardData[] | null;
 }) {
@@ -45,6 +47,7 @@ export function BeautyPDPContainer({
       onWriteReview={onWriteReview}
       onSeeAllReviews={onSeeAllReviews}
       onRetrySimilar={onRetrySimilar}
+      onCommerceRefreshDue={onCommerceRefreshDue}
       ugcCapabilities={ugcCapabilities}
       services={services}
     />

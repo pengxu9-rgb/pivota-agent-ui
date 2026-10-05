@@ -1,0 +1,568 @@
+{
+  "source": "local_integrated_route_with_public_receipt_inputs",
+  "status": 200,
+  "headers": {
+    "x-powered-by": "Express",
+    "vary": "Origin, Access-Control-Request-Headers, Access-Control-Request-Method",
+    "access-control-allow-methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
+    "access-control-allow-headers": "Content-Type, Authorization, X-Api-Key, X-Agent-Api-Key, X-Checkout-Token, X-Aurora-Uid, X-Aurora-Lang, X-Trace-Id, X-Brief-Id, X-Lang, X-Session-Id",
+    "x-aurora-build": "started-2026-10-04T11:07:15.372Z",
+    "x-service-name": "pivota-agent-gateway",
+    "x-gateway-request-id": "9c0cb6c9-9f0b-41a7-96bf-0e96eef4a68f",
+    "cache-control": "private, no-store",
+    "content-type": "application/json; charset=utf-8",
+    "content-length": "13596",
+    "etag": "W/\"351c-aymr3n92iBC4rp6V2HcEIVaYs3c\"",
+    "date": "Sun, 04 Oct 2026 11:07:15 GMT",
+    "connection": "close"
+  },
+  "body": {
+    "status": "success",
+    "pdp_version": "2.0",
+    "request_id": "9c0cb6c9-9f0b-41a7-96bf-0e96eef4a68f",
+    "build_id": null,
+    "generated_at": "2026-10-04T11:07:15.553Z",
+    "subject": {
+      "type": "product_group",
+      "id": "sig_6bf0fddcae29af92f2556dd0e2687196",
+      "canonical_product_ref": {
+        "merchant_id": "merch_obs_702970e666c0de6e",
+        "product_id": "holiholic-com:471957515448dc23",
+        "platform": "external_seed",
+        "product_key": "fixture::sig_6bf0fddcae29af92f2556dd0e2687196",
+        "content_key": "fixture-content::sig_6bf0fddcae29af92f2556dd0e2687196",
+        "source_system": "catalog_enrichment_agent_v1",
+        "pivota_signature_id": "sig_6bf0fddcae29af92f2556dd0e2687196"
+      }
+    },
+    "capabilities": {
+      "client": "shopping-agent-ui",
+      "client_version": null
+    },
+    "modules": [
+      {
+        "type": "canonical",
+        "required": true,
+        "data": {
+          "product_group_id": "sig_6bf0fddcae29af92f2556dd0e2687196",
+          "sellable_item_group_id": "sig_6bf0fddcae29af92f2556dd0e2687196",
+          "product_line_id": null,
+          "review_family_id": null,
+          "identity_confidence": null,
+          "match_basis": [],
+          "canonical_scope": null,
+          "content_canonical_route_id": null,
+          "pdp_schema_profile": "beauty_formula",
+          "pdp_content_source": "self",
+          "offer_source": "unavailable",
+          "commerce_source": "selected_seller_store",
+          "content_review_state": "not_needed",
+          "canonical_product_ref": {
+            "merchant_id": "merch_obs_702970e666c0de6e",
+            "product_id": "holiholic-com:471957515448dc23",
+            "platform": "external_seed",
+            "product_key": "fixture::sig_6bf0fddcae29af92f2556dd0e2687196",
+            "content_key": "fixture-content::sig_6bf0fddcae29af92f2556dd0e2687196",
+            "source_system": "catalog_enrichment_agent_v1",
+            "pivota_signature_id": "sig_6bf0fddcae29af92f2556dd0e2687196"
+          },
+          "entry_product_ref": {
+            "product_id": "holiholic-com:471957515448dc23",
+            "merchant_id": "merch_obs_702970e666c0de6e"
+          },
+          "selected_commerce_ref": {
+            "merchant_id": "merch_obs_702970e666c0de6e",
+            "product_id": "holiholic-com:471957515448dc23"
+          },
+          "content_base_ref": {
+            "merchant_id": "merch_obs_702970e666c0de6e",
+            "product_id": "holiholic-com:471957515448dc23",
+            "platform": "external_seed",
+            "product_key": "fixture::sig_6bf0fddcae29af92f2556dd0e2687196",
+            "content_key": "fixture-content::sig_6bf0fddcae29af92f2556dd0e2687196",
+            "source_system": "catalog_enrichment_agent_v1",
+            "pivota_signature_id": "sig_6bf0fddcae29af92f2556dd0e2687196"
+          },
+          "canonical_payload_product_ref": {
+            "merchant_id": "merch_obs_702970e666c0de6e",
+            "product_id": "sig_6bf0fddcae29af92f2556dd0e2687196",
+            "platform": "external"
+          },
+          "pdp_payload": {
+            "schema_version": "1.0.0",
+            "page_type": "product_detail",
+            "pdp_schema_profile": "beauty_formula",
+            "x_template_hint": "beauty",
+            "tracking": {
+              "page_request_id": "pr_dl8a96cf0vg_mutpuzmk",
+              "entry_point": "agent"
+            },
+            "product": {
+              "product_id": "sig_6bf0fddcae29af92f2556dd0e2687196",
+              "merchant_id": "merch_obs_702970e666c0de6e",
+              "title": "[MISSHA] Bee Pollen Renew Intense Moisturizer",
+              "pdp_schema_profile": "beauty_formula",
+              "subtitle": "",
+              "brand": {
+                "name": "Missha"
+              },
+              "category_path": [
+                "Moisturizer"
+              ],
+              "category_kind": "beauty",
+              "image_url": "https://cdn.shopify.com/s/files/1/0340/5653/6199/products/Missha_BeePollenRenewIntenseMoisturizer-Holiholic.jpg?v=1660051078",
+              "image_urls": [
+                "https://cdn.shopify.com/s/files/1/0340/5653/6199/products/Missha_BeePollenRenewIntenseMoisturizer-Holiholic.jpg?v=1660051078"
+              ],
+              "images": [
+                "https://cdn.shopify.com/s/files/1/0340/5653/6199/products/Missha_BeePollenRenewIntenseMoisturizer-Holiholic.jpg?v=1660051078"
+              ],
+              "source": "external_seed",
+              "readiness_tier": null,
+              "serving_eligible": true,
+              "commerce_mode": "read_only",
+              "default_variant_id": "holiholic-com:471957515448dc23",
+              "variants": [
+                {
+                  "variant_id": "holiholic-com:471957515448dc23",
+                  "sku_id": "holiholic-com:471957515448dc23",
+                  "title": "",
+                  "options": [],
+                  "image_url": "https://cdn.shopify.com/s/files/1/0340/5653/6199/products/Missha_BeePollenRenewIntenseMoisturizer-Holiholic.jpg?v=1660051078",
+                  "label_image_url": "",
+                  "images": [
+                    "https://cdn.shopify.com/s/files/1/0340/5653/6199/products/Missha_BeePollenRenewIntenseMoisturizer-Holiholic.jpg?v=1660051078"
+                  ],
+                  "image_urls": [
+                    "https://cdn.shopify.com/s/files/1/0340/5653/6199/products/Missha_BeePollenRenewIntenseMoisturizer-Holiholic.jpg?v=1660051078"
+                  ],
+                  "axis_kind": "",
+                  "display_label": "",
+                  "source_quality_status": "blocked",
+                  "hidden_from_selector": true,
+                  "current_own_offer_status": "unavailable",
+                  "purchase_eligible": false,
+                  "availability": {}
+                }
+              ],
+              "purchase_grain": "variant",
+              "description": "[MISSHA] Bee Pollen Renew Intense Moisturizer 130ml - This intensive moisturizer helps to strengthen skin barrier while repairing wrinkles and brightening. - Suitable for dry, sensitive and dull skin.",
+              "source_product_id": "holiholic-com:471957515448dc23",
+              "product_key": "fixture::sig_6bf0fddcae29af92f2556dd0e2687196",
+              "sellable_item_group_id": "sig_6bf0fddcae29af92f2556dd0e2687196",
+              "product_group_id": "sig_6bf0fddcae29af92f2556dd0e2687196",
+              "pivota_signature_id": "sig_6bf0fddcae29af92f2556dd0e2687196",
+              "signature_id": "sig_6bf0fddcae29af92f2556dd0e2687196",
+              "pivota_canonical_url": "https://agent.pivota.cc/products/sig_6bf0fddcae29af92f2556dd0e2687196",
+              "purchase_eligible": false,
+              "current_own_offer_status": "unavailable",
+              "availability": {}
+            },
+            "modules": [
+              {
+                "module_id": "m_media",
+                "type": "media_gallery",
+                "priority": 100,
+                "data": {
+                  "items": [
+                    {
+                      "type": "image",
+                      "url": "https://cdn.shopify.com/s/files/1/0340/5653/6199/products/Missha_BeePollenRenewIntenseMoisturizer-Holiholic.jpg?v=1660051078",
+                      "alt_text": "[MISSHA] Bee Pollen Renew Intense Moisturizer",
+                      "role": "official_product",
+                      "provenance": {
+                        "source_type": "merchant_product",
+                        "scope": "exact_item",
+                        "product_id": "sig_6bf0fddcae29af92f2556dd0e2687196",
+                        "merchant_id": "merch_obs_702970e666c0de6e",
+                        "source_url": "https://merchant.example.test/products/read-only"
+                      }
+                    }
+                  ],
+                  "entry_points": {
+                    "submit_photo": {
+                      "action_type": "open_embed",
+                      "label": "Add a photo",
+                      "target": {
+                        "embed_intent_type": "buyer_media_submission",
+                        "resolve_params": {
+                          "product_id": "sig_6bf0fddcae29af92f2556dd0e2687196",
+                          "merchant_id": "merch_obs_702970e666c0de6e",
+                          "content_type": "photo"
+                        }
+                      }
+                    },
+                    "submit_video": {
+                      "action_type": "open_embed",
+                      "label": "Add a video",
+                      "target": {
+                        "embed_intent_type": "buyer_media_submission",
+                        "resolve_params": {
+                          "product_id": "sig_6bf0fddcae29af92f2556dd0e2687196",
+                          "merchant_id": "merch_obs_702970e666c0de6e",
+                          "content_type": "video"
+                        }
+                      }
+                    }
+                  },
+                  "contribution_policy": {
+                    "submissions_open": true,
+                    "publish_visibility": "employee_approved_only",
+                    "employee_review_required": true,
+                    "moderation_owner": "pivota_employee",
+                    "accepted_content_types": [
+                      "photo",
+                      "video"
+                    ]
+                  }
+                }
+              },
+              {
+                "module_id": "m_product_overview",
+                "type": "product_overview",
+                "priority": 70,
+                "data": {
+                  "sections": [
+                    {
+                      "heading": "Description",
+                      "content_type": "text",
+                      "content": "[MISSHA] Bee Pollen Renew Intense Moisturizer 130ml - This intensive moisturizer helps to strengthen skin barrier while repairing wrinkles and brightening. - Suitable for dry, sensitive and dull skin.",
+                      "collapsed_by_default": false
+                    }
+                  ]
+                }
+              }
+            ],
+            "quality_signals": {
+              "coverage_by_module": {
+                "media_gallery": 1,
+                "price_promo": 0,
+                "product_overview": 1,
+                "buy_box": 0
+              },
+              "parse_confidence": {
+                "size_guide": 0
+              },
+              "fallback_used": {
+                "size_guide": false
+              },
+              "gating": {
+                "buy_box_ok": false,
+                "size_guide_ok": false
+              }
+            },
+            "x_content_module_states": {
+              "ingredients_inci": {
+                "state": "absent"
+              },
+              "active_ingredients": {
+                "state": "absent"
+              },
+              "how_to_use": {
+                "state": "absent"
+              },
+              "product_overview": {
+                "state": "ready"
+              },
+              "supplemental_details": {
+                "state": "absent"
+              },
+              "materials": {
+                "state": "absent"
+              },
+              "product_specs": {
+                "state": "absent"
+              },
+              "size_fit": {
+                "state": "absent"
+              },
+              "care_instructions": {
+                "state": "absent"
+              },
+              "usage_safety": {
+                "state": "absent"
+              },
+              "product_facts": {
+                "state": "absent"
+              },
+              "reviews_preview": {
+                "state": "absent"
+              }
+            },
+            "product_group_id": "sig_6bf0fddcae29af92f2556dd0e2687196",
+            "sellable_item_group_id": "sig_6bf0fddcae29af92f2556dd0e2687196",
+            "commerce": {
+              "state": "unavailable",
+              "read_only": true,
+              "purchase_eligible": false,
+              "reason_code": "CURRENT_OWN_OFFER_UNAVAILABLE"
+            },
+            "actions": []
+          },
+          "commerce": {
+            "state": "unavailable",
+            "read_only": true,
+            "purchase_eligible": false,
+            "reason_code": "CURRENT_OWN_OFFER_UNAVAILABLE"
+          }
+        }
+      },
+      {
+        "type": "variant_selector",
+        "required": false,
+        "data": null,
+        "reason": "unavailable"
+      },
+      {
+        "type": "offers",
+        "required": false,
+        "data": {
+          "status": "unavailable",
+          "offers": [],
+          "offers_count": 0,
+          "default_offer_id": null,
+          "best_price_offer_id": null,
+          "reason_codes": [
+            "CURRENT_OWN_OFFER_UNAVAILABLE"
+          ],
+          "commerce": {
+            "state": "unavailable",
+            "read_only": true,
+            "purchase_eligible": false,
+            "reason_code": "CURRENT_OWN_OFFER_UNAVAILABLE"
+          }
+        },
+        "reason": "CURRENT_OWN_OFFER_UNAVAILABLE"
+      },
+      {
+        "type": "ingredients_inci",
+        "required": false,
+        "data": null,
+        "reason": "unavailable"
+      },
+      {
+        "type": "product_overview",
+        "required": false,
+        "data": {
+          "sections": [
+            {
+              "heading": "Description",
+              "content_type": "text",
+              "content": "[MISSHA] Bee Pollen Renew Intense Moisturizer 130ml - This intensive moisturizer helps to strengthen skin barrier while repairing wrinkles and brightening. - Suitable for dry, sensitive and dull skin.",
+              "collapsed_by_default": false
+            }
+          ]
+        }
+      }
+    ],
+    "warnings": [],
+    "missing": [
+      {
+        "type": "variant_selector",
+        "reason": "unavailable"
+      },
+      {
+        "type": "offers",
+        "reason": "CURRENT_OWN_OFFER_UNAVAILABLE"
+      },
+      {
+        "type": "ingredients_inci",
+        "reason": "unavailable"
+      }
+    ],
+    "metadata": {
+      "detail_source": null,
+      "pdp_schema_profile": "beauty_formula",
+      "normalized_pdp": {
+        "surface": "pivota_normalized_pdp",
+        "display_name": "Pivota Insights",
+        "insights_available": false,
+        "self_canonical": true,
+        "indexability": "index",
+        "structured_data_mode": "product_snippet",
+        "page_positioning": "editorial_normalized_product_page",
+        "quality_state": "limited",
+        "evidence_profile": null,
+        "truth_layers": {
+          "commerce_truth": "merchant_store_platform",
+          "entity_truth": "pivota_normalized_product_layer",
+          "experience_truth": "pivota_pdp_chat_agent"
+        }
+      },
+      "product_intel_status": "not_requested",
+      "identity_resolution": {
+        "requested_product_id": "sig_6bf0fddcae29af92f2556dd0e2687196",
+        "requested_merchant_id": null,
+        "resolved_product_id": "holiholic-com:471957515448dc23",
+        "resolved_merchant_id": "merch_obs_702970e666c0de6e",
+        "canonicalization_applied": true,
+        "canonicalization_reason_code": "PIVOTA_SIGNATURE_ID",
+        "entry_precheck_missing": false,
+        "resolution_source": "catalog_products_signature_exact"
+      },
+      "identity_graph": null,
+      "pdp_provenance": {
+        "pdp_content_source": "self",
+        "offer_source": "unavailable",
+        "commerce_source": "selected_seller_store",
+        "content_review_state": "not_needed",
+        "content_base_ref": {
+          "merchant_id": "merch_obs_702970e666c0de6e",
+          "product_id": "holiholic-com:471957515448dc23",
+          "platform": "external_seed",
+          "product_key": "fixture::sig_6bf0fddcae29af92f2556dd0e2687196",
+          "content_key": "fixture-content::sig_6bf0fddcae29af92f2556dd0e2687196",
+          "source_system": "catalog_enrichment_agent_v1",
+          "pivota_signature_id": "sig_6bf0fddcae29af92f2556dd0e2687196"
+        },
+        "selected_commerce_ref": {
+          "merchant_id": "merch_obs_702970e666c0de6e",
+          "product_id": "holiholic-com:471957515448dc23"
+        },
+        "canonical_payload_product_ref": {
+          "merchant_id": "merch_obs_702970e666c0de6e",
+          "product_id": "sig_6bf0fddcae29af92f2556dd0e2687196",
+          "platform": "external"
+        },
+        "identity_confidence": null,
+        "match_basis": []
+      },
+      "route_health": {
+        "total_latency_ms": 58,
+        "phases": {
+          "parse_request": 0,
+          "resolve_catalog_signature": 2,
+          "build_external_seed_product": 0,
+          "resolve_variant_to_product": 0,
+          "resolve_subject_group": 0,
+          "resolve_offer_group": 0,
+          "resolve_canonical_catalog_group": 0,
+          "precheck_entry_product": 35,
+          "resolve_group_cached": 0,
+          "serving_eligibility_gate": 0,
+          "fetch_canonical_product": 0,
+          "catalog_identity_hydration": 0,
+          "identity_graph_live": 1,
+          "fetch_optional_modules_parallel": 0,
+          "catalog_pdp_content_hydration": 1,
+          "reviewed_ingredient_authority": 1,
+          "savings_presentation_hydration": 1,
+          "identity_group_rescue_catalog": 1
+        },
+        "checkpoints_ms": {
+          "phase:parse_request": 0,
+          "phase:resolve_catalog_signature": 2,
+          "phase:build_external_seed_product": 2,
+          "after_build_external_seed_product": 2,
+          "phase:resolve_variant_to_product": 2,
+          "phase:resolve_subject_group": 2,
+          "phase:resolve_offer_group": 2,
+          "phase:resolve_canonical_catalog_group": 2,
+          "phase:precheck_entry_product": 37,
+          "phase:resolve_group_cached": 37,
+          "phase:serving_eligibility_gate": 37,
+          "phase:fetch_canonical_product": 37,
+          "phase:identity_graph_live": 38,
+          "phase:fetch_optional_modules_parallel": 38,
+          "phase:catalog_pdp_content_hydration": 39,
+          "phase:reviewed_ingredient_authority": 40,
+          "phase:savings_presentation_hydration": 41,
+          "after_savings_hydration": 41,
+          "after_related_services": 41,
+          "phase:identity_group_rescue_catalog": 57,
+          "before_response_assembly": 58
+        },
+        "modules": {},
+        "savings_presentation_hydration_mode": "prefetched_only",
+        "product_group_resolve_mode": "not_needed",
+        "product_group_resolve_budget_exceeded": false,
+        "product_group_resolve_budget_ms": 1200,
+        "identity_graph_live_mode": "executed_full_hydration",
+        "requested_product_id": "sig_6bf0fddcae29af92f2556dd0e2687196",
+        "requested_merchant_id": null,
+        "resolved_product_id": "holiholic-com:471957515448dc23",
+        "resolved_merchant_id": "merch_obs_702970e666c0de6e",
+        "canonicalization_applied": true,
+        "canonicalization_reason_code": "PIVOTA_SIGNATURE_ID",
+        "entry_precheck_missing": false
+      },
+      "module_health": {
+        "severity": "degraded",
+        "applied": true,
+        "items": [
+          {
+            "type": "variant_selector",
+            "reason": "unavailable",
+            "required": false,
+            "severity": "warning"
+          },
+          {
+            "type": "offers",
+            "reason": "CURRENT_OWN_OFFER_UNAVAILABLE",
+            "required": false,
+            "severity": "degraded"
+          },
+          {
+            "type": "ingredients_inci",
+            "reason": "unavailable",
+            "required": false,
+            "severity": "warning"
+          }
+        ],
+        "degraded": [
+          {
+            "type": "offers",
+            "reason": "CURRENT_OWN_OFFER_UNAVAILABLE",
+            "required": false,
+            "severity": "degraded"
+          }
+        ],
+        "warnings": [
+          {
+            "type": "variant_selector",
+            "reason": "unavailable",
+            "required": false,
+            "severity": "warning"
+          },
+          {
+            "type": "ingredients_inci",
+            "reason": "unavailable",
+            "required": false,
+            "severity": "warning"
+          }
+        ],
+        "info": []
+      },
+      "module_degrade": {
+        "applied": true,
+        "severity": "degraded",
+        "modules": [
+          {
+            "type": "variant_selector",
+            "reason": "unavailable",
+            "required": false,
+            "severity": "warning"
+          },
+          {
+            "type": "offers",
+            "reason": "CURRENT_OWN_OFFER_UNAVAILABLE",
+            "required": false,
+            "severity": "degraded"
+          },
+          {
+            "type": "ingredients_inci",
+            "reason": "unavailable",
+            "required": false,
+            "severity": "warning"
+          }
+        ]
+      },
+      "commerce": {
+        "state": "unavailable",
+        "read_only": true,
+        "purchase_eligible": false,
+        "reason_code": "CURRENT_OWN_OFFER_UNAVAILABLE"
+      }
+    }
+  }
+}

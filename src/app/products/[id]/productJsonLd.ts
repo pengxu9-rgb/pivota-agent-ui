@@ -18,6 +18,7 @@
  * penalizes spam-flagged JSON-LD by removing rich snippets sitewide.
  */
 
+import { isPurchaseUnavailable } from '@/features/pdp/utils/commerceAvailability';
 import { buildProductDescription } from './productDescription';
 import { buildProductHrefForProduct, isExternalAliasOnlyProduct } from '@/lib/productHref';
 
@@ -140,7 +141,9 @@ function _resolveOfferFacts(product: Record<string, any>): {
   currency: string;
   availability: string | null;
 } {
+  if (isPurchaseUnavailable(product)) return { price: null, currency: '', availability: null };
   const variant = _resolveDefaultVariant(product);
+  if (isPurchaseUnavailable(variant)) return { price: null, currency: '', availability: null };
 
   // Variant-style: variants[].price.current.amount + .currency + .availability.in_stock
   const variantPrice = _firstNumber(
@@ -422,6 +425,7 @@ function _buildAggregateOffer(
   product: Record<string, any>,
   parentUrl: string,
 ): Record<string, any> | null {
+  if (isPurchaseUnavailable(product) || isPurchaseUnavailable(_resolveDefaultVariant(product))) return null;
   const rawOffers = product._pivota_offers;
   if (!Array.isArray(rawOffers) || rawOffers.length < 2) return null;
 
@@ -598,7 +602,7 @@ function _buildVariantNode(args: {
     variant.price?.amount,
     variant.price_amount,
   );
-  if (price !== null && price > 0) {
+  if (!isPurchaseUnavailable(variant) && price !== null && price > 0) {
     const offer: Record<string, any> = {
       '@type': SCHEMA_TYPE_OFFER,
       url: variantUrl,
@@ -645,7 +649,7 @@ function _buildHasVariant(args: {
   const variants = Array.isArray(product.variants) ? product.variants : [];
   const nodes: Array<Record<string, any>> = [];
   for (const v of variants) {
-    const node = _buildVariantNode({ variant: v, parentName, parentBrand, parentUrl });
+    const node = _buildVariantNode({ variant: isPurchaseUnavailable(product) ? { ...v, purchase_eligible: false } : v, parentName, parentBrand, parentUrl });
     if (node) nodes.push(node);
   }
   // Require >=2 real variants. A lone "5ml" or "110g" variant doesn't

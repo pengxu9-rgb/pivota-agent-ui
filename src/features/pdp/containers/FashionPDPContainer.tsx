@@ -24,6 +24,7 @@ export function FashionPDPContainer({
   onWriteReview,
   onSeeAllReviews,
   onRetrySimilar,
+  onCommerceRefreshDue,
   ugcCapabilities,
   services,
 }: {
@@ -45,6 +46,7 @@ export function FashionPDPContainer({
   onWriteReview?: () => void;
   onSeeAllReviews?: () => void;
   onRetrySimilar?: () => void;
+  onCommerceRefreshDue?: () => void;
   ugcCapabilities?: UgcCapabilities | null;
   services?: ServiceCardData[] | null;
 }) {
@@ -57,6 +59,7 @@ export function FashionPDPContainer({
       onWriteReview={onWriteReview}
       onSeeAllReviews={onSeeAllReviews}
       onRetrySimilar={onRetrySimilar}
+      onCommerceRefreshDue={onCommerceRefreshDue}
       ugcCapabilities={ugcCapabilities}
       services={services}
     />

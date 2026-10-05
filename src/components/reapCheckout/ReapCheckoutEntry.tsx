@@ -89,6 +89,8 @@ export function resolveMerchantDomain(args: {
 
 export type ReapCheckoutEntryProps = {
   purchaseUnavailable?: boolean;
+  /** Rechecked at new admission, including a tab resumed after its render. */
+  canOpenCheckout?: () => boolean;
   unitPriceAmount?: number | null;
   currency?: string | null;
   productId: string;
@@ -118,8 +120,10 @@ export function useReapCheckoutEntry(props: ReapCheckoutEntryProps): {
   const [config, setConfig] = useState<DemoConfig | null>(null);
   const [open, setOpen] = useState(false);
   // The PDP's chosen quantity, captured when the buyer opens checkout; the merchant's quote prices it.
-  const [quantity, setQuantity] = useState(1);
-  const [expectedMoney, setExpectedMoney] = useState<ExpectedMoney | null>(null);
+  const [admission, setAdmission] = useState<{
+    props: ReapCheckoutEntryProps; merchant: DemoMerchant;
+    terms: DemoConfig['terms']; quantity: number; expectedMoney: ExpectedMoney | null;
+  } | null>(null);
 
   useEffect(() => {
     if (!enabled || !props.isExternalPurchase) return undefined;
@@ -132,12 +136,6 @@ export function useReapCheckoutEntry(props: ReapCheckoutEntryProps): {
     };
   }, [enabled, props.isExternalPurchase]);
 
-  const onOpen = useCallback((q: number) => {
-    if (props.purchaseUnavailable) return;
-    setExpectedMoney(snapshotDisplayedMoney(props.unitPriceAmount, props.currency));
-    setQuantity(Math.min(10, Math.max(1, Math.floor(Number(q) || 1))));
-    setOpen(true);
-  }, [props.unitPriceAmount, props.currency, props.purchaseUnavailable]);
   const onClose = useCallback(() => setOpen(false), []);
 
   let merchant: DemoMerchant | null = null;
@@ -148,29 +146,38 @@ export function useReapCheckoutEntry(props: ReapCheckoutEntryProps): {
       merchant = (domain && merchants.find((m) => m.domain === domain && (!m.productIds || m.productIds.includes(props.productId)))) || null;
     }
   }
+  const onOpen = useCallback((q: number) => {
+    if (!merchant || props.purchaseUnavailable || props.canOpenCheckout?.() === false) return;
+    // Admission is atomic. Later PDP expiry/selection changes must not replace
+    // the identity/money of an already-open attempt or retire its recovery UI.
+    setAdmission({ props: { ...props }, merchant: { ...merchant }, terms: config?.terms ?? null,
+      expectedMoney: snapshotDisplayedMoney(props.unitPriceAmount, props.currency),
+      quantity: Math.min(10, Math.max(1, Math.floor(Number(q) || 1))) });
+    setOpen(true);
+  }, [props, merchant, config?.terms]);
   const cta = useMemo(() => (merchant && !props.purchaseUnavailable ? { onOpen } : null),
     [merchant, onOpen, props.purchaseUnavailable]);
-  if (!merchant) return { cta: null, sheet: null };
+  if (!merchant && !open) return { cta: null, sheet: null };
 
   return {
     cta,
     sheet: (
       <ResponsiveSheet open={open} onClose={onClose} title="Checkout" mobileHeight="h-[88vh]">
-        {open ? (
+        {open && admission ? (
           <Suspense fallback={<p className="p-4 text-sm text-muted-foreground">Loading…</p>}>
             <ReapCheckoutPanel
-              expectedMoney={expectedMoney}
-              productId={props.productId}
-              variantId={props.variantId}
-              variantLabel={props.variantLabel}
-              productTitle={props.productTitle}
-              merchantDomain={merchant.domain}
-              market={merchant.market}
-              itemSource={merchant.itemSource}
-              quantity={quantity}
-              terms={config?.terms ?? null}
-              storeUrl={props.storeUrl}
-              storeLabel={props.storeLabel}
+              expectedMoney={admission.expectedMoney}
+              productId={admission.props.productId}
+              variantId={admission.props.variantId}
+              variantLabel={admission.props.variantLabel}
+              productTitle={admission.props.productTitle}
+              merchantDomain={admission.merchant.domain}
+              market={admission.merchant.market}
+              itemSource={admission.merchant.itemSource}
+              quantity={admission.quantity}
+              terms={admission.terms}
+              storeUrl={admission.props.storeUrl}
+              storeLabel={admission.props.storeLabel}
             />
           </Suspense>
         ) : null}

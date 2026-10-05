@@ -162,6 +162,7 @@ export function ElectronicsPDPDesktop(props: ElectronicsPDPMobileProps & {
               currency={props.currency}
               quantity={props.quantity}
               disabled={!props.inStock}
+              purchaseUnavailableMessage={props.purchaseUnavailableMessage}
               buyNowLabel={props.buyNowLabel}
               isExternalPurchase={props.isExternalPurchase}
               externalRetailerLabel={props.externalRetailerLabel}

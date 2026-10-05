@@ -1,6 +1,8 @@
 // Centralized API helpers for calling the Pivota Agent Gateway and Accounts API
 // All UI components should import functions from here instead of using fetch directly.
 import { unstable_cache } from 'next/cache'
+import { hasReadOnlyPdpSignal, matchesPdpRequestIdentity, stampPdpResponseCommerce } from '@/features/pdp/utils/commerceAvailability'
+import { canonicalEvidenceRef, isCanonicalEvidenceRequest, type CanonicalEvidenceRef } from '@/lib/canonicalEvidenceRef'
 import {
   getCheckoutContextFromBrowser,
   normalizeCheckoutSource,
@@ -301,8 +303,11 @@ interface RealAPIProduct {
 
 // Normalized product used across the UI
 export interface ProductResponse {
+  /** Search-only qualifiers which retrieval did not verify against source evidence. */
+  search_unverified_constraints?: string[];
   product_id: string;
   pivota_signature_id?: string;
+  canonical_evidence_ref?: CanonicalEvidenceRef;
   product_group_id?: string;
   merchant_id?: string;
   merchant_name?: string;
@@ -489,6 +494,7 @@ export type GetPdpV2Module = {
 
 export type GetPdpV2Response = {
   status?: string;
+  metadata?: Record<string, any>;
   pdp_version?: string;
   request_id?: string;
   build_id?: string | null;
@@ -890,8 +896,11 @@ export function normalizeProduct(
     normalizedProductId,
   );
 
+  const evidenceRef = canonicalEvidenceRef({ ...anyP, product_id: normalizedProductId });
+
   return {
     product_id: normalizedProductId,
+    ...(evidenceRef ? { canonical_evidence_ref: evidenceRef, canonical_url: `https://agent.pivota.cc/products/${evidenceRef.product_id}` } : {}),
     ...(pivotaSignatureId ? { pivota_signature_id: pivotaSignatureId } : {}),
     product_group_id:
       typeof anyP.product_group_id === 'string'
@@ -965,12 +974,11 @@ export function normalizeProduct(
     image_url: normalizedImage,
     category: anyP.category || anyP.product_type || 'General',
     in_stock:
-      typeof anyP.in_stock === 'boolean'
-        ? anyP.in_stock
-        : (anyP.inventory_quantity ||
-            anyP.quantity ||
-            anyP.stock ||
-            0) > 0,
+      anyP.in_stock === false || anyP.availability?.in_stock === false
+        ? false
+        : anyP.in_stock === true || anyP.availability?.in_stock === true
+          ? true
+          : (anyP.inventory_quantity || anyP.quantity || anyP.stock || 0) > 0,
     product_type: anyP.product_type,
     tags: Array.isArray(anyP.tags) ? anyP.tags : undefined,
     department: anyP.department,
@@ -3282,6 +3290,8 @@ export async function resolveProductGroup(args: {
 
 export async function getPdpV2(args: {
   product_id: string;
+  allow_read_only?: boolean;
+  canonical_evidence_ref?: CanonicalEvidenceRef;
   merchant_id?: string | null;
   subject?: { type: 'product_group'; id: string } | null;
   include?: string[] | string | null;
@@ -3318,12 +3328,13 @@ export async function getPdpV2(args: {
           : {
               product_ref: {
                 product_id: productId,
-                ...(args.merchant_id ? { merchant_id: args.merchant_id } : {}),
+                ...(args.merchant_id && !(args.allow_read_only === true && isCanonicalEvidenceRequest(args.canonical_evidence_ref, productId)) ? { merchant_id: args.merchant_id } : {}),
               },
             }),
         ...(include ? { include } : {}),
         options: {
           serving_eligible_only: args.serving_eligible_only !== false,
+          ...(args.allow_read_only === true ? { allow_read_only: true } : {}),
           ...(args.debug ? { debug: true } : {}),
           ...(args.cache_bypass ? { cache_bypass: true } : {}),
           ...(args.similar_mode ? { similar_mode: args.similar_mode } : {}),
@@ -3340,7 +3351,16 @@ export async function getPdpV2(args: {
     },
   );
 
-  return data as GetPdpV2Response;
+  const evidenceUnscoped = args.allow_read_only === true && isCanonicalEvidenceRequest(args.canonical_evidence_ref, productId);
+  if (!matchesPdpRequestIdentity(data, { product_id: productId, subject,
+    merchant_id: evidenceUnscoped ? null : args.merchant_id })) {
+    throw new Error('PDP response identity did not match the requested product and seller');
+  }
+  // A purchase proof is timed on the shopper's clock from arrival. Server
+  // renders leave it unstamped, so the browser re-reads before enabling Buy.
+  return (typeof window !== 'undefined'
+    ? stampPdpResponseCommerce(data, Date.now())
+    : data) as GetPdpV2Response;
 }
 
 /**
@@ -3366,6 +3386,8 @@ export async function getPdpV2(args: {
  */
 export async function getPdpV2Cached(args: {
   product_id: string;
+  allow_read_only?: boolean;
+  canonical_evidence_ref?: CanonicalEvidenceRef;
   merchant_id?: string | null;
   subject?: { type: 'product_group'; id: string } | null;
   include?: string[] | string | null;
@@ -3387,6 +3409,9 @@ export async function getPdpV2Cached(args: {
   // the cache. cache_bypass is never set here (this path is the cache).
   const keyParts = [
     'get_pdp_v2',
+    'evidence-commerce-v1',
+    args.allow_read_only === true ? 'evidence_only_until_refresh' : 'strict_commerce',
+    isCanonicalEvidenceRequest(args.canonical_evidence_ref, String(args.product_id || '')) ? 'canonical_content' : 'seller_bound',
     String(args.product_id || ''),
     String(args.merchant_id || ''),
     args.subject ? `pg:${args.subject.id}` : '',
@@ -3402,6 +3427,8 @@ export async function getPdpV2Cached(args: {
     async () => {
       const res = await getPdpV2({
         product_id: args.product_id,
+        allow_read_only: args.allow_read_only,
+        canonical_evidence_ref: args.canonical_evidence_ref,
         merchant_id: args.merchant_id,
         subject: args.subject,
         include: args.include,
@@ -3418,7 +3445,12 @@ export async function getPdpV2Cached(args: {
       if (!res || !Array.isArray(res.modules) || res.modules.length === 0) {
         throw new Error('pdp_empty_payload_not_cached');
       }
-      return res;
+      // ISR may cache public evidence, never a current purchase authorization.
+      // The adapter removes cached selected-product commerce and the client must
+      // obtain a fresh identity-bound ready response before enabling actions.
+      return args.allow_read_only === true && hasReadOnlyPdpSignal(res)
+        ? { ...res, metadata: { ...res.metadata, commerce_verification: 'refresh_required' } }
+        : res;
     },
     keyParts,
     { revalidate, tags: [...(args.cacheTags || ['pdp']), productTag] },

@@ -23,6 +23,7 @@ export function BeautyDesktopBuyBox({
   onAddToCart,
   onBuyNow,
   disabled = false,
+  purchaseUnavailableMessage,
   buyNowLabel = 'Buy now',
   isExternalPurchase = false,
   externalRetailerLabel,
@@ -36,6 +37,7 @@ export function BeautyDesktopBuyBox({
   onAddToCart: () => void;
   onBuyNow: () => void;
   disabled?: boolean;
+  purchaseUnavailableMessage?: string;
   buyNowLabel?: string;
   isExternalPurchase?: boolean;
   externalRetailerLabel?: string | null;
@@ -46,6 +48,9 @@ export function BeautyDesktopBuyBox({
    */
   reapCheckout?: { onOpen: (quantity: number) => void } | null;
 }) {
+  if (purchaseUnavailableMessage) {
+    return <div role="status" className="border-t border-border bg-white px-4 py-4 text-sm text-muted-foreground">{purchaseUnavailableMessage}</div>;
+  }
   const itemsSubtotal = Math.max(0, unitPrice) * Math.max(1, quantity);
   const total = itemsSubtotal + Math.max(0, shippingCost || 0);
   const formattedTotal = formatMoney(total, currency);

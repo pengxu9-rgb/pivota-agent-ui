@@ -16,6 +16,7 @@ import {
   type ProductResponse,
   type UgcCapabilities,
 } from '@/lib/api';
+import { hasVerifiedSelectedCommerce, isPurchaseUnavailable, isReadOnlyCommerce, isVerifiedCommerce, refreshPdpCommerce, restrictPdpCommerce } from '@/features/pdp/utils/commerceAvailability';
 import { mapPdpV2ToPdpPayload } from '@/features/pdp/adapter/mapPdpV2ToPdpPayload';
 import { isBeautyProduct } from '@/features/pdp/utils/isBeautyProduct';
 import { BeautyPDPContainer } from '@/features/pdp/containers/BeautyPDPContainer';
@@ -489,6 +490,7 @@ function mergeSimilarPdpPayload(
   incoming: PDPPayload | null,
   options: { deferredAsLoading?: boolean; keepSimilarLoading?: boolean } = {},
 ): PDPPayload {
+  current = restrictPdpCommerce(current, incoming);
   const nextSimilarModule =
     incoming?.modules.find((pdpModule) => isRecommendationModuleType(pdpModule?.type)) || null;
   const incomingBundleModule =
@@ -596,6 +598,14 @@ function shouldRetryWithCoreOnlyPdp(err: unknown): boolean {
   const message = String((err as Error)?.message || '').toLowerCase();
   return message.includes('timed out') || message.includes('timeout') || message.includes('temporarily unavailable');
 }
+// PdpContainer verifies the payload it is displaying before it dispatches. After
+// a product-line switch that is a different product, which this page's payload
+// and its proof do not describe, so only the container's check applies to it.
+export function dispatchedForPagePayload(payload: PDPPayload, productId?: string): boolean {
+  const id = String(productId || '').trim();
+  return !id || id === payload.product.product_id || id === (payload.product as { source_product_id?: string }).source_product_id;
+}
+
 export default function ProductDetailPage({ params, initialPayload, serviceRecommendations = null, initialSearch = '' }: Props) {
   const { id: rawId } = use(params);
   // Next.js dynamic params arrive URL-encoded (e.g. `ulta%3Ahash`); gateway
@@ -622,6 +632,7 @@ export default function ProductDetailPage({ params, initialPayload, serviceRecom
   const userId = user?.id;
   const initialLoadState = initialPayload ? prepareLoadedPdpPayload(initialPayload) : null;
   const hasInitialPayload = Boolean(initialLoadState);
+  const requiresCommerceRefresh = Boolean(initialPayload?.commerce_verification);
 
   const [pdpPayload, setPdpPayload] = useState<PDPPayload | null>(() => initialLoadState?.payload ?? null);
   const [sellerCandidates, setSellerCandidates] = useState<ProductResponse[] | null>(null);
@@ -667,6 +678,7 @@ export default function ProductDetailPage({ params, initialPayload, serviceRecom
       const startedAt = Date.now();
       try {
         const v2 = await getPdpV2({
+          allow_read_only: true,
           product_id: id,
           ...(routeIsProductGroup
             ? { subject: { type: 'product_group' as const, id } }
@@ -679,7 +691,7 @@ export default function ProductDetailPage({ params, initialPayload, serviceRecom
           cache_bypass: trigger === 'auto_retry' || trigger === 'retry',
         });
         if (similarLoadSeqRef.current !== requestSeq) return;
-        const assembled = mapPdpV2ToPdpPayload(v2);
+        const assembled = mapPdpV2ToPdpPayload(v2, { product_id: id, ...(routeIsProductGroup ? { subject: { type: 'product_group', id } } : { merchant_id: explicitMerchantId }) });
         const deferred = isDeferredSimilarPayload(assembled);
         const retryableEmpty = isRetryableEmptySimilarPayload(assembled);
         const shouldAutoRetrySimilar =
@@ -821,18 +833,19 @@ export default function ProductDetailPage({ params, initialPayload, serviceRecom
     (async () => {
       try {
         const v2 = await getPdpV2({
+          allow_read_only: true,
           product_id: id,
           ...(routeIsProductGroup ? { subject: { type: 'product_group' as const, id } }
             : explicitMerchantId ? { merchant_id: explicitMerchantId } : {}),
           include: [...requested], timeout_ms: PDP_V2_CONTENT_TIMEOUT_MS,
         });
         if (cancelled) return;
-        const assembled = mapPdpV2ToPdpPayload(v2);
+        const assembled = mapPdpV2ToPdpPayload(v2, { product_id: id, ...(routeIsProductGroup ? { subject: { type: 'product_group', id } } : { merchant_id: explicitMerchantId }) });
         if (!sameContentIdentity(snapshot, assembled)) throw new Error('Content identity mismatch');
         const resultStates = completedContentModuleStates(requested, assembled, v2);
         setPdpPayload((current) => {
           if (!current || contentIdentityKey(current) !== identity) return current;
-          const nextPayload = mergeContentPdpPayload(current, assembled, requested, resultStates);
+          const nextPayload = restrictPdpCommerce(mergeContentPdpPayload(current, assembled, requested, resultStates), assembled);
           moduleSourceLocksRef.current = { ...moduleSourceLocksRef.current,
             reviews: hasModule(nextPayload, 'reviews_preview') };
           return nextPayload;
@@ -960,10 +973,10 @@ export default function ProductDetailPage({ params, initialPayload, serviceRecom
 
   useEffect(() => {
     if (hasInitialPayload && reloadKey === 0) {
-      // Skip cold-start fetch unless we have a checkout token. Token-scoped
-      // PDP responses need the browser gateway call that carries X-Checkout-Token.
+      // Cached SSR contains evidence only. Current purchase eligibility needs a
+      // fresh browser read, as do token-scoped responses carrying X-Checkout-Token.
       const ctx = getCheckoutContextFromBrowser();
-      if (!ctx.token) return;
+      if (!ctx.token && !requiresCommerceRefresh) return;
     }
 
     let cancelled = false;
@@ -999,7 +1012,7 @@ export default function ProductDetailPage({ params, initialPayload, serviceRecom
       setLoading(true);
       setError(null);
       setSellerCandidates(null);
-      setPdpPayload(null);
+      if (!requiresCommerceRefresh) setPdpPayload(null);
       clearSimilarDeferredRetryTimer();
       similarLoadSeqRef.current += 1;
       similarAutoLoadKeyRef.current = null;
@@ -1012,6 +1025,9 @@ export default function ProductDetailPage({ params, initialPayload, serviceRecom
         source: 'get_pdp_v2' | 'get_pdp_v2_core_retry',
         startedAt: number,
       ) => {
+        if (requiresCommerceRefresh && (assembled.commerce_verification || (!isReadOnlyCommerce(assembled.commerce) && !isVerifiedCommerce(assembled.commerce)))) {
+          throw new Error('Current purchase eligibility was not verified');
+        }
         const prepared = prepareLoadedPdpPayload(assembled);
         moduleSourceLocksRef.current = prepared.sourceLocks;
         setPdpPayload(prepared.payload);
@@ -1047,17 +1063,19 @@ export default function ProductDetailPage({ params, initialPayload, serviceRecom
       }) => {
         const startedAt = Date.now();
         const v2 = await getPdpV2({
+          allow_read_only: true,
           product_id: id,
           ...(routeIsProductGroup
             ? { subject: { type: 'product_group' as const, id } }
             : explicitMerchantId
               ? { merchant_id: explicitMerchantId }
               : {}),
+          cache_bypass: requiresCommerceRefresh,
           include: request.include,
           timeout_ms: request.timeoutMs,
         });
         if (cancelled) return;
-        const assembled = mapPdpV2ToPdpPayload(v2);
+        const assembled = mapPdpV2ToPdpPayload(v2, { product_id: id, ...(routeIsProductGroup ? { subject: { type: 'product_group', id } } : { merchant_id: explicitMerchantId }) });
         if (!assembled) throw new Error('Invalid PDP response');
         commitLoadedPdp(assembled, request.source, startedAt);
       };
@@ -1091,6 +1109,12 @@ export default function ProductDetailPage({ params, initialPayload, serviceRecom
           }
         }
 
+        if (requiresCommerceRefresh) {
+          setPdpPayload((current) => current ? { ...current, commerce_verification: 'failed' } : current);
+          setLoading(false);
+          return;
+        }
+
         if (readApiErrorCode(loadErr) === 'PRODUCT_NOT_SERVABLE') {
           setError('Product not available');
           setLoading(false);
@@ -1117,7 +1141,37 @@ export default function ProductDetailPage({ params, initialPayload, serviceRecom
     return () => {
       cancelled = true;
     };
-  }, [clearSimilarDeferredRetryTimer, hasInitialPayload, id, inferredMerchantId, merchantIdParam, reloadKey, routeIsProductGroup]);
+  }, [clearSimilarDeferredRetryTimer, hasInitialPayload, requiresCommerceRefresh, id, inferredMerchantId, merchantIdParam, reloadKey, routeIsProductGroup]);
+
+  // The container asks shortly before this page's price proof lapses. Re-read
+  // with the page's exact request; a failed read leaves the proof to lapse.
+  const commerceRefreshInflightRef = useRef(false);
+  const handleCommerceRefreshDue = useCallback(() => {
+    if (commerceRefreshInflightRef.current) return;
+    commerceRefreshInflightRef.current = true;
+    const explicitMerchantId = inferredMerchantId ? String(inferredMerchantId).trim() : null;
+    const identity = { product_id: id, ...(routeIsProductGroup ? { subject: { type: 'product_group' as const, id } } : { merchant_id: explicitMerchantId }) };
+    void getPdpV2({
+      allow_read_only: true,
+      product_id: id,
+      ...(routeIsProductGroup
+        ? { subject: { type: 'product_group' as const, id } }
+        : explicitMerchantId
+          ? { merchant_id: explicitMerchantId }
+          : {}),
+      cache_bypass: true,
+      include: ['offers', 'variant_selector'],
+      timeout_ms: PDP_V2_CORE_ONLY_RETRY_TIMEOUT_MS,
+    })
+      .then((v2) => {
+        const fresh = mapPdpV2ToPdpPayload(v2, identity);
+        setPdpPayload((current) => (current ? refreshPdpCommerce(current, fresh) : current));
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        commerceRefreshInflightRef.current = false;
+      });
+  }, [id, inferredMerchantId, routeIsProductGroup]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1209,7 +1263,9 @@ export default function ProductDetailPage({ params, initialPayload, serviceRecom
     product_id?: string;
     offer_id?: string;
   }) => {
-    if (!pdpPayload) return;
+    if (!pdpPayload || isPurchaseUnavailable(variant)) return;
+    const pageDispatch = dispatchedForPagePayload(pdpPayload, product_id);
+    if (pageDispatch && (isReadOnlyCommerce(pdpPayload.commerce) || isPurchaseUnavailable(pdpPayload.product))) return;
     void (async () => {
       const resolvedMerchantId =
         String(merchant_id || pdpPayload.product.merchant_id || '').trim();
@@ -1228,6 +1284,10 @@ export default function ProductDetailPage({ params, initialPayload, serviceRecom
         offer_id && offers.length
           ? offers.find((o) => String(o?.offer_id || o?.offerId || '').trim() === String(offer_id))
           : null;
+      if (pageDispatch && !hasVerifiedSelectedCommerce(pdpPayload, variant, { merchantId: resolvedMerchantId, productId: resolvedProductId, offer })) {
+        toast.error('Current price and purchase availability for this selection are unverified.');
+        return;
+      }
       const offerRedirectUrl = offer ? getExternalRedirectUrlFromOffer(offer) : null;
       const offerIsExternal = offer
         ? isExternalCtaTarget({
@@ -1257,6 +1317,10 @@ export default function ProductDetailPage({ params, initialPayload, serviceRecom
       if (isExternal) {
         if (redirectUrl) {
           if (!confirmRetailerHandoff(pdpPayload.product, variant, offer)) return;
+          if (pageDispatch && !hasVerifiedSelectedCommerce(pdpPayload, variant, { merchantId: resolvedMerchantId, productId: resolvedProductId, offer })) {
+            toast.error('Current price and purchase availability for this selection are unverified.');
+            return;
+          }
           toast.success(buildExternalRedirectNotice(redirectUrl));
           window.open(redirectUrl, '_blank', 'noopener,noreferrer');
           return;
@@ -1342,7 +1406,9 @@ export default function ProductDetailPage({ params, initialPayload, serviceRecom
     product_id?: string;
     offer_id?: string;
   }) => {
-    if (!pdpPayload) return;
+    if (!pdpPayload || isPurchaseUnavailable(variant)) return;
+    const pageDispatch = dispatchedForPagePayload(pdpPayload, product_id);
+    if (pageDispatch && (isReadOnlyCommerce(pdpPayload.commerce) || isPurchaseUnavailable(pdpPayload.product))) return;
     void (async () => {
       const resolvedMerchantId =
         String(merchant_id || pdpPayload.product.merchant_id || '').trim();
@@ -1357,6 +1423,10 @@ export default function ProductDetailPage({ params, initialPayload, serviceRecom
           ? offers.find((o) => String(o?.offer_id || o?.offerId || '').trim() === String(offer_id))
           : null;
 
+      if (pageDispatch && !hasVerifiedSelectedCommerce(pdpPayload, variant, { merchantId: resolvedMerchantId, productId: resolvedProductId, offer })) {
+        toast.error('Current price and purchase availability for this selection are unverified.');
+        return;
+      }
       const offerRedirectUrl = offer ? getExternalRedirectUrlFromOffer(offer) : null;
       const offerIsExternal = offer
         ? isExternalCtaTarget({
@@ -1386,6 +1456,10 @@ export default function ProductDetailPage({ params, initialPayload, serviceRecom
       if (isExternal) {
         if (redirectUrl) {
           if (!confirmRetailerHandoff(pdpPayload.product, variant, offer)) return;
+          if (pageDispatch && !hasVerifiedSelectedCommerce(pdpPayload, variant, { merchantId: resolvedMerchantId, productId: resolvedProductId, offer })) {
+            toast.error('Current price and purchase availability for this selection are unverified.');
+            return;
+          }
           toast.success(buildExternalRedirectNotice(redirectUrl));
           window.open(redirectUrl, '_blank', 'noopener,noreferrer');
           return;
@@ -1631,6 +1705,7 @@ export default function ProductDetailPage({ params, initialPayload, serviceRecom
           onBuyNow={handleBuyNow}
           onWriteReview={handleWriteReview}
           onRetrySimilar={handleRetrySimilar}
+          onCommerceRefreshDue={handleCommerceRefreshDue}
           ugcCapabilities={ugcCapabilities}
           services={resolvedMode === 'beauty' ? serviceRecommendations : null}
         />
