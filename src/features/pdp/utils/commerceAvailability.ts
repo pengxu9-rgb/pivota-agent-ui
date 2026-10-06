@@ -390,8 +390,16 @@ export function matchesPdpRequestIdentity(response: unknown, expected: PdpReques
   if (resolution.resolved_product_id !== sourceId || resolution.resolved_merchant_id !== product.merchant_id) return false;
   if (expected.merchant_id && (product.merchant_id !== expected.merchant_id ||
       (resolution.requested_merchant_id && resolution.requested_merchant_id !== expected.merchant_id))) return false;
-  // A signature is an exact canonical product identity, never a seller alias.
-  if (/^sig_[a-f0-9]{32}$/.test(expectedId) && (product.product_id !== expectedId || source?.subject?.id !== expectedId)) return false;
+  // A signature is an exact canonical product identity, never a seller alias. The reply's subject is
+  // either that product or the product group serving it, whose canonical product reference must then
+  // name exactly this signature, seller and source product (2026-10-06: every grouped PDP 500'd when
+  // only subject.id was accepted).
+  const subject = record(source?.subject);
+  const groupRef = record(subject?.canonical_product_ref);
+  const subjectIsSignature = subject?.id === expectedId || Boolean(subject?.type === 'product_group' && groupRef &&
+    groupRef.pivota_signature_id === expectedId && groupRef.merchant_id === product.merchant_id &&
+    groupRef.product_id === sourceId);
+  if (/^sig_[a-f0-9]{32}$/.test(expectedId) && (product.product_id !== expectedId || !subjectIsSignature)) return false;
   if (!group && !/^sig_[a-f0-9]{32}$/.test(expectedId) &&
       expectedId !== sourceId && expectedId !== product.product_id) return false;
   return true;
