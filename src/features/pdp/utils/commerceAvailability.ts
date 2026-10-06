@@ -387,7 +387,12 @@ export function matchesPdpRequestIdentity(response: unknown, expected: PdpReques
         !(source?.subject?.id === expectedId && resolution.requested_product_id === expectedId)) return false;
   } else if (resolution.requested_product_id !== expectedId) return false;
   const sourceId = product.source_product_id || product.product_id;
-  if (resolution.resolved_product_id !== sourceId || resolution.resolved_merchant_id !== product.merchant_id) return false;
+  // A product reply must show the listing it resolved. A product-GROUP reply may serve the group's
+  // content from another member (live 2026-10-06: pg_catalog_0c20… resolved ext_7489…/merch_obs_754e…
+  // and served bluemercury-com:5706…/merch_obs_a2e0…), so requiring equality 500'd every such page.
+  // Purchase authority is unaffected: a ready proof is bound to the displayed listing by
+  // isValidVerifiedPdpResponse (selected_commerce_ref, seller, product and variant).
+  if (!group && (resolution.resolved_product_id !== sourceId || resolution.resolved_merchant_id !== product.merchant_id)) return false;
   if (expected.merchant_id && (product.merchant_id !== expected.merchant_id ||
       (resolution.requested_merchant_id && resolution.requested_merchant_id !== expected.merchant_id))) return false;
   // A signature is an exact canonical product identity, never a seller alias. The reply's subject is
