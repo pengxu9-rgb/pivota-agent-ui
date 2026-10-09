@@ -11,14 +11,23 @@ import { normalizeDisplayImageUrl } from '@/lib/displayImage';
 import { useCartStore } from '@/store/cartStore';
 import { isAuroraEmbedMode, postRequestCloseToParent } from '@/lib/auroraEmbed';
 import { resolveHostedCheckoutUrl } from '@/lib/ucpCheckout';
+import { formatMoney } from '@/features/pdp/utils/formatMoney';
 
 export default function CartDrawer() {
   const router = useRouter();
-  const { items, isOpen, close, removeItem, updateQuantity, getTotal, clearCart } = useCartStore();
+  const { items, isOpen, close, removeItem, updateQuantity, getSubtotal, clearCart } = useCartStore();
   const isEmbed = useMemo(() => isAuroraEmbedMode(), []);
+  // ONE currency, or no subtotal at all. A line is shown in ITS currency (formatMoney, the same
+  // helper the price cards use), never relabelled "$": a JP-located buyer's ¥3,500 line is ¥3,500.
+  const subtotal = getSubtotal();
+  const mixedCurrencies = subtotal.mixed ? subtotal.currencies : null;
 
   const handleCheckout = async () => {
     if (items.length === 0) return;
+    if (mixedCurrencies) {
+      toast.error(`Your bag holds items priced in ${mixedCurrencies.join(' and ')}. Remove the items from the other market to check out.`);
+      return;
+    }
 
     const orderItems = items.map((item) => ({
       product_id: item.product_id || item.id,
@@ -140,7 +149,7 @@ export default function CartDrawer() {
 
                       <div className="flex-1 min-w-0">
                         <h4 className="font-medium text-sm truncate">{item.title}</h4>
-                        <p className="text-sm font-semibold text-primary">${item.price.toFixed(2)}</p>
+                        <p className="text-sm font-semibold text-primary">{formatMoney(item.price, item.currency)}</p>
 
                         <div className="flex items-center gap-2 mt-2">
                           <button
@@ -173,9 +182,15 @@ export default function CartDrawer() {
             {/* Footer */}
             {items.length > 0 && (
               <div className="border-t border-border p-4 space-y-3">
+                {mixedCurrencies ? (
+                  <p id="cart-mixed-currencies" role="alert" className="rounded-xl bg-destructive/10 px-3 py-2 text-xs leading-relaxed text-destructive">
+                    Your bag holds items priced in {mixedCurrencies.join(' and ')}. Remove the items from the other
+                    market, or clear the bag, to check out.
+                  </p>
+                ) : null}
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-muted-foreground">Subtotal</span>
-                  <span className="font-semibold">${getTotal().toFixed(2)}</span>
+                  <span className="font-semibold">{subtotal.mixed ? 'Mixed currencies' : formatMoney(subtotal.amount, subtotal.currency)}</span>
                 </div>
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-muted-foreground">Shipping</span>
@@ -185,7 +200,7 @@ export default function CartDrawer() {
                 <div className="flex items-center justify-between">
                   <span className="text-lg font-bold">Estimated total</span>
                   <span className="text-lg font-bold text-primary">
-                    ${getTotal().toFixed(2)}
+                    {subtotal.mixed ? 'Mixed currencies' : formatMoney(subtotal.amount, subtotal.currency)}
                   </span>
                 </div>
                 <p className="text-xs leading-relaxed text-muted-foreground">
@@ -196,6 +211,7 @@ export default function CartDrawer() {
                   variant="gradient"
                   className="w-full h-12 text-base"
                   onClick={handleCheckout}
+                  aria-describedby={mixedCurrencies ? 'cart-mixed-currencies' : undefined}
                 >
                   Checkout
                 </Button>

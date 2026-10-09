@@ -2,6 +2,9 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import MarketSelector, { writeMarketChoice } from './MarketSelector';
+import { useCartStore } from '@/store/cartStore';
+
+const LINE = { id: 'm1:v1', product_id: 'p1', variant_id: 'v1', title: 'Serum', price: 23, currency: 'USD', quantity: 1, imageUrl: '/placeholder.svg', merchant_id: 'm1' };
 
 const clearCookies = () => {
   for (const name of ['pv_market', 'pv_located_market']) document.cookie = `${name}=; path=/; max-age=0`;
@@ -41,11 +44,25 @@ describe('MarketSelector', () => {
     expect(screen.getByRole('option', { name: 'United States (auto)' })).toBeTruthy();
   });
 
-  it('choosing a market writes the choice cookie and reloads', async () => {
+  it('choosing a market writes the choice cookie, empties the bag, and reloads', async () => {
     document.cookie = 'pv_located_market=JP; path=/';
+    useCartStore.getState().clearCart();
+    useCartStore.getState().addItem(LINE);
+    expect(useCartStore.getState().items).toHaveLength(1);
     await act(async () => { render(<MarketSelector />); });
     fireEvent.change(screen.getByRole('combobox'), { target: { value: 'SG' } });
     expect(document.cookie).toContain('pv_market=SG');
+    expect(useCartStore.getState().items).toHaveLength(0);
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it('re-choosing the market already in force keeps the bag', async () => {
+    document.cookie = 'pv_located_market=JP; path=/';
+    useCartStore.getState().clearCart();
+    useCartStore.getState().addItem(LINE);
+    await act(async () => { render(<MarketSelector />); });
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'JP' } });
+    expect(useCartStore.getState().items).toHaveLength(1);
     expect(reload).toHaveBeenCalledTimes(1);
   });
 

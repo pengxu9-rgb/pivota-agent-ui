@@ -86,6 +86,12 @@ describe('the located-market cookie (X-Client-Region -> pv_located_market)', () 
     expect(locatedCookie(res)).toEqual({ value: 'SG', maxAge: 60 * 60 * 24 * 30, secure: true, httpOnly: false });
   });
 
+  it('Secure is forced in production even on the plain-http last hop behind the load balancer', () => {
+    expect(locatedCookie(middleware(req('/', { region: 'SG', https: false })))?.secure).toBe(false);
+    vi.stubEnv('NODE_ENV', 'production');
+    expect(locatedCookie(middleware(req('/', { region: 'SG', https: false })))?.secure).toBe(true);
+  });
+
   it('the region is normalised to the gateway spelling, and an unchanged cookie is not rewritten', () => {
     expect(locatedCookie(middleware(req('/', { region: 'jp' })))?.value).toBe('JP');
     expect(locatedCookie(middleware(req('/', { region: 'JP', cookie: 'pv_located_market=JP' })))).toBeNull();

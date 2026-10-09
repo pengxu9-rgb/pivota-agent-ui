@@ -70,6 +70,11 @@ export function middleware(request: NextRequest) {
     });
   }
 
+  // ⚠️ A Set-Cookie on an ISR page response. Today the page is served by this Next server with no
+  // shared cache in front of it, so the cookie is per request. If Cloud CDN (or any shared cache)
+  // is ever put in front of agent.pivota.cc, a cached response would replay ONE buyer's
+  // Set-Cookie to everyone behind it; the cache key or Vary would have to carry X-Client-Region,
+  // or this write would have to move off cacheable responses.
   const response = NextResponse.next();
   const update = locatedMarketUpdate(
     request.headers.get(CLIENT_REGION_HEADER),
@@ -83,7 +88,9 @@ export function middleware(request: NextRequest) {
       path: '/',
       maxAge: LOCATED_MARKET_COOKIE_MAX_AGE_SECONDS,
       sameSite: 'lax',
-      secure: request.nextUrl.protocol === 'https:',
+      // Behind the load balancer this server sees plain http on the last hop, so the request's
+      // own scheme says nothing about the buyer's: in production the flag is forced.
+      secure: process.env.NODE_ENV === 'production' || request.nextUrl.protocol === 'https:',
       // Readable by the browser's own gateway calls (src/lib/buyerMarket.ts), so not httpOnly.
       httpOnly: false,
     });

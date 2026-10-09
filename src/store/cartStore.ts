@@ -16,6 +16,39 @@ export interface CartItem {
   merchant_id?: string
 }
 
+/**
+ * The bag's subtotal is a MONEY value, so it exists only when every line is in ONE currency.
+ * A bag that holds lines in two currencies (a buyer who switched market with items from the
+ * old one still in the bag; the 2026-10-09 located-market change made that reachable) has no
+ * subtotal: the drawer says so and checkout is refused, rather than adding ¥3,500 to $23.
+ */
+export type CartSubtotal =
+  | { mixed: false; amount: number; currency: string | null }
+  | { mixed: true; currencies: string[] }
+
+/** The pre-market storefront minted every line in USD; a line that names no currency is one of those. */
+export const LEGACY_CART_CURRENCY = 'USD'
+
+export function normalizeCartCurrency(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null
+  const code = raw.trim().toUpperCase()
+  return /^[A-Z]{3}$/.test(code) ? code : null
+}
+
+export function cartCurrencies(items: CartItem[]): string[] {
+  return [...new Set(items.map((item) => normalizeCartCurrency(item.currency) || LEGACY_CART_CURRENCY))]
+}
+
+export function cartSubtotal(items: CartItem[]): CartSubtotal {
+  const currencies = cartCurrencies(items)
+  if (currencies.length > 1) return { mixed: true, currencies }
+  return {
+    mixed: false,
+    amount: items.reduce((total, item) => total + item.price * item.quantity, 0),
+    currency: currencies[0] ?? null,
+  }
+}
+
 interface CartStore {
   items: CartItem[]
   isOpen: boolean
@@ -23,7 +56,7 @@ interface CartStore {
   removeItem: (id: string) => void
   updateQuantity: (id: string, quantity: number) => void
   clearCart: () => void
-  getTotal: () => number
+  getSubtotal: () => CartSubtotal
   open: () => void
   close: () => void
 }
@@ -52,9 +85,9 @@ export const useCartStore = create<CartStore>()(
             }
           }
           
-          // Add new item
+          // Add new item, with its currency normalised: every line carries one, so the subtotal can be a money value.
           return {
-            items: [...state.items, newItem]
+            items: [...state.items, { ...newItem, currency: normalizeCartCurrency(newItem.currency) || LEGACY_CART_CURRENCY }]
           }
         })
       },
@@ -84,9 +117,7 @@ export const useCartStore = create<CartStore>()(
         set({ items: [] })
       },
       
-      getTotal: () => {
-        return get().items.reduce((total, item) => total + item.price * item.quantity, 0)
-      },
+      getSubtotal: () => cartSubtotal(get().items),
       
       open: () => {
         set({ isOpen: true })
@@ -99,7 +130,17 @@ export const useCartStore = create<CartStore>()(
     {
       name: 'pivota-cart-storage',
       partialize: (state) => ({ items: state.items }),
-      version: 2,
+      version: 3,
+      // v2 -> v3: lines persisted before every line carried a currency were minted by the USD-only storefront.
+      migrate: (persisted, version) => {
+        const state = (persisted && typeof persisted === 'object' ? persisted : {}) as { items?: CartItem[] }
+        const items = Array.isArray(state.items) ? state.items : []
+        if (version >= 3) return { ...state, items }
+        return {
+          ...state,
+          items: items.map((item) => ({ ...item, currency: normalizeCartCurrency(item.currency) || LEGACY_CART_CURRENCY })),
+        }
+      },
     }
   )
 )

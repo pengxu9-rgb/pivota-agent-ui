@@ -8,6 +8,11 @@
 // the choice and the located market (or the storefront market) takes over again.
 // Nothing here guesses: the current value is read from the cookies the storefront
 // already holds, and the label says which declaration is in force.
+//
+// A market change EMPTIES THE BAG. Lines were priced in the old market's currency by
+// the old market's merchants; checkout after the change would run under the new
+// market against those lines. The drawer also refuses a mixed-currency bag, so a
+// located-market change (travel, no selector) is caught there.
 
 import { useEffect, useState } from 'react';
 import {
@@ -17,6 +22,7 @@ import {
   resolveBuyerMarketDetailed,
   type BuyerMarketSource,
 } from '@/lib/buyerMarket';
+import { useCartStore } from '@/store/cartStore';
 
 const CHOICE_MAX_AGE_SECONDS = 60 * 60 * 24 * 365;
 /** The option that clears the choice. */
@@ -66,6 +72,8 @@ export default function MarketSelector({ compact = false }: { compact?: boolean 
         onChange={(event) => {
           const next = event.target.value;
           writeMarketChoice(next === LOCATED_OPTION ? null : next);
+          const after = resolveBuyerMarketDetailed();
+          if (after.market !== state.market) useCartStore.getState().clearCart();
           window.location.reload();
         }}
         className="max-w-[160px] bg-transparent text-[12px] font-medium outline-none"

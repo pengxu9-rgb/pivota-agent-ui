@@ -149,6 +149,14 @@ describe('the buyer market follows the choice cookie, then the located cookie, t
   it('no cookie: the storefront market', async () => {
     expect(await stampedMarkets([])).toEqual(['US', 'US']);
   });
+  it('a Japanese browser with no cookie is still the storefront market: navigator.language is never a market', async () => {
+    const spy = vi.spyOn(window.navigator, 'language', 'get').mockReturnValue('ja-JP');
+    try {
+      expect(await stampedMarkets([])).toEqual(['US', 'US']);
+    } finally {
+      spy.mockRestore();
+    }
+  });
   it('a located cookie alone: the located market', async () => {
     expect(await stampedMarkets(['pv_located_market=JP'])).toEqual(['JP', 'JP']);
   });
