@@ -11,20 +11,48 @@
 // defaulted market is not the buyer's. With the purchasability gate armed and the
 // backend enforcing, that declines every merchant on every PDP.
 //
-// Where the market comes from. agent.pivota.cc serves ONE market: every price it
-// shows is the gateway's US catalogue, priced in USD, and there is no market
-// selector and no account/shipping country to read before checkout. So the market
-// the UI is serving the buyer in is a fact about this storefront, and it is stated
-// here once, as a constant -- not inferred from the browser language, the IP, or a
-// header. When a market selector (or a signed-in shipping country) exists, it
-// replaces this constant; the call sites do not change.
+// Where the market comes from (2026-10-09, Peng: "serve multiple markets based on
+// the user's location like we do for outside agents"; precedence "cookie > located
+// > US"). Three declarations, in a fixed precedence, and the first one that names
+// a market the gateway can price wins:
+//
+//   1. the buyer's own CHOICE   -- the `pv_market` cookie, written by the market
+//                                  selector (MarketSelector). A person said so.
+//   2. the buyer's LOCATION     -- the `pv_located_market` cookie, written by the
+//                                  middleware from the load balancer's
+//                                  `X-Client-Region` header (the country of the
+//                                  client IP, as GCP sees it). The storefront
+//                                  declares that it serves that buyer their own
+//                                  market, exactly as the partner surfaces do with
+//                                  `buyer_region`. Behind one dial
+//                                  (`BUYER_MARKET_FROM_LOCATION`, middleware).
+//   3. the STOREFRONT market    -- `US`. agent.pivota.cc's base market: every
+//                                  server-rendered page is priced in USD, and a
+//                                  buyer nobody could place is served it.
+//
+// A caller's own `metadata.market` (a surface that knows better, e.g. a checkout
+// hand-off carrying the buyer's market) still sits above all three.
+//
+// Why this is a DECLARATION and not the forbidden default (pivota-backend
+// docs/runbooks/merchant_purchasability.md, "A declared storefront market is a
+// market; a per-request fallback is not"). "Never default a market" forbids a
+// door downstream GUESSING on a caller's behalf. This storefront OWNS the buyer
+// relationship: it decides which market it serves this person in, states it on
+// every call, and the gateway keys on it. The location is read once, at the edge,
+// from a header only the load balancer sets -- never from the browser language,
+// never from a geo-IP lookup made inside a door.
 //
 // What the gateway accepts. Exactly ONE ISO-3166 alpha-2 code the gateway can price
 // (`resolveServingCurrency`: US -> USD). Anything else -- a locale ('en-US'), a list
 // ('US,SG'), or a well-formed code it has no currency for ('UK', 'DE', 'ZZ') -- is
 // read as "a market nothing is priced for" and the search serves NOTHING, so this
-// module never sends one: a caller-supplied value outside PRICEABLE_MARKETS is
-// replaced by the storefront market, never forwarded.
+// module never sends one: a value outside PRICEABLE_MARKETS, from ANY of the sources
+// above, is skipped and the next source decides. A buyer located in a market Pivota
+// does not model is served the storefront market, not an empty page.
+//
+// Server-rendered pages (ISR) read no cookie and stay on the storefront market: an
+// ISR page is one document for everyone, and its contract forbids the dynamic APIs
+// a cookie read needs. The browser's own calls re-key to the buyer's market.
 
 export const STOREFRONT_MARKET = 'US';
 
@@ -36,6 +64,32 @@ export const PRICEABLE_MARKETS: ReadonlySet<string> = new Set([
   'AU', 'CA', 'FI', 'FR', 'GB', 'HK', 'HR', 'JP', 'KR', 'SE', 'SG', 'US',
 ]);
 
+/** Labels for the selector, one per priceable market. */
+export const MARKET_LABELS: Readonly<Record<string, string>> = {
+  AU: 'Australia',
+  CA: 'Canada',
+  FI: 'Finland',
+  FR: 'France',
+  GB: 'United Kingdom',
+  HK: 'Hong Kong',
+  HR: 'Croatia',
+  JP: 'Japan',
+  KR: 'Korea',
+  SE: 'Sweden',
+  SG: 'Singapore',
+  US: 'United States',
+};
+
+/** The buyer's own choice, written by the market selector. */
+export const MARKET_CHOICE_COOKIE = 'pv_market';
+/** The buyer's located market, written by the middleware from the edge header. */
+export const LOCATED_MARKET_COOKIE = 'pv_located_market';
+/** The load balancer's header: the client's country, as GCP sees it (CLDR region code). */
+export const CLIENT_REGION_HEADER = 'x-client-region';
+
+/** Which declaration decided the market. */
+export type BuyerMarketSource = 'caller' | 'choice' | 'located' | 'storefront';
+
 /** One market the gateway can price, upper-cased, or null. Never a locale, never a list. */
 export function normalizeBuyerMarket(raw: unknown): string | null {
   if (typeof raw !== 'string') return null;
@@ -43,13 +97,71 @@ export function normalizeBuyerMarket(raw: unknown): string | null {
   return PRICEABLE_MARKETS.has(code) ? code : null;
 }
 
+/** A `Cookie` header (or `document.cookie`) as a name -> value map. The FIRST value for a name wins. */
+export function parseCookieHeader(cookie: string | null | undefined): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (typeof cookie !== 'string' || !cookie) return out;
+  for (const part of cookie.split(';')) {
+    const eq = part.indexOf('=');
+    if (eq <= 0) continue;
+    const name = part.slice(0, eq).trim();
+    if (!name || Object.prototype.hasOwnProperty.call(out, name)) continue;
+    let value = part.slice(eq + 1).trim();
+    try {
+      value = decodeURIComponent(value);
+    } catch {
+      // a value that is not URI-encoded is used as written
+    }
+    out[name] = value;
+  }
+  return out;
+}
+
+/** The two market cookies, each a priceable market or null. */
+export function readMarketCookies(cookie: string | null | undefined): { choice: string | null; located: string | null } {
+  const jar = parseCookieHeader(cookie);
+  return {
+    choice: normalizeBuyerMarket(jar[MARKET_CHOICE_COOKIE]),
+    located: normalizeBuyerMarket(jar[LOCATED_MARKET_COOKIE]),
+  };
+}
+
+/** The browser's cookie jar, or null where there is no document (SSR). */
+export function browserCookieHeader(): string | null {
+  if (typeof document === 'undefined') return null;
+  try {
+    return document.cookie || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The market for one gateway call, and which declaration decided it:
+ * the caller's own market, then the buyer's choice, then the buyer's located market,
+ * then the storefront market. `cookie` is the request's cookie jar; when it is not
+ * given, the browser's own is read, and on the server (no document) there is none.
+ */
+export function resolveBuyerMarketDetailed(
+  callerMarket?: unknown,
+  cookie?: string | null,
+): { market: string; source: BuyerMarketSource } {
+  const caller = normalizeBuyerMarket(callerMarket);
+  if (caller) return { market: caller, source: 'caller' };
+  const jar = cookie === undefined ? browserCookieHeader() : cookie;
+  const { choice, located } = readMarketCookies(jar);
+  if (choice) return { market: choice, source: 'choice' };
+  if (located) return { market: located, source: 'located' };
+  return { market: STOREFRONT_MARKET, source: 'storefront' };
+}
+
 /**
  * The market for one gateway call: the caller's own `metadata.market` when it is a
- * single market the gateway can price (a surface that knows better, e.g. a checkout
- * hand-off that carries the buyer's market), else the storefront market.
+ * single market the gateway can price, else the buyer's choice, else the buyer's
+ * located market, else the storefront market.
  */
-export function resolveBuyerMarket(callerMarket?: unknown): string {
-  return normalizeBuyerMarket(callerMarket) || STOREFRONT_MARKET;
+export function resolveBuyerMarket(callerMarket?: unknown, cookie?: string | null): string {
+  return resolveBuyerMarketDetailed(callerMarket, cookie).market;
 }
 
 type GatewayEnvelope = { metadata?: unknown; [key: string]: unknown };
@@ -57,6 +169,8 @@ type GatewayEnvelope = { metadata?: unknown; [key: string]: unknown };
 /**
  * The envelope with `metadata.market` set. For the gateway calls that do not go
  * through `callGateway` (server-rendered pages that POST `/api/gateway` directly).
+ * Server-side there is no cookie jar, so this is the storefront market unless the
+ * caller named one.
  */
 export function withBuyerMarket<T extends GatewayEnvelope>(body: T): T & { metadata: Record<string, unknown> } {
   const metadata =

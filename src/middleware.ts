@@ -1,7 +1,20 @@
 /**
- * HTTP 410 Gone for deliberately retired product pages.
+ * Two edge jobs, one middleware:
  *
- * WHY MIDDLEWARE (2026-08-08 audit): a retired sig's PDP answered the same
+ * 1. HTTP 410 Gone for deliberately retired product pages (unchanged, 2026-08-08).
+ * 2. The buyer's LOCATED MARKET, read from the load balancer's `X-Client-Region`
+ *    header into the `pv_located_market` cookie (2026-10-09, src/lib/buyerMarket.ts:
+ *    precedence choice > located > storefront). The header is the client's country
+ *    as GCP sees it (CLDR region code), set only by the LB (`pivota-bes-agent`,
+ *    custom request header `X-Client-Region:{client_region}`); a request that does
+ *    not carry it (local dev, a direct hit) leaves the cookie alone. A region the
+ *    gateway does not price (ZZ, DE, ...) CLEARS the cookie, so a buyer who moved to
+ *    an unmodelled country is served the storefront market, not a stale one. The
+ *    cookie is NOT httpOnly: the browser's own gateway calls read it. One dial,
+ *    `BUYER_MARKET_FROM_LOCATION` (unset = on; `off` disables the write and clears
+ *    the cookie), so the location layer can be switched off without a deploy of code.
+ *
+ * WHY MIDDLEWARE for the 410 (2026-08-08 audit): a retired sig's PDP answered the same
  * bare 404 as a typo, so engines kept re-trying dead URLs and Search Console
  * accumulated 404 churn (62 URLs left the sitemap in one refresh alone). An
  * RSC page has no API for a non-404 status — notFound() is the only status
@@ -22,6 +35,8 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import retiredSigs from '../public/retired-sigs.json';
+import { CLIENT_REGION_HEADER, LOCATED_MARKET_COOKIE } from '@/lib/buyerMarket';
+import { LOCATED_MARKET_COOKIE_MAX_AGE_SECONDS, locatedMarketUpdate, locationMarketEnabled } from '@/lib/locatedMarket';
 
 const RETIRED = new Set<string>(
   Array.isArray((retiredSigs as { sigs?: unknown }).sigs)
@@ -38,7 +53,9 @@ export function middleware(request: NextRequest) {
   // EXACTLY /products/<sig>. Anything deeper (/products/<sig>/reviews) is a URL
   // that never existed and must keep 404-ing, not inherit a permanent 410;
   // alias routes (/products/m/<id>) and the listing never match a sig_ entry.
-  const candidate = segments.length === 2 ? segments[1] : '';
+  // The matcher is wider than /products now (the cookie below is for every page),
+  // so the path prefix is checked here too.
+  const candidate = segments.length === 2 && segments[0] === 'products' ? segments[1] : '';
   if (RETIRED.has(candidate)) {
     return new NextResponse(GONE_BODY, {
       status: 410,
@@ -52,13 +69,31 @@ export function middleware(request: NextRequest) {
       },
     });
   }
-  return NextResponse.next();
+
+  const response = NextResponse.next();
+  const update = locatedMarketUpdate(
+    request.headers.get(CLIENT_REGION_HEADER),
+    request.cookies.get(LOCATED_MARKET_COOKIE)?.value,
+    locationMarketEnabled(),
+  );
+  if (update === null) {
+    response.cookies.set(LOCATED_MARKET_COOKIE, '', { path: '/', maxAge: 0, sameSite: 'lax' });
+  } else if (typeof update === 'string') {
+    response.cookies.set(LOCATED_MARKET_COOKIE, update, {
+      path: '/',
+      maxAge: LOCATED_MARKET_COOKIE_MAX_AGE_SECONDS,
+      sameSite: 'lax',
+      secure: request.nextUrl.protocol === 'https:',
+      // Readable by the browser's own gateway calls (src/lib/buyerMarket.ts), so not httpOnly.
+      httpOnly: false,
+    });
+  }
+  return response;
 }
 
 export const config = {
-  // EXACTLY one segment. `:path*` also matched deeper URLs, so
-  // /products/<retired-sig>/anything answered 410 for a path that never
-  // existed — those must keep 404-ing. It also pulled every /products/m/*
-  // alias and /products/indexability* request through this check for nothing.
-  matcher: '/products/:id',
+  // Every page and API request, so the located-market cookie is set wherever the
+  // buyer lands — but not Next's own assets or files with an extension, which
+  // never read a cookie and would pay for the check on every byte.
+  matcher: ['/((?!_next/|.*\\..*).*)'],
 };

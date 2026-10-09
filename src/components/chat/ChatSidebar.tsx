@@ -17,6 +17,7 @@ import Link from 'next/link';
 import { useCartStore } from '@/store/cartStore';
 import { useChatStore } from '@/store/chatStore';
 import { useTheme } from '@/components/theme-provider';
+import MarketSelector from '@/components/catalog/MarketSelector';
 
 interface ChatSidebarProps {
   isOpen: boolean;
@@ -228,11 +229,12 @@ export default function ChatSidebar({ isOpen, onClose }: ChatSidebarProps) {
             </div>
           </div>
 
-          {/* Footer link */}
+          {/* Footer: the buyer's market, then the catalog link */}
           <div
-            className="p-3"
+            className="p-3 space-y-2"
             style={{ borderTopWidth: '0.5px', borderColor: 'rgba(44,44,42,0.08)' }}
           >
+            <MarketSelector />
             <Link
               href="/products"
               onClick={onClose}

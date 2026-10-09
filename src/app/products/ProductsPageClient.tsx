@@ -15,6 +15,7 @@ import {
 } from '@/lib/api';
 import { mergeUniqueCatalogProducts, buildCatalogProductKey } from '@/lib/catalogProducts';
 import { useCartStore } from '@/store/cartStore';
+import MarketSelector from '@/components/catalog/MarketSelector';
 
 const TRENDING_TAGS = [
   'Vitamin C',
@@ -318,6 +319,8 @@ export function ProductsPageClient({
               ) : null}
             </div>
 
+            <div className="flex shrink-0 items-start gap-2">
+            <MarketSelector compact />
             <button
               type="button"
               onClick={open}
@@ -331,6 +334,7 @@ export function ProductsPageClient({
                 </span>
               ) : null}
             </button>
+            </div>
           </section>
 
           <section className="relative rounded-[22px] border border-[#efe7dc] bg-white px-3 py-3 shadow-[0_10px_28px_rgba(15,23,42,0.05)] sm:px-4">

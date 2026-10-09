@@ -120,3 +120,52 @@ describe('every gateway call carries metadata.market', () => {
     expect(markets).toEqual(cases.map(([, expected]) => expected));
   });
 });
+
+// CHOICE > LOCATED > STOREFRONT, read from the browser's own cookie jar on every call.
+describe('the buyer market follows the choice cookie, then the located cookie, then the storefront', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.restoreAllMocks();
+    for (const name of ['pv_market', 'pv_located_market']) document.cookie = `${name}=; path=/; max-age=0`;
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    for (const name of ['pv_market', 'pv_located_market']) document.cookie = `${name}=; path=/; max-age=0`;
+  });
+
+  const stampedMarkets = async (cookies: string[]) => {
+    vi.restoreAllMocks();
+    vi.resetModules();
+    for (const c of cookies) document.cookie = `${c}; path=/`;
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => jsonResponse(OK_BODY));
+    const api = await import('./api');
+    await api.sendMessage('serum').catch(() => undefined);
+    await api.getPdpV2({ product_id: 'prod_1', merchant_id: 'merch_1', include: ['offers'] }).catch(() => undefined);
+    const bodies = sentBodies(fetchMock);
+    expect(bodies.map((b) => b.operation)).toEqual(['find_products_multi', 'get_pdp_v2']);
+    return bodies.map((b) => b.metadata.market);
+  };
+
+  it('no cookie: the storefront market', async () => {
+    expect(await stampedMarkets([])).toEqual(['US', 'US']);
+  });
+  it('a located cookie alone: the located market', async () => {
+    expect(await stampedMarkets(['pv_located_market=JP'])).toEqual(['JP', 'JP']);
+  });
+  it('a choice cookie beats the located cookie', async () => {
+    expect(await stampedMarkets(['pv_located_market=JP', 'pv_market=sg'])).toEqual(['SG', 'SG']);
+  });
+  it("a cookie naming a market the gateway cannot price is skipped, not sent", async () => {
+    expect(await stampedMarkets(['pv_market=DE', 'pv_located_market=JP'])).toEqual(['JP', 'JP']);
+    for (const name of ['pv_market', 'pv_located_market']) document.cookie = `${name}=; path=/; max-age=0`;
+    expect(await stampedMarkets(['pv_market=en-US', 'pv_located_market=ZZ'])).toEqual(['US', 'US']);
+  });
+  it("the caller's own market still wins over both cookies", async () => {
+    for (const c of ['pv_located_market=JP', 'pv_market=SG']) document.cookie = `${c}; path=/`;
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => jsonResponse(OK_BODY));
+    const { sendMessage } = await import('./api');
+    await sendMessage('serum', undefined, { metadata: { market: 'gb' } }).catch(() => undefined);
+    expect(sentBodies(fetchMock)[0].metadata.market).toBe('GB');
+  });
+});
+
