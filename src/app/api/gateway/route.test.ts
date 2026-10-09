@@ -1256,3 +1256,56 @@ describe('/api/gateway upstream auth headers', () => {
     expect(headers.Authorization).toBeUndefined();
   });
 });
+
+describe('/api/gateway stamps the buyer market from the cookies on a body that names none', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.restoreAllMocks();
+    vi.unstubAllEnvs();
+    vi.stubEnv('SHOP_UPSTREAM_API_URL', 'https://invoke.example.com');
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllEnvs();
+  });
+
+  const forwarded = async (body: unknown, cookie?: string) => {
+    // One spy per call: a second call in the same test must not see the first call's fetch.
+    vi.restoreAllMocks();
+    vi.resetModules();
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ status: 'success', products: [] }));
+    const { POST } = await import('@/app/api/gateway/route');
+    const res = await POST(new Request('http://localhost/api/gateway', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(cookie ? { cookie } : {}) },
+      body: JSON.stringify(body),
+    }) as any);
+    expect(res.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    return JSON.parse(String((fetchMock.mock.calls[0][1] as RequestInit).body));
+  };
+
+  const silent = { operation: 'find_products_multi', payload: { search: { query: 'serum' } }, metadata: { source: 'probe' } };
+
+  it('a choice cookie, then a located cookie, fill metadata.market', async () => {
+    expect((await forwarded(silent, 'pv_located_market=JP; pv_market=sg')).metadata).toEqual({ source: 'probe', market: 'SG' });
+    expect((await forwarded(silent, 'pv_located_market=jp')).metadata).toEqual({ source: 'probe', market: 'JP' });
+  });
+
+  it('no cookie: the body is forwarded as sent, silent — the proxy never writes the storefront market', async () => {
+    expect(await forwarded(silent)).toEqual(silent);
+    expect(await forwarded({ operation: 'find_products_multi', payload: {} })).toEqual({ operation: 'find_products_multi', payload: {} });
+  });
+
+  it('a market the body already names is kept as sent, whatever the cookies say', async () => {
+    const named = { ...silent, metadata: { market: 'US' } };
+    expect((await forwarded(named, 'pv_market=SG')).metadata).toEqual({ market: 'US' });
+    const junk = { ...silent, metadata: { market: 'en-US' } };
+    expect((await forwarded(junk, 'pv_market=SG')).metadata).toEqual({ market: 'en-US' });
+  });
+
+  it('an unpriceable cookie is skipped, not forwarded', async () => {
+    expect(await forwarded(silent, 'pv_market=DE; pv_located_market=ZZ')).toEqual(silent);
+  });
+});
+

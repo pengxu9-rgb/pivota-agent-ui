@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { resolveCheckoutPaymentContract } from '@/lib/checkoutPaymentContract';
 import { requireUpstreamBase } from '@/lib/upstreamFallback';
+import { normalizeBuyerMarket, resolveBuyerMarketDetailed } from '@/lib/buyerMarket';
 
 // This route is a backend-bound proxy, not a latency-sensitive edge personalization layer.
 // Keep it on the Node runtime in the project's home region so requests do not bounce from
@@ -393,6 +394,22 @@ type CheckoutSafeRequest =
       message: string;
       status?: number;
     };
+
+/**
+ * THE BUYER'S DECLARED MARKET ON A BODY THAT NAMES NONE (src/lib/buyerMarket.ts). The browser's
+ * own calls arrive stamped already; this is for a caller that POSTs an envelope itself. Only the
+ * buyer's CHOICE or LOCATED cookie is written here, never the storefront market: a caller that
+ * declared nothing and carries no buyer cookie stays silent, which is the gateway's honest state
+ * for a caller it cannot place. A market the body already names (priceable or not) is kept as sent.
+ */
+function stampBuyerMarketFromCookies<T>(body: T, cookieHeader: string | null): T {
+  if (!isPlainObject(body)) return body;
+  const metadata = isPlainObject(body.metadata) ? body.metadata : {};
+  if (Object.prototype.hasOwnProperty.call(metadata, 'market')) return body;
+  const resolved = resolveBuyerMarketDetailed(undefined, cookieHeader);
+  if (resolved.source !== 'choice' && resolved.source !== 'located') return body;
+  return { ...body, metadata: { ...metadata, market: normalizeBuyerMarket(resolved.market) } } as T;
+}
 
 function isPlainObject(value: unknown): value is JsonRecord {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -985,7 +1002,7 @@ export async function POST(req: NextRequest) {
     }
 
     const startedAt = Date.now();
-    const body = await req.json();
+    const body = stampBuyerMarketFromCookies(await req.json(), req.headers.get('cookie'));
     const checkoutToken = String(req.headers.get('x-checkout-token') || '').trim() || null;
     const operation = String(body?.operation || '').trim();
     const normalizedOperation = operation.toLowerCase();

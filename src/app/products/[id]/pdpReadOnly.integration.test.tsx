@@ -60,6 +60,8 @@ const body = (receipt: any = fullCream) => {
 };
 const canonical = (response: any) => response.modules.find((module: any) => module.type === 'canonical').data;
 const payload = (receipt = fullCream) => mapPdpV2ToPdpPayload(body(receipt))!;
+/** The browser's CORE PDP reads: the ones that carry offers (not the similar / content module reads). */
+const coreReads = () => api.get.mock.calls.filter(([args]: any[]) => Array.isArray(args?.include) && args.include.includes('offers'));
 function expectNoPurchases() {
   expect(screen.queryByRole('button', { name: /buy now|add to (bag|cart)|view at|checkout with reap/i })).toBeNull();
   expect(screen.queryByTestId('buybar-reap-primary')).toBeNull();
@@ -132,6 +134,29 @@ describe('actual PDP rendering of canonical read-only gateway route outputs', ()
   it('preserves an actual read failure as degraded instead of showing unavailable inventory', async () => {
     api.cached.mockRejectedValue(Object.assign(new Error('read failed'), { status: 503, code: 'CURRENT_OWN_OFFER_READ_FAILED' }));
     await expect(renderPdpPage({ params: Promise.resolve({ id: state.id }) }, { personalized: false })).rejects.toThrow(PDP_DEGRADED_RENDER_ERROR);
+  });
+
+  it('a buyer whose declared market is not the storefront market re-reads the PDP in the browser, whatever the cached payload says', async () => {
+    // The cached payload carries NO commerce_verification signal: before 2026-10-09 the client
+    // would not have read at all, and an SG buyer would have kept US offers.
+    const cached = body();
+    expect(cached.metadata.commerce_verification).toBeUndefined();
+    try {
+      document.cookie = 'pv_market=SG; path=/';
+      render(<ProductDetailClient params={Promise.resolve({ id: state.id })} initialPayload={mapPdpV2ToPdpPayload(cached)!} />);
+      // The CORE read (offers included) — the similar/content module reads happen for every buyer.
+      await waitFor(() => expect(coreReads()).toHaveLength(1));
+      expect(screen.getAllByText(canonical(cached).pdp_payload.product.title).length).toBeGreaterThan(0); // the cached document stayed up
+    } finally {
+      document.cookie = 'pv_market=; path=/; max-age=0';
+    }
+  });
+
+  it('a buyer on the storefront market with the same cached payload does not re-read (control)', async () => {
+    const cached = body();
+    render(<ProductDetailClient params={Promise.resolve({ id: state.id })} initialPayload={mapPdpV2ToPdpPayload(cached)!} />);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(coreReads()).toHaveLength(0);
   });
 
   it('projects verified cached commerce out of SSR, then enables only a fresh exact proof', async () => {

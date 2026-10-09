@@ -61,7 +61,7 @@ vi.mock('@/store/cartStore', () => ({
     close: vi.fn(),
     removeItem: vi.fn(),
     updateQuantity: vi.fn(),
-    getTotal: () => 23,
+    getSubtotal: () => ({ mixed: false, amount: 23, currency: 'USD' }),
     clearCart: vi.fn(),
   }),
 }));

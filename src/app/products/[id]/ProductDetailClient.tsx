@@ -16,6 +16,7 @@ import {
   type ProductResponse,
   type UgcCapabilities,
 } from '@/lib/api';
+import { STOREFRONT_MARKET, resolveBuyerMarket } from '@/lib/buyerMarket';
 import { hasVerifiedSelectedCommerce, isPurchaseUnavailable, isReadOnlyCommerce, isVerifiedCommerce, refreshPdpCommerce, restrictPdpCommerce } from '@/features/pdp/utils/commerceAvailability';
 import { mapPdpV2ToPdpPayload } from '@/features/pdp/adapter/mapPdpV2ToPdpPayload';
 import { isBeautyProduct } from '@/features/pdp/utils/isBeautyProduct';
@@ -972,11 +973,18 @@ export default function ProductDetailPage({ params, initialPayload, serviceRecom
   }, [id, pdpPayload, routeIsPivotaSignature, routeIsProductGroup, router, searchParamsString]);
 
   useEffect(() => {
+    // THE SERVER-RENDERED PAYLOAD IS KEYED TO THE STOREFRONT MARKET (getPdpV2Cached reads no
+    // cookie: it is one document for everyone). A buyer whose declared market is another one
+    // (src/lib/buyerMarket.ts: choice or located cookie) re-reads here, in the browser, where
+    // callGateway stamps THEIR market — whatever the cached payload says about commerce. Without
+    // this, a cached PDP that carried no commerce_verification signal would hand an SG buyer US
+    // offers and a checkout under SG.
+    const buyerMarketRefresh = hasInitialPayload && resolveBuyerMarket() !== STOREFRONT_MARKET;
     if (hasInitialPayload && reloadKey === 0) {
       // Cached SSR contains evidence only. Current purchase eligibility needs a
       // fresh browser read, as do token-scoped responses carrying X-Checkout-Token.
       const ctx = getCheckoutContextFromBrowser();
-      if (!ctx.token && !requiresCommerceRefresh) return;
+      if (!ctx.token && !requiresCommerceRefresh && !buyerMarketRefresh) return;
     }
 
     let cancelled = false;
@@ -1012,7 +1020,8 @@ export default function ProductDetailPage({ params, initialPayload, serviceRecom
       setLoading(true);
       setError(null);
       setSellerCandidates(null);
-      if (!requiresCommerceRefresh) setPdpPayload(null);
+      // The cached document stays up while a market re-read lands; the fresh read replaces it.
+      if (!requiresCommerceRefresh && !buyerMarketRefresh) setPdpPayload(null);
       clearSimilarDeferredRetryTimer();
       similarLoadSeqRef.current += 1;
       similarAutoLoadKeyRef.current = null;
