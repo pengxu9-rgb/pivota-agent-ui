@@ -25,15 +25,26 @@ describe('MarketSelector', () => {
     clearCookies();
   });
 
-  it('shows the located market as the automatic option when no choice is made', async () => {
-    document.cookie = 'pv_located_market=JP; path=/';
+  it('shows the located market as the automatic option when no choice is made (served markets only)', async () => {
+    document.cookie = 'pv_located_market=US; path=/';
     await act(async () => { render(<MarketSelector />); });
     const select = screen.getByRole('combobox') as HTMLSelectElement;
     expect(select.value).toBe('');
-    expect(select.dataset.market).toBe('JP');
+    expect(select.dataset.market).toBe('US');
     expect(select.dataset.marketSource).toBe('located');
     expect(screen.getByText('Market from your location')).toBeTruthy();
-    expect(screen.getByRole('option', { name: 'Japan (auto)' })).toBeTruthy();
+    expect(screen.getByRole('option', { name: 'United States (auto)' })).toBeTruthy();
+  });
+
+  it('a located SG buyer sees the storefront market, and can still CHOOSE Singapore from the list', async () => {
+    document.cookie = 'pv_located_market=SG; path=/';
+    await act(async () => { render(<MarketSelector />); });
+    const select = screen.getByRole('combobox') as HTMLSelectElement;
+    expect(select.dataset.market).toBe('US');
+    expect(select.dataset.marketSource).toBe('storefront');
+    expect(screen.getByRole('option', { name: 'Singapore' })).toBeTruthy();
+    fireEvent.change(select, { target: { value: 'SG' } });
+    expect(document.cookie).toContain('pv_market=SG');
   });
 
   it('shows the storefront market when nothing places the buyer', async () => {
@@ -45,7 +56,7 @@ describe('MarketSelector', () => {
   });
 
   it('choosing a market writes the choice cookie, empties the bag, and reloads', async () => {
-    document.cookie = 'pv_located_market=JP; path=/';
+    document.cookie = 'pv_located_market=US; path=/';
     useCartStore.getState().clearCart();
     useCartStore.getState().addItem(LINE);
     expect(useCartStore.getState().items).toHaveLength(1);
@@ -57,18 +68,18 @@ describe('MarketSelector', () => {
   });
 
   it('re-choosing the market already in force keeps the bag', async () => {
-    document.cookie = 'pv_located_market=JP; path=/';
+    document.cookie = 'pv_located_market=US; path=/';
     useCartStore.getState().clearCart();
     useCartStore.getState().addItem(LINE);
     await act(async () => { render(<MarketSelector />); });
-    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'JP' } });
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'US' } });
     expect(useCartStore.getState().items).toHaveLength(1);
     expect(reload).toHaveBeenCalledTimes(1);
   });
 
   it('a chosen market is selected, and "Use my location" clears the choice', async () => {
     document.cookie = 'pv_market=SG; path=/';
-    document.cookie = 'pv_located_market=JP; path=/';
+    document.cookie = 'pv_located_market=US; path=/';
     await act(async () => { render(<MarketSelector compact />); });
     const select = screen.getByRole('combobox') as HTMLSelectElement;
     expect(select.value).toBe('SG');
@@ -76,7 +87,7 @@ describe('MarketSelector', () => {
     expect(screen.getByRole('option', { name: 'Use my location' })).toBeTruthy();
     fireEvent.change(select, { target: { value: '' } });
     expect(document.cookie).not.toContain('pv_market=SG');
-    expect(document.cookie).toContain('pv_located_market=JP');
+    expect(document.cookie).toContain('pv_located_market=US');
     expect(reload).toHaveBeenCalledTimes(1);
   });
 
