@@ -47,8 +47,18 @@
 // ('US,SG'), or a well-formed code it has no currency for ('UK', 'DE', 'ZZ') -- is
 // read as "a market nothing is priced for" and the search serves NOTHING, so this
 // module never sends one: a value outside PRICEABLE_MARKETS, from ANY of the sources
-// above, is skipped and the next source decides. A buyer located in a market Pivota
-// does not model is served the storefront market, not an empty page.
+// above, is skipped and the next source decides.
+//
+// PRICEABLE IS NOT SERVED (2026-10-09, the hour #415 was live). A market the gateway
+// can PRICE is not a market it has a CATALOGUE for: keyed to SG, the browse feed
+// returned 0 of 3,222 rows (every row is USD and the gateway's serving_currency_guard
+// drops them for an SG buyer), and the same for all 11 non-US priceable markets. So
+// the LOCATED declaration -- the one the buyer did not make -- only ever names a
+// market in SERVED_MARKETS, the measured set of markets with a non-empty browse feed.
+// A buyer located anywhere else is served the storefront market. The buyer's own
+// CHOICE is still any priceable market: a person who picks SG gets SG, empty page and
+// all, by their own hand, and can switch back. A market joins SERVED_MARKETS only once
+// its feed is measured non-empty through the real door (gateway work, "(c)").
 //
 // Server-rendered pages (ISR) read no cookie and stay on the storefront market: an
 // ISR page is one document for everyone, and its contract forbids the dynamic APIs
@@ -63,6 +73,12 @@ export const STOREFRONT_MARKET = 'US';
 export const PRICEABLE_MARKETS: ReadonlySet<string> = new Set([
   'AU', 'CA', 'FI', 'FR', 'GB', 'HK', 'HR', 'JP', 'KR', 'SE', 'SG', 'US',
 ]);
+
+// The markets with a browse catalogue, measured through agent.pivota.cc's own proxy
+// (get_discovery_feed, surface browse_products) on 2026-10-09: US 20 of 24 rows served;
+// AU CA FI FR GB HK HR JP KR SE SG 0 (serving_currency_guard dropped every USD row).
+// The LOCATED layer declares only these. Always a subset of PRICEABLE_MARKETS (pinned).
+export const SERVED_MARKETS: ReadonlySet<string> = new Set(['US']);
 
 /** Labels for the selector, one per priceable market. */
 export const MARKET_LABELS: Readonly<Record<string, string>> = {
@@ -97,6 +113,12 @@ export function normalizeBuyerMarket(raw: unknown): string | null {
   return PRICEABLE_MARKETS.has(code) ? code : null;
 }
 
+/** One market this storefront SERVES (has a catalogue for), or null. What the located layer may declare. */
+export function normalizeServedMarket(raw: unknown): string | null {
+  const code = normalizeBuyerMarket(raw);
+  return code !== null && SERVED_MARKETS.has(code) ? code : null;
+}
+
 /** A `Cookie` header (or `document.cookie`) as a name -> value map. The FIRST value for a name wins. */
 export function parseCookieHeader(cookie: string | null | undefined): Record<string, string> {
   const out: Record<string, string> = {};
@@ -117,12 +139,15 @@ export function parseCookieHeader(cookie: string | null | undefined): Record<str
   return out;
 }
 
-/** The two market cookies, each a priceable market or null. */
+/**
+ * The two market cookies: the choice is any priceable market, the located market only a
+ * SERVED one (a stale cookie naming a priceable-but-unserved market reads as none).
+ */
 export function readMarketCookies(cookie: string | null | undefined): { choice: string | null; located: string | null } {
   const jar = parseCookieHeader(cookie);
   return {
     choice: normalizeBuyerMarket(jar[MARKET_CHOICE_COOKIE]),
-    located: normalizeBuyerMarket(jar[LOCATED_MARKET_COOKIE]),
+    located: normalizeServedMarket(jar[LOCATED_MARKET_COOKIE]),
   };
 }
 

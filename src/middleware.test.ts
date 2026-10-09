@@ -80,40 +80,49 @@ describe('the located-market cookie (X-Client-Region -> pv_located_market)', () 
   beforeEach(() => vi.unstubAllEnvs());
   afterEach(() => vi.unstubAllEnvs());
 
-  it('a priceable region is written, readable by the browser, secure on https, for 30 days', () => {
-    const res = middleware(req('/products', { region: 'SG' }));
+  it('a SERVED region is written, readable by the browser, secure on https, for 30 days', () => {
+    const res = middleware(req('/products', { region: 'US' }));
     expect(res.status).toBe(200);
-    expect(locatedCookie(res)).toEqual({ value: 'SG', maxAge: 60 * 60 * 24 * 30, secure: true, httpOnly: false });
+    expect(locatedCookie(res)).toEqual({ value: 'US', maxAge: 60 * 60 * 24 * 30, secure: true, httpOnly: false });
+  });
+
+  it('a priceable but UNSERVED region (SG, JP) is never written, and clears a stale cookie', () => {
+    for (const region of ['SG', 'JP', 'sg']) {
+      expect(locatedCookie(middleware(req('/products', { region }))), region).toBeNull();
+      const cleared = locatedCookie(middleware(req('/', { region, cookie: 'pv_located_market=SG' })));
+      expect(cleared?.value, region).toBe('');
+      expect(cleared?.maxAge, region).toBe(0);
+    }
   });
 
   it('Secure is forced in production even on the plain-http last hop behind the load balancer', () => {
-    expect(locatedCookie(middleware(req('/', { region: 'SG', https: false })))?.secure).toBe(false);
+    expect(locatedCookie(middleware(req('/', { region: 'US', https: false })))?.secure).toBe(false);
     vi.stubEnv('NODE_ENV', 'production');
-    expect(locatedCookie(middleware(req('/', { region: 'SG', https: false })))?.secure).toBe(true);
+    expect(locatedCookie(middleware(req('/', { region: 'US', https: false })))?.secure).toBe(true);
   });
 
   it('the region is normalised to the gateway spelling, and an unchanged cookie is not rewritten', () => {
-    expect(locatedCookie(middleware(req('/', { region: 'jp' })))?.value).toBe('JP');
-    expect(locatedCookie(middleware(req('/', { region: 'JP', cookie: 'pv_located_market=JP' })))).toBeNull();
-    expect(locatedCookie(middleware(req('/', { region: 'SG', cookie: 'pv_located_market=JP' })))?.value).toBe('SG');
+    expect(locatedCookie(middleware(req('/', { region: 'us' })))?.value).toBe('US');
+    expect(locatedCookie(middleware(req('/', { region: 'US', cookie: 'pv_located_market=US' })))).toBeNull();
+    expect(locatedCookie(middleware(req('/', { region: 'US', cookie: 'pv_located_market=JP' })))?.value).toBe('US');
   });
 
   it('no header (not behind the LB) leaves the cookie alone, with or without one present', () => {
     expect(locatedCookie(middleware(req('/')))).toBeNull();
-    expect(locatedCookie(middleware(req('/', { cookie: 'pv_located_market=JP' })))).toBeNull();
+    expect(locatedCookie(middleware(req('/', { cookie: 'pv_located_market=US' })))).toBeNull();
   });
 
   it('a region the gateway does not price CLEARS a stale cookie and never writes one', () => {
     for (const region of ['ZZ', 'DE', 'UK', 'T1', '', 'en-US']) {
       expect(locatedCookie(middleware(req('/', { region }))), region).toBeNull();
-      const cleared = locatedCookie(middleware(req('/', { region, cookie: 'pv_located_market=JP' })));
+      const cleared = locatedCookie(middleware(req('/', { region, cookie: 'pv_located_market=US' })));
       expect(cleared?.value, region).toBe('');
       expect(cleared?.maxAge, region).toBe(0);
     }
   });
 
   it('the 410 answer carries no cookie: it is a cached document for everyone', () => {
-    expect(locatedCookie(middleware(req('/products/sig_retired1', { region: 'SG' })))).toBeNull();
+    expect(locatedCookie(middleware(req('/products/sig_retired1', { region: 'US' })))).toBeNull();
   });
 
   it('the dial: BUYER_MARKET_FROM_LOCATION=off writes nothing and clears what is there', () => {
@@ -121,23 +130,26 @@ describe('the located-market cookie (X-Client-Region -> pv_located_market)', () 
     expect(locationMarketEnabled({ BUYER_MARKET_FROM_LOCATION: 'on' })).toBe(true);
     expect(locationMarketEnabled({ BUYER_MARKET_FROM_LOCATION: ' OFF ' })).toBe(false);
     vi.stubEnv('BUYER_MARKET_FROM_LOCATION', 'off');
-    expect(locatedCookie(middleware(req('/', { region: 'SG' })))).toBeNull();
-    const cleared = locatedCookie(middleware(req('/', { region: 'SG', cookie: 'pv_located_market=SG' })));
+    expect(locatedCookie(middleware(req('/', { region: 'US' })))).toBeNull();
+    const cleared = locatedCookie(middleware(req('/', { region: 'US', cookie: 'pv_located_market=US' })));
     expect(cleared?.maxAge).toBe(0);
   });
 
-  it('locatedMarketUpdate: the whole table', () => {
+  it('locatedMarketUpdate: the whole table (served = US; SG is priceable but unserved; ZZ unpriceable)', () => {
     // enabled
-    expect(locatedMarketUpdate('SG', undefined, true)).toBe('SG');
-    expect(locatedMarketUpdate('sg', 'JP', true)).toBe('SG');
-    expect(locatedMarketUpdate('SG', 'SG', true)).toBeUndefined();
+    expect(locatedMarketUpdate('US', undefined, true)).toBe('US');
+    expect(locatedMarketUpdate('us', 'JP', true)).toBe('US');
+    expect(locatedMarketUpdate('US', 'US', true)).toBeUndefined();
     expect(locatedMarketUpdate(null, undefined, true)).toBeUndefined();
-    expect(locatedMarketUpdate(null, 'SG', true)).toBeUndefined();
-    expect(locatedMarketUpdate('ZZ', undefined, true)).toBeUndefined();
-    expect(locatedMarketUpdate('ZZ', 'SG', true)).toBeNull();
+    expect(locatedMarketUpdate(null, 'US', true)).toBeUndefined();
+    for (const unserved of ['ZZ', 'SG', 'JP']) {
+      expect(locatedMarketUpdate(unserved, undefined, true), unserved).toBeUndefined();
+      expect(locatedMarketUpdate(unserved, 'US', true), unserved).toBeNull();
+      expect(locatedMarketUpdate(unserved, 'SG', true), unserved).toBeNull();
+    }
     // disabled
-    expect(locatedMarketUpdate('SG', undefined, false)).toBeUndefined();
-    expect(locatedMarketUpdate('SG', 'SG', false)).toBeNull();
-    expect(locatedMarketUpdate(null, 'SG', false)).toBeNull();
+    expect(locatedMarketUpdate('US', undefined, false)).toBeUndefined();
+    expect(locatedMarketUpdate('US', 'US', false)).toBeNull();
+    expect(locatedMarketUpdate(null, 'US', false)).toBeNull();
   });
 });

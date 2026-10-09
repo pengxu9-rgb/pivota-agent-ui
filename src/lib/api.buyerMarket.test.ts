@@ -157,14 +157,17 @@ describe('the buyer market follows the choice cookie, then the located cookie, t
       spy.mockRestore();
     }
   });
-  it('a located cookie alone: the located market', async () => {
-    expect(await stampedMarkets(['pv_located_market=JP'])).toEqual(['JP', 'JP']);
+  it('a located cookie alone, naming a SERVED market: the located market', async () => {
+    expect(await stampedMarkets(['pv_located_market=US'])).toEqual(['US', 'US']);
   });
-  it('a choice cookie beats the located cookie', async () => {
-    expect(await stampedMarkets(['pv_located_market=JP', 'pv_market=sg'])).toEqual(['SG', 'SG']);
+  it('a located SG buyer (priceable, no catalogue) is served the storefront market, not SG', async () => {
+    expect(await stampedMarkets(['pv_located_market=SG'])).toEqual(['US', 'US']);
+  });
+  it('a choice cookie beats the located cookie, and a CHOSEN SG is honoured', async () => {
+    expect(await stampedMarkets(['pv_located_market=US', 'pv_market=sg'])).toEqual(['SG', 'SG']);
   });
   it("a cookie naming a market the gateway cannot price is skipped, not sent", async () => {
-    expect(await stampedMarkets(['pv_market=DE', 'pv_located_market=JP'])).toEqual(['JP', 'JP']);
+    expect(await stampedMarkets(['pv_market=DE', 'pv_located_market=US'])).toEqual(['US', 'US']);
     for (const name of ['pv_market', 'pv_located_market']) document.cookie = `${name}=; path=/; max-age=0`;
     expect(await stampedMarkets(['pv_market=en-US', 'pv_located_market=ZZ'])).toEqual(['US', 'US']);
   });

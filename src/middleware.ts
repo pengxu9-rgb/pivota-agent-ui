@@ -7,9 +7,10 @@
  *    precedence choice > located > storefront). The header is the client's country
  *    as GCP sees it (CLDR region code), set only by the LB (`pivota-bes-agent`,
  *    custom request header `X-Client-Region:{client_region}`); a request that does
- *    not carry it (local dev, a direct hit) leaves the cookie alone. A region the
- *    gateway does not price (ZZ, DE, ...) CLEARS the cookie, so a buyer who moved to
- *    an unmodelled country is served the storefront market, not a stale one. The
+ *    not carry it (local dev, a direct hit) leaves the cookie alone. A region this
+ *    storefront does not SERVE -- unpriceable (ZZ, DE, ...) or priceable with no
+ *    catalogue (SG, JP, ... see SERVED_MARKETS) -- CLEARS the cookie, so a buyer who
+ *    moved there is served the storefront market, not a stale one or an empty page. The
  *    cookie is NOT httpOnly: the browser's own gateway calls read it. One dial,
  *    `BUYER_MARKET_FROM_LOCATION` (unset = on; `off` disables the write and clears
  *    the cookie), so the location layer can be switched off without a deploy of code.

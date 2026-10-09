@@ -1287,9 +1287,11 @@ describe('/api/gateway stamps the buyer market from the cookies on a body that n
 
   const silent = { operation: 'find_products_multi', payload: { search: { query: 'serum' } }, metadata: { source: 'probe' } };
 
-  it('a choice cookie, then a located cookie, fill metadata.market', async () => {
-    expect((await forwarded(silent, 'pv_located_market=JP; pv_market=sg')).metadata).toEqual({ source: 'probe', market: 'SG' });
-    expect((await forwarded(silent, 'pv_located_market=jp')).metadata).toEqual({ source: 'probe', market: 'JP' });
+  it('a choice cookie, then a located cookie (served markets only), fill metadata.market', async () => {
+    expect((await forwarded(silent, 'pv_located_market=US; pv_market=sg')).metadata).toEqual({ source: 'probe', market: 'SG' });
+    expect((await forwarded(silent, 'pv_located_market=us')).metadata).toEqual({ source: 'probe', market: 'US' });
+    // A stale located cookie naming a priceable-but-unserved market stamps nothing: the body stays silent.
+    expect(await forwarded(silent, 'pv_located_market=JP')).toEqual(silent);
   });
 
   it('no cookie: the body is forwarded as sent, silent — the proxy never writes the storefront market', async () => {
