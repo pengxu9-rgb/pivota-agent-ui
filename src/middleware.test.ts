@@ -86,13 +86,19 @@ describe('the located-market cookie (X-Client-Region -> pv_located_market)', () 
     expect(locatedCookie(res)).toEqual({ value: 'US', maxAge: 60 * 60 * 24 * 30, secure: true, httpOnly: false });
   });
 
-  it('a priceable but UNSERVED region (SG, JP) is never written, and clears a stale cookie', () => {
-    for (const region of ['SG', 'JP', 'sg']) {
+  it('a priceable but UNSERVED region (JP, GB) is never written, and clears a stale cookie', () => {
+    for (const region of ['JP', 'GB', 'jp']) {
       expect(locatedCookie(middleware(req('/products', { region }))), region).toBeNull();
       const cleared = locatedCookie(middleware(req('/', { region, cookie: 'pv_located_market=SG' })));
       expect(cleared?.value, region).toBe('');
       expect(cleared?.maxAge, region).toBe(0);
     }
+  });
+
+  it('a SERVED non-storefront region (SG, since 2026-10-10) is written like US', () => {
+    expect(locatedCookie(middleware(req('/products', { region: 'sg' })))?.value).toBe('SG');
+    expect(locatedCookie(middleware(req('/', { region: 'SG', cookie: 'pv_located_market=SG' })))).toBeNull();
+    expect(locatedCookie(middleware(req('/', { region: 'SG', cookie: 'pv_located_market=US' })))?.value).toBe('SG');
   });
 
   it('Secure is forced in production even on the plain-http last hop behind the load balancer', () => {
@@ -135,14 +141,17 @@ describe('the located-market cookie (X-Client-Region -> pv_located_market)', () 
     expect(cleared?.maxAge).toBe(0);
   });
 
-  it('locatedMarketUpdate: the whole table (served = US; SG is priceable but unserved; ZZ unpriceable)', () => {
+  it('locatedMarketUpdate: the whole table (served = US, SG; JP is priceable but unserved; ZZ unpriceable)', () => {
     // enabled
     expect(locatedMarketUpdate('US', undefined, true)).toBe('US');
     expect(locatedMarketUpdate('us', 'JP', true)).toBe('US');
     expect(locatedMarketUpdate('US', 'US', true)).toBeUndefined();
+    expect(locatedMarketUpdate('sg', undefined, true)).toBe('SG');
+    expect(locatedMarketUpdate('SG', 'US', true)).toBe('SG');
+    expect(locatedMarketUpdate('SG', 'SG', true)).toBeUndefined();
     expect(locatedMarketUpdate(null, undefined, true)).toBeUndefined();
     expect(locatedMarketUpdate(null, 'US', true)).toBeUndefined();
-    for (const unserved of ['ZZ', 'SG', 'JP']) {
+    for (const unserved of ['ZZ', 'JP', 'GB']) {
       expect(locatedMarketUpdate(unserved, undefined, true), unserved).toBeUndefined();
       expect(locatedMarketUpdate(unserved, 'US', true), unserved).toBeNull();
       expect(locatedMarketUpdate(unserved, 'SG', true), unserved).toBeNull();
