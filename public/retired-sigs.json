@@ -1,5 +1,5 @@
 {
-  "_comment": "988 sig(s) answered HTTP 410 Gone by src/middleware.ts. Admitted when the feed reports terminally_retired=true, or when a previously advertised sig left a FULLY-READ feed. Maintained by scripts/generate_sitemaps.mjs — do not hand-edit.",
+  "_comment": "1001 sig(s) answered HTTP 410 Gone by src/middleware.ts. Admitted when the feed reports terminally_retired=true, or when a previously advertised sig left a FULLY-READ feed. Maintained by scripts/generate_sitemaps.mjs — do not hand-edit.",
   "sigs": [
     "sig_090c4800be028de3f353d330d5e8e650",
     "sig_09ee3532142864fcaa5ed4c3a26a1aba",
@@ -988,6 +988,19 @@
     "sig_65ebe723128b7a91088fa91903d7a982",
     "sig_7af8543fa47a0f849f5f109b1db3bcf4",
     "sig_9043ef372410f985df6ae9a88d6d714e",
-    "sig_e9bcbe0424757ff1cfa26b814572df02"
+    "sig_e9bcbe0424757ff1cfa26b814572df02",
+    "sig_0552250edf10c2fe9b956490c6f4a634",
+    "sig_25f3d84fe29601cae586976da0987d8e",
+    "sig_26b604a83751dcf88b18c79da81a7716",
+    "sig_2b7b70f812fd489aa00691f815a20fe5",
+    "sig_2e7807a0393923b4a91b8336d883e507",
+    "sig_3455b60ff6e56ecbb91eb6d15063d09b",
+    "sig_6aacc720de7d36c5f7272389c1231c05",
+    "sig_a60aa8eae3ca1580606adae794fbd0ba",
+    "sig_af05bbdee72a9c66c208ec0fc6359b0b",
+    "sig_e055de1613a6ab953e9244ff8de03fd9",
+    "sig_ed40c43b437e2b13df5e75a8d9d07db6",
+    "sig_f71c9e254ae470742e68eea758722771",
+    "sig_f9adfb5d99c7478881a32b47c4684bfd"
   ]
 }
