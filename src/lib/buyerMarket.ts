@@ -75,10 +75,13 @@ export const PRICEABLE_MARKETS: ReadonlySet<string> = new Set([
 ]);
 
 // The markets with a browse catalogue, measured through agent.pivota.cc's own proxy
-// (get_discovery_feed, surface browse_products) on 2026-10-09: US 20 of 24 rows served;
+// (get_discovery_feed, surface browse_products). 2026-10-09: US 20 of 24 rows served;
 // AU CA FI FR GB HK HR JP KR SE SG 0 (serving_currency_guard dropped every USD row).
+// 2026-10-10, gateway-00586 (PIVOTA-Agent #2397/#2399/#2400, the buyer-market fallback):
+// SG 24 of 24 served from a 48-row SGD pool on a warm instance (the bar: >= 24 priced
+// rows on page 1), JP 6, GB 0. Peng 2026-10-10: SG joins. JP stays out (6 < 24).
 // The LOCATED layer declares only these. Always a subset of PRICEABLE_MARKETS (pinned).
-export const SERVED_MARKETS: ReadonlySet<string> = new Set(['US']);
+export const SERVED_MARKETS: ReadonlySet<string> = new Set(['US', 'SG']);
 
 /** Labels for the selector, one per priceable market. */
 export const MARKET_LABELS: Readonly<Record<string, string>> = {
