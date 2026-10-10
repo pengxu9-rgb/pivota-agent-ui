@@ -81,6 +81,27 @@ function scriptedFetch(created: unknown, polls: unknown[] = []) {
   });
 }
 
+/**
+ * A /resume request held in flight until the test answers it. The submit hashes its body with Web
+ * Crypto (off the JS thread) before it dispatches, so `fillAndSubmit` can return before the resume
+ * is sent: await `dispatched` before acting on "the resume is in flight".
+ */
+function pendingResume() {
+  let sent!: () => void;
+  let answer!: (response: Response) => void;
+  const resume = {
+    sent: false,
+    dispatched: new Promise<void>((resolve) => { sent = resolve; }),
+    request: () => {
+      resume.sent = true;
+      sent();
+      return new Promise<Response>((resolve) => { answer = resolve; });
+    },
+    reply: (response: Response) => answer(response),
+  };
+  return resume;
+}
+
 beforeEach(() => {
   window.sessionStorage.clear();
   window.localStorage.clear();
@@ -1314,17 +1335,16 @@ it('review: fresh terminal no-dispatch after lost resume resolves only the pendi
 
 it('review: resume response cannot resurrect a terminal view read while request is in flight', async () => {
   renderPanel(scriptedFetch(needsEnrollmentCheckout())); await fillAndSubmit(); await screen.findByTestId('reap-status'); cleanup();
-  let reads = 0; let reply!: (r: Response) => void;
-  const fetchImpl = vi.fn(async (url: string) => {
-    if (url.endsWith('/resume')) return new Promise<Response>(resolve => { reply = resolve; });
-    reads += 1;
-    return jsonResponse({checkout: reads === 1 ? {...viewOf(resolvingCheckout()),contactReentryRequired:true} : viewOf(canceledCheckout('expired'))});
-  });
+  const resume = pendingResume();
+  // Only a read made while the resume is in flight is terminal; any earlier read sees the paused checkout.
+  const fetchImpl = vi.fn(async (url: string) => url.endsWith('/resume') ? resume.request()
+    : jsonResponse({checkout: resume.sent ? viewOf(canceledCheckout('expired')) : {...viewOf(resolvingCheckout()),contactReentryRequired:true}}));
   renderPanel(fetchImpl); await screen.findByTestId('reap-contact-reentry');
   await fillAndSubmit();
+  await act(async () => { await resume.dispatched; });
   await act(async () => { window.dispatchEvent(new Event('focus')); });
   await screen.findByTestId('reap-terminal-uncertain');
-  await act(async () => { reply(jsonResponse({checkout: viewOf(awaitingApprovalCheckout())})); });
+  await act(async () => { resume.reply(jsonResponse({checkout: viewOf(awaitingApprovalCheckout())})); });
   expect(screen.queryByTestId('reap-continue')).toBeNull();
   expect(screen.queryByTestId('reap-contact-reentry')).toBeNull();
   expect(screen.getByTestId('reap-status').getAttribute('data-phase')).toBe('expired');
@@ -1352,17 +1372,14 @@ it.each(['approvalOpened', 'approved', 'handedOff', 'dispatchRisk'] as const)('f
 
 it('review: terminal no-dispatch read while resume is pending still settles after its lost reply', async () => {
   renderPanel(scriptedFetch(needsEnrollmentCheckout())); await fillAndSubmit(); await screen.findByTestId('reap-status'); cleanup();
-  let reads = 0; let reply!: (r: Response) => void;
-  const fetchImpl = vi.fn(async (url: string) => {
-    if (url.endsWith('/resume')) return new Promise<Response>(resolve => { reply = resolve; });
-    reads += 1;
-    return jsonResponse({checkout: reads === 1 ? {...viewOf(resolvingCheckout()),contactReentryRequired:true} : viewOf(canceledCheckout('failed','enrollment_dead'))});
-  });
+  const resume = pendingResume();
+  const fetchImpl = vi.fn(async (url: string) => url.endsWith('/resume') ? resume.request()
+    : jsonResponse({checkout: resume.sent ? viewOf(canceledCheckout('failed','enrollment_dead')) : {...viewOf(resolvingCheckout()),contactReentryRequired:true}}));
   renderPanel(fetchImpl); await screen.findByTestId('reap-contact-reentry'); await fillAndSubmit();
-  await waitFor(() => expect(fetchImpl.mock.calls.some(([url]) => url.endsWith('/resume'))).toBe(true));
+  await act(async () => { await resume.dispatched; });
   await act(async () => { window.dispatchEvent(new Event('focus')); });
   await screen.findByTestId('reap-terminal-uncertain');
-  await act(async () => { reply(jsonResponse({},502)); });
+  await act(async () => { resume.reply(jsonResponse({},502)); });
   await act(async () => { window.dispatchEvent(new Event('focus')); });
   expect(readActiveFlag(PRODUCT_ID,'continuationPending')).toBe(false);
   expect(await screen.findByTestId('reap-restart')).toBeTruthy();
