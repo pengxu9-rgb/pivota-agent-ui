@@ -46,6 +46,20 @@ vi.mock('sonner', () => ({
   },
 }));
 
+/**
+ * Fires the sentinel's intersection (`firesPerAttempt` times in one tick) until the load-more request
+ * starts. The first page commits in one Scheduler task and the effect that re-binds the observer to it
+ * runs in a later one when a slow render uses up the time slice; until then the current callback is the
+ * observer made while the page was loading, which correctly ignores intersections. Retrying is a no-op
+ * there; the first attempt that reaches the settled observer must start exactly one request.
+ */
+async function intersectUntilSecondRequest(firesPerAttempt = 1) {
+  await waitFor(() => {
+    for (let i = 0; i < firesPerAttempt; i += 1) intersectionCallback?.([{ isIntersecting: true }]);
+    expect(getShoppingDiscoveryFeedMock).toHaveBeenCalledTimes(2);
+  });
+}
+
 describe('ProductsPage', () => {
   beforeEach(() => {
     cartItems = [];
@@ -164,9 +178,7 @@ describe('ProductsPage', () => {
       expect(intersectionCallback).not.toBeNull();
     });
 
-    await act(async () => {
-      intersectionCallback?.([{ isIntersecting: true }]);
-    });
+    await intersectUntilSecondRequest();
 
     await waitFor(() => {
       expect(getShoppingDiscoveryFeedMock).toHaveBeenNthCalledWith(
@@ -218,8 +230,10 @@ describe('ProductsPage', () => {
     });
     expect(screen.getByText('Barrier Serum')).toBeInTheDocument();
 
+    // Two intersections in one tick: the second sees the same closure, so only the in-flight cursor stops it.
+    await intersectUntilSecondRequest(2);
+    // And once the in-flight page has rendered, later intersections still start nothing.
     await act(async () => {
-      intersectionCallback?.([{ isIntersecting: true }]);
       intersectionCallback?.([{ isIntersecting: true }]);
     });
 
