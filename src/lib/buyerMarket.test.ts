@@ -25,7 +25,7 @@ describe('resolveBuyerMarketDetailed: the precedence table', () => {
     ['empty jar', undefined, '', { market: 'US', source: 'storefront' }],
     ['located only (a served market)', undefined, 'pv_located_market=US', { market: 'US', source: 'located' }],
     // PRICEABLE IS NOT SERVED: a located SG buyer (priceable, no catalogue) is served the storefront market.
-    ['located SG: priceable but not served -> storefront', undefined, 'pv_located_market=SG', { market: 'US', source: 'storefront' }],
+    ['located SG: served since 2026-10-10 -> SG', undefined, 'pv_located_market=SG', { market: 'SG', source: 'located' }],
     ['located JP: priceable but not served -> storefront', undefined, 'pv_located_market=JP', { market: 'US', source: 'storefront' }],
     ['choice only', undefined, 'pv_market=SG', { market: 'SG', source: 'choice' }],
     ['choice beats located', undefined, 'pv_located_market=US; pv_market=sg', { market: 'SG', source: 'choice' }],
@@ -67,10 +67,14 @@ describe('the cookie jar', () => {
     expect(readMarketCookies('pv_market=DE')).toEqual({ choice: null, located: null });
   });
 
-  it('SERVED_MARKETS is a subset of PRICEABLE_MARKETS, holds US, and normalizeServedMarket admits exactly it', () => {
+  it('SERVED_MARKETS is a subset of PRICEABLE_MARKETS, holds exactly the measured markets (US, SG), and normalizeServedMarket admits exactly it', () => {
     expect(SERVED_MARKETS.size).toBeGreaterThan(0);
     for (const m of SERVED_MARKETS) expect(PRICEABLE_MARKETS.has(m), m).toBe(true);
-    expect(SERVED_MARKETS.has('US')).toBe(true);
+    // Each entry is a measurement through the real door (see the comment on the set), never a guess:
+    // US (2026-10-09), SG (2026-10-10, 24 of 24 SGD rows served on a warm instance). JP measured 6 and stays out.
+    expect([...SERVED_MARKETS].sort()).toEqual(['SG', 'US']);
+    expect(normalizeServedMarket('sg')).toBe('SG');
+    expect(normalizeServedMarket('JP')).toBeNull();
     for (const m of PRICEABLE_MARKETS) {
       expect(normalizeServedMarket(m.toLowerCase()), m).toBe(SERVED_MARKETS.has(m) ? m : null);
     }

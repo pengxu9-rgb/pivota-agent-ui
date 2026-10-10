@@ -9,7 +9,7 @@
  *    custom request header `X-Client-Region:{client_region}`); a request that does
  *    not carry it (local dev, a direct hit) leaves the cookie alone. A region this
  *    storefront does not SERVE -- unpriceable (ZZ, DE, ...) or priceable with no
- *    catalogue (SG, JP, ... see SERVED_MARKETS) -- CLEARS the cookie, so a buyer who
+ *    catalogue (JP, GB, ... see SERVED_MARKETS) -- CLEARS the cookie, so a buyer who
  *    moved there is served the storefront market, not a stale one or an empty page. The
  *    cookie is NOT httpOnly: the browser's own gateway calls read it. One dial,
  *    `BUYER_MARKET_FROM_LOCATION` (unset = on; `off` disables the write and clears
