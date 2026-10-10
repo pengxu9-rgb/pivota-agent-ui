@@ -81,6 +81,27 @@ function scriptedFetch(created: unknown, polls: unknown[] = []) {
   });
 }
 
+/**
+ * A /resume request held in flight until the test answers it. The submit hashes its body with Web
+ * Crypto (off the JS thread) before it dispatches, so `fillAndSubmit` can return before the resume
+ * is sent: await `dispatched` before acting on "the resume is in flight".
+ */
+function pendingResume() {
+  let sent!: () => void;
+  let answer!: (response: Response) => void;
+  const resume = {
+    sent: false,
+    dispatched: new Promise<void>((resolve) => { sent = resolve; }),
+    request: () => {
+      resume.sent = true;
+      sent();
+      return new Promise<Response>((resolve) => { answer = resolve; });
+    },
+    reply: (response: Response) => answer(response),
+  };
+  return resume;
+}
+
 beforeEach(() => {
   window.sessionStorage.clear();
   window.localStorage.clear();
@@ -1314,17 +1335,16 @@ it('review: fresh terminal no-dispatch after lost resume resolves only the pendi
 
 it('review: resume response cannot resurrect a terminal view read while request is in flight', async () => {
   renderPanel(scriptedFetch(needsEnrollmentCheckout())); await fillAndSubmit(); await screen.findByTestId('reap-status'); cleanup();
-  let reads = 0; let reply!: (r: Response) => void;
-  const fetchImpl = vi.fn(async (url: string) => {
-    if (url.endsWith('/resume')) return new Promise<Response>(resolve => { reply = resolve; });
-    reads += 1;
-    return jsonResponse({checkout: reads === 1 ? {...viewOf(resolvingCheckout()),contactReentryRequired:true} : viewOf(canceledCheckout('expired'))});
-  });
+  const resume = pendingResume();
+  // Only a read made while the resume is in flight is terminal; any earlier read sees the paused checkout.
+  const fetchImpl = vi.fn(async (url: string) => url.endsWith('/resume') ? resume.request()
+    : jsonResponse({checkout: resume.sent ? viewOf(canceledCheckout('expired')) : {...viewOf(resolvingCheckout()),contactReentryRequired:true}}));
   renderPanel(fetchImpl); await screen.findByTestId('reap-contact-reentry');
   await fillAndSubmit();
+  await act(async () => { await resume.dispatched; });
   await act(async () => { window.dispatchEvent(new Event('focus')); });
   await screen.findByTestId('reap-terminal-uncertain');
-  await act(async () => { reply(jsonResponse({checkout: viewOf(awaitingApprovalCheckout())})); });
+  await act(async () => { resume.reply(jsonResponse({checkout: viewOf(awaitingApprovalCheckout())})); });
   expect(screen.queryByTestId('reap-continue')).toBeNull();
   expect(screen.queryByTestId('reap-contact-reentry')).toBeNull();
   expect(screen.getByTestId('reap-status').getAttribute('data-phase')).toBe('expired');
@@ -1352,17 +1372,14 @@ it.each(['approvalOpened', 'approved', 'handedOff', 'dispatchRisk'] as const)('f
 
 it('review: terminal no-dispatch read while resume is pending still settles after its lost reply', async () => {
   renderPanel(scriptedFetch(needsEnrollmentCheckout())); await fillAndSubmit(); await screen.findByTestId('reap-status'); cleanup();
-  let reads = 0; let reply!: (r: Response) => void;
-  const fetchImpl = vi.fn(async (url: string) => {
-    if (url.endsWith('/resume')) return new Promise<Response>(resolve => { reply = resolve; });
-    reads += 1;
-    return jsonResponse({checkout: reads === 1 ? {...viewOf(resolvingCheckout()),contactReentryRequired:true} : viewOf(canceledCheckout('failed','enrollment_dead'))});
-  });
+  const resume = pendingResume();
+  const fetchImpl = vi.fn(async (url: string) => url.endsWith('/resume') ? resume.request()
+    : jsonResponse({checkout: resume.sent ? viewOf(canceledCheckout('failed','enrollment_dead')) : {...viewOf(resolvingCheckout()),contactReentryRequired:true}}));
   renderPanel(fetchImpl); await screen.findByTestId('reap-contact-reentry'); await fillAndSubmit();
-  await waitFor(() => expect(fetchImpl.mock.calls.some(([url]) => url.endsWith('/resume'))).toBe(true));
+  await act(async () => { await resume.dispatched; });
   await act(async () => { window.dispatchEvent(new Event('focus')); });
   await screen.findByTestId('reap-terminal-uncertain');
-  await act(async () => { reply(jsonResponse({},502)); });
+  await act(async () => { resume.reply(jsonResponse({},502)); });
   await act(async () => { window.dispatchEvent(new Event('focus')); });
   expect(readActiveFlag(PRODUCT_ID,'continuationPending')).toBe(false);
   expect(await screen.findByTestId('reap-restart')).toBeTruthy();
@@ -1457,4 +1474,79 @@ it('real gateway accepted202 wire does not latch risk and permits original-attem
   expect(JSON.parse(String(posts[0][1].body))).toEqual(originalBody);
   expect(readActiveCheckoutId(productId)).toBe(acceptedCreate.id);
   expect(readActiveFlag(productId,'dispatchRisk')).toBe(false);
+});
+
+/** Parks every fingerprint hash until `release()`; `hashing` settles once a hash is parked. */
+function gatedDigest() {
+  const real = crypto.subtle.digest.bind(crypto.subtle);
+  let parked!: () => void; let release!: () => void;
+  const hashing = new Promise<void>((resolve) => { parked = resolve; });
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  const spy = vi.spyOn(crypto.subtle, 'digest').mockImplementation(async (...args: Parameters<typeof real>) => { parked(); await gate; return real(...args); });
+  return { hashing, release, restore: () => spy.mockRestore() };
+}
+/** Settles once every attempt-lock holder queued before it (e.g. an in-flight submit) has finished. */
+const attemptLockDrained = () => act(async () => { await navigator.locks.request('pivota.reapCheckout.buyer-attempt', async () => undefined); });
+
+describe('a read that lands while the continuation hashes its body', () => {
+  const paused = () => ({ ...viewOf(resolvingCheckout()), contactReentryRequired: true });
+  async function parkContinuationInHash(next: () => unknown) {
+    renderPanel(scriptedFetch(needsEnrollmentCheckout())); await fillAndSubmit(); await screen.findByTestId('reap-status'); cleanup();
+    // Answered at once: these tests only ask whether a resume was sent, and an unanswered one would hold the lock.
+    const resume = { sent: false }; let changed = false;
+    const fetchImpl = vi.fn(async (url: string) => {
+      if (url.endsWith('/resume')) { resume.sent = true; return jsonResponse({}, 502); }
+      return jsonResponse({ checkout: changed ? next() : paused() });
+    });
+    renderPanel(fetchImpl); await screen.findByTestId('reap-contact-reentry');
+    const digest = gatedDigest();
+    try {
+      await fillAndSubmit();
+      await act(async () => { await digest.hashing; });
+      changed = true;
+      await act(async () => { window.dispatchEvent(new Event('focus')); });
+    } finally {
+      digest.release(); digest.restore();
+    }
+    await attemptLockDrained();
+    return { resume, fetchImpl };
+  }
+
+  it('terminal: the resume is never sent, and the shown restart opens a fresh form', async () => {
+    const { resume } = await parkContinuationInHash(() => viewOf(canceledCheckout('failed', 'enrollment_dead')));
+    expect(resume.sent).toBe(false);
+    expect(readActiveFlag(PRODUCT_ID, 'continuationPending')).toBe(false);
+    expect(screen.getByTestId('reap-status')).toHaveAttribute('data-phase', 'failed');
+    await act(async () => { fireEvent.click(screen.getByTestId('reap-restart')); });
+    expect(await screen.findByTestId('reap-form')).toBeTruthy();
+    expect(screen.queryByTestId('reap-fallback')).toBeNull();
+    expect(screen.queryByTestId('reap-reset-problem')).toBeNull();
+  });
+
+  it('dispatched: the resume is never sent, and the status stays uncertain with no restart', async () => {
+    const { resume } = await parkContinuationInHash(() => ({ ...paused(), checkoutDispatchState: 'dispatched' }));
+    expect(resume.sent).toBe(false);
+    expect(readActiveFlag(PRODUCT_ID, 'continuationPending')).toBe(false);
+    expect(readActiveFlag(PRODUCT_ID, 'dispatchRisk')).toBe(true);
+    expect(screen.getByTestId('reap-preparing-copy').textContent).not.toMatch(/Nothing is charged/);
+    expect(screen.queryByTestId('reap-restart')).toBeNull();
+    expect(screen.queryByTestId('reap-contact-reentry')).toBeNull();
+  });
+});
+
+it('an in-flight continuation renders as status at once: no re-entry form, no restart, no "nothing is charged"', async () => {
+  renderPanel(scriptedFetch(needsEnrollmentCheckout())); await fillAndSubmit(); await screen.findByTestId('reap-status'); cleanup();
+  const resume = pendingResume();
+  const fetchImpl = vi.fn(async (url: string) => url.endsWith('/resume') ? resume.request()
+    : jsonResponse({ checkout: { ...viewOf(resolvingCheckout()), contactReentryRequired: true } }));
+  renderPanel(fetchImpl); await screen.findByTestId('reap-contact-reentry');
+  await fillAndSubmit();
+  await act(async () => { await resume.dispatched; });
+  expect(fetchImpl.mock.calls.filter(([url]) => !url.endsWith('/resume'))).toHaveLength(1); // no read since the submit
+  expect(screen.queryByTestId('reap-contact-reentry')).toBeNull();
+  expect(screen.queryByTestId('reap-form')).toBeNull();
+  expect(screen.queryByTestId('reap-restart')).toBeNull();
+  expect(screen.getByTestId('reap-preparing-copy').textContent).not.toMatch(/Nothing is charged/);
+  await act(async () => { resume.reply(jsonResponse({}, 502)); });
+  expect(await screen.findByTestId('reap-handoff-problem')).toHaveTextContent('do not start another purchase');
 });

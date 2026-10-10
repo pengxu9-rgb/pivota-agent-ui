@@ -769,10 +769,22 @@ export function ReapCheckoutPanel(props: ReapCheckoutPanelProps) {
           throw new Error('An earlier checkout attempt is unresolved. Re-enter exactly the same details to recover it. If your buyer session changed, contact support before starting again.');
         }
         if (continuingCheckout) {
+          // The fingerprint above yields to the event loop, so a poll may have changed this checkout since the
+          // guard. Re-check here, with nothing awaited between this and the request: never resume a checkout
+          // this tab already shows as ended, under review, or dispatched.
+          const latest = latestView.current;
+          if (latest?.id === active && latest.terminal && readActiveCheckoutId(props.productId) === active) return; // its status view now speaks for it
+          if (readActiveCheckoutId(props.productId) !== active || latest?.id !== active || latest.terminal || !latest.contactReentryRequired ||
+              latest.checkoutDispatchState !== 'not_dispatched' || latest.reviewRequired ||
+              hasUnsettledEvidence(props.productId) || hasPaymentRisk(props.productId, active!)) {
+            throw new Error('This checkout changed while we were confirming your details. Check its status before continuing.');
+          }
           // Dedicated same-purchase continuation. No new key, preparation, create, or retry fallback.
           continuationReadFloor.current = latestCheckoutReadGeneration();
           continuationDispatchFloor.current = continuationReadFloor.current;
           if (!markActive(props.productId, 'continuationPending', active!)) throw new Error('Checkout continuation recovery could not be saved.');
+          // Render the in-flight continuation now (status, no restart), not only on the next read.
+          evidenceChanged((n) => n + 1);
           continuationDispatchedId = active;
           const res = await fetchImpl(`/api/reap-checkout/${encodeURIComponent(active!)}/resume`, {
             method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' },
