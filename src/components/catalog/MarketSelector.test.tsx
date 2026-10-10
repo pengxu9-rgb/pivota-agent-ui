@@ -36,15 +36,26 @@ describe('MarketSelector', () => {
     expect(screen.getByRole('option', { name: 'United States (auto)' })).toBeTruthy();
   });
 
-  it('a located SG buyer sees the storefront market, and can still CHOOSE Singapore from the list', async () => {
+  it('a located SG buyer sees Singapore (served since 2026-10-10), marked as located, and can still choose another market', async () => {
     document.cookie = 'pv_located_market=SG; path=/';
+    await act(async () => { render(<MarketSelector />); });
+    const select = screen.getByRole('combobox') as HTMLSelectElement;
+    expect(select.dataset.market).toBe('SG');
+    expect(select.dataset.marketSource).toBe('located');
+    expect(screen.getByRole('option', { name: 'Singapore (auto)' })).toBeTruthy();
+    fireEvent.change(select, { target: { value: 'US' } });
+    expect(document.cookie).toContain('pv_market=US');
+  });
+
+  it('a located JP buyer (priceable, not served) sees the storefront market, and can still CHOOSE Japan from the list', async () => {
+    document.cookie = 'pv_located_market=JP; path=/';
     await act(async () => { render(<MarketSelector />); });
     const select = screen.getByRole('combobox') as HTMLSelectElement;
     expect(select.dataset.market).toBe('US');
     expect(select.dataset.marketSource).toBe('storefront');
-    expect(screen.getByRole('option', { name: 'Singapore' })).toBeTruthy();
-    fireEvent.change(select, { target: { value: 'SG' } });
-    expect(document.cookie).toContain('pv_market=SG');
+    expect(screen.getByRole('option', { name: 'Japan' })).toBeTruthy();
+    fireEvent.change(select, { target: { value: 'JP' } });
+    expect(document.cookie).toContain('pv_market=JP');
   });
 
   it('shows the storefront market when nothing places the buyer', async () => {

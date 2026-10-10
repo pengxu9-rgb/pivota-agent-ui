@@ -160,8 +160,10 @@ describe('the buyer market follows the choice cookie, then the located cookie, t
   it('a located cookie alone, naming a SERVED market: the located market', async () => {
     expect(await stampedMarkets(['pv_located_market=US'])).toEqual(['US', 'US']);
   });
-  it('a located SG buyer (priceable, no catalogue) is served the storefront market, not SG', async () => {
-    expect(await stampedMarkets(['pv_located_market=SG'])).toEqual(['US', 'US']);
+  it('a located SG buyer is served SG (served since 2026-10-10); a located JP buyer (priceable, 6-row feed) the storefront market', async () => {
+    expect(await stampedMarkets(['pv_located_market=SG'])).toEqual(['SG', 'SG']);
+    for (const name of ['pv_market', 'pv_located_market']) document.cookie = `${name}=; path=/; max-age=0`;
+    expect(await stampedMarkets(['pv_located_market=JP'])).toEqual(['US', 'US']);
   });
   it('a choice cookie beats the located cookie, and a CHOSEN SG is honoured', async () => {
     expect(await stampedMarkets(['pv_located_market=US', 'pv_market=sg'])).toEqual(['SG', 'SG']);
