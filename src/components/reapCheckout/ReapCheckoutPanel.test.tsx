@@ -1475,3 +1475,78 @@ it('real gateway accepted202 wire does not latch risk and permits original-attem
   expect(readActiveCheckoutId(productId)).toBe(acceptedCreate.id);
   expect(readActiveFlag(productId,'dispatchRisk')).toBe(false);
 });
+
+/** Parks every fingerprint hash until `release()`; `hashing` settles once a hash is parked. */
+function gatedDigest() {
+  const real = crypto.subtle.digest.bind(crypto.subtle);
+  let parked!: () => void; let release!: () => void;
+  const hashing = new Promise<void>((resolve) => { parked = resolve; });
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  const spy = vi.spyOn(crypto.subtle, 'digest').mockImplementation(async (...args: Parameters<typeof real>) => { parked(); await gate; return real(...args); });
+  return { hashing, release, restore: () => spy.mockRestore() };
+}
+/** Settles once every attempt-lock holder queued before it (e.g. an in-flight submit) has finished. */
+const attemptLockDrained = () => act(async () => { await navigator.locks.request('pivota.reapCheckout.buyer-attempt', async () => undefined); });
+
+describe('a read that lands while the continuation hashes its body', () => {
+  const paused = () => ({ ...viewOf(resolvingCheckout()), contactReentryRequired: true });
+  async function parkContinuationInHash(next: () => unknown) {
+    renderPanel(scriptedFetch(needsEnrollmentCheckout())); await fillAndSubmit(); await screen.findByTestId('reap-status'); cleanup();
+    // Answered at once: these tests only ask whether a resume was sent, and an unanswered one would hold the lock.
+    const resume = { sent: false }; let changed = false;
+    const fetchImpl = vi.fn(async (url: string) => {
+      if (url.endsWith('/resume')) { resume.sent = true; return jsonResponse({}, 502); }
+      return jsonResponse({ checkout: changed ? next() : paused() });
+    });
+    renderPanel(fetchImpl); await screen.findByTestId('reap-contact-reentry');
+    const digest = gatedDigest();
+    try {
+      await fillAndSubmit();
+      await act(async () => { await digest.hashing; });
+      changed = true;
+      await act(async () => { window.dispatchEvent(new Event('focus')); });
+    } finally {
+      digest.release(); digest.restore();
+    }
+    await attemptLockDrained();
+    return { resume, fetchImpl };
+  }
+
+  it('terminal: the resume is never sent, and the shown restart opens a fresh form', async () => {
+    const { resume } = await parkContinuationInHash(() => viewOf(canceledCheckout('failed', 'enrollment_dead')));
+    expect(resume.sent).toBe(false);
+    expect(readActiveFlag(PRODUCT_ID, 'continuationPending')).toBe(false);
+    expect(screen.getByTestId('reap-status')).toHaveAttribute('data-phase', 'failed');
+    await act(async () => { fireEvent.click(screen.getByTestId('reap-restart')); });
+    expect(await screen.findByTestId('reap-form')).toBeTruthy();
+    expect(screen.queryByTestId('reap-fallback')).toBeNull();
+    expect(screen.queryByTestId('reap-reset-problem')).toBeNull();
+  });
+
+  it('dispatched: the resume is never sent, and the status stays uncertain with no restart', async () => {
+    const { resume } = await parkContinuationInHash(() => ({ ...paused(), checkoutDispatchState: 'dispatched' }));
+    expect(resume.sent).toBe(false);
+    expect(readActiveFlag(PRODUCT_ID, 'continuationPending')).toBe(false);
+    expect(readActiveFlag(PRODUCT_ID, 'dispatchRisk')).toBe(true);
+    expect(screen.getByTestId('reap-preparing-copy').textContent).not.toMatch(/Nothing is charged/);
+    expect(screen.queryByTestId('reap-restart')).toBeNull();
+    expect(screen.queryByTestId('reap-contact-reentry')).toBeNull();
+  });
+});
+
+it('an in-flight continuation renders as status at once: no re-entry form, no restart, no "nothing is charged"', async () => {
+  renderPanel(scriptedFetch(needsEnrollmentCheckout())); await fillAndSubmit(); await screen.findByTestId('reap-status'); cleanup();
+  const resume = pendingResume();
+  const fetchImpl = vi.fn(async (url: string) => url.endsWith('/resume') ? resume.request()
+    : jsonResponse({ checkout: { ...viewOf(resolvingCheckout()), contactReentryRequired: true } }));
+  renderPanel(fetchImpl); await screen.findByTestId('reap-contact-reentry');
+  await fillAndSubmit();
+  await act(async () => { await resume.dispatched; });
+  expect(fetchImpl.mock.calls.filter(([url]) => !url.endsWith('/resume'))).toHaveLength(1); // no read since the submit
+  expect(screen.queryByTestId('reap-contact-reentry')).toBeNull();
+  expect(screen.queryByTestId('reap-form')).toBeNull();
+  expect(screen.queryByTestId('reap-restart')).toBeNull();
+  expect(screen.getByTestId('reap-preparing-copy').textContent).not.toMatch(/Nothing is charged/);
+  await act(async () => { resume.reply(jsonResponse({}, 502)); });
+  expect(await screen.findByTestId('reap-handoff-problem')).toHaveTextContent('do not start another purchase');
+});
