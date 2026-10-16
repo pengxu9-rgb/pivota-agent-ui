@@ -5,6 +5,12 @@ import liveSlice from '@/features/pdp/__fixtures__/liveRefresh/native226-live-sl
 import builderBody from '@/features/pdp/__fixtures__/liveRefresh/builder-live-body.json';
 import builderSlice from '@/features/pdp/__fixtures__/liveRefresh/builder-live-slice.json';
 import builderResponses from '@/features/pdp/__fixtures__/liveRefresh/builder-live-responses.json';
+import multisizeBody from '@/features/pdp/__fixtures__/liveRefresh/multisize-live-body.json';
+import multisizeSlice from '@/features/pdp/__fixtures__/liveRefresh/multisize-live-slice.json';
+import multisizeResponses from '@/features/pdp/__fixtures__/liveRefresh/multisize-live-responses.json';
+import singlerowBody from '@/features/pdp/__fixtures__/liveRefresh/singlerow-live-body.json';
+import singlerowSlice from '@/features/pdp/__fixtures__/liveRefresh/singlerow-live-slice.json';
+import singlerowResponses from '@/features/pdp/__fixtures__/liveRefresh/singlerow-live-responses.json';
 import { mapPdpV2ToPdpPayload } from '@/features/pdp/adapter/mapPdpV2ToPdpPayload';
 import type { PDPPayload } from '@/features/pdp/types';
 import {
@@ -135,7 +141,10 @@ describe('buildLiveRefreshPage rebuilds the raw slice the gateway overlay reads'
     // answer page_mismatch.
     expect(buildLiveRefreshPage(mapped())).toEqual(liveSlice);
     expect(buildLiveRefreshPage(mapPdpV2ToPdpPayload(clone(builderBody) as any))).toEqual(builderSlice);
-    for (const res of [...Object.values(liveResponses), ...Object.values(builderResponses)] as any[]) {
+    expect(buildLiveRefreshPage(mapPdpV2ToPdpPayload(clone(multisizeBody) as any))).toEqual(multisizeSlice);
+    expect(buildLiveRefreshPage(mapPdpV2ToPdpPayload(clone(singlerowBody) as any))).toEqual(singlerowSlice);
+    for (const res of [...Object.values(liveResponses), ...Object.values(builderResponses),
+      ...Object.values(multisizeResponses), ...Object.values(singlerowResponses)] as any[]) {
       expect(res.live_refresh.reason).not.toBe('page_mismatch');
       expect(['applied', 'confirmed']).toContain(res.live_refresh.outcome);
     }
@@ -232,6 +241,47 @@ describe('applyLiveRefreshPatch applies the real overlay answer', () => {
     expect(next.offers![0].inventory?.in_stock).toBe(true);
   });
 
+  describe('an own offer row that names no selected variant', () => {
+    const rowOf = (payload: PDPPayload) => payload.offers!.find((o) => o.offer_id === OWN_OFFER)! as any;
+    const apply = (body: any, res: any) => {
+      const cur = mapPdpV2ToPdpPayload(clone(body))!;
+      expect(rowOf(cur)).not.toHaveProperty('selected_variant_id');
+      return { cur, next: applyLiveRefreshPatch(cur, sentFor(cur), clone(res)) };
+    };
+
+    it('multi-size, default size out and the other in: the row stays in stock, is never re-priced, and is stamped variants_only', () => {
+      const { cur, next } = apply(multisizeBody, (multisizeResponses as any).default_out_other_in);
+      expect(next).not.toBe(cur);
+      expect(rowOf(next).price).toEqual(rowOf(cur).price);
+      expect(rowOf(next).inventory.in_stock).toBe(true);
+      expect(rowOf(next).live_read.status).toBe('variants_only');
+      expect(next.product.variants.map((v) => v.availability?.in_stock)).toEqual([false, true]);
+      expect(rowOf(next).variants.map((v: any) => v.availability.in_stock)).toEqual([false, true]);
+    });
+
+    it('multi-size, every size out: the row goes out of stock, price unchanged', () => {
+      const { cur, next } = apply(multisizeBody, (multisizeResponses as any).all_out);
+      expect(rowOf(next).inventory.in_stock).toBe(false);
+      expect(rowOf(next).price).toEqual(rowOf(cur).price);
+      expect(rowOf(next).live_read.status).toBe('variants_only');
+    });
+
+    it('a row live_read stamp is not a verdict: a variants_only row is accepted, a verdict change on it is not', () => {
+      const cur = mapPdpV2ToPdpPayload(clone(multisizeBody) as any)!;
+      const res = clone((multisizeResponses as any).default_out_other_in);
+      res.patch.offers.offers.find((o: any) => o.offer_id === OWN_OFFER).commerce_mode = 'merchant_checkout';
+      expect(applyLiveRefreshPatch(cur, sentFor(cur), res)).toBe(cur);
+    });
+
+    it('a single-variant row follows that variant: re-priced, and out of stock with it', () => {
+      const drop = apply(singlerowBody, (singlerowResponses as any).price_drop);
+      expect(rowOf(drop.next).price).toMatchObject({ amount: 45, current: { amount: 45 } });
+      expect(rowOf(drop.next).live_read.status).toBe('verified');
+      const out = apply(singlerowBody, (singlerowResponses as any).out_of_stock);
+      expect(rowOf(out.next).inventory.in_stock).toBe(false);
+    });
+  });
+
   it('a patch with a null best price (the page sent none) applies the rest', () => {
     const cur = mapped();
     const res = priceDrop();
@@ -264,6 +314,7 @@ describe('applyLiveRefreshPatch does nothing unless every guard holds', () => {
     ['a shadow answer', (r: any) => { r.live_refresh.mode = 'shadow'; }],
     ['a confirmed answer', (r: any) => { r.live_refresh.outcome = 'confirmed'; }],
     ['a no_answer answer', (r: any) => { r.live_refresh.outcome = 'no_answer'; }],
+    ['a store over its read budget (no_answer / host_busy)', (r: any) => { r.live_refresh.outcome = 'no_answer'; r.live_refresh.reason = 'host_busy'; delete r.patch; }],
     ['a skipped answer', (r: any) => { r.live_refresh.outcome = 'skipped'; r.live_refresh.reason = 'page_mismatch'; }],
     ['an answer without a patch', (r: any) => { delete r.patch; }],
     ['an answer without live_refresh', (r: any) => { delete r.live_refresh; }],

@@ -6,7 +6,7 @@
    "outcome": "applied",
    "reason": null,
    "source": "cache",
-   "checked_at": "2026-10-16T01:02:17.701Z",
+   "checked_at": "2026-10-16T01:42:34.888Z",
    "stats": {
     "verified": 1,
     "gone": 0,
@@ -47,7 +47,7 @@
        "source_quality_status": "captured",
        "live_read": {
         "status": "verified",
-        "checked_at": "2026-10-16T01:02:17.701Z"
+        "checked_at": "2026-10-16T01:42:34.888Z"
        }
       },
       {
@@ -89,7 +89,7 @@
       "status": "verified",
       "market": "US",
       "source": "merchant_ucp_lookup_catalog",
-      "checked_at": "2026-10-16T01:02:17.701Z",
+      "checked_at": "2026-10-16T01:42:34.888Z",
       "checked": 2,
       "verified": 1,
       "gone": 0
@@ -133,7 +133,7 @@
        "source_quality_status": "captured",
        "live_read": {
         "status": "verified",
-        "checked_at": "2026-10-16T01:02:17.701Z"
+        "checked_at": "2026-10-16T01:42:34.888Z"
        }
       },
       {
@@ -226,7 +226,7 @@
         },
         "live_read": {
          "status": "verified",
-         "checked_at": "2026-10-16T01:02:17.701Z"
+         "checked_at": "2026-10-16T01:42:34.888Z"
         }
        },
        {
@@ -243,8 +243,7 @@
         "availability": {
          "in_stock": false,
          "available_quantity": 0
-        },
-        "current_own_offer_status": "unavailable"
+        }
        }
       ],
       "source_url": "https://jurlique.com/products/synthetic-final-shared-listing",
@@ -269,7 +268,7 @@
       "commerce_source": "selected_seller_store",
       "live_read": {
        "status": "verified",
-       "checked_at": "2026-10-16T01:02:17.701Z"
+       "checked_at": "2026-10-16T01:42:34.888Z"
       }
      },
      {
@@ -309,7 +308,7 @@
    "outcome": "applied",
    "reason": null,
    "source": "cache",
-   "checked_at": "2026-10-16T01:02:17.712Z",
+   "checked_at": "2026-10-16T01:42:34.899Z",
    "stats": {
     "verified": 1,
     "gone": 0,
@@ -350,7 +349,7 @@
        "source_quality_status": "captured",
        "live_read": {
         "status": "verified",
-        "checked_at": "2026-10-16T01:02:17.712Z"
+        "checked_at": "2026-10-16T01:42:34.899Z"
        }
       },
       {
@@ -382,7 +381,7 @@
       "status": "verified",
       "market": "US",
       "source": "merchant_ucp_lookup_catalog",
-      "checked_at": "2026-10-16T01:02:17.712Z",
+      "checked_at": "2026-10-16T01:42:34.899Z",
       "checked": 2,
       "verified": 1,
       "gone": 0
@@ -426,7 +425,7 @@
        "source_quality_status": "captured",
        "live_read": {
         "status": "verified",
-        "checked_at": "2026-10-16T01:02:17.712Z"
+        "checked_at": "2026-10-16T01:42:34.899Z"
        }
       },
       {
@@ -519,7 +518,7 @@
         },
         "live_read": {
          "status": "verified",
-         "checked_at": "2026-10-16T01:02:17.712Z"
+         "checked_at": "2026-10-16T01:42:34.899Z"
         }
        },
        {
@@ -536,8 +535,7 @@
         "availability": {
          "in_stock": false,
          "available_quantity": 0
-        },
-        "current_own_offer_status": "unavailable"
+        }
        }
       ],
       "source_url": "https://jurlique.com/products/synthetic-final-shared-listing",
@@ -562,7 +560,7 @@
       "commerce_source": "selected_seller_store",
       "live_read": {
        "status": "verified",
-       "checked_at": "2026-10-16T01:02:17.712Z"
+       "checked_at": "2026-10-16T01:42:34.899Z"
       }
      },
      {
@@ -602,7 +600,7 @@
    "outcome": "confirmed",
    "reason": null,
    "source": "cache",
-   "checked_at": "2026-10-16T01:02:17.713Z",
+   "checked_at": "2026-10-16T01:42:34.900Z",
    "stats": {
     "verified": 1,
     "gone": 0,
@@ -619,7 +617,7 @@
    "outcome": "applied",
    "reason": null,
    "source": "cache",
-   "checked_at": "2026-10-16T01:02:17.713Z",
+   "checked_at": "2026-10-16T01:42:34.900Z",
    "stats": {
     "verified": 1,
     "gone": 0,

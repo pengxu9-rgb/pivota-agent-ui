@@ -69,13 +69,18 @@ function builderBody() {
 
 const BODIES = {
   native226: { file: 'native226-live-body.json', listing: (card) => card.source_product_id },
+  multisize: { file: 'multisize-live-body.json', listing: (card) => card.source_product_id },
+  singlerow: { file: 'singlerow-live-body.json', listing: (card) => card.source_product_id },
   builder: { file: 'builder-live-body.json', listing: (card) => card.product_id },
 };
 
 if (stage === 'bodies') {
-  const native = readJson(path.join(HERE, BODIES.native226.file));
-  delete native.live_refresh;
-  const bodies = { native226: native, builder: builderBody() };
+  const stored = (name) => {
+    const body = readJson(path.join(HERE, BODIES[name].file));
+    delete body.live_refresh;
+    return body;
+  };
+  const bodies = { native226: stored('native226'), multisize: stored('multisize'), singlerow: stored('singlerow'), builder: builderBody() };
   for (const [name, body] of Object.entries(bodies)) {
     const card = canonicalCard(body).card;
     const descriptor = service('on', createPdpLiveCache()).descriptor(body, {
@@ -94,6 +99,22 @@ if (stage === 'bodies') {
         out_of_stock: ['on', { '47170040267002': { amount: 49, available: false } }],
         confirmed: ['on', { '47170040267002': { amount: 49, available: true } }],
         shadow_price_drop: ['shadow', { '47170040267002': { amount: 45, available: true } }],
+      },
+    },
+    // The own row names NO selected variant and carries both (buyable) sizes: a product-level row.
+    multisize: {
+      host: 'jurlique.com', handle: 'synthetic-final-shared-listing',
+      cases: {
+        default_out_other_in: ['on', { '47170040267002': { amount: 49, available: false }, '47170040267003': { amount: 60, available: true } }],
+        all_out: ['on', { '47170040267002': { amount: 49, available: false }, '47170040267003': { amount: 60, available: false } }],
+      },
+    },
+    // The own row names NO selected variant and carries exactly one: it follows that variant.
+    singlerow: {
+      host: 'jurlique.com', handle: 'synthetic-final-shared-listing',
+      cases: {
+        price_drop: ['on', { '47170040267002': { amount: 45, available: true } }],
+        out_of_stock: ['on', { '47170040267002': { amount: 49, available: false } }],
       },
     },
     builder: {

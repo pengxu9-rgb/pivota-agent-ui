@@ -353,8 +353,7 @@
         "availability": {
          "in_stock": false,
          "available_quantity": 0
-        },
-        "current_own_offer_status": "unavailable"
+        }
        }
       ],
       "source_url": "https://jurlique.com/products/synthetic-final-shared-listing",

@@ -6,7 +6,7 @@
    "outcome": "applied",
    "reason": null,
    "source": "cache",
-   "checked_at": "2026-10-16T01:02:17.713Z",
+   "checked_at": "2026-10-16T01:42:34.902Z",
    "stats": {
     "verified": 2,
     "gone": 0,
@@ -45,7 +45,7 @@
        "source_quality_status": "",
        "live_read": {
         "status": "verified",
-        "checked_at": "2026-10-16T01:02:17.713Z"
+        "checked_at": "2026-10-16T01:42:34.902Z"
        }
       },
       {
@@ -78,7 +78,7 @@
        "source_quality_status": "",
        "live_read": {
         "status": "verified",
-        "checked_at": "2026-10-16T01:02:17.713Z"
+        "checked_at": "2026-10-16T01:42:34.902Z"
        }
       }
      ],
@@ -96,7 +96,7 @@
       "status": "verified",
       "market": "US",
       "source": "merchant_ucp_lookup_catalog",
-      "checked_at": "2026-10-16T01:02:17.713Z",
+      "checked_at": "2026-10-16T01:42:34.902Z",
       "checked": 2,
       "verified": 2,
       "gone": 0
@@ -136,7 +136,7 @@
        },
        "live_read": {
         "status": "verified",
-        "checked_at": "2026-10-16T01:02:17.713Z"
+        "checked_at": "2026-10-16T01:42:34.902Z"
        }
       },
       {
@@ -164,7 +164,7 @@
        },
        "live_read": {
         "status": "verified",
-        "checked_at": "2026-10-16T01:02:17.713Z"
+        "checked_at": "2026-10-16T01:42:34.902Z"
        }
       }
      ],
@@ -213,7 +213,7 @@
       },
       "live_read": {
        "status": "verified",
-       "checked_at": "2026-10-16T01:02:17.713Z"
+       "checked_at": "2026-10-16T01:42:34.902Z"
       }
      }
     ],

@@ -16,7 +16,7 @@
      "pdp_schema_profile": "beauty_formula",
      "x_template_hint": "beauty",
      "tracking": {
-      "page_request_id": "pr_l5q9iww1kl_mva9hjry",
+      "page_request_id": "pr_inktrrityg_mvaaz0c6",
       "entry_point": "agent"
      },
      "product": {
@@ -459,7 +459,7 @@
  "metadata": {},
  "live_refresh": {
   "v": 1,
-  "token": "v1.eyJ2IjoxLCJvcCI6InBkcF9saXZlX3JlYWQiLCJwaWQiOiJleHRfbHNtIiwibWlkIjoibWVyY2hfb2JzX2xhbmVpZ2UiLCJsaWQiOiJleHRfbHNtIiwiaCI6InVzLmxhbmVpZ2UuY29tIiwiaGQiOiJsaXAtc2xlZXBpbmctbWFzayIsIm0iOiJVUyIsImMiOiJVU0QiLCJpZHMiOlsiNDgwODc5NzAxODUyNjgiLCIzMTc2MDcwMzE2MDM3MiJdLCJpYXQiOjE3OTIxMTI0NTksImV4cCI6MTc5MjE5ODg1OX0.hsaJ5SncStq6dlmhCu0aM8NwEaiuh4UMqWfq5-ehZ3I",
+  "token": "v1.eyJ2IjoxLCJvcCI6InBkcF9saXZlX3JlYWQiLCJwaWQiOiJleHRfbHNtIiwibWlkIjoibWVyY2hfb2JzX2xhbmVpZ2UiLCJsaWQiOiJleHRfbHNtIiwiaCI6InVzLmxhbmVpZ2UuY29tIiwiaGQiOiJsaXAtc2xlZXBpbmctbWFzayIsIm0iOiJVUyIsImMiOiJVU0QiLCJpZHMiOlsiNDgwODc5NzAxODUyNjgiLCIzMTc2MDcwMzE2MDM3MiJdLCJpYXQiOjE3OTIxMTQ5NTMsImV4cCI6MTc5MjEzNjU1M30.FyOSHS4KNrFtE2K9CtI-XlqZzIkGv36jJwYZRPxFfPQ",
   "market": "US"
  }
 }

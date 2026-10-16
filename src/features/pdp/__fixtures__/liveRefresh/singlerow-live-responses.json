@@ -1,0 +1,562 @@
+{
+ "price_drop": {
+  "status": "success",
+  "live_refresh": {
+   "mode": "on",
+   "outcome": "applied",
+   "reason": null,
+   "source": "cache",
+   "checked_at": "2026-10-16T01:42:34.901Z",
+   "stats": {
+    "verified": 1,
+    "gone": 0,
+    "price_changed": 1,
+    "stock_changed": 0,
+    "best_price_moved": true
+   }
+  },
+  "patch": {
+   "product": {
+    "set": {
+     "variants": [
+      {
+       "variant_id": "47170040267002",
+       "sku_id": "JUR-50ML",
+       "title": "50 mL",
+       "options": [
+        {
+         "name": "Size",
+         "value": "50 mL",
+         "axis_kind": "volume"
+        }
+       ],
+       "price": {
+        "current": {
+         "amount": 45,
+         "currency": "USD"
+        }
+       },
+       "availability": {
+        "in_stock": true
+       },
+       "label_image_url": "",
+       "images": [],
+       "image_urls": [],
+       "axis_kind": "volume",
+       "display_label": "Size: 50 mL",
+       "source_quality_status": "captured",
+       "live_read": {
+        "status": "verified",
+        "checked_at": "2026-10-16T01:42:34.901Z"
+       }
+      },
+      {
+       "variant_id": "47170040267003",
+       "current_own_offer_status": "unavailable",
+       "sku_id": "JUR-100ML",
+       "title": "100 mL",
+       "options": [
+        {
+         "name": "Size",
+         "value": "100 mL",
+         "axis_kind": "volume"
+        }
+       ],
+       "availability": {
+        "in_stock": false,
+        "available_quantity": 0
+       },
+       "label_image_url": "",
+       "images": [],
+       "image_urls": [],
+       "axis_kind": "volume",
+       "display_label": "Size: 100 mL",
+       "source_quality_status": "captured"
+      }
+     ],
+     "price": {
+      "current": {
+       "amount": 45,
+       "currency": "USD"
+      },
+      "amount": 45,
+      "currency": "USD"
+     },
+     "best_price_offer_id": "of:v1:merch_obs_25b829cb679502f8:sig_synthetic_complete_owned:merchant:default",
+     "price_amount": 45,
+     "price_source": "merchant_live",
+     "live_read": {
+      "status": "verified",
+      "market": "US",
+      "source": "merchant_ucp_lookup_catalog",
+      "checked_at": "2026-10-16T01:42:34.901Z",
+      "checked": 2,
+      "verified": 1,
+      "gone": 0
+     }
+    },
+    "unset": []
+   },
+   "modules": {
+    "price_promo": {
+     "price": {
+      "amount": 45,
+      "currency": "USD"
+     },
+     "promotions": []
+    },
+    "variant_selector": {
+     "selected_variant_id": "47170040267002",
+     "variants": [
+      {
+       "variant_id": "47170040267002",
+       "sku_id": "JUR-50ML",
+       "title": "50 mL",
+       "display_label": "Size: 50 mL",
+       "options": [
+        {
+         "name": "Size",
+         "value": "50 mL",
+         "axis_kind": "volume"
+        }
+       ],
+       "price": {
+        "current": {
+         "amount": 45,
+         "currency": "USD"
+        }
+       },
+       "availability": {
+        "in_stock": true
+       },
+       "axis_kind": "volume",
+       "source_quality_status": "captured",
+       "live_read": {
+        "status": "verified",
+        "checked_at": "2026-10-16T01:42:34.901Z"
+       }
+      },
+      {
+       "variant_id": "47170040267003",
+       "sku_id": "JUR-100ML",
+       "title": "100 mL",
+       "display_label": "Size: 100 mL",
+       "options": [
+        {
+         "name": "Size",
+         "value": "100 mL",
+         "axis_kind": "volume"
+        }
+       ],
+       "current_own_offer_status": "unavailable",
+       "availability": {
+        "in_stock": false,
+        "available_quantity": 0
+       },
+       "axis_kind": "volume",
+       "source_quality_status": "captured"
+      }
+     ],
+     "options": [
+      {
+       "name": "Size",
+       "axis_kind": "volume",
+       "values": [
+        {
+         "value": "50 mL",
+         "label": "50 mL",
+         "variant_ids": [
+          "47170040267002"
+         ],
+         "selected": true
+        },
+        {
+         "value": "100 mL",
+         "label": "100 mL",
+         "variant_ids": [
+          "47170040267003"
+         ],
+         "selected": false
+        }
+       ]
+      }
+     ]
+    }
+   },
+   "offers": {
+    "offers": [
+     {
+      "offer_id": "of:v1:merch_obs_25b829cb679502f8:sig_synthetic_complete_owned:merchant:default",
+      "product_group_id": "sig_synthetic_complete_owned",
+      "product_id": "jurlique:5f8af7ebae24cf17",
+      "merchant_id": "merch_obs_25b829cb679502f8",
+      "merchant_name": "Jurlique",
+      "price": {
+       "amount": 45,
+       "currency": "USD",
+       "current": {
+        "amount": 45,
+        "currency": "USD"
+       }
+      },
+      "inventory": {
+       "in_stock": true
+      },
+      "variants": [
+       {
+        "variant_id": "47170040267002",
+        "sku_id": "JUR-50ML",
+        "sku": "JUR-50ML",
+        "title": "50 mL",
+        "options": [
+         {
+          "name": "size",
+          "value": "50 ml"
+         }
+        ],
+        "price": {
+         "current": {
+          "amount": 45,
+          "currency": "USD"
+         }
+        },
+        "availability": {
+         "in_stock": true
+        },
+        "live_read": {
+         "status": "verified",
+         "checked_at": "2026-10-16T01:42:34.901Z"
+        }
+       }
+      ],
+      "source_url": "https://jurlique.com/products/synthetic-final-shared-listing",
+      "source_kind": "external_seed",
+      "source_tier": "brand",
+      "purchase_route": "affiliate_outbound",
+      "external_redirect_url": "https://jurlique.com/products/synthetic-final-shared-listing",
+      "url": "https://jurlique.com/products/synthetic-final-shared-listing",
+      "action": {
+       "type": "redirect_url",
+       "url": "https://jurlique.com/products/synthetic-final-shared-listing"
+      },
+      "risk_tier": "standard",
+      "commerce_mode": "links_out",
+      "seller_of_record": "merchant",
+      "payment_processor_owner": "merchant",
+      "order_system_of_record": "merchant_store_platform",
+      "checkout_handoff": "redirect",
+      "order_writeback_mode": "merchant_direct",
+      "merchant_checkout_url": "https://jurlique.com/products/synthetic-final-shared-listing",
+      "offer_source": "group_fused",
+      "commerce_source": "selected_seller_store",
+      "live_read": {
+       "status": "verified",
+       "checked_at": "2026-10-16T01:42:34.901Z"
+      }
+     },
+     {
+      "offer_id": "of:v1:merch_obs_other_seller:sig_synthetic_complete_owned:merchant:default",
+      "product_group_id": "sig_synthetic_complete_owned",
+      "product_id": "otherstore:9a1b2c3d4e5f",
+      "merchant_id": "merch_obs_other_seller",
+      "merchant_name": "Other Store",
+      "price": {
+       "amount": 47,
+       "currency": "USD"
+      },
+      "inventory": {
+       "in_stock": true
+      },
+      "source_url": "https://otherstore.example/products/synthetic-final-shared-listing",
+      "purchase_route": "affiliate_outbound",
+      "external_redirect_url": "https://otherstore.example/products/synthetic-final-shared-listing",
+      "url": "https://otherstore.example/products/synthetic-final-shared-listing",
+      "action": {
+       "type": "redirect_url",
+       "url": "https://otherstore.example/products/synthetic-final-shared-listing"
+      },
+      "commerce_mode": "links_out",
+      "checkout_handoff": "redirect",
+      "merchant_checkout_url": "https://otherstore.example/products/synthetic-final-shared-listing"
+     }
+    ],
+    "best_price_offer_id": "of:v1:merch_obs_25b829cb679502f8:sig_synthetic_complete_owned:merchant:default"
+   }
+  }
+ },
+ "out_of_stock": {
+  "status": "success",
+  "live_refresh": {
+   "mode": "on",
+   "outcome": "applied",
+   "reason": null,
+   "source": "cache",
+   "checked_at": "2026-10-16T01:42:34.901Z",
+   "stats": {
+    "verified": 1,
+    "gone": 0,
+    "price_changed": 0,
+    "stock_changed": 1,
+    "best_price_moved": false
+   }
+  },
+  "patch": {
+   "product": {
+    "set": {
+     "variants": [
+      {
+       "variant_id": "47170040267002",
+       "sku_id": "JUR-50ML",
+       "title": "50 mL",
+       "options": [
+        {
+         "name": "Size",
+         "value": "50 mL",
+         "axis_kind": "volume"
+        }
+       ],
+       "price": {
+        "current": {
+         "amount": 49,
+         "currency": "USD"
+        }
+       },
+       "availability": {
+        "in_stock": false
+       },
+       "label_image_url": "",
+       "images": [],
+       "image_urls": [],
+       "axis_kind": "volume",
+       "display_label": "Size: 50 mL",
+       "source_quality_status": "captured",
+       "live_read": {
+        "status": "verified",
+        "checked_at": "2026-10-16T01:42:34.901Z"
+       }
+      },
+      {
+       "variant_id": "47170040267003",
+       "current_own_offer_status": "unavailable",
+       "sku_id": "JUR-100ML",
+       "title": "100 mL",
+       "options": [
+        {
+         "name": "Size",
+         "value": "100 mL",
+         "axis_kind": "volume"
+        }
+       ],
+       "availability": {
+        "in_stock": false,
+        "available_quantity": 0
+       },
+       "label_image_url": "",
+       "images": [],
+       "image_urls": [],
+       "axis_kind": "volume",
+       "display_label": "Size: 100 mL",
+       "source_quality_status": "captured"
+      }
+     ],
+     "price_source": "merchant_live",
+     "live_read": {
+      "status": "verified",
+      "market": "US",
+      "source": "merchant_ucp_lookup_catalog",
+      "checked_at": "2026-10-16T01:42:34.901Z",
+      "checked": 2,
+      "verified": 1,
+      "gone": 0
+     }
+    },
+    "unset": []
+   },
+   "modules": {
+    "price_promo": {
+     "price": {
+      "amount": 49,
+      "currency": "USD"
+     },
+     "promotions": []
+    },
+    "variant_selector": {
+     "selected_variant_id": "47170040267002",
+     "variants": [
+      {
+       "variant_id": "47170040267002",
+       "sku_id": "JUR-50ML",
+       "title": "50 mL",
+       "display_label": "Size: 50 mL",
+       "options": [
+        {
+         "name": "Size",
+         "value": "50 mL",
+         "axis_kind": "volume"
+        }
+       ],
+       "price": {
+        "current": {
+         "amount": 49,
+         "currency": "USD"
+        }
+       },
+       "availability": {
+        "in_stock": false
+       },
+       "axis_kind": "volume",
+       "source_quality_status": "captured",
+       "live_read": {
+        "status": "verified",
+        "checked_at": "2026-10-16T01:42:34.901Z"
+       }
+      },
+      {
+       "variant_id": "47170040267003",
+       "sku_id": "JUR-100ML",
+       "title": "100 mL",
+       "display_label": "Size: 100 mL",
+       "options": [
+        {
+         "name": "Size",
+         "value": "100 mL",
+         "axis_kind": "volume"
+        }
+       ],
+       "current_own_offer_status": "unavailable",
+       "availability": {
+        "in_stock": false,
+        "available_quantity": 0
+       },
+       "axis_kind": "volume",
+       "source_quality_status": "captured"
+      }
+     ],
+     "options": [
+      {
+       "name": "Size",
+       "axis_kind": "volume",
+       "values": [
+        {
+         "value": "50 mL",
+         "label": "50 mL",
+         "variant_ids": [
+          "47170040267002"
+         ],
+         "selected": true
+        },
+        {
+         "value": "100 mL",
+         "label": "100 mL",
+         "variant_ids": [
+          "47170040267003"
+         ],
+         "selected": false
+        }
+       ]
+      }
+     ]
+    }
+   },
+   "offers": {
+    "offers": [
+     {
+      "offer_id": "of:v1:merch_obs_25b829cb679502f8:sig_synthetic_complete_owned:merchant:default",
+      "product_group_id": "sig_synthetic_complete_owned",
+      "product_id": "jurlique:5f8af7ebae24cf17",
+      "merchant_id": "merch_obs_25b829cb679502f8",
+      "merchant_name": "Jurlique",
+      "price": {
+       "amount": 49,
+       "currency": "USD",
+       "current": {
+        "amount": 49,
+        "currency": "USD"
+       }
+      },
+      "inventory": {
+       "in_stock": false
+      },
+      "variants": [
+       {
+        "variant_id": "47170040267002",
+        "sku_id": "JUR-50ML",
+        "sku": "JUR-50ML",
+        "title": "50 mL",
+        "options": [
+         {
+          "name": "size",
+          "value": "50 ml"
+         }
+        ],
+        "price": {
+         "current": {
+          "amount": 49,
+          "currency": "USD"
+         }
+        },
+        "availability": {
+         "in_stock": false
+        },
+        "live_read": {
+         "status": "verified",
+         "checked_at": "2026-10-16T01:42:34.901Z"
+        }
+       }
+      ],
+      "source_url": "https://jurlique.com/products/synthetic-final-shared-listing",
+      "source_kind": "external_seed",
+      "source_tier": "brand",
+      "purchase_route": "affiliate_outbound",
+      "external_redirect_url": "https://jurlique.com/products/synthetic-final-shared-listing",
+      "url": "https://jurlique.com/products/synthetic-final-shared-listing",
+      "action": {
+       "type": "redirect_url",
+       "url": "https://jurlique.com/products/synthetic-final-shared-listing"
+      },
+      "risk_tier": "standard",
+      "commerce_mode": "links_out",
+      "seller_of_record": "merchant",
+      "payment_processor_owner": "merchant",
+      "order_system_of_record": "merchant_store_platform",
+      "checkout_handoff": "redirect",
+      "order_writeback_mode": "merchant_direct",
+      "merchant_checkout_url": "https://jurlique.com/products/synthetic-final-shared-listing",
+      "offer_source": "group_fused",
+      "commerce_source": "selected_seller_store",
+      "live_read": {
+       "status": "verified",
+       "checked_at": "2026-10-16T01:42:34.901Z"
+      }
+     },
+     {
+      "offer_id": "of:v1:merch_obs_other_seller:sig_synthetic_complete_owned:merchant:default",
+      "product_group_id": "sig_synthetic_complete_owned",
+      "product_id": "otherstore:9a1b2c3d4e5f",
+      "merchant_id": "merch_obs_other_seller",
+      "merchant_name": "Other Store",
+      "price": {
+       "amount": 47,
+       "currency": "USD"
+      },
+      "inventory": {
+       "in_stock": true
+      },
+      "source_url": "https://otherstore.example/products/synthetic-final-shared-listing",
+      "purchase_route": "affiliate_outbound",
+      "external_redirect_url": "https://otherstore.example/products/synthetic-final-shared-listing",
+      "url": "https://otherstore.example/products/synthetic-final-shared-listing",
+      "action": {
+       "type": "redirect_url",
+       "url": "https://otherstore.example/products/synthetic-final-shared-listing"
+      },
+      "commerce_mode": "links_out",
+      "checkout_handoff": "redirect",
+      "merchant_checkout_url": "https://otherstore.example/products/synthetic-final-shared-listing"
+     }
+    ],
+    "best_price_offer_id": "of:v1:merch_obs_other_seller:sig_synthetic_complete_owned:merchant:default"
+   }
+  }
+ }
+}

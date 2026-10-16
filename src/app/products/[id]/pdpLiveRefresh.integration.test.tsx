@@ -7,6 +7,8 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import liveBody from '@/features/pdp/__fixtures__/liveRefresh/native226-live-body.json';
 import liveResponses from '@/features/pdp/__fixtures__/liveRefresh/native226-live-responses.json';
+import multisizeBody from '@/features/pdp/__fixtures__/liveRefresh/multisize-live-body.json';
+import multisizeResponses from '@/features/pdp/__fixtures__/liveRefresh/multisize-live-responses.json';
 import { mapPdpV2ToPdpPayload } from '@/features/pdp/adapter/mapPdpV2ToPdpPayload';
 import { buildLiveRefreshPage } from '@/features/pdp/utils/liveRefresh';
 import { buildCanonicalPdpJsonLd, renderPdpPage } from './pdpServerPage';
@@ -272,6 +274,29 @@ describe('what the refresh changes', () => {
     fireEvent.click(screen.getByRole('button', { name: '100 mL' }));
     expect(buyButton()).toBeDisabled();
     expect(document.body.textContent).not.toContain('$60');
+  });
+
+  it('an own row with no selected variant, multi-size: default size out and the other in keeps the row in stock, Buy enabled on the in-stock size, price unchanged', async () => {
+    api.live.mockResolvedValue(structuredClone((multisizeResponses as any).default_out_other_in));
+    api.get.mockImplementation(async () => structuredClone(multisizeBody));
+    renderPage(structuredClone(multisizeBody));
+    await waitFor(() => expect(api.live).toHaveBeenCalledTimes(1));
+    await settle();
+    fireEvent.click(screen.getByRole('button', { name: '100 mL' }));
+    expect(buyButton()).toBeEnabled();
+    expect(buyButton().textContent).toContain('$60');
+    expect(document.body.textContent).not.toMatch(/\$45\b/); // nothing re-priced
+    expect(screen.queryAllByText('Out of stock')).toHaveLength(0); // the row still reads in stock
+  });
+
+  it('an own row with no selected variant, multi-size: every size out of stock disables Buy', async () => {
+    api.live.mockResolvedValue(structuredClone((multisizeResponses as any).all_out));
+    api.get.mockImplementation(async () => structuredClone(multisizeBody));
+    renderPage(structuredClone(multisizeBody));
+    expect(buyButton()).toBeEnabled();
+    await waitFor(() => expect(buyButton()).toBeDisabled());
+    fireEvent.click(screen.getByRole('button', { name: '100 mL' }));
+    expect(buyButton()).toBeDisabled();
   });
 
   it('the honest answer re-prices the 50 mL and still leaves the withheld 100 mL unbuyable', async () => {
