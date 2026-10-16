@@ -244,6 +244,78 @@ export function resolveOfferPricing(
   };
 }
 
+/**
+ * The Shopify variant a URL-shaped id names through `variant=N`, or null. The rules are pivota-backend's
+ * `url_named_variant_id` (services/handover_variant_identity.py) and the gateway's `urlNamedVariantId`
+ * (src/services/ucpLiveOfferRead.js), so all three name the same variant: every `variant=` value is ASCII
+ * digits (6-20 of them), exactly one distinct value, no control character, and no `selling_plan` (that is a
+ * subscription offer of the variant, priced at the plan).
+ */
+function urlNamedVariantId(raw: string): string | null {
+  if (!raw.includes('variant=')) return null;
+  // eslint-disable-next-line no-control-regex
+  if (/[\u0000-\u001f\u007f]/.test(raw)) return null;
+  let params: URLSearchParams;
+  try {
+    params = new URL(raw, 'https://variant.invalid').searchParams;
+  } catch {
+    return null;
+  }
+  if (params.has('selling_plan')) return null;
+  const values = params.getAll('variant');
+  if (!values.length || values.some((value) => !/^[0-9]+$/.test(value))) return null;
+  const distinct = Array.from(new Set(values));
+  return distinct.length === 1 && /^\d{6,20}$/.test(distinct[0]) ? distinct[0] : null;
+}
+
+/** The Shopify variant number an id names: a ProductVariant gid, bare digits or a `?variant=N` URL. */
+export function shopifyVariantNumber(raw: unknown): string | null {
+  const value = String(raw ?? '').trim();
+  const match = /^(?:gid:\/\/shopify\/ProductVariant\/)?(\d{6,20})$/.exec(value);
+  if (match) return match[1];
+  return urlNamedVariantId(value);
+}
+
+/** Two variant ids name the same variant: equal as written, or the same Shopify variant number. */
+export function sameVariantId(a: unknown, b: unknown): boolean {
+  const left = String(a ?? '').trim();
+  const right = String(b ?? '').trim();
+  if (!left || !right) return false;
+  if (left === right) return true;
+  const number = shopifyVariantNumber(left);
+  return number != null && number === shopifyVariantNumber(right);
+}
+
+/**
+ * The stock the offer row's own `variants[]` entry states for the selected variant id, or undefined when the
+ * row lists no entry for it with a boolean `availability.in_stock` / `in_stock`. A row the gateway built with
+ * no selected variant carries PRODUCT-level `inventory.in_stock` (any size in stock); this is the size's own.
+ * Matched by id only: an options or title match is not the same listing variant. Conflicting entries read
+ * as out of stock.
+ */
+export function offerVariantInStock(
+  offer: Offer | null | undefined,
+  variantId: string | null | undefined,
+): boolean | undefined {
+  if (!variantId) return undefined;
+  const rawVariants = Array.isArray((offer as any)?.variants) ? ((offer as any).variants as unknown[]) : [];
+  let stated: boolean | undefined;
+  for (const raw of rawVariants) {
+    if (!raw || typeof raw !== 'object') continue;
+    const entry = raw as any;
+    if (!sameVariantId(entry.variant_id || entry.variantId || entry.id, variantId)) continue;
+    const inStock =
+      typeof entry.availability?.in_stock === 'boolean'
+        ? entry.availability.in_stock
+        : typeof entry.in_stock === 'boolean'
+          ? entry.in_stock
+          : undefined;
+    if (inStock === false) return false;
+    if (inStock === true) stated = true;
+  }
+  return stated;
+}
+
 export type ReapPurchaseMoney =
   | { available: true; unitPriceAmount: number; currency: string }
   | {

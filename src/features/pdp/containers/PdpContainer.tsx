@@ -93,7 +93,7 @@ import { customerMediaSubject, sanitizeReviewMedia, selectCustomerMedia } from '
 import { DEFAULT_UGC_SNAPSHOT, lockFirstUgcSource, mergeUgcItems } from '@/features/pdp/state/freezePolicy';
 import { getStableGalleryItems, resolveHeroMediaUrl } from '@/features/pdp/state/heroMedia';
 import { buildPdpViewModel } from '@/features/pdp/state/viewModel';
-import { resolveOfferPricing, resolveReapPurchaseMoney } from '@/features/pdp/utils/offerVariantMatching';
+import { offerVariantInStock, resolveOfferPricing, resolveReapPurchaseMoney } from '@/features/pdp/utils/offerVariantMatching';
 import { buildBrandHref } from '@/lib/brandRoute';
 import {
   buildProductHref,
@@ -2040,8 +2040,20 @@ export function PdpContainer({
   const selectedCurrentMoneyUnavailable = !selectionProofMatches || commerceUnavailable ||
     (!selectedOfferIsOtherSeller && isPurchaseUnavailable(selectedVariant)) ||
     resolveOfferPricing(selectedOffer, selectedOfferIsOtherSeller ? null : selectedVariant).currentMoneyUnavailable;
-  const effectiveIsInStock = !selectedCurrentMoneyUnavailable &&
-    (typeof selectedOfferInStock === 'boolean' ? selectedOfferInStock : isInStock);
+  // A multi-size row built with no selected variant carries PRODUCT-level stock (any size in stock), so the
+  // selected size's own entry in the row's variants[] decides first. Without one, the card's sold-out size
+  // still disables, but the card (possibly an older snapshot) never enables over the row.
+  const selectedOfferVariantInStock = offerVariantInStock(selectedOffer, selectedVariant?.variant_id);
+  const selectedSizeSoldOutOnCard = !selectedOfferIsOtherSeller && selectedVariant?.availability?.in_stock === false;
+  const selectedStockInStock =
+    typeof selectedOfferVariantInStock === 'boolean'
+      ? selectedOfferVariantInStock
+      : selectedSizeSoldOutOnCard
+        ? false
+        : typeof selectedOfferInStock === 'boolean'
+          ? selectedOfferInStock
+          : isInStock;
+  const effectiveIsInStock = !selectedCurrentMoneyUnavailable && selectedStockInStock;
   const variantAwareDefaultOfferId = useMemo(() => {
     if (!offers.length) return payload.default_offer_id || internalFirstDefaultOfferId;
     const variantEligibleOffers = offers.filter((offer) => offerSupportsVariant(offer, selectedVariant));
