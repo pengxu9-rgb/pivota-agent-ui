@@ -33,11 +33,22 @@ vi.mock('@/features/pdp/tracking', () => ({ pdpTracking: { track: vi.fn(), setBa
 vi.mock('sonner', () => ({ toast: { message: vi.fn(), success: vi.fn(), error: vi.fn() } }));
 
 const OWN_OFFER = 'of:v1:merch_obs_25b829cb679502f8:sig_synthetic_complete_owned:merchant:default';
+const WITHHELD = '47170040267003';
 const CHROME = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36';
 const body = () => structuredClone(liveBody) as any;
 const bodyWithout = () => {
   const response = body();
   delete response.live_refresh;
+  return response;
+};
+/** The offer projection as the gateway serves it: the own row's copy of the withheld variant has NO marker. */
+const unmarkRowCopy = (offers: any[]) => offers.map((o) => (o.offer_id === OWN_OFFER
+  ? { ...o, variants: o.variants.map((v: any) => (v.variant_id === WITHHELD ? (({ current_own_offer_status: _s, ...rest }) => rest)(v) : v)) }
+  : o));
+const unmarkedBody = () => {
+  const response = body();
+  const offers = response.modules.find((m: any) => m.type === 'offers').data;
+  offers.offers = unmarkRowCopy(offers.offers);
   return response;
 };
 const answer = (name: 'price_drop' | 'out_of_stock') => structuredClone((liveResponses as any)[name]);
@@ -101,6 +112,25 @@ describe('when the refresh runs', () => {
     visibility = 'visible';
     act(() => { document.dispatchEvent(new Event('visibilitychange')); });
     await waitFor(() => expect(api.live).toHaveBeenCalledTimes(1));
+  });
+
+  it('never while the page is loading, and once it has loaded (review U14)', async () => {
+    // A buyer re-read keeps the cached document up while it loads. The descriptor names the buyer's own
+    // market here, so the ONLY gate left closed is `loading`.
+    document.cookie = 'pv_market=SG; path=/';
+    const sgBody = () => { const response = body(); response.live_refresh = { ...response.live_refresh, market: 'SG' }; return response; };
+    let resolveCore!: (value: unknown) => void;
+    api.get.mockImplementation((args: any) => (args?.include?.includes('offers')
+      ? new Promise((resolve) => { resolveCore = resolve; })
+      : Promise.resolve(sgBody())));
+    renderPage(sgBody());
+    await waitFor(() => expect(api.get.mock.calls.some(([args]: any[]) => args?.include?.includes('offers'))).toBe(true));
+    await settle();
+    await settle();
+    expect(api.live).not.toHaveBeenCalled();
+    await act(async () => { resolveCore(sgBody()); });
+    await waitFor(() => expect(api.live).toHaveBeenCalledTimes(1));
+    expect(api.live.mock.calls[0][0].token).toBe(TOKEN);
   });
 
   it.each([
@@ -208,6 +238,40 @@ describe('what the refresh changes', () => {
     // The forged patch was rejected WHOLE: the 50 mL price did not move either.
     fireEvent.click(screen.getByRole('button', { name: '50 mL' }));
     expect(buyButton().textContent).toContain('$49');
+  });
+
+  it('as the projection really serves it (no marker on the row copy), a patch enabling that copy is rejected and Buy stays disabled (review U15)', async () => {
+    let resolveLive!: (value: unknown) => void;
+    api.live.mockImplementation(() => new Promise((resolve) => { resolveLive = resolve; }));
+    api.get.mockImplementation(async () => unmarkedBody());
+    renderPage(unmarkedBody());
+    await waitFor(() => expect(api.live).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole('button', { name: '100 mL' }));
+    expect(buyButton()).toBeDisabled();
+    // Only the unmarked row copy is touched: no marker on either side.
+    const forged = answer('price_drop');
+    forged.patch.offers.offers = unmarkRowCopy(forged.patch.offers.offers);
+    const copy = forged.patch.offers.offers.find((o: any) => o.offer_id === OWN_OFFER).variants.find((v: any) => v.variant_id === WITHHELD);
+    copy.price = { current: { amount: 60, currency: 'USD' } };
+    copy.availability = { in_stock: true };
+    await act(async () => { resolveLive(forged); });
+    await settle();
+    expect(buyButton()).toBeDisabled();
+    expect(document.body.textContent).not.toContain('$60');
+    fireEvent.click(screen.getByRole('button', { name: '50 mL' }));
+    expect(buyButton().textContent).toContain('$49'); // rejected whole
+  });
+
+  it('as the projection really serves it, the honest answer applies and the withheld 100 mL stays unbuyable', async () => {
+    const honest = answer('price_drop');
+    honest.patch.offers.offers = unmarkRowCopy(honest.patch.offers.offers);
+    api.live.mockResolvedValue(honest);
+    api.get.mockImplementation(async () => unmarkedBody());
+    renderPage(unmarkedBody());
+    await waitFor(() => expect(buyButton().textContent).toContain('$45'));
+    fireEvent.click(screen.getByRole('button', { name: '100 mL' }));
+    expect(buyButton()).toBeDisabled();
+    expect(document.body.textContent).not.toContain('$60');
   });
 
   it('the honest answer re-prices the 50 mL and still leaves the withheld 100 mL unbuyable', async () => {

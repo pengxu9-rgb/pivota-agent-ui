@@ -13,9 +13,11 @@ Two get_pdp_v2 bodies:
     shorter than six digits, so `222` would never exercise the withheld-variant rule);
   - each variant's `sku_id`/`sku` is a real-looking sku (`JUR-50ML`, `JUR-100ML`): the overlay treats a sku
     equal to the variant id as "not a variant id" and never patches it;
-  - the page seller's offer row names its `selected_variant_id` (`47170040267002`), as seed offer rows do;
-    the overlay re-prices and re-stocks a ROW only through that id (without it only the row's variants
-    move);
+  - the page seller's offer row names its `selected_variant_id` (`47170040267002`), as seed offer rows do,
+    so the overlay re-prices and re-stocks the row through that id. (A row that names no variant is being
+    changed on the gateway side, PIVOTA-Agent#2455: a single-variant row follows its one variant; a
+    multi-variant row reads in stock when any patched variant is, and is never re-priced. These fixtures
+    are regenerated at that gateway head.)
   - a second seller (`merch_obs_other_seller`, 47 USD, in stock) holds the best price, on the offers module
     and on the card (`offers_count` 2).
 - `builder-live-body.json` is the gateway's own test page shape (tests/pdp_live_refresh.node.test.cjs):

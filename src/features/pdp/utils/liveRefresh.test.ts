@@ -387,6 +387,78 @@ describe('applyLiveRefreshPatch rejects the WHOLE patch on any allowlist or inva
     );
   });
 
+  describe('the real offer projection drops current_own_offer_status from row variants (review U15)', () => {
+    // As the gateway serves it: the card's 100 mL is withheld, the own row's copy of it carries NO marker.
+    const unmarkRow = (offers: any[]) => offers.map((o) => (o.offer_id === OWN_OFFER
+      ? { ...o, variants: o.variants.map((v: any) => (v.variant_id === WITHHELD ? (({ current_own_offer_status: _s, ...rest }) => rest)(v) : v)) }
+      : o));
+    const unmarkedPage = () => {
+      const cur = mapped();
+      return { ...cur, offers: unmarkRow(cur.offers as any[]) } as PDPPayload;
+    };
+    const unmarkedAnswer = () => {
+      const res = priceDrop();
+      res.patch.offers.offers = unmarkRow(res.patch.offers.offers);
+      return res;
+    };
+    const rowCopy = (payload: PDPPayload) => payload.offers!.find((o) => o.offer_id === OWN_OFFER)!.variants!
+      .find((v) => v.variant_id === WITHHELD) as any;
+
+    it('the setup is the real shape: no marker on the row copy, withheld on the card', () => {
+      const cur = unmarkedPage();
+      expect(rowCopy(cur)).not.toHaveProperty('current_own_offer_status');
+      expect(cur.product.variants.find((v) => v.variant_id === WITHHELD)!.current_own_offer_status).toBe('unavailable');
+    });
+
+    it('the honest answer applies and leaves the unmarked row copy exactly as it was', () => {
+      const cur = unmarkedPage();
+      const next = applyLiveRefreshPatch(cur, sentFor(cur), unmarkedAnswer());
+      expect(next).not.toBe(cur);
+      expect(rowCopy(next)).toEqual(rowCopy(cur));
+      expect(next.product.variants[0].price?.current.amount).toBe(45);
+    });
+
+    it.each([
+      ['re-priced', (v: any) => { v.price = { current: { amount: 60, currency: 'USD' } }; }],
+      ['re-stocked', (v: any) => { v.availability = { in_stock: true }; }],
+      ['stamped live', (v: any) => { v.live_read = { status: 'verified', checked_at: '2026-10-16T00:00:00.000Z' }; }],
+    ])('a patch whose unmarked row copy of the withheld id is %s is rejected whole', (_label, touch) => {
+      const cur = unmarkedPage();
+      const res = unmarkedAnswer();
+      // Only the row copy differs: no marker on either side, so only the card's withheld ids can catch it.
+      touch(res.patch.offers.offers.find((o: any) => o.offer_id === OWN_OFFER).variants.find((v: any) => v.variant_id === WITHHELD));
+      expect(applyLiveRefreshPatch(cur, sentFor(cur), res)).toBe(cur);
+    });
+
+    it('a row whose selected variant is the withheld id is never re-priced or re-stocked, marker or not', () => {
+      const select = (offers: any[]) => offers.map((o) => (o.offer_id === OWN_OFFER ? { ...o, selected_variant_id: WITHHELD } : o));
+      for (const touch of [
+        (o: any) => { o.price = { amount: 60, currency: 'USD' }; },
+        (o: any) => { o.inventory = { in_stock: false }; },
+      ]) {
+        const page = unmarkedPage();
+        const cur = { ...page, offers: select(page.offers as any[]) } as PDPPayload;
+        const res = unmarkedAnswer();
+        res.patch.offers.offers = select(clone(cur.offers as any[]));
+        touch(res.patch.offers.offers.find((o: any) => o.offer_id === OWN_OFFER));
+        expect(applyLiveRefreshPatch(cur, sentFor(cur), res)).toBe(cur);
+      }
+    });
+
+    it('the same holds for a gid-spelled or URL-spelled copy of the withheld id', () => {
+      for (const spelled of [`gid://shopify/ProductVariant/${WITHHELD}`, `https://jurlique.com/products/x?variant=${WITHHELD}`]) {
+        const respell = (offers: any[]) => offers.map((o) => (o.offer_id === OWN_OFFER
+          ? { ...o, variants: o.variants.map((v: any) => (v.variant_id === WITHHELD ? { ...v, variant_id: spelled } : v)) }
+          : o));
+        const cur = { ...unmarkedPage(), offers: respell(unmarkedPage().offers as any[]) } as PDPPayload;
+        const res = unmarkedAnswer();
+        res.patch.offers.offers = respell(res.patch.offers.offers);
+        res.patch.offers.offers.find((o: any) => o.offer_id === OWN_OFFER).variants[1].availability = { in_stock: true };
+        expect(applyLiveRefreshPatch(cur, sentFor(cur), res)).toBe(cur);
+      }
+    });
+  });
+
   it('an offer row that sells the withheld variant is never re-priced or re-stocked', () => {
     rejects(
       () => undefined,
