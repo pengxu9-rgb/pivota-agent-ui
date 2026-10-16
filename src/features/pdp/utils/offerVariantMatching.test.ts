@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
 import type { Offer, Variant } from '@/features/pdp/types';
-import { findMatchingOfferVariant, resolveReapPurchaseMoney } from '@/features/pdp/utils/offerVariantMatching';
+import {
+  findMatchingOfferVariant,
+  offerVariantInStock,
+  resolveReapPurchaseMoney,
+  sameVariantId,
+  shopifyVariantNumber,
+} from '@/features/pdp/utils/offerVariantMatching';
 
 describe('findMatchingOfferVariant', () => {
   it('matches seller variants by normalized option values', () => {
@@ -152,5 +158,75 @@ describe('resolveReapPurchaseMoney', () => {
   it('REFUSE: a zero or missing price is not purchase money', () => {
     const sole: Variant = { variant_id: 'V1', title: 'Default' };
     expect(resolveReapPurchaseMoney(offerWith(undefined, 0), sole, 1)).toEqual({ available: false, reason: 'no_positive_offer_price' });
+  });
+});
+
+describe('sameVariantId (pivota-backend url_named_variant_id rules)', () => {
+  const N = '45253610242298';
+  it.each([
+    [`gid://shopify/ProductVariant/${N}`, N],
+    [N, `https://shop.example/products/x?variant=${N}#offer`],
+    [`/products/x?variant=${N}`, `gid://shopify/ProductVariant/${N}`],
+    [`https://shop.example/products/x?variant=${N}&variant=${N}`, N],
+    ['SHOP_STD', 'SHOP_STD'],
+  ])('%s names the same variant as %s', (a, b) => {
+    expect(sameVariantId(a, b)).toBe(true);
+  });
+
+  it.each([
+    [`https://shop.example/products/x?variant=${N}&selling_plan=7`, N],
+    [`https://shop.example/products/x?variant=${N}&variant=45253610242299`, N],
+    [`https://shop.example/products/x?variant=${N}abc`, N],
+    [`https://shop.example/products/x?variant=4525\n3610242298`, N],
+    ['https://shop.example/products/x?variant=12345', '12345x'],
+    [`${N}1`, N],
+    ['', ''],
+  ])('%s does not name %s', (a, b) => {
+    expect(sameVariantId(a, b)).toBe(false);
+  });
+
+  it('reads no Shopify number from a short or non-numeric id', () => {
+    expect(shopifyVariantNumber('222')).toBeNull();
+    expect(shopifyVariantNumber('ext:abc::v:1')).toBeNull();
+    expect(shopifyVariantNumber(`gid://shopify/ProductVariant/${N}`)).toBe(N);
+  });
+});
+
+describe('offerVariantInStock', () => {
+  const offer = (variants: unknown[]): Offer =>
+    ({ offer_id: 'o', merchant_id: 'm', price: { amount: 1, currency: 'USD' }, inventory: { in_stock: true }, variants } as any);
+
+  it('reads the matched entry availability.in_stock, then in_stock', () => {
+    expect(offerVariantInStock(offer([{ variant_id: 'gid://shopify/ProductVariant/1234567', availability: { in_stock: false } }]), '1234567')).toBe(false);
+    expect(offerVariantInStock(offer([{ id: '1234567', in_stock: true }]), '1234567')).toBe(true);
+  });
+
+  it('is undefined with no matching entry, no boolean stock or no variant id', () => {
+    expect(offerVariantInStock(offer([{ variant_id: '7654321', in_stock: false }]), '1234567')).toBeUndefined();
+    expect(offerVariantInStock(offer([{ variant_id: '1234567', availability: { available_quantity: 0 } }]), '1234567')).toBeUndefined();
+    expect(offerVariantInStock(offer([]), '1234567')).toBeUndefined();
+    expect(offerVariantInStock(offer([{ variant_id: '1234567', in_stock: true }]), '')).toBeUndefined();
+  });
+
+  it('never matches by options or title', () => {
+    const entry = { variant_id: 'OTHER', title: '100 mL', options: [{ name: 'size', value: '100 ml' }], in_stock: false };
+    expect(offerVariantInStock(offer([entry]), '1234567')).toBeUndefined();
+  });
+
+  it('reads a matched entry with its own unavailable verdict as sold out, whatever its stock says', () => {
+    const gid = 'gid://shopify/ProductVariant/1234567';
+    expect(offerVariantInStock(offer([{ variant_id: gid, current_own_offer_status: 'unavailable', in_stock: true }]), '1234567')).toBe(false);
+    expect(offerVariantInStock(offer([{ variant_id: gid, purchase_eligible: false, availability: { in_stock: true } }]), '1234567')).toBe(false);
+  });
+
+  it('reads a string availability ahead of a top-level in_stock beside it', () => {
+    expect(offerVariantInStock(offer([{ variant_id: '1234567', availability: 'https://schema.org/OutOfStock', in_stock: true }]), '1234567')).toBe(false);
+    expect(offerVariantInStock(offer([{ variant_id: '1234567', availability: 'in_stock', in_stock: false }]), '1234567')).toBe(true);
+    expect(offerVariantInStock(offer([{ variant_id: '1234567', availability: 'PreOrder', in_stock: true }]), '1234567')).toBeUndefined();
+  });
+
+  it('reads conflicting entries for one variant as out of stock', () => {
+    const entries = [{ variant_id: '1234567', in_stock: true }, { variant_id: 'gid://shopify/ProductVariant/1234567', in_stock: false }];
+    expect(offerVariantInStock(offer(entries), '1234567')).toBe(false);
   });
 });
