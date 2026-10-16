@@ -213,6 +213,18 @@ describe('offerVariantInStock', () => {
     expect(offerVariantInStock(offer([entry]), '1234567')).toBeUndefined();
   });
 
+  it('reads a matched entry with its own unavailable verdict as sold out, whatever its stock says', () => {
+    const gid = 'gid://shopify/ProductVariant/1234567';
+    expect(offerVariantInStock(offer([{ variant_id: gid, current_own_offer_status: 'unavailable', in_stock: true }]), '1234567')).toBe(false);
+    expect(offerVariantInStock(offer([{ variant_id: gid, purchase_eligible: false, availability: { in_stock: true } }]), '1234567')).toBe(false);
+  });
+
+  it('reads a string availability ahead of a top-level in_stock beside it', () => {
+    expect(offerVariantInStock(offer([{ variant_id: '1234567', availability: 'https://schema.org/OutOfStock', in_stock: true }]), '1234567')).toBe(false);
+    expect(offerVariantInStock(offer([{ variant_id: '1234567', availability: 'in_stock', in_stock: false }]), '1234567')).toBe(true);
+    expect(offerVariantInStock(offer([{ variant_id: '1234567', availability: 'PreOrder', in_stock: true }]), '1234567')).toBeUndefined();
+  });
+
   it('reads conflicting entries for one variant as out of stock', () => {
     const entries = [{ variant_id: '1234567', in_stock: true }, { variant_id: 'gid://shopify/ProductVariant/1234567', in_stock: false }];
     expect(offerVariantInStock(offer(entries), '1234567')).toBe(false);

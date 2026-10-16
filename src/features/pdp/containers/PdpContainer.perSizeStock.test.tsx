@@ -119,11 +119,53 @@ describe('Buy follows the selected size on a product-level offer row', () => {
     expect(storeButton()).toBeEnabled();
   });
 
-  it('a size in stock on the row is buyable when the row-level stock names another size', () => {
+  it('a per-size entry never enables over a row-level false: no size was answered in stock', () => {
     const p = twoSizePayload({ small: false, large: true });
     p.offers![0].inventory = { in_stock: false };
     renderPdp(p);
     expect(storeButton()).toBeDisabled();
+    pick(/100 mL/i);
+    expect(storeButton()).toBeDisabled();
+  });
+
+  it.each([
+    ['out of stock', false, 'disabled'],
+    ['in stock', true, 'enabled'],
+  ] as const)(
+    'row %s: an entry matched only by Shopify number (gid, no options, other title) carries its unavailable verdict',
+    (_label, rowInStock, otherSize) => {
+      // The pricing match (exact id, options, title) never sees this entry; the stock read must not trust its
+      // in_stock: true past its own current_own_offer_status.
+      const p = twoSizePayload({ large: true });
+      p.offers![0].inventory = { in_stock: rowInStock };
+      const entry = p.offers![0].variants!.find((v) => v.variant_id.includes(LARGE))!;
+      entry.variant_id = `gid://shopify/ProductVariant/${LARGE}`;
+      entry.title = 'Grande';
+      delete entry.options;
+      entry.current_own_offer_status = 'unavailable';
+      renderPdp(p);
+      pick(/100 mL/i);
+      expect(storeButton()).toBeDisabled();
+      pick(/50 mL/i);
+      if (otherSize === 'enabled') expect(storeButton()).toBeEnabled();
+      else expect(storeButton()).toBeDisabled();
+    },
+  );
+
+  it('with no row-level stock, a card sold-out size stays disabled whatever the row entry says', () => {
+    const p = twoSizePayload({ large: true });
+    delete p.offers![0].inventory;
+    p.product.variants.find((v) => v.variant_id === LARGE)!.availability = { in_stock: false };
+    renderPdp(p);
+    expect(storeButton()).toBeEnabled();
+    pick(/100 mL/i);
+    expect(storeButton()).toBeDisabled();
+  });
+
+  it('a row entry in stock decides over a card sold-out flag only where the row is in stock too (as main)', () => {
+    const p = twoSizePayload({ large: true });
+    p.product.variants.find((v) => v.variant_id === LARGE)!.availability = { in_stock: false };
+    renderPdp(p);
     pick(/100 mL/i);
     expect(storeButton()).toBeEnabled();
   });

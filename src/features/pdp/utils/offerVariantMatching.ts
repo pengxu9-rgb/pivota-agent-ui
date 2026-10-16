@@ -1,4 +1,5 @@
 import type { Offer, Variant } from '@/features/pdp/types';
+import { isPurchaseUnavailable } from '@/features/pdp/utils/commerceAvailability';
 
 function normalizeText(value: unknown): string {
   return String(value || '').trim().toLowerCase();
@@ -286,11 +287,20 @@ export function sameVariantId(a: unknown, b: unknown): boolean {
   return number != null && number === shopifyVariantNumber(right);
 }
 
+/** A string `availability` (schema.org style) is the entry's stock; a top-level `in_stock` beside it may be stale. */
+function stringAvailabilityInStock(value: string): boolean | undefined {
+  const word = value.trim().toLowerCase().replace(/^https?:\/\/schema\.org\//, '').replace(/[\s_-]+/g, '');
+  if (['outofstock', 'soldout', 'unavailable', 'discontinued'].includes(word)) return false;
+  if (['instock', 'available', 'limitedavailability'].includes(word)) return true;
+  return undefined;
+}
+
 /**
  * The stock the offer row's own `variants[]` entry states for the selected variant id, or undefined when the
- * row lists no entry for it with a boolean `availability.in_stock` / `in_stock`. A row the gateway built with
- * no selected variant carries PRODUCT-level `inventory.in_stock` (any size in stock); this is the size's own.
- * Matched by id only: an options or title match is not the same listing variant. Conflicting entries read
+ * row lists no entry for it with a stated stock. A row the gateway built with no selected variant carries
+ * PRODUCT-level `inventory.in_stock` (any size in stock); this is the size's own. Matched by id only (an
+ * options or title match is not the same listing variant), so an entry this reads may be one the pricing
+ * match never saw: its own unavailable verdict therefore reads as sold out here. Conflicting entries read
  * as out of stock.
  */
 export function offerVariantInStock(
@@ -304,12 +314,15 @@ export function offerVariantInStock(
     if (!raw || typeof raw !== 'object') continue;
     const entry = raw as any;
     if (!sameVariantId(entry.variant_id || entry.variantId || entry.id, variantId)) continue;
+    if (isPurchaseUnavailable(entry)) return false;
     const inStock =
-      typeof entry.availability?.in_stock === 'boolean'
-        ? entry.availability.in_stock
-        : typeof entry.in_stock === 'boolean'
-          ? entry.in_stock
-          : undefined;
+      typeof entry.availability === 'string'
+        ? stringAvailabilityInStock(entry.availability)
+        : typeof entry.availability?.in_stock === 'boolean'
+          ? entry.availability.in_stock
+          : typeof entry.in_stock === 'boolean'
+            ? entry.in_stock
+            : undefined;
     if (inStock === false) return false;
     if (inStock === true) stated = true;
   }

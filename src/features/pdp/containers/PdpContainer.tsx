@@ -2041,19 +2041,15 @@ export function PdpContainer({
     (!selectedOfferIsOtherSeller && isPurchaseUnavailable(selectedVariant)) ||
     resolveOfferPricing(selectedOffer, selectedOfferIsOtherSeller ? null : selectedVariant).currentMoneyUnavailable;
   // A multi-size row built with no selected variant carries PRODUCT-level stock (any size in stock), so the
-  // selected size's own entry in the row's variants[] decides first. Without one, the card's sold-out size
-  // still disables, but the card (possibly an older snapshot) never enables over the row.
+  // selected size's own entry in the row's variants[] can still mark that size sold out; with no entry, the
+  // card's sold-out size does. This only ever DISABLES: whatever disables Buy through the row or card stock
+  // read still does, since a row-level false is no size answered in stock and an entry cannot outvote it.
   const selectedOfferVariantInStock = offerVariantInStock(selectedOffer, selectedVariant?.variant_id);
-  const selectedSizeSoldOutOnCard = !selectedOfferIsOtherSeller && selectedVariant?.availability?.in_stock === false;
-  const selectedStockInStock =
-    typeof selectedOfferVariantInStock === 'boolean'
-      ? selectedOfferVariantInStock
-      : selectedSizeSoldOutOnCard
-        ? false
-        : typeof selectedOfferInStock === 'boolean'
-          ? selectedOfferInStock
-          : isInStock;
-  const effectiveIsInStock = !selectedCurrentMoneyUnavailable && selectedStockInStock;
+  const selectedSizeSoldOut = selectedOfferVariantInStock === false ||
+    (selectedOfferVariantInStock === undefined && !selectedOfferIsOtherSeller &&
+      selectedVariant?.availability?.in_stock === false);
+  const effectiveIsInStock = !selectedCurrentMoneyUnavailable && !selectedSizeSoldOut &&
+    (typeof selectedOfferInStock === 'boolean' ? selectedOfferInStock : isInStock);
   const variantAwareDefaultOfferId = useMemo(() => {
     if (!offers.length) return payload.default_offer_id || internalFirstDefaultOfferId;
     const variantEligibleOffers = offers.filter((offer) => offerSupportsVariant(offer, selectedVariant));
