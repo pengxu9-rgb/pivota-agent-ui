@@ -412,13 +412,19 @@ export type PdpFetchOutcome =
  *     500s found in a 60-URL sample.
  *   - the final not-found exit, for ADR-009 re-keyed sig_ rows (merch_obs_
  *     seller, `<domain>:<hash>` id) that the precheck cannot see
- *     (PIVOTA-Agent#2461). The gateway adds the reason there ONLY when the
- *     sig row's own seed is non-active, nothing on the request swallowed a
- *     failure, and a fresh uncaught check over the content lookup's whole match
- *     set finds no active seed. Any doubt leaves the 404 reason-less, which
- *     stays `degraded` here. That guarantee is what lets this exit share the
- *     allowlist entry. The 2026-10-18 cohort: sig_bec7d573…, sig_d839dd6f…,
- *     bingbot-crawled 500s behind the LB 5xx alert.
+ *     (PIVOTA-Agent#2461). The GUARANTEE is a fresh, uncaught check the
+ *     gateway runs at that exit: it asks the database, at that moment, whether
+ *     any active seed matches the id by the content lookup's whole match set,
+ *     and adds the reason only if that statement completes and finds none, the
+ *     sig row's own seed is non-active, and the canonical ref is still the one
+ *     the signature resolved to. A per-request swallowed-failure ledger also
+ *     withholds the reason when this request saw a failure, but it is defence
+ *     in depth, not the guarantee: it cannot see failures inside a shared
+ *     in-flight lookup, a rescue timeout, or a cached negative. Any doubt
+ *     leaves the 404 reason-less, which stays `degraded` here. That guarantee
+ *     is what lets this exit share the allowlist entry. The 2026-10-18 cohort:
+ *     sig_bec7d573…, sig_d839dd6f…, bingbot-crawled 500s behind the LB 5xx
+ *     alert; both 404 in under 1s since PIVOTA-Agent#2462.
  *
  * Adding an entry here is a load-bearing decision. Require evidence that the
  * reason cannot be produced by a transient infrastructure failure.
