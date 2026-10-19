@@ -402,12 +402,23 @@ export type PdpFetchOutcome =
  * The allowlist: gateway `details.reason` values that are settled facts about
  * the product, not about the health of the read path.
  *
- * `external_seed_not_active` — the seed-status precheck runs BEFORE identity
- * resolution and hard-404s any `external_product_seeds` row whose status is
- * not 'active'. Nothing downstream can make such a row render, and the status
- * only changes via a deliberate seed-lifecycle write. This is the measured
- * cohort: 127 of 1,901 sitemap URLs on 2026-07-25, 100% of the 500s found in
- * a 60-URL sample.
+ * `external_seed_not_active` — a settled fact about the product's seed,
+ * produced at two gateway exits:
+ *   - the seed-status precheck (ext_-shaped ids) runs BEFORE identity
+ *     resolution and hard-404s any `external_product_seeds` row whose status
+ *     is not 'active'. Nothing downstream can make such a row render, and the
+ *     status only changes via a deliberate seed-lifecycle write. This is the
+ *     measured cohort: 127 of 1,901 sitemap URLs on 2026-07-25, 100% of the
+ *     500s found in a 60-URL sample.
+ *   - the final not-found exit, for ADR-009 re-keyed sig_ rows (merch_obs_
+ *     seller, `<domain>:<hash>` id) that the precheck cannot see
+ *     (PIVOTA-Agent#2461). The gateway adds the reason there ONLY when the
+ *     sig row's own seed is non-active, nothing on the request swallowed a
+ *     failure, and a fresh uncaught check over the content lookup's whole match
+ *     set finds no active seed. Any doubt leaves the 404 reason-less, which
+ *     stays `degraded` here. That guarantee is what lets this exit share the
+ *     allowlist entry. The 2026-10-18 cohort: sig_bec7d573…, sig_d839dd6f…,
+ *     bingbot-crawled 500s behind the LB 5xx alert.
  *
  * Adding an entry here is a load-bearing decision. Require evidence that the
  * reason cannot be produced by a transient infrastructure failure.
