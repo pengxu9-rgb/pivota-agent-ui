@@ -40,7 +40,8 @@ import {
   type ProductResponse,
   type UgcCapabilities,
 } from '@/lib/api';
-import { enforceReadOnlyPdp, hasVerifiedSelectedCommerce, isPurchaseUnavailable, isReadOnlyCommerce, isVerifiedCommerce, refreshPdpCommerce, restrictPdpCommerce, verifiedCommerceExpiresAt } from '@/features/pdp/utils/commerceAvailability';
+import { enforceReadOnlyPdp, hasVerifiedSelectedCommerce, isPurchaseUnavailable, isReadOnlyCommerce, isVerifiedCommerce, mergeDegradedReadCommerce, refreshPdpCommerce, restrictPdpCommerce, verifiedCommerceExpiresAt } from '@/features/pdp/utils/commerceAvailability';
+import { createDegradedReadLogger, hasDegradedReads } from '@/lib/pdpDegradedRender';
 import { mapPdpV2ToPdpPayload } from '@/features/pdp/adapter/mapPdpV2ToPdpPayload';
 import { isBeautyProduct } from '@/features/pdp/utils/isBeautyProduct';
 import {
@@ -1621,6 +1622,7 @@ export function PdpContainer({
   const loadedPayloadRef = useRef(loadedPayload);
   loadedPayloadRef.current = loadedPayload;
   const commerceRefreshInflightRef = useRef(false);
+  const logDegradedReadRef = useRef(createDegradedReadLogger());
   const initialProductId = String(initialPayload.product.product_id || '').trim();
   const refreshDisplayedCommerce = useCallback(async () => {
     const displayed = loadedPayloadRef.current;
@@ -1645,6 +1647,19 @@ export function PdpContainer({
         timeout_ms: COMMERCE_REFRESH_TIMEOUT_MS,
       });
       const fresh = mapPdpV2ToPdpPayload(response, { product_id: productId, merchant_id: merchantId });
+      if (hasDegradedReads(response)) {
+        // The page's degraded rule (mergeDegradedReadCommerce): only a proof bound to the
+        // displayed listing, variant set and currency is merged. Anything else leaves the
+        // displayed option as it is, so its proof lapses normally — except another
+        // currency, which marks it unverified at once.
+        logDegradedReadRef.current('productLineRefresh');
+        setPayload((current) => {
+          const merge = mergeDegradedReadCommerce(current, fresh);
+          if (merge.status === 'merged') return merge.payload;
+          return merge.status === 'currency_mismatch' ? { ...current, commerce_verification: 'failed' } : current;
+        });
+        return;
+      }
       setPayload((current) => refreshPdpCommerce(current, fresh));
     } catch {
       // The proof lapses and the buy box says it could not be verified.

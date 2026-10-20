@@ -17,7 +17,7 @@ import {
   type UgcCapabilities,
 } from '@/lib/api';
 import { STOREFRONT_MARKET, resolveBuyerMarket } from '@/lib/buyerMarket';
-import { hasDegradedReads, PDP_DEGRADED_REFRESH_IGNORED_LOG_TOKEN } from '@/lib/pdpDegradedRender';
+import { createDegradedReadLogger, hasDegradedReads } from '@/lib/pdpDegradedRender';
 import { hasVerifiedSelectedCommerce, isPurchaseUnavailable, isReadOnlyCommerce, isVerifiedCommerce, mergeDegradedReadCommerce, refreshPdpCommerce, restrictPdpCommerce } from '@/features/pdp/utils/commerceAvailability';
 import { mapPdpV2ToPdpPayload } from '@/features/pdp/adapter/mapPdpV2ToPdpPayload';
 import { isBeautyProduct } from '@/features/pdp/utils/isBeautyProduct';
@@ -73,6 +73,11 @@ interface Props {
    * see useUrlSearchParams for why useSearchParams() cannot.
    */
   initialSearch?: string;
+  /**
+   * The currency the server read priced initialPayload in. The payload itself carries
+   * no price on the cached route; a degraded browser re-read's proof must match this.
+   */
+  initialPayloadCurrency?: string | null;
 }
 
 const PDP_V2_SCOPED_TIMEOUT_MS = 9000;
@@ -608,7 +613,7 @@ export function dispatchedForPagePayload(payload: PDPPayload, productId?: string
   return !id || id === payload.product.product_id || id === (payload.product as { source_product_id?: string }).source_product_id;
 }
 
-export default function ProductDetailPage({ params, initialPayload, serviceRecommendations = null, initialSearch = '' }: Props) {
+export default function ProductDetailPage({ params, initialPayload, serviceRecommendations = null, initialSearch = '', initialPayloadCurrency = null }: Props) {
   const { id: rawId } = use(params);
   // Next.js dynamic params arrive URL-encoded (e.g. `ulta%3Ahash`); gateway
   // lookups (external_product_id, source_product_id) want the decoded form.
@@ -638,6 +643,11 @@ export default function ProductDetailPage({ params, initialPayload, serviceRecom
   // Read by the browser re-read below, which must not swap this payload for a degraded one.
   const serverPayloadRef = useRef<PDPPayload | null>(initialPayload ?? null);
   serverPayloadRef.current = initialPayload ?? null;
+  const pageCurrencyRef = useRef<string | null>(initialPayloadCurrency);
+  pageCurrencyRef.current = initialPayloadCurrency;
+  // Every browser read below that comes back `degraded_reads` takes the page's degraded
+  // rule (see keepServerPayloadOverDegradedRead); each kind logs its fixed token once.
+  const logDegradedReadRef = useRef(createDegradedReadLogger());
 
   const [pdpPayload, setPdpPayload] = useState<PDPPayload | null>(() => initialLoadState?.payload ?? null);
   const [sellerCandidates, setSellerCandidates] = useState<ProductResponse[] | null>(null);
@@ -696,6 +706,13 @@ export default function ProductDetailPage({ params, initialPayload, serviceRecom
           cache_bypass: trigger === 'auto_retry' || trigger === 'retry',
         });
         if (similarLoadSeqRef.current !== requestSeq) return;
+        if (hasDegradedReads(v2)) {
+          // Never fill recommendations from a degraded read: the module stays in its
+          // loading state and no retry is scheduled. The next healthy read (a retry or
+          // the next page load) fills it.
+          logDegradedReadRef.current('similar');
+          return;
+        }
         const assembled = mapPdpV2ToPdpPayload(v2, { product_id: id, ...(routeIsProductGroup ? { subject: { type: 'product_group', id } } : { merchant_id: explicitMerchantId }) });
         const deferred = isDeferredSimilarPayload(assembled);
         const retryableEmpty = isRetryableEmptySimilarPayload(assembled);
@@ -845,6 +862,23 @@ export default function ProductDetailPage({ params, initialPayload, serviceRecom
           include: [...requested], timeout_ms: PDP_V2_CONTENT_TIMEOUT_MS,
         });
         if (cancelled) return;
+        if (hasDegradedReads(v2)) {
+          // Never fill content modules from a degraded read: the requested modules go
+          // back to the state they had before this read, nothing is merged (not even
+          // a commerce revocation), and the next healthy read fills them.
+          logDegradedReadRef.current('content');
+          const before = snapshot.x_content_module_states || {};
+          setPdpPayload((current) => {
+            if (!current || contentIdentityKey(current) !== identity) return current;
+            const states: Record<string, any> = { ...(current.x_content_module_states || {}) };
+            for (const type of requested) {
+              if (type in before) states[type] = (before as Record<string, any>)[type];
+              else delete states[type];
+            }
+            return { ...current, x_content_module_states: states } as PDPPayload;
+          });
+          return;
+        }
         const assembled = mapPdpV2ToPdpPayload(v2, { product_id: id, ...(routeIsProductGroup ? { subject: { type: 'product_group', id } } : { merchant_id: explicitMerchantId }) });
         if (!sameContentIdentity(snapshot, assembled)) throw new Error('Content identity mismatch');
         const resultStates = completedContentModuleStates(requested, assembled, v2);
@@ -1085,12 +1119,13 @@ export default function ProductDetailPage({ params, initialPayload, serviceRecom
       // payload it is kept like any other, even if that read was itself degraded
       // (the server payload carries no marker).
       const keepServerPayloadOverDegradedRead = (serverPayload: PDPPayload, fresh: PDPPayload | null) => {
-        console.warn(PDP_DEGRADED_REFRESH_IGNORED_LOG_TOKEN);
+        logDegradedReadRef.current('core');
         const prepared = prepareLoadedPdpPayload(serverPayload);
         moduleSourceLocksRef.current = prepared.sourceLocks;
         setPdpPayload((current) => {
           const page = current ?? prepared.payload;
-          return mergeDegradedReadCommerce(page, fresh) ?? { ...page, commerce_verification: 'failed' };
+          const merge = mergeDegradedReadCommerce(page, fresh, { pageCurrency: pageCurrencyRef.current });
+          return merge.status === 'merged' ? merge.payload : { ...page, commerce_verification: 'failed' };
         });
         setLoading(false);
       };
@@ -1209,6 +1244,20 @@ export default function ProductDetailPage({ params, initialPayload, serviceRecom
     })
       .then((v2) => {
         const fresh = mapPdpV2ToPdpPayload(v2, identity);
+        if (hasDegradedReads(v2)) {
+          // Same gate as the hydration re-read: only a proof bound to this listing,
+          // variant set and currency is merged. Anything else leaves the page as it is,
+          // so its current proof lapses normally — except another currency, which
+          // marks the page unverified at once.
+          logDegradedReadRef.current('commerceRefresh');
+          setPdpPayload((current) => {
+            if (!current) return current;
+            const merge = mergeDegradedReadCommerce(current, fresh, { pageCurrency: pageCurrencyRef.current });
+            if (merge.status === 'merged') return merge.payload;
+            return merge.status === 'currency_mismatch' ? { ...current, commerce_verification: 'failed' } : current;
+          });
+          return;
+        }
         setPdpPayload((current) => (current ? refreshPdpCommerce(current, fresh) : current));
       })
       .catch(() => undefined)

@@ -28,3 +28,26 @@ export function hasDegradedReads(response: unknown): boolean {
   const reads = (response as { degraded_reads?: unknown }).degraded_reads;
   return Array.isArray(reads) && reads.length > 0;
 }
+
+/**
+ * One fixed token per browser refresh path that met a degraded re-read. Each is logged
+ * at most once per page instance (see createDegradedReadLogger). No ids, no payload.
+ */
+export const PDP_DEGRADED_CLIENT_LOG_TOKENS = {
+  core: PDP_DEGRADED_REFRESH_IGNORED_LOG_TOKEN,
+  commerceRefresh: '[pdp] degraded_commerce_refresh',
+  productLineRefresh: '[pdp] degraded_product_line_refresh',
+  similar: '[pdp] degraded_similar_skipped',
+  content: '[pdp] degraded_content_skipped',
+} as const;
+
+export type PdpDegradedClientReadKind = keyof typeof PDP_DEGRADED_CLIENT_LOG_TOKENS;
+
+export function createDegradedReadLogger(): (kind: PdpDegradedClientReadKind) => void {
+  const logged = new Set<PdpDegradedClientReadKind>();
+  return (kind) => {
+    if (logged.has(kind)) return;
+    logged.add(kind);
+    console.warn(PDP_DEGRADED_CLIENT_LOG_TOKENS[kind]);
+  };
+}

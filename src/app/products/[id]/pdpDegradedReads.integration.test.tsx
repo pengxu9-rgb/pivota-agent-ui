@@ -3,6 +3,8 @@ import receipt from '@/features/pdp/__fixtures__/canonicalOfferLive20261004/sig_
 import ProductDetailPage, { generateMetadata } from './page';
 import ProductDetailLayout from './layout';
 import { PDP_DEGRADED_RENDER_ERROR } from './pdpServerPage';
+import ProductDetailClient from './ProductDetailClient';
+import verifiedReceipt from '@/features/pdp/__fixtures__/canonicalOfferLive20261004/fullcream-verified-current-own-offer.json';
 
 // A get_pdp_v2 200 marked `degraded_reads` (the gateway built it while a catalog read could
 // not reach the database), end to end through the REAL gateway client, layout, page and
@@ -77,6 +79,44 @@ describe('a degraded_reads 200 on the canonical PDP route', () => {
     expect(metadata.alternates?.canonical).toContain(SIG_ID);
     const layout = (await renderLayout()) as { props: { children: unknown[] } };
     expect(layout.props.children[0]).toBeTruthy();
+  });
+
+  it('hands the browser the currency the server read priced the page in (the payload itself carries no price)', async () => {
+    const findClient = (node: any): any => {
+      if (!node || typeof node !== 'object') return null;
+      if (node.type === ProductDetailClient) return node;
+      const children = ([] as any[]).concat(node.props?.children ?? []);
+      for (const child of children) {
+        const found = findClient(child);
+        if (found) return found;
+      }
+      return null;
+    };
+    // A priced (verified) server read of the same listing.
+    const priced = (currency: string) => JSON.parse(JSON.stringify(verifiedReceipt.body).replaceAll('"USD"', `"${currency}"`));
+    expect(verifiedReceipt.body.subject.id).toBe(SIG_ID);
+    stubGateway(priced('USD'));
+    const client = findClient(await ProductDetailPage(routeProps()));
+    expect(client.props.initialPayloadCurrency).toBe('USD');
+    expect(JSON.stringify(client.props.initialPayload)).not.toContain('"currency":"USD"');
+    // A malformed code is skipped for the next valid one.
+    const malformedFirst = healthy() as any;
+    const readOnlyProduct = malformedFirst.modules.find((module: any) => module.type === 'canonical').data.pdp_payload.product;
+    readOnlyProduct.price = { current: { amount: 1, currency: 'usd' } };
+    readOnlyProduct.variants = readOnlyProduct.variants.map((variant: any) => ({ ...variant, price: { current: { amount: 1, currency: 'USD' } } }));
+    stubGateway(malformedFirst);
+    expect(findClient(await ProductDetailPage(routeProps())).props.initialPayloadCurrency).toBe('USD');
+    // A read with no price at all resolves no page currency.
+    stubGateway(healthy());
+    expect(findClient(await ProductDetailPage(routeProps())).props.initialPayloadCurrency).toBeNull();
+
+    // With no product-level price, the variants' price currency is used.
+    const variantPricedOnly = priced('USD');
+    delete variantPricedOnly.modules.find((module: any) => module.type === 'canonical').data.pdp_payload.product.price;
+    stubGateway(variantPricedOnly);
+    expect(findClient(await ProductDetailPage(routeProps())).props.initialPayloadCurrency).toBe('USD');
+    stubGateway(priced('SGD'));
+    expect(findClient(await ProductDetailPage(routeProps())).props.initialPayloadCurrency).toBe('SGD');
   });
 
   it('the page throws the degraded sentinel, once, with no retry and no existence probe', async () => {

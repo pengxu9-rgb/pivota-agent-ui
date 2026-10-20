@@ -34,26 +34,42 @@ const freshRead = (receivedAt?: number): PDPPayload => {
   };
 };
 const variantId = (payload: PDPPayload) => String(payload.product.variants[0].variant_id);
+// The cached server payload carries no price at all, so the page currency is the one
+// the server read priced it in (pdpServerPage passes it as initialPayloadCurrency).
+const PAGE = { pageCurrency: 'USD' };
+const merge = (server: PDPPayload, fresh: PDPPayload | null, options: { now?: number; pageCurrency?: string | null } = PAGE) =>
+  mergeDegradedReadCommerce(server, fresh, options);
+const merged = (result: ReturnType<typeof merge>) => {
+  expect(result.status).toBe('merged');
+  return (result as { payload: PDPPayload }).payload;
+};
+// The same verified read, priced in another currency throughout (internally consistent).
+const freshReadIn = (currency: string): PDPPayload => {
+  const response = JSON.parse(JSON.stringify(browserRead(verifiedReceipt)).replaceAll('"USD"', `"${currency}"`));
+  return mapPdpV2ToPdpPayload(response)!;
+};
+const withVariantPrice = (payload: PDPPayload, currency: string): PDPPayload => ({
+  ...payload,
+  product: { ...payload.product, variants: payload.product.variants.map((variant) => ({ ...variant, price: { current: { amount: 19.95, currency } } })) },
+});
 
 describe('mergeDegradedReadCommerce', () => {
   it('merges a fresh proof for this exact listing, and only its commerce', () => {
     const server = serverPayload();
     const fresh = freshRead();
-    const merged = mergeDegradedReadCommerce(server, fresh)!;
-    expect(merged).not.toBeNull();
-    expect(merged.commerce).toBe(fresh.commerce);
-    expect(merged.commerce_verification).toBeUndefined();
-    expect(merged.product.variants).toEqual(fresh.product.variants);
+    const payload = merged(merge(server, fresh));
+    expect(payload.commerce).toBe(fresh.commerce);
+    expect(payload.commerce_verification).toBeUndefined();
+    expect(payload.product.variants).toEqual(fresh.product.variants);
     // Nothing that is not commerce comes from the degraded read.
-    expect(merged.product.title).toBe(server.product.title);
-    expect(merged.product.description).toEqual(server.product.description);
-    expect(merged.quality_signals).toEqual({ gating: { from_server: true } });
+    expect(payload.product.title).toBe(server.product.title);
+    expect(payload.product.description).toEqual(server.product.description);
+    expect(payload.quality_signals).toEqual({ gating: { from_server: true } });
   });
 
   it('drops the degraded read quality_signals even when the page has none', () => {
     const { quality_signals: _unused, ...server } = serverPayload();
-    const merged = mergeDegradedReadCommerce(server as PDPPayload, freshRead())!;
-    expect(merged).not.toHaveProperty('quality_signals');
+    expect(merged(merge(server as PDPPayload, freshRead()))).not.toHaveProperty('quality_signals');
   });
 
   it.each([
@@ -63,13 +79,13 @@ describe('mergeDegradedReadCommerce', () => {
     ['a proof received in the future', () => freshRead(Date.now() + 120000)],
     ['a re-read still pending verification', () => ({ ...freshRead(), commerce_verification: 'refresh_required' as const })],
   ])('refuses %s', (_label, fresh) => {
-    expect(mergeDegradedReadCommerce(serverPayload(), fresh() as PDPPayload | null)).toBeNull();
+    expect(merge(serverPayload(), fresh() as PDPPayload | null)).toEqual({ status: 'unverifiable' });
   });
 
   it('refuses a proof that was current when mapped but has lapsed by the time it is merged', () => {
     const fresh = freshRead();
-    expect(mergeDegradedReadCommerce(serverPayload(), fresh, Date.now())).not.toBeNull();
-    expect(mergeDegradedReadCommerce(serverPayload(), fresh, Date.now() + 61000)).toBeNull();
+    expect(merge(serverPayload(), fresh, { ...PAGE, now: Date.now() }).status).toBe('merged');
+    expect(merge(serverPayload(), fresh, { ...PAGE, now: Date.now() + 61000 })).toEqual({ status: 'unverifiable' });
   });
 
   it.each<[string, (fresh: PDPPayload, server: PDPPayload) => void]>([
@@ -111,6 +127,59 @@ describe('mergeDegradedReadCommerce', () => {
     const fresh = freshRead();
     expect(variantId(fresh)).toBe(variantId(server));
     change(fresh, server);
-    expect(mergeDegradedReadCommerce(server, fresh)).toBeNull();
+    expect(merge(server, fresh)).toEqual({ status: 'unverifiable' });
+  });
+});
+
+describe('mergeDegradedReadCommerce: the price currency is always the page currency', () => {
+  it('refuses a proof priced in another currency than the page', () => {
+    const fresh = freshReadIn('SGD');
+    expect((fresh.commerce as any).verified_variants[0].currency).toBe('SGD');
+    expect(merge(serverPayload(), fresh)).toEqual({ status: 'currency_mismatch' });
+    // Control: the same read priced in the page currency merges.
+    expect(merge(serverPayload(), fresh, { pageCurrency: 'SGD' }).status).toBe('merged');
+  });
+
+  it('refuses when no page currency can be resolved', () => {
+    expect(merge(serverPayload(), freshRead(), {})).toEqual({ status: 'currency_mismatch' });
+    expect(merge(serverPayload(), freshRead(), { pageCurrency: 'usd' })).toEqual({ status: 'currency_mismatch' });
+  });
+
+  it("uses the page's displayed variant currency first, then its displayed price, then the server-read currency", () => {
+    // Variant level beats both fallbacks.
+    expect(merge(withVariantPrice(serverPayload(), 'USD'), freshRead(), { pageCurrency: 'SGD' }).status).toBe('merged');
+    expect(merge(withVariantPrice(serverPayload(), 'SGD'), freshRead(), { pageCurrency: 'USD' })).toEqual({ status: 'currency_mismatch' });
+    // Product level beats the server-read currency.
+    const priced = (currency: string) => {
+      const server = serverPayload();
+      return { ...server, product: { ...server.product, price: { current: { amount: 19.95, currency } } } } as PDPPayload;
+    };
+    expect(merge(priced('USD'), freshRead(), { pageCurrency: 'SGD' }).status).toBe('merged');
+    expect(merge(priced('SGD'), freshRead(), { pageCurrency: 'USD' })).toEqual({ status: 'currency_mismatch' });
+  });
+
+  it('refuses a proof in another currency even when the re-read shows no price to compare', () => {
+    const fresh = freshRead();
+    const unpriced = {
+      ...fresh,
+      product: { ...fresh.product, price: undefined, variants: fresh.product.variants.map(({ price: _price, ...variant }) => variant) },
+    } as PDPPayload;
+    expect(merge(serverPayload(), unpriced).status).toBe('merged');
+    const proof = unpriced.commerce as any;
+    const otherCurrencyProof = { ...unpriced, commerce: { ...proof, verified_variants: proof.verified_variants.map((entry: any) => ({ ...entry, currency: 'SGD' })) } } as PDPPayload;
+    expect(merge(serverPayload(), otherCurrencyProof)).toEqual({ status: 'currency_mismatch' });
+  });
+
+  it('falls back past a malformed displayed currency to the next source', () => {
+    expect(merge(withVariantPrice(serverPayload(), 'usd'), freshRead(), { pageCurrency: 'USD' }).status).toBe('merged');
+  });
+
+  it.each<[string, (fresh: PDPPayload) => PDPPayload]>([
+    ['a variant price', (fresh) => withVariantPrice(fresh, 'SGD')],
+    ['the product price', (fresh) => ({ ...fresh, product: { ...fresh.product, price: { current: { amount: 19.95, currency: 'SGD' } } } } as PDPPayload)],
+    ['an offer price', (fresh) => ({ ...fresh, offers: [{ offer_id: 'o1', merchant_id: 'm1', price: { amount: 19.95, currency: 'SGD' } }] } as PDPPayload)],
+  ])('refuses a merge that would bring in %s in another currency', (_label, change) => {
+    expect(merge(serverPayload(), freshRead()).status).toBe('merged');
+    expect(merge(serverPayload(), change(freshRead()))).toEqual({ status: 'currency_mismatch' });
   });
 });

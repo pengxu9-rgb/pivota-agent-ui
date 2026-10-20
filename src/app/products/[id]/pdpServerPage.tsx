@@ -306,7 +306,27 @@ type ServerPdpRenderData = {
   initialPayload: PDPPayload;
   product: Record<string, any>;
   canonicalRouteId: string;
+  /** The currency the server read priced this page in (see readServerPriceCurrency). */
+  priceCurrency: string | null;
 };
+
+/**
+ * The currency the server's get_pdp_v2 read priced the product in, read from the raw
+ * reply. The mapped payload cannot carry it: on the cached route the adapter strips
+ * every price before the payload reaches the browser. The browser uses it as the page
+ * currency a degraded re-read's proof must match (mergeDegradedReadCommerce), so a
+ * degraded read can never switch the page to another market's currency.
+ */
+function readServerPriceCurrency(v2: unknown): string | null {
+  const modules = Array.isArray((v2 as any)?.modules) ? (v2 as any).modules : [];
+  const product = modules.find((module: any) => module?.type === 'canonical')?.data?.pdp_payload?.product;
+  const candidates = [
+    product?.price?.current?.currency,
+    ...(Array.isArray(product?.variants) ? product.variants.map((variant: any) => variant?.price?.current?.currency) : []),
+  ];
+  const currency = candidates.find((value) => typeof value === 'string' && /^[A-Z]{3}$/.test(value));
+  return typeof currency === 'string' ? currency : null;
+}
 
 /**
  * Degraded-render handling (S1 follow-up to the crawl-collapse fix, revised
@@ -681,6 +701,7 @@ async function _fetchPdpForServerRenderUncached(
               initialPayload,
               product: buildJsonLdProduct(initialPayload),
               canonicalRouteId: readServerCanonicalRouteId(v2, initialPayload, productId),
+              priceCurrency: readServerPriceCurrency(v2),
             },
           },
           retryable: false,
@@ -1091,6 +1112,7 @@ export async function renderPdpPage(props: PdpRouteProps, mode: PdpRouteMode) {
         key={JSON.stringify([productId || null, merchantId || null])}
         params={props.params}
         initialPayload={renderData?.initialPayload ?? null}
+        initialPayloadCurrency={renderData?.priceCurrency ?? null}
         serviceRecommendations={serviceRecommendations}
         // Server snapshot for useUrlSearchParams. '' on the canonical route
         // (anonymous by contract), the real query on the force-dynamic alias.
