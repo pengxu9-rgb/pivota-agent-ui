@@ -1,5 +1,5 @@
 {
-  "_comment": "1032 sig(s) answered HTTP 410 Gone by src/middleware.ts. Admitted when the feed reports terminally_retired=true, or when a previously advertised sig left a FULLY-READ feed. Maintained by scripts/generate_sitemaps.mjs — do not hand-edit.",
+  "_comment": "1030 sig(s) answered HTTP 410 Gone by src/middleware.ts. Admitted when the feed reports terminally_retired=true, or when a previously advertised sig left a FULLY-READ feed. Maintained by scripts/generate_sitemaps.mjs — do not hand-edit.",
   "sigs": [
     "sig_090c4800be028de3f353d330d5e8e650",
     "sig_09ee3532142864fcaa5ed4c3a26a1aba",
@@ -1007,31 +1007,29 @@
     "sig_07f2ec634a50b209499e4b76288b00ad",
     "sig_2a57ac95901e656cafd9302544288b69",
     "sig_33808ea12ec4bc8caa2dda8e0d7e4d83",
-    "sig_372d2c70ad804ee10bcc16d7dfd4e82f",
-    "sig_405683821daddbe3eca6b6abb3b28063",
     "sig_4c420068787d0288b3e8a45b2b0d805a",
     "sig_4ea9ecbd745c1f7b7dbc8957df94a48d",
     "sig_5a980c09a45da3feee1e958e0d697aa0",
     "sig_5c3b9f33ef3014838be12111",
     "sig_78b3694e25a51deb61e2d4e3",
-    "sig_8137df1de659c9e0b816bfea02184b5d",
     "sig_81b5abf2be300c983cf86f67a1310135",
     "sig_8a3000293177d10c5f4b8fc1e4dc5821",
     "sig_9540b5cdbe909f43bc10d68b9f16d7a9",
     "sig_9b214a8bbb00cb5fe9d546adf7902604",
     "sig_a2417e13c47aa570bf14d2ba8209e782",
-    "sig_a668488b9f47032e1baa5fb88c03439d",
     "sig_a9ebc68595dfbda18c3efeb4",
     "sig_ab12ec3d85a82890a57f71f88e288490",
     "sig_cb5e97449b9038e6b81afcc531c89b4c",
-    "sig_e6d45516588eda9b68018e39b6091c26",
     "sig_f2efd1c54e2b916249073a8c",
-    "sig_fbb0ecd4511f33c84aeb1a5689fb6884",
     "sig_164c5e83427cebc257ea143a42a84f23",
     "sig_2398185be4288c6a75906e281fbf226f",
     "sig_61a0d070a8ca68c1d61009c9e30c641d",
     "sig_8403c4c8e32aa554bcee380b73c376ce",
     "sig_88e355cbd5ff7dcfb9a7107176a367b9",
-    "sig_ec8071e38742235e0ebff47b43920e9f"
+    "sig_ec8071e38742235e0ebff47b43920e9f",
+    "sig_659631ffb6a9ee56280569ab3e852694",
+    "sig_901bb3adaed1b7164f83c7fe",
+    "sig_c1668032f6d21828ace58b3a295c49a8",
+    "sig_ff05bb40a7acb8b7762b475da55412d7"
   ]
 }
