@@ -37,6 +37,8 @@ export const PDP_DEGRADED_CLIENT_LOG_TOKENS = {
   core: PDP_DEGRADED_REFRESH_IGNORED_LOG_TOKEN,
   commerceRefresh: '[pdp] degraded_commerce_refresh',
   productLineRefresh: '[pdp] degraded_product_line_refresh',
+  productLineReviews: '[pdp] degraded_product_line_reviews_skipped',
+  productLineSimilar: '[pdp] degraded_product_line_similar_skipped',
   similar: '[pdp] degraded_similar_skipped',
   content: '[pdp] degraded_content_skipped',
 } as const;

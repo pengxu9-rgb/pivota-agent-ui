@@ -727,40 +727,55 @@ describe('degraded_reads on the other browser refresh paths', () => {
     });
   });
 
+  // The page is one listing; the buyer switches to another product line in place, and the
+  // container keeps that option's proof current with its own re-read (not the page's).
+  const OPTION_ID = verifiedFullCream.body.subject.id;
+  const OPTION_MERCHANT = 'merch_obs_0531e02c57f00f5b';
+  // A switch read whose proof runs out shortly after the refresh lead, so the refresh is
+  // due about 1.5s after the switch on real timers (enough margin to see the switched
+  // price first, even on a loaded machine).
+  const MISSHA_ID = missha.body.subject.id;
+  const lineOptions = (selectedId: string, pageMerchant: string) => [
+    { label: 'Shade A', product_id: MISSHA_ID, merchant_id: pageMerchant, selected: selectedId === MISSHA_ID, axis: 'shade' },
+    { label: 'Shade B', product_id: OPTION_ID, merchant_id: OPTION_MERCHANT, selected: selectedId === OPTION_ID, axis: 'shade' },
+  ];
+  // Both lines' reads carry the selector, so the buyer can switch back and forth.
+  const withLineOptions = (response: any, selectedId: string, pageMerchant: string) => {
+    const product = canonical(response).pdp_payload.product;
+    product.product_line_option_name = 'Shade';
+    product.product_line_options = lineOptions(selectedId, pageMerchant);
+    return response;
+  };
+  let pageMerchantId = '';
+  const switchRead = () => {
+    const response = withLineOptions(body(verifiedFullCream), OPTION_ID, pageMerchantId);
+    const data = canonical(response);
+    for (const proof of [response.metadata.commerce, data.commerce, data.pdp_payload.commerce]) {
+      proof.expires_at = new Date(Date.parse(proof.verified_at) + COMMERCE_REFRESH_LEAD_MS + 1500).toISOString();
+    }
+    return stampPdpResponseCommerce(response, Date.now());
+  };
+  const renderAndSwitch = async (refreshReply: () => unknown, backfillReply?: (include: string) => unknown) => {
+    api.get.mockImplementation(async (args: any) => {
+      if (args.product_id !== OPTION_ID) return withLineOptions(body(missha), MISSHA_ID, pageMerchantId);
+      // The container's refresh: cache-bypassing, offers + variant_selector, its own 6s budget.
+      if (args.cache_bypass && args.timeout_ms === 6000) return refreshReply();
+      // The switched line's module backfill: one read for reviews, one for similar.
+      const backfill = ['reviews_preview', 'similar'].find((include) => args.include?.length === 1 && args.include[0] === include);
+      if (backfill && backfillReply) return backfillReply(backfill);
+      return switchRead();
+    });
+    const page = payload(missha as any);
+    pageMerchantId = String(page.product.merchant_id || '');
+    expect(page.product.product_id).toBe(MISSHA_ID);
+    page.product.product_line_option_name = 'Shade';
+    page.product.product_line_options = lineOptions(MISSHA_ID, pageMerchantId) as any;
+    render(<PdpContainer payload={page} mode="beauty" onBuyNow={api.cart} onAddToCart={api.cart} />);
+    fireEvent.click(screen.getByRole('button', { name: /Shade B/ }));
+    await waitFor(() => expect(buyControl()).toBeEnabled(), { timeout: 5000 });
+    expect(screen.getAllByText('$19.95').length).toBeGreaterThan(0);
+  };
   describe("PdpContainer's product-line commerce refresh", () => {
-    // The page is one listing; the buyer switches to another product line in place, and the
-    // container keeps that option's proof current with its own re-read (not the page's).
-    const OPTION_ID = verifiedFullCream.body.subject.id;
-    const OPTION_MERCHANT = 'merch_obs_0531e02c57f00f5b';
-    // A switch read whose proof runs out shortly after the refresh lead, so the refresh is
-    // due about 1.5s after the switch on real timers (enough margin to see the switched
-    // price first, even on a loaded machine).
-    const switchRead = () => {
-      const response = body(verifiedFullCream);
-      const data = canonical(response);
-      for (const proof of [response.metadata.commerce, data.commerce, data.pdp_payload.commerce]) {
-        proof.expires_at = new Date(Date.parse(proof.verified_at) + COMMERCE_REFRESH_LEAD_MS + 1500).toISOString();
-      }
-      return stampPdpResponseCommerce(response, Date.now());
-    };
-    const renderAndSwitch = async (refreshReply: () => unknown) => {
-      api.get.mockImplementation(async (args: any) => {
-        if (args.product_id !== OPTION_ID) return body(missha);
-        // The container's refresh: cache-bypassing, offers + variant_selector, its own 6s budget.
-        if (args.cache_bypass && args.timeout_ms === 6000) return refreshReply();
-        return switchRead();
-      });
-      const page = payload(missha as any);
-      page.product.product_line_option_name = 'Shade';
-      page.product.product_line_options = [
-        { label: 'Shade A', product_id: page.product.product_id, merchant_id: page.product.merchant_id, selected: true, axis: 'shade' },
-        { label: 'Shade B', product_id: OPTION_ID, merchant_id: OPTION_MERCHANT, axis: 'shade' },
-      ];
-      render(<PdpContainer payload={page} mode="beauty" onBuyNow={api.cart} onAddToCart={api.cart} />);
-      fireEvent.click(screen.getByRole('button', { name: /Shade B/ }));
-      await waitFor(() => expect(buyControl()).toBeEnabled(), { timeout: 5000 });
-      expect(screen.getAllByText('$19.95').length).toBeGreaterThan(0);
-    };
     const refreshReads = () => api.get.mock.calls.filter(([args]: any[]) => args?.product_id === OPTION_ID && args.cache_bypass && args.timeout_ms === 6000);
 
     it('control: a complete refresh applies its price', async () => {
@@ -796,6 +811,63 @@ describe('degraded_reads on the other browser refresh paths', () => {
       await waitFor(() => expect(screen.getByText(UNVERIFIED)).toBeInTheDocument());
       expect(buyControl()).toBeNull();
       expect(document.body.textContent).not.toMatch(/SGD|S\$/);
+    });
+  });
+
+  describe("PdpContainer's product-line module backfill", () => {
+    // Reviews and similar for the newly switched line arrive in their own reads after the
+    // switch. The switched line's main payload has no server payload behind it, so a partial
+    // main read still renders; its MODULES follow the module rule: never filled from a
+    // degraded read.
+    const REVIEW_TEXT = 'Degraded backfill review';
+    const SIMILAR_TITLE = 'Degraded backfill similar';
+    const backfillReply = (degraded: boolean) => (include: string) => {
+      const response = body(verifiedFullCream);
+      response.modules.push(include === 'reviews_preview'
+        ? { type: 'reviews_preview', required: false, data: { scale: 5, rating: 4.5, review_count: 12, preview_items: [
+          { review_id: 'r_1', rating: 5, title: REVIEW_TEXT, text_snippet: REVIEW_TEXT },
+        ] } }
+        : { type: 'similar', required: false, data: { strategy: 'related_products', items: [
+          { product_id: 'sim_1', merchant_id: 'external_seed', title: SIMILAR_TITLE },
+        ] } });
+      if (degraded) response.degraded_reads = DEGRADED;
+      return response;
+    };
+    const backfillReads = (include: string) => api.get.mock.calls.filter(([args]: any[]) =>
+      args?.product_id === OPTION_ID && args.include?.length === 1 && args.include[0] === include);
+
+    it('control: a complete backfill fills reviews and similar for the switched line', async () => {
+      await renderAndSwitch(() => repriced(false), backfillReply(false));
+      expect((await screen.findAllByText(REVIEW_TEXT)).length).toBeGreaterThan(0);
+      expect((await screen.findAllByText(SIMILAR_TITLE)).length).toBeGreaterThan(0);
+    });
+
+    it('never fills either from a degraded backfill; purchase is untouched; each kind logs once', async () => {
+      const warn = warnSpy();
+      await renderAndSwitch(() => repriced(false), backfillReply(true));
+      await waitFor(() => expect(backfillReads('reviews_preview')).toHaveLength(1));
+      await waitFor(() => expect(backfillReads('similar')).toHaveLength(1));
+      await act(async () => { await new Promise((resolve) => setTimeout(resolve, 100)); });
+      expect(screen.queryByText(REVIEW_TEXT)).toBeNull();
+      expect(screen.queryByText(SIMILAR_TITLE)).toBeNull();
+      expect(buyControl()).toBeEnabled();
+      expect(screen.getAllByText('$19.95').length).toBeGreaterThan(0);
+      expect(linesFor(warn, PDP_DEGRADED_CLIENT_LOG_TOKENS.productLineReviews)).toHaveLength(1);
+      expect(linesFor(warn, PDP_DEGRADED_CLIENT_LOG_TOKENS.productLineSimilar)).toHaveLength(1);
+    });
+
+    it('re-selecting the line reads the skipped modules again, and a healthy reply fills them', async () => {
+      let degraded = true;
+      await renderAndSwitch(() => repriced(false), (include) => backfillReply(degraded)(include));
+      await waitFor(() => expect(backfillReads('similar')).toHaveLength(1));
+      await act(async () => { await new Promise((resolve) => setTimeout(resolve, 50)); });
+      expect(screen.queryByText(SIMILAR_TITLE)).toBeNull();
+      degraded = false;
+      fireEvent.click(screen.getByRole('button', { name: /Shade A/ }));
+      fireEvent.click(await screen.findByRole('button', { name: /Shade B/ }));
+      expect((await screen.findAllByText(REVIEW_TEXT, undefined, { timeout: 5000 })).length).toBeGreaterThan(0);
+      expect((await screen.findAllByText(SIMILAR_TITLE)).length).toBeGreaterThan(0);
+      expect(backfillReads('similar').length).toBeGreaterThan(1);
     });
   });
 

@@ -3708,6 +3708,13 @@ export function PdpContainer({
         timeout_ms: PRODUCT_LINE_REVIEWS_TIMEOUT_MS,
       })
         .then((response) => {
+          // A degraded read never fills a module: reviews stay loading (as the switch
+          // left them) and nothing is cached, so re-selecting this line, or the next
+          // page load, reads them again.
+          if (hasDegradedReads(response)) {
+            logDegradedReadRef.current('productLineReviews');
+            return;
+          }
           const mapped = mapPdpV2ToPdpPayload(response, { product_id: productId, merchant_id: merchantId });
           setPayload((current) => {
             if (productLineSwitchRequestRef.current !== requestId) return current;
@@ -3740,6 +3747,11 @@ export function PdpContainer({
         timeout_ms: PRODUCT_LINE_SIMILAR_TIMEOUT_MS,
       })
         .then((response) => {
+          // Same rule for recommendations: stay loading, cache nothing.
+          if (hasDegradedReads(response)) {
+            logDegradedReadRef.current('productLineSimilar');
+            return;
+          }
           const mapped = mapPdpV2ToPdpPayload(response, { product_id: productId, merchant_id: merchantId });
           setPayload((current) => {
             if (productLineSwitchRequestRef.current !== requestId) return current;
