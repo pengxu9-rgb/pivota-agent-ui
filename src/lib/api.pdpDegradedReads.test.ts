@@ -107,6 +107,10 @@ describe('hasDegradedReads', () => {
     [{ degraded_reads: ['anything_else'] }, true],
     [{ degraded_reads: [] }, false],
     [{ degraded_reads: null }, false],
+    // Fails open on a shape the gateway never sends: only a non-empty array is the marker.
+    [{ degraded_reads: 'x' }, false],
+    [{ degraded_reads: {} }, false],
+    [{ degraded_reads: { 0: 'catalog_signature_partial', length: 1 } }, false],
     [{}, false],
     [null, false],
     [undefined, false],

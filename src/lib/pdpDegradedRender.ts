@@ -10,6 +10,9 @@ export const PDP_DEGRADED_RENDER_ERROR = 'PDP_DEGRADED_RENDER_UNCACHEABLE';
 /** Fixed log token for a get_pdp_v2 200 the gateway marked degraded. No ids, no payload. */
 export const PDP_DEGRADED_READS_LOG_TOKEN = '[pdp] degraded_reads_not_cached';
 
+/** Fixed log token for a browser re-read that was degraded and ignored in favour of the server payload. */
+export const PDP_DEGRADED_REFRESH_IGNORED_LOG_TOKEN = '[pdp] degraded_refresh_ignored';
+
 /**
  * Did the gateway mark this get_pdp_v2 200 as built from an incomplete read?
  *

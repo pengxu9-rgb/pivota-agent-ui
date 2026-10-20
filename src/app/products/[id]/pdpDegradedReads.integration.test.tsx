@@ -105,3 +105,82 @@ describe('a degraded_reads 200 on the canonical PDP route', () => {
     expect(notFoundMock).not.toHaveBeenCalled();
   });
 });
+
+// The gateway stamps `degraded_reads` on EVERY JSON body it sends after the mark, error
+// bodies included. A settled-looking 404 produced during the incident must stay the
+// degraded 500: a 404 here is stored by ISR with s-maxage and deindexes the product
+// for an hour after the database recovers.
+const SETTLED_NOT_SERVABLE_404 = {
+  error: 'PRODUCT_NOT_SERVABLE',
+  message: 'Product not servable',
+  details: { reason: 'low_quality', index_row_found: true, serving_eligible: false },
+};
+const SEED_NOT_ACTIVE_404 = {
+  error: 'PRODUCT_NOT_FOUND',
+  message: 'Product not found',
+  details: { reason: 'external_seed_not_active', external_seed_status: 'inactive' },
+};
+const REASONLESS_404 = { error: 'PRODUCT_NOT_FOUND', message: 'Product not found', details: null };
+const degraded = (body: Record<string, unknown>) => ({ ...body, degraded_reads: ['catalog_signature_partial'] });
+
+function stubGatewayError(pdpBody: unknown, status: number) {
+  const operations: string[] = [];
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (_url: string, init?: RequestInit) => {
+      const operation = String(JSON.parse(String(init?.body || '{}'))?.operation || '');
+      operations.push(operation);
+      if (operation === 'get_pdp_v2') return new Response(JSON.stringify(pdpBody), { status });
+      if (operation === 'pdp_route_id_exists') {
+        // A settled "absent": what turns a reason-less 404 into a 404 page when the read was healthy.
+        return new Response(
+          JSON.stringify({ status: 'success', contract: 'pdp_route_id_existence.v1', product_id: SIG_ID, exists: false, matched: [] }),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify({ error: 'UNEXPECTED' }), { status: 500 });
+    }),
+  );
+  return operations;
+}
+
+describe('a degraded_reads ERROR body never becomes a 404', () => {
+  beforeEach(() => {
+    notFoundMock.mockClear();
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    vi.stubEnv('NEXT_PUBLIC_APP_URL', '');
+    vi.stubEnv('VERCEL_URL', '');
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  });
+
+  it.each([
+    ['a settled serving-ineligibility', SETTLED_NOT_SERVABLE_404],
+    ['an allowlisted external_seed_not_active', SEED_NOT_ACTIVE_404],
+    ['a reason-less not-found (existence probe)', REASONLESS_404],
+  ])('control: %s without the marker 404s', async (_label, body) => {
+    stubGatewayError(body, 404);
+    await expect(renderLayout()).rejects.toThrow('NEXT_NOT_FOUND_THROWN');
+    const metadata = await generateMetadata(routeProps());
+    expect(metadata.robots).toEqual({ index: false, follow: false });
+  });
+
+  it.each([
+    ['a settled serving-ineligibility', SETTLED_NOT_SERVABLE_404],
+    ['an allowlisted external_seed_not_active', SEED_NOT_ACTIVE_404],
+    ['a reason-less not-found', REASONLESS_404],
+  ])('%s marked degraded stays the degraded 500: no notFound, no noindex, no probe', async (_label, body) => {
+    const operations = stubGatewayError(degraded(body), 404);
+
+    await expect(renderLayout()).resolves.toBeTruthy();
+    await expect(ProductDetailPage(routeProps())).rejects.toThrow(PDP_DEGRADED_RENDER_ERROR);
+    const metadata = await generateMetadata(routeProps());
+    expect(metadata.robots).toBeUndefined();
+    expect(notFoundMock).not.toHaveBeenCalled();
+    expect(operations).not.toContain('pdp_route_id_exists');
+  });
+});

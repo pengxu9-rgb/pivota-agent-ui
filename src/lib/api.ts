@@ -3447,7 +3447,11 @@ export async function getPdpV2Cached(args: {
       // cold entry the rejection reaches the page, which classifies it `degraded`
       // (never `unbuildable`, so never a 404) and throws PDP_DEGRADED_RENDER_ERROR;
       // on a stale entry Next swallows the rejection and keeps returning the last
-      // healthy value. One log line per gateway read, fixed token, no identifiers.
+      // healthy value. Our own log line is a fixed token with no identifiers, once
+      // per gateway read. Next adds its own lines on top: a cold fill logs the
+      // thrown PDP_DEGRADED_RENDER_UNCACHEABLE with its stack, and a stale-entry
+      // revalidation logs "revalidating cache with key: …", which carries the
+      // cache key and therefore the product id.
       //
       // The cost is a cold entry: there the PDP becomes the uncached degraded 500
       // instead of a partial page. Rendering the partial payload uncached is not

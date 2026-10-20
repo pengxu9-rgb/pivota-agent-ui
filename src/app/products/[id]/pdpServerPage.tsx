@@ -16,7 +16,7 @@ import { buildProductDescription } from './productDescription';
 import { unstable_rethrow } from 'next/navigation';
 import { buildProductJsonLd } from './productJsonLd';
 import { getPdpRouteIdExistenceCached, getPdpV2, getPdpV2Cached, getServicesBrowse } from '@/lib/api';
-import { PDP_DEGRADED_RENDER_ERROR } from '@/lib/pdpDegradedRender';
+import { hasDegradedReads, PDP_DEGRADED_RENDER_ERROR } from '@/lib/pdpDegradedRender';
 import { mapPdpV2ToPdpPayload } from '@/features/pdp/adapter/mapPdpV2ToPdpPayload';
 import { projectPublicInsightsPayload } from '@/features/pdp/utils/publicProductIntel';
 import type { PDPPayload } from '@/features/pdp/types';
@@ -314,7 +314,8 @@ type ServerPdpRenderData = {
  *
  * A degraded PDP render — gateway read failed, returned an empty payload, or
  * answered 200 with a non-empty `degraded_reads` (an incomplete catalog read;
- * getPdpV2Cached refuses to cache it and throws this sentinel) — must NEVER be stored by any full-route / CDN cache: on the static/ISR route
+ * getPdpV2Cached refuses to cache it and throws this sentinel) — must NEVER
+ * be stored by any full-route / CDN cache: on the static/ISR route
  * (`revalidate = 3600`) a single backend hiccup would pin an empty shell for
  * an hour on exactly the URLs we publish in the sitemap. The CDN
  * Cache-Control is deliberately left to Next (no static next.config header):
@@ -485,6 +486,10 @@ function isSettledServingIneligibility(err: unknown): boolean {
   return details.index_row_found === true && details.serving_eligible === false;
 }
 
+function isDegradedErrorBody(err: unknown): boolean {
+  return hasDegradedReads((err as any)?.detail);
+}
+
 /**
  * Classify a thrown gateway error as permanently unbuildable vs transient.
  *
@@ -493,6 +498,12 @@ function isSettledServingIneligibility(err: unknown): boolean {
  * re-probing.
  */
 export function classifyPdpFetchFailure(err: unknown): 'unbuildable' | 'degraded' {
+  // An error body the gateway marked `degraded_reads` was produced while a read
+  // behind it could not reach the database, so nothing in it is settled — not
+  // even an allowlisted reason or index_row_found. The gateway stamps the marker
+  // on EVERY JSON body sent after the mark, 4xx included; callGateway parks that
+  // body on `err.detail`. Checked first so no rule below can 404 it.
+  if (isDegradedErrorBody(err)) return 'degraded';
   const code = String((err as any)?.code || '').trim().toUpperCase();
   // Guard the allowlist behind the not-found code as well as the reason, so a
   // reason string echoed on some unrelated 5xx cannot 404 a live product.
@@ -528,6 +539,9 @@ export function classifyPdpFetchFailure(err: unknown): 'unbuildable' | 'degraded
  * probe about; nothing else is.
  */
 function isUnresolvedRouteIdFailure(err: unknown): boolean {
+  // A degraded body is the read failing, not the id being unknown: keep the 500
+  // and spare the database the probe while it is already struggling.
+  if (isDegradedErrorBody(err)) return false;
   const code = String((err as any)?.code || '').trim().toUpperCase();
   const status = Number((err as any)?.status);
   if (code === 'MISSING_MERCHANT_CONTEXT' && status === 400) return true;

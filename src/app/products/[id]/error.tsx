@@ -8,9 +8,9 @@ import ProductDetailClient from './ProductDetailClient';
  * Segment error boundary for the static/ISR canonical PDP route.
  *
  * A degraded server render (gateway hiccup / empty payload / a 200 marked
- * `degraded_reads`) THROWS on this route instead of shipping a 200 shell — a shell would be stored by the
- * full-route cache for `revalidate` seconds (see PDP_DEGRADED_RENDER_ERROR in
- * pdpServerPage). The throw keeps caches clean (failed fills store nothing;
+ * `degraded_reads`) THROWS on this route instead of shipping a 200 shell — a
+ * shell would be stored by the full-route cache for `revalidate` seconds (see
+ * PDP_DEGRADED_RENDER_ERROR in pdpServerPage). The throw keeps caches clean (failed fills store nothing;
  * failed background revalidations keep serving the last healthy page) and
  * lands here on CLIENT-SIDE navigations (the common human path: listing →
  * PDP), where this boundary renders the client PDP with no initial payload so

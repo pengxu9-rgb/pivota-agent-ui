@@ -17,6 +17,7 @@ import {
   type UgcCapabilities,
 } from '@/lib/api';
 import { STOREFRONT_MARKET, resolveBuyerMarket } from '@/lib/buyerMarket';
+import { hasDegradedReads, PDP_DEGRADED_REFRESH_IGNORED_LOG_TOKEN } from '@/lib/pdpDegradedRender';
 import { hasVerifiedSelectedCommerce, isPurchaseUnavailable, isReadOnlyCommerce, isVerifiedCommerce, refreshPdpCommerce, restrictPdpCommerce } from '@/features/pdp/utils/commerceAvailability';
 import { mapPdpV2ToPdpPayload } from '@/features/pdp/adapter/mapPdpV2ToPdpPayload';
 import { isBeautyProduct } from '@/features/pdp/utils/isBeautyProduct';
@@ -634,6 +635,9 @@ export default function ProductDetailPage({ params, initialPayload, serviceRecom
   const initialLoadState = initialPayload ? prepareLoadedPdpPayload(initialPayload) : null;
   const hasInitialPayload = Boolean(initialLoadState);
   const requiresCommerceRefresh = Boolean(initialPayload?.commerce_verification);
+  // Read by the browser re-read below, which must not swap this payload for a degraded one.
+  const serverPayloadRef = useRef<PDPPayload | null>(initialPayload ?? null);
+  serverPayloadRef.current = initialPayload ?? null;
 
   const [pdpPayload, setPdpPayload] = useState<PDPPayload | null>(() => initialLoadState?.payload ?? null);
   const [sellerCandidates, setSellerCandidates] = useState<ProductResponse[] | null>(null);
@@ -1065,6 +1069,27 @@ export default function ProductDetailPage({ params, initialPayload, serviceRecom
         setLoading(false);
       };
 
+      // A browser re-read the gateway marked `degraded_reads` was built from an
+      // incomplete catalog read. When the server rendered a payload, that payload is
+      // the last healthy page (on the canonical route getPdpV2Cached never caches a
+      // degraded read), so keep it and IGNORE the re-read. The re-read was what
+      // would have verified current price and purchase for this viewer, so the page
+      // says that could not be verified instead of offering a stale purchase.
+      //
+      // With no server payload there is nothing better to show, and the degraded
+      // payload renders as usual: the error.tsx client recovery after a failed
+      // canonical fill, and the force-dynamic /products/m/[id] alias when its own
+      // server read failed. When the alias's uncached server read DID return a
+      // payload it is kept like any other, even if that read was itself degraded
+      // (the server payload carries no marker); purchase then shows as unverified.
+      const keepServerPayloadOverDegradedRead = (serverPayload: PDPPayload) => {
+        console.warn(PDP_DEGRADED_REFRESH_IGNORED_LOG_TOKEN);
+        const prepared = prepareLoadedPdpPayload(serverPayload);
+        moduleSourceLocksRef.current = prepared.sourceLocks;
+        setPdpPayload((current) => ({ ...(current ?? prepared.payload), commerce_verification: 'failed' }));
+        setLoading(false);
+      };
+
       const fetchMappedPdp = async (request: {
         include: string[];
         timeoutMs: number;
@@ -1084,6 +1109,11 @@ export default function ProductDetailPage({ params, initialPayload, serviceRecom
           timeout_ms: request.timeoutMs,
         });
         if (cancelled) return;
+        const serverPayload = serverPayloadRef.current;
+        if (serverPayload && hasDegradedReads(v2)) {
+          keepServerPayloadOverDegradedRead(serverPayload);
+          return;
+        }
         const assembled = mapPdpV2ToPdpPayload(v2, { product_id: id, ...(routeIsProductGroup ? { subject: { type: 'product_group', id } } : { merchant_id: explicitMerchantId }) });
         if (!assembled) throw new Error('Invalid PDP response');
         commitLoadedPdp(assembled, request.source, startedAt);

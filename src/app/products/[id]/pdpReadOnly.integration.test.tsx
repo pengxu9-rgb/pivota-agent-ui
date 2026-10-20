@@ -21,6 +21,7 @@ import { COMMERCE_REFRESH_LEAD_MS, COMMERCE_REFRESH_RETRY_LEAD_MS, PdpContainer 
 import { renderPdpPage, PDP_DEGRADED_RENDER_ERROR } from './pdpServerPage';
 import ProductDetailClient, { dispatchedForPagePayload } from './ProductDetailClient';
 import { buildProductJsonLd } from './productJsonLd';
+import { PDP_DEGRADED_REFRESH_IGNORED_LOG_TOKEN } from '@/lib/pdpDegradedRender';
 
 const state = vi.hoisted(() => ({ id: '', desktop: false }));
 const api = vi.hoisted(() => ({ get: vi.fn(), cached: vi.fn(), cart: vi.fn(), push: vi.fn() }));
@@ -559,4 +560,50 @@ it('a product-line option the container verified is not re-checked against the p
   expect(dispatchedForPagePayload(page, page.product.product_id)).toBe(true);
   expect(dispatchedForPagePayload(page, undefined)).toBe(true);
   expect(dispatchedForPagePayload(page, 'sig_00000000000000000000000000000000')).toBe(false);
+});
+
+// The browser re-read of a cached PDP during a database incident. The gateway marks it
+// `degraded_reads`; when the server rendered a payload, that payload is the last healthy
+// page and wins. Only with no server payload does the partial read render.
+describe('a degraded_reads browser re-read', () => {
+  const PARTIAL_TITLE = 'Partial read title';
+  const partialRead = (degradedReads: string[] | null) => {
+    const response = body(verifiedFullCream);
+    canonical(response).pdp_payload.product.title = PARTIAL_TITLE;
+    if (degradedReads) response.degraded_reads = degradedReads;
+    return response;
+  };
+  const cachedServerPayload = () => {
+    const cached = body(verifiedFullCream);
+    cached.metadata.commerce_verification = 'refresh_required';
+    return cached;
+  };
+  const coreReadReturns = (response: unknown) =>
+    api.get.mockImplementation(async (args: any) => (args.include.includes('offers') ? response : body()));
+
+  it('control: a complete re-read replaces the server payload', async () => {
+    const cached = cachedServerPayload();
+    coreReadReturns(partialRead(null));
+    render(<ProductDetailClient params={Promise.resolve({ id: state.id })} initialPayload={mapPdpV2ToPdpPayload(cached)!} />);
+    expect((await screen.findAllByText(PARTIAL_TITLE)).length).toBeGreaterThan(0);
+  });
+
+  it('is ignored when the server rendered a payload: healthy content stays, purchase shows as unverified, logged once', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const cached = cachedServerPayload();
+    coreReadReturns(partialRead(['catalog_signature_partial']));
+    render(<ProductDetailClient params={Promise.resolve({ id: state.id })} initialPayload={mapPdpV2ToPdpPayload(cached)!} />);
+    await waitFor(() => expect(coreReads()).toHaveLength(1));
+    await screen.findByText('Current price and purchase availability could not be verified');
+    expect(screen.queryByText(PARTIAL_TITLE)).toBeNull();
+    expect(screen.getAllByText(canonical(cached).pdp_payload.product.title).length).toBeGreaterThan(0);
+    expectNoPurchases();
+    expect(warn.mock.calls.filter(([line]) => line === PDP_DEGRADED_REFRESH_IGNORED_LOG_TOKEN)).toHaveLength(1);
+  });
+
+  it('renders when there is no server payload (client recovery), since nothing better exists', async () => {
+    coreReadReturns(partialRead(['catalog_signature_partial']));
+    render(<ProductDetailClient params={Promise.resolve({ id: state.id })} initialPayload={null} />);
+    expect((await screen.findAllByText(PARTIAL_TITLE)).length).toBeGreaterThan(0);
+  });
 });
