@@ -16,6 +16,7 @@ import { buildProductDescription } from './productDescription';
 import { unstable_rethrow } from 'next/navigation';
 import { buildProductJsonLd } from './productJsonLd';
 import { getPdpRouteIdExistenceCached, getPdpV2, getPdpV2Cached, getServicesBrowse } from '@/lib/api';
+import { PDP_DEGRADED_RENDER_ERROR } from '@/lib/pdpDegradedRender';
 import { mapPdpV2ToPdpPayload } from '@/features/pdp/adapter/mapPdpV2ToPdpPayload';
 import { projectPublicInsightsPayload } from '@/features/pdp/utils/publicProductIntel';
 import type { PDPPayload } from '@/features/pdp/types';
@@ -311,8 +312,9 @@ type ServerPdpRenderData = {
  * Degraded-render handling (S1 follow-up to the crawl-collapse fix, revised
  * for the static/ISR flip).
  *
- * A degraded PDP render — gateway read failed or returned an empty payload —
- * must NEVER be stored by any full-route / CDN cache: on the static/ISR route
+ * A degraded PDP render — gateway read failed, returned an empty payload, or
+ * answered 200 with a non-empty `degraded_reads` (an incomplete catalog read;
+ * getPdpV2Cached refuses to cache it and throws this sentinel) — must NEVER be stored by any full-route / CDN cache: on the static/ISR route
  * (`revalidate = 3600`) a single backend hiccup would pin an empty shell for
  * an hour on exactly the URLs we publish in the sitemap. The CDN
  * Cache-Control is deliberately left to Next (no static next.config header):
@@ -343,7 +345,7 @@ type ServerPdpRenderData = {
  * Successful renders must never reach either path — caching healthy canonical
  * PDPs is the whole point of the crawl-collapse fix.
  */
-export const PDP_DEGRADED_RENDER_ERROR = 'PDP_DEGRADED_RENDER_UNCACHEABLE';
+export { PDP_DEGRADED_RENDER_ERROR };
 
 function markDegradedPdpRenderUncacheable(): void {
   unstable_noStore();

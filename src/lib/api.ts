@@ -27,6 +27,7 @@ import type {
 } from '@/features/services/lib/types'
 import { getProviderListings } from '@/features/services/lib/types'
 import { resolveBuyerMarket } from '@/lib/buyerMarket'
+import { hasDegradedReads, PDP_DEGRADED_READS_LOG_TOKEN, PDP_DEGRADED_RENDER_ERROR } from '@/lib/pdpDegradedRender'
 
 export type {
   BookingContact,
@@ -515,6 +516,8 @@ export type GetPdpV2Response = {
   modules?: GetPdpV2Module[];
   warnings?: any[];
   missing?: Array<{ type: string; reason?: string }>;
+  /** Set by the gateway on a 200 built from an incomplete read; see hasDegradedReads. */
+  degraded_reads?: unknown;
 };
 
 export function normalizeProductDescriptionText(value: unknown): string {
@@ -3436,6 +3439,19 @@ export async function getPdpV2Cached(args: {
         gatewayBaseUrl: args.gatewayBaseUrl,
         serving_eligible_only: args.serving_eligible_only,
       });
+      // Do NOT cache a 200 the gateway marked degraded (`degraded_reads`): it was
+      // assembled while a catalog read could not reach the database, so it may be
+      // missing content, and the gateway's `Cache-Control: no-store` never reaches
+      // this layer (unstable_cache stores the returned VALUE, not the response).
+      // Throwing here, inside the cached function, means nothing is stored: on a
+      // cold entry the rejection reaches the page, which classifies it `degraded`
+      // (never `unbuildable`, so never a 404) and throws PDP_DEGRADED_RENDER_ERROR;
+      // on a stale entry Next swallows the rejection and keeps returning the last
+      // healthy value. One log line per gateway read, fixed token, no identifiers.
+      if (hasDegradedReads(res)) {
+        console.warn(PDP_DEGRADED_READS_LOG_TOKEN);
+        throw new Error(PDP_DEGRADED_RENDER_ERROR);
+      }
       // Do NOT cache an empty/blocked payload: a product mid-ingestion or a
       // transient serving-eligibility flap returns 200-but-no-modules, and
       // caching that would serve degraded SSR (no JSON-LD/metadata) to crawlers
