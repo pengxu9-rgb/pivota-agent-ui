@@ -23,9 +23,10 @@ vi.mock('next/navigation', async (importOriginal) => ({
 
 // unstable_cache as a passthrough: the cache-store semantics are pinned in
 // src/lib/api.pdpDegradedReads.test.ts; this file pins what the route does with the throw.
+const noStoreMock = vi.hoisted(() => vi.fn());
 vi.mock('next/cache', () => ({
   unstable_cache: (fn: (...args: unknown[]) => unknown) => fn,
-  unstable_noStore: vi.fn(),
+  unstable_noStore: () => noStoreMock(),
 }));
 
 vi.mock('./ProductDetailClient', () => ({
@@ -57,6 +58,7 @@ const renderLayout = () => ProductDetailLayout({ params: Promise.resolve({ id: S
 describe('a degraded_reads 200 on the canonical PDP route', () => {
   beforeEach(() => {
     notFoundMock.mockClear();
+    noStoreMock.mockClear();
     vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     vi.stubEnv('NEXT_PUBLIC_APP_URL', '');
     vi.stubEnv('VERCEL_URL', '');
@@ -82,6 +84,10 @@ describe('a degraded_reads 200 on the canonical PDP route', () => {
     await expect(ProductDetailPage(routeProps())).rejects.toThrow(PDP_DEGRADED_RENDER_ERROR);
     expect(notFoundMock).not.toHaveBeenCalled();
     expect(operations).toEqual(['get_pdp_v2']);
+    // Tripwire: on this ISR route Next 15.5 turns a noStore() during the fill into a
+    // DynamicServerError / "static to dynamic at runtime" 500, so the degraded path must
+    // throw the sentinel, never try to opt the request into dynamic rendering.
+    expect(noStoreMock).not.toHaveBeenCalled();
   });
 
   it('the layout neither 404s nor emits JSON-LD built from the incomplete read', async () => {
