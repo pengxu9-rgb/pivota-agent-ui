@@ -263,6 +263,55 @@ export function refreshPdpCommerce(current: PDPPayload, fresh: PDPPayload | null
   };
 }
 
+function variantIdSet(variants: unknown): Set<string> | null {
+  if (!Array.isArray(variants)) return null;
+  const ids = variants.map((variant: any) => String(variant?.variant_id || '').trim());
+  if (ids.some((variantId) => !variantId)) return null;
+  const set = new Set(ids);
+  return set.size === ids.length ? set : null;
+}
+
+/**
+ * The commerce of a browser re-read the gateway marked `degraded_reads`, applied to
+ * the server payload it must not replace — or null when that re-read cannot
+ * authorize purchase on this page.
+ *
+ * A degraded read was built while part of the catalog read was missing, so only its
+ * current-offer proof may be used, and only when that proof is bound to exactly what
+ * the page already shows:
+ * - fresh and unexpired on this browser's clock (isFreshVerifiedCommerce), and not
+ *   itself pending verification;
+ * - same listing: product id and merchant on both payloads, and the proof's
+ *   product_ref names the page's seller and source product;
+ * - same variant set: the re-read's variants are exactly the page's variants, and
+ *   every verified variant (the selected one included) is one of them.
+ * Money and currency consistency between the proof and the re-read's variants is
+ * already required by mapPdpV2ToPdpPayload (isValidVerifiedPdpResponse), and the
+ * re-read itself was made in the buyer's market, as every browser read is.
+ *
+ * The merge is refreshPdpCommerce — the same commerce-only merge the timed commerce
+ * refresh uses — with the page's own quality_signals kept, so no non-commerce field
+ * of the degraded read reaches the page.
+ */
+export function mergeDegradedReadCommerce(server: PDPPayload, fresh: PDPPayload | null, now = Date.now()): PDPPayload | null {
+  if (!fresh || fresh.commerce_verification || !isFreshVerifiedCommerce(fresh.commerce, now)) return null;
+  const proof = fresh.commerce;
+  const product = server.product;
+  if (fresh.product.product_id !== product.product_id || fresh.product.merchant_id !== product.merchant_id ||
+      proof.product_ref.merchant_id !== product.merchant_id ||
+      proof.product_ref.product_id !== (product.source_product_id || product.product_id)) return null;
+  const serverVariants = variantIdSet(product.variants);
+  const freshVariants = variantIdSet(fresh.product.variants);
+  if (!serverVariants || !freshVariants || serverVariants.size !== freshVariants.size ||
+      [...freshVariants].some((variantId) => !serverVariants.has(variantId)) ||
+      !serverVariants.has(proof.selected_variant_id) ||
+      !proof.verified_variants.every((entry) => serverVariants.has(entry.variant_id))) return null;
+  // Every check refreshPdpCommerce makes has already passed, so this always applies the proof.
+  const merged = refreshPdpCommerce(server, fresh, now);
+  const { quality_signals: _degradedSignals, ...rest } = merged;
+  return { ...rest, ...(server.quality_signals ? { quality_signals: server.quality_signals } : {}) };
+}
+
 /** A receipt for one seller/variant never authorizes a later different selection. */
 export function hasVerifiedSelectedCommerce(payload: Pick<PDPPayload, 'product' | 'commerce' | 'commerce_verification'>, variant: any,
   selected: { merchantId?: string | null; productId?: string | null; offer?: any } = {}): boolean {

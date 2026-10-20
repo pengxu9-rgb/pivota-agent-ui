@@ -564,13 +564,30 @@ it('a product-line option the container verified is not re-checked against the p
 
 // The browser re-read of a cached PDP during a database incident. The gateway marks it
 // `degraded_reads`; when the server rendered a payload, that payload is the last healthy
-// page and wins. Only with no server payload does the partial read render.
+// page and is never replaced. Peng: "keep page, allow buying if verified" -- a fresh
+// proof bound to this exact listing and variant set is merged in (commerce only); anything
+// else leaves purchase unverified. Only with no server payload does the partial read render.
 describe('a degraded_reads browser re-read', () => {
   const PARTIAL_TITLE = 'Partial read title';
-  const partialRead = (degradedReads: string[] | null) => {
-    const response = body(verifiedFullCream);
-    canonical(response).pdp_payload.product.title = PARTIAL_TITLE;
-    if (degradedReads) response.degraded_reads = degradedReads;
+  const UNVERIFIED = 'Current price and purchase availability could not be verified';
+  const DEGRADED = ['catalog_signature_partial'];
+  const partialRead = (receipt: any, change?: 'stale' | 'other_variant_set' | 'other_product') => {
+    let response = body(receipt);
+    const data = canonical(response);
+    data.pdp_payload.product.title = PARTIAL_TITLE;
+    if (change === 'other_variant_set') {
+      const extra = structuredClone(data.pdp_payload.product.variants[0]);
+      extra.variant_id = 'variant_not_on_this_page';
+      data.pdp_payload.product.variants.push(extra);
+    }
+    if (change === 'other_product') {
+      for (const proof of [response.metadata.commerce, data.commerce, data.pdp_payload.commerce]) {
+        proof.product_ref.product_id = 'another_product';
+      }
+    }
+    // Received two minutes ago: a 60s proof that has lapsed on this browser's clock.
+    if (change === 'stale') response = stampPdpResponseCommerce(response, Date.now() - 120000);
+    response.degraded_reads = DEGRADED;
     return response;
   };
   const cachedServerPayload = () => {
@@ -578,31 +595,57 @@ describe('a degraded_reads browser re-read', () => {
     cached.metadata.commerce_verification = 'refresh_required';
     return cached;
   };
+  // The similar/content module reads answer with a complete verified body: a read-only
+  // reply there legitimately revokes purchase (restrictPdpCommerce), which is not under test.
   const coreReadReturns = (response: unknown) =>
-    api.get.mockImplementation(async (args: any) => (args.include.includes('offers') ? response : body()));
+    api.get.mockImplementation(async (args: any) => (args.include.includes('offers') ? response : body(verifiedFullCream)));
+  const renderWithServerPayload = (cached: any) =>
+    render(<ProductDetailClient params={Promise.resolve({ id: state.id })} initialPayload={mapPdpV2ToPdpPayload(cached)!} />);
+  const ignoredLines = (warn: ReturnType<typeof vi.spyOn>) =>
+    warn.mock.calls.filter(([line]: unknown[]) => line === PDP_DEGRADED_REFRESH_IGNORED_LOG_TOKEN);
 
   it('control: a complete re-read replaces the server payload', async () => {
-    const cached = cachedServerPayload();
-    coreReadReturns(partialRead(null));
-    render(<ProductDetailClient params={Promise.resolve({ id: state.id })} initialPayload={mapPdpV2ToPdpPayload(cached)!} />);
+    const complete = body(verifiedFullCream);
+    canonical(complete).pdp_payload.product.title = PARTIAL_TITLE;
+    coreReadReturns(complete);
+    renderWithServerPayload(cachedServerPayload());
     expect((await screen.findAllByText(PARTIAL_TITLE)).length).toBeGreaterThan(0);
   });
 
-  it('is ignored when the server rendered a payload: healthy content stays, purchase shows as unverified, logged once', async () => {
+  it('with a fresh proof for this listing: server content kept, purchase enabled at the proof price, logged once', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     const cached = cachedServerPayload();
-    coreReadReturns(partialRead(['catalog_signature_partial']));
-    render(<ProductDetailClient params={Promise.resolve({ id: state.id })} initialPayload={mapPdpV2ToPdpPayload(cached)!} />);
-    await waitFor(() => expect(coreReads()).toHaveLength(1));
-    await screen.findByText('Current price and purchase availability could not be verified');
+    coreReadReturns(partialRead(verifiedFullCream));
+    renderWithServerPayload(cached);
+    await waitFor(() => expect(screen.getByRole('button', { name: /view at retailer/i })).toBeEnabled());
+    expect(screen.getAllByText('$19.95').length).toBeGreaterThan(0);
     expect(screen.queryByText(PARTIAL_TITLE)).toBeNull();
     expect(screen.getAllByText(canonical(cached).pdp_payload.product.title).length).toBeGreaterThan(0);
+    expect(screen.queryByText(UNVERIFIED)).toBeNull();
+    expect(ignoredLines(warn)).toHaveLength(1);
+  });
+
+  it.each([
+    ['a stale proof', verifiedFullCream, 'stale'],
+    ['a proof for another variant set', verifiedFullCream, 'other_variant_set'],
+    ['a proof for another product', verifiedFullCream, 'other_product'],
+    ['no proof (read-only reply)', fullCream, undefined],
+  ] as const)('with %s: server content kept, purchase unverified', async (_label, receipt, change) => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const cached = cachedServerPayload();
+    coreReadReturns(partialRead(receipt, change));
+    renderWithServerPayload(cached);
+    await waitFor(() => expect(coreReads()).toHaveLength(1));
+    await screen.findByText(UNVERIFIED);
+    expect(screen.queryByText(PARTIAL_TITLE)).toBeNull();
+    expect(screen.getAllByText(canonical(cached).pdp_payload.product.title).length).toBeGreaterThan(0);
+    expect(document.body.textContent).not.toContain('$19.95');
     expectNoPurchases();
-    expect(warn.mock.calls.filter(([line]) => line === PDP_DEGRADED_REFRESH_IGNORED_LOG_TOKEN)).toHaveLength(1);
+    expect(ignoredLines(warn)).toHaveLength(1);
   });
 
   it('renders when there is no server payload (client recovery), since nothing better exists', async () => {
-    coreReadReturns(partialRead(['catalog_signature_partial']));
+    coreReadReturns(partialRead(fullCream));
     render(<ProductDetailClient params={Promise.resolve({ id: state.id })} initialPayload={null} />);
     expect((await screen.findAllByText(PARTIAL_TITLE)).length).toBeGreaterThan(0);
   });
