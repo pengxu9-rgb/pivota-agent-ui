@@ -1,0 +1,318 @@
+{
+ "modules": [
+  {
+   "type": "canonical",
+   "data": {
+    "pdp_payload": {
+     "product": {
+      "product_id": "ext_lsm",
+      "merchant_id": "merch_obs_laneige",
+      "title": "Lip Sleeping Mask",
+      "pdp_schema_profile": "beauty_formula",
+      "subtitle": "",
+      "category_path": [],
+      "category_kind": "beauty",
+      "image_url": "/api/image-proxy?url=https%3A%2F%2Fcdn.example%2Flsm.jpg",
+      "source": "external_seed",
+      "readiness_tier": null,
+      "serving_eligible": false,
+      "purchase_route": null,
+      "commerce_mode": null,
+      "checkout_handoff": null,
+      "external_redirect_url": "https://us.laneige.com/products/lip-sleeping-mask",
+      "destination_url": "https://us.laneige.com/products/lip-sleeping-mask",
+      "default_variant_id": "48087970185268",
+      "variants": [
+       {
+        "variant_id": "48087970185268",
+        "title": "Lemon Sorbet",
+        "options": [
+         {
+          "name": "Flavor",
+          "value": "Lemon Sorbet"
+         }
+        ],
+        "price": {
+         "current": {
+          "amount": 26,
+          "currency": "USD"
+         },
+         "compare_at": {
+          "amount": 30,
+          "currency": "USD"
+         }
+        },
+        "availability": {
+         "in_stock": false,
+         "available_quantity": 0
+        },
+        "label_image_url": "",
+        "images": [],
+        "image_urls": [],
+        "axis_kind": "",
+        "display_label": "",
+        "source_quality_status": ""
+       },
+       {
+        "variant_id": "31760703160372",
+        "title": "Berry",
+        "options": [
+         {
+          "name": "Flavor",
+          "value": "Berry"
+         }
+        ],
+        "price": {
+         "current": {
+          "amount": 26,
+          "currency": "USD"
+         },
+         "compare_at": {
+          "amount": 30,
+          "currency": "USD"
+         }
+        },
+        "availability": {
+         "in_stock": false,
+         "available_quantity": 0
+        },
+        "label_image_url": "",
+        "images": [],
+        "image_urls": [],
+        "axis_kind": "",
+        "display_label": "",
+        "source_quality_status": ""
+       }
+      ],
+      "purchase_grain": "variant",
+      "price": {
+       "current": {
+        "amount": 26,
+        "currency": "USD"
+       },
+       "compare_at": {
+        "amount": 30,
+        "currency": "USD"
+       }
+      },
+      "availability": {}
+     },
+     "modules": [
+      {
+       "type": "price_promo",
+       "data": {
+        "price": {
+         "amount": 26,
+         "currency": "USD"
+        },
+        "compare_at": {
+         "amount": 30,
+         "currency": "USD"
+        },
+        "promotions": []
+       }
+      },
+      {
+       "type": "variant_selector",
+       "data": {
+        "selected_variant_id": "48087970185268",
+        "variants": [
+         {
+          "variant_id": "48087970185268",
+          "title": "Lemon Sorbet",
+          "display_label": "Flavor: Lemon Sorbet",
+          "options": [
+           {
+            "name": "Flavor",
+            "value": "Lemon Sorbet"
+           }
+          ],
+          "price": {
+           "current": {
+            "amount": 26,
+            "currency": "USD"
+           },
+           "compare_at": {
+            "amount": 30,
+            "currency": "USD"
+           }
+          },
+          "availability": {
+           "in_stock": false,
+           "available_quantity": 0
+          }
+         },
+         {
+          "variant_id": "31760703160372",
+          "title": "Berry",
+          "display_label": "Flavor: Berry",
+          "options": [
+           {
+            "name": "Flavor",
+            "value": "Berry"
+           }
+          ],
+          "price": {
+           "current": {
+            "amount": 26,
+            "currency": "USD"
+           },
+           "compare_at": {
+            "amount": 30,
+            "currency": "USD"
+           }
+          },
+          "availability": {
+           "in_stock": false,
+           "available_quantity": 0
+          }
+         }
+        ],
+        "options": [
+         {
+          "name": "Flavor",
+          "values": [
+           {
+            "value": "Lemon Sorbet",
+            "label": "Lemon Sorbet",
+            "variant_ids": [
+             "48087970185268"
+            ],
+            "selected": true
+           },
+           {
+            "value": "Berry",
+            "label": "Berry",
+            "variant_ids": [
+             "31760703160372"
+            ],
+            "selected": false
+           }
+          ]
+         }
+        ]
+       }
+      }
+     ],
+     "actions": [
+      {
+       "action_type": "add_to_cart",
+       "label": "Add to Cart",
+       "priority": 20,
+       "target": {}
+      },
+      {
+       "action_type": "buy_now",
+       "label": "Buy Now",
+       "priority": 10,
+       "target": {}
+      }
+     ]
+    }
+   }
+  },
+  {
+   "type": "variant_selector",
+   "data": {
+    "selected_variant_id": "48087970185268",
+    "variants": [
+     {
+      "variant_id": "48087970185268",
+      "title": "Lemon Sorbet",
+      "display_label": "Flavor: Lemon Sorbet",
+      "options": [
+       {
+        "name": "Flavor",
+        "value": "Lemon Sorbet"
+       }
+      ],
+      "price": {
+       "current": {
+        "amount": 26,
+        "currency": "USD"
+       },
+       "compare_at": {
+        "amount": 30,
+        "currency": "USD"
+       }
+      },
+      "availability": {
+       "in_stock": false,
+       "available_quantity": 0
+      }
+     },
+     {
+      "variant_id": "31760703160372",
+      "title": "Berry",
+      "display_label": "Flavor: Berry",
+      "options": [
+       {
+        "name": "Flavor",
+        "value": "Berry"
+       }
+      ],
+      "price": {
+       "current": {
+        "amount": 26,
+        "currency": "USD"
+       },
+       "compare_at": {
+        "amount": 30,
+        "currency": "USD"
+       }
+      },
+      "availability": {
+       "in_stock": false,
+       "available_quantity": 0
+      }
+     }
+    ],
+    "options": [
+     {
+      "name": "Flavor",
+      "values": [
+       {
+        "value": "Lemon Sorbet",
+        "label": "Lemon Sorbet",
+        "variant_ids": [
+         "48087970185268"
+        ],
+        "selected": true
+       },
+       {
+        "value": "Berry",
+        "label": "Berry",
+        "variant_ids": [
+         "31760703160372"
+        ],
+        "selected": false
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "type": "offers",
+   "data": {
+    "offers": [
+     {
+      "offer_id": "of_card",
+      "merchant_id": "merch_obs_laneige",
+      "product_id": "ext_lsm",
+      "selected_variant_id": "48087970185268",
+      "price": {
+       "amount": 26,
+       "currency": "USD"
+      },
+      "inventory": {
+       "in_stock": false
+      }
+     }
+    ],
+    "best_price_offer_id": "of_card",
+    "default_offer_id": "of_card"
+   }
+  }
+ ]
+}

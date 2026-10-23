@@ -19,6 +19,7 @@ import {
 import { STOREFRONT_MARKET, resolveBuyerMarket } from '@/lib/buyerMarket';
 import { hasVerifiedSelectedCommerce, isPurchaseUnavailable, isReadOnlyCommerce, isVerifiedCommerce, refreshPdpCommerce, restrictPdpCommerce } from '@/features/pdp/utils/commerceAvailability';
 import { mapPdpV2ToPdpPayload } from '@/features/pdp/adapter/mapPdpV2ToPdpPayload';
+import { usePdpLiveRefresh } from '@/features/pdp/hooks/usePdpLiveRefresh';
 import { isBeautyProduct } from '@/features/pdp/utils/isBeautyProduct';
 import { BeautyPDPContainer } from '@/features/pdp/containers/BeautyPDPContainer';
 import { GenericPDPContainer } from '@/features/pdp/containers/GenericPDPContainer';
@@ -649,6 +650,9 @@ export default function ProductDetailPage({ params, initialPayload, serviceRecom
   const similarDeferredRetryCountRef = useRef(0);
   const similarDeferredRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [ugcCapabilities, setUgcCapabilities] = useState<UgcCapabilities | null>(() => buildPublicUgcCapabilities());
+  // After the page renders, ask the merchant's live price and stock once and apply it silently
+  // (PDP async live refresh; NEXT_PUBLIC_PDP_LIVE_REFRESH, default off).
+  usePdpLiveRefresh({ payload: pdpPayload, loading, setPayload: setPdpPayload });
 
   const { addItem, open } = useCartStore();
   const inferredMerchantId = inferCanonicalPdpMerchantId(id, merchantIdParam);
@@ -1082,6 +1086,9 @@ export default function ProductDetailPage({ params, initialPayload, serviceRecom
           cache_bypass: requiresCommerceRefresh,
           include: request.include,
           timeout_ms: request.timeoutMs,
+          // The browser re-read (a non-storefront buyer market, a checkout token, or no SSR payload)
+          // asks for its own live-refresh descriptor, keyed to the market this call carries.
+          live_refresh: true,
         });
         if (cancelled) return;
         const assembled = mapPdpV2ToPdpPayload(v2, { product_id: id, ...(routeIsProductGroup ? { subject: { type: 'product_group', id } } : { merchant_id: explicitMerchantId }) });

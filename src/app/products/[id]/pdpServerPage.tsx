@@ -647,6 +647,10 @@ async function _fetchPdpForServerRenderUncached(
     ],
     timeout_ms: PDP_SERVER_FETCH_TIMEOUT_MS,
     gatewayBaseUrl: resolveServerGatewayBaseUrl(),
+    // PDP async live refresh (contract v1): ask for the page's live-refresh descriptor. The gateway
+    // issues one only for a normally served page it can re-read; the browser uses it only when
+    // NEXT_PUBLIC_PDP_LIVE_REFRESH is on. JSON-LD and the server HTML never read it.
+    live_refresh: true,
   };
   type Attempt = { outcome: PdpFetchOutcome; retryable: boolean; unresolvedRouteId?: boolean };
 

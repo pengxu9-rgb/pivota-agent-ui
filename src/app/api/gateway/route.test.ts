@@ -1311,3 +1311,61 @@ describe('/api/gateway stamps the buyer market from the cookies on a body that n
   });
 });
 
+
+describe('/api/gateway forwards pdp_live_read (PDP async live refresh) on the shop lane', () => {
+  beforeEach(() => {
+    vi.useRealTimers();
+    vi.resetModules();
+    vi.restoreAllMocks();
+    vi.unstubAllEnvs();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllEnvs();
+  });
+
+  const body = {
+    operation: 'pdp_live_read',
+    payload: {
+      live_refresh_token: 'v1.eyJ2IjoxfQ.bWFj',
+      page: { modules: [{ type: 'canonical', data: { pdp_payload: { product: { product_id: 'sig_x' } } } }] },
+    },
+    metadata: { market: 'US' },
+  };
+
+  const post = async (upstream: Response) => {
+    vi.stubEnv('SHOP_UPSTREAM_API_URL', 'https://invoke.example.com');
+    vi.stubEnv('PIVOTA_BACKEND_BASE_URL', 'https://checkout.example.com');
+    vi.stubEnv('NEXT_PUBLIC_REVIEWS_API_URL', 'https://reviews.example.com');
+    vi.stubEnv('NEXT_PUBLIC_AGENT_API_KEY', 'ak_live_testkey');
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(upstream);
+    const { POST } = await import('@/app/api/gateway/route');
+    const res = await POST(
+      new Request('http://localhost/api/gateway', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      }) as any,
+    );
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    return { res, url, init, fetchMock };
+  };
+
+  it('to the shop invoke upstream, credentialed like the shop lane, with the body as sent', async () => {
+    const answer = { status: 'success', live_refresh: { mode: 'shadow', outcome: 'confirmed', reason: null } };
+    const { res, url, init, fetchMock } = await post(jsonResponse(answer));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(url).toBe('https://invoke.example.com/agent/shop/v1/invoke');
+    expect(init.method).toBe('POST');
+    expect((init.headers as Record<string, string>)['X-API-Key']).toBe('ak_live_testkey');
+    expect(JSON.parse(String(init.body))).toEqual(body);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual(answer);
+  });
+
+  it('relays an older gateway\'s 400 for an unknown operation unchanged', async () => {
+    const { res } = await post(jsonResponse({ error: 'Invalid request' }, 400));
+    expect(res.status).toBe(400);
+  });
+});
