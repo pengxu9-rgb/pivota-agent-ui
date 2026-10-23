@@ -16,6 +16,7 @@ import { buildProductDescription } from './productDescription';
 import { unstable_rethrow } from 'next/navigation';
 import { buildProductJsonLd } from './productJsonLd';
 import { getPdpRouteIdExistenceCached, getPdpV2, getPdpV2Cached, getServicesBrowse } from '@/lib/api';
+import { hasDegradedReads, PDP_DEGRADED_RENDER_ERROR } from '@/lib/pdpDegradedRender';
 import { mapPdpV2ToPdpPayload } from '@/features/pdp/adapter/mapPdpV2ToPdpPayload';
 import { projectPublicInsightsPayload } from '@/features/pdp/utils/publicProductIntel';
 import type { PDPPayload } from '@/features/pdp/types';
@@ -305,14 +306,36 @@ type ServerPdpRenderData = {
   initialPayload: PDPPayload;
   product: Record<string, any>;
   canonicalRouteId: string;
+  /** The currency the server read priced this page in (see readServerPriceCurrency). */
+  priceCurrency: string | null;
 };
+
+/**
+ * The currency the server's get_pdp_v2 read priced the product in, read from the raw
+ * reply. The mapped payload cannot carry it: on the cached route the adapter strips
+ * every price before the payload reaches the browser. The browser uses it as the page
+ * currency a degraded re-read's proof must match (mergeDegradedReadCommerce), so a
+ * degraded read can never switch the page to another market's currency.
+ */
+function readServerPriceCurrency(v2: unknown): string | null {
+  const modules = Array.isArray((v2 as any)?.modules) ? (v2 as any).modules : [];
+  const product = modules.find((module: any) => module?.type === 'canonical')?.data?.pdp_payload?.product;
+  const candidates = [
+    product?.price?.current?.currency,
+    ...(Array.isArray(product?.variants) ? product.variants.map((variant: any) => variant?.price?.current?.currency) : []),
+  ];
+  const currency = candidates.find((value) => typeof value === 'string' && /^[A-Z]{3}$/.test(value));
+  return typeof currency === 'string' ? currency : null;
+}
 
 /**
  * Degraded-render handling (S1 follow-up to the crawl-collapse fix, revised
  * for the static/ISR flip).
  *
- * A degraded PDP render — gateway read failed or returned an empty payload —
- * must NEVER be stored by any full-route / CDN cache: on the static/ISR route
+ * A degraded PDP render — gateway read failed, returned an empty payload, or
+ * answered 200 with a non-empty `degraded_reads` (an incomplete catalog read;
+ * getPdpV2Cached refuses to cache it and throws this sentinel) — must NEVER
+ * be stored by any full-route / CDN cache: on the static/ISR route
  * (`revalidate = 3600`) a single backend hiccup would pin an empty shell for
  * an hour on exactly the URLs we publish in the sitemap. The CDN
  * Cache-Control is deliberately left to Next (no static next.config header):
@@ -343,7 +366,7 @@ type ServerPdpRenderData = {
  * Successful renders must never reach either path — caching healthy canonical
  * PDPs is the whole point of the crawl-collapse fix.
  */
-export const PDP_DEGRADED_RENDER_ERROR = 'PDP_DEGRADED_RENDER_UNCACHEABLE';
+export { PDP_DEGRADED_RENDER_ERROR };
 
 function markDegradedPdpRenderUncacheable(): void {
   unstable_noStore();
@@ -483,6 +506,10 @@ function isSettledServingIneligibility(err: unknown): boolean {
   return details.index_row_found === true && details.serving_eligible === false;
 }
 
+function isDegradedErrorBody(err: unknown): boolean {
+  return hasDegradedReads((err as any)?.detail);
+}
+
 /**
  * Classify a thrown gateway error as permanently unbuildable vs transient.
  *
@@ -491,6 +518,12 @@ function isSettledServingIneligibility(err: unknown): boolean {
  * re-probing.
  */
 export function classifyPdpFetchFailure(err: unknown): 'unbuildable' | 'degraded' {
+  // An error body the gateway marked `degraded_reads` was produced while a read
+  // behind it could not reach the database, so nothing in it is settled — not
+  // even an allowlisted reason or index_row_found. The gateway stamps the marker
+  // on EVERY JSON body sent after the mark, 4xx included; callGateway parks that
+  // body on `err.detail`. Checked first so no rule below can 404 it.
+  if (isDegradedErrorBody(err)) return 'degraded';
   const code = String((err as any)?.code || '').trim().toUpperCase();
   // Guard the allowlist behind the not-found code as well as the reason, so a
   // reason string echoed on some unrelated 5xx cannot 404 a live product.
@@ -526,6 +559,9 @@ export function classifyPdpFetchFailure(err: unknown): 'unbuildable' | 'degraded
  * probe about; nothing else is.
  */
 function isUnresolvedRouteIdFailure(err: unknown): boolean {
+  // A degraded body is the read failing, not the id being unknown: keep the 500
+  // and spare the database the probe while it is already struggling.
+  if (isDegradedErrorBody(err)) return false;
   const code = String((err as any)?.code || '').trim().toUpperCase();
   const status = Number((err as any)?.status);
   if (code === 'MISSING_MERCHANT_CONTEXT' && status === 400) return true;
@@ -665,6 +701,7 @@ async function _fetchPdpForServerRenderUncached(
               initialPayload,
               product: buildJsonLdProduct(initialPayload),
               canonicalRouteId: readServerCanonicalRouteId(v2, initialPayload, productId),
+              priceCurrency: readServerPriceCurrency(v2),
             },
           },
           retryable: false,
@@ -1075,6 +1112,7 @@ export async function renderPdpPage(props: PdpRouteProps, mode: PdpRouteMode) {
         key={JSON.stringify([productId || null, merchantId || null])}
         params={props.params}
         initialPayload={renderData?.initialPayload ?? null}
+        initialPayloadCurrency={renderData?.priceCurrency ?? null}
         serviceRecommendations={serviceRecommendations}
         // Server snapshot for useUrlSearchParams. '' on the canonical route
         // (anonymous by contract), the real query on the force-dynamic alias.

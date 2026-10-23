@@ -21,6 +21,7 @@ import { COMMERCE_REFRESH_LEAD_MS, COMMERCE_REFRESH_RETRY_LEAD_MS, PdpContainer 
 import { renderPdpPage, PDP_DEGRADED_RENDER_ERROR } from './pdpServerPage';
 import ProductDetailClient, { dispatchedForPagePayload } from './ProductDetailClient';
 import { buildProductJsonLd } from './productJsonLd';
+import { PDP_DEGRADED_CLIENT_LOG_TOKENS, PDP_DEGRADED_REFRESH_IGNORED_LOG_TOKEN } from '@/lib/pdpDegradedRender';
 
 const state = vi.hoisted(() => ({ id: '', desktop: false }));
 const api = vi.hoisted(() => ({ get: vi.fn(), cached: vi.fn(), cart: vi.fn(), push: vi.fn() }));
@@ -559,4 +560,378 @@ it('a product-line option the container verified is not re-checked against the p
   expect(dispatchedForPagePayload(page, page.product.product_id)).toBe(true);
   expect(dispatchedForPagePayload(page, undefined)).toBe(true);
   expect(dispatchedForPagePayload(page, 'sig_00000000000000000000000000000000')).toBe(false);
+});
+
+// The browser re-read of a cached PDP during a database incident. The gateway marks it
+// `degraded_reads`; when the server rendered a payload, that payload is the last healthy
+// page and is never replaced. Peng: "keep page, allow buying if verified" -- a fresh
+// proof bound to this exact listing and variant set is merged in (commerce only); anything
+// else leaves purchase unverified. Only with no server payload does the partial read render.
+describe('a degraded_reads browser re-read', () => {
+  const PARTIAL_TITLE = 'Partial read title';
+  const UNVERIFIED = 'Current price and purchase availability could not be verified';
+  const DEGRADED = ['catalog_signature_partial'];
+  const partialRead = (receipt: any, change?: 'stale' | 'other_variant_set' | 'other_product' | 'other_currency') => {
+    let response = body(receipt);
+    // The same verified read priced in another market's currency throughout.
+    if (change === 'other_currency') response = JSON.parse(JSON.stringify(response).replaceAll('"USD"', '"SGD"'));
+    const data = canonical(response);
+    data.pdp_payload.product.title = PARTIAL_TITLE;
+    if (change === 'other_variant_set') {
+      const extra = structuredClone(data.pdp_payload.product.variants[0]);
+      extra.variant_id = 'variant_not_on_this_page';
+      data.pdp_payload.product.variants.push(extra);
+    }
+    if (change === 'other_product') {
+      for (const proof of [response.metadata.commerce, data.commerce, data.pdp_payload.commerce]) {
+        proof.product_ref.product_id = 'another_product';
+      }
+    }
+    // Received two minutes ago: a 60s proof that has lapsed on this browser's clock.
+    if (change === 'stale') response = stampPdpResponseCommerce(response, Date.now() - 120000);
+    response.degraded_reads = DEGRADED;
+    return response;
+  };
+  const cachedServerPayload = () => {
+    const cached = body(verifiedFullCream);
+    cached.metadata.commerce_verification = 'refresh_required';
+    return cached;
+  };
+  // The similar/content module reads answer with a complete verified body: a read-only
+  // reply there legitimately revokes purchase (restrictPdpCommerce), which is not under test.
+  const coreReadReturns = (response: unknown) =>
+    api.get.mockImplementation(async (args: any) => (args.include.includes('offers') ? response : body(verifiedFullCream)));
+  // pdpServerPage passes the currency its read priced the page in; the cached payload has no price.
+  const renderWithServerPayload = (cached: any) =>
+    render(<ProductDetailClient params={Promise.resolve({ id: state.id })} initialPayload={mapPdpV2ToPdpPayload(cached)!} initialPayloadCurrency="USD" />);
+  const ignoredLines = (warn: ReturnType<typeof vi.spyOn>) =>
+    warn.mock.calls.filter(([line]: unknown[]) => line === PDP_DEGRADED_REFRESH_IGNORED_LOG_TOKEN);
+
+  it('control: a complete re-read replaces the server payload', async () => {
+    const complete = body(verifiedFullCream);
+    canonical(complete).pdp_payload.product.title = PARTIAL_TITLE;
+    coreReadReturns(complete);
+    renderWithServerPayload(cachedServerPayload());
+    expect((await screen.findAllByText(PARTIAL_TITLE)).length).toBeGreaterThan(0);
+  });
+
+  it('with a fresh proof for this listing: server content kept, purchase enabled at the proof price, logged once', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const cached = cachedServerPayload();
+    coreReadReturns(partialRead(verifiedFullCream));
+    renderWithServerPayload(cached);
+    await waitFor(() => expect(screen.getByRole('button', { name: /view at retailer/i })).toBeEnabled());
+    expect(screen.getAllByText('$19.95').length).toBeGreaterThan(0);
+    expect(screen.queryByText(PARTIAL_TITLE)).toBeNull();
+    expect(screen.getAllByText(canonical(cached).pdp_payload.product.title).length).toBeGreaterThan(0);
+    expect(screen.queryByText(UNVERIFIED)).toBeNull();
+    expect(ignoredLines(warn)).toHaveLength(1);
+  });
+
+  it.each([
+    ['a stale proof', verifiedFullCream, 'stale'],
+    ['a proof for another variant set', verifiedFullCream, 'other_variant_set'],
+    ['a proof for another product', verifiedFullCream, 'other_product'],
+    ['a proof in another currency than the page', verifiedFullCream, 'other_currency'],
+    ['no proof (read-only reply)', fullCream, undefined],
+  ] as const)('with %s: server content kept, purchase unverified', async (_label, receipt, change) => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const cached = cachedServerPayload();
+    coreReadReturns(partialRead(receipt, change));
+    renderWithServerPayload(cached);
+    await waitFor(() => expect(coreReads()).toHaveLength(1));
+    await screen.findByText(UNVERIFIED);
+    expect(screen.queryByText(PARTIAL_TITLE)).toBeNull();
+    expect(screen.getAllByText(canonical(cached).pdp_payload.product.title).length).toBeGreaterThan(0);
+    expect(document.body.textContent).not.toContain('$19.95');
+    expectNoPurchases();
+    expect(ignoredLines(warn)).toHaveLength(1);
+  });
+
+  it('renders when there is no server payload (client recovery), since nothing better exists', async () => {
+    coreReadReturns(partialRead(fullCream));
+    render(<ProductDetailClient params={Promise.resolve({ id: state.id })} initialPayload={null} />);
+    expect((await screen.findAllByText(PARTIAL_TITLE)).length).toBeGreaterThan(0);
+  });
+});
+
+// Every other browser refresh path on an open page, during the same incident. None of them
+// may bring non-commerce content from a degraded read; a commerce refresh may keep purchase
+// open only through the same identity/variant-set/currency gate.
+describe('degraded_reads on the other browser refresh paths', () => {
+  afterEach(() => { vi.useRealTimers(); });
+  const DEGRADED = ['catalog_signature_partial'];
+  const UNVERIFIED = 'Current price and purchase availability could not be verified';
+  const buyControl = () => screen.queryByRole('button', { name: /view at retailer/i });
+  const warnSpy = () => vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+  const linesFor = (warn: ReturnType<typeof vi.spyOn>, token: string) =>
+    warn.mock.calls.filter(([line]: unknown[]) => line === token);
+  // A verified browser read of the page product re-priced to 21.50 (proof and variants alike).
+  const repriced = (degraded: boolean, change?: 'other_variant_set' | 'other_currency') => {
+    let response = JSON.parse(JSON.stringify(body(verifiedFullCream)).replaceAll('19.95', '21.5'));
+    response = stampPdpResponseCommerce(response, Date.now());
+    canonical(response).pdp_payload.product.title = 'Degraded refresh title';
+    if (change === 'other_variant_set') {
+      const extra = structuredClone(canonical(response).pdp_payload.product.variants[0]);
+      extra.variant_id = 'variant_not_on_this_page';
+      canonical(response).pdp_payload.product.variants.push(extra);
+    }
+    if (change === 'other_currency') response = JSON.parse(JSON.stringify(response).replaceAll('"USD"', '"SGD"'));
+    if (degraded) response.degraded_reads = DEGRADED;
+    return response;
+  };
+
+  describe('the timed commerce refresh', () => {
+    const renderOpenPage = (refreshReply: () => unknown) => {
+      vi.useFakeTimers();
+      api.get.mockImplementation(async (args: any) => (args.cache_bypass ? refreshReply() : body(verifiedFullCream)));
+      render(<ProductDetailClient params={Promise.resolve({ id: state.id })} initialPayload={payload(verifiedFullCream as any)} />);
+    };
+    const untilFirstRefresh = () => act(async () => { await vi.advanceTimersByTimeAsync(60000 - COMMERCE_REFRESH_LEAD_MS + 10); });
+
+    it('control: a complete refresh applies its price', async () => {
+      renderOpenPage(() => repriced(false));
+      await untilFirstRefresh();
+      expect(screen.getAllByText('$21.50').length).toBeGreaterThan(0);
+    });
+
+    it('merges a fresh proof for this listing from a degraded refresh: new price, page content kept, logged once', async () => {
+      const warn = warnSpy();
+      renderOpenPage(() => repriced(true));
+      await untilFirstRefresh();
+      expect(screen.getAllByText('$21.50').length).toBeGreaterThan(0);
+      expect(buyControl()).toBeEnabled();
+      expect(screen.queryByText('Degraded refresh title')).toBeNull();
+      await act(async () => { await vi.advanceTimersByTimeAsync(60000); });
+      expect(linesFor(warn, PDP_DEGRADED_CLIENT_LOG_TOKENS.commerceRefresh)).toHaveLength(1);
+    });
+
+    it('leaves the page untouched on a degraded refresh for another variant set; the proof then lapses normally', async () => {
+      renderOpenPage(() => repriced(true, 'other_variant_set'));
+      await untilFirstRefresh();
+      expect(screen.queryByText('$21.50')).toBeNull();
+      expect(buyControl()).toBeEnabled();
+      expect(screen.queryByText(UNVERIFIED)).toBeNull();
+      await act(async () => { await vi.advanceTimersByTimeAsync(COMMERCE_REFRESH_LEAD_MS + 1000); });
+      expect(screen.getByText(UNVERIFIED)).toBeInTheDocument();
+      expectNoPurchases();
+      expect(screen.queryByText('Degraded refresh title')).toBeNull();
+    });
+
+    it('marks the page unverified at once on a degraded refresh priced in another currency', async () => {
+      renderOpenPage(() => repriced(true, 'other_currency'));
+      await untilFirstRefresh();
+      expect(screen.getByText(UNVERIFIED)).toBeInTheDocument();
+      expectNoPurchases();
+      expect(document.body.textContent).not.toMatch(/SGD|S\$/);
+    });
+  });
+
+  // The page is one listing; the buyer switches to another product line in place, and the
+  // container keeps that option's proof current with its own re-read (not the page's).
+  const OPTION_ID = verifiedFullCream.body.subject.id;
+  const OPTION_MERCHANT = 'merch_obs_0531e02c57f00f5b';
+  // A switch read whose proof runs out shortly after the refresh lead, so the refresh is
+  // due about 1.5s after the switch on real timers (enough margin to see the switched
+  // price first, even on a loaded machine).
+  const MISSHA_ID = missha.body.subject.id;
+  const lineOptions = (selectedId: string, pageMerchant: string) => [
+    { label: 'Shade A', product_id: MISSHA_ID, merchant_id: pageMerchant, selected: selectedId === MISSHA_ID, axis: 'shade' },
+    { label: 'Shade B', product_id: OPTION_ID, merchant_id: OPTION_MERCHANT, selected: selectedId === OPTION_ID, axis: 'shade' },
+  ];
+  // Both lines' reads carry the selector, so the buyer can switch back and forth.
+  const withLineOptions = (response: any, selectedId: string, pageMerchant: string) => {
+    const product = canonical(response).pdp_payload.product;
+    product.product_line_option_name = 'Shade';
+    product.product_line_options = lineOptions(selectedId, pageMerchant);
+    return response;
+  };
+  let pageMerchantId = '';
+  const switchRead = () => {
+    const response = withLineOptions(body(verifiedFullCream), OPTION_ID, pageMerchantId);
+    const data = canonical(response);
+    for (const proof of [response.metadata.commerce, data.commerce, data.pdp_payload.commerce]) {
+      proof.expires_at = new Date(Date.parse(proof.verified_at) + COMMERCE_REFRESH_LEAD_MS + 1500).toISOString();
+    }
+    return stampPdpResponseCommerce(response, Date.now());
+  };
+  const renderAndSwitch = async (refreshReply: () => unknown, backfillReply?: (include: string) => unknown) => {
+    api.get.mockImplementation(async (args: any) => {
+      if (args.product_id !== OPTION_ID) return withLineOptions(body(missha), MISSHA_ID, pageMerchantId);
+      // The container's refresh: cache-bypassing, offers + variant_selector, its own 6s budget.
+      if (args.cache_bypass && args.timeout_ms === 6000) return refreshReply();
+      // The switched line's module backfill: one read for reviews, one for similar.
+      const backfill = ['reviews_preview', 'similar'].find((include) => args.include?.length === 1 && args.include[0] === include);
+      if (backfill && backfillReply) return backfillReply(backfill);
+      return switchRead();
+    });
+    const page = payload(missha as any);
+    pageMerchantId = String(page.product.merchant_id || '');
+    expect(page.product.product_id).toBe(MISSHA_ID);
+    page.product.product_line_option_name = 'Shade';
+    page.product.product_line_options = lineOptions(MISSHA_ID, pageMerchantId) as any;
+    render(<PdpContainer payload={page} mode="beauty" onBuyNow={api.cart} onAddToCart={api.cart} />);
+    fireEvent.click(screen.getByRole('button', { name: /Shade B/ }));
+    await waitFor(() => expect(buyControl()).toBeEnabled(), { timeout: 5000 });
+    expect(screen.getAllByText('$19.95').length).toBeGreaterThan(0);
+  };
+  describe("PdpContainer's product-line commerce refresh", () => {
+    const refreshReads = () => api.get.mock.calls.filter(([args]: any[]) => args?.product_id === OPTION_ID && args.cache_bypass && args.timeout_ms === 6000);
+
+    it('control: a complete refresh applies its price', async () => {
+      await renderAndSwitch(() => repriced(false));
+      await waitFor(() => expect(screen.getAllByText('$21.50').length).toBeGreaterThan(0), { timeout: 6000 });
+    });
+
+    it('merges a fresh proof for the displayed option from a degraded refresh, and logs once', async () => {
+      const warn = warnSpy();
+      await renderAndSwitch(() => repriced(true));
+      await waitFor(() => expect(screen.getAllByText('$21.50').length).toBeGreaterThan(0), { timeout: 6000 });
+      expect(buyControl()).toBeEnabled();
+      expect(screen.queryByText('Degraded refresh title')).toBeNull();
+      expect(linesFor(warn, PDP_DEGRADED_CLIENT_LOG_TOKENS.productLineRefresh)).toHaveLength(1);
+    });
+
+    it('leaves the displayed option untouched on a degraded refresh for another variant set', async () => {
+      // Untouched means its current proof stands until it lapses through the normal expiry
+      // path (pinned for the page by 'lets the proof lapse when the re-read fails').
+      await renderAndSwitch(() => repriced(true, 'other_variant_set'));
+      await waitFor(() => expect(refreshReads().length).toBeGreaterThan(0), { timeout: 6000 });
+      await act(async () => { await new Promise((resolve) => setTimeout(resolve, 50)); });
+      expect(screen.queryByText('$21.50')).toBeNull();
+      expect(screen.getAllByText('$19.95').length).toBeGreaterThan(0);
+      expect(buyControl()).toBeEnabled();
+      expect(screen.queryByText(UNVERIFIED)).toBeNull();
+      expect(screen.queryByText('Degraded refresh title')).toBeNull();
+    });
+
+    it('marks the displayed option unverified at once on a degraded refresh in another currency', async () => {
+      await renderAndSwitch(() => repriced(true, 'other_currency'));
+      await waitFor(() => expect(refreshReads().length).toBeGreaterThan(0), { timeout: 6000 });
+      await waitFor(() => expect(screen.getByText(UNVERIFIED)).toBeInTheDocument());
+      expect(buyControl()).toBeNull();
+      expect(document.body.textContent).not.toMatch(/SGD|S\$/);
+    });
+  });
+
+  describe("PdpContainer's product-line module backfill", () => {
+    // Reviews and similar for the newly switched line arrive in their own reads after the
+    // switch. The switched line's main payload has no server payload behind it, so a partial
+    // main read still renders; its MODULES follow the module rule: never filled from a
+    // degraded read.
+    const REVIEW_TEXT = 'Degraded backfill review';
+    const SIMILAR_TITLE = 'Degraded backfill similar';
+    const backfillReply = (degraded: boolean) => (include: string) => {
+      const response = body(verifiedFullCream);
+      response.modules.push(include === 'reviews_preview'
+        ? { type: 'reviews_preview', required: false, data: { scale: 5, rating: 4.5, review_count: 12, preview_items: [
+          { review_id: 'r_1', rating: 5, title: REVIEW_TEXT, text_snippet: REVIEW_TEXT },
+        ] } }
+        : { type: 'similar', required: false, data: { strategy: 'related_products', items: [
+          { product_id: 'sim_1', merchant_id: 'external_seed', title: SIMILAR_TITLE },
+        ] } });
+      if (degraded) response.degraded_reads = DEGRADED;
+      return response;
+    };
+    const backfillReads = (include: string) => api.get.mock.calls.filter(([args]: any[]) =>
+      args?.product_id === OPTION_ID && args.include?.length === 1 && args.include[0] === include);
+
+    it('control: a complete backfill fills reviews and similar for the switched line', async () => {
+      await renderAndSwitch(() => repriced(false), backfillReply(false));
+      expect((await screen.findAllByText(REVIEW_TEXT)).length).toBeGreaterThan(0);
+      expect((await screen.findAllByText(SIMILAR_TITLE)).length).toBeGreaterThan(0);
+    });
+
+    it('never fills either from a degraded backfill; purchase is untouched; each kind logs once', async () => {
+      const warn = warnSpy();
+      await renderAndSwitch(() => repriced(false), backfillReply(true));
+      await waitFor(() => expect(backfillReads('reviews_preview')).toHaveLength(1));
+      await waitFor(() => expect(backfillReads('similar')).toHaveLength(1));
+      await act(async () => { await new Promise((resolve) => setTimeout(resolve, 100)); });
+      expect(screen.queryByText(REVIEW_TEXT)).toBeNull();
+      expect(screen.queryByText(SIMILAR_TITLE)).toBeNull();
+      expect(buyControl()).toBeEnabled();
+      expect(screen.getAllByText('$19.95').length).toBeGreaterThan(0);
+      expect(linesFor(warn, PDP_DEGRADED_CLIENT_LOG_TOKENS.productLineReviews)).toHaveLength(1);
+      expect(linesFor(warn, PDP_DEGRADED_CLIENT_LOG_TOKENS.productLineSimilar)).toHaveLength(1);
+    });
+
+    it('re-selecting the line reads the skipped modules again, and a healthy reply fills them', async () => {
+      let degraded = true;
+      await renderAndSwitch(() => repriced(false), (include) => backfillReply(degraded)(include));
+      await waitFor(() => expect(backfillReads('similar')).toHaveLength(1));
+      await act(async () => { await new Promise((resolve) => setTimeout(resolve, 50)); });
+      expect(screen.queryByText(SIMILAR_TITLE)).toBeNull();
+      degraded = false;
+      fireEvent.click(screen.getByRole('button', { name: /Shade A/ }));
+      fireEvent.click(await screen.findByRole('button', { name: /Shade B/ }));
+      expect((await screen.findAllByText(REVIEW_TEXT, undefined, { timeout: 5000 })).length).toBeGreaterThan(0);
+      expect((await screen.findAllByText(SIMILAR_TITLE)).length).toBeGreaterThan(0);
+      expect(backfillReads('similar').length).toBeGreaterThan(1);
+    });
+  });
+
+  describe('the similar and content module reads', () => {
+    const SIMILAR_TITLE = 'Degraded similar item';
+    const CONTENT_TEXT = 'Degraded how to use text';
+    const withModules = (degraded: boolean) => {
+      const response = body(verifiedFullCream);
+      response.modules.push(
+        { type: 'similar', required: false, data: { strategy: 'related_products', items: [
+          { product_id: 'sim_1', merchant_id: 'external_seed', title: SIMILAR_TITLE },
+        ] } },
+        { type: 'how_to_use', required: false, data: {
+          title: 'How to use', raw_text: CONTENT_TEXT, steps: [CONTENT_TEXT], source_origin: 'retail_pdp',
+        } },
+      );
+      canonical(response).pdp_payload.x_content_module_states.how_to_use = { state: 'ready' };
+      if (degraded) response.degraded_reads = DEGRADED;
+      return response;
+    };
+    const renderPage = (moduleReply: unknown | (() => unknown)) => {
+      api.get.mockImplementation(async (args: any) => {
+        if (args.include.includes('offers')) return body(verifiedFullCream);
+        return typeof moduleReply === 'function' ? (moduleReply as () => unknown)() : moduleReply;
+      });
+      // One module already unavailable, so the page shows its Retry control throughout.
+      const page = payload(verifiedFullCream as any);
+      page.x_content_module_states = { ...page.x_content_module_states, product_intel: 'unavailable' } as any;
+      render(<ProductDetailClient params={Promise.resolve({ id: state.id })} initialPayload={page} />);
+    };
+    const moduleReads = (type: string) => api.get.mock.calls.filter(([args]: any[]) => args?.include?.includes(type));
+
+    it('control: complete module reads fill recommendations and content', async () => {
+      renderPage(withModules(false));
+      expect((await screen.findAllByText(SIMILAR_TITLE)).length).toBeGreaterThan(0);
+      expect((await screen.findAllByText(CONTENT_TEXT)).length).toBeGreaterThan(0);
+    });
+
+    it('never fills either from a degraded read, schedules no retry, and logs each kind once', async () => {
+      const warn = warnSpy();
+      renderPage(withModules(true));
+      await waitFor(() => expect(moduleReads('similar')).toHaveLength(1));
+      await waitFor(() => expect(moduleReads('how_to_use')).toHaveLength(1));
+      await new Promise((resolve) => setTimeout(resolve, 1200));
+      expect(screen.queryByText(SIMILAR_TITLE)).toBeNull();
+      expect(screen.queryByText(CONTENT_TEXT)).toBeNull();
+      expect(moduleReads('similar')).toHaveLength(1);
+      expect(linesFor(warn, PDP_DEGRADED_CLIENT_LOG_TOKENS.similar)).toHaveLength(1);
+      expect(linesFor(warn, PDP_DEGRADED_CLIENT_LOG_TOKENS.content)).toHaveLength(1);
+      // Purchase on the open page is untouched by the skipped reads.
+      expect(buyControl()).toBeEnabled();
+    });
+
+    it('puts skipped content back in its earlier state, so the next healthy read fills it', async () => {
+      let healthy = false;
+      renderPage(() => withModules(!healthy));
+      await waitFor(() => expect(moduleReads('how_to_use')).toHaveLength(1));
+      await act(async () => { await new Promise((resolve) => setTimeout(resolve, 50)); });
+      expect(screen.queryByText(CONTENT_TEXT)).toBeNull();
+      healthy = true;
+      fireEvent.click(screen.getByRole('button', { name: /Retry product information/ }));
+      // Not left 'loading': the retry asks for the skipped module again, and the healthy reply fills it.
+      await waitFor(() => expect(moduleReads('how_to_use')).toHaveLength(2));
+      expect((await screen.findAllByText(CONTENT_TEXT)).length).toBeGreaterThan(0);
+    });
+  });
 });
