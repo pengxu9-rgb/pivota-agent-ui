@@ -263,6 +263,95 @@ export function refreshPdpCommerce(current: PDPPayload, fresh: PDPPayload | null
   };
 }
 
+function variantIdSet(variants: unknown): Set<string> | null {
+  if (!Array.isArray(variants)) return null;
+  const ids = variants.map((variant: any) => String(variant?.variant_id || '').trim());
+  if (ids.some((variantId) => !variantId)) return null;
+  const set = new Set(ids);
+  return set.size === ids.length ? set : null;
+}
+
+function currencyCode(value: unknown): string | null {
+  return typeof value === 'string' && /^[A-Z]{3}$/.test(value) ? value : null;
+}
+
+export type DegradedReadCommerceMerge =
+  | { status: 'merged'; payload: PDPPayload }
+  /** The re-read cannot authorize purchase here: no proof, a stale one, or another listing / variant set. */
+  | { status: 'unverifiable' }
+  /** The proof is for this listing but priced in another currency than the page. */
+  | { status: 'currency_mismatch' };
+
+/**
+ * The commerce of a browser re-read the gateway marked `degraded_reads`, applied to
+ * the payload on screen that it must not replace — every browser refresh path goes
+ * through this gate when its re-read is degraded.
+ *
+ * A degraded read was built while part of the catalog read was missing, so only its
+ * current-offer proof may be used, and only when that proof is bound to exactly what
+ * the page already shows:
+ * - fresh and unexpired on this browser's clock (isFreshVerifiedCommerce), and not
+ *   itself pending verification;
+ * - same listing: product id and merchant on both payloads, and the proof's
+ *   product_ref names the page's seller and source product;
+ * - same variant set: the re-read's variants are exactly the page's variants, and
+ *   every verified variant (the selected one included) is one of them;
+ * - same currency (a price is always in the market's currency, and the client has no
+ *   market-to-currency table): each verified variant's proof currency, and every
+ *   price the merge would bring in, equals the currency the page shows for that
+ *   variant — else the page's own displayed price currency, else `pageCurrency`, the
+ *   currency the server read priced the page in. No resolvable currency refuses.
+ * Money consistency between the proof and the re-read's variants is already required
+ * by mapPdpV2ToPdpPayload (isValidVerifiedPdpResponse).
+ *
+ * The merge is refreshPdpCommerce — the same commerce-only merge the timed commerce
+ * refresh uses — with the page's own quality_signals kept, so no non-commerce field
+ * of the degraded read reaches the page.
+ */
+export function mergeDegradedReadCommerce(
+  server: PDPPayload,
+  fresh: PDPPayload | null,
+  options: { now?: number; pageCurrency?: string | null } = {},
+): DegradedReadCommerceMerge {
+  const now = options.now ?? Date.now();
+  if (!fresh || fresh.commerce_verification || !isFreshVerifiedCommerce(fresh.commerce, now)) return { status: 'unverifiable' };
+  const proof = fresh.commerce;
+  const product = server.product;
+  if (fresh.product.product_id !== product.product_id || fresh.product.merchant_id !== product.merchant_id ||
+      proof.product_ref.merchant_id !== product.merchant_id ||
+      proof.product_ref.product_id !== (product.source_product_id || product.product_id)) return { status: 'unverifiable' };
+  const serverVariants = variantIdSet(product.variants);
+  const freshVariants = variantIdSet(fresh.product.variants);
+  if (!serverVariants || !freshVariants || serverVariants.size !== freshVariants.size ||
+      [...freshVariants].some((variantId) => !serverVariants.has(variantId)) ||
+      !serverVariants.has(proof.selected_variant_id) ||
+      !proof.verified_variants.every((entry) => serverVariants.has(entry.variant_id))) return { status: 'unverifiable' };
+
+  const pageCurrency = currencyCode((product as any).price?.current?.currency) ?? currencyCode(options.pageCurrency);
+  const pageVariantCurrency = new Map((product.variants || []).map((variant: any) =>
+    [String(variant.variant_id), currencyCode(variant?.price?.current?.currency)]));
+  const expectedCurrency = (variantId: string) => pageVariantCurrency.get(variantId) ?? pageCurrency;
+  const sameCurrency = (variantId: string, currency: unknown) => {
+    const expected = expectedCurrency(variantId);
+    return Boolean(expected) && currency === expected;
+  };
+  const freshPriceCurrencies = [
+    (fresh.product as any).price?.current?.currency,
+    ...(Array.isArray(fresh.offers) ? fresh.offers.map((offer: any) => offer?.price?.currency) : []),
+  ].filter((currency) => currency !== undefined && currency !== null);
+  if (!proof.verified_variants.every((entry) => sameCurrency(entry.variant_id, entry.currency)) ||
+      !fresh.product.variants.every((variant: any) => variant?.price?.current?.currency === undefined ||
+        sameCurrency(String(variant.variant_id), variant.price.current.currency)) ||
+      !freshPriceCurrencies.every((currency) => sameCurrency(proof.selected_variant_id, currency))) {
+    return { status: 'currency_mismatch' };
+  }
+
+  // Every check refreshPdpCommerce makes has already passed, so this always applies the proof.
+  const merged = refreshPdpCommerce(server, fresh, now);
+  const { quality_signals: _degradedSignals, ...rest } = merged;
+  return { status: 'merged', payload: { ...rest, ...(server.quality_signals ? { quality_signals: server.quality_signals } : {}) } };
+}
+
 /** A receipt for one seller/variant never authorizes a later different selection. */
 export function hasVerifiedSelectedCommerce(payload: Pick<PDPPayload, 'product' | 'commerce' | 'commerce_verification'>, variant: any,
   selected: { merchantId?: string | null; productId?: string | null; offer?: any } = {}): boolean {

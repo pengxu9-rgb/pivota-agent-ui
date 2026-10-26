@@ -27,6 +27,7 @@ import type {
 } from '@/features/services/lib/types'
 import { getProviderListings } from '@/features/services/lib/types'
 import { resolveBuyerMarket } from '@/lib/buyerMarket'
+import { hasDegradedReads, PDP_DEGRADED_READS_LOG_TOKEN, PDP_DEGRADED_RENDER_ERROR } from '@/lib/pdpDegradedRender'
 
 export type {
   BookingContact,
@@ -515,6 +516,8 @@ export type GetPdpV2Response = {
   modules?: GetPdpV2Module[];
   warnings?: any[];
   missing?: Array<{ type: string; reason?: string }>;
+  /** Set by the gateway on a 200 built from an incomplete read; see hasDegradedReads. */
+  degraded_reads?: unknown;
 };
 
 export function normalizeProductDescriptionText(value: unknown): string {
@@ -3436,6 +3439,34 @@ export async function getPdpV2Cached(args: {
         gatewayBaseUrl: args.gatewayBaseUrl,
         serving_eligible_only: args.serving_eligible_only,
       });
+      // Do NOT cache a 200 the gateway marked degraded (`degraded_reads`): it was
+      // assembled while a catalog read could not reach the database, so it may be
+      // missing content, and the gateway's `Cache-Control: no-store` never reaches
+      // this layer (unstable_cache stores the returned VALUE, not the response).
+      // Throwing here, inside the cached function, means nothing is stored: on a
+      // cold entry the rejection reaches the page, which classifies it `degraded`
+      // (never `unbuildable`, so never a 404) and throws PDP_DEGRADED_RENDER_ERROR;
+      // on a stale entry Next swallows the rejection and keeps returning the last
+      // healthy value. Our own log line is a fixed token with no identifiers, once
+      // per gateway read. Next adds its own lines on top: a cold fill logs the
+      // thrown PDP_DEGRADED_RENDER_UNCACHEABLE with its stack, and a stale-entry
+      // revalidation logs "revalidating cache with key: …", which carries the
+      // cache key and therefore the product id.
+      //
+      // The cost is a cold entry: there the PDP becomes the uncached degraded 500
+      // instead of a partial page. Rendering the partial payload uncached is not
+      // available on this route in Next 15.5: the canonical PDP is an ISR path, its
+      // runtime fill runs as a `prerender-legacy` static generation, and there
+      // unstable_noStore()/connection() throw DynamicServerError, while any render
+      // that ends with revalidate 0 is rejected as "Page changed from static to
+      // dynamic at runtime" (next/dist/server/app-render/dynamic-rendering.js
+      // markCurrentScopeAsDynamic; next/dist/build/templates/app-page.js). Both are
+      // 500s. A shorter revalidate for that one render is possible, but it STORES
+      // the degraded page for that window, which is what this branch exists to stop.
+      if (hasDegradedReads(res)) {
+        console.warn(PDP_DEGRADED_READS_LOG_TOKEN);
+        throw new Error(PDP_DEGRADED_RENDER_ERROR);
+      }
       // Do NOT cache an empty/blocked payload: a product mid-ingestion or a
       // transient serving-eligibility flap returns 200-but-no-modules, and
       // caching that would serve degraded SSR (no JSON-LD/metadata) to crawlers
