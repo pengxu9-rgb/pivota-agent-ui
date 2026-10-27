@@ -20,8 +20,9 @@ ARG NEXT_PUBLIC_ACCOUNTS_BASE=https://api.pivota.cc/accounts
 ARG NEXT_PUBLIC_ADYEN_CLIENT_KEY=test_DC7Q2UCIO5H5NB6ZKIXWGNBKWUXPIAOI
 ARG NEXT_PUBLIC_AGENT_DIRECT_READS_ENABLED=false
 ARG NEXT_PUBLIC_REAP_CHECKOUT_DEMO=false
-# PDP async live refresh (browser half). Off until the gateway's pdp_live_read is live in shadow.
-ARG NEXT_PUBLIC_PDP_LIVE_REFRESH=off
+# PDP async live refresh (browser half). On: the page asks the gateway for a live price/stock read after load.
+# What the gateway returns is governed by UCP_LIVE_PDP_REFRESH (shadow = read and log, no patch; on = patch).
+ARG NEXT_PUBLIC_PDP_LIVE_REFRESH=on
 ARG NEXT_PUBLIC_API_URL=/api/gateway
 ARG UCP_WEB_BASE_URL=https://ucp.pivota.cc
 ARG REVIEWS_BACKEND_URL=https://api.pivota.cc
