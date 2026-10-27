@@ -93,7 +93,7 @@ import { customerMediaSubject, sanitizeReviewMedia, selectCustomerMedia } from '
 import { DEFAULT_UGC_SNAPSHOT, lockFirstUgcSource, mergeUgcItems } from '@/features/pdp/state/freezePolicy';
 import { getStableGalleryItems, resolveHeroMediaUrl } from '@/features/pdp/state/heroMedia';
 import { buildPdpViewModel } from '@/features/pdp/state/viewModel';
-import { resolveOfferPricing, resolveReapPurchaseMoney } from '@/features/pdp/utils/offerVariantMatching';
+import { offerVariantInStock, resolveOfferPricing, resolveReapPurchaseMoney } from '@/features/pdp/utils/offerVariantMatching';
 import { buildBrandHref } from '@/lib/brandRoute';
 import {
   buildProductHref,
@@ -2040,7 +2040,15 @@ export function PdpContainer({
   const selectedCurrentMoneyUnavailable = !selectionProofMatches || commerceUnavailable ||
     (!selectedOfferIsOtherSeller && isPurchaseUnavailable(selectedVariant)) ||
     resolveOfferPricing(selectedOffer, selectedOfferIsOtherSeller ? null : selectedVariant).currentMoneyUnavailable;
-  const effectiveIsInStock = !selectedCurrentMoneyUnavailable &&
+  // A multi-size row built with no selected variant carries PRODUCT-level stock (any size in stock), so the
+  // selected size's own entry in the row's variants[] can still mark that size sold out; with no entry, the
+  // card's sold-out size does. This only ever DISABLES: whatever disables Buy through the row or card stock
+  // read still does, since a row-level false is no size answered in stock and an entry cannot outvote it.
+  const selectedOfferVariantInStock = offerVariantInStock(selectedOffer, selectedVariant?.variant_id);
+  const selectedSizeSoldOut = selectedOfferVariantInStock === false ||
+    (selectedOfferVariantInStock === undefined && !selectedOfferIsOtherSeller &&
+      selectedVariant?.availability?.in_stock === false);
+  const effectiveIsInStock = !selectedCurrentMoneyUnavailable && !selectedSizeSoldOut &&
     (typeof selectedOfferInStock === 'boolean' ? selectedOfferInStock : isInStock);
   const variantAwareDefaultOfferId = useMemo(() => {
     if (!offers.length) return payload.default_offer_id || internalFirstDefaultOfferId;
