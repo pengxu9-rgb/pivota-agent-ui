@@ -376,6 +376,27 @@ export type PdpRequestIdentity = {
   subject?: { type: string; id: string } | null;
 };
 
+/** A content-key alias must bind the requested row to the exact displayed listing. */
+export function hasBoundContentKeyResolution(response: unknown, expectedId: string): boolean {
+  if (!/^ck_[a-f0-9]{32}$/.test(expectedId)) return false;
+  const source = record(response), canonical = canonicalData(source);
+  const product = record(canonical?.pdp_payload?.product);
+  const resolution = record(source?.metadata?.identity_resolution);
+  const alias = record(resolution?.content_key_resolution);
+  const subjectRef = record(source?.subject?.canonical_product_ref);
+  if (!product || !resolution || !alias || !subjectRef ||
+      typeof alias.product_key !== 'string' || !alias.product_key.trim() ||
+      typeof product.merchant_id !== 'string' || !product.merchant_id.trim()) return false;
+  const sourceId = product.source_product_id || product.product_id;
+  return typeof sourceId === 'string' && Boolean(sourceId.trim()) &&
+    resolution.requested_product_id === expectedId &&
+    resolution.resolved_product_id === sourceId && resolution.resolved_merchant_id === product.merchant_id &&
+    alias.content_key === expectedId && alias.product_id === sourceId && alias.merchant_id === product.merchant_id &&
+    subjectRef.content_key === expectedId && subjectRef.product_id === sourceId &&
+    subjectRef.merchant_id === product.merchant_id &&
+    (subjectRef.product_key == null || subjectRef.product_key === alias.product_key);
+}
+
 /** Bind a new commerce contract to its caller, not merely to itself. */
 export function matchesPdpRequestIdentity(response: unknown, expected: PdpRequestIdentity): boolean {
   if (!hasReadOnlyPdpSignal(response)) return true; // Existing legacy contracts retain their own gates.
@@ -408,6 +429,7 @@ export function matchesPdpRequestIdentity(response: unknown, expected: PdpReques
     groupRef.product_id === sourceId);
   if (/^sig_[a-f0-9]{32}$/.test(expectedId) && (product.product_id !== expectedId || !subjectIsSignature)) return false;
   if (!group && !/^sig_[a-f0-9]{32}$/.test(expectedId) &&
-      expectedId !== sourceId && expectedId !== product.product_id) return false;
+      expectedId !== sourceId && expectedId !== product.product_id &&
+      !hasBoundContentKeyResolution(response, expectedId)) return false;
   return true;
 }
