@@ -187,8 +187,10 @@ export function enforceReadOnlyPdp(payload: PDPPayload, now = Date.now()): PDPPa
   const unreceived = isVerifiedCommerce(payload.commerce) && verifiedCommerceExpiresAt(payload.commerce) === null;
   const expired = isVerifiedCommerce(payload.commerce) && !unreceived && !isFreshVerifiedCommerce(payload.commerce, now);
   if (!readOnly && !payload.commerce_verification && !expired && !unreceived) return payload;
+  // A read-only or pending page is never live-refreshed: its live_refresh descriptor goes with its commerce.
+  const { live_refresh: _liveRefresh, ...rest } = payload;
   return {
-    ...payload,
+    ...rest,
     ...(!payload.commerce_verification && (expired || unreceived)
       ? { commerce_verification: unreceived ? 'refresh_required' as const : 'failed' as const } : {}),
     ...(!readOnly ? { commerce: { state: 'unverified' as const, read_only: true as const,

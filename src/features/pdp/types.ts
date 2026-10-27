@@ -37,8 +37,46 @@ export interface PendingCommerce {
   reason_code: 'CURRENT_OFFER_REFRESH_REQUIRED';
 }
 
+/**
+ * get_pdp_v2's `live_refresh` descriptor (PIVOTA-Agent pdpLiveRefresh contract v1): present only on a
+ * normally served page the gateway can re-read live. The browser hands the token back to
+ * `pdp_live_read`; `market` is a hint, the server trusts only the token.
+ */
+export interface LivePdpRefreshDescriptor {
+  v: 1;
+  token: string;
+  market: string;
+}
+
+/** The raw get_pdp_v2 module slice `pdp_live_read` overlays, rebuilt from the mapped payload. */
+export interface LivePdpRefreshPage {
+  modules: Array<{ type: string; data: Record<string, unknown> }>;
+}
+
+export interface LivePdpRefreshPatch {
+  product?: { set?: Record<string, unknown>; unset?: string[] };
+  modules?: Record<string, Record<string, unknown>>;
+  offers?: { offers?: unknown[]; best_price_offer_id?: string | null };
+  product_intel?: { offer_pointers?: Record<string, unknown> };
+}
+
+export interface LivePdpRefreshResponse {
+  status?: string;
+  live_refresh?: {
+    mode?: 'shadow' | 'on' | string;
+    outcome?: 'applied' | 'confirmed' | 'no_answer' | 'skipped' | string;
+    reason?: string | null;
+    source?: string | null;
+    checked_at?: string | null;
+    stats?: Record<string, unknown>;
+  };
+  patch?: LivePdpRefreshPatch;
+}
+
 export interface PDPPayload {
   commerce?: ReadOnlyCommerce | VerifiedCommerce | PendingCommerce;
+  /** Validated get_pdp_v2 live-refresh descriptor; dropped whenever the page is read-only or pending. */
+  live_refresh?: LivePdpRefreshDescriptor;
   commerce_verification?: 'refresh_required' | 'failed';
   quality_signals?: { coverage_by_module?: Record<string, number>; gating?: Record<string, boolean>; [key: string]: unknown };
   schema_version: string;
