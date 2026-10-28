@@ -1,5 +1,7 @@
 import { __resetReapConfigCacheForTests } from '@/components/reapCheckout/ReapCheckoutEntry';
 import unknownSource from '@/features/pdp/__fixtures__/canonicalOfferLive20261004/unknown-canonical-source.json';
+import legacyReferralReply from '@/features/pdp/__fixtures__/contentKeyRoute20261027/blind-barber-content-key.json';
+import { CONTENT_KEY } from '@/features/pdp/__fixtures__/contentKeyAlias';
 /* eslint-disable @next/next/no-img-element */
 // Captured public identities/content run through the real local gateway route with
 // mocked persistence. These are route outputs, not a claim of live acceptance.
@@ -81,6 +83,20 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 
 describe('actual PDP rendering of canonical read-only gateway route outputs', () => {
+  it('server-renders the integrated legacy content-key referral response and keeps sold-out purchases disabled', async () => {
+    // Produced through the local gateway route using the incident's catalog identity, not a live canary.
+    state.id = CONTENT_KEY;
+    api.cached.mockResolvedValue(structuredClone(legacyReferralReply));
+    const page = await renderPdpPage({ params: Promise.resolve({ id: CONTENT_KEY }) }, { personalized: false });
+    expect(renderToStaticMarkup(page)).toContain('30 Proof Styling Cream');
+    const mapped = mapPdpV2ToPdpPayload(structuredClone(legacyReferralReply) as any, { product_id: CONTENT_KEY })!;
+    render(<PdpContainer payload={mapped} mode="beauty" onBuyNow={api.cart} onAddToCart={api.cart} />);
+    for (const button of screen.queryAllByRole('button', { name: /buy now|add to (bag|cart)|view at|checkout with reap/i })) {
+      expect(button).toBeDisabled();
+    }
+    expect(api.cart).not.toHaveBeenCalled();
+  });
+
   it.each(receipts)('server-renders real evidence without commerce for $body.subject.id', async (receipt) => {
     state.id = receipt.body.subject.id;
     api.cached.mockResolvedValue(body(receipt));

@@ -18,6 +18,7 @@ import { buildProductJsonLd } from './productJsonLd';
 import { getPdpRouteIdExistenceCached, getPdpV2, getPdpV2Cached, getServicesBrowse } from '@/lib/api';
 import { mapPdpV2ToPdpPayload } from '@/features/pdp/adapter/mapPdpV2ToPdpPayload';
 import { projectPublicInsightsPayload } from '@/features/pdp/utils/publicProductIntel';
+import { hasBoundContentKeyResolution } from '@/features/pdp/utils/commerceAvailability';
 import type { PDPPayload } from '@/features/pdp/types';
 import { isBeautyProduct } from '@/features/pdp/utils/isBeautyProduct';
 import { getProviderListings, type ServiceCardData } from '@/features/services/lib/types';
@@ -242,6 +243,13 @@ function readServerCanonicalRouteId(
   if (/^sig_.+/.test(contentCanonicalRouteId)) {
     return contentCanonicalRouteId;
   }
+
+  // Unminted referral rows are published under their content key. The gateway's
+  // exact row binding keeps their canonical URL on that route instead of an unservable source id.
+  const contentKeyResolution = (response as any)?.metadata?.identity_resolution?.content_key_resolution;
+  if (hasBoundContentKeyResolution(response, requestedProductId) &&
+      contentKeyResolution.product_id === (product.source_product_id || product.product_id) &&
+      contentKeyResolution.merchant_id === product.merchant_id) return requestedProductId;
 
   return resolveProductRouteId(product) || requestedProductId;
 }

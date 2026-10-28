@@ -16,6 +16,8 @@ import PersonalizedProductDetailPage, {
 } from '../m/[id]/page';
 import { PDP_DEGRADED_RENDER_ERROR } from './pdpServerPage';
 import ProductDetailLayout from './layout';
+import { CONTENT_KEY, SOURCE_PRODUCT_ID, contentKeyAliasReply } from '@/features/pdp/__fixtures__/contentKeyAlias';
+import legacyReferralReply from '@/features/pdp/__fixtures__/contentKeyRoute20261027/blind-barber-content-key.json';
 
 const getPdpV2Mock = vi.hoisted(() => vi.fn());
 const getPdpV2CachedMock = vi.hoisted(() => vi.fn());
@@ -138,6 +140,55 @@ describe('product page metadata', () => {
     vi.unstubAllGlobals();
     vi.unstubAllEnvs();
     vi.restoreAllMocks();
+  });
+
+  it('keeps an exactly bound unminted content-key route as its canonical URL', async () => {
+    const response = contentKeyAliasReply();
+    getPdpV2Mock.mockResolvedValue(response);
+    mapPdpV2ToPdpPayloadMock.mockReturnValue(response.modules[0].data.pdp_payload);
+    const metadata = await generateMetadata({ params: Promise.resolve({ id: CONTENT_KEY }) });
+    expect(metadata.alternates?.canonical).toBe(`https://agent.pivota.cc/products/${CONTENT_KEY}`);
+    expect(metadata.openGraph?.url).toBe(`https://agent.pivota.cc/products/${CONTENT_KEY}`);
+  });
+
+  it('keeps the integrated legacy referral output on its published content-key canonical URL', async () => {
+    getPdpV2Mock.mockResolvedValue(structuredClone(legacyReferralReply));
+    const canonical = legacyReferralReply.modules.find((module) => module.type === 'canonical') as any;
+    mapPdpV2ToPdpPayloadMock.mockReturnValue(structuredClone(canonical.data.pdp_payload));
+    const metadata = await generateMetadata({ params: Promise.resolve({ id: CONTENT_KEY }) });
+    expect(metadata.alternates?.canonical).toBe(`https://agent.pivota.cc/products/${CONTENT_KEY}`);
+  });
+
+  it('does not canonicalize a source product at a mismatched content-key alias', async () => {
+    const response = contentKeyAliasReply();
+    response.subject.canonical_product_ref.content_key = 'ck_00000000000000000000000000000000';
+    getPdpV2Mock.mockResolvedValue(response);
+    mapPdpV2ToPdpPayloadMock.mockReturnValue(response.modules[0].data.pdp_payload);
+    const metadata = await generateMetadata({ params: Promise.resolve({ id: CONTENT_KEY }) });
+    expect(metadata.alternates?.canonical).toBe(`https://agent.pivota.cc/products/${SOURCE_PRODUCT_ID}`);
+  });
+
+  it('does not reuse a content-key canonical if the mapped page displays a different listing', async () => {
+    const response = contentKeyAliasReply();
+    const payload = structuredClone(response.modules[0].data.pdp_payload);
+    payload.product.product_id = 'ext_other';
+    payload.product.source_product_id = 'ext_other';
+    getPdpV2Mock.mockResolvedValue(response);
+    mapPdpV2ToPdpPayloadMock.mockReturnValue(payload);
+    const metadata = await generateMetadata({ params: Promise.resolve({ id: CONTENT_KEY }) });
+    expect(metadata.alternates?.canonical).toBe('https://agent.pivota.cc/products/ext_other');
+  });
+
+  it.each(['election', 'public_group'])('keeps the existing %s canonical priority above a content-key alias', async (basis) => {
+    const response = contentKeyAliasReply();
+    const canonicalId = basis === 'election' ? 'sig_00000000000000000000000000000001' : 'pg_catalog_bound_group';
+    const canonical = response.modules[0].data;
+    if (basis === 'election') canonical.content_canonical_route_id = canonicalId;
+    else { canonical.product_group_id = canonicalId; canonical.canonical_scope = 'multi_merchant_canonical'; }
+    getPdpV2Mock.mockResolvedValue(response);
+    mapPdpV2ToPdpPayloadMock.mockReturnValue(canonical.pdp_payload);
+    const metadata = await generateMetadata({ params: Promise.resolve({ id: CONTENT_KEY }) });
+    expect(metadata.alternates?.canonical).toBe(`https://agent.pivota.cc/products/${canonicalId}`);
   });
 
   it('uses canonical PDP product data for server-rendered title and social metadata', async () => {
