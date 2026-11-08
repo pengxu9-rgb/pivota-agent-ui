@@ -7,6 +7,7 @@ import {
   getCheckoutContextFromBrowser,
   normalizeCheckoutSource,
   persistCheckoutContext,
+  rememberCheckoutTokenOrder,
 } from '@/lib/checkoutToken'
 import { ensureAuroraSession, shouldUseAuroraAutoExchange } from '@/lib/auroraOrdersAuth'
 import { formatDescriptionText } from '@/features/pdp/utils/formatDescriptionText'
@@ -3805,6 +3806,10 @@ export async function createOrder(orderData: {
       },
     },
   });
+
+  // The backend binds an order created under a checkout token to that token's intent; remember it so the
+  // resume entry for this order keeps the token (checkoutToken.ts isCheckoutTokenBoundToOrder).
+  if (checkoutContext.token) rememberCheckoutTokenOrder(checkoutContext.token, (data as any)?.order_id);
 
   return data;
 }

@@ -2300,6 +2300,7 @@ function OrderFlowInner({
   const buildOrderSuccessPath = (
     orderId: string,
     options: OrderCompletionOptions = {},
+    { withCheckoutToken = true }: { withCheckoutToken?: boolean } = {},
   ): string | undefined => {
     if (typeof window === 'undefined') return undefined
     const url = new URL('/order/success', window.location.origin)
@@ -2312,12 +2313,14 @@ function OrderFlowInner({
       const value = (current.searchParams.get(key) || '').trim()
       if (value) url.searchParams.set(key, value)
     }
-    if (checkoutToken) url.searchParams.set('checkout_token', checkoutToken)
+    if (checkoutToken && withCheckoutToken) url.searchParams.set('checkout_token', checkoutToken)
     return `${url.pathname}${url.search}`
   }
 
+  // The PSP receives (and may log) the return URL, so it never carries the checkout token. The success
+  // page it lands on, in this tab, reads the token from storage (getCheckoutContextFromBrowser).
   const buildPostPayReturnUrl = (orderId: string): string | undefined => {
-    const successPath = buildOrderSuccessPath(orderId, { finalizing: true })
+    const successPath = buildOrderSuccessPath(orderId, { finalizing: true }, { withCheckoutToken: false })
     if (!successPath || typeof window === 'undefined') return undefined
     return new URL(successPath, window.location.origin).toString()
   }
