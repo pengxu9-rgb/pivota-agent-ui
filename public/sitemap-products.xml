@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- feed_health=ok urls=21625 serving_eligible=21625 index_only=0 -->
+<!-- feed_health=ok urls=21596 serving_eligible=21596 index_only=0 -->
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://agent.pivota.cc/products/sig_00016813d38977ca6ee23b697f4d9570</loc>
@@ -9,11 +9,6 @@
   <url>
     <loc>https://agent.pivota.cc/products/sig_0001779b13b0e88666532b872ada8e5e</loc>
     <lastmod>2026-10-10T17:29:53.208Z</lastmod>
-    <changefreq>weekly</changefreq>
-  </url>
-  <url>
-    <loc>https://agent.pivota.cc/products/sig_000337c4db7b405de2a9e3b47b22b7ed</loc>
-    <lastmod>2026-08-07T02:33:22.304Z</lastmod>
     <changefreq>weekly</changefreq>
   </url>
   <url>
@@ -3397,11 +3392,6 @@
     <changefreq>weekly</changefreq>
   </url>
   <url>
-    <loc>https://agent.pivota.cc/products/sig_07859f89b1442f57b01b273e24236742</loc>
-    <lastmod>2026-08-07T02:30:02.059Z</lastmod>
-    <changefreq>weekly</changefreq>
-  </url>
-  <url>
     <loc>https://agent.pivota.cc/products/sig_078ceca705bc95292734febe71a65acf</loc>
     <lastmod>2026-09-27T00:48:46.971Z</lastmod>
     <changefreq>weekly</changefreq>
@@ -5714,11 +5704,6 @@
   <url>
     <loc>https://agent.pivota.cc/products/sig_0cdf72ee6c2c89c4059ee8cc2f19dfda</loc>
     <lastmod>2026-09-28T23:53:16.114Z</lastmod>
-    <changefreq>weekly</changefreq>
-  </url>
-  <url>
-    <loc>https://agent.pivota.cc/products/sig_0ce41193bc7a40bca5562e347888a94e</loc>
-    <lastmod>2026-10-12T14:59:03.653Z</lastmod>
     <changefreq>weekly</changefreq>
   </url>
   <url>
@@ -11817,6 +11802,11 @@
     <changefreq>weekly</changefreq>
   </url>
   <url>
+    <loc>https://agent.pivota.cc/products/sig_1af2e2f7f5549222c369e17c9b279469</loc>
+    <lastmod>2026-08-07T02:33:22.304Z</lastmod>
+    <changefreq>weekly</changefreq>
+  </url>
+  <url>
     <loc>https://agent.pivota.cc/products/sig_1af313d3e80a61aac6b4127c45ac3b3c</loc>
     <lastmod>2026-09-25T08:27:31.298Z</lastmod>
     <changefreq>weekly</changefreq>
@@ -12984,11 +12974,6 @@
   <url>
     <loc>https://agent.pivota.cc/products/sig_1dd415f9d9b2328916a978f482645808</loc>
     <lastmod>2026-09-28T00:13:36.243Z</lastmod>
-    <changefreq>weekly</changefreq>
-  </url>
-  <url>
-    <loc>https://agent.pivota.cc/products/sig_1dd4df887121a9460d85439d</loc>
-    <lastmod>2026-05-25T13:34:25.148Z</lastmod>
     <changefreq>weekly</changefreq>
   </url>
   <url>
@@ -20167,6 +20152,11 @@
     <changefreq>weekly</changefreq>
   </url>
   <url>
+    <loc>https://agent.pivota.cc/products/sig_2e1597961325e6dbe479585f64cbfa8d</loc>
+    <lastmod>2026-08-07T02:33:22.304Z</lastmod>
+    <changefreq>weekly</changefreq>
+  </url>
+  <url>
     <loc>https://agent.pivota.cc/products/sig_2e15c660b05e77faa688ba46c6f28c55</loc>
     <lastmod>2026-10-12T02:22:48.394Z</lastmod>
     <changefreq>weekly</changefreq>
@@ -24167,11 +24157,6 @@
     <changefreq>weekly</changefreq>
   </url>
   <url>
-    <loc>https://agent.pivota.cc/products/sig_372d2c70ad804ee10bcc16d7dfd4e82f</loc>
-    <lastmod>2026-08-07T02:01:11.878Z</lastmod>
-    <changefreq>weekly</changefreq>
-  </url>
-  <url>
     <loc>https://agent.pivota.cc/products/sig_372df35d31b10dae8d6a40ecd6279ef6</loc>
     <lastmod>2026-10-12T01:48:04.486Z</lastmod>
     <changefreq>weekly</changefreq>
@@ -25119,11 +25104,6 @@
   <url>
     <loc>https://agent.pivota.cc/products/sig_39608250a8abf70ee55b8b86d7cd2c6e</loc>
     <lastmod>2026-10-12T01:50:45.213Z</lastmod>
-    <changefreq>weekly</changefreq>
-  </url>
-  <url>
-    <loc>https://agent.pivota.cc/products/sig_39608d88a884befcb00f794b317ee5cc</loc>
-    <lastmod>2026-10-12T14:59:03.277Z</lastmod>
     <changefreq>weekly</changefreq>
   </url>
   <url>
@@ -28144,11 +28124,6 @@
   <url>
     <loc>https://agent.pivota.cc/products/sig_4055772a2186faa656c6b17b844f2af5</loc>
     <lastmod>2026-08-07T02:00:32.227Z</lastmod>
-    <changefreq>weekly</changefreq>
-  </url>
-  <url>
-    <loc>https://agent.pivota.cc/products/sig_405683821daddbe3eca6b6abb3b28063</loc>
-    <lastmod>2026-08-07T02:01:11.878Z</lastmod>
     <changefreq>weekly</changefreq>
   </url>
   <url>
@@ -34432,11 +34407,6 @@
     <changefreq>weekly</changefreq>
   </url>
   <url>
-    <loc>https://agent.pivota.cc/products/sig_4ee29b3c7528795082f16a3684fe7406</loc>
-    <lastmod>2026-08-07T02:33:22.304Z</lastmod>
-    <changefreq>weekly</changefreq>
-  </url>
-  <url>
     <loc>https://agent.pivota.cc/products/sig_4ee69407269d201d4c5f229220fcff2d</loc>
     <lastmod>2026-08-07T02:00:53.553Z</lastmod>
     <changefreq>weekly</changefreq>
@@ -36239,11 +36209,6 @@
   <url>
     <loc>https://agent.pivota.cc/products/sig_52ec2f8a644545e337874949ffdb31b5</loc>
     <lastmod>2026-09-26T17:11:35.180Z</lastmod>
-    <changefreq>weekly</changefreq>
-  </url>
-  <url>
-    <loc>https://agent.pivota.cc/products/sig_52ee28fbdc88ebe3abb9b7f0a548d4c8</loc>
-    <lastmod>2026-10-12T14:59:03.463Z</lastmod>
     <changefreq>weekly</changefreq>
   </url>
   <url>
@@ -40477,11 +40442,6 @@
     <changefreq>weekly</changefreq>
   </url>
   <url>
-    <loc>https://agent.pivota.cc/products/sig_5d59303d79fb83a3f78b499b39408022</loc>
-    <lastmod>2026-08-07T02:33:22.304Z</lastmod>
-    <changefreq>weekly</changefreq>
-  </url>
-  <url>
     <loc>https://agent.pivota.cc/products/sig_5d5e87495beac81f0f650365c92c209c</loc>
     <lastmod>2026-09-26T15:30:22.847Z</lastmod>
     <changefreq>weekly</changefreq>
@@ -42597,11 +42557,6 @@
     <changefreq>weekly</changefreq>
   </url>
   <url>
-    <loc>https://agent.pivota.cc/products/sig_62591403f4738138ec8c933b890c2c06</loc>
-    <lastmod>2026-09-25T12:59:24.826Z</lastmod>
-    <changefreq>weekly</changefreq>
-  </url>
-  <url>
     <loc>https://agent.pivota.cc/products/sig_625a0b65366de61e19e939377aa86cca</loc>
     <lastmod>2026-09-28T14:13:59.449Z</lastmod>
     <changefreq>weekly</changefreq>
@@ -43479,11 +43434,6 @@
   <url>
     <loc>https://agent.pivota.cc/products/sig_644f5b87e71d6c83b8ebd6550cc601a5</loc>
     <lastmod>2026-09-25T07:34:03.314Z</lastmod>
-    <changefreq>weekly</changefreq>
-  </url>
-  <url>
-    <loc>https://agent.pivota.cc/products/sig_645432c5f897cc951e78ceea7a5fe9e7</loc>
-    <lastmod>2026-10-12T14:58:42.518Z</lastmod>
     <changefreq>weekly</changefreq>
   </url>
   <url>
@@ -45018,7 +44968,7 @@
   </url>
   <url>
     <loc>https://agent.pivota.cc/products/sig_67b8828f6f7c568479e3b0e7123478da</loc>
-    <lastmod>2026-10-11T01:41:58.502Z</lastmod>
+    <lastmod>2026-10-10T14:59:11.636Z</lastmod>
     <changefreq>weekly</changefreq>
   </url>
   <url>
@@ -52067,11 +52017,6 @@
     <changefreq>weekly</changefreq>
   </url>
   <url>
-    <loc>https://agent.pivota.cc/products/sig_78dc2c2e67a3151804fd2a3427ea31bc</loc>
-    <lastmod>2026-08-07T02:33:22.304Z</lastmod>
-    <changefreq>weekly</changefreq>
-  </url>
-  <url>
     <loc>https://agent.pivota.cc/products/sig_78e380f95377eaeb93fc52e80f81fa10</loc>
     <lastmod>2026-09-25T08:22:42.979Z</lastmod>
     <changefreq>weekly</changefreq>
@@ -53019,11 +52964,6 @@
   <url>
     <loc>https://agent.pivota.cc/products/sig_7ae563fa4bc0c1dd874f56a3fbbcf56f</loc>
     <lastmod>2026-09-25T08:28:37.052Z</lastmod>
-    <changefreq>weekly</changefreq>
-  </url>
-  <url>
-    <loc>https://agent.pivota.cc/products/sig_7ae701f074d3029e031fe923b0836fe4</loc>
-    <lastmod>2026-08-07T02:33:22.304Z</lastmod>
     <changefreq>weekly</changefreq>
   </url>
   <url>
@@ -54887,11 +54827,6 @@
     <changefreq>weekly</changefreq>
   </url>
   <url>
-    <loc>https://agent.pivota.cc/products/sig_7f7b1a4f858dc40d95698b5262763e1a</loc>
-    <lastmod>2026-08-07T02:33:22.304Z</lastmod>
-    <changefreq>weekly</changefreq>
-  </url>
-  <url>
     <loc>https://agent.pivota.cc/products/sig_7f7c3819aad22d143eabf7f7eba9d3a5</loc>
     <lastmod>2026-08-07T02:30:02.059Z</lastmod>
     <changefreq>weekly</changefreq>
@@ -55479,11 +55414,6 @@
   <url>
     <loc>https://agent.pivota.cc/products/sig_8134f5e8321dc9a89f83c971ec0d1a7d</loc>
     <lastmod>2026-09-26T11:58:38.528Z</lastmod>
-    <changefreq>weekly</changefreq>
-  </url>
-  <url>
-    <loc>https://agent.pivota.cc/products/sig_8137df1de659c9e0b816bfea02184b5d</loc>
-    <lastmod>2026-08-07T02:01:11.878Z</lastmod>
     <changefreq>weekly</changefreq>
   </url>
   <url>
@@ -60052,11 +59982,6 @@
     <changefreq>weekly</changefreq>
   </url>
   <url>
-    <loc>https://agent.pivota.cc/products/sig_8b8fc143fe0056a9af6db3721add97ea</loc>
-    <lastmod>2026-08-07T02:33:22.304Z</lastmod>
-    <changefreq>weekly</changefreq>
-  </url>
-  <url>
     <loc>https://agent.pivota.cc/products/sig_8b9697ebbe83026471264eedc331f022</loc>
     <lastmod>2026-09-24T21:15:13.907Z</lastmod>
     <changefreq>weekly</changefreq>
@@ -60692,6 +60617,11 @@
     <changefreq>weekly</changefreq>
   </url>
   <url>
+    <loc>https://agent.pivota.cc/products/sig_8d01dac8325618a1c798df5f27f6a588</loc>
+    <lastmod>2026-09-25T12:59:24.826Z</lastmod>
+    <changefreq>weekly</changefreq>
+  </url>
+  <url>
     <loc>https://agent.pivota.cc/products/sig_8d0784a472d077a7a9f0229ef10b7737</loc>
     <lastmod>2026-09-26T04:26:23.559Z</lastmod>
     <changefreq>weekly</changefreq>
@@ -60813,7 +60743,7 @@
   </url>
   <url>
     <loc>https://agent.pivota.cc/products/sig_8d5b38853576ccfea1b4f18ac3a69e23</loc>
-    <lastmod>2026-10-12T14:58:42.538Z</lastmod>
+    <lastmod>2026-09-29T04:49:02.794Z</lastmod>
     <changefreq>weekly</changefreq>
   </url>
   <url>
@@ -60997,18 +60927,8 @@
     <changefreq>weekly</changefreq>
   </url>
   <url>
-    <loc>https://agent.pivota.cc/products/sig_8dd0bfd086d4b749a59df55d7b4371a1</loc>
-    <lastmod>2026-10-12T14:59:02.897Z</lastmod>
-    <changefreq>weekly</changefreq>
-  </url>
-  <url>
     <loc>https://agent.pivota.cc/products/sig_8dd359024aa253dfd03163b68f3eb733</loc>
     <lastmod>2026-09-05T00:23:46.217Z</lastmod>
-    <changefreq>weekly</changefreq>
-  </url>
-  <url>
-    <loc>https://agent.pivota.cc/products/sig_8dd3ac3c6f26e7a9059210bc6806d3d7</loc>
-    <lastmod>2026-10-12T14:59:03.090Z</lastmod>
     <changefreq>weekly</changefreq>
   </url>
   <url>
@@ -65272,11 +65192,6 @@
     <changefreq>weekly</changefreq>
   </url>
   <url>
-    <loc>https://agent.pivota.cc/products/sig_982d45836be45f73cfead11e6394e823</loc>
-    <lastmod>2026-08-07T02:00:04.399Z</lastmod>
-    <changefreq>weekly</changefreq>
-  </url>
-  <url>
     <loc>https://agent.pivota.cc/products/sig_982f8ac3eee001a60b376086cf996b4c</loc>
     <lastmod>2026-10-12T01:51:18.527Z</lastmod>
     <changefreq>weekly</changefreq>
@@ -68083,7 +67998,7 @@
   </url>
   <url>
     <loc>https://agent.pivota.cc/products/sig_9f0cabfabe133979652eb267543ebe27</loc>
-    <lastmod>2026-10-12T14:59:00.369Z</lastmod>
+    <lastmod>2026-09-29T04:49:36.104Z</lastmod>
     <changefreq>weekly</changefreq>
   </url>
   <url>
@@ -71287,11 +71202,6 @@
     <changefreq>weekly</changefreq>
   </url>
   <url>
-    <loc>https://agent.pivota.cc/products/sig_a668488b9f47032e1baa5fb88c03439d</loc>
-    <lastmod>2026-08-07T02:01:11.878Z</lastmod>
-    <changefreq>weekly</changefreq>
-  </url>
-  <url>
     <loc>https://agent.pivota.cc/products/sig_a66e6e8253c50fdc508af469f713aade</loc>
     <lastmod>2026-09-25T05:56:17.778Z</lastmod>
     <changefreq>weekly</changefreq>
@@ -73647,11 +73557,6 @@
     <changefreq>weekly</changefreq>
   </url>
   <url>
-    <loc>https://agent.pivota.cc/products/sig_abdc7b0fee8350c4313fbd65670a38c5</loc>
-    <lastmod>2026-09-25T02:59:26.157Z</lastmod>
-    <changefreq>weekly</changefreq>
-  </url>
-  <url>
     <loc>https://agent.pivota.cc/products/sig_abe17eac997eb5fca287e3bd2bb26726</loc>
     <lastmod>2026-08-07T02:24:52.849Z</lastmod>
     <changefreq>weekly</changefreq>
@@ -74294,11 +74199,6 @@
   <url>
     <loc>https://agent.pivota.cc/products/sig_ad6ae1312082e03071eeb2d7ea3c261d</loc>
     <lastmod>2026-08-07T02:01:41.082Z</lastmod>
-    <changefreq>weekly</changefreq>
-  </url>
-  <url>
-    <loc>https://agent.pivota.cc/products/sig_ad714fe6acbb8f85130eb6eae01bf6ff</loc>
-    <lastmod>2026-08-07T02:33:22.304Z</lastmod>
     <changefreq>weekly</changefreq>
   </url>
   <url>
@@ -81807,11 +81707,6 @@
     <changefreq>weekly</changefreq>
   </url>
   <url>
-    <loc>https://agent.pivota.cc/products/sig_bf6abce5ba2b05188aae9569ae446bc1</loc>
-    <lastmod>2026-08-04T10:04:12.575Z</lastmod>
-    <changefreq>weekly</changefreq>
-  </url>
-  <url>
     <loc>https://agent.pivota.cc/products/sig_bf6aeb29f0efa3b2a1426ac1f38e1335</loc>
     <lastmod>2026-09-05T00:23:45.710Z</lastmod>
     <changefreq>weekly</changefreq>
@@ -84667,11 +84562,6 @@
     <changefreq>weekly</changefreq>
   </url>
   <url>
-    <loc>https://agent.pivota.cc/products/sig_c60f81b8f93616badda7c35a497a3042</loc>
-    <lastmod>2026-09-25T02:59:23.712Z</lastmod>
-    <changefreq>weekly</changefreq>
-  </url>
-  <url>
     <loc>https://agent.pivota.cc/products/sig_c610d5e2de258097d80cee9f8e3fcd2f</loc>
     <lastmod>2026-08-07T02:24:30.244Z</lastmod>
     <changefreq>weekly</changefreq>
@@ -85299,11 +85189,6 @@
   <url>
     <loc>https://agent.pivota.cc/products/sig_c7c85b5189987b0643bb5b09f62417b4</loc>
     <lastmod>2026-09-26T15:59:11.674Z</lastmod>
-    <changefreq>weekly</changefreq>
-  </url>
-  <url>
-    <loc>https://agent.pivota.cc/products/sig_c7ca7f42d84500021117183ea15d12ee</loc>
-    <lastmod>2026-08-07T02:33:22.304Z</lastmod>
     <changefreq>weekly</changefreq>
   </url>
   <url>
@@ -87539,11 +87424,6 @@
   <url>
     <loc>https://agent.pivota.cc/products/sig_cd8806fbfd1d92e7b0312990933062fd</loc>
     <lastmod>2026-08-07T02:13:29.059Z</lastmod>
-    <changefreq>weekly</changefreq>
-  </url>
-  <url>
-    <loc>https://agent.pivota.cc/products/sig_cd891c023242aa7e0beb498369daa9af</loc>
-    <lastmod>2026-08-07T02:33:22.304Z</lastmod>
     <changefreq>weekly</changefreq>
   </url>
   <url>
@@ -92652,11 +92532,6 @@
     <changefreq>weekly</changefreq>
   </url>
   <url>
-    <loc>https://agent.pivota.cc/products/sig_d9dfb281b1bda35437edc75afdf5fdb6</loc>
-    <lastmod>2026-08-07T02:32:59.897Z</lastmod>
-    <changefreq>weekly</changefreq>
-  </url>
-  <url>
     <loc>https://agent.pivota.cc/products/sig_d9e1512e239353dd971fbdcbe0f43093</loc>
     <lastmod>2026-08-07T02:28:47.034Z</lastmod>
     <changefreq>weekly</changefreq>
@@ -95177,6 +95052,11 @@
     <changefreq>weekly</changefreq>
   </url>
   <url>
+    <loc>https://agent.pivota.cc/products/sig_e047bffb726297d84e656e280aae93c5</loc>
+    <lastmod>2026-08-07T02:33:22.304Z</lastmod>
+    <changefreq>weekly</changefreq>
+  </url>
+  <url>
     <loc>https://agent.pivota.cc/products/sig_e058867ed18ead3a7dfcf4815b2fb923</loc>
     <lastmod>2026-08-07T02:00:19.407Z</lastmod>
     <changefreq>weekly</changefreq>
@@ -96454,11 +96334,6 @@
   <url>
     <loc>https://agent.pivota.cc/products/sig_e33f367165975e07165f1701</loc>
     <lastmod>2026-06-07T08:07:06.011Z</lastmod>
-    <changefreq>weekly</changefreq>
-  </url>
-  <url>
-    <loc>https://agent.pivota.cc/products/sig_e3468306dcf11312c0f63721a1fd2630</loc>
-    <lastmod>2026-08-07T02:33:22.304Z</lastmod>
     <changefreq>weekly</changefreq>
   </url>
   <url>
@@ -97854,11 +97729,6 @@
   <url>
     <loc>https://agent.pivota.cc/products/sig_e6cc5539c931157b95928a7e7bb2db15</loc>
     <lastmod>2026-10-12T14:24:04.943Z</lastmod>
-    <changefreq>weekly</changefreq>
-  </url>
-  <url>
-    <loc>https://agent.pivota.cc/products/sig_e6d45516588eda9b68018e39b6091c26</loc>
-    <lastmod>2026-08-07T02:01:11.878Z</lastmod>
     <changefreq>weekly</changefreq>
   </url>
   <url>
@@ -101212,11 +101082,6 @@
     <changefreq>weekly</changefreq>
   </url>
   <url>
-    <loc>https://agent.pivota.cc/products/sig_ef4a62effe468b2f201ea03d0e141de5</loc>
-    <lastmod>2026-08-07T02:33:22.304Z</lastmod>
-    <changefreq>weekly</changefreq>
-  </url>
-  <url>
     <loc>https://agent.pivota.cc/products/sig_ef4aea9bc1c5ecc8782ffb64b0a5aa8b</loc>
     <lastmod>2026-09-28T00:13:30.898Z</lastmod>
     <changefreq>weekly</changefreq>
@@ -102554,11 +102419,6 @@
   <url>
     <loc>https://agent.pivota.cc/products/sig_f276a13050173070f15e84defa4b23b1</loc>
     <lastmod>2026-09-05T05:37:53.506Z</lastmod>
-    <changefreq>weekly</changefreq>
-  </url>
-  <url>
-    <loc>https://agent.pivota.cc/products/sig_f27e3e1b243e6ac8d666bb7b230f1883</loc>
-    <lastmod>2026-08-07T02:33:22.304Z</lastmod>
     <changefreq>weekly</changefreq>
   </url>
   <url>
@@ -106254,11 +106114,6 @@
   <url>
     <loc>https://agent.pivota.cc/products/sig_fbb0cc12bc461ad73fde306d4819e8be</loc>
     <lastmod>2026-08-07T02:14:36.302Z</lastmod>
-    <changefreq>weekly</changefreq>
-  </url>
-  <url>
-    <loc>https://agent.pivota.cc/products/sig_fbb0ecd4511f33c84aeb1a5689fb6884</loc>
-    <lastmod>2026-08-07T02:01:11.878Z</lastmod>
     <changefreq>weekly</changefreq>
   </url>
   <url>
