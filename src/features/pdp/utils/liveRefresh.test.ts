@@ -320,11 +320,21 @@ describe('applyLiveRefreshPatch does nothing unless every guard holds', () => {
     ['an answer without live_refresh', (r: any) => { delete r.live_refresh; }],
     ['a failed status', (r: any) => { r.status = 'error'; }],
     ['a patch that is not an object', (r: any) => { r.patch = []; }],
+    ['an answer the gateway marked degraded_reads', (r: any) => { r.degraded_reads = [{ source: 'catalog', reason: 'timeout' }]; }],
   ])('%s', (_label, edit) => {
     const cur = mapped();
     const res = priceDrop();
     edit(res);
     expect(applyLiveRefreshPatch(cur, sentFor(cur), res)).toBe(cur);
+  });
+
+  it.each([[], null, 'x'])('an empty or malformed degraded_reads marker (%j) is not degraded: the answer applies', (marker) => {
+    const cur = mapped();
+    const res: any = priceDrop();
+    res.degraded_reads = marker;
+    const next = applyLiveRefreshPatch(cur, sentFor(cur), res);
+    expect(next).not.toBe(cur);
+    expect(next).toEqual(applyLiveRefreshPatch(cur, sentFor(cur), priceDrop()));
   });
 
   it.each([null, undefined, 'ok', 42, [], {}])('a garbage answer %j', (res) => {
