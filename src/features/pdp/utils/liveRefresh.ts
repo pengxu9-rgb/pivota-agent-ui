@@ -24,6 +24,7 @@ import type {
   PDPPayload,
 } from '../types';
 import { isPurchaseUnavailable } from './commerceAvailability';
+import { hasDegradedReads } from '@/lib/pdpDegradedRender';
 
 /** The browser's whole budget for one refresh. A slower answer is dropped and the stored page stays. */
 export const PDP_LIVE_REFRESH_TIMEOUT_MS = 4500;
@@ -259,6 +260,9 @@ function checkOffers(before: unknown, after: unknown, withheld: Set<string>): vo
 function appliedPatchOf(res: unknown): LivePdpRefreshPatch | null {
   if (!isRecord(res) || !isRecord(res.live_refresh) || !isRecord(res.patch)) return null;
   if (res.status !== undefined && res.status !== 'success') return null;
+  // The gateway stamps `degraded_reads` on any JSON body sent after a read came back incomplete; such an
+  // answer is not trusted to move live price or stock. The stored page stays.
+  if (hasDegradedReads(res)) return null;
   if (res.live_refresh.mode !== 'on' || res.live_refresh.outcome !== 'applied') return null;
   return res.patch as LivePdpRefreshPatch;
 }
