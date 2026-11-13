@@ -44,6 +44,7 @@ vi.mock('@/lib/api', () => ({
 
 vi.mock('@/lib/checkoutToken', () => ({
   getCheckoutContextFromBrowser: () => ({ token: null, source: null }),
+  getCheckoutContextForOrder: () => ({ token: null, source: null }),
   normalizeCheckoutSource: (value: string | null | undefined) => value || null,
 }));
 

@@ -8,6 +8,7 @@ import { ArrowLeft } from 'lucide-react'
 import { safeReturnUrl, withReturnParams } from '@/lib/returnUrl'
 import { getAccountOrder, publicOrderResume, setMerchantId } from '@/lib/api'
 import {
+  getCheckoutContextForOrder,
   getCheckoutContextFromBrowser,
   normalizeCheckoutSource,
 } from '@/lib/checkoutToken'
@@ -338,12 +339,19 @@ function OrderContent() {
     }
   }
 
+  // The resume entry acts on an existing order (same precedence as the loader below): a stored token is
+  // used there only when it is bound to that order, otherwise it is dropped (getCheckoutContextForOrder).
+  const isResumeEntry = Boolean(resumeOrderId && !ucpCheckoutSessionId && !itemsParam)
+
   useEffect(() => {
     const rawSearch = searchParams.toString()
-    const context = getCheckoutContextFromBrowser(rawSearch ? `?${rawSearch}` : '')
+    const search = rawSearch ? `?${rawSearch}` : ''
+    const context = isResumeEntry
+      ? getCheckoutContextForOrder(resumeOrderId, search)
+      : getCheckoutContextFromBrowser(search)
     setCheckoutToken(context.token)
     setCheckoutSource(context.source)
-  }, [checkoutTokenFromQuery, searchParams])
+  }, [checkoutTokenFromQuery, searchParams, isResumeEntry, resumeOrderId])
 
   useEffect(() => {
     // In a real app, this would come from cart state or API

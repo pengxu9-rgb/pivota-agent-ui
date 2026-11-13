@@ -1,6 +1,7 @@
 import { matchesPdpRequestIdentity, type PdpRequestIdentity, enforceReadOnlyPdp, hasReadOnlyPdpSignal, isValidReadOnlyPdpResponse, isValidVerifiedPdpResponse } from '../utils/commerceAvailability';
 import { normalizeReviewAvailability } from '../state/reviewAvailability';
 import { projectPublicInsightsPayload } from '@/features/pdp/utils/publicProductIntel';
+import { readLiveRefreshDescriptor } from '@/features/pdp/utils/liveRefresh';
 import type { GetPdpV2Response } from '@/lib/api';
 import type {
   ActiveIngredientsData,
@@ -716,6 +717,13 @@ export function mapPdpV2ToPdpPayload(response: GetPdpV2Response, expected?: PdpR
       data: bundleCompositionData as any,
     } as Module);
   }
+
+  // The live-refresh descriptor is read from the response's TOP LEVEL only (contract v1), validated, and
+  // never taken from the canonical pdp_payload. enforceReadOnlyPdp below drops it from any page whose
+  // commerce is read-only or pending.
+  delete (next as { live_refresh?: unknown }).live_refresh;
+  const liveRefresh = readLiveRefreshDescriptor((response as { live_refresh?: unknown }).live_refresh);
+  if (liveRefresh) next.live_refresh = liveRefresh;
 
   next.modules = next.modules.map((module) => {
     const evidence = next.x_content_module_states?.[module.type];

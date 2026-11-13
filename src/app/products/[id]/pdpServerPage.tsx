@@ -19,6 +19,7 @@ import { getPdpRouteIdExistenceCached, getPdpV2, getPdpV2Cached, getServicesBrow
 import { hasDegradedReads, PDP_DEGRADED_RENDER_ERROR } from '@/lib/pdpDegradedRender';
 import { mapPdpV2ToPdpPayload } from '@/features/pdp/adapter/mapPdpV2ToPdpPayload';
 import { projectPublicInsightsPayload } from '@/features/pdp/utils/publicProductIntel';
+import { hasBoundContentKeyResolution } from '@/features/pdp/utils/commerceAvailability';
 import type { PDPPayload } from '@/features/pdp/types';
 import { isBeautyProduct } from '@/features/pdp/utils/isBeautyProduct';
 import { getProviderListings, type ServiceCardData } from '@/features/services/lib/types';
@@ -243,6 +244,13 @@ function readServerCanonicalRouteId(
   if (/^sig_.+/.test(contentCanonicalRouteId)) {
     return contentCanonicalRouteId;
   }
+
+  // Unminted referral rows are published under their content key. The gateway's
+  // exact row binding keeps their canonical URL on that route instead of an unservable source id.
+  const contentKeyResolution = (response as any)?.metadata?.identity_resolution?.content_key_resolution;
+  if (hasBoundContentKeyResolution(response, requestedProductId) &&
+      contentKeyResolution.product_id === (product.source_product_id || product.product_id) &&
+      contentKeyResolution.merchant_id === product.merchant_id) return requestedProductId;
 
   return resolveProductRouteId(product) || requestedProductId;
 }
@@ -683,6 +691,10 @@ async function _fetchPdpForServerRenderUncached(
     ],
     timeout_ms: PDP_SERVER_FETCH_TIMEOUT_MS,
     gatewayBaseUrl: resolveServerGatewayBaseUrl(),
+    // PDP async live refresh (contract v1): ask for the page's live-refresh descriptor. The gateway
+    // issues one only for a normally served page it can re-read; the browser uses it only when
+    // NEXT_PUBLIC_PDP_LIVE_REFRESH is on. JSON-LD and the server HTML never read it.
+    live_refresh: true,
   };
   type Attempt = { outcome: PdpFetchOutcome; retryable: boolean; unresolvedRouteId?: boolean };
 

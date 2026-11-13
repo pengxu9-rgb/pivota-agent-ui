@@ -1,0 +1,586 @@
+{
+  "status": "success",
+  "pdp_version": "2.0",
+  "request_id": "c83b6142-913a-4707-a49f-f09e7d04e9a0",
+  "build_id": null,
+  "generated_at": "2026-10-27T15:24:35.220Z",
+  "subject": {
+    "type": "product",
+    "id": "ext_11c49350f95d48555a9f2a6b",
+    "canonical_product_ref": {
+      "merchant_id": "merch_obs_f90122172d141c2d",
+      "product_id": "ext_11c49350f95d48555a9f2a6b",
+      "product_key": "prod::external_seed::external_seed::ext_11c49350f95d48555a9f2a6b",
+      "content_key": "ck_4dc24acc8d9242a292e8692bd11f5c09",
+      "platform": "external_seed",
+      "source_system": "external_product_seeds_mirror_v1"
+    }
+  },
+  "capabilities": {
+    "client": "shopping-agent-ui",
+    "client_version": null
+  },
+  "modules": [
+    {
+      "type": "canonical",
+      "required": true,
+      "data": {
+        "product_group_id": "pg:external:ext_11c49350f95d48555a9f2a6b",
+        "sellable_item_group_id": null,
+        "product_line_id": null,
+        "review_family_id": null,
+        "identity_confidence": null,
+        "match_basis": [],
+        "canonical_scope": null,
+        "content_canonical_route_id": null,
+        "pdp_schema_profile": "beauty_formula",
+        "pdp_content_source": "self",
+        "offer_source": "self",
+        "commerce_source": "selected_seller_store",
+        "content_review_state": "not_needed",
+        "canonical_product_ref": {
+          "merchant_id": "merch_obs_f90122172d141c2d",
+          "product_id": "ext_11c49350f95d48555a9f2a6b",
+          "product_key": "prod::external_seed::external_seed::ext_11c49350f95d48555a9f2a6b",
+          "content_key": "ck_4dc24acc8d9242a292e8692bd11f5c09",
+          "platform": "external_seed",
+          "source_system": "external_product_seeds_mirror_v1"
+        },
+        "entry_product_ref": {
+          "product_id": "ext_11c49350f95d48555a9f2a6b",
+          "merchant_id": "merch_obs_f90122172d141c2d"
+        },
+        "selected_commerce_ref": {
+          "merchant_id": "merch_obs_f90122172d141c2d",
+          "product_id": "ext_11c49350f95d48555a9f2a6b"
+        },
+        "content_base_ref": {
+          "merchant_id": "merch_obs_f90122172d141c2d",
+          "product_id": "ext_11c49350f95d48555a9f2a6b",
+          "product_key": "prod::external_seed::external_seed::ext_11c49350f95d48555a9f2a6b",
+          "content_key": "ck_4dc24acc8d9242a292e8692bd11f5c09",
+          "platform": "external_seed",
+          "source_system": "external_product_seeds_mirror_v1"
+        },
+        "canonical_payload_product_ref": {
+          "merchant_id": "merch_obs_f90122172d141c2d",
+          "product_id": "ext_11c49350f95d48555a9f2a6b",
+          "platform": "external"
+        },
+        "pdp_payload": {
+          "schema_version": "1.0.0",
+          "page_type": "product_detail",
+          "pdp_schema_profile": "beauty_formula",
+          "x_template_hint": "beauty",
+          "tracking": {
+            "page_request_id": "pr_nxpxp8oup7_mvqu6ia5",
+            "entry_point": "agent"
+          },
+          "product": {
+            "product_id": "ext_11c49350f95d48555a9f2a6b",
+            "merchant_id": "merch_obs_f90122172d141c2d",
+            "title": "30 Proof Styling Cream",
+            "pdp_schema_profile": "beauty_formula",
+            "subtitle": "",
+            "brand": {
+              "name": "Blind Barber"
+            },
+            "category_path": [
+              "Moisturizer"
+            ],
+            "category_kind": "beauty",
+            "image_url": "https://cdn.example.test/cream.png",
+            "image_urls": [
+              "https://cdn.example.test/cream.png"
+            ],
+            "images": [
+              "https://cdn.example.test/cream.png"
+            ],
+            "source": "external_seed",
+            "readiness_tier": null,
+            "serving_eligible": true,
+            "purchase_route": null,
+            "commerce_mode": null,
+            "checkout_handoff": null,
+            "external_redirect_url": "https://blindbarber.com/products/30-proof-styling-cream",
+            "url": "https://blindbarber.com/products/30-proof-styling-cream",
+            "canonical_url": "https://blindbarber.com/products/30-proof-styling-cream",
+            "destination_url": "https://blindbarber.com/products/30-proof-styling-cream",
+            "source_url": "https://blindbarber.com/products/30-proof-styling-cream",
+            "default_variant_id": "ext_11c49350f95d48555a9f2a6b",
+            "variants": [
+              {
+                "variant_id": "ext_11c49350f95d48555a9f2a6b",
+                "sku_id": "ext_11c49350f95d48555a9f2a6b",
+                "title": "",
+                "options": [],
+                "price": {
+                  "current": {
+                    "amount": 24,
+                    "currency": "USD"
+                  }
+                },
+                "availability": {
+                  "in_stock": false,
+                  "available_quantity": 0
+                },
+                "image_url": "https://cdn.example.test/cream.png",
+                "label_image_url": "",
+                "images": [
+                  "https://cdn.example.test/cream.png"
+                ],
+                "image_urls": [
+                  "https://cdn.example.test/cream.png"
+                ],
+                "axis_kind": "",
+                "display_label": "",
+                "source_quality_status": "blocked",
+                "hidden_from_selector": true
+              }
+            ],
+            "purchase_grain": "variant",
+            "price": {
+              "current": {
+                "amount": 24,
+                "currency": "USD"
+              }
+            },
+            "availability": {
+              "in_stock": false,
+              "available_quantity": 0
+            },
+            "description": "A weightless styling cream.",
+            "product_group_id": "pg:external:ext_11c49350f95d48555a9f2a6b",
+            "sellable_item_group_id": "pg:external:ext_11c49350f95d48555a9f2a6b",
+            "offers_count": 1,
+            "offer_count": 1,
+            "has_multiple_offers": false,
+            "default_offer_id": "of:v1:merch_obs_f90122172d141c2d:pg:external:ext_11c49350f95d48555a9f2a6b:merchant:default",
+            "best_price_offer_id": "of:v1:merch_obs_f90122172d141c2d:pg:external:ext_11c49350f95d48555a9f2a6b:merchant:default"
+          },
+          "modules": [
+            {
+              "module_id": "m_media",
+              "type": "media_gallery",
+              "priority": 100,
+              "data": {
+                "items": [
+                  {
+                    "type": "image",
+                    "url": "https://cdn.example.test/cream.png",
+                    "alt_text": "30 Proof Styling Cream",
+                    "role": "official_product",
+                    "provenance": {
+                      "source_type": "merchant_product",
+                      "scope": "exact_item",
+                      "product_id": "ext_11c49350f95d48555a9f2a6b",
+                      "merchant_id": "merch_obs_f90122172d141c2d",
+                      "source_url": "https://blindbarber.com/products/30-proof-styling-cream"
+                    }
+                  }
+                ],
+                "entry_points": {
+                  "submit_photo": {
+                    "action_type": "open_embed",
+                    "label": "Add a photo",
+                    "target": {
+                      "embed_intent_type": "buyer_media_submission",
+                      "resolve_params": {
+                        "product_id": "ext_11c49350f95d48555a9f2a6b",
+                        "merchant_id": "merch_obs_f90122172d141c2d",
+                        "content_type": "photo"
+                      }
+                    }
+                  },
+                  "submit_video": {
+                    "action_type": "open_embed",
+                    "label": "Add a video",
+                    "target": {
+                      "embed_intent_type": "buyer_media_submission",
+                      "resolve_params": {
+                        "product_id": "ext_11c49350f95d48555a9f2a6b",
+                        "merchant_id": "merch_obs_f90122172d141c2d",
+                        "content_type": "video"
+                      }
+                    }
+                  }
+                },
+                "contribution_policy": {
+                  "submissions_open": true,
+                  "publish_visibility": "employee_approved_only",
+                  "employee_review_required": true,
+                  "moderation_owner": "pivota_employee",
+                  "accepted_content_types": [
+                    "photo",
+                    "video"
+                  ]
+                }
+              }
+            },
+            {
+              "module_id": "m_price",
+              "type": "price_promo",
+              "priority": 90,
+              "data": {
+                "price": {
+                  "amount": 24,
+                  "currency": "USD"
+                },
+                "promotions": []
+              }
+            },
+            {
+              "module_id": "m_product_overview",
+              "type": "product_overview",
+              "priority": 70,
+              "data": {
+                "sections": [
+                  {
+                    "heading": "Description",
+                    "content_type": "text",
+                    "content": "A weightless styling cream.",
+                    "collapsed_by_default": false
+                  }
+                ]
+              }
+            }
+          ],
+          "actions": [
+            {
+              "action_type": "add_to_cart",
+              "label": "Add to Cart",
+              "priority": 20,
+              "target": {}
+            },
+            {
+              "action_type": "buy_now",
+              "label": "Buy Now",
+              "priority": 10,
+              "target": {}
+            }
+          ],
+          "quality_signals": {
+            "coverage_by_module": {
+              "media_gallery": 1,
+              "price_promo": 1,
+              "product_overview": 1,
+              "buy_box": 0
+            },
+            "parse_confidence": {
+              "size_guide": 0
+            },
+            "fallback_used": {
+              "buy_box": true,
+              "size_guide": false
+            },
+            "gating": {
+              "buy_box_ok": false,
+              "size_guide_ok": false
+            }
+          },
+          "x_content_module_states": {
+            "ingredients_inci": {
+              "state": "absent"
+            },
+            "active_ingredients": {
+              "state": "absent"
+            },
+            "how_to_use": {
+              "state": "absent"
+            },
+            "product_overview": {
+              "state": "ready"
+            },
+            "supplemental_details": {
+              "state": "absent"
+            },
+            "materials": {
+              "state": "absent"
+            },
+            "product_specs": {
+              "state": "absent"
+            },
+            "size_fit": {
+              "state": "absent"
+            },
+            "care_instructions": {
+              "state": "absent"
+            },
+            "usage_safety": {
+              "state": "absent"
+            },
+            "product_facts": {
+              "state": "absent"
+            },
+            "reviews_preview": {
+              "state": "absent"
+            }
+          },
+          "product_group_id": "pg:external:ext_11c49350f95d48555a9f2a6b",
+          "sellable_item_group_id": "pg:external:ext_11c49350f95d48555a9f2a6b",
+          "offers_count": 1,
+          "offer_count": 1,
+          "has_multiple_offers": false
+        }
+      }
+    },
+    {
+      "type": "variant_selector",
+      "required": false,
+      "data": null,
+      "reason": "unavailable"
+    },
+    {
+      "type": "offers",
+      "required": false,
+      "data": {
+        "status": "success",
+        "product_group_id": "pg:external:ext_11c49350f95d48555a9f2a6b",
+        "canonical_product_ref": {
+          "merchant_id": "merch_obs_f90122172d141c2d",
+          "product_id": "ext_11c49350f95d48555a9f2a6b",
+          "product_key": "prod::external_seed::external_seed::ext_11c49350f95d48555a9f2a6b",
+          "content_key": "ck_4dc24acc8d9242a292e8692bd11f5c09",
+          "platform": "external_seed",
+          "source_system": "external_product_seeds_mirror_v1"
+        },
+        "offers_count": 1,
+        "offers": [
+          {
+            "offer_id": "of:v1:merch_obs_f90122172d141c2d:pg:external:ext_11c49350f95d48555a9f2a6b:merchant:default",
+            "product_group_id": "pg:external:ext_11c49350f95d48555a9f2a6b",
+            "product_id": "ext_11c49350f95d48555a9f2a6b",
+            "merchant_id": "merch_obs_f90122172d141c2d",
+            "merchant_name": "Blindbarber",
+            "price": {
+              "amount": 24,
+              "currency": "USD"
+            },
+            "inventory": {
+              "in_stock": false
+            },
+            "variants": [
+              {
+                "variant_id": "ext_11c49350f95d48555a9f2a6b",
+                "sku_id": "ext_11c49350f95d48555a9f2a6b",
+                "sku": "ext_11c49350f95d48555a9f2a6b",
+                "title": "Default",
+                "price": {
+                  "current": {
+                    "amount": 24,
+                    "currency": "USD"
+                  }
+                },
+                "availability": {
+                  "in_stock": false,
+                  "available_quantity": 0
+                },
+                "image_url": "https://cdn.example.test/cream.png"
+              }
+            ],
+            "purchase_route": "affiliate_outbound",
+            "external_redirect_url": "https://blindbarber.com/products/30-proof-styling-cream",
+            "url": "https://blindbarber.com/products/30-proof-styling-cream",
+            "action": {
+              "type": "redirect_url",
+              "url": "https://blindbarber.com/products/30-proof-styling-cream"
+            },
+            "risk_tier": "standard",
+            "commerce_mode": "links_out",
+            "seller_of_record": "merchant",
+            "payment_processor_owner": "merchant",
+            "order_system_of_record": "merchant_store_platform",
+            "checkout_handoff": "redirect",
+            "order_writeback_mode": "merchant_direct",
+            "merchant_checkout_url": "https://blindbarber.com/products/30-proof-styling-cream",
+            "offer_source": "self",
+            "commerce_source": "selected_seller_store"
+          }
+        ],
+        "default_offer_id": "of:v1:merch_obs_f90122172d141c2d:pg:external:ext_11c49350f95d48555a9f2a6b:merchant:default",
+        "best_price_offer_id": "of:v1:merch_obs_f90122172d141c2d:pg:external:ext_11c49350f95d48555a9f2a6b:merchant:default",
+        "offer_source": "self",
+        "commerce_source": "selected_seller_store",
+        "content_review_state": "not_needed"
+      }
+    },
+    {
+      "type": "product_overview",
+      "required": false,
+      "data": {
+        "sections": [
+          {
+            "heading": "Description",
+            "content_type": "text",
+            "content": "A weightless styling cream.",
+            "collapsed_by_default": false
+          }
+        ]
+      }
+    }
+  ],
+  "warnings": [],
+  "missing": [
+    {
+      "type": "variant_selector",
+      "reason": "unavailable"
+    }
+  ],
+  "metadata": {
+    "detail_source": null,
+    "pdp_schema_profile": "beauty_formula",
+    "normalized_pdp": {
+      "surface": "pivota_normalized_pdp",
+      "display_name": "Pivota Insights",
+      "insights_available": false,
+      "self_canonical": true,
+      "indexability": "index",
+      "structured_data_mode": "product_snippet",
+      "page_positioning": "editorial_normalized_product_page",
+      "quality_state": "limited",
+      "evidence_profile": null,
+      "truth_layers": {
+        "commerce_truth": "merchant_store_platform",
+        "entity_truth": "pivota_normalized_product_layer",
+        "experience_truth": "pivota_pdp_chat_agent"
+      }
+    },
+    "product_intel_status": "not_requested",
+    "identity_resolution": {
+      "requested_product_id": "ck_4dc24acc8d9242a292e8692bd11f5c09",
+      "requested_merchant_id": null,
+      "resolved_product_id": "ext_11c49350f95d48555a9f2a6b",
+      "resolved_merchant_id": "merch_obs_f90122172d141c2d",
+      "canonicalization_applied": true,
+      "canonicalization_reason_code": "CATALOG_CONTENT_KEY",
+      "entry_precheck_missing": false,
+      "resolution_source": "catalog_content_key",
+      "content_key_resolution": {
+        "content_key": "ck_4dc24acc8d9242a292e8692bd11f5c09",
+        "product_key": "prod::external_seed::external_seed::ext_11c49350f95d48555a9f2a6b",
+        "merchant_id": "merch_obs_f90122172d141c2d",
+        "product_id": "ext_11c49350f95d48555a9f2a6b"
+      }
+    },
+    "identity_graph": null,
+    "pdp_provenance": {
+      "pdp_content_source": "self",
+      "offer_source": "self",
+      "commerce_source": "selected_seller_store",
+      "content_review_state": "not_needed",
+      "content_base_ref": {
+        "merchant_id": "merch_obs_f90122172d141c2d",
+        "product_id": "ext_11c49350f95d48555a9f2a6b",
+        "product_key": "prod::external_seed::external_seed::ext_11c49350f95d48555a9f2a6b",
+        "content_key": "ck_4dc24acc8d9242a292e8692bd11f5c09",
+        "platform": "external_seed",
+        "source_system": "external_product_seeds_mirror_v1"
+      },
+      "selected_commerce_ref": {
+        "merchant_id": "merch_obs_f90122172d141c2d",
+        "product_id": "ext_11c49350f95d48555a9f2a6b"
+      },
+      "canonical_payload_product_ref": {
+        "merchant_id": "merch_obs_f90122172d141c2d",
+        "product_id": "ext_11c49350f95d48555a9f2a6b",
+        "platform": "external"
+      },
+      "identity_confidence": null,
+      "match_basis": []
+    },
+    "route_health": {
+      "total_latency_ms": 69,
+      "phases": {
+        "parse_request": 1,
+        "resolve_referral_content_key": 2,
+        "external_seed_status_precheck": 0,
+        "resolve_variant_to_product": 0,
+        "resolve_subject_group": 0,
+        "resolve_offer_group": 0,
+        "resolve_canonical_catalog_group": 0,
+        "precheck_entry_product": 45,
+        "resolve_group_cached": 0,
+        "serving_eligibility_gate": 0,
+        "fetch_canonical_product": 0,
+        "identity_graph_live": 0,
+        "catalog_identity_hydration": 0,
+        "fetch_optional_modules_parallel": 0,
+        "catalog_pdp_content_hydration": 1,
+        "savings_presentation_hydration": 1,
+        "identity_group_rescue_catalog": 1
+      },
+      "checkpoints_ms": {
+        "phase:parse_request": 1,
+        "phase:resolve_referral_content_key": 3,
+        "before_seed_precheck": 3,
+        "phase:external_seed_status_precheck": 3,
+        "phase:resolve_variant_to_product": 3,
+        "phase:resolve_subject_group": 3,
+        "phase:resolve_offer_group": 3,
+        "phase:resolve_canonical_catalog_group": 3,
+        "phase:precheck_entry_product": 48,
+        "phase:resolve_group_cached": 48,
+        "phase:serving_eligibility_gate": 48,
+        "phase:fetch_canonical_product": 49,
+        "phase:identity_graph_live": 49,
+        "phase:catalog_identity_hydration": 49,
+        "phase:fetch_optional_modules_parallel": 49,
+        "phase:catalog_pdp_content_hydration": 50,
+        "phase:savings_presentation_hydration": 51,
+        "after_savings_hydration": 51,
+        "after_related_services": 51,
+        "phase:identity_group_rescue_catalog": 65,
+        "before_response_assembly": 69
+      },
+      "modules": {
+        "offers": 3
+      },
+      "savings_presentation_hydration_mode": "prefetched_only",
+      "product_group_resolve_mode": "not_needed",
+      "product_group_resolve_budget_exceeded": false,
+      "product_group_resolve_budget_ms": 1200,
+      "identity_graph_live_mode": "executed_without_line_member_hydration",
+      "requested_product_id": "ck_4dc24acc8d9242a292e8692bd11f5c09",
+      "requested_merchant_id": null,
+      "resolved_product_id": "ext_11c49350f95d48555a9f2a6b",
+      "resolved_merchant_id": "merch_obs_f90122172d141c2d",
+      "canonicalization_applied": true,
+      "canonicalization_reason_code": "CATALOG_CONTENT_KEY",
+      "entry_precheck_missing": false
+    },
+    "module_health": {
+      "severity": "warning",
+      "applied": false,
+      "items": [
+        {
+          "type": "variant_selector",
+          "reason": "unavailable",
+          "required": false,
+          "severity": "warning"
+        }
+      ],
+      "degraded": [],
+      "warnings": [
+        {
+          "type": "variant_selector",
+          "reason": "unavailable",
+          "required": false,
+          "severity": "warning"
+        }
+      ],
+      "info": []
+    },
+    "module_degrade": {
+      "applied": false,
+      "severity": "warning",
+      "modules": [
+        {
+          "type": "variant_selector",
+          "reason": "unavailable",
+          "required": false,
+          "severity": "warning"
+        }
+      ]
+    }
+  }
+}

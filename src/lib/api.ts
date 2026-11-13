@@ -7,10 +7,11 @@ import {
   getCheckoutContextFromBrowser,
   normalizeCheckoutSource,
   persistCheckoutContext,
+  rememberCheckoutTokenOrder,
 } from '@/lib/checkoutToken'
 import { ensureAuroraSession, shouldUseAuroraAutoExchange } from '@/lib/auroraOrdersAuth'
 import { formatDescriptionText } from '@/features/pdp/utils/formatDescriptionText'
-import type { Offer, RecommendationsData } from '@/features/pdp/types'
+import type { LivePdpRefreshPage, LivePdpRefreshResponse, Offer, RecommendationsData } from '@/features/pdp/types'
 import { normalizeDisplayImageUrl } from '@/lib/displayImage'
 import { isExternalAliasOnlyProduct } from '@/lib/productHref'
 import { extractMoneyCurrency, extractPositivePriceAmount } from '@/lib/price'
@@ -518,6 +519,8 @@ export type GetPdpV2Response = {
   missing?: Array<{ type: string; reason?: string }>;
   /** Set by the gateway on a 200 built from an incomplete read; see hasDegradedReads. */
   degraded_reads?: unknown;
+  /** Live-refresh descriptor (contract v1); only on a request that opted in. Validated by the adapter. */
+  live_refresh?: unknown;
 };
 
 export function normalizeProductDescriptionText(value: unknown): string {
@@ -3304,6 +3307,8 @@ export async function getPdpV2(args: {
   cache_bypass?: boolean;
   serving_eligible_only?: boolean;
   similar_mode?: 'first_paint' | 'post_core' | 'background' | 'retry';
+  /** Ask the gateway for a `live_refresh` descriptor (PDP async live refresh, contract v1). */
+  live_refresh?: boolean;
 }): Promise<GetPdpV2Response> {
   const productId = String(args.product_id || '').trim();
   if (!productId) {
@@ -3341,6 +3346,7 @@ export async function getPdpV2(args: {
           ...(args.debug ? { debug: true } : {}),
           ...(args.cache_bypass ? { cache_bypass: true } : {}),
           ...(args.similar_mode ? { similar_mode: args.similar_mode } : {}),
+          ...(args.live_refresh === true ? { live_refresh: true } : {}),
         },
         capabilities: {
           client: 'shopping',
@@ -3399,6 +3405,7 @@ export async function getPdpV2Cached(args: {
   serving_eligible_only?: boolean;
   revalidateSeconds?: number;
   cacheTags?: string[];
+  live_refresh?: boolean;
 }): Promise<GetPdpV2Response> {
   const revalidate =
     typeof args.revalidateSeconds === 'number' && args.revalidateSeconds > 0
@@ -3424,6 +3431,8 @@ export async function getPdpV2Cached(args: {
     // that names none. Offers and prices differ by market, so a cached PDP is only
     // valid for the market it was built for.
     `market:${resolveBuyerMarket()}`,
+    // A response that opted in carries a live-refresh descriptor; one that did not, none. Never share a slot.
+    ...(args.live_refresh === true ? ['live-refresh-v1'] : []),
   ];
   const productTag = `pdp:${String(args.product_id || '')}`;
   const load = unstable_cache(
@@ -3438,6 +3447,7 @@ export async function getPdpV2Cached(args: {
         timeout_ms: args.timeout_ms,
         gatewayBaseUrl: args.gatewayBaseUrl,
         serving_eligible_only: args.serving_eligible_only,
+        ...(args.live_refresh === true ? { live_refresh: true } : {}),
       });
       // Do NOT cache a 200 the gateway marked degraded (`degraded_reads`): it was
       // assembled while a catalog read could not reach the database, so it may be
@@ -3487,6 +3497,29 @@ export async function getPdpV2Cached(args: {
     { revalidate, tags: [...(args.cacheTags || ['pdp']), productTag] },
   );
   return load();
+}
+
+/**
+ * PDP async live refresh (contract v1, `pdp_live_read`): hand the page's live-refresh token and its raw
+ * module slice back to the gateway, which re-reads the merchant and answers a patch. Through the normal
+ * gateway call (the shop lane of /api/gateway), so `metadata.market` is the buyer market like every call.
+ *
+ * Rejects on transport failure, timeout or a non-2xx (an older gateway answers 400 for an operation it
+ * does not know). The caller keeps the stored page on any rejection and never retries.
+ */
+export async function getPdpLiveRefresh(args: {
+  token: string;
+  page: LivePdpRefreshPage;
+  timeout_ms?: number;
+  signal?: AbortSignal;
+}): Promise<LivePdpRefreshResponse> {
+  return callGatewayWithTimeout<LivePdpRefreshResponse>(
+    {
+      operation: 'pdp_live_read',
+      payload: { live_refresh_token: args.token, page: args.page },
+    },
+    { timeoutMs: args.timeout_ms ?? 4500, signal: args.signal },
+  );
 }
 
 /**
@@ -3804,6 +3837,10 @@ export async function createOrder(orderData: {
       },
     },
   });
+
+  // The backend binds an order created under a checkout token to that token's intent; remember it so the
+  // resume entry for this order keeps the token (checkoutToken.ts isCheckoutTokenBoundToOrder).
+  if (checkoutContext.token) rememberCheckoutTokenOrder(checkoutContext.token, (data as any)?.order_id);
 
   return data;
 }

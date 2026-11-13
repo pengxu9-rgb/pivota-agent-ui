@@ -1,0 +1,224 @@
+{
+ "back_in_stock": {
+  "status": "success",
+  "live_refresh": {
+   "mode": "on",
+   "outcome": "applied",
+   "reason": null,
+   "source": "cache",
+   "checked_at": "2026-10-16T01:42:34.902Z",
+   "stats": {
+    "verified": 2,
+    "gone": 0,
+    "price_changed": 1,
+    "stock_changed": 2,
+    "best_price_moved": false
+   }
+  },
+  "patch": {
+   "product": {
+    "set": {
+     "variants": [
+      {
+       "variant_id": "48087970185268",
+       "title": "Lemon Sorbet",
+       "options": [
+        {
+         "name": "Flavor",
+         "value": "Lemon Sorbet"
+        }
+       ],
+       "price": {
+        "current": {
+         "amount": 24,
+         "currency": "USD"
+        }
+       },
+       "availability": {
+        "in_stock": true
+       },
+       "label_image_url": "",
+       "images": [],
+       "image_urls": [],
+       "axis_kind": "",
+       "display_label": "",
+       "source_quality_status": "",
+       "live_read": {
+        "status": "verified",
+        "checked_at": "2026-10-16T01:42:34.902Z"
+       }
+      },
+      {
+       "variant_id": "31760703160372",
+       "title": "Berry",
+       "options": [
+        {
+         "name": "Flavor",
+         "value": "Berry"
+        }
+       ],
+       "price": {
+        "current": {
+         "amount": 26,
+         "currency": "USD"
+        },
+        "compare_at": {
+         "amount": 30,
+         "currency": "USD"
+        }
+       },
+       "availability": {
+        "in_stock": true
+       },
+       "label_image_url": "",
+       "images": [],
+       "image_urls": [],
+       "axis_kind": "",
+       "display_label": "",
+       "source_quality_status": "",
+       "live_read": {
+        "status": "verified",
+        "checked_at": "2026-10-16T01:42:34.902Z"
+       }
+      }
+     ],
+     "price": {
+      "current": {
+       "amount": 24,
+       "currency": "USD"
+      }
+     },
+     "availability": {
+      "in_stock": true
+     },
+     "price_source": "merchant_live",
+     "live_read": {
+      "status": "verified",
+      "market": "US",
+      "source": "merchant_ucp_lookup_catalog",
+      "checked_at": "2026-10-16T01:42:34.902Z",
+      "checked": 2,
+      "verified": 2,
+      "gone": 0
+     }
+    },
+    "unset": []
+   },
+   "modules": {
+    "price_promo": {
+     "price": {
+      "amount": 24,
+      "currency": "USD"
+     },
+     "promotions": []
+    },
+    "variant_selector": {
+     "selected_variant_id": "48087970185268",
+     "variants": [
+      {
+       "variant_id": "48087970185268",
+       "title": "Lemon Sorbet",
+       "display_label": "Flavor: Lemon Sorbet",
+       "options": [
+        {
+         "name": "Flavor",
+         "value": "Lemon Sorbet"
+        }
+       ],
+       "price": {
+        "current": {
+         "amount": 24,
+         "currency": "USD"
+        }
+       },
+       "availability": {
+        "in_stock": true
+       },
+       "live_read": {
+        "status": "verified",
+        "checked_at": "2026-10-16T01:42:34.902Z"
+       }
+      },
+      {
+       "variant_id": "31760703160372",
+       "title": "Berry",
+       "display_label": "Flavor: Berry",
+       "options": [
+        {
+         "name": "Flavor",
+         "value": "Berry"
+        }
+       ],
+       "price": {
+        "current": {
+         "amount": 26,
+         "currency": "USD"
+        },
+        "compare_at": {
+         "amount": 30,
+         "currency": "USD"
+        }
+       },
+       "availability": {
+        "in_stock": true
+       },
+       "live_read": {
+        "status": "verified",
+        "checked_at": "2026-10-16T01:42:34.902Z"
+       }
+      }
+     ],
+     "options": [
+      {
+       "name": "Flavor",
+       "values": [
+        {
+         "value": "Lemon Sorbet",
+         "label": "Lemon Sorbet",
+         "variant_ids": [
+          "48087970185268"
+         ],
+         "selected": true
+        },
+        {
+         "value": "Berry",
+         "label": "Berry",
+         "variant_ids": [
+          "31760703160372"
+         ],
+         "selected": false
+        }
+       ]
+      }
+     ]
+    }
+   },
+   "offers": {
+    "offers": [
+     {
+      "offer_id": "of_card",
+      "merchant_id": "merch_obs_laneige",
+      "product_id": "ext_lsm",
+      "selected_variant_id": "48087970185268",
+      "price": {
+       "amount": 24,
+       "currency": "USD",
+       "current": {
+        "amount": 24,
+        "currency": "USD"
+       }
+      },
+      "inventory": {
+       "in_stock": true
+      },
+      "live_read": {
+       "status": "verified",
+       "checked_at": "2026-10-16T01:42:34.902Z"
+      }
+     }
+    ],
+    "best_price_offer_id": "of_card"
+   }
+  }
+ }
+}
